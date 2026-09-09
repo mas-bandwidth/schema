@@ -7122,12 +7122,16 @@ static void test_form_byte_refusals()
     const int64_t bytes = tblv1::CfgSave( src, wire, sizeof( wire ) );
     CHECK( bytes > 0 );
 
-    // THE FORMS NO READER KNOWS. Form 2 is not among them: it is the MESSAGE
-    // FORM (docs/SPEC-TABLES.md §3.3), a form this build carries, and reading
-    // one where a FILE was expected is its own refusal under its own reason,
-    // pinned by the message_as_file row and by test_message_form_refusals.
-    const uint8_t forms[3] = { 0, 3, 0xFF };
-    const char * names[3] = { "form_zero", "form_three", "form_ff" };
+    // THE FORMS NO READER KNOWS, and the control's whole premise is that no
+    // form DEFINES them. Form 2 is not among them: it is the MESSAGE FORM
+    // (docs/SPEC-TABLES.md §3.3), a form this build carries, and reading one
+    // where a FILE was expected is its own refusal under its own reason, pinned
+    // by the message_as_file row and by test_message_form_refusals. Nor is 3,
+    // which is the FIXED FORM (§3.4); nor 4 and 5, which §3's registry names
+    // and reserves for the cook and the block form. **6 IS THE FIRST BYTE NO
+    // FORM DEFINES OR RESERVES**, so 6 is what this plants.
+    const uint8_t forms[3] = { 0, 6, 0xFF };
+    const char * names[3] = { "form_zero", "form_six", "form_ff" };
     for ( int i = 0; i < 3; i++ )
     {
         static uint8_t forged[256];

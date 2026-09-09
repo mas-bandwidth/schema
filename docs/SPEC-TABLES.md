@@ -172,7 +172,7 @@ full identities, canonical LEB128, first-use references, arm-kind framing,
 flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
 byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
 on that form. `tables-c-wire-fuzz` compares C with the independent engine.
-Dynamic maps and lists use the same file form and graph JSON;
+Dynamic maps and lists use the same variable form and graph JSON;
 `tables-c-collections-fuzz` compares their recovery and native C region sizes
 with C++ directly. C also writes canonical cooks in both byte orders, with
 field-by-field padding normalization, and exposes named cook/block refusal
@@ -2978,17 +2978,89 @@ encoding a third party could implement from this section alone, without
 schema's codebase. Little-endian, byte-oriented throughout. Nothing is
 aligned and nothing is padded.
 
+---
+
+#### THE FIRST BYTE
+
+**EVERY SCHEMA FILE BEGINS WITH THE FORM BYTE, AND THE REGISTRY (§3.4) IS THE
+ONLY PLACE A VALUE IS ASSIGNED.** This is the rule, stated once, that every
+other section cites. It is five rules and none of them is a form's own
+business.
+
+- **A SCHEMA FILE IS A UNION OF FIVE ARMS AND THE FORM BYTE IS ITS TAG** —
+  *"so in effect, form byte is like a union id"*, the project owner. It is
+  therefore under exactly the rule the baseline lock (§18) enforces for a union
+  in a fixed table: **NUMBERED FOREVER, APPENDED AT THE END, NEVER REINSERTED
+  AND NEVER RENAMED.** A form that has shipped keeps its number for good, a
+  number a shipped form gave up is never reused, and the registry is append-only
+  because a wire nobody can date is a wire nobody can read.
+- **BYTE `0` AND ANY UNASSIGNED VALUE ARE REFUSED BY NAME.** `0` is never
+  assigned, so a zero-filled buffer handed to a reader refuses rather than
+  decoding; every value the registry does not carry refuses the same way, saying
+  the form is one this build does not carry. **A refusal is not damage and moves
+  none of §4's six counters**, because nothing was decoded and there is nothing
+  to count. **THE FORM BYTE IS READ FIRST**, before any body and before any
+  trailer, so a file that is both an unknown form and damaged is a refusal.
+- **A FORM'S HEADER IS THE FORM BYTE, THEN ITS EIGHT-BYTE HASH, PADDED TO THE
+  BODY'S ALIGNMENT.** The bytes are fixed for every form that has a hash:
+
+  ```
+  offset  0        the FORM BYTE
+  offsets 1 .. 7   RESERVED, written zero
+  offsets 8 .. 15  the form's EIGHT-BYTE HASH, little-endian
+  offset  16       the BODY
+  ```
+
+  The hash is **OVER THE LAYOUT** for the fixed form and for the message form,
+  and **OVER THE BUILD** for the cook and the block form, both planned (§7,
+  §19). Sixteen bytes is the alignment a MEMORY-MAPPED body needs, and the
+  header pays it whether or not the form maps its body today: **the fixed form
+  does not need the alignment and pads anyway**, so that the bytes do not move a
+  second time the day the cook and the block form join the registry under this
+  same header. **THE SEVEN RESERVED BYTES ARE WRITTEN ZERO AND READ BY NOBODY.**
+  They exist to put the hash at `8` and the body at `16`; a later form that
+  wants to say more takes a NEW FORM BYTE and never one of these, which is the
+  same rule that keeps a version byte out of the layout (§3.4).
+
+  **TODAY THE FIXED FORM IS THE ONE ARM THAT WRITES THIS HEADER.** The message
+  form's framing is still its own two parts, the form byte and a body count
+  (§3.3), and it takes this header when it is rebuilt on form `3`; the cook and
+  the block form each carry a header of their own (§7.1, §19.2) and take this
+  one the day they carry a form byte. The header is written down here in full
+  anyway, because a rule three forms will adopt one at a time is a rule that has
+  to be decided once.
+- **THE VARIABLE FORM IS THE ONE ARM WHOSE HEADER IS THE FORM BYTE ALONE.** It
+  carries no hash — its id table is the wire's own trailer — and it maps
+  nothing, so §3's "nothing is aligned and nothing is padded" is its whole
+  rule and its body begins at byte `1`. Padding it would move every byte of
+  every file on every disk to buy an alignment its reader does not use.
+- **INSIDE A PACKET NO FORM BYTE IS WRITTEN, AND THAT IS THE ONE EXCEPTION.**
+  A packet's fields are named by the declaration, so a field declared a FIXED
+  TABLE needs nothing on the wire to say what it is: *"if we KNOW they're all
+  in message form, we can just drop the byte for type when we put them in
+  packets"* — the project owner. **A FIXED TABLE IN A PACKET IS THE MESSAGE
+  FORM BY RULE**, framed by the packet around it, with no form byte, no header
+  and no layout of its own. This is a standing rule and not a shipped byte: a
+  `table` has no packet wire today (SPEC.md, "A union with a `table` arm is
+  excluded WHOLE"), so nothing writes such bytes yet, and when it does this is
+  what it writes.
+
+---
+
 **A saved table is THREE PARTS in this order: the FORM BYTE, the ROOT BODY,
-and the ID TABLE.** That is the FILE FORM, form byte `1`, and it is what this
-section describes throughout. §3.3 and §3.4 define the two other forms. The MESSAGE
-FORM, form byte `2`, is a BATCH of BITPACKED bodies under a vocabulary
+and the ID TABLE.** That is the VARIABLE FORM, form byte `1`, and it is what this
+section describes throughout. §3.3 and §3.4 define the two other live forms. The
+MESSAGE FORM, form byte `2`, is a BATCH of BITPACKED bodies under a vocabulary
 the connection announced once, and none of this section's byte framing rides
 in it. The FIXED FORM, form byte `3`, is a hash and a record of values at their
-bounds under a vocabulary block, and none of this section's framing rides in it
-either. **The three numbers are the whole registry and §3.4 carries it**, with
-the rule for adding a fourth.
+bounds under a LAYOUT, and none of this section's framing rides in it
+either. **§3.4 carries the registry**, whose other two rows — `4` the cook and
+`5` the block form — are PLANNED, and THE FIRST BYTE above is the rule for
+adding to it.
 
-- **The FORM BYTE is `1` for a file, and it is the whole header.** It versions
+- **The FORM BYTE is `1` for a file, and it is the whole header** — the
+  variable form is the one arm with no hash to carry and no body to align
+  (THE FIRST BYTE, above). It versions
   the FRAMING this section describes. A reader that meets a byte it does not know
   refuses the wire by name, saying the form is newer than the one it carries,
   and it never reports damage. That refusal is not one of §4's events and
@@ -3749,7 +3821,7 @@ the payload opens with the count and then carries the records:
   terms. Each is
   damage rather than a foreign name: that body stops, `malformed` counts, and
   the parent reads on past its length (§4). **THE RECOVERY HALF OF THAT SENTENCE
-  IS THE FILE FORM'S ALONE**, said here where §4 says it of its own framing-damage
+  IS THE VARIABLE FORM'S ALONE**, said here where §4 says it of its own framing-damage
   row: a bitpacked body has no length for a parent to read on past, so on the
   message form the planted id stops the BATCH, one `malformed` counting for it
   (§3.3). What is malformed does not move between the forms, and only what
@@ -4214,7 +4286,7 @@ UDP either.
 - **A STATELESS REQUEST-RESPONSE TRANSPORT IS OUT OF SCOPE, by name.** A request
   sharing no state with the last one has nowhere to put an announcement, so the
   announcement would ride every request and cost more than the id table it
-  replaced. The FILE form rides there, self-contained, exactly as it rides a
+  replaced. The VARIABLE form rides there, self-contained, exactly as it rides a
   disk.
 - **A RESTART IS A NEW CONNECTION WITH AN EMPTY VOCABULARY**, and a receiver
   caches nothing across connections. A cache that survives a peer buys one
@@ -4251,7 +4323,7 @@ with one message passes one and pays a count of eight bits for it.
   batches into one buffer. **The `-1` carries its reason on the carrier
   `LoadMessages` already uses**: the `TableReport` each of the three verbs
   takes as its last parameter, with its refusal verdict set and the reason
-  `batch_too_large` on it, never an exception. The file form's `LoadMeasure`
+  `batch_too_large` on it, never an exception. The variable form's `LoadMeasure`
   carries its own `-1` on the file's vocabulary (§7), and this form does not
   borrow it: a message-form reason rides the message path in both directions
   (§7's note on the two vocabularies), so the write side and the read side
@@ -4281,7 +4353,7 @@ with one message passes one and pays a count of eight bits for it.
   caller reads the count and never that slot. This is "the fields decoded before
   the damage stand" (below) seen one level up: a whole body is the unit the
   count can talk about.
-- **BYTES AFTER THE PAD ARE MALFORMED**, exactly as they are in the file form
+- **BYTES AFTER THE PAD ARE MALFORMED**, exactly as they are in the variable form
   (§3): the batch ends at the pad to the byte boundary, and a buffer with bytes
   left over describes no batch this reader can name.
 - **A BATCH OF POINTERED ROOTS TAKES ONE REGION FOR THE BATCH**, not one a body.
@@ -4375,7 +4447,7 @@ buys something this wire needs and none of them is derivable:
 | a bare integer, `bool`, `f32`, `f64`, a 128-bit kind | the packet wire's own, at the declared width |
 | `bits(N)` | N bits, which is RANGED over `[0, 2^N - 1]` and therefore `base` `0` and `bits` N in the announced shape, not a kind of its own |
 | a RANGED integer, a fixed-point value, a compressed float | the packet wire's own: `value - min` at `bits_required(min, max)`, the quantized index at its step count, the fixed-point raw offset at its own width |
-| a `flags` mask | **its declared W bits**, W being the writer's own variant count, and NOT the file form's raw `uint64`. This is a DEPARTURE and it is the packet wire's rule (SPEC.md §4.2, §4.3) reached for the packet wire's reason, bandwidth: a three-variant mask costs three bits here and sixty-four in a file, and a mask is the one payload where the file form's width is set by its STORAGE rather than by anything declared |
+| a `flags` mask | **its declared W bits**, W being the writer's own variant count, and NOT the variable form's raw `uint64`. This is a DEPARTURE and it is the packet wire's rule (SPEC.md §4.2, §4.3) reached for the packet wire's reason, bandwidth: a three-variant mask costs three bits here and sixty-four in a file, and a mask is the one payload where the variable form's width is set by its STORAGE rather than by anything declared |
 | a `string(N)` payload, and an ARRAY whose element kind is `6` (which is every `bytes(N)`) | the length or count, then **ALIGN to the next byte boundary**, then the bytes. The align costs at most seven bits and buys a `memcpy` on the largest payload on the wire |
 | a `wstring(N)` payload | the length, NO align, then **SIXTEEN BITS A CODE UNIT**. This is a DEPARTURE from SPEC.md §4.12, which spends a 32-BIT GROUP a code unit, and the reason is bandwidth: the group is the packet wire's word-oriented codec showing through, a code unit holds sixteen bits, and a bit stream has no word to fill. A `wstring(8)` of eight units costs 128 bits here and 256 there |
 | an ENUM value | **a REFERENCE naming the VARIANT's name**, `0` for `None`, and NOT the packet wire's declaration ordinal |
@@ -4816,7 +4888,7 @@ the refusal verdict**, which the form byte already introduced.
 
 **AN ENTRY THIS READER CANNOT NAME IS §4's ORDINARY `unknown`**, counted when a
 field, a variant, an arm or a key names it, and never at resolve time. The
-difference from the file form is that the reader now SKIPS it by the announced
+difference from the variable form is that the reader now SKIPS it by the announced
 shape rather than by a length on the wire, and the result is the same: the field
 is stepped over exactly and one event counts.
 
@@ -4825,7 +4897,7 @@ ORDINARY `kind_mismatch`**, and the reader still steps over it exactly, because
 the shape came with the kind. **A field whose announced kind AGREES and whose
 announced RANGE differs decodes and clamps**, counting `clamped` where the value
 falls outside this reader's bound, which is §4's rule for a range change on the
-file form and is why the shapes carry ranges at all.
+variable form and is why the shapes carry ranges at all.
 
 ---
 
@@ -4881,7 +4953,7 @@ exactly as §3 states, because the length was read from the wire and the positio
 after it is known.
 
 **AN OVER-LONG ARRAY CLAMPS BY WALKING THE SURPLUS, and that is the one place
-this wire pays for a clamp in work rather than in bits.** A file form skips the
+this wire pays for a clamp in work rather than in bits.** A variable form skips the
 surplus by the array's `L`. A bitpacked array has no `L`, so a reader that keeps
 the first `N` elements has to find the bit the array ENDS at, and how it finds
 it depends on the element: a FIXED-WIDTH element is arithmetic, the surplus
@@ -4929,16 +5001,16 @@ halves of this paragraph.
 
 `LoadRetain` reads a form-`2` body as it reads a file's, the resolving walk
 replacing every reference with the id it names, against the connection's
-vocabulary instead of a trailer. **THE RECORD IS THE FILE FORM'S OWN**, because
+vocabulary instead of a trailer. **THE RECORD IS THE VARIABLE FORM'S OWN**, because
 a retained record carries the field's bytes with every reference resolved so
 that re-emitting it into any id table is correct, and the table it is re-emitted
 into is a FILE's: a bitpacked value is read at the width its announced shape
-states and written at the width the file form spells, which is this form's
+states and written at the width the variable form spells, which is this form's
 third difference (above) taken in the one direction retention has. **A BATCH
 TAKES ONE REGION AND ONE RETENTION BUFFER A BODY**, because each body carries
 its own node directory inside that one region (above), so a record's first step
 stays an index into the directory of the body it came from and `SaveRetain`'s
-accounting is the file form's unchanged. **`SaveRetain` writing form `2` REFUSES BY NAME
+accounting is the variable form's unchanged. **`SaveRetain` writing form `2` REFUSES BY NAME
 and returns `-1`.** A form-`2` writer names entries through slots of a
 vocabulary the compiler settled, and a retained id is by definition one this
 build's closure does not contain, so it has no slot AND no announced shape, which
@@ -4947,7 +5019,7 @@ answer it either** (§6.6): that list names ids into a FILE's trailer, which a
 file reader reads, and a form-`2` receiver reads slots and shapes from an
 announcement it never got. It is a MISUSE refusal on §6.6's own precedent
 and **never a silent drop**. The two answers are named. A caller that must carry
-unknowns across a rewrite writes the FILE form, which carries its own table and
+unknowns across a rewrite writes the VARIABLE form, which carries its own table and
 takes §6.6 unchanged. **A RELAY needs neither**: a service forwarding another
 peer's messages forwards that peer's announcement and its batch bytes verbatim,
 which is exact, allocates nothing and loses nothing.
@@ -4971,11 +5043,11 @@ writer's W, saved as a message, drops them by width, and a file carrying a
 compressed float OFF the announced grid, saved as a message, carries the
 nearest grid point, so file to message to file reproduces a mask only inside W
 and a float only when it already lies on the grid. The second is not an
-exception, because a name is the value on both forms and the file form already
+exception, because a name is the value on both forms and the variable form already
 carries it. A value that is on the grid and inside W reproduces its file byte
 for byte, which is what every vector below is.
 
-**FORM `2` IS A STREAM FORM AND NEVER A FILE FORM.** `schema pack` writes form
+**FORM `2` IS A STREAM FORM AND NEVER A FILE'S OWN FORM.** `schema pack` writes form
 `1`, `schema unpack` reads form `1`, and a reader handed a form-`2` wire where a
 file was expected refuses by name: a batch stored on its own is not readable,
 because its vocabulary is somewhere else. That cost is the form's one real one
@@ -4995,7 +5067,7 @@ kinds, and none move). The PROTOCOL ID does not (no type-wire fact is touched,
 and the reserved projection token SPEC.md §4.11 adds is a NAME held back and
 nothing a line emits). The TABLES BASELINE does not (§18 records ids, kinds and
 meanings, and no file's bytes move). The TEXT FORM does not (§16 is JSON keyed
-by names and carries no framing at all, so a message's text is its file form's
+by names and carries no framing at all, so a message's text is its variable form's
 text, byte for byte). The COOK and the BLOCK do not (§7, §19 are compiler-settled
 layout and this is framing). **NO EVOLUTION ROW OF §4 MOVES, and the FRAMING
 DAMAGE row does**, which is the whole of the difference. The shapes in the
@@ -5024,7 +5096,7 @@ is the third of the three ways this form changes a value across the forms
 
 **WHERE THE FORM IS CARRIED.** The C++ reference and the compiler's own engine
 carry the BITPACKED body under form byte `2`, and every form-`2` golden in the
-corpus is its. The eight ports carry the FILE form alone: a port's
+corpus is its. The eight ports carry the VARIABLE form alone: a port's
 `LoadMessages`, `MeasureMessages` and `SaveMessages` are a named follow-on
 beside the wire-form work M20 already registers (test/conformance/README.md),
 and the harness's `message` surface prints ABSENT for each rather than failing
@@ -5065,7 +5137,7 @@ precedent.
   capacity on the read side, because a caller reads a reason and then reads the
   numbers itself.
 - **`LoadMeasure`'s MESSAGE OVERLOAD sizes the batch's one region** and claims
-  no new verb: the file form's `LoadMeasure` already overloads on what it is
+  no new verb: the variable form's `LoadMeasure` already overloads on what it is
   handed, a wire file or a vocabulary and a message, and the batch overload
   returns the region bytes for the whole batch.
 - **Dart's member spellings** are `measureMessages`, `saveMessages` and
@@ -5173,25 +5245,25 @@ just need to get it less bytes than protobufs, and not be massively slower."*
 
 - **FEWER BYTES THAN proto3**, on the three measured messages and on the general
   shape.
-- **NOT MASSIVELY SLOWER than the FILE FORM, AND THE FACTOR IS TWO.** "Not
+- **NOT MASSIVELY SLOWER than the VARIABLE FORM, AND THE FACTOR IS TWO.** "Not
   massively slower" is A FACTOR OF TWO on the matching read path and on the
-  matching write path, measured against the FILE form's `Save` and `Load` over
-  the same values. **The arm is the file form on both paths**, because the byte
+  matching write path, measured against the VARIABLE form's `Save` and `Load` over
+  the same values. **The arm is the variable form on both paths**, because the byte
   body this section replaced is no longer in the tree to measure against: it
   landed in #549, was never released, and the codec change that lands this
-  section removed it. The file form is §3's byte-framed body over the same
+  section removed it. The variable form is §3's byte-framed body over the same
   values, and it is not the same program: its save INTERNS the ids it uses at
   run time and its load PARSES a trailer, neither of which a message does.
   Inside two, the form is accepted and the bandwidth is what it bought. **Above
   two on either path, THE BITPACKED BODY REOPENS**, which is a real outcome and
-  not a formality: the file form is a wire that works, and a form that costs
+  not a formality: the variable form is a wire that works, and a form that costs
   more than double the CPU to save a third of the bytes is a trade the owner has
   not made.
 - **MEASURED AT A NAMED SITTING, AND RECORDED HERE.** The sitting: an M-series
   MacBook Air, macOS 25.6, Apple clang at `-O2 -DNDEBUG -ffp-contract=off`,
   2026-09-05, one-minute load average 2.5, seven rounds of 100,000 iterations
   best of rounds and the best of five processes, both arms in one process over
-  the same values. **THE ARM IS THE FILE FORM'S `Save` AND `Load` OVER THOSE
+  the same values. **THE ARM IS THE VARIABLE FORM'S `Save` AND `Load` OVER THOSE
   VALUES, ON BOTH PATHS**: `Save` against `SaveMessages` and `Load` against
   `LoadMessages`. It is §3's byte-framed body, and what a file does beside it
   is the id table: the save INTERNS the ids the body uses as it writes them,
@@ -5206,7 +5278,7 @@ just need to get it less bytes than protobufs, and not be massively slower."*
   | the three, one batch | 0.71x | 1.56x |
 
   **BOTH PATHS ARE INSIDE THE FACTOR ON EVERY ROW**, and the write path is
-  UNDER the arm. The arm is the file form, whose save interns the ids it uses
+  UNDER the arm. The arm is the variable form, whose save interns the ids it uses
   at run time, so a write factor below one is a fact about those two programs
   and is not read here as a claim about bit framing against byte framing. What
   holds the read path inside the factor is the two properties this section
@@ -5367,7 +5439,7 @@ section lands removed it, so the column is the size it would have written and
 not a wire in the tree. The proto3 column is computed from its encoding spec
 over the same values.
 
-  | instance | packet wire | file form | byte body | **bitpacked body** | proto3 |
+  | instance | packet wire | variable form | byte body | **bitpacked body** | proto3 |
   |---|---:|---:|---:|---:|---:|
   | `LoginRequest`, full | 46 | 106 | 58 | **52** | 49 |
   | `MatchResult`, full | 115 | 273 | 225 | **148** | 189 |
@@ -5381,7 +5453,7 @@ over the same values.
 one thing. On the PACKET WIRE an envelope is a `type` holding a union of three,
 whose tag is `bits_required(0, 3)`, two bits a message: 6 bits over the three
 bare messages' 1562, and `sku`'s align absorbs them, so the row stays at 196.
-In the FILE FORM an envelope adds, per message, a `payload` header of a
+In the VARIABLE FORM an envelope adds, per message, a `payload` header of a
 reference and a kind byte, an arm header of a reference, a kind byte and an
 `L` (one byte under 128, two above), the envelope's terminator, and two
 id-table entries for `payload` and the arm: 106, 273 and 104 become 128, 296
@@ -5449,8 +5521,8 @@ entries announces about 5 KB once.
   missing vocabulary. Red if either prints a clean read, reports `malformed`, or
   moves a counter.
 - **The round trip across the forms.** For each of the twelve vectors, loading
-  the file form and saving the message form must reproduce the message form's
-  pinned bytes, and the reverse must reproduce the file form's. Red if one byte
+  the variable form and saving the message form must reproduce the message form's
+  pinned bytes, and the reverse must reproduce the variable form's. Red if one byte
   differs in either direction, which is the negative control on every rule here
   that says the VALUE does not move. The two exceptions the round-trip
   paragraph states, a mask's bits above W and a compressed float off the grid,
@@ -5513,7 +5585,7 @@ entries announces about 5 KB once.
   it, which keeps the last whole code point that fits and counts one `clamped`;
   one over the bound whose cut already falls on a boundary, which keeps the
   whole bound; and one at the bound ending in a multi-byte code point, which
-  lands whole and counts nothing. Red if a leg stores text the file form
+  lands whole and counts nothing. Red if a leg stores text the variable form
   refuses, cuts a clamp inside a code point, keeps fewer bytes than the bound
   admits, or counts `clamped` on a payload that fits.
 - **The same content rule met at a NODE.** A `*string` blob record on a
@@ -5523,7 +5595,7 @@ entries announces about 5 KB once.
   them a well-formed blob, which loads with a silent report, and the same
   ill-formed bytes under the reserved `bytes` id, which loads with a silent
   report too, because a `*bytes` blob is bytes and never text. Red if a leg
-  places a record the file form refuses, refuses a record the file form places,
+  places a record the variable form refuses, refuses a record the variable form places,
   or reads a `*bytes` blob as text.
 - **The pad, and what follows it.** A batch whose trailing bits to the byte
   boundary are not zero, and a buffer carrying a whole batch and then a byte
@@ -5782,8 +5854,18 @@ so it is stated before the wire it constrains, and it is four sentences:
   form this reader never saw, and it is refused by name rather than stepped
   over. The versioning tolerance this form has is §4's, it is over FIELDS, and
   none of it moves.
-- **EVERY REFUSAL IS BY NAME.** `newer_form` for a form byte this build does not
-  carry, `no_layout` for a hash with no layout, `layout_malformed` and the seven
+- **EVERY REFUSAL IS BY NAME, AND A FORM BYTE'S REFUSAL SAYS WHICH DIRECTION.**
+  The registry is ORDERED (§3), so a reader that meets a byte it does not carry
+  can say where the byte sits relative to the form it reads, and one word for
+  both directions would be one word too few. **A FIXED READER GIVEN `1`
+  REFUSES `previous_form`** — `1` is the VARIABLE form and it is OLDER, so
+  calling it `newer_form` would send a caller looking for a build that does not
+  exist. **GIVEN `2` IT REFUSES `message_form_as_file`**, the name that vocabulary
+  already carries for a batch where a file was expected. **GIVEN ANY BYTE NO
+  FORM DEFINES IT REFUSES `newer_form`**, which is the only kind of byte that
+  name is honest for. **AND A VARIABLE READER GIVEN `3` REFUSES `newer_form`**,
+  because from form `1` the fixed form IS newer. Beside them: `no_layout` for a
+  hash with no layout, `layout_malformed` and the seven
   named rules below for a layout whose bytes are not one. None of them is one of
   §4's six events, because in each of them nothing was decoded and there is
   nothing to count.
@@ -5950,20 +6032,31 @@ three and not one.
   the whole body and zero-fills every byte of declared slack, whatever the value
   actually holds. **Nothing about the wire changes at 4096.** It is where a
   fixed table stops being a small thing.
-- **65536 BYTES OF RECORD BODY: THE FIXED FORM IS NOT EMITTED FOR THAT TABLE.**
+- **65536 BYTES OF RECORD BODY: A COMPILE REFUSAL FOR A DECLARED FIXED TABLE.**
   This one IS a wire fact: a reader holds an untrusted peer's layout to the same
   65536 (`layout_record_too_large`, above), so a record past it is one no
   conforming reader decodes, and emitting a writer for it would be emitting
-  bytes nobody can read. **THE TABLE KEEPS FORM `1`, WHICH IT NEVER LOST** — the
-  fixed form has never been the only form for a fixed table — and the compiler
-  names the table and the size rather than dropping the form in silence. The
-  two sides therefore agree by construction: the writer never produces a record
-  the reader's own bound refuses.
-- **`--fixed-record-limit N` MAKES THE ADVICE A GATE.** It is off by default and
-  it is a project's own policy, never a wire fact: set it and a fixed table
-  whose record body exceeds `N` bytes DOES NOT COMPILE. A team that wants the
-  owner's rule enforced rather than advised sets it to `4096`. It moves neither
-  of the two bounds above, because one is advice and the other is the wire.
+  bytes nobody can read. A `fixed table` past it therefore **DOES NOT COMPILE**,
+  by name, naming the table and the size — because selection is by the keyword
+  and a declared fixed table never falls back to form `1`, so the alternative
+  would be exactly the silent demotion the keyword exists to prevent. The two
+  sides agree by construction: the writer never produces a record the reader's
+  own bound refuses.
+
+  **AND FOR A TABLE MERELY DERIVED INTO THE FORM, THE FORM IS DROPPED AND THE
+  COMPILER WARNS**, because that table asked for nothing: it keeps form `1`,
+  which it never lost, and the compiler names it rather than dropping the form
+  in silence. **THIS SECOND HALF IS WHAT #823 REMOVES** — an undeclared `table`
+  will not select form `3` at all, so nothing will be derived into it and there
+  will be one bound with one verdict.
+- **`--fixed-record-limit N` MAKES THE ADVICE A GATE, AND ONLY EVER LOWERS.** It
+  is off by default and it is a project's own policy, never a wire fact: set it
+  and a fixed table whose record body exceeds `N` bytes DOES NOT COMPILE. A team
+  that wants the owner's rule enforced rather than advised sets it to `4096`.
+  **IT CANNOT RAISE THE 65536**, and that is not a limitation but the same rule
+  read from the other end: 65536 is the number a PEER's reader holds this
+  build's records to, and a peer's build has never heard of this project's flag.
+  A gate a stranger does not honour is not a wire bound.
 
 **THE COMPILER, THE C++ REFERENCE'S EMITTED BYTES AND THE READER'S OWN BOUND ALL
 COME OUT OF ONE PLACE.** `C(f)` and `C(T)` are computed once, in the compiler,
@@ -6064,10 +6157,31 @@ entirely. A GUARDED BRANCH is refused for the owner's own reason: *"the intent
 of the lookback conditional is to make it variable size … so that is a
 disqualifying thing for a fixed table. not supported. only variable."*
 
-**THE FIXED FORM DOES NOT REPLACE FORM `1` FOR A FIXED TABLE.** A generated
-reader for a fixed-table type accepts BOTH, by the form byte, and form `1` is
-what an old file on a disk is. Nothing about form `1` moves, for fixed tables or
-for anything else.
+#### SELECTION IS BY THE KEYWORD
+
+**A `fixed table` ENCODES AS FORM `3`, ALWAYS. A `table` ENCODES AS FORM `1`.
+THERE IS NO PATH BY WHICH A DECLARED FIXED TABLE REACHES FORM `1`.** The
+keyword (#823) is the whole of the selection, and the owner's reason for it is
+the one that decides everything below: *"if we add any feature that stops it
+from being fixed, it is a compile error … we don't want to surprise the user"*,
+and *"now that we have the fixed form (new) of 3, we select this, and do not
+want fixed tables to ever encode as the old way."*
+
+- **THE READ SIDE STILL ACCEPTS BOTH.** A generated reader for a fixed-table
+  type reads form `1` and form `3`, by the form byte, because form `1` is what
+  an OLD FILE ON A DISK is and nothing about form `1` moves, for fixed tables or
+  for anything else. Selection is a WRITER's question; tolerance is a reader's.
+- **AN UNDECLARED `table` IS A VARIABLE TABLE FOR THIS FORM'S PURPOSES,
+  WHATEVER ITS SIZE.** §12.1's render frame at 7.5 MB and §2.8's `WideBlob` are
+  exactly that: legitimate tables of megabytes, fixed in MODE (§2.2) and so
+  carrying a by-value storage, a cook and a block form, and never form-`3`
+  tables at all. **The MODE and the FORM are two different words**, and this
+  section's bounds are the FORM's.
+- **UNTIL #823 MERGES, THE COMPILER SELECTS BY THE DERIVED MODE.** The keyword
+  is on branch `fixed-table-keyword`. This tree has no other marker for "the
+  author asked for the fixed form", so `ir.TableFixedRoots` reads the derived
+  mode and `ir.Struct.FixedDeclared` — the field the keyword sets — carries the
+  one pointer to #823. What that costs is stated below and nowhere else.
 
 ---
 
@@ -6158,19 +6272,39 @@ once-per-carrier part rides.
 
   | carrier | the form byte | the layout | a record |
   |---|---|---|---|
-  | **a FILE** | ONCE, the first byte of the file | ONCE, immediately after it, behind a `u32 LE` length | hash + body, back to back to the end of the file |
+  | **a FILE** | ONCE, in the HEADER (§3, THE FIRST BYTE) | ONCE, at the head of the body, behind a `u32 LE` length | hash + body, back to back to the end of the file |
   | **a STREAM** (§3.3) | not in the record — **the stream framed it** | ON THE ANNOUNCEMENT, once per hash, before the first record carrying that hash | hash + body |
   | **the MESSAGE form** (§3.3) | ONCE PER BATCH, in front of the batch | on the batch's announcement, once | hash + body, one per body of the batch |
 
 **A FILE ALWAYS CARRIES THE LAYOUT.** A file is read by somebody who was not
 there when it was written, so the alternative is a file that cannot be read.
+**THE FILE'S HEADER IS §3'S, UNCHANGED AND WITH NOTHING ADDED**, and the LAYOUT
+HASH is the hash §3 puts at offset `8`:
 
 ```
-form byte 3
-layout length (u32 LE), then the layout
-records, back to back, to the end of the file
+offset  0        form byte 3
+offsets 1 .. 7   reserved, zero
+offsets 8 .. 15  the LAYOUT HASH (u64 LE)
+offset  16       layout length (u32 LE), then the layout
+                 records, back to back, to the end of the file
 ```
 
+- **THE HEADER NAMES THE LAYOUT ONCE; A RECORD NAMES IT AGAIN.** The eight bytes
+  at `8` are the hash of the layout behind them, and every record still carries
+  its own eight-byte hash — which is what this section has said from the start
+  and what the header does not replace. A record is never self-describing, and
+  the two hashes are two different questions: the header's says *which layout is
+  in this file*, a record's says *which layout stamped this record*. **A HEADER
+  WHOSE HASH IS NOT THE HASH OF THE LAYOUT BEHIND IT IS REFUSED**,
+  `layout_malformed`, and it is checked LAST of the three so that a broken
+  layout is never reported as a lying header.
+- **THE FIXED FORM DOES NOT NEED THE PADDING AND PAYS IT ANYWAY** (§3). Nothing
+  in this form memory-maps a body today; the sixteen bytes are paid so that the
+  bytes do not move again when the cook and the block form join the registry
+  under the same header. **The padding aligns the BODY and not the RECORDS**:
+  the layout is variable-length, so where the records begin is the layout's
+  length and not a constant, and a form that wants MAPPED RECORDS will pad the
+  layout too — which is a byte this form does not spend until something reads it.
 - **THE RECORDS FILL THE REST OF THE FILE and there is no count.** A reader
   knows the record size from the layout, so the count is arithmetic; **BYTES
   LEFT OVER ARE `malformed`**, which is §3's rule for the same reason, that the
@@ -6206,33 +6340,41 @@ exactly one framing per carrier.
 
 #### THE FORM-BYTE REGISTRY
 
+**THIS TABLE IS THE ONLY PLACE A FORM BYTE IS ASSIGNED A MEANING** (§3, THE
+FIRST BYTE). A value absent from it is a value NO FORM DEFINES, and every
+reader refuses it by name.
+
 | form | what it is | where |
 |---|---|---|
-| `0` | never assigned; a reader refuses it | §3 |
-| `1` | **the FILE form** — form byte, root body, id table | §3 |
-| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary | §3.3 |
-| `3` | **the FIXED form** — a hash and a record of values under a LAYOUT | this section |
+| `0` | **never assigned**; a reader refuses it by name, so a zero-filled buffer is a refusal and never a decode | §3 |
+| `1` | **the VARIABLE form** — form byte, root body, id table. The one arm whose header is the form byte alone | §3 |
+| `2` | **the MESSAGE form** — a batch of bitpacked bodies under an announced vocabulary. **PLANNED to become FIXED-ONLY, rebuilt on form `3`** | §3.3 |
+| `3` | **the FIXED form** — the header's layout hash, then a record of values under that LAYOUT | this section |
+| `4` | **the COOK** — PLANNED; the header's hash is over the BUILD | §7 |
+| `5` | **the BLOCK form** — PLANNED; the header's hash is over the BUILD | §19 |
 
-**THE RULE FOR ADDING ONE, restated from §3.3's own precedent.** A form byte
-with no reader outside the tree that defines it is a number, not a wire, and its
-body may be replaced under the number it holds; a form that HAS shipped takes the
-NEXT number, forever. **Forms `1` and `2` are both live**: form `1` is read by
-all nine ports and by every file on a disk, and form `2`'s bitpacked body is the
-released one. **So the fixed form takes `3`**, and no existing byte is
-reinterpreted.
+**THE RULE FOR ADDING ONE, restated from §3.3's own precedent and from §3's
+union-tag rule.** A form byte with no reader outside the tree that defines it is
+a number, not a wire, and its body may be replaced under the number it holds; a
+form that HAS shipped takes the NEXT number, forever. **Forms `1` and `2` are
+both live**: form `1` is read by all nine ports and by every file on a disk, and
+form `2`'s bitpacked body is the released one. **So the fixed form takes `3`**,
+and no existing byte is reinterpreted. `4` and `5` are RESERVED BY NAME for the
+cook and the block form — the reservation is of the number and of nothing else,
+exactly as kind `34` is reserved in §3 — so the two accelerators that already
+have a header of their own take the numbers every page already names for them
+the day they carry a form byte.
 
-**§4.2'S UNKNOWN-FORM NEGATIVE CONTROL MUST MOVE FROM `3` TO `4`, AND HAS NOT
-YET.** It plants a byte that must be a named refusal and never damage, and the
-byte it plants has to be one NO FORM DEFINES, which `3` no longer is. `4` is the
-next such byte and the reason is the one §4.2 already gives for not planting
-`2`. **THE CONTROL STILL PLANTS `3` TODAY** — `test/tables/main.cpp`'s
-`test_form_byte_refusals`, the shared conformance row `form_three`, and the
-variable root's `LoadMeasure` case beside it. It still passes, because a form-1
-reader does refuse byte `3`; what it no longer does is TEST WHAT IT SAYS IT
-TESTS, since `3` is now a form this build carries and the control's whole
-premise is a byte no form defines. Moving it renames a conformance row every leg
-reads, so it is a change of its own and is named here rather than assumed:
-**named follow-on, §15.**
+**§4.2'S UNKNOWN-FORM NEGATIVE CONTROL PLANTS `6`.** It plants a byte that must
+be a named refusal and never damage, and the byte it plants has to be one **NO
+FORM DEFINES OR RESERVES** — which `3` is not, since the fixed form took it, and
+which `4` and `5` are not, since this registry reserves them. `6` is the first
+byte that is neither. It moved there from `3` in `test/tables/main.cpp`'s
+`test_form_byte_refusals`, in the shared conformance row (`form_three` became
+`form_six` in `reports.txt`, `MANIFEST.txt`, `FORMAT.md` and
+`testdata/wire/tables/`), and in the wire fuzzer's own form strategy, which
+names it `ir.WireFormNone` and DERIVES it from this table so that the next form
+added moves it without anyone remembering to.
 
 ---
 
@@ -6255,10 +6397,22 @@ reads, so it is a change of its own and is named here rather than assumed:
   open, a record size past 65536, and a nesting depth past the walk's bound.
   Each must come back REFUSED, under ITS OWN NAME, with nothing decoded and no
   counter moved. A validation nobody watched fail is a validation nobody has.
-- **THE TWO SIZE BOUNDS, one test each.** A fixed table declared past 4096 bytes
+- **THE SIZE BOUNDS, one test each.** A fixed table past 4096 bytes
   of record body WARNS, naming the table and the size and changing no exit code;
-  one declared past 65536 does not carry the fixed form at all and says so; and
-  `--fixed-record-limit` turns the first into a refusal that fails the compile.
+  a DECLARED fixed table past 65536 DOES NOT COMPILE, by name; one merely
+  DERIVED into the form past 65536 does not carry the form at all and says so;
+  and `--fixed-record-limit` turns the advisory into a refusal that fails the
+  compile.
+- **THE FORM BYTE'S OWN REFUSALS, one per direction** (§3): a fixed reader given
+  `1` answers `previous_form`, given `2` answers `message_form_as_file`, given a
+  byte no form defines answers `newer_form`, and each moves no counter and
+  reports no damage. Beside them the HEADER's own row: a file whose header hash
+  is not the hash of the layout behind it is refused `layout_malformed`, which is
+  what proves the header's eight bytes are READ and not merely written.
+- **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
+  answers `FORM <n> <name>` before it says anything else about the file, or
+  refuses the byte by name, over every row of the registry and over a file with
+  no first byte at all.
 - **THE PAIRED CORPUS**, sixty-four logical records on the packet wire and on
   this one, whose per-record byte account is a published row.
 - **A REFERENCE BOUND, named because it is the REFERENCE's and not the WIRE's.**
@@ -6431,7 +6585,7 @@ tolerance is the versioning model:
 - **Framing damage**: decode stops the damaged nesting level, keeps what
   it decoded there, flags malformed, and the parent continues past the
   field's declared length — one bad subtable never takes down the rest
-  of the file. **THIS ROW IS THE FILE FORM's, and the MESSAGE FORM is the one
+  of the file. **THIS ROW IS THE VARIABLE FORM's, and the MESSAGE FORM is the one
   place it reads differently** (§3.3): a bitpacked body carries no length, so a
   reader that lost its position has lost it for the rest of the buffer, and
   damage stops the batch with what it decoded standing and one `malformed`
@@ -6781,12 +6935,16 @@ has:
   ONE `malformed`, leave the field at its declared default and let the parent
   read on past `L` (§3, §4). **A leg that stores any of them fails the value
   requirement below**, which is what makes this a gate and not a wish;
-- **the FORM BYTE** set to `0`, to `4`, and to `0xFF`, which must be a named
-  refusal and never damage (§3). It is `4` and neither `2` nor `3` because both
-  of those are KNOWN forms with rules of their own (§3.3, §3.4), so planting one
-  would pin that form's behavior rather than the unknown-form refusal this
-  strategy exists for. **It was `3` until the fixed form took that number**, and
-  moving it is what §3.4's registry rule costs when a form is added;
+- **the FORM BYTE** set to `0`, to `6`, and to `0xFF`, which must be a named
+  refusal and never damage (§3). It is `6` and none of `2`, `3`, `4` or `5`,
+  because `2` and `3` are KNOWN forms with rules of their own (§3.3, §3.4) and
+  `4` and `5` are RESERVED BY NAME (§3.4's registry) — planting any of them
+  would pin that form's behavior, or its reservation, rather than the
+  unknown-form refusal this strategy exists for. **It was `3` until the fixed
+  form took that number**, and moving it is what §3.4's registry rule costs when
+  a form is added. The fuzzer DERIVES it from the registry (`ir.WireFormNone`),
+  so the next form added moves it without anyone remembering to; the C++
+  control and the conformance row `form_six` name the byte and move by hand;
 - **the REFERENCE class** (§3), which is this form's own attack surface:
   every reference in the wire set to `0`, to the entry count, to the count
   plus one, and to the two values the sign bit spells; every reference,
@@ -7500,7 +7658,8 @@ The builder is designed to go wide, lock-free by ownership:
 
   | value | what refused, and where it is stated |
   |---|---|
-  | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE FILE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
+  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs |
+  | `unknown_form` | a form byte THIS CALL does not carry (§3). The read never begins, so it is a refusal and not damage, which is what §3 already says of it. **A FILE'S MEASURE ANSWERS IT FOR ANY BYTE THAT IS NOT THE VARIABLE FORM**, form `2` included: a build that carries the message form carries it through the message surface (§3.3), and a batch handed to a file root is a form its file measure does not read. The `Load` beside it distinguishes the two, answering `message_form_as_file` where the byte is `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
   | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
   | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
   | `layout_malformed` | bytes handed to the fixed form as a layout that are not one, after the seven named rules below have had their say: fewer bytes than a header, or none at all (§3.4). The layout is refused WHOLE and sets nothing |
@@ -10873,7 +11032,7 @@ in build version (§20.5).
   functions, the wire pair a pointered root takes, the node dispatch that
   reaches each record's own body, and the MESSAGE form's two.
   `LoadRetainMessages` is the form 2 READ, which resolves against the
-  connection's vocabulary where the file form resolves against a trailer, and
+  connection's vocabulary where the variable form resolves against a trailer, and
   `SaveRetainMessages` is the form 2 WRITE, REFUSED BY NAME (§3.3) and a
   definition rather than only a claim for exactly that reason.
 
@@ -12045,24 +12204,23 @@ inspects everything in the schema built:
 
 ## 15. Named follow-ons
 
-- **THE UNKNOWN-FORM NEGATIVE CONTROL STILL PLANTS `3`** (§3.4, §4.2). The
-  control's premise is a byte NO FORM DEFINES, and `3` is now the fixed form,
-  so the control passes while testing something other than what it says.
-  Moving it to `4` is three lines of `test/tables/main.cpp` and a rename of the
-  shared conformance row `form_three` in `reports.txt`, `MANIFEST.txt`,
-  `FORMAT.md` and `testdata/wire/tables/`, which every leg reads — so it is a
-  change of its own rather than a line in the row that introduced form `3`.
-  Nothing about it is undecided: §3.4 already says which byte it moves to and
-  why.
 - **A GENERATED READER DOES NOT DISPATCH ON THE FORM BYTE** (§3.4). §3.4 says a
   reader for a fixed-table type "accepts BOTH, by the form byte". The C++
   reference emits TWO entry points instead — `<T>Load` for form `1` and
-  `<T>FixedLoad` for form `3` — and each refuses the other's byte, the fixed
-  one naming it `newer_form` even where the byte is `1`, which is OLDER. The
-  page's rule is right and the reference is one dispatch short of it: one
-  reader that reads the byte and calls the one that carries it, and a
-  `previous_form` beside `newer_form` for a byte this form is ahead of. It is
-  a surface decision on top of two working readers, not a wire question.
+  `<T>FixedLoad` for form `3` — and each refuses the other's byte. **THE NAMING
+  HALF IS DONE**: `<T>FixedLoad` now answers `previous_form` for `1`,
+  `message_form_as_file` for `2` and `newer_form` only for a byte no form
+  defines, so no caller is sent looking for a build that does not exist. What
+  is left is the DISPATCH: one reader that reads the byte and calls the entry
+  point that carries it, rather than a caller who has to know which to call.
+  It is a surface decision on top of two working readers, not a wire question.
+- **THE FIXED FORM'S FILE PADS ITS HEADER AND NOT ITS RECORDS** (§3, §3.4). The
+  header is sixteen bytes so that a memory-mapped BODY keeps its alignment, and
+  the fixed form's body begins with a VARIABLE-LENGTH layout — so the records
+  behind it land wherever that length puts them. Nothing maps them today, which
+  is why no byte is spent on it; the day something does, the layout is padded to
+  the record's own alignment and the header rule is untouched. It is named here
+  so that "the header pads" is not read as "the records are aligned".
 
 - **AN OPTIONAL MAP VALUE'S PRESENCE COMPANION HAS NO HANDLE** (§2.3, §2.8).
   `?T` and `?[N]T` store the value beside a `bool` presence companion, which

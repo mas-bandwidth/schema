@@ -249,7 +249,7 @@ func (g *tableGen) inElementStep(f *ir.Field, emit func()) {
 }
 
 // wireRef is a field header's id reference: the id and its MESSAGE-FORM SLOT,
-// both literals. The FILE form interns the id and answers a first-use
+// both literals. The VARIABLE form interns the id and answers a first-use
 // reference; the MESSAGE form answers the slot and never touches the table
 // (docs/SPEC-TABLES.md §3, §3.3).
 //
@@ -653,6 +653,14 @@ namespace ` + pkg + ` {
 enum TableMessageReason
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
+    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
+    // registry is ordered, so a reader meeting a byte it does not carry can
+    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
+    // form, which is older, and calling that newer_form would send a caller
+    // looking for a build that does not exist. The bytes are the same refusal
+    // either way — nothing decoded, no counter moved — and only the name of it
+    // differs.
+    previous_form,
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched

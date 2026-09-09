@@ -219,7 +219,7 @@ static void negative_control()
     two.nested.b = 44;
     std::vector<uint8_t> w2( (size_t) tblfx2::FxRootFixedMeasure( 1 ) );
     tblfx2::FxRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() );
-    const uint8_t * body = w2.data() + 5 + tblfx2::FxRootFixedLayoutBytes + 8;
+    const uint8_t * body = w2.data() + tblfx2::kTableFixedHeaderBytes + 4 + tblfx2::FxRootFixedLayoutBytes + 8;
 
     tblfx1::FxRoot wrong;
     tblfx1::FxRootReset( wrong );
@@ -241,7 +241,7 @@ static void negative_control()
     // here because it is also the check that a refusal MOVES NO COUNTER.
     {
         std::vector<uint8_t> broken = w2;
-        broken[5] ^= 0xFFu; // the entry count
+        broken[tblfx1::kTableFixedHeaderBytes] ^= 0xFFu; // the entry count
         tblfx1::FxRoot v;
         tblfx1::TableReport r3;
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, &r3 );
@@ -249,15 +249,46 @@ static void negative_control()
         check( r3.unknown == 0 && r3.kind_mismatch == 0 && !r3.malformed, "REFUSED BY NAME: a refusal moves no counter" );
     }
 
-    // A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE.
+    // A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE, AND
+    // THE NAME SAYS WHICH DIRECTION (docs/SPEC-TABLES.md §3, §3.4). The registry
+    // is ordered, so a fixed reader handed form `1` has been handed the
+    // VARIABLE form, which is OLDER: calling that `newer_form` would send a
+    // caller looking for a build that does not exist. Form `6` is the byte no
+    // form defines or reserves, which is the only kind of byte `newer_form` is
+    // the honest answer for.
     {
-        std::vector<uint8_t> other = w2;
-        other[0] = 4;
+        struct { uint8_t form; tblfx1::TableMessageReason want; const char * what; } rows[3] = {
+            { 1, tblfx1::previous_form,      "REFUSED BY NAME: previous_form for the VARIABLE form" },
+            { 2, tblfx1::message_form_as_file, "REFUSED BY NAME: message_form_as_file for a batch" },
+            { 6, tblfx1::newer_form,         "REFUSED BY NAME: newer_form for a byte no form defines" },
+        };
+        for ( int i = 0; i < 3; ++i )
+        {
+            std::vector<uint8_t> other = w2;
+            other[0] = rows[i].form;
+            tblfx1::FxRoot v;
+            tblfx1::TableReport r4;
+            const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, other.data(), (int64_t) other.size(), plan.data(), 1024, &r4 );
+            check( bad < 0 && r4.refused && r4.reason == rows[i].want, rows[i].what );
+            check( !r4.malformed, "REFUSED BY NAME: never damage" );
+            check( r4.unknown == 0 && r4.kind_mismatch == 0 && r4.widened == 0 && r4.clamped == 0,
+                   "REFUSED BY NAME: a form-byte refusal moves no counter" );
+        }
+    }
+
+    // THE HEADER NAMES THE LAYOUT ONCE (docs/SPEC-TABLES.md §3): the eight bytes
+    // at offset 8 are the LAYOUT's hash, and a header that claims a layout it
+    // does not carry is refused. This is the case that proves the header's hash
+    // is READ and not merely written.
+    {
+        std::vector<uint8_t> lying = w2;
+        lying[tblfx1::kTableFixedHashAt] ^= 0xFFu;
         tblfx1::FxRoot v;
-        tblfx1::TableReport r4;
-        const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, other.data(), (int64_t) other.size(), plan.data(), 1024, &r4 );
-        check( bad < 0 && r4.refused && r4.reason == tblfx1::newer_form, "REFUSED BY NAME: newer_form" );
-        check( !r4.malformed, "REFUSED BY NAME: never damage" );
+        tblfx1::TableReport r6;
+        const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, lying.data(), (int64_t) lying.size(), plan.data(), 1024, &r6 );
+        check( bad < 0 && r6.refused && r6.reason == tblfx1::layout_malformed,
+               "REFUSED BY NAME: a header hash that is not the layout's" );
+        check( !r6.malformed, "REFUSED BY NAME: never damage" );
     }
 
     // A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS A REFUSAL BY NAME, and
@@ -280,12 +311,13 @@ static void negative_control()
 // HAS, so there is one case per named rule, each taking a layout this reader
 // accepts and breaking EXACTLY ONE THING in it.
 //
-// The file is `form byte, u32 layout length, layout, records`, so the layout
-// starts at byte 5, the entry count is the four bytes there, and entry k is the
-// seventeen bytes at 5 + 4 + 17k: id (u64), kind (u8), size (u32), children
-// (u32), every number little-endian.
+// The file is the HEADER (docs/SPEC-TABLES.md §3: the form byte, seven reserved
+// zero bytes, the layout hash at 8, the body at 16), then `u32 layout length,
+// layout, records` — so the layout starts at byte 20, the entry count is the
+// four bytes there, and entry k is the seventeen bytes at 20 + 4 + 17k: id
+// (u64), kind (u8), size (u32), children (u32), every number little-endian.
 
-static const size_t kLayoutAt = 5;
+static const size_t kLayoutAt = (size_t) tblfx1::kTableFixedHeaderBytes + 4;
 static const size_t kEntry0 = kLayoutAt + 4;
 
 static uint8_t * entry_at( std::vector<uint8_t> & f, size_t k ) { return f.data() + kEntry0 + k * 17; }
@@ -306,9 +338,11 @@ static void put_entry( std::vector<uint8_t> & layout, uint64_t id, uint8_t kind,
 // layout, and no records — every rule below refuses before a record is reached
 static std::vector<uint8_t> file_of( const std::vector<uint8_t> & layout )
 {
-    std::vector<uint8_t> f( 5 );
+    std::vector<uint8_t> f( (size_t) tblfx1::kTableFixedHeaderBytes + 4, 0 );
     f[0] = 3; // the fixed form's byte
-    tblfx1::TableFixedPut32( f.data() + 1, (uint32_t) layout.size() );
+    tblfx1::TableFixedPut64( f.data() + tblfx1::kTableFixedHashAt,
+                             tblfx1::TableFixedHashOf( layout.data(), (uint32_t) layout.size() ) );
+    tblfx1::TableFixedPut32( f.data() + tblfx1::kTableFixedHeaderBytes, (uint32_t) layout.size() );
     f.insert( f.end(), layout.begin(), layout.end() );
     return f;
 }

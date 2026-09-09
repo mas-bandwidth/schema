@@ -736,7 +736,7 @@ func TestRetainMessageForm(t *testing.T) {
 	// by its length, and the field inside it that this build cannot name counts
 	// there. Retention keeps nothing under it, the slot is what was excluded
 	// and everything below it went with that one `retain_lost`, so the two
-	// retention counters are the numbers the file form gives.
+	// retention counters are the numbers the variable form gives.
 	if report.Retained != 10 || report.RetainLost != 6 || report.Unknown != 17 {
 		t.Fatalf("retained=%d retain_lost=%d unknown=%d, want 10 / 6 / 17",
 			report.Retained, report.RetainLost, report.Unknown)
@@ -757,7 +757,7 @@ func TestRetainMessageForm(t *testing.T) {
 		t.Fatalf("the plain read says %+v beside the retaining read's %+v", plain, report)
 	}
 
-	// AND THE SAVE IS THE FILE FORM'S, byte for byte the reference's own pin
+	// AND THE SAVE IS THE VARIABLE FORM'S, byte for byte the reference's own pin
 	for i, inst := range insts {
 		var save tabletext.Report
 		out, err := tablewire.EncodeRetain(m, inst, retains[i], &save)

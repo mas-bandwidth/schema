@@ -48,6 +48,14 @@ namespace messagedemo {
 enum TableMessageReason
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
+    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
+    // registry is ordered, so a reader meeting a byte it does not carry can
+    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
+    // form, which is older, and calling that newer_form would send a caller
+    // looking for a build that does not exist. The bytes are the same refusal
+    // either way — nothing decoded, no counter moved — and only the name of it
+    // differs.
+    previous_form,
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
@@ -2100,6 +2108,20 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 inline constexpr uint8_t kTableFixedForm = 3;
 
+// THE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3, "THE FIRST
+// BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the form's own
+// EIGHT-BYTE HASH at offset 8, and the body at 16 — the alignment a
+// memory-mapped body needs. The fixed form does not need the alignment today;
+// it pads anyway, so the bytes do not move again the day the cook and the
+// block form join the registry under the same header.
+//
+// The hash here is the LAYOUT's. Each record still carries its own eight-byte
+// hash, which §3.4 has always said and which the header does not replace: the
+// header names the layout ONCE for the file, and a record names the layout it
+// was stamped by.
+inline constexpr int64_t kTableFixedHeaderBytes = 16;
+inline constexpr int64_t kTableFixedHashAt     = 8;
+
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
 // the other two are what a plan compiled from another writer's layout adds.
 enum : uint8_t
@@ -3872,7 +3894,7 @@ inline TableOpenVerdict UserLoadVerdict( User & value, const uint8_t * buffer, i
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -3927,7 +3949,7 @@ inline int64_t UserMeasureMessageBody( int64_t at, const User & value )
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool UserSaveMessageBody( TableBitWriter & w, const User & value )
 {
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
@@ -4222,7 +4244,7 @@ inline TableOpenVerdict ScriptLoadVerdict( Script & value, const uint8_t * buffe
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -4282,7 +4304,7 @@ inline int64_t ScriptMeasureMessageBody( int64_t at, const Script & value )
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool ScriptSaveMessageBody( TableBitWriter & w, const Script & value )
 {
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
@@ -4638,7 +4660,7 @@ inline TableOpenVerdict SelectionLoadVerdict( Selection & value, const uint8_t *
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -4703,7 +4725,7 @@ inline int64_t SelectionMeasureMessageBody( int64_t at, const Selection & value 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool SelectionSaveMessageBody( TableBitWriter & w, const Selection & value )
 {
     {
@@ -5673,7 +5695,7 @@ inline TableOpenVerdict InsertTextLoadVerdict( InsertText & value, const uint8_t
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -5845,7 +5867,7 @@ inline int64_t InsertTextMeasureMessageBody( int64_t at, const InsertText & valu
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & value )
 {
     {
@@ -6527,7 +6549,7 @@ inline TableOpenVerdict RemoveTextLoadVerdict( RemoveText & value, const uint8_t
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -6583,7 +6605,7 @@ inline int64_t RemoveTextMeasureMessageBody( int64_t at, const RemoveText & valu
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RemoveTextSaveMessageBody( TableBitWriter & w, const RemoveText & value )
 {
     {
@@ -7196,7 +7218,7 @@ inline TableOpenVerdict EditLoadVerdict( Edit & value, const uint8_t * buffer, i
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -7306,7 +7328,7 @@ inline int64_t EditMeasureMessageBody( int64_t at, const Edit & value )
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool EditSaveMessageBody( TableBitWriter & w, const Edit & value )
 {
     if ( value.revision != 0 )
@@ -7909,7 +7931,7 @@ inline TableOpenVerdict OpenDocumentLoadVerdict( OpenDocument & value, const uin
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -7979,7 +8001,7 @@ inline int64_t OpenDocumentMeasureMessageBody( int64_t at, const OpenDocument & 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool OpenDocumentSaveMessageBody( TableBitWriter & w, const OpenDocument & value )
 {
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
@@ -8316,7 +8338,7 @@ inline TableOpenVerdict SaveDocumentLoadVerdict( SaveDocument & value, const uin
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -8376,7 +8398,7 @@ inline int64_t SaveDocumentMeasureMessageBody( int64_t at, const SaveDocument & 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool SaveDocumentSaveMessageBody( TableBitWriter & w, const SaveDocument & value )
 {
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
@@ -9409,7 +9431,7 @@ inline TableOpenVerdict TransactionLoadVerdict( Transaction & value, const uint8
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -9563,7 +9585,7 @@ inline int64_t TransactionMeasureMessageBody( int64_t at, const Transaction & va
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & value )
 {
     if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // storage invariant
@@ -11922,7 +11944,7 @@ inline TableOpenVerdict ToolMessageLoadVerdict( ToolMessage & value, const uint8
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -12238,7 +12260,7 @@ inline int64_t ToolMessageMeasureMessageBody( int64_t at, const ToolMessage & va
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & value )
 {
     if ( value.sequence != 0 )
@@ -13437,7 +13459,7 @@ inline TableOpenVerdict CursorLoadVerdict( Cursor & value, const uint8_t * buffe
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -13494,7 +13516,7 @@ inline int64_t CursorMeasureMessageBody( int64_t at, const Cursor & value )
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool CursorSaveMessageBody( TableBitWriter & w, const Cursor & value )
 {
     if ( value.line != 0 )
@@ -13804,7 +13826,7 @@ inline TableOpenVerdict PingLoadVerdict( Ping & value, const uint8_t * buffer, i
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -13856,7 +13878,7 @@ inline int64_t PingMeasureMessageBody( int64_t at, const Ping & value )
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool PingSaveMessageBody( TableBitWriter & w, const Ping & value )
 {
     if ( value.nonce != 0 )
@@ -14232,20 +14254,24 @@ inline constexpr TableFixedDst UserFixedDst[] = {
 // THE IDENTITY PLAN, coalesced at COMPILE TIME out of 1 leaves.
 inline constexpr auto UserFixedPlan = TableFixedBuildPlan<1>( UserFixedLeaves );
 
-// A FILE: the form byte, the layout, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 inline constexpr int64_t UserFixedMeasure( int64_t count )
 {
-    return 1 + 4 + UserFixedLayoutBytes + count * UserFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + UserFixedLayoutBytes + count * UserFixedRecordBytes;
 }
 
 inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = UserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) UserFixedLayoutBytes );
-    memcpy( buffer + 5, UserFixedLayout, (size_t) UserFixedLayoutBytes );
-    uint8_t * at = buffer + 5 + UserFixedLayoutBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, UserFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) UserFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, UserFixedLayout, (size_t) UserFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + UserFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, UserFixedHash );
@@ -14264,14 +14290,24 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t layout_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) layout_bytes + 5 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
-    const uint8_t * layout = data + 5;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
     const uint8_t * at = layout + layout_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = UserFixedPlan.entries;
     int32_t entry_count = UserFixedPlan.count;
     int64_t record_bytes = UserFixedRecordBytes;
@@ -14289,6 +14325,11 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
         entry_count = made;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
@@ -14334,20 +14375,24 @@ inline constexpr TableFixedDst ScriptFixedDst[] = {
 // THE IDENTITY PLAN, coalesced at COMPILE TIME out of 2 leaves.
 inline constexpr auto ScriptFixedPlan = TableFixedBuildPlan<2>( ScriptFixedLeaves );
 
-// A FILE: the form byte, the layout, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 inline constexpr int64_t ScriptFixedMeasure( int64_t count )
 {
-    return 1 + 4 + ScriptFixedLayoutBytes + count * ScriptFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + ScriptFixedLayoutBytes + count * ScriptFixedRecordBytes;
 }
 
 inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = ScriptFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) ScriptFixedLayoutBytes );
-    memcpy( buffer + 5, ScriptFixedLayout, (size_t) ScriptFixedLayoutBytes );
-    uint8_t * at = buffer + 5 + ScriptFixedLayoutBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, ScriptFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) ScriptFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, ScriptFixedLayout, (size_t) ScriptFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + ScriptFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, ScriptFixedHash );
@@ -14366,14 +14411,24 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t layout_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) layout_bytes + 5 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
-    const uint8_t * layout = data + 5;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
     const uint8_t * at = layout + layout_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = ScriptFixedPlan.entries;
     int32_t entry_count = ScriptFixedPlan.count;
     int64_t record_bytes = ScriptFixedRecordBytes;
@@ -14391,6 +14446,11 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
         entry_count = made;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
@@ -14444,20 +14504,24 @@ inline constexpr TableFixedDst SelectionFixedDst[] = {
 // THE IDENTITY PLAN, coalesced at COMPILE TIME out of 4 leaves.
 inline constexpr auto SelectionFixedPlan = TableFixedBuildPlan<4>( SelectionFixedLeaves );
 
-// A FILE: the form byte, the layout, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 inline constexpr int64_t SelectionFixedMeasure( int64_t count )
 {
-    return 1 + 4 + SelectionFixedLayoutBytes + count * SelectionFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + SelectionFixedLayoutBytes + count * SelectionFixedRecordBytes;
 }
 
 inline int64_t SelectionFixedSave( const Selection * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = SelectionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) SelectionFixedLayoutBytes );
-    memcpy( buffer + 5, SelectionFixedLayout, (size_t) SelectionFixedLayoutBytes );
-    uint8_t * at = buffer + 5 + SelectionFixedLayoutBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, SelectionFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) SelectionFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, SelectionFixedLayout, (size_t) SelectionFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + SelectionFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, SelectionFixedHash );
@@ -14476,14 +14540,24 @@ inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const u
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t layout_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) layout_bytes + 5 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
-    const uint8_t * layout = data + 5;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
     const uint8_t * at = layout + layout_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = SelectionFixedPlan.entries;
     int32_t entry_count = SelectionFixedPlan.count;
     int64_t record_bytes = SelectionFixedRecordBytes;
@@ -14501,6 +14575,11 @@ inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const u
         entry_count = made;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
@@ -14556,20 +14635,24 @@ inline constexpr TableFixedDst RemoveTextFixedDst[] = {
 // THE IDENTITY PLAN, coalesced at COMPILE TIME out of 4 leaves.
 inline constexpr auto RemoveTextFixedPlan = TableFixedBuildPlan<4>( RemoveTextFixedLeaves );
 
-// A FILE: the form byte, the layout, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 inline constexpr int64_t RemoveTextFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RemoveTextFixedLayoutBytes + count * RemoveTextFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RemoveTextFixedLayoutBytes + count * RemoveTextFixedRecordBytes;
 }
 
 inline int64_t RemoveTextFixedSave( const RemoveText * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RemoveTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RemoveTextFixedLayoutBytes );
-    memcpy( buffer + 5, RemoveTextFixedLayout, (size_t) RemoveTextFixedLayoutBytes );
-    uint8_t * at = buffer + 5 + RemoveTextFixedLayoutBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RemoveTextFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RemoveTextFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RemoveTextFixedLayout, (size_t) RemoveTextFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RemoveTextFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RemoveTextFixedHash );
@@ -14588,14 +14671,24 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t layout_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) layout_bytes + 5 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
-    const uint8_t * layout = data + 5;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
     const uint8_t * at = layout + layout_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RemoveTextFixedPlan.entries;
     int32_t entry_count = RemoveTextFixedPlan.count;
     int64_t record_bytes = RemoveTextFixedRecordBytes;
@@ -14613,6 +14706,11 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
         entry_count = made;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
@@ -14668,20 +14766,24 @@ inline constexpr TableFixedDst OpenDocumentFixedDst[] = {
 // THE IDENTITY PLAN, coalesced at COMPILE TIME out of 4 leaves.
 inline constexpr auto OpenDocumentFixedPlan = TableFixedBuildPlan<4>( OpenDocumentFixedLeaves );
 
-// A FILE: the form byte, the layout, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 inline constexpr int64_t OpenDocumentFixedMeasure( int64_t count )
 {
-    return 1 + 4 + OpenDocumentFixedLayoutBytes + count * OpenDocumentFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + OpenDocumentFixedLayoutBytes + count * OpenDocumentFixedRecordBytes;
 }
 
 inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = OpenDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) OpenDocumentFixedLayoutBytes );
-    memcpy( buffer + 5, OpenDocumentFixedLayout, (size_t) OpenDocumentFixedLayoutBytes );
-    uint8_t * at = buffer + 5 + OpenDocumentFixedLayoutBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, OpenDocumentFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) OpenDocumentFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, OpenDocumentFixedLayout, (size_t) OpenDocumentFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + OpenDocumentFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, OpenDocumentFixedHash );
@@ -14700,14 +14802,24 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t layout_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) layout_bytes + 5 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
-    const uint8_t * layout = data + 5;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
     const uint8_t * at = layout + layout_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = OpenDocumentFixedPlan.entries;
     int32_t entry_count = OpenDocumentFixedPlan.count;
     int64_t record_bytes = OpenDocumentFixedRecordBytes;
@@ -14725,6 +14837,11 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
         entry_count = made;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
@@ -14770,20 +14887,24 @@ inline constexpr TableFixedDst SaveDocumentFixedDst[] = {
 // THE IDENTITY PLAN, coalesced at COMPILE TIME out of 2 leaves.
 inline constexpr auto SaveDocumentFixedPlan = TableFixedBuildPlan<2>( SaveDocumentFixedLeaves );
 
-// A FILE: the form byte, the layout, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 inline constexpr int64_t SaveDocumentFixedMeasure( int64_t count )
 {
-    return 1 + 4 + SaveDocumentFixedLayoutBytes + count * SaveDocumentFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + SaveDocumentFixedLayoutBytes + count * SaveDocumentFixedRecordBytes;
 }
 
 inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = SaveDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) SaveDocumentFixedLayoutBytes );
-    memcpy( buffer + 5, SaveDocumentFixedLayout, (size_t) SaveDocumentFixedLayoutBytes );
-    uint8_t * at = buffer + 5 + SaveDocumentFixedLayoutBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, SaveDocumentFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) SaveDocumentFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, SaveDocumentFixedLayout, (size_t) SaveDocumentFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + SaveDocumentFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, SaveDocumentFixedHash );
@@ -14802,14 +14923,24 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t layout_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) layout_bytes + 5 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
-    const uint8_t * layout = data + 5;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
     const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
     const uint8_t * at = layout + layout_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = SaveDocumentFixedPlan.entries;
     int32_t entry_count = SaveDocumentFixedPlan.count;
     int64_t record_bytes = SaveDocumentFixedRecordBytes;
@@ -14827,6 +14958,11 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
         entry_count = made;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
@@ -14843,7 +14979,7 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
 //
 // A fixed-class root is a VALUE: no region, no node directory, and so no
-// anchor for a retained record's path. The five names, the file form's three
+// anchor for a retained record's path. The five names, the VARIABLE form's three
 // and the message form's two (§3.3), are declared here so that naming one is
 // a refusal that says why, rather than a symbol a linker could not find. The
 // suffixes stay claimed on every closure member all the same (§11): a table

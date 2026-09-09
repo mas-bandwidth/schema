@@ -1578,7 +1578,7 @@ if ( !backenddemo::LoginRequestLoadMessages( received, &received_count, vocabula
 ```
 
 **A POINTERED root takes ONE region for the whole batch**, sized by the same
-`LoadMeasure` the file form uses, and the roots come back in an array you own:
+`LoadMeasure` the variable form uses, and the roots come back in an array you own:
 
 ```cpp
 int64_t region_bytes = graphdemo::SceneLoadMeasure( vocabulary, wire, wire_bytes );
@@ -1657,7 +1657,7 @@ fleet, keep the bits inside your own variant count, or carry that mask in a file
 A stateless request-response transport is out of scope. An HTTP request that
 shares no state with the last one has nowhere to put an announcement, so the
 announcement would ride every request and cost more than the table it replaced.
-Write the file form there, which carries its own table and needs no connection.
+Write the variable form there, which carries its own table and needs no connection.
 
 **The tool speaks both forms.** `schema pack --message --announce Conn.bin`
 writes the batch and the unit's announcement beside it, and `schema unpack
@@ -1683,7 +1683,7 @@ $ schema unpack --in backend_conn.bin tables/backend
 SPEC-TABLES.md §3.3 and §6.6 take. The C++ backend and the tool carry a form-`2`
 path today and its body is byte framed, which the codec change that lands §3.3
 replaces in place, re-pinning the corpus with it. The other eight targets carry
-the file form alone.
+the variable form alone.
 
 ### Nesting: a root table IS a format
 
