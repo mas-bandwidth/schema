@@ -652,8 +652,9 @@ func (g *gen) flatReadRangedPiece(item *ir.FieldItem, name string) (flatPiece, b
 		// out-of-range WITHOUT latching, so the fold changes nothing
 		lo, _ := g.rangeArgs(f, "ulong")
 		diff := new(big.Int).Sub(f.IntMax, f.IntMin)
+		fullSpan := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
 		return flatPiece{item: item, bits: bits, read: func(ind, src string) {
-			if diff.Cmp(maxUint64) != 0 {
+			if diff.Cmp(fullSpan) != 0 {
 				g.sf("%sif (%s > %s) // a read rejects out-of-range (SPEC §5) — not latched\n", ind, src, diff.String())
 				g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
 			}

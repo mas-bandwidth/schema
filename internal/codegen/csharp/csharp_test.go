@@ -109,3 +109,58 @@ func TestFlatFallbackReEmitsItemsNotPieces(t *testing.T) {
 		}
 	}
 }
+
+func TestRangedIntFullWidthElision(t *testing.T) {
+	// 1. Per-field path (single field, not flattened):
+	// Full-span ranged int (> maxInt64 so hits default/bits64 path, diff == 255 == 2^8 - 1)
+	srcFull := `package t
+type SingleFull {
+    x uint64 = 10000000000000000000 | min = 10000000000000000000, max = 10000000000000000255
+}
+`
+	filesFull := generateCs(t, "SingleFull", srcFull)
+	bodyFull := methodBody(t, filesFull, "public static bool ReadSingleFull(")
+	if strings.Contains(bodyFull, "offsetValue > 255") {
+		t.Errorf("expected offsetValue > 255 range check to be elided in per-field reader, got:\n%s", bodyFull)
+	}
+
+	// Partial-span ranged int (diff == 200 != 2^8 - 1, bounds check MUST remain)
+	srcPart := `package t
+type SinglePart {
+    x uint64 = 10000000000000000000 | min = 10000000000000000000, max = 10000000000000000200
+}
+`
+	filesPart := generateCs(t, "SinglePart", srcPart)
+	bodyPart := methodBody(t, filesPart, "public static bool ReadSinglePart(")
+	if !strings.Contains(bodyPart, "if (offsetValue > 200)") {
+		t.Errorf("expected offsetValue > 200 range check to be preserved, got:\n%s", bodyPart)
+	}
+
+	// 2. Flat path (multiple fields, flattened):
+	srcFlatFull := `package t
+type FlatFull {
+    x uint64 = 10000000000000000000 | min = 10000000000000000000, max = 10000000000000000255
+    y uint64 = 10000000000000000000 | min = 10000000000000000000, max = 10000000000000000255
+}
+`
+	filesFlatFull := generateCs(t, "FlatFull", srcFlatFull)
+	bodyFlatFull := methodBody(t, filesFlatFull, "private static bool ReadFlatFullBatch(")
+	if strings.Contains(bodyFlatFull, "v0 > 255") || strings.Contains(bodyFlatFull, "v1 > 255") {
+		t.Errorf("expected flat reader range check to be elided for full span, got:\n%s", bodyFlatFull)
+	}
+
+	srcFlatPart := `package t
+type FlatPart {
+    x uint64 = 10000000000000000000 | min = 10000000000000000000, max = 10000000000000000200
+    y uint64 = 10000000000000000000 | min = 10000000000000000000, max = 10000000000000000255
+}
+`
+	filesFlatPart := generateCs(t, "FlatPart", srcFlatPart)
+	bodyFlatPart := methodBody(t, filesFlatPart, "private static bool ReadFlatPartBatch(")
+	if !strings.Contains(bodyFlatPart, "if (v0 > 200)") {
+		t.Errorf("expected v0 > 200 range check to be preserved in flat reader, got:\n%s", bodyFlatPart)
+	}
+	if strings.Contains(bodyFlatPart, "v1 > 255") {
+		t.Errorf("expected v1 > 255 range check to be elided in flat reader, got:\n%s", bodyFlatPart)
+	}
+}
