@@ -1614,8 +1614,8 @@ static SCHEMA_UNUSED void schema_tabledemo_debuff_reset_raw_( void * storage ) {
 /* ---- codecs: measure/save/load per closure member ---- */
 
 static SCHEMA_UNUSED int64_t weapon_config_measure( const WeaponConfig * value );
-static SCHEMA_UNUSED  int weapon_config_save_body( TableWriter * w, const WeaponConfig * value );
-static SCHEMA_UNUSED  int weapon_config_load_body( TableReader * r, WeaponConfig * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int weapon_config_save_body( TableWriter * w, const WeaponConfig * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int weapon_config_load_body( TableReader * r, WeaponConfig * value );
 static SCHEMA_UNUSED int64_t loadout_config_measure( const LoadoutConfig * value );
 static SCHEMA_UNUSED  int loadout_config_save_body( TableWriter * w, const LoadoutConfig * value );
 static SCHEMA_UNUSED  int loadout_config_load_body( TableReader * r, LoadoutConfig * value );

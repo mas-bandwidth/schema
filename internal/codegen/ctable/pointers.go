@@ -71,6 +71,57 @@ func (g *tableGen) byValueVariableFields(st *ir.Struct) []*ir.Field {
 
 // ---- declarations ----
 
+// leafBody reports whether st's tolerant-wire body names no other body: every
+// field is a scalar, a text or a byte run, so the body calls only the writer
+// and reader primitives, which already carry the demand.
+func (g *tableGen) leafBody(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		switch f.Type.Ref.(type) {
+		case *ir.Struct, *ir.Union:
+			return false
+		}
+	}
+	return true
+}
+
+// inlineBodyDemand reports whether st's tolerant-wire save/load bodies may
+// carry the unit's force-inline macro.
+//
+// THE DEMAND MUST NOT CHAIN. A tolerant-wire body writes each table-typed child
+// up to THREE times — a default probe, a size probe, and the write — so a demand
+// that reached from one composite body into another composite body would
+// multiply by three at every level of the schema, which is the exponential
+// compile work the C emitter has warned about since #6e6b14b0. C++ has no such
+// factor: its composite body calls the child's MeasureBody once and its
+// SaveBody once, so C++ can force the whole fixed class flat (cpptable/codecs.go,
+// emitTableWrite) and bound it on the class whose call graph cannot cycle.
+//
+// The bound here is STRUCTURAL, not a budget: a body may carry the demand only
+// when every table and union arm it names is itself a LEAF. A demanded body
+// therefore never contains another demanded composite, every expansion is ONE
+// level deep, and the emitted work is linear in the schema's field count rather
+// than exponential in its depth. What that covers is exactly the ENTRY body a
+// wire surface calls and the leaf writers beneath it; a body that names a
+// composite child — the one that would recurse — carries no demand and is left
+// to the optimizer, as before.
+func (g *tableGen) inlineBodyDemand(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if !g.leafBody(ref) {
+				return false
+			}
+		case *ir.Union:
+			for _, v := range ref.Variants {
+				if v.Ref != nil && !g.leafBody(v.Ref) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
 func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	if vars := g.varMembers(members); len(vars) > 0 {
 		g.pf("/* ---- pointer targets: allocation and resolution (docs/SPEC-TABLES.md §2) ----\n")
@@ -97,17 +148,8 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 			g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value );\n", g.api(st.Name, "measure"), st.Name)
 		}
 		inline := tableInlineMacro(g.unit.Package)
-		// Composite file bodies have several measurement and default-check
-		// calls to each child. Forcing all of those inline expands the C
-		// compiler's work exponentially with schema depth; leave that choice
-		// to its optimizer while keeping primitive leaf codecs forced inline.
-		if g.fileWire() {
-			for _, f := range st.Fields {
-				switch f.Type.Ref.(type) {
-				case *ir.Struct, *ir.Union:
-					inline = ""
-				}
-			}
+		if g.fileWire() && !g.inlineBodyDemand(st) {
+			inline = ""
 		}
 		g.pf("static SCHEMA_UNUSED %s int %s( TableWriter * w, const %s * value );\n", inline, g.api(st.Name, "save_body"), st.Name)
 		g.pf("static SCHEMA_UNUSED %s int %s( TableReader * r, %s * value );\n", inline, g.api(st.Name, "load_body"), st.Name)

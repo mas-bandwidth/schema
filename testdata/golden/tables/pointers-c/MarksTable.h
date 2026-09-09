@@ -3181,8 +3181,8 @@ static SCHEMA_UNUSED Marker * marker_emplace( TableSink * sink, TableRef * slot 
 static SCHEMA_UNUSED int64_t tally_measure( const Tally * value );
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int tally_save_body( TableWriter * w, const Tally * value );
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int tally_load_body( TableReader * r, Tally * value );
-static SCHEMA_UNUSED  int marker_save_body( TableWriter * w, const Marker * value );
-static SCHEMA_UNUSED  int marker_load_body( TableReader * r, Marker * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int marker_save_body( TableWriter * w, const Marker * value );
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE int marker_load_body( TableReader * r, Marker * value );
 
 static SCHEMA_UNUSED int schema_graphdemo_tally_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int schema_graphdemo_marker_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);

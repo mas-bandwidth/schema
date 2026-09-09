@@ -1553,8 +1553,8 @@ static SCHEMA_UNUSED int64_t gunner_settings_measure( const GunnerSettings * val
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_save_body( TableWriter * w, const GunnerSettings * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_settings_load_body( TableReader * r, GunnerSettings * value );
 static SCHEMA_UNUSED int64_t ship_entry_measure( const ShipEntry * value );
-static SCHEMA_UNUSED  int ship_entry_save_body( TableWriter * w, const ShipEntry * value );
-static SCHEMA_UNUSED  int ship_entry_load_body( TableReader * r, ShipEntry * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_save_body( TableWriter * w, const ShipEntry * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int ship_entry_load_body( TableReader * r, ShipEntry * value );
 static SCHEMA_UNUSED int64_t global_settings_measure( const GlobalSettings * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_save_body( TableWriter * w, const GlobalSettings * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int global_settings_load_body( TableReader * r, GlobalSettings * value );

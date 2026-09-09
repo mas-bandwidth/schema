@@ -1552,8 +1552,8 @@ static SCHEMA_UNUSED int64_t mixed_pickup_event_measure( const MixedPickupEvent 
 static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE int mixed_pickup_event_save_body( TableWriter * w, const MixedPickupEvent * value );
 static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE int mixed_pickup_event_load_body( TableReader * r, MixedPickupEvent * value );
 static SCHEMA_UNUSED int64_t bench_mixed_measure( const BenchMixed * value );
-static SCHEMA_UNUSED  int bench_mixed_save_body( TableWriter * w, const BenchMixed * value );
-static SCHEMA_UNUSED  int bench_mixed_load_body( TableReader * r, BenchMixed * value );
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE int bench_mixed_save_body( TableWriter * w, const BenchMixed * value );
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE int bench_mixed_load_body( TableReader * r, BenchMixed * value );
 
 static SCHEMA_UNUSED int schema_bench_mixed_entity_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int schema_bench_mixed_stat_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);

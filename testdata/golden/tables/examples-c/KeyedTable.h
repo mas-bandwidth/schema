@@ -1564,8 +1564,8 @@ static SCHEMA_UNUSED int64_t gunner_config_measure( const GunnerConfig * value )
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_config_save_body( TableWriter * w, const GunnerConfig * value );
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int gunner_config_load_body( TableReader * r, GunnerConfig * value );
 static SCHEMA_UNUSED int64_t turret_config_measure( const TurretConfig * value );
-static SCHEMA_UNUSED  int turret_config_save_body( TableWriter * w, const TurretConfig * value );
-static SCHEMA_UNUSED  int turret_config_load_body( TableReader * r, TurretConfig * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int turret_config_save_body( TableWriter * w, const TurretConfig * value );
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE int turret_config_load_body( TableReader * r, TurretConfig * value );
 static SCHEMA_UNUSED int64_t hull_config_measure( const HullConfig * value );
 static SCHEMA_UNUSED  int hull_config_save_body( TableWriter * w, const HullConfig * value );
 static SCHEMA_UNUSED  int hull_config_load_body( TableReader * r, HullConfig * value );

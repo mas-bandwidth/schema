@@ -1511,8 +1511,8 @@ static SCHEMA_UNUSED int64_t padded_row_measure( const PaddedRow * value );
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int padded_row_save_body( TableWriter * w, const PaddedRow * value );
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int padded_row_load_body( TableReader * r, PaddedRow * value );
 static SCHEMA_UNUSED int64_t padded_frame_measure( const PaddedFrame * value );
-static SCHEMA_UNUSED  int padded_frame_save_body( TableWriter * w, const PaddedFrame * value );
-static SCHEMA_UNUSED  int padded_frame_load_body( TableReader * r, PaddedFrame * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int padded_frame_save_body( TableWriter * w, const PaddedFrame * value );
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE int padded_frame_load_body( TableReader * r, PaddedFrame * value );
 
 static SCHEMA_UNUSED int schema_blockdemo_padded_row_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
 static SCHEMA_UNUSED int schema_blockdemo_padded_frame_cook_body_(struct TableNumbering * n,uint8_t * at,const void * storage,int order);
