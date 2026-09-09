@@ -19,6 +19,7 @@ import (
 const windowInterval = 2 * time.Second
 const maximumSampleGap = 10 * time.Second
 const maximumWindowSamples = 10000
+const windowJournal = "window.samples.jsonl"
 
 // A receipt identifies the operator's READY/START coordination record. It is an
 // attestation, not machine proof that every participant actually became quiet.
@@ -232,9 +233,10 @@ func validatePassWindow(w windowEvidence, rounds int) error {
 }
 
 type quietWindow struct {
-	dir      string
-	evidence windowEvidence
-	snapshot func(string) (windowSample, error)
+	dir          string
+	evidence     windowEvidence
+	snapshot     func(string) (windowSample, error)
+	journalReady bool
 }
 
 func windowSnapshot(phase string) (windowSample, error) {
@@ -269,6 +271,9 @@ func (w *quietWindow) sample(phase string) error {
 	if len(w.evidence.Samples) >= maximumWindowSamples {
 		return errors.New("quiet window exceeded bounded sample count")
 	}
+	if err := w.initializeJournal(); err != nil {
+		return err
+	}
 	snapshot := w.snapshot
 	if snapshot == nil {
 		snapshot = windowSnapshot
@@ -282,16 +287,60 @@ func (w *quietWindow) sample(phase string) error {
 		sample.Processes[i].Owned = owned[sample.Processes[i].PID]
 	}
 	w.evidence.Samples = append(w.evidence.Samples, sample)
-	return inspectSample(sample, w.evidence.CoordinatorPID)
+	return errors.Join(w.appendSample(sample), inspectSample(sample, w.evidence.CoordinatorPID))
 }
 
-func (w *quietWindow) write() error {
-	data, err := json.MarshalIndent(w.evidence, "", "  ")
+// Collection leaves a small incomplete marker and appends each compact sample
+// exactly once. An interruption retains the journal, which the exact-file pass
+// manifest refuses. Never rewrite the growing sample history between runners.
+func (w *quietWindow) initializeJournal() error {
+	if w.journalReady {
+		return nil
+	}
+	f, err := os.OpenFile(filepath.Join(w.dir, windowJournal), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	marker := w.evidence
+	marker.Samples, marker.Ended, marker.Verdict, marker.Reason = nil, "", "INVALID", "incomplete"
+	if err = w.writeEvidence(marker); err != nil {
+		return err
+	}
+	w.journalReady = true
+	return nil
+}
+
+func (w *quietWindow) appendSample(sample windowSample) error {
+	data, err := json.Marshal(sample)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(w.dir, windowJournal), os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	_, writeErr := f.Write(append(data, '\n'))
+	return errors.Join(writeErr, f.Close())
+}
+
+// Write the small initial marker, or assemble the complete final evidence once
+// after END/INVALID. Sync and close the replacement before publishing its name.
+func (w *quietWindow) writeEvidence(evidence windowEvidence) error {
+	data, err := json.MarshalIndent(evidence, "", "  ")
 	if err != nil {
 		return err
 	}
 	path := filepath.Join(w.dir, "window.json")
-	if err = os.WriteFile(path+".tmp", append(data, '\n'), 0644); err != nil {
+	f, err := os.OpenFile(path+".tmp", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	_, writeErr := f.Write(append(data, '\n'))
+	err = errors.Join(writeErr, f.Sync(), f.Close())
+	if err != nil {
 		return err
 	}
 	return os.Rename(path+".tmp", path)
@@ -308,9 +357,9 @@ func beginWindow(dir, receipt string) (*quietWindow, error) {
 		err = w.sample("start")
 	}
 	if err != nil {
-		w.evidence.Reason = err.Error()
+		return w, w.finish(err)
 	}
-	return w, errors.Join(err, w.write())
+	return w, nil
 }
 
 // Monitoring lives only inside this synchronous owned runner's lifetime. A
@@ -318,9 +367,6 @@ func beginWindow(dir, receipt string) (*quietWindow, error) {
 // background polling survive the call.
 func (w *quietWindow) capture(c command, phase string) ([]byte, error) {
 	if err := w.sample("before/" + phase); err != nil {
-		return nil, err
-	}
-	if err := w.write(); err != nil {
 		return nil, err
 	}
 	cmd := exec.Command(c.args[0], c.args[1:]...)
@@ -363,5 +409,15 @@ func (w *quietWindow) finish(cause error) error {
 	if cause != nil {
 		w.evidence.Verdict, w.evidence.Reason = "INVALID", cause.Error()
 	}
-	return errors.Join(cause, w.write())
+	if err := w.writeEvidence(w.evidence); err != nil {
+		return errors.Join(cause, err)
+	}
+	// The complete final file is now persisted. Only then may the journal go;
+	// any finalization or cleanup failure retains an unsealable directory.
+	if w.journalReady {
+		if err := os.Remove(filepath.Join(w.dir, windowJournal)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return errors.Join(cause, err)
+		}
+	}
+	return cause
 }

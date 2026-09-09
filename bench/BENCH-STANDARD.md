@@ -584,6 +584,16 @@ environments are captured. Brief or unusually named workloads can escape
 sampling, so `OK` is the checked verdict, not proof of exclusive CPU use.
 The receipt and bracketing controls remain necessary.
 
+The monitor forks `ps` every two seconds and at boundaries (`sysctl` too on
+macOS), allocates snapshots, and writes one compact JSONL sample to the temporary
+`window.samples.jsonl` journal per observation. This has measurement overhead.
+Collection never re-encodes or rewrites the growing history. Samples also remain
+in memory, so the 10,000-sample limit is not a byte limit. The full `window.json`
+is assembled once after END/INVALID, synced, closed and renamed before the
+journal is removed. Append records are not individually synced. An interruption
+or failed final write retains its journal and remains unsealable; the completed
+artifact format and manifest remain unchanged.
+
 Seven rounds intentionally keep the packet convention's 4/3 order imbalance.
 Warmups use the full per-path iteration count: 4,000,000 packet or 400,000 table
 operations. Table target reset is inside the round-trip clock; packet does not

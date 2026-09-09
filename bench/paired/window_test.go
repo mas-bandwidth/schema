@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -213,11 +216,172 @@ func TestUnfinishedWindowCannotPublish(t *testing.T) {
 	dir := t.TempDir()
 	w := &quietWindow{dir: dir, evidence: testWindow()}
 	w.evidence.Verdict, w.evidence.Reason, w.evidence.Ended = "INVALID", "incomplete", ""
-	if err := w.write(); err != nil {
+	if err := w.initializeJournal(); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateWindow(w.evidence); err == nil {
 		t.Fatal("unfinished window was valid")
+	}
+}
+
+func syntheticJournalWindow(dir string) *quietWindow {
+	w := &quietWindow{dir: dir, evidence: testWindow()}
+	w.evidence.Started = time.Now().UTC().Format(time.RFC3339Nano)
+	w.evidence.Samples, w.evidence.Ended, w.evidence.Verdict, w.evidence.Reason = nil, "", "INVALID", "incomplete"
+	w.snapshot = func(phase string) (windowSample, error) {
+		sample := testWindow().Samples[0]
+		sample.Phase, sample.Date = phase, time.Now().UTC().Format(time.RFC3339Nano)
+		return sample, nil
+	}
+	return w
+}
+
+func readWindowEvidence(t *testing.T, dir string) windowEvidence {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, "window.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evidence windowEvidence
+	if err = json.Unmarshal(data, &evidence); err != nil {
+		t.Fatal(err)
+	}
+	return evidence
+}
+
+func TestJournalAppendsEachSampleWithoutRewritingHistory(t *testing.T) {
+	w := syntheticJournalWindow(t.TempDir())
+	if err := w.initializeJournal(); err != nil {
+		t.Fatal(err)
+	}
+	marker, err := os.ReadFile(filepath.Join(w.dir, "window.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var previous []byte
+	for i, phase := range []string{"preflight", "start", "before/synthetic", "during/synthetic", "after/synthetic"} {
+		if err = w.sample(phase); err != nil {
+			t.Fatal(err)
+		}
+		journal, err := os.ReadFile(filepath.Join(w.dir, windowJournal))
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(w.evidence.Samples[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.HasPrefix(journal, previous) || !bytes.Equal(journal[len(previous):], append(encoded, '\n')) || bytes.Count(journal, []byte{'\n'}) != i+1 {
+			t.Fatal("journal did not append exactly one complete compact sample")
+		}
+		current, err := os.ReadFile(filepath.Join(w.dir, "window.json"))
+		if err != nil || !bytes.Equal(marker, current) {
+			t.Fatal("collection rewrote the window marker or growing history:", err)
+		}
+		previous = journal
+	}
+	if err = w.finish(errors.New("synthetic stopped pass")); err == nil {
+		t.Fatal("stopped pass became successful")
+	}
+	final := readWindowEvidence(t, w.dir)
+	if final.Verdict != "INVALID" || !reflect.DeepEqual(final.Samples, w.evidence.Samples) {
+		t.Fatal("final refusal lost sample evidence")
+	}
+	if _, err = os.Stat(filepath.Join(w.dir, windowJournal)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("journal remains after complete final evidence was persisted:", err)
+	}
+}
+
+func TestCompletedJournalPreservesFinalManifestFormat(t *testing.T) {
+	f := newProvenanceFixture(t, 7, "journal completion")
+	w := syntheticJournalWindow(f.dir)
+	phases := testPassWindow(7).Samples
+	for _, sample := range phases[:len(phases)-1] {
+		if err := w.sample(sample.Phase); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.finish(nil); err != nil {
+		t.Fatal(err)
+	}
+	final := readWindowEvidence(t, f.dir)
+	if !reflect.DeepEqual(final, w.evidence) || final.Verdict != "OK" {
+		t.Fatal("final window differs from the complete collected evidence")
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, windowJournal)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("completed journal not removed:", err)
+	}
+	if err := sealPass(f.dir); err != nil {
+		t.Fatal("completed window no longer fits the existing manifest:", err)
+	}
+	if err := verifyPass(f.dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInterruptedJournalCannotSeal(t *testing.T) {
+	f := newProvenanceFixture(t, 7, "interrupted journal")
+	w := syntheticJournalWindow(f.dir)
+	if err := w.sample("preflight"); err != nil {
+		t.Fatal(err)
+	}
+	marker := readWindowEvidence(t, f.dir)
+	if marker.Verdict != "INVALID" || marker.Ended != "" || len(marker.Samples) != 0 {
+		t.Fatal("in-progress marker claims complete evidence")
+	}
+	if err := sealPass(f.dir); err == nil {
+		t.Fatal("interrupted journal was sealable")
+	}
+	// Even a complete-looking final window must not hide a leftover journal.
+	writeTestWindow(t, f.dir, 7)
+	if err := sealPass(f.dir); err == nil {
+		t.Fatal("leftover journal was silently excluded from the raw manifest")
+	}
+}
+
+func TestFinalWriteFailureRetainsJournalAndRefusesSeal(t *testing.T) {
+	f := newProvenanceFixture(t, 7, "journal write failure")
+	w := syntheticJournalWindow(f.dir)
+	for _, phase := range []string{"preflight", "start"} {
+		if err := w.sample(phase); err != nil {
+			t.Fatal(err)
+		}
+	}
+	journalPath := filepath.Join(f.dir, windowJournal)
+	before, err := os.ReadFile(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked := filepath.Join(f.dir, "window.json.tmp")
+	if err = os.Mkdir(blocked, 0700); err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("synthetic interrupted pass")
+	if err = w.finish(cause); err == nil || !errors.Is(err, cause) {
+		t.Fatal("finalization failure lost the original refusal:", err)
+	}
+	after, err := os.ReadFile(journalPath)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("failed final write removed or changed the journal:", err)
+	}
+	if err = sealPass(f.dir); err == nil {
+		t.Fatal("failed finalization was sealable")
+	}
+	if err = os.Remove(blocked); err != nil {
+		t.Fatal(err)
+	}
+	if err = w.finish(cause); !errors.Is(err, cause) {
+		t.Fatal("retry changed the failed pass into success:", err)
+	}
+	final := readWindowEvidence(t, f.dir)
+	if final.Verdict != "INVALID" || !reflect.DeepEqual(final.Samples, w.evidence.Samples) {
+		t.Fatal("final retry lost sample evidence")
+	}
+	if _, err = os.Stat(journalPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("journal not removed after successful final persistence:", err)
+	}
+	if err = sealPass(f.dir); err == nil {
+		t.Fatal("failed pass became sealable after persistence retry")
 	}
 }
 
@@ -237,7 +401,7 @@ func TestQuietWindowStopsOwnedRunnerAndRetainsRefusal(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("SCHEMA_WINDOW_TEST_CHILD", "1")
-	w := &quietWindow{dir: t.TempDir(), evidence: testWindow()}
+	w := syntheticJournalWindow(t.TempDir())
 	w.snapshot = func(phase string) (windowSample, error) {
 		sample := testWindow().Samples[0]
 		sample.Phase = phase

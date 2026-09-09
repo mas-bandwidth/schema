@@ -76,9 +76,20 @@ CPU percentages retain `ps`'s platform-specific meaning. Sampling can miss short
 or unusually named work, including a workload behind a generic interpreter name.
 An `OK` verdict means these checks passed; it is not proof of exclusive CPU use.
 The operator receipt and bracketing drift checks remain necessary. Samples are
-bounded to 10,000; exceeding that limit refuses the sitting. `load.json` is the
-load-only view of the same samples. An interrupted process leaves its last saved
-window marked incomplete; completed or refused runners flush their samples.
+bounded to 10,000; exceeding that limit refuses the sitting. The monitor forks
+`ps` every two seconds and at runner boundaries, plus `sysctl` on macOS. It also
+allocates process snapshots and appends them to disk, so it perturbs the measured
+machine. Samples remain in memory; this count limit is not a byte budget, and
+memory use grows with both sample and process counts.
+
+During collection, each complete sample is appended once as compact JSONL to
+`window.samples.jsonl`, with no per-sample `fsync`. The small `window.json` marker
+stays incomplete; the growing history is never rewritten before a runner.
+After END or INVALID, the complete final `window.json` is assembled once, synced,
+closed and renamed into place. Only then is the journal removed. Interruptions
+and failed final writes retain the journal and cannot seal; failed windows remain
+invalid even after their final evidence is saved. `load.json` is the load-only
+view of the completed samples.
 
 Failed passes keep their raw evidence in the printed temporary directory; a
 completed result directory appears only after every gate succeeds.
