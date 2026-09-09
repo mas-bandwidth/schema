@@ -227,6 +227,7 @@ func init() {
 		Name{Name: "TableOpenBodyStopped", What: "the form-1 wire runtime"},
 		Name{Name: "tableKindBytes", What: "the form-1 wire runtime"},
 		Name{Name: "tableOpen", What: "the form-1 wire runtime"},
+		Name{Name: "tableOpenFramed", What: "the form-1 wire runtime"},
 		Name{Name: "tableKindWidens", What: "the form-1 wire runtime"},
 		Name{Name: "tableUtf8Valid", What: "the form-1 wire runtime"},
 		Name{Name: "tableUtf8Clamp", What: "the form-1 wire runtime"},
