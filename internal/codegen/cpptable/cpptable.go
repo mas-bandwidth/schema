@@ -654,7 +654,13 @@ enum TableMessageReason
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
     message_form_as_file, // a form 2 wire where a FILE was expected: its table is somewhere else
-    batch_too_large       // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
+    batch_too_large,      // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
+    // THE FIXED FORM'S THREE (docs/SPEC-TABLES.md §3.4). Each is a refusal by
+    // name with nothing decoded and no counter moved, on the form byte's own
+    // precedent.
+    no_block,             // a fixed-form record whose hash names no vocabulary block this reader holds
+    block_malformed,      // bytes handed to the fixed form as a block that are not one: the count overruns, or the tree does not close
+    plan_too_large        // a block whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
 };
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -1382,7 +1388,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
-
+` + tableFixedRuntime + `
 } // namespace ` + pkg + `
 
 #endif // ` + guard + `
@@ -1489,6 +1495,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitMessageCodec(st)
 				g.emitMessageEntries(st)
 			}
+			g.emitFixedForm(members)
 			g.emitVariableSurface(members)
 			// RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the second family, and
 			// the fixed class's refusal, which is emitted in every unit because
