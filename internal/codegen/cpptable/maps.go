@@ -1085,7 +1085,7 @@ func (g *tableGen) emitMapWriteField(f *ir.Field) {
 	g.pf("                if ( elem_%s < 0 ) { TableMapRelease( order_%s ); return false; }\n", f.Name, f.Name)
 	g.pf("                body_%s += %s;\n", f.Name, framed("elem_"+f.Name))
 	g.pf("            }\n")
-	g.pf("            w.putleb( ref_%s ); w.put8( %d ); w.putleb( (uint64_t) body_%s );\n", f.Name, tkArray, f.Name)
+	g.pf("            w.header( ref_%s, %d ); w.putleb( (uint64_t) body_%s );\n", f.Name, tkArray, f.Name)
 	g.pf("            w.put8( %d ); w.putleb( (uint64_t) order_%s.count );\n", tkTable, f.Name)
 	g.pf("            for ( int32_t i = 0; i < order_%s.count; i++ )\n            {\n", f.Name)
 	g.inStep("i", func() {

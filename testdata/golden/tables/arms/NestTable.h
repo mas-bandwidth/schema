@@ -349,8 +349,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    ARMDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    ARMDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -371,6 +384,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    ARMDEMO_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -2978,8 +3015,7 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -4261,8 +4297,7 @@ inline bool TableRetainTailSave( TableRetain * retain, TableRetainIds & ids, Tab
         if ( !TableRetainRecordHere( *retain, record, path ) ) { continue; }
         uint64_t ref = 0;
         if ( TableRetainRecordWire( record, ids, ref ) < 0 ) { continue; }
-        w.putleb( ref );
-        w.put8( TableRetainRecordKind( record ) );
+        w.header( ref, TableRetainRecordKind( record ) );
         TableRetainOut s;
         s.in = TableRetainRecordPayload( record );
         s.size = TableRetainRecordPayloadBytes( record );
@@ -4344,8 +4379,7 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -5947,7 +5981,7 @@ inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     if ( value.inner.type != InnerType::None )
     {
-        w.putleb( ids.ref( 0x2d4c068f5f889287ull ) ); w.put8( 15 ); // inner
+        w.header( ids.ref( 0x2d4c068f5f889287ull ), 15 ); // inner
         switch ( value.inner.type )
         {
             case InnerType::Leaf:
@@ -5959,7 +5993,7 @@ inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // leaf
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // leaf
                 if ( !LeafSaveBody( ctx, numbering, w, ids, value.inner.leaf ) ) { return false; }
                 break;
             }
@@ -5968,7 +6002,7 @@ inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.inner.plain ) );
                 break;
             }
@@ -6412,7 +6446,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     if ( value.outer.type != OuterType::None )
     {
-        w.putleb( ids.ref( 0x30e6ed678f5e1bd4ull ) ); w.put8( 15 ); // outer
+        w.header( ids.ref( 0x30e6ed678f5e1bd4ull ), 15 ); // outer
         switch ( value.outer.type )
         {
             case OuterType::Inner:
@@ -6448,7 +6482,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         default: return -1; // invalid tag — the write side refuses it too
                     }
                 }
-                w.putleb( arm_ref ); w.put8( 15 ); w.putleb( (uint64_t) arm_payload ); // inner
+                w.header( arm_ref, 15 ); w.putleb( (uint64_t) arm_payload ); // inner
                 if ( value.outer.inner.type == InnerType::None ) { w.putleb( 0 ); } // the inner union's None (§3)
                 else
                 {
@@ -6463,7 +6497,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                                 if ( arm_bodya < 0 ) { return false; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
-                            w.putleb( arm_refa ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloada ); // leaf
+                            w.header( arm_refa, 13 ); w.putleb( (uint64_t) arm_payloada ); // leaf
                             if ( !LeafSaveBody( ctx, numbering, w, ids, value.outer.inner.leaf ) ) { return false; }
                             break;
                         }
@@ -6472,7 +6506,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                             const uint64_t arm_refa = ids.ref( 0xfd4d194e1652b207ull );
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // int32
-                            w.putleb( arm_refa ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloada ); // plain
+                            w.header( arm_refa, 4 ); w.putleb( (uint64_t) arm_payloada ); // plain
                             w.put32( uint32_t( value.outer.inner.plain ) );
                             break;
                         }
@@ -6486,7 +6520,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.outer.plain ) );
                 break;
             }
@@ -6502,7 +6536,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
-            w.putleb( ref_tail ); w.put8( 14 ); w.putleb( (uint64_t) body_tail ); // tail
+            w.header( ref_tail, 14 ); w.putleb( (uint64_t) body_tail ); // tail
             w.put8( 4 ); w.putleb( (uint64_t) ( cursor_tail.count ) );
             for ( int32_t elem_i_tail = 0; elem_i_tail < cursor_tail.count; elem_i_tail++ )
             {
@@ -9518,7 +9552,7 @@ inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     if ( value.inner.type != InnerType::None )
     {
-        w.putleb( ids.ref( 0x2d4c068f5f889287ull ) ); w.put8( 15 ); // inner
+        w.header( ids.ref( 0x2d4c068f5f889287ull ), 15 ); // inner
         switch ( value.inner.type )
         {
             case InnerType::Leaf:
@@ -9530,7 +9564,7 @@ inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // leaf
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // leaf
                 if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
                 break;
             }
@@ -9539,7 +9573,7 @@ inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.inner.plain ) );
                 break;
             }
@@ -9904,7 +9938,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     if ( value.outer.type != OuterType::None )
     {
-        w.putleb( ids.ref( 0x30e6ed678f5e1bd4ull ) ); w.put8( 15 ); // outer
+        w.header( ids.ref( 0x30e6ed678f5e1bd4ull ), 15 ); // outer
         switch ( value.outer.type )
         {
             case OuterType::Inner:
@@ -9940,7 +9974,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         default: return -1; // invalid tag — the write side refuses it too
                     }
                 }
-                w.putleb( arm_ref ); w.put8( 15 ); w.putleb( (uint64_t) arm_payload ); // inner
+                w.header( arm_ref, 15 ); w.putleb( (uint64_t) arm_payload ); // inner
                 if ( value.outer.inner.type == InnerType::None ) { w.putleb( 0 ); } // the inner union's None (§3)
                 else
                 {
@@ -9955,7 +9989,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                                 if ( arm_bodya < 0 ) { return false; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
-                            w.putleb( arm_refa ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloada ); // leaf
+                            w.header( arm_refa, 13 ); w.putleb( (uint64_t) arm_payloada ); // leaf
                             if ( !LeafSaveBodyRetain( ctx, numbering, w, ids, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) ) ) { return false; }
                             break;
                         }
@@ -9964,7 +9998,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                             const uint64_t arm_refa = ids.ref( 0xfd4d194e1652b207ull );
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // int32
-                            w.putleb( arm_refa ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloada ); // plain
+                            w.header( arm_refa, 4 ); w.putleb( (uint64_t) arm_payloada ); // plain
                             w.put32( uint32_t( value.outer.inner.plain ) );
                             break;
                         }
@@ -9978,7 +10012,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
+                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // plain
                 w.put32( uint32_t( value.outer.plain ) );
                 break;
             }
@@ -9994,7 +10028,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
-            w.putleb( ref_tail ); w.put8( 14 ); w.putleb( (uint64_t) body_tail ); // tail
+            w.header( ref_tail, 14 ); w.putleb( (uint64_t) body_tail ); // tail
             w.put8( 4 ); w.putleb( (uint64_t) ( cursor_tail.count ) );
             for ( int32_t elem_i_tail = 0; elem_i_tail < cursor_tail.count; elem_i_tail++ )
             {

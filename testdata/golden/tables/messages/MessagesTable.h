@@ -290,8 +290,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    MESSAGEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    MESSAGEDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -312,6 +325,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    MESSAGEDEMO_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -2835,7 +2872,7 @@ MESSAGEDEMO_TABLE_INLINE bool UserSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref( 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref( 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -3154,13 +3191,13 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
     if ( value.path_length > 0 )
     {
-        w.putleb( ids.ref( 0x03c52d0debd70676ull ) ); w.put8( 12 ); // path
+        w.header( ids.ref( 0x03c52d0debd70676ull ), 12 ); // path
         w.putleb( (uint64_t) value.path_length );
         w.raw( value.path, value.path_length );
     }
     if ( value.line != 0 )
     {
-        w.putleb( ids.ref( 0xbf4ba5ad694f5907ull ) ); w.put8( 8 ); // line
+        w.header( ids.ref( 0xbf4ba5ad694f5907ull ), 8 ); // line
         w.put32( uint32_t( value.line ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -3569,7 +3606,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
         if ( body_start < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_start > 1 ) // all-default nested elides
         {
-            w.putleb( ref_start ); w.put8( 13 ); w.putleb( (uint64_t) body_start ); // start
+            w.header( ref_start, 13 ); w.putleb( (uint64_t) body_start ); // start
             if ( !CursorSaveBody( w, ids, value.start ) ) return false;
         }
         else { ids.truncate( mark_start ); }
@@ -3581,7 +3618,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionSaveBody( TableWriter & w, TableIds & ids
         if ( body_end < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_end > 1 ) // all-default nested elides
         {
-            w.putleb( ref_end ); w.put8( 13 ); w.putleb( (uint64_t) body_end ); // end
+            w.header( ref_end, 13 ); w.putleb( (uint64_t) body_end ); // end
             if ( !CursorSaveBody( w, ids, value.end ) ) return false;
         }
         else { ids.truncate( mark_end ); }
@@ -4079,7 +4116,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
         if ( body_at < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_at > 1 ) // all-default nested elides
         {
-            w.putleb( ref_at ); w.put8( 13 ); w.putleb( (uint64_t) body_at ); // at
+            w.header( ref_at, 13 ); w.putleb( (uint64_t) body_at ); // at
             if ( !CursorSaveBody( w, ids, value.at ) ) return false;
         }
         else { ids.truncate( mark_at ); }
@@ -4087,13 +4124,13 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
     if ( value.text_length < 0 || value.text_length > 32 ) { return false; } // storage invariant
     if ( value.text_length > 0 )
     {
-        w.putleb( ids.ref( 0xfa04f4ef1995407eull ) ); w.put8( 12 ); // text
+        w.header( ids.ref( 0xfa04f4ef1995407eull ), 12 ); // text
         w.putleb( (uint64_t) value.text_length );
         w.raw( value.text, value.text_length );
     }
     if ( value.origin.type != OriginType::None )
     {
-        w.putleb( ids.ref( 0xb9eae4fe785a14cfull ) ); w.put8( 15 ); // origin
+        w.header( ids.ref( 0xb9eae4fe785a14cfull ), 15 ); // origin
         switch ( value.origin.type )
         {
             case OriginType::User:
@@ -4105,7 +4142,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // user
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // user
                 if ( !UserSaveBody( w, ids, value.origin.user ) ) { return false; }
                 break;
             }
@@ -4118,7 +4155,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // script
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // script
                 if ( !ScriptSaveBody( w, ids, value.origin.script ) ) { return false; }
                 break;
             }
@@ -4127,7 +4164,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 const uint64_t arm_ref = ids.ref( 0x77af701956600122ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // uint32
-                w.putleb( arm_ref ); w.put8( 8 ); w.putleb( (uint64_t) arm_payload ); // pid
+                w.header( arm_ref, 8 ); w.putleb( (uint64_t) arm_payload ); // pid
                 w.put32( uint32_t( value.origin.pid ) );
                 break;
             }
@@ -4137,7 +4174,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 int64_t arm_payload = 0;
                 if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
-                w.putleb( arm_ref ); w.put8( 12 ); w.putleb( (uint64_t) arm_payload ); // note
+                w.header( arm_ref, 12 ); w.putleb( (uint64_t) arm_payload ); // note
                 if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
                 w.raw( value.origin.note.value, value.origin.note.value_length );
                 break;
@@ -4204,7 +4241,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 }
             }
         }
-        w.putleb( ref_origins ); w.put8( 14 ); w.putleb( (uint64_t) body_origins ); // origins
+        w.header( ref_origins, 14 ); w.putleb( (uint64_t) body_origins ); // origins
         w.put8( 15 ); w.putleb( (uint64_t) ( value.origins_count ) );
         for ( int32_t elem_i = 0; elem_i < value.origins_count; elem_i++ )
         {
@@ -4222,7 +4259,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                             if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
-                        w.putleb( arm_refu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadu ); // user
+                        w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // user
                         if ( !UserSaveBody( w, ids, value.origins[elem_i].user ) ) { return false; }
                         break;
                     }
@@ -4235,7 +4272,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                             if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
-                        w.putleb( arm_refu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadu ); // script
+                        w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // script
                         if ( !ScriptSaveBody( w, ids, value.origins[elem_i].script ) ) { return false; }
                         break;
                     }
@@ -4244,7 +4281,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         const uint64_t arm_refu = ids.ref( 0x77af701956600122ull );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 4; // uint32
-                        w.putleb( arm_refu ); w.put8( 8 ); w.putleb( (uint64_t) arm_payloadu ); // pid
+                        w.header( arm_refu, 8 ); w.putleb( (uint64_t) arm_payloadu ); // pid
                         w.put32( uint32_t( value.origins[elem_i].pid ) );
                         break;
                     }
@@ -4254,7 +4291,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         int64_t arm_payloadu = 0;
                         if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return false; } // storage invariant
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
-                        w.putleb( arm_refu ); w.put8( 12 ); w.putleb( (uint64_t) arm_payloadu ); // note
+                        w.header( arm_refu, 12 ); w.putleb( (uint64_t) arm_payloadu ); // note
                         if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return false; } // storage invariant
                         w.raw( value.origins[elem_i].note.value, value.origins[elem_i].note.value_length );
                         break;
@@ -4276,7 +4313,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
             if ( !TableEnumRef( ids, value.modes[elem_i], elem_ref ) ) { return false; } // no variant names this value
             body_modes += TableLebBytes( elem_ref );
         }
-        w.putleb( ref_modes ); w.put8( 14 ); w.putleb( (uint64_t) body_modes ); // modes
+        w.header( ref_modes, 14 ); w.putleb( (uint64_t) body_modes ); // modes
         w.put8( 30 ); w.putleb( (uint64_t) ( value.modes_count ) );
         for ( int32_t elem_i = 0; elem_i < value.modes_count; elem_i++ )
         {
@@ -5494,7 +5531,7 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextSaveBody( TableWriter & w, TableIds & id
         if ( body_span < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_span > 1 ) // all-default nested elides
         {
-            w.putleb( ref_span ); w.put8( 13 ); w.putleb( (uint64_t) body_span ); // span
+            w.header( ref_span, 13 ); w.putleb( (uint64_t) body_span ); // span
             if ( !SelectionSaveBody( w, ids, value.span ) ) return false;
         }
         else { ids.truncate( mark_span ); }
@@ -5869,12 +5906,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.revision != 0 )
     {
-        w.putleb( ids.ref( 0xd6a4dbc46c8e8658ull ) ); w.put8( 8 ); // revision
+        w.header( ids.ref( 0xd6a4dbc46c8e8658ull ), 8 ); // revision
         w.put32( uint32_t( value.revision ) );
     }
     if ( value.body.type != EditBodyType::None )
     {
-        w.putleb( ids.ref( 0xcd4de79bc6c93295ull ) ); w.put8( 15 ); // body
+        w.header( ids.ref( 0xcd4de79bc6c93295ull ), 15 ); // body
         switch ( value.body.type )
         {
             case EditBodyType::Insert:
@@ -5886,7 +5923,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // insert
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // insert
                 if ( !InsertTextSaveBody( w, ids, value.body.insert ) ) { return false; }
                 break;
             }
@@ -5899,7 +5936,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // remove
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // remove
                 if ( !RemoveTextSaveBody( w, ids, value.body.remove ) ) { return false; }
                 break;
             }
@@ -5908,7 +5945,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                 const uint64_t arm_ref = ids.ref( 0xb1e5e28e4479a274ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
-                w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // tally
+                w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // tally
                 w.put32( uint32_t( value.body.tally ) );
                 break;
             }
@@ -5919,7 +5956,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                 if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // storage invariant
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( value.body.marks.value_count ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( value.body.marks.value_count ) * 2;
-                w.putleb( arm_ref ); w.put8( 14 ); w.putleb( (uint64_t) arm_payload ); // marks
+                w.header( arm_ref, 14 ); w.putleb( (uint64_t) arm_payload ); // marks
                 if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // storage invariant
                 w.put8( 7 ); w.putleb( (uint64_t) ( value.body.marks.value_count ) );
                 for ( int32_t elem_ie = 0; elem_ie < value.body.marks.value_count; elem_ie++ )
@@ -5934,7 +5971,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                 int64_t arm_payload = 0;
                 if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // storage invariant
                 arm_payload += 1 + TableLebBytes( (uint64_t) value.body.blob.value_length ) + value.body.blob.value_length; // element kind 6, N, then the bytes
-                w.putleb( arm_ref ); w.put8( 14 ); w.putleb( (uint64_t) arm_payload ); // blob
+                w.header( arm_ref, 14 ); w.putleb( (uint64_t) arm_payload ); // blob
                 if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // storage invariant
                 w.put8( 6 ); w.putleb( (uint64_t) value.body.blob.value_length ); // bytes ride as an array of u8 (§2.5)
                 w.raw( value.body.blob.value, value.body.blob.value_length );
@@ -5949,7 +5986,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                     if ( !TableEnumRef( ids, value.body.mode, arm_variant ) ) { return false; } // no variant names this value
                     arm_payload += TableLebBytes( arm_variant ); // the variant's reference
                 }
-                w.putleb( arm_ref ); w.put8( 30 ); w.putleb( (uint64_t) arm_payload ); // mode
+                w.header( arm_ref, 30 ); w.putleb( (uint64_t) arm_payload ); // mode
                 {
                     uint64_t element_ref = 0;
                     if ( !TableEnumRef( ids, value.body.mode, element_ref ) ) { return false; }
@@ -6807,7 +6844,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & 
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
     if ( value.path_length > 0 )
     {
-        w.putleb( ids.ref( 0x03c52d0debd70676ull ) ); w.put8( 12 ); // path
+        w.header( ids.ref( 0x03c52d0debd70676ull ), 12 ); // path
         w.putleb( (uint64_t) value.path_length );
         w.raw( value.path, value.path_length );
     }
@@ -6817,7 +6854,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & 
         const uint64_t ref_mode = ids.ref( 0x0d3deba2c41dadb2ull );
         uint64_t variant_mode = 0;
         if ( !TableEnumRef( ids, value.mode, variant_mode ) ) { return false; }
-        w.putleb( ref_mode ); w.put8( 30 ); w.putleb( variant_mode ); // mode
+        w.header( ref_mode, 30 ); w.putleb( variant_mode ); // mode
     }
     {
         const int32_t mark_cursor = ids.count;
@@ -6826,7 +6863,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & 
         if ( body_cursor < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_cursor > 1 ) // all-default nested elides
         {
-            w.putleb( ref_cursor ); w.put8( 13 ); w.putleb( (uint64_t) body_cursor ); // cursor
+            w.header( ref_cursor, 13 ); w.putleb( (uint64_t) body_cursor ); // cursor
             if ( !CursorSaveBody( w, ids, value.cursor ) ) return false;
         }
         else { ids.truncate( mark_cursor ); }
@@ -7260,13 +7297,13 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentSaveBody( TableWriter & w, TableIds & 
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
     if ( value.path_length > 0 )
     {
-        w.putleb( ids.ref( 0x03c52d0debd70676ull ) ); w.put8( 12 ); // path
+        w.header( ids.ref( 0x03c52d0debd70676ull ), 12 ); // path
         w.putleb( (uint64_t) value.path_length );
         w.raw( value.path, value.path_length );
     }
     if ( value.force != false )
     {
-        w.putleb( ids.ref( 0xe75ad8afb3eeebe4ull ) ); w.put8( 1 ); // force
+        w.header( ids.ref( 0xe75ad8afb3eeebe4ull ), 1 ); // force
         w.put8( value.force ? 1 : 0 );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7742,7 +7779,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
     if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // storage invariant
     if ( value.reason_length > 0 )
     {
-        w.putleb( ids.ref( 0x65e8d7f3474f2639ull ) ); w.put8( 12 ); // reason
+        w.header( ids.ref( 0x65e8d7f3474f2639ull ), 12 ); // reason
         w.putleb( (uint64_t) value.reason_length );
         w.raw( value.reason, value.reason_length );
     }
@@ -7763,7 +7800,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
             if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_edits += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_edits ); w.put8( 14 ); w.putleb( (uint64_t) body_edits ); // edits
+        w.header( ref_edits, 14 ); w.putleb( (uint64_t) body_edits ); // edits
         w.put8( 13 ); w.putleb( (uint64_t) ( value.edits_count ) );
         for ( int32_t elem_i = 0; elem_i < value.edits_count; elem_i++ )
         {
@@ -7858,7 +7895,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                     }
                 }
             }
-            w.putleb( ref_pending ); w.put8( 14 ); w.putleb( (uint64_t) body_pending ); // pending
+            w.header( ref_pending, 14 ); w.putleb( (uint64_t) body_pending ); // pending
             w.put8( 15 ); w.putleb( (uint64_t) ( 2 ) );
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
             {
@@ -7876,7 +7913,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                                 if ( arm_bodyu < 0 ) { return false; }
                                 arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                             }
-                            w.putleb( arm_refu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadu ); // insert
+                            w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // insert
                             if ( !InsertTextSaveBody( w, ids, value.pending[elem_i].insert ) ) { return false; }
                             break;
                         }
@@ -7889,7 +7926,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                                 if ( arm_bodyu < 0 ) { return false; }
                                 arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                             }
-                            w.putleb( arm_refu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadu ); // remove
+                            w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // remove
                             if ( !RemoveTextSaveBody( w, ids, value.pending[elem_i].remove ) ) { return false; }
                             break;
                         }
@@ -7898,7 +7935,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             const uint64_t arm_refu = ids.ref( 0xb1e5e28e4479a274ull );
                             int64_t arm_payloadu = 0;
                             arm_payloadu += 4; // int32
-                            w.putleb( arm_refu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloadu ); // tally
+                            w.header( arm_refu, 4 ); w.putleb( (uint64_t) arm_payloadu ); // tally
                             w.put32( uint32_t( value.pending[elem_i].tally ) );
                             break;
                         }
@@ -7909,7 +7946,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return false; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) ( value.pending[elem_i].marks.value_count ) ); // the element kind byte and the count
                             arm_payloadu += (int64_t) ( value.pending[elem_i].marks.value_count ) * 2;
-                            w.putleb( arm_refu ); w.put8( 14 ); w.putleb( (uint64_t) arm_payloadu ); // marks
+                            w.header( arm_refu, 14 ); w.putleb( (uint64_t) arm_payloadu ); // marks
                             if ( value.pending[elem_i].marks.value_count < 0 || value.pending[elem_i].marks.value_count > 3 ) { return false; } // storage invariant
                             w.put8( 7 ); w.putleb( (uint64_t) ( value.pending[elem_i].marks.value_count ) );
                             for ( int32_t elem_iue = 0; elem_iue < value.pending[elem_i].marks.value_count; elem_iue++ )
@@ -7924,7 +7961,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             int64_t arm_payloadu = 0;
                             if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return false; } // storage invariant
                             arm_payloadu += 1 + TableLebBytes( (uint64_t) value.pending[elem_i].blob.value_length ) + value.pending[elem_i].blob.value_length; // element kind 6, N, then the bytes
-                            w.putleb( arm_refu ); w.put8( 14 ); w.putleb( (uint64_t) arm_payloadu ); // blob
+                            w.header( arm_refu, 14 ); w.putleb( (uint64_t) arm_payloadu ); // blob
                             if ( value.pending[elem_i].blob.value_length < 0 || value.pending[elem_i].blob.value_length > 4 ) { return false; } // storage invariant
                             w.put8( 6 ); w.putleb( (uint64_t) value.pending[elem_i].blob.value_length ); // bytes ride as an array of u8 (§2.5)
                             w.raw( value.pending[elem_i].blob.value, value.pending[elem_i].blob.value_length );
@@ -7939,7 +7976,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                                 if ( !TableEnumRef( ids, value.pending[elem_i].mode, arm_variantu ) ) { return false; } // no variant names this value
                                 arm_payloadu += TableLebBytes( arm_variantu ); // the variant's reference
                             }
-                            w.putleb( arm_refu ); w.put8( 30 ); w.putleb( (uint64_t) arm_payloadu ); // mode
+                            w.header( arm_refu, 30 ); w.putleb( (uint64_t) arm_payloadu ); // mode
                             {
                                 uint64_t element_refu = 0;
                                 if ( !TableEnumRef( ids, value.pending[elem_i].mode, element_refu ) ) { return false; }
@@ -7959,7 +7996,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
         int64_t body_checkpoints = 0;
         body_checkpoints += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         body_checkpoints += (int64_t) ( 2 ) * 4;
-        w.putleb( ref_checkpoints ); w.put8( 14 ); w.putleb( (uint64_t) body_checkpoints ); // checkpoints
+        w.header( ref_checkpoints, 14 ); w.putleb( (uint64_t) body_checkpoints ); // checkpoints
         w.put8( 8 ); w.putleb( (uint64_t) ( 2 ) );
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
         {
@@ -7982,7 +8019,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
             if ( elem_i < 2 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_snapshots += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_snapshots ); w.put8( 14 ); w.putleb( (uint64_t) body_snapshots ); // snapshots
+        w.header( ref_snapshots, 14 ); w.putleb( (uint64_t) body_snapshots ); // snapshots
         w.put8( 13 ); w.putleb( (uint64_t) ( 2 ) );
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
         {
@@ -9569,12 +9606,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
 {
     if ( value.sequence != 0 )
     {
-        w.putleb( ids.ref( 0xaa38aca481f528a8ull ) ); w.put8( 8 ); // sequence
+        w.header( ids.ref( 0xaa38aca481f528a8ull ), 8 ); // sequence
         w.put32( uint32_t( value.sequence ) );
     }
     if ( value.body.type != ToolBodyType::None )
     {
-        w.putleb( ids.ref( 0xcd4de79bc6c93295ull ) ); w.put8( 15 ); // body
+        w.header( ids.ref( 0xcd4de79bc6c93295ull ), 15 ); // body
         switch ( value.body.type )
         {
             case ToolBodyType::Open:
@@ -9586,7 +9623,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // open
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // open
                 if ( !OpenDocumentSaveBody( w, ids, value.body.open ) ) { return false; }
                 break;
             }
@@ -9599,7 +9636,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // save
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // save
                 if ( !SaveDocumentSaveBody( w, ids, value.body.save ) ) { return false; }
                 break;
             }
@@ -9612,7 +9649,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // transact
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // transact
                 if ( !TransactionSaveBody( w, ids, value.body.transact ) ) { return false; }
                 break;
             }
@@ -9625,7 +9662,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                     if ( arm_body < 0 ) { return false; }
                     arm_payload += arm_body; // the arm's own table body (§3)
                 }
-                w.putleb( arm_ref ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload ); // ping
+                w.header( arm_ref, 13 ); w.putleb( (uint64_t) arm_payload ); // ping
                 if ( !PingSaveBody( w, ids, value.body.ping ) ) { return false; }
                 break;
             }
@@ -9634,7 +9671,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 const uint64_t arm_ref = ids.ref( 0xb55a6b90e87557f8ull );
                 int64_t arm_payload = 0;
                 arm_payload += 8; // Capabilities
-                w.putleb( arm_ref ); w.put8( 9 ); w.putleb( (uint64_t) arm_payload ); // caps
+                w.header( arm_ref, 9 ); w.putleb( (uint64_t) arm_payload ); // caps
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -9644,7 +9681,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 int64_t arm_payload = 0;
                 arm_payload += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
                 arm_payload += (int64_t) ( 2 ) * 4;
-                w.putleb( arm_ref ); w.put8( 14 ); w.putleb( (uint64_t) arm_payload ); // spans
+                w.header( arm_ref, 14 ); w.putleb( (uint64_t) arm_payload ); // spans
                 w.put8( 4 ); w.putleb( (uint64_t) ( 2 ) );
                 for ( int32_t elem_ie = 0; elem_ie < 2; elem_ie++ )
                 {
@@ -9706,7 +9743,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         default: return -1; // invalid tag — the write side refuses it too
                     }
                 }
-                w.putleb( arm_ref ); w.put8( 15 ); w.putleb( (uint64_t) arm_payload ); // origin
+                w.header( arm_ref, 15 ); w.putleb( (uint64_t) arm_payload ); // origin
                 if ( value.body.origin.type == OriginType::None ) { w.putleb( 0 ); } // the inner union's None (§3)
                 else
                 {
@@ -9721,7 +9758,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 if ( arm_bodya < 0 ) { return false; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
-                            w.putleb( arm_refa ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloada ); // user
+                            w.header( arm_refa, 13 ); w.putleb( (uint64_t) arm_payloada ); // user
                             if ( !UserSaveBody( w, ids, value.body.origin.user ) ) { return false; }
                             break;
                         }
@@ -9734,7 +9771,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 if ( arm_bodya < 0 ) { return false; }
                                 arm_payloada += arm_bodya; // the arm's own table body (§3)
                             }
-                            w.putleb( arm_refa ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloada ); // script
+                            w.header( arm_refa, 13 ); w.putleb( (uint64_t) arm_payloada ); // script
                             if ( !ScriptSaveBody( w, ids, value.body.origin.script ) ) { return false; }
                             break;
                         }
@@ -9743,7 +9780,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             const uint64_t arm_refa = ids.ref( 0x77af701956600122ull );
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // uint32
-                            w.putleb( arm_refa ); w.put8( 8 ); w.putleb( (uint64_t) arm_payloada ); // pid
+                            w.header( arm_refa, 8 ); w.putleb( (uint64_t) arm_payloada ); // pid
                             w.put32( uint32_t( value.body.origin.pid ) );
                             break;
                         }
@@ -9753,7 +9790,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             int64_t arm_payloada = 0;
                             if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
-                            w.putleb( arm_refa ); w.put8( 12 ); w.putleb( (uint64_t) arm_payloada ); // note
+                            w.header( arm_refa, 12 ); w.putleb( (uint64_t) arm_payloada ); // note
                             if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
                             w.raw( value.body.origin.note.value, value.body.origin.note.value_length );
                             break;
@@ -9768,7 +9805,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 const uint64_t arm_ref = ids.ref( 0xe723c21905457682ull );
                 int64_t arm_payload = 0;
                 // a payload-free arm: the arm reference, kind 32 and a zero L are the whole of it (§2.6, §3)
-                w.putleb( arm_ref ); w.put8( 32 ); w.putleb( (uint64_t) arm_payload ); // ack
+                w.header( arm_ref, 32 ); w.putleb( (uint64_t) arm_payload ); // ack
                 // a payload-free arm writes nothing under its L (§2.6)
                 break;
             }
@@ -9923,7 +9960,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 }
             }
         }
-        w.putleb( ref_history ); w.put8( 14 ); w.putleb( (uint64_t) body_history ); // history
+        w.header( ref_history, 14 ); w.putleb( (uint64_t) body_history ); // history
         w.put8( 15 ); w.putleb( (uint64_t) ( value.history_count ) );
         for ( int32_t elem_i = 0; elem_i < value.history_count; elem_i++ )
         {
@@ -9941,7 +9978,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
-                        w.putleb( arm_refu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadu ); // open
+                        w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // open
                         if ( !OpenDocumentSaveBody( w, ids, value.history[elem_i].open ) ) { return false; }
                         break;
                     }
@@ -9954,7 +9991,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
-                        w.putleb( arm_refu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadu ); // save
+                        w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // save
                         if ( !SaveDocumentSaveBody( w, ids, value.history[elem_i].save ) ) { return false; }
                         break;
                     }
@@ -9967,7 +10004,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
-                        w.putleb( arm_refu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadu ); // transact
+                        w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // transact
                         if ( !TransactionSaveBody( w, ids, value.history[elem_i].transact ) ) { return false; }
                         break;
                     }
@@ -9980,7 +10017,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             if ( arm_bodyu < 0 ) { return false; }
                             arm_payloadu += arm_bodyu; // the arm's own table body (§3)
                         }
-                        w.putleb( arm_refu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadu ); // ping
+                        w.header( arm_refu, 13 ); w.putleb( (uint64_t) arm_payloadu ); // ping
                         if ( !PingSaveBody( w, ids, value.history[elem_i].ping ) ) { return false; }
                         break;
                     }
@@ -9989,7 +10026,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         const uint64_t arm_refu = ids.ref( 0xb55a6b90e87557f8ull );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 8; // Capabilities
-                        w.putleb( arm_refu ); w.put8( 9 ); w.putleb( (uint64_t) arm_payloadu ); // caps
+                        w.header( arm_refu, 9 ); w.putleb( (uint64_t) arm_payloadu ); // caps
                         w.put64( uint64_t( value.history[elem_i].caps ) );
                         break;
                     }
@@ -9999,7 +10036,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
                         arm_payloadu += (int64_t) ( 2 ) * 4;
-                        w.putleb( arm_refu ); w.put8( 14 ); w.putleb( (uint64_t) arm_payloadu ); // spans
+                        w.header( arm_refu, 14 ); w.putleb( (uint64_t) arm_payloadu ); // spans
                         w.put8( 4 ); w.putleb( (uint64_t) ( 2 ) );
                         for ( int32_t elem_iue = 0; elem_iue < 2; elem_iue++ )
                         {
@@ -10061,7 +10098,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                 default: return -1; // invalid tag — the write side refuses it too
                             }
                         }
-                        w.putleb( arm_refu ); w.put8( 15 ); w.putleb( (uint64_t) arm_payloadu ); // origin
+                        w.header( arm_refu, 15 ); w.putleb( (uint64_t) arm_payloadu ); // origin
                         if ( value.history[elem_i].origin.type == OriginType::None ) { w.putleb( 0 ); } // the inner union's None (§3)
                         else
                         {
@@ -10076,7 +10113,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                         if ( arm_bodyua < 0 ) { return false; }
                                         arm_payloadua += arm_bodyua; // the arm's own table body (§3)
                                     }
-                                    w.putleb( arm_refua ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadua ); // user
+                                    w.header( arm_refua, 13 ); w.putleb( (uint64_t) arm_payloadua ); // user
                                     if ( !UserSaveBody( w, ids, value.history[elem_i].origin.user ) ) { return false; }
                                     break;
                                 }
@@ -10089,7 +10126,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                         if ( arm_bodyua < 0 ) { return false; }
                                         arm_payloadua += arm_bodyua; // the arm's own table body (§3)
                                     }
-                                    w.putleb( arm_refua ); w.put8( 13 ); w.putleb( (uint64_t) arm_payloadua ); // script
+                                    w.header( arm_refua, 13 ); w.putleb( (uint64_t) arm_payloadua ); // script
                                     if ( !ScriptSaveBody( w, ids, value.history[elem_i].origin.script ) ) { return false; }
                                     break;
                                 }
@@ -10098,7 +10135,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     const uint64_t arm_refua = ids.ref( 0x77af701956600122ull );
                                     int64_t arm_payloadua = 0;
                                     arm_payloadua += 4; // uint32
-                                    w.putleb( arm_refua ); w.put8( 8 ); w.putleb( (uint64_t) arm_payloadua ); // pid
+                                    w.header( arm_refua, 8 ); w.putleb( (uint64_t) arm_payloadua ); // pid
                                     w.put32( uint32_t( value.history[elem_i].origin.pid ) );
                                     break;
                                 }
@@ -10108,7 +10145,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     int64_t arm_payloadua = 0;
                                     if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return false; } // storage invariant
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
-                                    w.putleb( arm_refua ); w.put8( 12 ); w.putleb( (uint64_t) arm_payloadua ); // note
+                                    w.header( arm_refua, 12 ); w.putleb( (uint64_t) arm_payloadua ); // note
                                     if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return false; } // storage invariant
                                     w.raw( value.history[elem_i].origin.note.value, value.history[elem_i].origin.note.value_length );
                                     break;
@@ -10123,7 +10160,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         const uint64_t arm_refu = ids.ref( 0xe723c21905457682ull );
                         int64_t arm_payloadu = 0;
                         // a payload-free arm: the arm reference, kind 32 and a zero L are the whole of it (§2.6, §3)
-                        w.putleb( arm_refu ); w.put8( 32 ); w.putleb( (uint64_t) arm_payloadu ); // ack
+                        w.header( arm_refu, 32 ); w.putleb( (uint64_t) arm_payloadu ); // ack
                         // a payload-free arm writes nothing under its L (§2.6)
                         break;
                     }
@@ -10149,7 +10186,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             if ( elem_i < 3 ) { elem_cache[ elem_i ] = elem_bytes; }
             body_trace += TableLebBytes( (uint64_t) ( elem_bytes ) ) + ( elem_bytes );
         }
-        w.putleb( ref_trace ); w.put8( 14 ); w.putleb( (uint64_t) body_trace ); // trace
+        w.header( ref_trace, 14 ); w.putleb( (uint64_t) body_trace ); // trace
         w.put8( 13 ); w.putleb( (uint64_t) ( value.trace_count ) );
         for ( int32_t elem_i = 0; elem_i < value.trace_count; elem_i++ )
         {
@@ -10172,7 +10209,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
             if ( !TableEnumRef( ids, value.marks[elem_i], elem_ref ) ) { return false; } // no variant names this value
             body_marks += TableLebBytes( elem_ref );
         }
-        w.putleb( ref_marks ); w.put8( 14 ); w.putleb( (uint64_t) body_marks ); // marks
+        w.header( ref_marks, 14 ); w.putleb( (uint64_t) body_marks ); // marks
         w.put8( 30 ); w.putleb( (uint64_t) ( 2 ) );
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
         {
@@ -12373,12 +12410,12 @@ MESSAGEDEMO_TABLE_INLINE bool CursorSaveBody( TableWriter & w, TableIds & ids, c
 {
     if ( value.line != 0 )
     {
-        w.putleb( ids.ref( 0xbf4ba5ad694f5907ull ) ); w.put8( 8 ); // line
+        w.header( ids.ref( 0xbf4ba5ad694f5907ull ), 8 ); // line
         w.put32( uint32_t( value.line ) );
     }
     if ( value.column != 0 )
     {
-        w.putleb( ids.ref( 0x5f531287628bf287ull ) ); w.put8( 8 ); // column
+        w.header( ids.ref( 0x5f531287628bf287ull ), 8 ); // column
         w.put32( uint32_t( value.column ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -12771,7 +12808,7 @@ MESSAGEDEMO_TABLE_INLINE bool PingSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.nonce != 0 )
     {
-        w.putleb( ids.ref( 0x73a94c71d60dc0d8ull ) ); w.put8( 8 ); // nonce
+        w.header( ids.ref( 0x73a94c71d60dc0d8ull ), 8 ); // nonce
         w.put32( uint32_t( value.nonce ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

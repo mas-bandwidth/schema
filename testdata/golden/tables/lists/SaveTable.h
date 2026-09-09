@@ -348,8 +348,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    LISTDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    LISTDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -370,6 +383,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    LISTDEMO_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -3007,8 +3044,7 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -4297,8 +4333,7 @@ inline bool TableRetainTailSave( TableRetain * retain, TableRetainIds & ids, Tab
         if ( !TableRetainRecordHere( *retain, record, path ) ) { continue; }
         uint64_t ref = 0;
         if ( TableRetainRecordWire( record, ids, ref ) < 0 ) { continue; }
-        w.putleb( ref );
-        w.put8( TableRetainRecordKind( record ) );
+        w.header( ref, TableRetainRecordKind( record ) );
         TableRetainOut s;
         s.in = TableRetainRecordPayload( record );
         s.size = TableRetainRecordPayloadBytes( record );
@@ -4380,8 +4415,7 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -6822,17 +6856,17 @@ LISTDEMO_TABLE_INLINE bool PlacementSaveBody( TableWriter & w, TableIds & ids, c
 {
     if ( value.x != 0.0f )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 10 ); // x
+        w.header( ids.ref( 0xaf63f54c86021707ull ), 10 ); // x
         w.put32( table_float_to_bits( value.x ) );
     }
     if ( value.y != 0.0f )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 10 ); // y
+        w.header( ids.ref( 0xaf63f44c86021554ull ), 10 ); // y
         w.put32( table_float_to_bits( value.y ) );
     }
     if ( value.model != 0 )
     {
-        w.putleb( ids.ref( 0x9de543933e6e703aull ) ); w.put8( 8 ); // model
+        w.header( ids.ref( 0x9de543933e6e703aull ), 8 ); // model
         w.put32( uint32_t( value.model ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7259,7 +7293,7 @@ LISTDEMO_TABLE_INLINE bool LogEntrySaveBody( TableWriter & w, TableIds & ids, co
 {
     if ( value.tick != 0 )
     {
-        w.putleb( ids.ref( 0x1e7683ef2ebc7684ull ) ); w.put8( 8 ); // tick
+        w.header( ids.ref( 0x1e7683ef2ebc7684ull ), 8 ); // tick
         w.put32( uint32_t( value.tick ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7640,7 +7674,7 @@ inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 if ( elem_i_placements < 64 ) { elem_cache_placements[ elem_i_placements ] = elem_bytes_placements; }
                 body_placements += TableLebBytes( (uint64_t) ( elem_bytes_placements ) ) + ( elem_bytes_placements );
             }
-            w.putleb( ref_placements ); w.put8( 14 ); w.putleb( (uint64_t) body_placements ); // placements
+            w.header( ref_placements, 14 ); w.putleb( (uint64_t) body_placements ); // placements
             w.put8( 13 ); w.putleb( (uint64_t) ( cursor_placements.count ) );
             for ( int32_t elem_i_placements = 0; elem_i_placements < cursor_placements.count; elem_i_placements++ )
             {
@@ -7670,7 +7704,7 @@ inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     body_log += TableLebBytes( slot_index_log );
                 }
             }
-            w.putleb( ref_log ); w.put8( 14 ); w.putleb( (uint64_t) body_log ); // log
+            w.header( ref_log, 14 ); w.putleb( (uint64_t) body_log ); // log
             w.put8( 17 ); w.putleb( (uint64_t) ( cursor_log.count ) );
             for ( int32_t elem_i_log = 0; elem_i_log < cursor_log.count; elem_i_log++ )
             {
@@ -7692,7 +7726,7 @@ inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             int64_t body_scores = 0;
             body_scores += 1 + TableLebBytes( (uint64_t) ( cursor_scores.count ) ); // the element kind byte and the count
             body_scores += (int64_t) ( cursor_scores.count ) * 4;
-            w.putleb( ref_scores ); w.put8( 14 ); w.putleb( (uint64_t) body_scores ); // scores
+            w.header( ref_scores, 14 ); w.putleb( (uint64_t) body_scores ); // scores
             w.put8( 4 ); w.putleb( (uint64_t) ( cursor_scores.count ) );
             for ( int32_t elem_i_scores = 0; elem_i_scores < cursor_scores.count; elem_i_scores++ )
             {
@@ -8266,12 +8300,12 @@ LISTDEMO_TABLE_INLINE bool PointSaveBody( TableWriter & w, TableIds & ids, const
 {
     if ( value.x != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 4 ); // x
+        w.header( ids.ref( 0xaf63f54c86021707ull ), 4 ); // x
         w.put32( uint32_t( value.x ) );
     }
     if ( value.y != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 4 ); // y
+        w.header( ids.ref( 0xaf63f44c86021554ull ), 4 ); // y
         w.put32( uint32_t( value.y ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -8783,7 +8817,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 if ( !TableEnumRef( ids, cursor_grades[elem_i_grades], elem_ref_grades ) ) { return false; } // no variant names this value
                 body_grades += TableLebBytes( elem_ref_grades );
             }
-            w.putleb( ref_grades ); w.put8( 14 ); w.putleb( (uint64_t) body_grades ); // grades
+            w.header( ref_grades, 14 ); w.putleb( (uint64_t) body_grades ); // grades
             w.put8( 30 ); w.putleb( (uint64_t) ( cursor_grades.count ) );
             for ( int32_t elem_i_grades = 0; elem_i_grades < cursor_grades.count; elem_i_grades++ )
             {
@@ -8804,7 +8838,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             int64_t body_perms = 0;
             body_perms += 1 + TableLebBytes( (uint64_t) ( cursor_perms.count ) ); // the element kind byte and the count
             body_perms += (int64_t) ( cursor_perms.count ) * 8;
-            w.putleb( ref_perms ); w.put8( 14 ); w.putleb( (uint64_t) body_perms ); // perms
+            w.header( ref_perms, 14 ); w.putleb( (uint64_t) body_perms ); // perms
             w.put8( 9 ); w.putleb( (uint64_t) ( cursor_perms.count ) );
             for ( int32_t elem_i_perms = 0; elem_i_perms < cursor_perms.count; elem_i_perms++ )
             {
@@ -8852,7 +8886,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                     }
                 }
             }
-            w.putleb( ref_hits ); w.put8( 14 ); w.putleb( (uint64_t) body_hits ); // hits
+            w.header( ref_hits, 14 ); w.putleb( (uint64_t) body_hits ); // hits
             w.put8( 15 ); w.putleb( (uint64_t) ( cursor_hits.count ) );
             for ( int32_t elem_i_hits = 0; elem_i_hits < cursor_hits.count; elem_i_hits++ )
             {
@@ -8870,7 +8904,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                                 if ( arm_body_hitsu < 0 ) { return false; }
                                 arm_payload_hitsu += arm_body_hitsu; // the arm's own table body (§3)
                             }
-                            w.putleb( arm_ref_hitsu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload_hitsu ); // point
+                            w.header( arm_ref_hitsu, 13 ); w.putleb( (uint64_t) arm_payload_hitsu ); // point
                             if ( !PointSaveBody( w, ids, cursor_hits[elem_i_hits].point ) ) { return false; }
                             break;
                         }
@@ -8879,7 +8913,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                             const uint64_t arm_ref_hitsu = ids.ref( 0x7f6308be8ab37fc0ull );
                             int64_t arm_payload_hitsu = 0;
                             arm_payload_hitsu += 4; // int32
-                            w.putleb( arm_ref_hitsu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_hitsu ); // damage
+                            w.header( arm_ref_hitsu, 4 ); w.putleb( (uint64_t) arm_payload_hitsu ); // damage
                             w.put32( uint32_t( cursor_hits[elem_i_hits].damage ) );
                             break;
                         }
@@ -8898,7 +8932,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             int64_t body_bounds = 0;
             body_bounds += 1 + TableLebBytes( (uint64_t) ( cursor_bounds.count ) ); // the element kind byte and the count
             body_bounds += (int64_t) ( cursor_bounds.count ) * 4;
-            w.putleb( ref_bounds ); w.put8( 14 ); w.putleb( (uint64_t) body_bounds ); // bounds
+            w.header( ref_bounds, 14 ); w.putleb( (uint64_t) body_bounds ); // bounds
             w.put8( 4 ); w.putleb( (uint64_t) ( cursor_bounds.count ) );
             for ( int32_t elem_i_bounds = 0; elem_i_bounds < cursor_bounds.count; elem_i_bounds++ )
             {
@@ -12416,17 +12450,17 @@ LISTDEMO_TABLE_INLINE bool PlacementSaveBodyRetain( TableWriter & w, TableRetain
 {
     if ( value.x != 0.0f )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 10 ); // x
+        w.header( ids.ref( 0xaf63f54c86021707ull ), 10 ); // x
         w.put32( table_float_to_bits( value.x ) );
     }
     if ( value.y != 0.0f )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 10 ); // y
+        w.header( ids.ref( 0xaf63f44c86021554ull ), 10 ); // y
         w.put32( table_float_to_bits( value.y ) );
     }
     if ( value.model != 0 )
     {
-        w.putleb( ids.ref( 0x9de543933e6e703aull ) ); w.put8( 8 ); // model
+        w.header( ids.ref( 0x9de543933e6e703aull ), 8 ); // model
         w.put32( uint32_t( value.model ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -12680,7 +12714,7 @@ LISTDEMO_TABLE_INLINE bool LogEntrySaveBodyRetain( TableWriter & w, TableRetainI
 {
     if ( value.tick != 0 )
     {
-        w.putleb( ids.ref( 0x1e7683ef2ebc7684ull ) ); w.put8( 8 ); // tick
+        w.header( ids.ref( 0x1e7683ef2ebc7684ull ), 8 ); // tick
         w.put32( uint32_t( value.tick ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -12911,7 +12945,7 @@ inline bool SaveSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 if ( elem_bytes_placements < 0 ) { return false; }
                 body_placements += TableLebBytes( (uint64_t) ( elem_bytes_placements ) ) + ( elem_bytes_placements );
             }
-            w.putleb( ref_placements ); w.put8( 14 ); w.putleb( (uint64_t) body_placements ); // placements
+            w.header( ref_placements, 14 ); w.putleb( (uint64_t) body_placements ); // placements
             w.put8( 13 ); w.putleb( (uint64_t) ( cursor_placements.count ) );
             for ( int32_t elem_i_placements = 0; elem_i_placements < cursor_placements.count; elem_i_placements++ )
             {
@@ -12941,7 +12975,7 @@ inline bool SaveSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     body_log += TableLebBytes( slot_index_log );
                 }
             }
-            w.putleb( ref_log ); w.put8( 14 ); w.putleb( (uint64_t) body_log ); // log
+            w.header( ref_log, 14 ); w.putleb( (uint64_t) body_log ); // log
             w.put8( 17 ); w.putleb( (uint64_t) ( cursor_log.count ) );
             for ( int32_t elem_i_log = 0; elem_i_log < cursor_log.count; elem_i_log++ )
             {
@@ -12963,7 +12997,7 @@ inline bool SaveSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             int64_t body_scores = 0;
             body_scores += 1 + TableLebBytes( (uint64_t) ( cursor_scores.count ) ); // the element kind byte and the count
             body_scores += (int64_t) ( cursor_scores.count ) * 4;
-            w.putleb( ref_scores ); w.put8( 14 ); w.putleb( (uint64_t) body_scores ); // scores
+            w.header( ref_scores, 14 ); w.putleb( (uint64_t) body_scores ); // scores
             w.put8( 4 ); w.putleb( (uint64_t) ( cursor_scores.count ) );
             for ( int32_t elem_i_scores = 0; elem_i_scores < cursor_scores.count; elem_i_scores++ )
             {
@@ -13399,12 +13433,12 @@ LISTDEMO_TABLE_INLINE bool PointSaveBodyRetain( TableWriter & w, TableRetainIds 
 {
     if ( value.x != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 4 ); // x
+        w.header( ids.ref( 0xaf63f54c86021707ull ), 4 ); // x
         w.put32( uint32_t( value.x ) );
     }
     if ( value.y != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 4 ); // y
+        w.header( ids.ref( 0xaf63f44c86021554ull ), 4 ); // y
         w.put32( uint32_t( value.y ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -13761,7 +13795,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 if ( !TableEnumRef( ids, cursor_grades[elem_i_grades], elem_ref_grades ) ) { return false; } // no variant names this value
                 body_grades += TableLebBytes( elem_ref_grades );
             }
-            w.putleb( ref_grades ); w.put8( 14 ); w.putleb( (uint64_t) body_grades ); // grades
+            w.header( ref_grades, 14 ); w.putleb( (uint64_t) body_grades ); // grades
             w.put8( 30 ); w.putleb( (uint64_t) ( cursor_grades.count ) );
             for ( int32_t elem_i_grades = 0; elem_i_grades < cursor_grades.count; elem_i_grades++ )
             {
@@ -13782,7 +13816,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             int64_t body_perms = 0;
             body_perms += 1 + TableLebBytes( (uint64_t) ( cursor_perms.count ) ); // the element kind byte and the count
             body_perms += (int64_t) ( cursor_perms.count ) * 8;
-            w.putleb( ref_perms ); w.put8( 14 ); w.putleb( (uint64_t) body_perms ); // perms
+            w.header( ref_perms, 14 ); w.putleb( (uint64_t) body_perms ); // perms
             w.put8( 9 ); w.putleb( (uint64_t) ( cursor_perms.count ) );
             for ( int32_t elem_i_perms = 0; elem_i_perms < cursor_perms.count; elem_i_perms++ )
             {
@@ -13830,7 +13864,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                     }
                 }
             }
-            w.putleb( ref_hits ); w.put8( 14 ); w.putleb( (uint64_t) body_hits ); // hits
+            w.header( ref_hits, 14 ); w.putleb( (uint64_t) body_hits ); // hits
             w.put8( 15 ); w.putleb( (uint64_t) ( cursor_hits.count ) );
             for ( int32_t elem_i_hits = 0; elem_i_hits < cursor_hits.count; elem_i_hits++ )
             {
@@ -13848,7 +13882,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                                 if ( arm_body_hitsu < 0 ) { return false; }
                                 arm_payload_hitsu += arm_body_hitsu; // the arm's own table body (§3)
                             }
-                            w.putleb( arm_ref_hitsu ); w.put8( 13 ); w.putleb( (uint64_t) arm_payload_hitsu ); // point
+                            w.header( arm_ref_hitsu, 13 ); w.putleb( (uint64_t) arm_payload_hitsu ); // point
                             if ( !PointSaveBodyRetain( w, ids, cursor_hits[elem_i_hits].point, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i_hits ) ), 2, (uint32_t) ( 0 ) ) ) ) { return false; }
                             break;
                         }
@@ -13857,7 +13891,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                             const uint64_t arm_ref_hitsu = ids.ref( 0x7f6308be8ab37fc0ull );
                             int64_t arm_payload_hitsu = 0;
                             arm_payload_hitsu += 4; // int32
-                            w.putleb( arm_ref_hitsu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_hitsu ); // damage
+                            w.header( arm_ref_hitsu, 4 ); w.putleb( (uint64_t) arm_payload_hitsu ); // damage
                             w.put32( uint32_t( cursor_hits[elem_i_hits].damage ) );
                             break;
                         }
@@ -13876,7 +13910,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             int64_t body_bounds = 0;
             body_bounds += 1 + TableLebBytes( (uint64_t) ( cursor_bounds.count ) ); // the element kind byte and the count
             body_bounds += (int64_t) ( cursor_bounds.count ) * 4;
-            w.putleb( ref_bounds ); w.put8( 14 ); w.putleb( (uint64_t) body_bounds ); // bounds
+            w.header( ref_bounds, 14 ); w.putleb( (uint64_t) body_bounds ); // bounds
             w.put8( 4 ); w.putleb( (uint64_t) ( cursor_bounds.count ) );
             for ( int32_t elem_i_bounds = 0; elem_i_bounds < cursor_bounds.count; elem_i_bounds++ )
             {

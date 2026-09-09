@@ -348,8 +348,21 @@ struct TableWriter
                          uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
-    // a 128-bit value as two lanes, the low half first (docs/SPEC-TABLES.md §3)
-    MAPDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi ) { put64( lo ); put64( hi ); }
+    // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
+    // THE SAME SIXTEEN BYTES two put64 wrote, assembled once and handed to raw
+    // once. One capacity test rather than two, and NOT ONE FEWER — raw still
+    // asks before it copies, so an undersized buffer still raises the overflow
+    // flag and Save still answers -1. A pair that does not fit now leaves the
+    // buffer alone rather than writing the low lane first; nothing reads those
+    // bytes, because the caller that overflowed answers -1.
+    MAPDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
+    {
+        uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
+                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+        raw( b, 16 );
+    }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
     // LEB128 (docs/SPEC-TABLES.md §3): seven value bits a byte, the lowest
     // group first, the high bit set on every byte but the last. One value has
@@ -370,6 +383,30 @@ struct TableWriter
         while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
         b[n++] = uint8_t( v );
         raw( b, n );
+    }
+    // A FIELD HEADER IS A REFERENCE AND THE KIND BYTE BEHIND IT
+    // (docs/SPEC-TABLES.md §3), and nearly every one of them is two bytes: a
+    // reference below 128 is a single LEB128 byte, so the pair assembles in a
+    // two-byte stack buffer and goes to raw once. A reference at 128 or above
+    // still goes through putleb then put8 — the same two calls, the same bytes.
+    // Both arms write what the two-call spelling wrote, byte for byte.
+    //
+    // NOTHING IS HOISTED AND NO TEST IS REMOVED: raw still asks before it
+    // copies, so a header that does not fit still raises the overflow flag and
+    // Save still answers -1 — including a capacity that would cut the two-byte
+    // header in half. What differs is only on that failing path: a header that
+    // does not fit now leaves the buffer alone rather than writing the
+    // reference first, and nothing reads those bytes.
+    MAPDEMO_TABLE_INLINE void header( uint64_t ref, uint8_t kind )
+    {
+        if ( ref < 128 )
+        {
+            uint8_t b[2] = { uint8_t( ref ), kind };
+            raw( b, 2 );
+            return;
+        }
+        putleb( ref );
+        put8( kind );
     }
 };
 
@@ -3124,8 +3161,7 @@ inline bool TableNodeTableSave( const Ctx & ctx, TableWriter & w, TableIds & ids
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayload( ctx, ids, n );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload: a reader that cannot name the id skips by L
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -4418,8 +4454,7 @@ inline bool TableRetainTailSave( TableRetain * retain, TableRetainIds & ids, Tab
         if ( !TableRetainRecordHere( *retain, record, path ) ) { continue; }
         uint64_t ref = 0;
         if ( TableRetainRecordWire( record, ids, ref ) < 0 ) { continue; }
-        w.putleb( ref );
-        w.put8( TableRetainRecordKind( record ) );
+        w.header( ref, TableRetainRecordKind( record ) );
         TableRetainOut s;
         s.in = TableRetainRecordPayload( record );
         s.size = TableRetainRecordPayloadBytes( record );
@@ -4501,8 +4536,7 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
     const int64_t payload = TableNodeTablePayloadRetain( ctx, ids, n, retain, measure );
     if ( payload < 0 ) { return false; }
-    w.putleb( ref );
-    w.put8( 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
+    w.header( ref, 12 ); // kind 12 is the opaque byte payload, exactly as the plain save writes it
     w.putleb( (uint64_t) payload );
     w.putleb( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -7608,13 +7642,13 @@ MAPDEMO_TABLE_INLINE bool ShipConfigSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref( 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref( 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
     if ( value.health != 0 )
     {
-        w.putleb( ids.ref( 0x7f69d4b5288ba9cfull ) ); w.put8( 4 ); // health
+        w.header( ids.ref( 0x7f69d4b5288ba9cfull ), 4 ); // health
         w.put32( uint32_t( value.health ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -8015,7 +8049,7 @@ MAPDEMO_TABLE_INLINE bool ItemSaveBody( TableWriter & w, TableIds & ids, const I
 {
     if ( value.count != 0 )
     {
-        w.putleb( ids.ref( 0xb1e5e28e4479a274ull ) ); w.put8( 4 ); // count
+        w.header( ids.ref( 0xb1e5e28e4479a274ull ), 4 ); // count
         w.put32( uint32_t( value.count ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -8348,7 +8382,7 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBody( TableWriter & w, TableIds & i
     if ( value.key_length < 0 || value.key_length > 32 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 12 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
@@ -8359,7 +8393,7 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBody( TableWriter & w, TableIds & i
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
         {
-            w.putleb( ref_value ); w.put8( 13 ); w.putleb( (uint64_t) body_value ); // value
+            w.header( ref_value, 13 ); w.putleb( (uint64_t) body_value ); // value
             if ( !ShipConfigSaveBody( w, ids, value.value ) ) return false;
         }
         else { ids.truncate( mark_value ); }
@@ -8605,7 +8639,7 @@ inline bool FleetByIdEntrySaveBodyFields( const Ctx & ctx, const TableNumbering 
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 8 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 8 ); // key
         w.put32( uint32_t( value.key ) );
     }
     {
@@ -8614,7 +8648,7 @@ inline bool FleetByIdEntrySaveBodyFields( const Ctx & ctx, const TableNumbering 
         {
             uint64_t index_value = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_value, index_value ) ) { return false; }
-            w.putleb( ids.ref( 0x7ce4fd9430e80ceaull ) ); w.put8( 17 ); // value — a NODE INDEX into the flat node table
+            w.header( ids.ref( 0x7ce4fd9430e80ceaull ), 17 ); // value — a NODE INDEX into the flat node table
             w.putleb( index_value );
         }
     }
@@ -8874,7 +8908,7 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBody( TableWriter & w,
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 6 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 6 ); // key
         w.put8( uint8_t( value.key ) );
     }
     {
@@ -8884,7 +8918,7 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBody( TableWriter & w,
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
         {
-            w.putleb( ref_value ); w.put8( 13 ); w.putleb( (uint64_t) body_value ); // value
+            w.header( ref_value, 13 ); w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
         else { ids.truncate( mark_value ); }
@@ -9116,7 +9150,7 @@ inline bool FleetLoadoutsEntrySaveBodyFields( const Ctx & ctx, const TableNumber
     if ( value.key_length < 0 || value.key_length > 16 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 12 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
@@ -9133,7 +9167,7 @@ inline bool FleetLoadoutsEntrySaveBodyFields( const Ctx & ctx, const TableNumber
                 if ( elem_value < 0 ) { TableMapRelease( order_value ); return false; }
                 body_value += TableLebBytes( (uint64_t) ( elem_value ) ) + ( elem_value );
             }
-            w.putleb( ref_value ); w.put8( 14 ); w.putleb( (uint64_t) body_value );
+            w.header( ref_value, 14 ); w.putleb( (uint64_t) body_value );
             w.put8( 13 ); w.putleb( (uint64_t) order_value.count );
             for ( int32_t i = 0; i < order_value.count; i++ )
             {
@@ -9551,7 +9585,7 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBody( TableWriter & w, TableIds & i
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 3 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 3 ); // key
         w.put16( uint16_t( value.key ) );
     }
     {
@@ -9561,7 +9595,7 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBody( TableWriter & w, TableIds & i
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
         {
-            w.putleb( ref_value ); w.put8( 13 ); w.putleb( (uint64_t) body_value ); // value
+            w.header( ref_value, 13 ); w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBody( w, ids, value.value ) ) return false;
         }
         else { ids.truncate( mark_value ); }
@@ -9904,7 +9938,7 @@ inline bool FleetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 if ( elem_ships < 0 ) { TableMapRelease( order_ships ); return false; }
                 body_ships += TableLebBytes( (uint64_t) ( elem_ships ) ) + ( elem_ships );
             }
-            w.putleb( ref_ships ); w.put8( 14 ); w.putleb( (uint64_t) body_ships );
+            w.header( ref_ships, 14 ); w.putleb( (uint64_t) body_ships );
             w.put8( 13 ); w.putleb( (uint64_t) order_ships.count );
             for ( int32_t i = 0; i < order_ships.count; i++ )
             {
@@ -9929,7 +9963,7 @@ inline bool FleetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 if ( elem_by_id < 0 ) { TableMapRelease( order_by_id ); return false; }
                 body_by_id += TableLebBytes( (uint64_t) ( elem_by_id ) ) + ( elem_by_id );
             }
-            w.putleb( ref_by_id ); w.put8( 14 ); w.putleb( (uint64_t) body_by_id );
+            w.header( ref_by_id, 14 ); w.putleb( (uint64_t) body_by_id );
             w.put8( 13 ); w.putleb( (uint64_t) order_by_id.count );
             for ( int32_t i = 0; i < order_by_id.count; i++ )
             {
@@ -9947,7 +9981,7 @@ inline bool FleetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_flagship = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_flagship, index_flagship ) ) { return false; }
-            w.putleb( ids.ref( 0x63dfa0c4a4b3815dull ) ); w.put8( 17 ); // flagship — a NODE INDEX into the flat node table
+            w.header( ids.ref( 0x63dfa0c4a4b3815dull ), 17 ); // flagship — a NODE INDEX into the flat node table
             w.putleb( index_flagship );
         }
     }
@@ -9964,7 +9998,7 @@ inline bool FleetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 if ( elem_loadouts < 0 ) { TableMapRelease( order_loadouts ); return false; }
                 body_loadouts += TableLebBytes( (uint64_t) ( elem_loadouts ) ) + ( elem_loadouts );
             }
-            w.putleb( ref_loadouts ); w.put8( 14 ); w.putleb( (uint64_t) body_loadouts );
+            w.header( ref_loadouts, 14 ); w.putleb( (uint64_t) body_loadouts );
             w.put8( 13 ); w.putleb( (uint64_t) order_loadouts.count );
             for ( int32_t i = 0; i < order_loadouts.count; i++ )
             {
@@ -9989,7 +10023,7 @@ inline bool FleetSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                 if ( elem_tiers < 0 ) { TableMapRelease( order_tiers ); return false; }
                 body_tiers += TableLebBytes( (uint64_t) ( elem_tiers ) ) + ( elem_tiers );
             }
-            w.putleb( ref_tiers ); w.put8( 14 ); w.putleb( (uint64_t) body_tiers );
+            w.header( ref_tiers, 14 ); w.putleb( (uint64_t) body_tiers );
             w.put8( 13 ); w.putleb( (uint64_t) order_tiers.count );
             for ( int32_t i = 0; i < order_tiers.count; i++ )
             {
@@ -13159,13 +13193,13 @@ MAPDEMO_TABLE_INLINE bool ShipConfigSaveBodyRetain( TableWriter & w, TableRetain
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref( 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.header( ids.ref( 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
     if ( value.health != 0 )
     {
-        w.putleb( ids.ref( 0x7f69d4b5288ba9cfull ) ); w.put8( 4 ); // health
+        w.header( ids.ref( 0x7f69d4b5288ba9cfull ), 4 ); // health
         w.put32( uint32_t( value.health ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -13397,7 +13431,7 @@ MAPDEMO_TABLE_INLINE bool ItemSaveBodyRetain( TableWriter & w, TableRetainIds & 
 {
     if ( value.count != 0 )
     {
-        w.putleb( ids.ref( 0xb1e5e28e4479a274ull ) ); w.put8( 4 ); // count
+        w.header( ids.ref( 0xb1e5e28e4479a274ull ), 4 ); // count
         w.put32( uint32_t( value.count ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -13585,7 +13619,7 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBodyRetain( TableWriter & w, TableR
     if ( value.key_length < 0 || value.key_length > 32 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 12 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
@@ -13596,7 +13630,7 @@ MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBodyRetain( TableWriter & w, TableR
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
         {
-            w.putleb( ref_value ); w.put8( 13 ); w.putleb( (uint64_t) body_value ); // value
+            w.header( ref_value, 13 ); w.putleb( (uint64_t) body_value ); // value
             if ( !ShipConfigSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
         else { ids.truncate( mark_value ); }
@@ -13810,7 +13844,7 @@ inline bool FleetByIdEntrySaveBodyFieldsRetain( const Ctx & ctx, const TableNumb
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 8 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 8 ); // key
         w.put32( uint32_t( value.key ) );
     }
     {
@@ -13819,7 +13853,7 @@ inline bool FleetByIdEntrySaveBodyFieldsRetain( const Ctx & ctx, const TableNumb
         {
             uint64_t index_value = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_value, index_value ) ) { return false; }
-            w.putleb( ids.ref( 0x7ce4fd9430e80ceaull ) ); w.put8( 17 ); // value — a NODE INDEX into the flat node table
+            w.header( ids.ref( 0x7ce4fd9430e80ceaull ), 17 ); // value — a NODE INDEX into the flat node table
             w.putleb( index_value );
         }
     }
@@ -14045,7 +14079,7 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBodyRetain( TableWrite
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 6 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 6 ); // key
         w.put8( uint8_t( value.key ) );
     }
     {
@@ -14055,7 +14089,7 @@ MAPDEMO_TABLE_INLINE bool FleetLoadoutsEntryValueEntrySaveBodyRetain( TableWrite
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
         {
-            w.putleb( ref_value ); w.put8( 13 ); w.putleb( (uint64_t) body_value ); // value
+            w.header( ref_value, 13 ); w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
         else { ids.truncate( mark_value ); }
@@ -14261,7 +14295,7 @@ inline bool FleetLoadoutsEntrySaveBodyFieldsRetain( const Ctx & ctx, const Table
     if ( value.key_length < 0 || value.key_length > 16 ) { return false; } // storage invariant
     if ( value.key_length > 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 12 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 12 ); // key
         w.putleb( (uint64_t) value.key_length );
         w.raw( value.key, value.key_length );
     }
@@ -14278,7 +14312,7 @@ inline bool FleetLoadoutsEntrySaveBodyFieldsRetain( const Ctx & ctx, const Table
                 if ( elem_value < 0 ) { TableMapRelease( order_value ); return false; }
                 body_value += TableLebBytes( (uint64_t) ( elem_value ) ) + ( elem_value );
             }
-            w.putleb( ref_value ); w.put8( 14 ); w.putleb( (uint64_t) body_value );
+            w.header( ref_value, 14 ); w.putleb( (uint64_t) body_value );
             w.put8( 13 ); w.putleb( (uint64_t) order_value.count );
             for ( int32_t i = 0; i < order_value.count; i++ )
             {
@@ -14623,7 +14657,7 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBodyRetain( TableWriter & w, TableR
 {
     if ( value.key != 0 )
     {
-        w.putleb( ids.ref( 0x3dc94a19365b10ecull ) ); w.put8( 3 ); // key
+        w.header( ids.ref( 0x3dc94a19365b10ecull ), 3 ); // key
         w.put16( uint16_t( value.key ) );
     }
     {
@@ -14633,7 +14667,7 @@ MAPDEMO_TABLE_INLINE bool FleetTiersEntrySaveBodyRetain( TableWriter & w, TableR
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_value > 1 ) // all-default nested elides
         {
-            w.putleb( ref_value ); w.put8( 13 ); w.putleb( (uint64_t) body_value ); // value
+            w.header( ref_value, 13 ); w.putleb( (uint64_t) body_value ); // value
             if ( !ItemSaveBodyRetain( w, ids, value.value, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) ) ) return false;
         }
         else { ids.truncate( mark_value ); }
@@ -14950,7 +14984,7 @@ inline bool FleetSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 if ( elem_ships < 0 ) { TableMapRelease( order_ships ); return false; }
                 body_ships += TableLebBytes( (uint64_t) ( elem_ships ) ) + ( elem_ships );
             }
-            w.putleb( ref_ships ); w.put8( 14 ); w.putleb( (uint64_t) body_ships );
+            w.header( ref_ships, 14 ); w.putleb( (uint64_t) body_ships );
             w.put8( 13 ); w.putleb( (uint64_t) order_ships.count );
             for ( int32_t i = 0; i < order_ships.count; i++ )
             {
@@ -14975,7 +15009,7 @@ inline bool FleetSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 if ( elem_by_id < 0 ) { TableMapRelease( order_by_id ); return false; }
                 body_by_id += TableLebBytes( (uint64_t) ( elem_by_id ) ) + ( elem_by_id );
             }
-            w.putleb( ref_by_id ); w.put8( 14 ); w.putleb( (uint64_t) body_by_id );
+            w.header( ref_by_id, 14 ); w.putleb( (uint64_t) body_by_id );
             w.put8( 13 ); w.putleb( (uint64_t) order_by_id.count );
             for ( int32_t i = 0; i < order_by_id.count; i++ )
             {
@@ -14993,7 +15027,7 @@ inline bool FleetSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_flagship = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_flagship, index_flagship ) ) { return false; }
-            w.putleb( ids.ref( 0x63dfa0c4a4b3815dull ) ); w.put8( 17 ); // flagship — a NODE INDEX into the flat node table
+            w.header( ids.ref( 0x63dfa0c4a4b3815dull ), 17 ); // flagship — a NODE INDEX into the flat node table
             w.putleb( index_flagship );
         }
     }
@@ -15010,7 +15044,7 @@ inline bool FleetSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 if ( elem_loadouts < 0 ) { TableMapRelease( order_loadouts ); return false; }
                 body_loadouts += TableLebBytes( (uint64_t) ( elem_loadouts ) ) + ( elem_loadouts );
             }
-            w.putleb( ref_loadouts ); w.put8( 14 ); w.putleb( (uint64_t) body_loadouts );
+            w.header( ref_loadouts, 14 ); w.putleb( (uint64_t) body_loadouts );
             w.put8( 13 ); w.putleb( (uint64_t) order_loadouts.count );
             for ( int32_t i = 0; i < order_loadouts.count; i++ )
             {
@@ -15035,7 +15069,7 @@ inline bool FleetSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                 if ( elem_tiers < 0 ) { TableMapRelease( order_tiers ); return false; }
                 body_tiers += TableLebBytes( (uint64_t) ( elem_tiers ) ) + ( elem_tiers );
             }
-            w.putleb( ref_tiers ); w.put8( 14 ); w.putleb( (uint64_t) body_tiers );
+            w.header( ref_tiers, 14 ); w.putleb( (uint64_t) body_tiers );
             w.put8( 13 ); w.putleb( (uint64_t) order_tiers.count );
             for ( int32_t i = 0; i < order_tiers.count; i++ )
             {
