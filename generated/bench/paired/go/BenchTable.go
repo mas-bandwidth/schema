@@ -1899,16 +1899,41 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 	{
 		if value.Weapon != MixedWeaponNone {
 			w.Header(w.Ids.RefAt(52, 0xa0b610205f2c6e01), 30)
-			{
-				id, named := value.Weapon.TableEnumId()
-				if !named {
-					return false
-				}
-				if value.Weapon == MixedWeaponNone {
-					w.PutLeb(0)
-				} else {
-					w.Id(id)
-				}
+			switch value.Weapon {
+			case MixedWeaponNone:
+				w.PutLeb(0)
+			case MixedWeaponFists:
+				w.IdAt(55, 0xa790eee12766cf0c)
+			case MixedWeaponPistol:
+				w.IdAt(51, 0x9fbfefa835da8476)
+			case MixedWeaponShotgun:
+				w.IdAt(8, 0x188bbb1783928a95)
+			case MixedWeaponRifle:
+				w.IdAt(12, 0x2c3667b9c2f272f1)
+			case MixedWeaponSniper:
+				w.IdAt(3, 0x0ca8b41b00d755f6)
+			case MixedWeaponSmg:
+				w.IdAt(45, 0x985fc819fab21a4e)
+			case MixedWeaponRocket:
+				w.IdAt(10, 0x229d0447c3086a55)
+			case MixedWeaponGrenade:
+				w.IdAt(0, 0x011c7b49a7228f9d)
+			case MixedWeaponPlasma:
+				w.IdAt(41, 0x89f7566e1123e15f)
+			case MixedWeaponRailgun:
+				w.IdAt(42, 0x8d7f25318b3b4469)
+			case MixedWeaponFlamer:
+				w.IdAt(69, 0xd9cd0dcc285b7816)
+			case MixedWeaponMine:
+				w.IdAt(2, 0x04dc16aea8ff5276)
+			case MixedWeaponTurret:
+				w.IdAt(17, 0x35e53bc341129217)
+			case MixedWeaponDrone:
+				w.IdAt(13, 0x2cc8282fb0de8831)
+			case MixedWeaponRepair:
+				w.IdAt(9, 0x20bada21bc8cb334)
+			default:
+				return false
 			}
 		}
 	}

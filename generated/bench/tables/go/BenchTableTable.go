@@ -1969,16 +1969,41 @@ func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 	{
 		if value.Weapon != TableWeaponNone {
 			w.Header(w.Ids.RefAt(54, 0xa0b610205f2c6e01), 30)
-			{
-				id, named := value.Weapon.TableEnumId()
-				if !named {
-					return false
-				}
-				if value.Weapon == TableWeaponNone {
-					w.PutLeb(0)
-				} else {
-					w.Id(id)
-				}
+			switch value.Weapon {
+			case TableWeaponNone:
+				w.PutLeb(0)
+			case TableWeaponFists:
+				w.IdAt(57, 0xa790eee12766cf0c)
+			case TableWeaponPistol:
+				w.IdAt(53, 0x9fbfefa835da8476)
+			case TableWeaponShotgun:
+				w.IdAt(8, 0x188bbb1783928a95)
+			case TableWeaponRifle:
+				w.IdAt(13, 0x2c3667b9c2f272f1)
+			case TableWeaponSniper:
+				w.IdAt(3, 0x0ca8b41b00d755f6)
+			case TableWeaponSmg:
+				w.IdAt(48, 0x985fc819fab21a4e)
+			case TableWeaponRocket:
+				w.IdAt(10, 0x229d0447c3086a55)
+			case TableWeaponGrenade:
+				w.IdAt(0, 0x011c7b49a7228f9d)
+			case TableWeaponPlasma:
+				w.IdAt(44, 0x89f7566e1123e15f)
+			case TableWeaponRailgun:
+				w.IdAt(45, 0x8d7f25318b3b4469)
+			case TableWeaponFlamer:
+				w.IdAt(69, 0xd9cd0dcc285b7816)
+			case TableWeaponMine:
+				w.IdAt(2, 0x04dc16aea8ff5276)
+			case TableWeaponTurret:
+				w.IdAt(19, 0x35e53bc341129217)
+			case TableWeaponDrone:
+				w.IdAt(14, 0x2cc8282fb0de8831)
+			case TableWeaponRepair:
+				w.IdAt(9, 0x20bada21bc8cb334)
+			default:
+				return false
 			}
 		}
 	}

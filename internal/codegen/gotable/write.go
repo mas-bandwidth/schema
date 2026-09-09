@@ -366,8 +366,15 @@ func (g *tableGen) emitWireUnion(un *ir.Union, expr, writer, ind string) {
 }
 
 func (g *tableGen) emitWireScalar(f *ir.Field, expr, writer, ind string) {
-	if enumRef(f) != nil {
-		g.pf("%s{ id, named := %s.TableEnumId(); if !named { return false }; if %s == %sNone { %s.PutLeb(0) } else { %s.Id(id) } }\n", ind, expr, expr, f.Type.Name, writer, writer)
+	if e := enumRef(f); e != nil {
+		// Each arm is a compile-time id, so RefAt is one load and one
+		// compare. None is still reference zero and is not interned.
+		g.pf("%sswitch %s {\n%scase %sNone: %s.PutLeb(0)\n", ind, expr, ind, e.Name, writer)
+		for i, v := range e.Variants {
+			id := ir.TableWireId(e.VariantWireName(i))
+			g.pf("%scase %s%s: %s.IdAt(%d, 0x%016x)\n", ind, e.Name, v, writer, g.knownOrdinal(id), id)
+		}
+		g.pf("%sdefault: return false\n%s}\n", ind, ind)
 		return
 	}
 	kind := ir.TableWireScalarKind(f)
