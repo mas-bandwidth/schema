@@ -742,7 +742,32 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		h.WriteString(tableAllocatorRuntime)
 		h.WriteString(tableArenaRuntime(u.Package))
 		if g.fileWire() {
-			h.WriteString(tableBlobRuntime())
+			// THE BYTE BUFFER's runtime, and only where the unit DECLARES one
+			// (docs/SPEC-TABLES.md §2.5, §2.2). Every name in these two blocks
+			// — the blob storage header and its views, the emplace family, the
+			// two reserved type ids and the two node types they key — is
+			// reached from a `*bytes` or a `*string` declaration and from
+			// nowhere else, so a pointered unit that declares neither carried
+			// them and could not reach them.
+			//
+			// THE CENSUS IS ir.BlobPointerFields, A DECLARATION SCAN, and
+			// never ir.PointerReachableBlobs. That one answers a WIRE question
+			// — which reserved node ids a GIVEN ROOT's load can place (§3.1,
+			// §6.5) — with the numbering walk, which is a different piece of
+			// code from the pointer edge walk this emitter writes its call
+			// sites from. A gate on a DEFINITION must not rest on two walks
+			// agreeing: the arms gate's negative controls (schema#565)
+			// sabotage the numbering walk on purpose, and a census taken with
+			// it then withholds a definition the emitter has already written a
+			// call to, so the control dies in the C compiler instead of going
+			// red on the CHECK it names. A declaration scan is a superset of
+			// every walk over the same unit and cannot lose that race.
+			//
+			// The census is UNIT-LEVEL for wirePrimitives' reason: the runtime
+			// sits behind one guard and a translation unit may hold only one of
+			// the package's headers.
+			anyBlob := len(ir.BlobPointerFields(u)) > 0
+			h.WriteString(tableBlobRuntime(anyBlob))
 			if g.anySequence {
 				h.WriteString(tableSequenceRuntime)
 			}
@@ -752,7 +777,11 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 			if g.anyMap {
 				h.WriteString(tableMapRuntime)
 			}
-			h.WriteString(strings.Replace(tableGraphRuntime, "@BLOB_GRAPH@", tableBlobGraphRuntime, 1))
+			blobGraph := ""
+			if anyBlob {
+				blobGraph = tableBlobGraphRuntime
+			}
+			h.WriteString(strings.Replace(tableGraphRuntime, "@BLOB_GRAPH@", blobGraph, 1))
 		}
 	}
 	// the COOKED FORM's read side (docs/SPEC-TABLES.md §7) and the BUILD VERSION
