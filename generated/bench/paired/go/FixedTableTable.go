@@ -54,7 +54,7 @@ func FixedTableMeasureReason(value *FixedTable) (int64, error) {
 func FixedTableSaveBody(w *TableWriter, value *FixedTable) bool {
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.Ref(0x7ce4fd9430e80cea)
+		ref := w.Ids.RefAt(35, 0x7ce4fd9430e80cea)
 		start := w.Ids.Count
 		payload := TableWriter{Measuring: true, Ids: w.Ids}
 		{

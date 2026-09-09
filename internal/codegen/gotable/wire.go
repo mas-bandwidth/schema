@@ -33,6 +33,7 @@ type TableIds struct {
 	Values [tableIdCapacity]uint64
 	chain [tableIdCapacity]int
 	head [tableIdBuckets]int
+	slot [tableIdCapacity]uint32
 	Count int
 	Overflow bool
 }
@@ -50,6 +51,23 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 	return uint64(ids.Count)
 }
 
+// RefAt is Ref for a compile-time-constant id. The ordinal is that id's index
+// in TableWireIds. A hit is one load and one compare; first-use order is
+// still append order. Truncate clears by ordinal so a speculative intern
+// does not leak into the next walk.
+func (ids *TableIds) RefAt(ordinal int, id uint64) uint64 {
+	if uint(ordinal) < uint(len(ids.slot)) {
+		if s := ids.slot[ordinal]; s != 0 {
+			return uint64(s)
+		}
+	}
+	r := ids.Ref(id)
+	if r != 0 && uint(ordinal) < uint(len(ids.slot)) {
+		ids.slot[ordinal] = uint32(r)
+	}
+	return r
+}
+
 // Truncate removes speculative ids when a measured field elides, or before
 // writing the payload whose size was just measured under the same vocabulary.
 func (ids *TableIds) Truncate(mark int) {
@@ -57,6 +75,9 @@ func (ids *TableIds) Truncate(mark int) {
 		ids.Count--
 		id := ids.Values[ids.Count]
 		ids.head[(id ^ id >> 32) & (tableIdBuckets - 1)] = ids.chain[ids.Count]
+	}
+	for i, s := range ids.slot {
+		if int(s) > mark { ids.slot[i] = 0 }
 	}
 }
 
@@ -128,6 +149,7 @@ func (w *TableWriter) PutLeb(v uint64) {
 }
 
 func (w *TableWriter) Id(id uint64) { w.PutLeb(w.Ids.Ref(id)) }
+func (w *TableWriter) IdAt(ordinal int, id uint64) { w.PutLeb(w.Ids.RefAt(ordinal, id)) }
 
 func (w *TableWriter) Trailer() {
 	for i := 0; i < w.Ids.Count; i++ { w.Put64(w.Ids.Values[i]) }
