@@ -403,12 +403,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static LISTDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -427,18 +438,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    LISTDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -3494,6 +3528,19 @@ struct TableRetainIds
         if ( known.overflow ) { overflow = true; return 1; }
         if ( known.count != before ) { known_slot[ (int32_t) k - 1 ] = ++count; }
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
+    }
+
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
     }
 
     // an id from INSIDE a retained record. A retained id takes its entry from
@@ -6804,9 +6851,9 @@ inline bool MixedLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
 inline int64_t PlacementMeasureBody( TableIds & ids, const Placement & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
-    if ( value.y != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
-    if ( value.model != 0 ) { bytes += TableLebBytes( ids.ref( 0x9de543933e6e703aull ) ) + 1 + 4; } // model
+    if ( value.x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
+    if ( value.y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
+    if ( value.model != 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x9de543933e6e703aull ) ) + 1 + 4; } // model
     return bytes;
 }
 
@@ -6822,17 +6869,17 @@ LISTDEMO_TABLE_INLINE bool PlacementSaveBody( TableWriter & w, TableIds & ids, c
 {
     if ( value.x != 0.0f )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 10 ); // x
+        w.putleb( ids.ref_at( 42, 0xaf63f54c86021707ull ) ); w.put8( 10 ); // x
         w.put32( table_float_to_bits( value.x ) );
     }
     if ( value.y != 0.0f )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 10 ); // y
+        w.putleb( ids.ref_at( 41, 0xaf63f44c86021554ull ) ); w.put8( 10 ); // y
         w.put32( table_float_to_bits( value.y ) );
     }
     if ( value.model != 0 )
     {
-        w.putleb( ids.ref( 0x9de543933e6e703aull ) ); w.put8( 8 ); // model
+        w.putleb( ids.ref_at( 35, 0x9de543933e6e703aull ) ); w.put8( 8 ); // model
         w.put32( uint32_t( value.model ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7243,7 +7290,7 @@ inline bool PlacementLoadMessages( Placement * values, int64_t * count, const Ta
 inline int64_t LogEntryMeasureBody( TableIds & ids, const LogEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tick != 0 ) { bytes += TableLebBytes( ids.ref( 0x1e7683ef2ebc7684ull ) ) + 1 + 4; } // tick
+    if ( value.tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ) ) + 1 + 4; } // tick
     return bytes;
 }
 
@@ -7259,7 +7306,7 @@ LISTDEMO_TABLE_INLINE bool LogEntrySaveBody( TableWriter & w, TableIds & ids, co
 {
     if ( value.tick != 0 )
     {
-        w.putleb( ids.ref( 0x1e7683ef2ebc7684ull ) ); w.put8( 8 ); // tick
+        w.putleb( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ) ); w.put8( 8 ); // tick
         w.put32( uint32_t( value.tick ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -7569,7 +7616,7 @@ inline int64_t SaveMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_placements.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_placements.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_placements = ids.ref( 0xd24733aa574d4b09ull );
+            const uint64_t ref_placements = ids.ref_at( 51, 0xd24733aa574d4b09ull );
             int64_t body_placements = 0;
             body_placements += 1 + TableLebBytes( (uint64_t) ( cursor_placements.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_placements = 0; elem_i_placements < cursor_placements.count; elem_i_placements++ )
@@ -7587,7 +7634,7 @@ inline int64_t SaveMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_log.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_log.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_log = ids.ref( 0x125073191daf5431ull );
+            const uint64_t ref_log = ids.ref_at( 4, 0x125073191daf5431ull );
             int64_t body_log = 0;
             body_log += 1 + TableLebBytes( (uint64_t) ( cursor_log.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_log = 0; elem_i_log < cursor_log.count; elem_i_log++ )
@@ -7608,7 +7655,7 @@ inline int64_t SaveMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_scores.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_scores.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_scores = ids.ref( 0x01986b0b27400fb2ull );
+            const uint64_t ref_scores = ids.ref_at( 0, 0x01986b0b27400fb2ull );
             int64_t body_scores = 0;
             body_scores += 1 + TableLebBytes( (uint64_t) ( cursor_scores.count ) ); // the element kind byte and the count
             body_scores += (int64_t) ( cursor_scores.count ) * 4;
@@ -7626,7 +7673,7 @@ inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_placements.ok ) { return false; }
         if ( cursor_placements.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_placements = ids.ref( 0xd24733aa574d4b09ull );
+            const uint64_t ref_placements = ids.ref_at( 51, 0xd24733aa574d4b09ull );
             int64_t body_placements = 0;
             // placements: the sizing loop's per-element lengths, kept for the write loop
             // below — the element's own length prefix is the number the parent's
@@ -7658,7 +7705,7 @@ inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_log.ok ) { return false; }
         if ( cursor_log.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_log = ids.ref( 0x125073191daf5431ull );
+            const uint64_t ref_log = ids.ref_at( 4, 0x125073191daf5431ull );
             int64_t body_log = 0;
             body_log += 1 + TableLebBytes( (uint64_t) ( cursor_log.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_log = 0; elem_i_log < cursor_log.count; elem_i_log++ )
@@ -7688,7 +7735,7 @@ inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_scores.ok ) { return false; }
         if ( cursor_scores.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_scores = ids.ref( 0x01986b0b27400fb2ull );
+            const uint64_t ref_scores = ids.ref_at( 0, 0x01986b0b27400fb2ull );
             int64_t body_scores = 0;
             body_scores += 1 + TableLebBytes( (uint64_t) ( cursor_scores.count ) ); // the element kind byte and the count
             body_scores += (int64_t) ( cursor_scores.count ) * 4;
@@ -8249,8 +8296,8 @@ inline bool SaveLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
 inline int64_t PointMeasureBody( TableIds & ids, const Point & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
-    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
+    if ( value.x != 0 ) { bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
+    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
     return bytes;
 }
 
@@ -8266,12 +8313,12 @@ LISTDEMO_TABLE_INLINE bool PointSaveBody( TableWriter & w, TableIds & ids, const
 {
     if ( value.x != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 4 ); // x
+        w.putleb( ids.ref_at( 42, 0xaf63f54c86021707ull ) ); w.put8( 4 ); // x
         w.put32( uint32_t( value.x ) );
     }
     if ( value.y != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 4 ); // y
+        w.putleb( ids.ref_at( 41, 0xaf63f44c86021554ull ) ); w.put8( 4 ); // y
         w.put32( uint32_t( value.y ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -8680,7 +8727,7 @@ inline int64_t MixedMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_grades.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_grades.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_grades = ids.ref( 0xd90a4e7682f799c5ull );
+            const uint64_t ref_grades = ids.ref_at( 53, 0xd90a4e7682f799c5ull );
             int64_t body_grades = 0;
             body_grades += 1 + TableLebBytes( (uint64_t) ( cursor_grades.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_grades = 0; elem_i_grades < cursor_grades.count; elem_i_grades++ )
@@ -8698,7 +8745,7 @@ inline int64_t MixedMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_perms.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_perms.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_perms = ids.ref( 0x4af2ed8470862ea8ull );
+            const uint64_t ref_perms = ids.ref_at( 18, 0x4af2ed8470862ea8ull );
             int64_t body_perms = 0;
             body_perms += 1 + TableLebBytes( (uint64_t) ( cursor_perms.count ) ); // the element kind byte and the count
             body_perms += (int64_t) ( cursor_perms.count ) * 8;
@@ -8711,7 +8758,7 @@ inline int64_t MixedMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_hits.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_hits.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_hits = ids.ref( 0x732dfbcc9b0cf0bbull );
+            const uint64_t ref_hits = ids.ref_at( 25, 0x732dfbcc9b0cf0bbull );
             int64_t body_hits = 0;
             body_hits += 1 + TableLebBytes( (uint64_t) ( cursor_hits.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_hits = 0; elem_i_hits < cursor_hits.count; elem_i_hits++ )
@@ -8725,7 +8772,7 @@ inline int64_t MixedMeasureBody( const Ctx & ctx, const TableNumbering & numberi
                         case HitType::Point:
                         {
                             int64_t arm_payload_hitsu = 0;
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x73feab3544c345b1ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 26, 0x73feab3544c345b1ull );
                             {
                                 const int64_t arm_body_hitsu = PointMeasureBody( ids, cursor_hits[elem_i_hits].point );
                                 if ( arm_body_hitsu < 0 ) { return -1; }
@@ -8737,7 +8784,7 @@ inline int64_t MixedMeasureBody( const Ctx & ctx, const TableNumbering & numberi
                         case HitType::Damage:
                         {
                             int64_t arm_payload_hitsu = 0;
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x7f6308be8ab37fc0ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 29, 0x7f6308be8ab37fc0ull );
                             arm_payload_hitsu += 4; // int32
                             body_hits += TableLebBytes( arm_ref_hitsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_hitsu ) ) + ( arm_payload_hitsu );
                             break;
@@ -8755,7 +8802,7 @@ inline int64_t MixedMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_bounds.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_bounds.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_bounds = ids.ref( 0x52f60c4caef0b768ull );
+            const uint64_t ref_bounds = ids.ref_at( 20, 0x52f60c4caef0b768ull );
             int64_t body_bounds = 0;
             body_bounds += 1 + TableLebBytes( (uint64_t) ( cursor_bounds.count ) ); // the element kind byte and the count
             body_bounds += (int64_t) ( cursor_bounds.count ) * 4;
@@ -8774,7 +8821,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_grades.ok ) { return false; }
         if ( cursor_grades.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_grades = ids.ref( 0xd90a4e7682f799c5ull );
+            const uint64_t ref_grades = ids.ref_at( 53, 0xd90a4e7682f799c5ull );
             int64_t body_grades = 0;
             body_grades += 1 + TableLebBytes( (uint64_t) ( cursor_grades.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_grades = 0; elem_i_grades < cursor_grades.count; elem_i_grades++ )
@@ -8800,7 +8847,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_perms.ok ) { return false; }
         if ( cursor_perms.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_perms = ids.ref( 0x4af2ed8470862ea8ull );
+            const uint64_t ref_perms = ids.ref_at( 18, 0x4af2ed8470862ea8ull );
             int64_t body_perms = 0;
             body_perms += 1 + TableLebBytes( (uint64_t) ( cursor_perms.count ) ); // the element kind byte and the count
             body_perms += (int64_t) ( cursor_perms.count ) * 8;
@@ -8817,7 +8864,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_hits.ok ) { return false; }
         if ( cursor_hits.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_hits = ids.ref( 0x732dfbcc9b0cf0bbull );
+            const uint64_t ref_hits = ids.ref_at( 25, 0x732dfbcc9b0cf0bbull );
             int64_t body_hits = 0;
             body_hits += 1 + TableLebBytes( (uint64_t) ( cursor_hits.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_hits = 0; elem_i_hits < cursor_hits.count; elem_i_hits++ )
@@ -8831,7 +8878,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                         case HitType::Point:
                         {
                             int64_t arm_payload_hitsu = 0;
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x73feab3544c345b1ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 26, 0x73feab3544c345b1ull );
                             {
                                 const int64_t arm_body_hitsu = PointMeasureBody( ids, cursor_hits[elem_i_hits].point );
                                 if ( arm_body_hitsu < 0 ) { return -1; }
@@ -8843,7 +8890,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                         case HitType::Damage:
                         {
                             int64_t arm_payload_hitsu = 0;
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x7f6308be8ab37fc0ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 29, 0x7f6308be8ab37fc0ull );
                             arm_payload_hitsu += 4; // int32
                             body_hits += TableLebBytes( arm_ref_hitsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_hitsu ) ) + ( arm_payload_hitsu );
                             break;
@@ -8863,7 +8910,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                     {
                         case HitType::Point:
                         {
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x73feab3544c345b1ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 26, 0x73feab3544c345b1ull );
                             int64_t arm_payload_hitsu = 0;
                             {
                                 const int64_t arm_body_hitsu = PointMeasureBody( ids, cursor_hits[elem_i_hits].point );
@@ -8876,7 +8923,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                         }
                         case HitType::Damage:
                         {
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x7f6308be8ab37fc0ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 29, 0x7f6308be8ab37fc0ull );
                             int64_t arm_payload_hitsu = 0;
                             arm_payload_hitsu += 4; // int32
                             w.putleb( arm_ref_hitsu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_hitsu ); // damage
@@ -8894,7 +8941,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_bounds.ok ) { return false; }
         if ( cursor_bounds.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_bounds = ids.ref( 0x52f60c4caef0b768ull );
+            const uint64_t ref_bounds = ids.ref_at( 20, 0x52f60c4caef0b768ull );
             int64_t body_bounds = 0;
             body_bounds += 1 + TableLebBytes( (uint64_t) ( cursor_bounds.count ) ); // the element kind byte and the count
             body_bounds += (int64_t) ( cursor_bounds.count ) * 4;
@@ -12405,9 +12452,9 @@ inline bool MixedLoadBuilder( MixedBuilder & builder, const uint8_t * wire_file,
 inline int64_t PlacementMeasureBodyRetain( TableRetainIds & ids, const Placement & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
-    if ( value.y != 0.0f ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
-    if ( value.model != 0 ) { bytes += TableLebBytes( ids.ref( 0x9de543933e6e703aull ) ) + 1 + 4; } // model
+    if ( value.x != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
+    if ( value.y != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
+    if ( value.model != 0 ) { bytes += TableLebBytes( ids.ref_at( 35, 0x9de543933e6e703aull ) ) + 1 + 4; } // model
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -12416,17 +12463,17 @@ LISTDEMO_TABLE_INLINE bool PlacementSaveBodyRetain( TableWriter & w, TableRetain
 {
     if ( value.x != 0.0f )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 10 ); // x
+        w.putleb( ids.ref_at( 42, 0xaf63f54c86021707ull ) ); w.put8( 10 ); // x
         w.put32( table_float_to_bits( value.x ) );
     }
     if ( value.y != 0.0f )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 10 ); // y
+        w.putleb( ids.ref_at( 41, 0xaf63f44c86021554ull ) ); w.put8( 10 ); // y
         w.put32( table_float_to_bits( value.y ) );
     }
     if ( value.model != 0 )
     {
-        w.putleb( ids.ref( 0x9de543933e6e703aull ) ); w.put8( 8 ); // model
+        w.putleb( ids.ref_at( 35, 0x9de543933e6e703aull ) ); w.put8( 8 ); // model
         w.put32( uint32_t( value.model ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -12671,7 +12718,7 @@ inline bool PlacementLoadMessageBodyRetain( TableBitReader & r, const TableVocab
 inline int64_t LogEntryMeasureBodyRetain( TableRetainIds & ids, const LogEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.tick != 0 ) { bytes += TableLebBytes( ids.ref( 0x1e7683ef2ebc7684ull ) ) + 1 + 4; } // tick
+    if ( value.tick != 0 ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ) ) + 1 + 4; } // tick
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -12680,7 +12727,7 @@ LISTDEMO_TABLE_INLINE bool LogEntrySaveBodyRetain( TableWriter & w, TableRetainI
 {
     if ( value.tick != 0 )
     {
-        w.putleb( ids.ref( 0x1e7683ef2ebc7684ull ) ); w.put8( 8 ); // tick
+        w.putleb( ids.ref_at( 7, 0x1e7683ef2ebc7684ull ) ); w.put8( 8 ); // tick
         w.put32( uint32_t( value.tick ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -12844,7 +12891,7 @@ inline int64_t SaveMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_placements.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_placements.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_placements = ids.ref( 0xd24733aa574d4b09ull );
+            const uint64_t ref_placements = ids.ref_at( 51, 0xd24733aa574d4b09ull );
             int64_t body_placements = 0;
             body_placements += 1 + TableLebBytes( (uint64_t) ( cursor_placements.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_placements = 0; elem_i_placements < cursor_placements.count; elem_i_placements++ )
@@ -12862,7 +12909,7 @@ inline int64_t SaveMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_log.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_log.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_log = ids.ref( 0x125073191daf5431ull );
+            const uint64_t ref_log = ids.ref_at( 4, 0x125073191daf5431ull );
             int64_t body_log = 0;
             body_log += 1 + TableLebBytes( (uint64_t) ( cursor_log.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_log = 0; elem_i_log < cursor_log.count; elem_i_log++ )
@@ -12883,7 +12930,7 @@ inline int64_t SaveMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_scores.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_scores.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_scores = ids.ref( 0x01986b0b27400fb2ull );
+            const uint64_t ref_scores = ids.ref_at( 0, 0x01986b0b27400fb2ull );
             int64_t body_scores = 0;
             body_scores += 1 + TableLebBytes( (uint64_t) ( cursor_scores.count ) ); // the element kind byte and the count
             body_scores += (int64_t) ( cursor_scores.count ) * 4;
@@ -12902,7 +12949,7 @@ inline bool SaveSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_placements.ok ) { return false; }
         if ( cursor_placements.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_placements = ids.ref( 0xd24733aa574d4b09ull );
+            const uint64_t ref_placements = ids.ref_at( 51, 0xd24733aa574d4b09ull );
             int64_t body_placements = 0;
             body_placements += 1 + TableLebBytes( (uint64_t) ( cursor_placements.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_placements = 0; elem_i_placements < cursor_placements.count; elem_i_placements++ )
@@ -12929,7 +12976,7 @@ inline bool SaveSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_log.ok ) { return false; }
         if ( cursor_log.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_log = ids.ref( 0x125073191daf5431ull );
+            const uint64_t ref_log = ids.ref_at( 4, 0x125073191daf5431ull );
             int64_t body_log = 0;
             body_log += 1 + TableLebBytes( (uint64_t) ( cursor_log.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_log = 0; elem_i_log < cursor_log.count; elem_i_log++ )
@@ -12959,7 +13006,7 @@ inline bool SaveSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_scores.ok ) { return false; }
         if ( cursor_scores.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_scores = ids.ref( 0x01986b0b27400fb2ull );
+            const uint64_t ref_scores = ids.ref_at( 0, 0x01986b0b27400fb2ull );
             int64_t body_scores = 0;
             body_scores += 1 + TableLebBytes( (uint64_t) ( cursor_scores.count ) ); // the element kind byte and the count
             body_scores += (int64_t) ( cursor_scores.count ) * 4;
@@ -13389,8 +13436,8 @@ inline bool SaveLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
 inline int64_t PointMeasureBodyRetain( TableRetainIds & ids, const Point & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
-    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref( 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
+    if ( value.x != 0 ) { bytes += TableLebBytes( ids.ref_at( 42, 0xaf63f54c86021707ull ) ) + 1 + 4; } // x
+    if ( value.y != 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0xaf63f44c86021554ull ) ) + 1 + 4; } // y
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -13399,12 +13446,12 @@ LISTDEMO_TABLE_INLINE bool PointSaveBodyRetain( TableWriter & w, TableRetainIds 
 {
     if ( value.x != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f54c86021707ull ) ); w.put8( 4 ); // x
+        w.putleb( ids.ref_at( 42, 0xaf63f54c86021707ull ) ); w.put8( 4 ); // x
         w.put32( uint32_t( value.x ) );
     }
     if ( value.y != 0 )
     {
-        w.putleb( ids.ref( 0xaf63f44c86021554ull ) ); w.put8( 4 ); // y
+        w.putleb( ids.ref_at( 41, 0xaf63f44c86021554ull ) ); w.put8( 4 ); // y
         w.put32( uint32_t( value.y ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -13657,7 +13704,7 @@ inline int64_t MixedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_grades.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_grades.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_grades = ids.ref( 0xd90a4e7682f799c5ull );
+            const uint64_t ref_grades = ids.ref_at( 53, 0xd90a4e7682f799c5ull );
             int64_t body_grades = 0;
             body_grades += 1 + TableLebBytes( (uint64_t) ( cursor_grades.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_grades = 0; elem_i_grades < cursor_grades.count; elem_i_grades++ )
@@ -13675,7 +13722,7 @@ inline int64_t MixedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_perms.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_perms.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_perms = ids.ref( 0x4af2ed8470862ea8ull );
+            const uint64_t ref_perms = ids.ref_at( 18, 0x4af2ed8470862ea8ull );
             int64_t body_perms = 0;
             body_perms += 1 + TableLebBytes( (uint64_t) ( cursor_perms.count ) ); // the element kind byte and the count
             body_perms += (int64_t) ( cursor_perms.count ) * 8;
@@ -13688,7 +13735,7 @@ inline int64_t MixedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_hits.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_hits.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_hits = ids.ref( 0x732dfbcc9b0cf0bbull );
+            const uint64_t ref_hits = ids.ref_at( 25, 0x732dfbcc9b0cf0bbull );
             int64_t body_hits = 0;
             body_hits += 1 + TableLebBytes( (uint64_t) ( cursor_hits.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_hits = 0; elem_i_hits < cursor_hits.count; elem_i_hits++ )
@@ -13702,7 +13749,7 @@ inline int64_t MixedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
                         case HitType::Point:
                         {
                             int64_t arm_payload_hitsu = 0;
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x73feab3544c345b1ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 26, 0x73feab3544c345b1ull );
                             {
                                 const int64_t arm_body_hitsu = PointMeasureBodyRetain( ids, cursor_hits[elem_i_hits].point, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i_hits ) ), 2, (uint32_t) ( 0 ) ) );
                                 if ( arm_body_hitsu < 0 ) { return -1; }
@@ -13714,7 +13761,7 @@ inline int64_t MixedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
                         case HitType::Damage:
                         {
                             int64_t arm_payload_hitsu = 0;
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x7f6308be8ab37fc0ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 29, 0x7f6308be8ab37fc0ull );
                             arm_payload_hitsu += 4; // int32
                             body_hits += TableLebBytes( arm_ref_hitsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_hitsu ) ) + ( arm_payload_hitsu );
                             break;
@@ -13732,7 +13779,7 @@ inline int64_t MixedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_bounds.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_bounds.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_bounds = ids.ref( 0x52f60c4caef0b768ull );
+            const uint64_t ref_bounds = ids.ref_at( 20, 0x52f60c4caef0b768ull );
             int64_t body_bounds = 0;
             body_bounds += 1 + TableLebBytes( (uint64_t) ( cursor_bounds.count ) ); // the element kind byte and the count
             body_bounds += (int64_t) ( cursor_bounds.count ) * 4;
@@ -13752,7 +13799,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_grades.ok ) { return false; }
         if ( cursor_grades.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_grades = ids.ref( 0xd90a4e7682f799c5ull );
+            const uint64_t ref_grades = ids.ref_at( 53, 0xd90a4e7682f799c5ull );
             int64_t body_grades = 0;
             body_grades += 1 + TableLebBytes( (uint64_t) ( cursor_grades.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_grades = 0; elem_i_grades < cursor_grades.count; elem_i_grades++ )
@@ -13778,7 +13825,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_perms.ok ) { return false; }
         if ( cursor_perms.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_perms = ids.ref( 0x4af2ed8470862ea8ull );
+            const uint64_t ref_perms = ids.ref_at( 18, 0x4af2ed8470862ea8ull );
             int64_t body_perms = 0;
             body_perms += 1 + TableLebBytes( (uint64_t) ( cursor_perms.count ) ); // the element kind byte and the count
             body_perms += (int64_t) ( cursor_perms.count ) * 8;
@@ -13795,7 +13842,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_hits.ok ) { return false; }
         if ( cursor_hits.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_hits = ids.ref( 0x732dfbcc9b0cf0bbull );
+            const uint64_t ref_hits = ids.ref_at( 25, 0x732dfbcc9b0cf0bbull );
             int64_t body_hits = 0;
             body_hits += 1 + TableLebBytes( (uint64_t) ( cursor_hits.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_hits = 0; elem_i_hits < cursor_hits.count; elem_i_hits++ )
@@ -13809,7 +13856,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                         case HitType::Point:
                         {
                             int64_t arm_payload_hitsu = 0;
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x73feab3544c345b1ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 26, 0x73feab3544c345b1ull );
                             {
                                 const int64_t arm_body_hitsu = PointMeasureBodyRetain( ids, cursor_hits[elem_i_hits].point, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i_hits ) ), 2, (uint32_t) ( 0 ) ) );
                                 if ( arm_body_hitsu < 0 ) { return -1; }
@@ -13821,7 +13868,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                         case HitType::Damage:
                         {
                             int64_t arm_payload_hitsu = 0;
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x7f6308be8ab37fc0ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 29, 0x7f6308be8ab37fc0ull );
                             arm_payload_hitsu += 4; // int32
                             body_hits += TableLebBytes( arm_ref_hitsu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_hitsu ) ) + ( arm_payload_hitsu );
                             break;
@@ -13841,7 +13888,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                     {
                         case HitType::Point:
                         {
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x73feab3544c345b1ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 26, 0x73feab3544c345b1ull );
                             int64_t arm_payload_hitsu = 0;
                             {
                                 const int64_t arm_body_hitsu = PointMeasureBodyRetain( ids, cursor_hits[elem_i_hits].point, retain, TableRetainStepInto( TableRetainStepInto( path, 2, (uint32_t) ( elem_i_hits ) ), 2, (uint32_t) ( 0 ) ) );
@@ -13854,7 +13901,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                         }
                         case HitType::Damage:
                         {
-                            const uint64_t arm_ref_hitsu = ids.ref( 0x7f6308be8ab37fc0ull );
+                            const uint64_t arm_ref_hitsu = ids.ref_at( 29, 0x7f6308be8ab37fc0ull );
                             int64_t arm_payload_hitsu = 0;
                             arm_payload_hitsu += 4; // int32
                             w.putleb( arm_ref_hitsu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_hitsu ); // damage
@@ -13872,7 +13919,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_bounds.ok ) { return false; }
         if ( cursor_bounds.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_bounds = ids.ref( 0x52f60c4caef0b768ull );
+            const uint64_t ref_bounds = ids.ref_at( 20, 0x52f60c4caef0b768ull );
             int64_t body_bounds = 0;
             body_bounds += 1 + TableLebBytes( (uint64_t) ( cursor_bounds.count ) ); // the element kind byte and the count
             body_bounds += (int64_t) ( cursor_bounds.count ) * 4;

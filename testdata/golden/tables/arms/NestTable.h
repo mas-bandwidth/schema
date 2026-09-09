@@ -404,12 +404,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static ARMDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -428,18 +439,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    ARMDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -3460,6 +3494,19 @@ struct TableRetainIds
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
     }
 
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
+    }
+
     // an id from INSIDE a retained record. A retained id takes its entry from
     // the caller's list, and one past the capacity sets lost: the record is
     // dropped, nothing else about the save changes, and the save is never
@@ -5912,14 +5959,14 @@ inline int64_t TwigMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.inner.type != InnerType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0x2d4c068f5f889287ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 4, 0x2d4c068f5f889287ull ) ) + 1;
         switch ( value.inner.type )
         {
             case InnerType::None: break;
             case InnerType::Leaf:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x24ad84ada20208d5ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                 {
                     const int64_t arm_body = LeafMeasureBody( ctx, numbering, ids, value.inner.leaf );
                     if ( arm_body < 0 ) { return -1; }
@@ -5931,7 +5978,7 @@ inline int64_t TwigMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             case InnerType::Plain:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -5947,12 +5994,12 @@ inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     if ( value.inner.type != InnerType::None )
     {
-        w.putleb( ids.ref( 0x2d4c068f5f889287ull ) ); w.put8( 15 ); // inner
+        w.putleb( ids.ref_at( 4, 0x2d4c068f5f889287ull ) ); w.put8( 15 ); // inner
         switch ( value.inner.type )
         {
             case InnerType::Leaf:
             {
-                const uint64_t arm_ref = ids.ref( 0x24ad84ada20208d5ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = LeafMeasureBody( ctx, numbering, ids, value.inner.leaf );
@@ -5965,7 +6012,7 @@ inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
             case InnerType::Plain:
             {
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
@@ -6340,14 +6387,14 @@ inline int64_t NestMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.outer.type != OuterType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0x30e6ed678f5e1bd4ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 6, 0x30e6ed678f5e1bd4ull ) ) + 1;
         switch ( value.outer.type )
         {
             case OuterType::None: break;
             case OuterType::Inner:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x2d4c068f5f889287ull );
+                const uint64_t arm_ref = ids.ref_at( 4, 0x2d4c068f5f889287ull );
                 if ( value.outer.inner.type == InnerType::None ) { arm_payload += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                 else
                 {
@@ -6357,7 +6404,7 @@ inline int64_t NestMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                         case InnerType::Leaf:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_refa = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_bodya = LeafMeasureBody( ctx, numbering, ids, value.outer.inner.leaf );
                                 if ( arm_bodya < 0 ) { return -1; }
@@ -6369,7 +6416,7 @@ inline int64_t NestMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                         case InnerType::Plain:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_refa = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             arm_payloada += 4; // int32
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -6383,7 +6430,7 @@ inline int64_t NestMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             case OuterType::Plain:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -6397,7 +6444,7 @@ inline int64_t NestMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_tail.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_tail.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_tail = ids.ref( 0xd94c56ef0798d723ull );
+            const uint64_t ref_tail = ids.ref_at( 27, 0xd94c56ef0798d723ull );
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
@@ -6412,12 +6459,12 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     if ( value.outer.type != OuterType::None )
     {
-        w.putleb( ids.ref( 0x30e6ed678f5e1bd4ull ) ); w.put8( 15 ); // outer
+        w.putleb( ids.ref_at( 6, 0x30e6ed678f5e1bd4ull ) ); w.put8( 15 ); // outer
         switch ( value.outer.type )
         {
             case OuterType::Inner:
             {
-                const uint64_t arm_ref = ids.ref( 0x2d4c068f5f889287ull );
+                const uint64_t arm_ref = ids.ref_at( 4, 0x2d4c068f5f889287ull );
                 int64_t arm_payload = 0;
                 if ( value.outer.inner.type == InnerType::None ) { arm_payload += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                 else
@@ -6428,7 +6475,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         case InnerType::Leaf:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_refa = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_bodya = LeafMeasureBody( ctx, numbering, ids, value.outer.inner.leaf );
                                 if ( arm_bodya < 0 ) { return -1; }
@@ -6440,7 +6487,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         case InnerType::Plain:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_refa = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             arm_payloada += 4; // int32
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -6456,7 +6503,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     {
                         case InnerType::Leaf:
                         {
-                            const uint64_t arm_refa = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_refa = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             int64_t arm_payloada = 0;
                             {
                                 const int64_t arm_bodya = LeafMeasureBody( ctx, numbering, ids, value.outer.inner.leaf );
@@ -6469,7 +6516,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                         }
                         case InnerType::Plain:
                         {
-                            const uint64_t arm_refa = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_refa = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // int32
                             w.putleb( arm_refa ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloada ); // plain
@@ -6483,7 +6530,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
             case OuterType::Plain:
             {
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
@@ -6498,7 +6545,7 @@ inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_tail.ok ) { return false; }
         if ( cursor_tail.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_tail = ids.ref( 0xd94c56ef0798d723ull );
+            const uint64_t ref_tail = ids.ref_at( 27, 0xd94c56ef0798d723ull );
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
@@ -9482,14 +9529,14 @@ inline int64_t TwigMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.inner.type != InnerType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0x2d4c068f5f889287ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 4, 0x2d4c068f5f889287ull ) ) + 1;
         switch ( value.inner.type )
         {
             case InnerType::None: break;
             case InnerType::Leaf:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x24ad84ada20208d5ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                 {
                     const int64_t arm_body = LeafMeasureBodyRetain( ctx, numbering, ids, value.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
                     if ( arm_body < 0 ) { return -1; }
@@ -9501,7 +9548,7 @@ inline int64_t TwigMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             case InnerType::Plain:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -9518,12 +9565,12 @@ inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     if ( value.inner.type != InnerType::None )
     {
-        w.putleb( ids.ref( 0x2d4c068f5f889287ull ) ); w.put8( 15 ); // inner
+        w.putleb( ids.ref_at( 4, 0x2d4c068f5f889287ull ) ); w.put8( 15 ); // inner
         switch ( value.inner.type )
         {
             case InnerType::Leaf:
             {
-                const uint64_t arm_ref = ids.ref( 0x24ad84ada20208d5ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = LeafMeasureBodyRetain( ctx, numbering, ids, value.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
@@ -9536,7 +9583,7 @@ inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
             case InnerType::Plain:
             {
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
@@ -9831,14 +9878,14 @@ inline int64_t NestMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.outer.type != OuterType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0x30e6ed678f5e1bd4ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 6, 0x30e6ed678f5e1bd4ull ) ) + 1;
         switch ( value.outer.type )
         {
             case OuterType::None: break;
             case OuterType::Inner:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x2d4c068f5f889287ull );
+                const uint64_t arm_ref = ids.ref_at( 4, 0x2d4c068f5f889287ull );
                 if ( value.outer.inner.type == InnerType::None ) { arm_payload += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                 else
                 {
@@ -9848,7 +9895,7 @@ inline int64_t NestMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
                         case InnerType::Leaf:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_refa = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_bodya = LeafMeasureBodyRetain( ctx, numbering, ids, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
                                 if ( arm_bodya < 0 ) { return -1; }
@@ -9860,7 +9907,7 @@ inline int64_t NestMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
                         case InnerType::Plain:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_refa = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             arm_payloada += 4; // int32
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -9874,7 +9921,7 @@ inline int64_t NestMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             case OuterType::Plain:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -9888,7 +9935,7 @@ inline int64_t NestMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_tail.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_tail.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_tail = ids.ref( 0xd94c56ef0798d723ull );
+            const uint64_t ref_tail = ids.ref_at( 27, 0xd94c56ef0798d723ull );
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
@@ -9904,12 +9951,12 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     if ( value.outer.type != OuterType::None )
     {
-        w.putleb( ids.ref( 0x30e6ed678f5e1bd4ull ) ); w.put8( 15 ); // outer
+        w.putleb( ids.ref_at( 6, 0x30e6ed678f5e1bd4ull ) ); w.put8( 15 ); // outer
         switch ( value.outer.type )
         {
             case OuterType::Inner:
             {
-                const uint64_t arm_ref = ids.ref( 0x2d4c068f5f889287ull );
+                const uint64_t arm_ref = ids.ref_at( 4, 0x2d4c068f5f889287ull );
                 int64_t arm_payload = 0;
                 if ( value.outer.inner.type == InnerType::None ) { arm_payload += 1; } // the inner union's None: L = 1 and that one zero byte (§3)
                 else
@@ -9920,7 +9967,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         case InnerType::Leaf:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_refa = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_bodya = LeafMeasureBodyRetain( ctx, numbering, ids, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
                                 if ( arm_bodya < 0 ) { return -1; }
@@ -9932,7 +9979,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         case InnerType::Plain:
                         {
                             int64_t arm_payloada = 0;
-                            const uint64_t arm_refa = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_refa = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             arm_payloada += 4; // int32
                             arm_payload += TableLebBytes( arm_refa ) + 1 + TableLebBytes( (uint64_t) ( arm_payloada ) ) + ( arm_payloada );
                             break;
@@ -9948,7 +9995,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     {
                         case InnerType::Leaf:
                         {
-                            const uint64_t arm_refa = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_refa = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             int64_t arm_payloada = 0;
                             {
                                 const int64_t arm_bodya = LeafMeasureBodyRetain( ctx, numbering, ids, value.outer.inner.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
@@ -9961,7 +10008,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                         }
                         case InnerType::Plain:
                         {
-                            const uint64_t arm_refa = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_refa = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // int32
                             w.putleb( arm_refa ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloada ); // plain
@@ -9975,7 +10022,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
             case OuterType::Plain:
             {
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
@@ -9990,7 +10037,7 @@ inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_tail.ok ) { return false; }
         if ( cursor_tail.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_tail = ids.ref( 0xd94c56ef0798d723ull );
+            const uint64_t ref_tail = ids.ref_at( 27, 0xd94c56ef0798d723ull );
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;

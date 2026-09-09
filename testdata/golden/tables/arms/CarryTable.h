@@ -403,12 +403,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static ARMDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -427,18 +438,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    ARMDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -3459,6 +3493,19 @@ struct TableRetainIds
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
     }
 
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
+    }
+
     // an id from INSIDE a retained record. A retained id takes its entry from
     // the caller's list, and one past the capacity sets lost: the record is
     // dropped, nothing else about the save changes, and the save is never
@@ -5950,7 +5997,7 @@ inline int64_t LeafMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_items.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
+            const uint64_t ref_items = ids.ref_at( 9, 0x3e7884bf4f412c6full );
             int64_t body_items = 0;
             body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
             body_items += (int64_t) ( cursor_items.count ) * 4;
@@ -5969,7 +6016,7 @@ inline bool LeafSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         if ( !cursor_items.ok ) { return false; }
         if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
+            const uint64_t ref_items = ids.ref_at( 9, 0x3e7884bf4f412c6full );
             int64_t body_items = 0;
             body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
             body_items += (int64_t) ( cursor_items.count ) * 4;
@@ -6275,14 +6322,14 @@ inline int64_t HolderMeasureBody( const Ctx & ctx, const TableNumbering & number
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.carry.type != CarryType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0xafcd9a3b099f8ef0ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 23, 0xafcd9a3b099f8ef0ull ) ) + 1;
         switch ( value.carry.type )
         {
             case CarryType::None: break;
             case CarryType::Leaf:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x24ad84ada20208d5ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                 {
                     const int64_t arm_body = LeafMeasureBody( ctx, numbering, ids, value.carry.leaf );
                     if ( arm_body < 0 ) { return -1; }
@@ -6294,7 +6341,7 @@ inline int64_t HolderMeasureBody( const Ctx & ctx, const TableNumbering & number
             case CarryType::Plain:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -6308,7 +6355,7 @@ inline int64_t HolderMeasureBody( const Ctx & ctx, const TableNumbering & number
         if ( !cursor_tail.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_tail.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_tail = ids.ref( 0xd94c56ef0798d723ull );
+            const uint64_t ref_tail = ids.ref_at( 27, 0xd94c56ef0798d723ull );
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
@@ -6323,12 +6370,12 @@ inline bool HolderSaveBodyFields( const Ctx & ctx, const TableNumbering & number
 {
     if ( value.carry.type != CarryType::None )
     {
-        w.putleb( ids.ref( 0xafcd9a3b099f8ef0ull ) ); w.put8( 15 ); // carry
+        w.putleb( ids.ref_at( 23, 0xafcd9a3b099f8ef0ull ) ); w.put8( 15 ); // carry
         switch ( value.carry.type )
         {
             case CarryType::Leaf:
             {
-                const uint64_t arm_ref = ids.ref( 0x24ad84ada20208d5ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = LeafMeasureBody( ctx, numbering, ids, value.carry.leaf );
@@ -6341,7 +6388,7 @@ inline bool HolderSaveBodyFields( const Ctx & ctx, const TableNumbering & number
             }
             case CarryType::Plain:
             {
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
@@ -6356,7 +6403,7 @@ inline bool HolderSaveBodyFields( const Ctx & ctx, const TableNumbering & number
         if ( !cursor_tail.ok ) { return false; }
         if ( cursor_tail.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_tail = ids.ref( 0xd94c56ef0798d723ull );
+            const uint64_t ref_tail = ids.ref_at( 27, 0xd94c56ef0798d723ull );
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
@@ -6899,7 +6946,7 @@ inline int64_t HandMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
     if ( value.entries_count > 0 )
     {
-        const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+        const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
         body_entries += 1 + TableLebBytes( (uint64_t) ( value.entries_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entries_count; elem_i++ )
@@ -6913,7 +6960,7 @@ inline int64_t HandMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                     case CarryType::Leaf:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x24ad84ada20208d5ull );
+                        const uint64_t arm_refu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                         {
                             const int64_t arm_bodyu = LeafMeasureBody( ctx, numbering, ids, value.entries[elem_i].leaf );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -6925,7 +6972,7 @@ inline int64_t HandMeasureBody( const Ctx & ctx, const TableNumbering & numberin
                     case CarryType::Plain:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        const uint64_t arm_refu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                         arm_payloadu += 4; // int32
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -6936,7 +6983,7 @@ inline int64_t HandMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         }
         bytes += TableLebBytes( ref_entries ) + 1 + TableLebBytes( (uint64_t) ( body_entries ) ) + ( body_entries ); // entries
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -6946,7 +6993,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
     if ( value.entries_count > 0 )
     {
-        const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+        const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
         body_entries += 1 + TableLebBytes( (uint64_t) ( value.entries_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entries_count; elem_i++ )
@@ -6960,7 +7007,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     case CarryType::Leaf:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x24ad84ada20208d5ull );
+                        const uint64_t arm_refu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                         {
                             const int64_t arm_bodyu = LeafMeasureBody( ctx, numbering, ids, value.entries[elem_i].leaf );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -6972,7 +7019,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     case CarryType::Plain:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        const uint64_t arm_refu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                         arm_payloadu += 4; // int32
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -6992,7 +7039,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                 {
                     case CarryType::Leaf:
                     {
-                        const uint64_t arm_refu = ids.ref( 0x24ad84ada20208d5ull );
+                        const uint64_t arm_refu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                         int64_t arm_payloadu = 0;
                         {
                             const int64_t arm_bodyu = LeafMeasureBody( ctx, numbering, ids, value.entries[elem_i].leaf );
@@ -7005,7 +7052,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
                     }
                     case CarryType::Plain:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        const uint64_t arm_refu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 4; // int32
                         w.putleb( arm_refu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloadu ); // plain
@@ -7019,7 +7066,7 @@ inline bool HandSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -7546,7 +7593,7 @@ inline int64_t ChainMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_links.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_links.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_links = ids.ref( 0x5cc201a9f1b8274eull );
+            const uint64_t ref_links = ids.ref_at( 11, 0x5cc201a9f1b8274eull );
             int64_t body_links = 0;
             body_links += 1 + TableLebBytes( (uint64_t) ( cursor_links.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_links = 0; elem_i_links < cursor_links.count; elem_i_links++ )
@@ -7560,7 +7607,7 @@ inline int64_t ChainMeasureBody( const Ctx & ctx, const TableNumbering & numberi
                         case CarryType::Leaf:
                         {
                             int64_t arm_payload_linksu = 0;
-                            const uint64_t arm_ref_linksu = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_body_linksu = LeafMeasureBody( ctx, numbering, ids, cursor_links[elem_i_links].leaf );
                                 if ( arm_body_linksu < 0 ) { return -1; }
@@ -7572,7 +7619,7 @@ inline int64_t ChainMeasureBody( const Ctx & ctx, const TableNumbering & numberi
                         case CarryType::Plain:
                         {
                             int64_t arm_payload_linksu = 0;
-                            const uint64_t arm_ref_linksu = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             arm_payload_linksu += 4; // int32
                             body_links += TableLebBytes( arm_ref_linksu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_linksu ) ) + ( arm_payload_linksu );
                             break;
@@ -7584,7 +7631,7 @@ inline int64_t ChainMeasureBody( const Ctx & ctx, const TableNumbering & numberi
             bytes += TableLebBytes( ref_links ) + 1 + TableLebBytes( (uint64_t) ( body_links ) ) + ( body_links );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     return bytes;
 }
 
@@ -7596,7 +7643,7 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         if ( !cursor_links.ok ) { return false; }
         if ( cursor_links.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_links = ids.ref( 0x5cc201a9f1b8274eull );
+            const uint64_t ref_links = ids.ref_at( 11, 0x5cc201a9f1b8274eull );
             int64_t body_links = 0;
             body_links += 1 + TableLebBytes( (uint64_t) ( cursor_links.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_links = 0; elem_i_links < cursor_links.count; elem_i_links++ )
@@ -7610,7 +7657,7 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                         case CarryType::Leaf:
                         {
                             int64_t arm_payload_linksu = 0;
-                            const uint64_t arm_ref_linksu = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_body_linksu = LeafMeasureBody( ctx, numbering, ids, cursor_links[elem_i_links].leaf );
                                 if ( arm_body_linksu < 0 ) { return -1; }
@@ -7622,7 +7669,7 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                         case CarryType::Plain:
                         {
                             int64_t arm_payload_linksu = 0;
-                            const uint64_t arm_ref_linksu = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             arm_payload_linksu += 4; // int32
                             body_links += TableLebBytes( arm_ref_linksu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_linksu ) ) + ( arm_payload_linksu );
                             break;
@@ -7642,7 +7689,7 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                     {
                         case CarryType::Leaf:
                         {
-                            const uint64_t arm_ref_linksu = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             int64_t arm_payload_linksu = 0;
                             {
                                 const int64_t arm_body_linksu = LeafMeasureBody( ctx, numbering, ids, cursor_links[elem_i_links].leaf );
@@ -7655,7 +7702,7 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
                         }
                         case CarryType::Plain:
                         {
-                            const uint64_t arm_ref_linksu = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             int64_t arm_payload_linksu = 0;
                             arm_payload_linksu += 4; // int32
                             w.putleb( arm_ref_linksu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_linksu ); // plain
@@ -7670,7 +7717,7 @@ inline bool ChainSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     return !w.overflow;
@@ -12627,7 +12674,7 @@ inline int64_t LeafMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_items.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
+            const uint64_t ref_items = ids.ref_at( 9, 0x3e7884bf4f412c6full );
             int64_t body_items = 0;
             body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
             body_items += (int64_t) ( cursor_items.count ) * 4;
@@ -12647,7 +12694,7 @@ inline bool LeafSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
         if ( !cursor_items.ok ) { return false; }
         if ( cursor_items.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_items = ids.ref( 0x3e7884bf4f412c6full );
+            const uint64_t ref_items = ids.ref_at( 9, 0x3e7884bf4f412c6full );
             int64_t body_items = 0;
             body_items += 1 + TableLebBytes( (uint64_t) ( cursor_items.count ) ); // the element kind byte and the count
             body_items += (int64_t) ( cursor_items.count ) * 4;
@@ -12896,14 +12943,14 @@ inline int64_t HolderMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.carry.type != CarryType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0xafcd9a3b099f8ef0ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 23, 0xafcd9a3b099f8ef0ull ) ) + 1;
         switch ( value.carry.type )
         {
             case CarryType::None: break;
             case CarryType::Leaf:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x24ad84ada20208d5ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                 {
                     const int64_t arm_body = LeafMeasureBodyRetain( ctx, numbering, ids, value.carry.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
                     if ( arm_body < 0 ) { return -1; }
@@ -12915,7 +12962,7 @@ inline int64_t HolderMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
             case CarryType::Plain:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 arm_payload += 4; // int32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -12929,7 +12976,7 @@ inline int64_t HolderMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
         if ( !cursor_tail.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_tail.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_tail = ids.ref( 0xd94c56ef0798d723ull );
+            const uint64_t ref_tail = ids.ref_at( 27, 0xd94c56ef0798d723ull );
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
@@ -12945,12 +12992,12 @@ inline bool HolderSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
 {
     if ( value.carry.type != CarryType::None )
     {
-        w.putleb( ids.ref( 0xafcd9a3b099f8ef0ull ) ); w.put8( 15 ); // carry
+        w.putleb( ids.ref_at( 23, 0xafcd9a3b099f8ef0ull ) ); w.put8( 15 ); // carry
         switch ( value.carry.type )
         {
             case CarryType::Leaf:
             {
-                const uint64_t arm_ref = ids.ref( 0x24ad84ada20208d5ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = LeafMeasureBodyRetain( ctx, numbering, ids, value.carry.leaf, retain, TableRetainStepInto( path, 0, (uint32_t) ( 0 ) ) );
@@ -12963,7 +13010,7 @@ inline bool HolderSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
             }
             case CarryType::Plain:
             {
-                const uint64_t arm_ref = ids.ref( 0xfd4d194e1652b207ull );
+                const uint64_t arm_ref = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.putleb( arm_ref ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload ); // plain
@@ -12978,7 +13025,7 @@ inline bool HolderSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
         if ( !cursor_tail.ok ) { return false; }
         if ( cursor_tail.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_tail = ids.ref( 0xd94c56ef0798d723ull );
+            const uint64_t ref_tail = ids.ref_at( 27, 0xd94c56ef0798d723ull );
             int64_t body_tail = 0;
             body_tail += 1 + TableLebBytes( (uint64_t) ( cursor_tail.count ) ); // the element kind byte and the count
             body_tail += (int64_t) ( cursor_tail.count ) * 4;
@@ -13405,7 +13452,7 @@ inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
     if ( value.entries_count > 0 )
     {
-        const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+        const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
         body_entries += 1 + TableLebBytes( (uint64_t) ( value.entries_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entries_count; elem_i++ )
@@ -13419,7 +13466,7 @@ inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
                     case CarryType::Leaf:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x24ad84ada20208d5ull );
+                        const uint64_t arm_refu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                         {
                             const int64_t arm_bodyu = LeafMeasureBodyRetain( ctx, numbering, ids, value.entries[elem_i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -13431,7 +13478,7 @@ inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
                     case CarryType::Plain:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        const uint64_t arm_refu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                         arm_payloadu += 4; // int32
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -13442,7 +13489,7 @@ inline int64_t HandMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         }
         bytes += TableLebBytes( ref_entries ) + 1 + TableLebBytes( (uint64_t) ( body_entries ) ) + ( body_entries ); // entries
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -13453,7 +13500,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
     if ( value.entries_count > 0 )
     {
-        const uint64_t ref_entries = ids.ref( 0xc5b2a72c0845a253ull );
+        const uint64_t ref_entries = ids.ref_at( 26, 0xc5b2a72c0845a253ull );
         int64_t body_entries = 0;
         body_entries += 1 + TableLebBytes( (uint64_t) ( value.entries_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.entries_count; elem_i++ )
@@ -13467,7 +13514,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     case CarryType::Leaf:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0x24ad84ada20208d5ull );
+                        const uint64_t arm_refu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                         {
                             const int64_t arm_bodyu = LeafMeasureBodyRetain( ctx, numbering, ids, value.entries[elem_i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) );
                             if ( arm_bodyu < 0 ) { return -1; }
@@ -13479,7 +13526,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     case CarryType::Plain:
                     {
                         int64_t arm_payloadu = 0;
-                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        const uint64_t arm_refu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                         arm_payloadu += 4; // int32
                         body_entries += TableLebBytes( arm_refu ) + 1 + TableLebBytes( (uint64_t) ( arm_payloadu ) ) + ( arm_payloadu );
                         break;
@@ -13499,7 +13546,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                 {
                     case CarryType::Leaf:
                     {
-                        const uint64_t arm_refu = ids.ref( 0x24ad84ada20208d5ull );
+                        const uint64_t arm_refu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                         int64_t arm_payloadu = 0;
                         {
                             const int64_t arm_bodyu = LeafMeasureBodyRetain( ctx, numbering, ids, value.entries[elem_i].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i ) ), 0, (uint32_t) ( 0 ) ) );
@@ -13512,7 +13559,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
                     }
                     case CarryType::Plain:
                     {
-                        const uint64_t arm_refu = ids.ref( 0xfd4d194e1652b207ull );
+                        const uint64_t arm_refu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 4; // int32
                         w.putleb( arm_refu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payloadu ); // plain
@@ -13526,7 +13573,7 @@ inline bool HandSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -13940,7 +13987,7 @@ inline int64_t ChainMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_links.ok ) { return -1; } // the slot and the head disagree
         if ( cursor_links.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_links = ids.ref( 0x5cc201a9f1b8274eull );
+            const uint64_t ref_links = ids.ref_at( 11, 0x5cc201a9f1b8274eull );
             int64_t body_links = 0;
             body_links += 1 + TableLebBytes( (uint64_t) ( cursor_links.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_links = 0; elem_i_links < cursor_links.count; elem_i_links++ )
@@ -13954,7 +14001,7 @@ inline int64_t ChainMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
                         case CarryType::Leaf:
                         {
                             int64_t arm_payload_linksu = 0;
-                            const uint64_t arm_ref_linksu = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_body_linksu = LeafMeasureBodyRetain( ctx, numbering, ids, cursor_links[elem_i_links].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i_links ) ), 0, (uint32_t) ( 0 ) ) );
                                 if ( arm_body_linksu < 0 ) { return -1; }
@@ -13966,7 +14013,7 @@ inline int64_t ChainMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
                         case CarryType::Plain:
                         {
                             int64_t arm_payload_linksu = 0;
-                            const uint64_t arm_ref_linksu = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             arm_payload_linksu += 4; // int32
                             body_links += TableLebBytes( arm_ref_linksu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_linksu ) ) + ( arm_payload_linksu );
                             break;
@@ -13978,7 +14025,7 @@ inline int64_t ChainMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
             bytes += TableLebBytes( ref_links ) + 1 + TableLebBytes( (uint64_t) ( body_links ) ) + ( body_links );
         }
     }
-    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref( 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
+    if ( value.after != 0 ) { bytes += TableLebBytes( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ) + 1 + 4; } // after
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -13991,7 +14038,7 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         if ( !cursor_links.ok ) { return false; }
         if ( cursor_links.count > 0 ) // an EMPTY list elides, the by-value rule (§3)
         {
-            const uint64_t ref_links = ids.ref( 0x5cc201a9f1b8274eull );
+            const uint64_t ref_links = ids.ref_at( 11, 0x5cc201a9f1b8274eull );
             int64_t body_links = 0;
             body_links += 1 + TableLebBytes( (uint64_t) ( cursor_links.count ) ); // the element kind byte and the count
             for ( int32_t elem_i_links = 0; elem_i_links < cursor_links.count; elem_i_links++ )
@@ -14005,7 +14052,7 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                         case CarryType::Leaf:
                         {
                             int64_t arm_payload_linksu = 0;
-                            const uint64_t arm_ref_linksu = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             {
                                 const int64_t arm_body_linksu = LeafMeasureBodyRetain( ctx, numbering, ids, cursor_links[elem_i_links].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i_links ) ), 0, (uint32_t) ( 0 ) ) );
                                 if ( arm_body_linksu < 0 ) { return -1; }
@@ -14017,7 +14064,7 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                         case CarryType::Plain:
                         {
                             int64_t arm_payload_linksu = 0;
-                            const uint64_t arm_ref_linksu = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             arm_payload_linksu += 4; // int32
                             body_links += TableLebBytes( arm_ref_linksu ) + 1 + TableLebBytes( (uint64_t) ( arm_payload_linksu ) ) + ( arm_payload_linksu );
                             break;
@@ -14037,7 +14084,7 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                     {
                         case CarryType::Leaf:
                         {
-                            const uint64_t arm_ref_linksu = ids.ref( 0x24ad84ada20208d5ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 3, 0x24ad84ada20208d5ull );
                             int64_t arm_payload_linksu = 0;
                             {
                                 const int64_t arm_body_linksu = LeafMeasureBodyRetain( ctx, numbering, ids, cursor_links[elem_i_links].leaf, retain, TableRetainStepInto( TableRetainStepInto( path, 0, (uint32_t) ( elem_i_links ) ), 0, (uint32_t) ( 0 ) ) );
@@ -14050,7 +14097,7 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
                         }
                         case CarryType::Plain:
                         {
-                            const uint64_t arm_ref_linksu = ids.ref( 0xfd4d194e1652b207ull );
+                            const uint64_t arm_ref_linksu = ids.ref_at( 30, 0xfd4d194e1652b207ull );
                             int64_t arm_payload_linksu = 0;
                             arm_payload_linksu += 4; // int32
                             w.putleb( arm_ref_linksu ); w.put8( 4 ); w.putleb( (uint64_t) arm_payload_linksu ); // plain
@@ -14065,7 +14112,7 @@ inline bool ChainSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     }
     if ( value.after != 0 )
     {
-        w.putleb( ids.ref( 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
+        w.putleb( ids.ref_at( 25, 0xbf82010f6f71eae9ull ) ); w.put8( 4 ); // after
         w.put32( uint32_t( value.after ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

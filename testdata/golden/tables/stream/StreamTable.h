@@ -378,12 +378,23 @@ struct TableIds
     uint64_t ids[ kCapacity ];
     int32_t chain[ kCapacity ];
     int32_t head[ kBuckets ];
+    // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
+    // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
+    // the unit's id vocabulary, the same ascending set kCapacity counts. slot
+    // holds the ENTRY that ordinal's id took, -1 for one not interned yet, and
+    // ordinal_of is its inverse over the entries — the ordinal an entry was
+    // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
+    // The pair is what lets truncate undo the cache in O(popped) rather than
+    // walking the whole vocabulary.
+    int32_t slot[ kCapacity ];
+    int16_t ordinal_of[ kCapacity ];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; }
     }
 
     static STREAMDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -402,18 +413,41 @@ struct TableIds
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
         if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; head[b] = count; count++;
+        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
         return uint64_t( count );
     }
 
+    // ref FOR AN ID THE EMITTER KNEW, which is every id a generated field
+    // header, union arm header or blob header names. A REPEAT answers from
+    // slot[ordinal]; a MISS falls through to ref, so THE APPEND STILL HAPPENS
+    // ONLY THERE and first-use order — which is the trailer's order — is the
+    // order it always was. An id reached through both this and ref carries the
+    // ordinal from here, so truncate can always undo the cache.
+    STREAMDEMO_TABLE_INLINE uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        const int32_t at = slot[ordinal];
+        if ( at >= 0 ) { return uint64_t( at ) + 1; }
+        const uint64_t r = ref( id );
+        // AN OVERFLOWED TABLE RECORDS NOTHING: ref appended no entry and
+        // answered 1, which is not this id's reference (§3).
+        if ( overflow ) { return r; }
+        slot[ordinal] = int32_t( r ) - 1;
+        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        return r;
+    }
+
     // undo every entry appended since mark. An entry removed is the most
-    // recent one in its bucket, so it sits at that bucket's head.
+    // recent one in its bucket, so it sits at that bucket's head — and its
+    // ORDINAL SLOT goes with it, or a later ref_at would answer with an entry
+    // this call just popped.
     void truncate( int32_t mark )
     {
         while ( count > mark )
         {
             count--;
             head[ bucket_of( ids[count] ) ] = chain[count];
+            const int32_t o = ordinal_of[count];
+            if ( o >= 0 ) { slot[o] = -1; }
         }
     }
 };
@@ -3371,6 +3405,19 @@ struct TableRetainIds
         return (uint64_t) known_slot[ (int32_t) k - 1 ];
     }
 
+    // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
+    // cache stops at the store below: known.ref_at would cache known's own
+    // index, and what a caller here needs is the MERGED slot, which moves with
+    // the caller's list as well. The retain family therefore keeps ref's exact
+    // path — same walk, same first-use order, same overflow rule — and the
+    // ordinal is accepted and ignored so ONE emitted codec serves both
+    // families (docs/SPEC-TABLES.md §6.6).
+    uint64_t ref_at( int32_t ordinal, uint64_t id )
+    {
+        (void) ordinal;
+        return ref( id );
+    }
+
     // an id from INSIDE a retained record. A retained id takes its entry from
     // the caller's list, and one past the capacity sets lost: the record is
     // dropped, nothing else about the save changes, and the save is never
@@ -5249,7 +5296,7 @@ inline int64_t HeaderMeasureBody( TableIds & ids, const Header & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
-    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     return bytes;
 }
 
@@ -5266,7 +5313,7 @@ STREAMDEMO_TABLE_INLINE bool HeaderSaveBody( TableWriter & w, TableIds & ids, co
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref( 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.putleb( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -5571,7 +5618,7 @@ inline int64_t ChunkMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
-        bytes += TableLebBytes( ids.ref( 0x855b556730a34a05ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_data ) ) + ( body_data ); // data
+        bytes += TableLebBytes( ids.ref_at( 11, 0x855b556730a34a05ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_data ) ) + ( body_data ); // data
     }
     {
         const Chunk * pointee_next = ChunkAt( ctx, value.next ); // *Chunk
@@ -5584,13 +5631,13 @@ inline int64_t ChunkMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_next = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_next, index_next ) ) { return -1; }
-            bytes += TableLebBytes( ids.ref( 0xe5316cbaa025f028ull ) ) + 1 + TableLebBytes( index_next );
+            bytes += TableLebBytes( ids.ref_at( 16, 0xe5316cbaa025f028ull ) ) + 1 + TableLebBytes( index_next );
         }
     }
     if ( value.links_count < 0 || value.links_count > 2 ) { return -1; } // storage invariant
     if ( value.links_count > 0 )
     {
-        const uint64_t ref_links = ids.ref( 0x5cc201a9f1b8274eull );
+        const uint64_t ref_links = ids.ref_at( 8, 0x5cc201a9f1b8274eull );
         int64_t body_links = 0;
         body_links += 1 + TableLebBytes( (uint64_t) ( value.links_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.links_count; elem_i++ )
@@ -5614,7 +5661,7 @@ inline bool ChunkSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
-        w.putleb( ids.ref( 0x855b556730a34a05ull ) ); w.put8( 14 ); // data
+        w.putleb( ids.ref_at( 11, 0x855b556730a34a05ull ) ); w.put8( 14 ); // data
         w.putleb( (uint64_t) body_data );
         w.put8( 6 ); w.putleb( (uint64_t) value.data_length );
         w.raw( value.data, value.data_length );
@@ -5625,14 +5672,14 @@ inline bool ChunkSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         {
             uint64_t index_next = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_next, index_next ) ) { return false; }
-            w.putleb( ids.ref( 0xe5316cbaa025f028ull ) ); w.put8( 17 ); // next — a NODE INDEX into the flat node table
+            w.putleb( ids.ref_at( 16, 0xe5316cbaa025f028ull ) ); w.put8( 17 ); // next — a NODE INDEX into the flat node table
             w.putleb( index_next );
         }
     }
     if ( value.links_count < 0 || value.links_count > 2 ) { return false; } // storage invariant
     if ( value.links_count > 0 )
     {
-        const uint64_t ref_links = ids.ref( 0x5cc201a9f1b8274eull );
+        const uint64_t ref_links = ids.ref_at( 8, 0x5cc201a9f1b8274eull );
         int64_t body_links = 0;
         body_links += 1 + TableLebBytes( (uint64_t) ( value.links_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.links_count; elem_i++ )
@@ -6027,17 +6074,17 @@ template <typename Ctx>
 inline int64_t FeedMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Feed & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.id != 0 ) { bytes += TableLebBytes( ids.ref( 0x08b72e07b55c3ac0ull ) ) + 1 + 4; } // id
+    if ( value.id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x08b72e07b55c3ac0ull ) ) + 1 + 4; } // id
     if ( value.frame.type != FrameType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0xd8d4335628b35226ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 15, 0xd8d4335628b35226ull ) ) + 1;
         switch ( value.frame.type )
         {
             case FrameType::None: break;
             case FrameType::Header:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x3a506cb501761960ull );
+                const uint64_t arm_ref = ids.ref_at( 5, 0x3a506cb501761960ull );
                 {
                     const int64_t arm_body = HeaderMeasureBody( ids, value.frame.header );
                     if ( arm_body < 0 ) { return -1; }
@@ -6049,7 +6096,7 @@ inline int64_t FeedMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             case FrameType::Chunk:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x0f838176873c8e22ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x0f838176873c8e22ull );
                 {
                     const int64_t arm_body = ChunkMeasureBody( ctx, numbering, ids, value.frame.chunk );
                     if ( arm_body < 0 ) { return -1; }
@@ -6061,7 +6108,7 @@ inline int64_t FeedMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             case FrameType::Link:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xbf4b9bad694f4809ull );
+                const uint64_t arm_ref = ids.ref_at( 12, 0xbf4b9bad694f4809ull );
                 {
                     const Chunk * arm_pointee = ChunkAt( ctx, value.frame.link );
                     uint64_t arm_index = 0;
@@ -6074,7 +6121,7 @@ inline int64_t FeedMeasureBody( const Ctx & ctx, const TableNumbering & numberin
             case FrameType::Tag:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x56d7ab194448a4f3ull );
+                const uint64_t arm_ref = ids.ref_at( 7, 0x56d7ab194448a4f3ull );
                 arm_payload += 4; // uint32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -6085,7 +6132,7 @@ inline int64_t FeedMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     if ( value.parts_count < 0 || value.parts_count > 4 ) { return -1; } // storage invariant
     if ( value.parts_count > 0 )
     {
-        const uint64_t ref_parts = ids.ref( 0x0c519da7a1f958c5ull );
+        const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
         body_parts += 1 + TableLebBytes( (uint64_t) ( value.parts_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
@@ -6104,7 +6151,7 @@ inline int64_t FeedMeasureBody( const Ctx & ctx, const TableNumbering & numberin
         for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
         if ( any_pair )
         {
-            const uint64_t ref_pair = ids.ref( 0x0369250deb889a31ull );
+            const uint64_t ref_pair = ids.ref_at( 0, 0x0369250deb889a31ull );
             int64_t body_pair = 0;
             body_pair += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -6127,17 +6174,17 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
 {
     if ( value.id != 0 )
     {
-        w.putleb( ids.ref( 0x08b72e07b55c3ac0ull ) ); w.put8( 8 ); // id
+        w.putleb( ids.ref_at( 1, 0x08b72e07b55c3ac0ull ) ); w.put8( 8 ); // id
         w.put32( uint32_t( value.id ) );
     }
     if ( value.frame.type != FrameType::None )
     {
-        w.putleb( ids.ref( 0xd8d4335628b35226ull ) ); w.put8( 15 ); // frame
+        w.putleb( ids.ref_at( 15, 0xd8d4335628b35226ull ) ); w.put8( 15 ); // frame
         switch ( value.frame.type )
         {
             case FrameType::Header:
             {
-                const uint64_t arm_ref = ids.ref( 0x3a506cb501761960ull );
+                const uint64_t arm_ref = ids.ref_at( 5, 0x3a506cb501761960ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = HeaderMeasureBody( ids, value.frame.header );
@@ -6150,7 +6197,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
             case FrameType::Chunk:
             {
-                const uint64_t arm_ref = ids.ref( 0x0f838176873c8e22ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x0f838176873c8e22ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = ChunkMeasureBody( ctx, numbering, ids, value.frame.chunk );
@@ -6163,7 +6210,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
             case FrameType::Link:
             {
-                const uint64_t arm_ref = ids.ref( 0xbf4b9bad694f4809ull );
+                const uint64_t arm_ref = ids.ref_at( 12, 0xbf4b9bad694f4809ull );
                 int64_t arm_payload = 0;
                 {
                     const Chunk * arm_pointee = ChunkAt( ctx, value.frame.link );
@@ -6182,7 +6229,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
             }
             case FrameType::Tag:
             {
-                const uint64_t arm_ref = ids.ref( 0x56d7ab194448a4f3ull );
+                const uint64_t arm_ref = ids.ref_at( 7, 0x56d7ab194448a4f3ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // uint32
                 w.putleb( arm_ref ); w.put8( 8 ); w.putleb( (uint64_t) arm_payload ); // tag
@@ -6195,7 +6242,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     if ( value.parts_count < 0 || value.parts_count > 4 ) { return false; } // storage invariant
     if ( value.parts_count > 0 )
     {
-        const uint64_t ref_parts = ids.ref( 0x0c519da7a1f958c5ull );
+        const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
         body_parts += 1 + TableLebBytes( (uint64_t) ( value.parts_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
@@ -6224,7 +6271,7 @@ inline bool FeedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
         for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
         if ( any_pair )
         {
-            const uint64_t ref_pair = ids.ref( 0x0369250deb889a31ull );
+            const uint64_t ref_pair = ids.ref_at( 0, 0x0369250deb889a31ull );
             int64_t body_pair = 0;
             body_pair += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -9141,7 +9188,7 @@ inline int64_t HeaderMeasureBodyRetain( TableRetainIds & ids, const Header & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
-    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref( 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -9151,7 +9198,7 @@ STREAMDEMO_TABLE_INLINE bool HeaderSaveBodyRetain( TableWriter & w, TableRetainI
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.putleb( ids.ref( 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
+        w.putleb( ids.ref_at( 13, 0xc4bcadba8e631b86ull ) ); w.put8( 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -9304,7 +9351,7 @@ inline int64_t ChunkMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
-        bytes += TableLebBytes( ids.ref( 0x855b556730a34a05ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_data ) ) + ( body_data ); // data
+        bytes += TableLebBytes( ids.ref_at( 11, 0x855b556730a34a05ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_data ) ) + ( body_data ); // data
     }
     {
         const Chunk * pointee_next = ChunkAt( ctx, value.next ); // *Chunk
@@ -9317,13 +9364,13 @@ inline int64_t ChunkMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_next = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_next, index_next ) ) { return -1; }
-            bytes += TableLebBytes( ids.ref( 0xe5316cbaa025f028ull ) ) + 1 + TableLebBytes( index_next );
+            bytes += TableLebBytes( ids.ref_at( 16, 0xe5316cbaa025f028ull ) ) + 1 + TableLebBytes( index_next );
         }
     }
     if ( value.links_count < 0 || value.links_count > 2 ) { return -1; } // storage invariant
     if ( value.links_count > 0 )
     {
-        const uint64_t ref_links = ids.ref( 0x5cc201a9f1b8274eull );
+        const uint64_t ref_links = ids.ref_at( 8, 0x5cc201a9f1b8274eull );
         int64_t body_links = 0;
         body_links += 1 + TableLebBytes( (uint64_t) ( value.links_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.links_count; elem_i++ )
@@ -9348,7 +9395,7 @@ inline bool ChunkSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.data_length > 0 )
     {
         const int64_t body_data = 1 + TableLebBytes( (uint64_t) value.data_length ) + value.data_length;
-        w.putleb( ids.ref( 0x855b556730a34a05ull ) ); w.put8( 14 ); // data
+        w.putleb( ids.ref_at( 11, 0x855b556730a34a05ull ) ); w.put8( 14 ); // data
         w.putleb( (uint64_t) body_data );
         w.put8( 6 ); w.putleb( (uint64_t) value.data_length );
         w.raw( value.data, value.data_length );
@@ -9359,14 +9406,14 @@ inline bool ChunkSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         {
             uint64_t index_next = 0;
             if ( !TableNumberingIndex( numbering, (const void *) pointee_next, index_next ) ) { return false; }
-            w.putleb( ids.ref( 0xe5316cbaa025f028ull ) ); w.put8( 17 ); // next — a NODE INDEX into the flat node table
+            w.putleb( ids.ref_at( 16, 0xe5316cbaa025f028ull ) ); w.put8( 17 ); // next — a NODE INDEX into the flat node table
             w.putleb( index_next );
         }
     }
     if ( value.links_count < 0 || value.links_count > 2 ) { return false; } // storage invariant
     if ( value.links_count > 0 )
     {
-        const uint64_t ref_links = ids.ref( 0x5cc201a9f1b8274eull );
+        const uint64_t ref_links = ids.ref_at( 8, 0x5cc201a9f1b8274eull );
         int64_t body_links = 0;
         body_links += 1 + TableLebBytes( (uint64_t) ( value.links_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.links_count; elem_i++ )
@@ -9700,17 +9747,17 @@ template <typename Ctx>
 inline int64_t FeedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Feed & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.id != 0 ) { bytes += TableLebBytes( ids.ref( 0x08b72e07b55c3ac0ull ) ) + 1 + 4; } // id
+    if ( value.id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x08b72e07b55c3ac0ull ) ) + 1 + 4; } // id
     if ( value.frame.type != FrameType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref( 0xd8d4335628b35226ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 15, 0xd8d4335628b35226ull ) ) + 1;
         switch ( value.frame.type )
         {
             case FrameType::None: break;
             case FrameType::Header:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x3a506cb501761960ull );
+                const uint64_t arm_ref = ids.ref_at( 5, 0x3a506cb501761960ull );
                 {
                     const int64_t arm_body = HeaderMeasureBodyRetain( ids, value.frame.header, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
                     if ( arm_body < 0 ) { return -1; }
@@ -9722,7 +9769,7 @@ inline int64_t FeedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             case FrameType::Chunk:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x0f838176873c8e22ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x0f838176873c8e22ull );
                 {
                     const int64_t arm_body = ChunkMeasureBodyRetain( ctx, numbering, ids, value.frame.chunk, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) );
                     if ( arm_body < 0 ) { return -1; }
@@ -9734,7 +9781,7 @@ inline int64_t FeedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             case FrameType::Link:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0xbf4b9bad694f4809ull );
+                const uint64_t arm_ref = ids.ref_at( 12, 0xbf4b9bad694f4809ull );
                 {
                     const Chunk * arm_pointee = ChunkAt( ctx, value.frame.link );
                     uint64_t arm_index = 0;
@@ -9747,7 +9794,7 @@ inline int64_t FeedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
             case FrameType::Tag:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref( 0x56d7ab194448a4f3ull );
+                const uint64_t arm_ref = ids.ref_at( 7, 0x56d7ab194448a4f3ull );
                 arm_payload += 4; // uint32
                 bytes += TableLebBytes( arm_ref ) + 1 + TableLebBytes( (uint64_t) ( arm_payload ) ) + ( arm_payload );
                 break;
@@ -9758,7 +9805,7 @@ inline int64_t FeedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     if ( value.parts_count < 0 || value.parts_count > 4 ) { return -1; } // storage invariant
     if ( value.parts_count > 0 )
     {
-        const uint64_t ref_parts = ids.ref( 0x0c519da7a1f958c5ull );
+        const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
         body_parts += 1 + TableLebBytes( (uint64_t) ( value.parts_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
@@ -9777,7 +9824,7 @@ inline int64_t FeedMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
         for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
         if ( any_pair )
         {
-            const uint64_t ref_pair = ids.ref( 0x0369250deb889a31ull );
+            const uint64_t ref_pair = ids.ref_at( 0, 0x0369250deb889a31ull );
             int64_t body_pair = 0;
             body_pair += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -9801,17 +9848,17 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
 {
     if ( value.id != 0 )
     {
-        w.putleb( ids.ref( 0x08b72e07b55c3ac0ull ) ); w.put8( 8 ); // id
+        w.putleb( ids.ref_at( 1, 0x08b72e07b55c3ac0ull ) ); w.put8( 8 ); // id
         w.put32( uint32_t( value.id ) );
     }
     if ( value.frame.type != FrameType::None )
     {
-        w.putleb( ids.ref( 0xd8d4335628b35226ull ) ); w.put8( 15 ); // frame
+        w.putleb( ids.ref_at( 15, 0xd8d4335628b35226ull ) ); w.put8( 15 ); // frame
         switch ( value.frame.type )
         {
             case FrameType::Header:
             {
-                const uint64_t arm_ref = ids.ref( 0x3a506cb501761960ull );
+                const uint64_t arm_ref = ids.ref_at( 5, 0x3a506cb501761960ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = HeaderMeasureBodyRetain( ids, value.frame.header, retain, TableRetainStepInto( path, 1, (uint32_t) ( 0 ) ) );
@@ -9824,7 +9871,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
             case FrameType::Chunk:
             {
-                const uint64_t arm_ref = ids.ref( 0x0f838176873c8e22ull );
+                const uint64_t arm_ref = ids.ref_at( 3, 0x0f838176873c8e22ull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = ChunkMeasureBodyRetain( ctx, numbering, ids, value.frame.chunk, retain, TableRetainStepInto( path, 1, (uint32_t) ( 1 ) ) );
@@ -9837,7 +9884,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
             case FrameType::Link:
             {
-                const uint64_t arm_ref = ids.ref( 0xbf4b9bad694f4809ull );
+                const uint64_t arm_ref = ids.ref_at( 12, 0xbf4b9bad694f4809ull );
                 int64_t arm_payload = 0;
                 {
                     const Chunk * arm_pointee = ChunkAt( ctx, value.frame.link );
@@ -9856,7 +9903,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
             }
             case FrameType::Tag:
             {
-                const uint64_t arm_ref = ids.ref( 0x56d7ab194448a4f3ull );
+                const uint64_t arm_ref = ids.ref_at( 7, 0x56d7ab194448a4f3ull );
                 int64_t arm_payload = 0;
                 arm_payload += 4; // uint32
                 w.putleb( arm_ref ); w.put8( 8 ); w.putleb( (uint64_t) arm_payload ); // tag
@@ -9869,7 +9916,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     if ( value.parts_count < 0 || value.parts_count > 4 ) { return false; } // storage invariant
     if ( value.parts_count > 0 )
     {
-        const uint64_t ref_parts = ids.ref( 0x0c519da7a1f958c5ull );
+        const uint64_t ref_parts = ids.ref_at( 2, 0x0c519da7a1f958c5ull );
         int64_t body_parts = 0;
         body_parts += 1 + TableLebBytes( (uint64_t) ( value.parts_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.parts_count; elem_i++ )
@@ -9898,7 +9945,7 @@ inline bool FeedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
         for ( int32_t i = 0; i < 2; i++ ) { if ( ChunkAt( ctx, value.pair[i] ) != NULL ) { any_pair = true; break; } }
         if ( any_pair )
         {
-            const uint64_t ref_pair = ids.ref( 0x0369250deb889a31ull );
+            const uint64_t ref_pair = ids.ref_at( 0, 0x0369250deb889a31ull );
             int64_t body_pair = 0;
             body_pair += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
