@@ -2560,7 +2560,7 @@ static SCHEMA_UNUSED int padded_frame_save_body( TableWriter * w, const PaddedFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_padded_frame_wire_rows_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_padded_frame_wire_rows_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }

@@ -4000,7 +4000,7 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_benchtable_table_mixed_wire_entities_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_benchtable_table_mixed_wire_entities_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -4022,7 +4022,7 @@ static SCHEMA_UNUSED int table_mixed_save_body( TableWriter * w, const TableMixe
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_benchtable_table_mixed_wire_stats_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_benchtable_table_mixed_wire_stats_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }

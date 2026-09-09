@@ -3211,7 +3211,7 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_tabledemo_pack_config_wire_reserves_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_tabledemo_pack_config_wire_reserves_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }

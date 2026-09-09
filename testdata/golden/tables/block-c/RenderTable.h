@@ -9043,7 +9043,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_cameras_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_cameras_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -9065,7 +9065,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_ships_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_ships_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -9087,7 +9087,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_turrets_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_turrets_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -9109,7 +9109,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_missiles_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_missiles_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -9131,7 +9131,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_dynamic_props_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_dynamic_props_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -9153,7 +9153,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_static_props_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_static_props_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -9175,7 +9175,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_cosmetic_props_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_cosmetic_props_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -9197,7 +9197,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_lasers_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_lasers_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
@@ -9219,7 +9219,7 @@ static SCHEMA_UNUSED int render_frame_save_body( TableWriter * w, const RenderFr
             {
                 TableWriter probe = table_writer_probe( w );
                 if ( !schema_blockdemo_render_frame_wire_explosions_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
-                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                table_writer_leb( w, (uint64_t) probe.offset );
                 if ( !schema_blockdemo_render_frame_wire_explosions_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
