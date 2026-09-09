@@ -47,7 +47,14 @@ func fixtureRow(lang, wire, path string, rate int) string {
 	if wire == "table" {
 		bench, family, id, n, iters = "bench_table", "table", "table", "2069.84375", 400000
 	}
-	return fmt.Sprintf("%s,%s,%s,%d,%s,1,%d,%d,%d,0,0,%s,%s,hdr,contract,O3,unknown\n", lang, bench, path, iters, n, rate, rate, rate, id, family)
+	checks := "removed"
+	if lang == "go" {
+		checks = "always"
+	}
+	if wire == "table" {
+		checks = "contract"
+	}
+	return fmt.Sprintf("%s,%s,%s,%d,%s,1,%d,%d,%d,0,0,%s,%s,hdr,%s,O3,unknown\n", lang, bench, path, iters, n, rate, rate, rate, id, family, checks)
 }
 
 func makePass(t *testing.T) string {
@@ -86,6 +93,13 @@ func makePass(t *testing.T) string {
 			}
 		}
 	}
+	writeTestWindow(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "load.json"), []byte("[]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := sealPassWithVerifier(dir, func(buildInfo) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
 	return dir
 }
 
@@ -102,6 +116,9 @@ func TestPairedPercentages(t *testing.T) {
 		if !strings.Contains(string(b), line) {
 			t.Fatalf("missing %s in %s", line, b)
 		}
+	}
+	if !strings.Contains(string(b), "Checks differ: packet C/C++/C# removes bounds/range checks; packet Go always checks; table keeps wire/API validation.") {
+		t.Fatal("compact page omitted checks semantics")
 	}
 	if strings.Contains(string(b), "µs") {
 		t.Fatal("raw details leaked onto compact page")
@@ -144,6 +161,9 @@ func TestPairedRendererRefusesMissingOrChangedEvidence(t *testing.T) {
 
 func TestEvenRoundMedian(t *testing.T) {
 	dir := makePass(t)
+	if err := os.Remove(filepath.Join(dir, completionFile)); err != nil {
+		t.Fatal(err)
+	}
 	metadata, err := os.ReadFile(filepath.Join(dir, "build.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +199,10 @@ func TestEvenRoundMedian(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	writeTestWindow(t, dir, 8)
+	if err := sealPassWithVerifier(dir, func(buildInfo) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
 	if err := render(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -209,6 +233,37 @@ func TestBuiltGateOnly(t *testing.T) {
 			if e == nil || len(out) != 0 {
 				t.Fatalf("%s/%s missing golden was accepted or emitted rows", lang, wire)
 			}
+		}
+	}
+}
+
+func TestPairedRowsRefuseChangedChecks(t *testing.T) {
+	for _, lang := range languages {
+		for _, wire := range []string{"packet", "table"} {
+			data := fixtureRow(lang, wire, "write", 1000000) + fixtureRow(lang, wire, "round_trip", 1000000)
+			if _, err := parseRows([]byte(data), lang, wire, wire); err != nil {
+				t.Fatalf("expected %s/%s row refused: %v", lang, wire, err)
+			}
+			for _, axis := range []string{"removed", "always", "contract", "unknown"} {
+				if axis == expectedChecks(lang, wire) {
+					continue
+				}
+				changed := strings.ReplaceAll(data, ","+expectedChecks(lang, wire)+",", ","+axis+",")
+				if _, err := parseRows([]byte(changed), lang, wire, wire); err == nil {
+					t.Fatalf("accepted %s/%s with uncaptioned %s checks", lang, wire, axis)
+				}
+			}
+		}
+	}
+}
+
+func TestReuseRequiresRecordedHEAD(t *testing.T) {
+	if err := checkBuildRevision("aabb", "aabb"); err != nil {
+		t.Fatal(err)
+	}
+	for _, current := range []string{"ccdd", "", "unavailable"} {
+		if err := checkBuildRevision("aabb", current); err == nil {
+			t.Fatalf("reused stale HEAD against %q", current)
 		}
 	}
 }

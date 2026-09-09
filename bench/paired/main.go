@@ -364,6 +364,13 @@ func generateAndBuild(langs []string) error {
 func contains(ss []string, s string) bool {
 	return slices.Contains(ss, s)
 }
+func checkBuildRevision(recorded, current string) error {
+	if current == "unavailable" || current == "" || recorded != current {
+		return errors.New("source HEAD changed since build; rebuild before reuse")
+	}
+	return nil
+}
+
 func readBuild() (buildInfo, error) {
 	var info buildInfo
 	b, e := os.ReadFile("build/paired/build.json")
@@ -372,6 +379,9 @@ func readBuild() (buildInfo, error) {
 	}
 	if e = json.Unmarshal(b, &info); e != nil {
 		return info, e
+	}
+	if err := checkBuildRevision(info.Revision, gitValue(".", "rev-parse", "HEAD")); err != nil {
+		return info, err
 	}
 	hostname, _ := os.Hostname()
 	if info.Host != hostname || info.Arch != runtime.GOARCH || info.OS != runtime.GOOS {
@@ -449,6 +459,9 @@ func parseRows(data []byte, lang, wire, id string) ([]sample, error) {
 		if cols[1] != bench || cols[12] != family || cols[11] != id || cols[5] != "1" || (cols[2] != "write" && cols[2] != "round_trip") || seen[cols[2]] {
 			return nil, fmt.Errorf("wrong or duplicate %s/%s row identity: %v", lang, wire, cols)
 		}
+		if cols[14] != expectedChecks(lang, wire) {
+			return nil, fmt.Errorf("unexpected %s/%s checks axis %q; expected %q", lang, wire, cols[14], expectedChecks(lang, wire))
+		}
 		seen[cols[2]] = true
 		rate, e := strconv.ParseFloat(cols[8], 64)
 		if e != nil || math.IsNaN(rate) || math.IsInf(rate, 0) || rate <= 0 {
@@ -459,8 +472,12 @@ func parseRows(data []byte, lang, wire, id string) ([]sample, error) {
 			return nil, errors.New("invalid bytes/op")
 		}
 		iters, e := strconv.ParseInt(cols[3], 10, 64)
-		if e != nil || iters <= 0 || iters%64 != 0 {
-			return nil, errors.New("iterations must be positive whole rotations of 64")
+		wantIterations := int64(4000000)
+		if wire == "table" {
+			wantIterations = 400000
+		}
+		if e != nil || iters != wantIterations {
+			return nil, errors.New("iterations must be 4,000,000 packet or 400,000 table operations")
 		}
 		if float64(iters)/rate < 0.2 {
 			return nil, fmt.Errorf("%s/%s/%s measured run below 200ms", lang, wire, cols[2])
@@ -475,18 +492,26 @@ func parseRows(data []byte, lang, wire, id string) ([]sample, error) {
 	}
 	return rows, nil
 }
-func loadNow() string {
-	if runtime.GOOS == "darwin" {
-		b, _ := capture(command{args: []string{"sysctl", "-n", "vm.loadavg"}})
-		return strings.TrimSpace(string(b))
+
+// These captions use the same checks semantics as bench/tools/relative.go.
+// Refuse changed axes rather than silently reusing a caption for different work.
+const checksCaption = "Checks differ: packet C/C++/C# removes bounds/range checks; packet Go always checks; table keeps wire/API validation."
+const checksDetails = "Packet C/C++/C# uses `checks=removed`: debug asserts and bounds/range checks compile out. Packet Go uses `checks=always`: bounds, range and sticky-error checks in every build by contract. Every table leg uses `checks=contract`: debug asserts compile out; wire/API contract validation stays in every build. These deliberately labelled cross-checks ratios compare each wire's fastest correct implementation, not identical validation work. The driver refuses any different checks axis."
+
+func expectedChecks(lang, wire string) string {
+	if wire == "table" {
+		return "contract"
 	}
-	b, e := os.ReadFile("/proc/loadavg")
-	if e != nil {
-		return "unavailable"
+	if lang == "go" {
+		return "always"
 	}
-	return strings.TrimSpace(string(b))
+	return "removed"
 }
-func measure(langs []string, out string, rounds int, info buildInfo) error {
+
+func measure(langs []string, out string, rounds int, info buildInfo, receipt string) (resultErr error) {
+	if strings.TrimSpace(receipt) == "" {
+		return errors.New("run requires -quiet-window with the operator’s READY/START receipt or reference")
+	}
 	if rounds < 7 {
 		return errors.New("a published paired pass requires at least 7 rounds")
 	}
@@ -515,15 +540,22 @@ func measure(langs []string, out string, rounds int, info buildInfo) error {
 	if e = os.WriteFile(filepath.Join(tmp, "build.json"), append(b, '\n'), 0644); e != nil {
 		return e
 	}
-	loads := []map[string]any{}
+	window, err := beginWindow(tmp, receipt)
+	if err != nil {
+		return err
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			resultErr = window.finish(resultErr)
+		}
+	}()
 	control := func(label string) (map[string]float64, error) {
 		rates := map[string]float64{}
 		for _, wire := range []string{"packet", "table"} {
-			output, err := capture(runner(wire, "cpp", "--csv", "--round", "0"))
-			if err != nil {
-				return nil, err
-			}
-			if err = os.WriteFile(filepath.Join(tmp, "control-"+label+"-"+wire+".csv"), output, 0644); err != nil {
+			output, runErr := window.capture(runner(wire, "cpp", "--csv", "--round", "0"), "control-"+label+"-"+wire)
+			writeErr := os.WriteFile(filepath.Join(tmp, "control-"+label+"-"+wire+".csv"), output, 0644)
+			if err := errors.Join(runErr, writeErr); err != nil {
 				return nil, err
 			}
 			rows, err := parseRows(output, "cpp", wire, info.CorpusIDs[wire])
@@ -541,7 +573,6 @@ func measure(langs []string, out string, rounds int, info buildInfo) error {
 		return err
 	}
 	for round := range rounds {
-		loads = append(loads, map[string]any{"round": round, "date": time.Now().UTC().Format(time.RFC3339), "load": loadNow()})
 		for i, lang := range langs {
 			wires := []string{"packet", "table"}
 			if (round+i)%2 == 1 {
@@ -549,12 +580,10 @@ func measure(langs []string, out string, rounds int, info buildInfo) error {
 			}
 			for _, wire := range wires {
 				fmt.Fprintf(os.Stderr, "round %d: %s/%s\n", round, lang, wire)
-				output, e := capture(runner(wire, lang, "--csv", "--round", strconv.Itoa(round)))
-				if e != nil {
-					return e
-				}
+				output, runErr := window.capture(runner(wire, lang, "--csv", "--round", strconv.Itoa(round)), fmt.Sprintf("round-%d-%s-%s", round, lang, wire))
 				path := filepath.Join(tmp, fmt.Sprintf("round-%d-%s-%s.csv", round, lang, wire))
-				if e = os.WriteFile(path, output, 0644); e != nil {
+				writeErr := os.WriteFile(path, output, 0644)
+				if e := errors.Join(runErr, writeErr); e != nil {
 					return e
 				}
 				if _, e = parseRows(output, lang, wire, info.CorpusIDs[wire]); e != nil {
@@ -572,9 +601,22 @@ func measure(langs []string, out string, rounds int, info buildInfo) error {
 			return fmt.Errorf("reference C++ %s control moved more than 5%%; repeat the complete sitting", key)
 		}
 	}
-	loads = append(loads, map[string]any{"date": time.Now().UTC().Format(time.RFC3339), "load": loadNow()})
+	finished = true
+	if err = window.finish(nil); err != nil {
+		return err
+	}
+	loads := make([]map[string]string, 0, len(window.evidence.Samples))
+	for _, sample := range window.evidence.Samples {
+		loads = append(loads, map[string]string{"date": sample.Date, "phase": sample.Phase, "load": sample.Load})
+	}
 	b, _ = json.MarshalIndent(loads, "", "  ")
 	if e = os.WriteFile(filepath.Join(tmp, "load.json"), append(b, '\n'), 0644); e != nil {
+		return e
+	}
+	if e := renderReport(tmp, false); e != nil {
+		return e
+	}
+	if e := sealPass(tmp); e != nil {
 		return e
 	}
 	if e := render(tmp); e != nil {
@@ -587,6 +629,13 @@ func measure(langs []string, out string, rounds int, info buildInfo) error {
 	return nil
 }
 func render(dir string) error {
+	if err := verifyPass(dir); err != nil {
+		return err
+	}
+	return renderReport(dir, true)
+}
+
+func renderReport(dir string, writeOutputs bool) error {
 	var info buildInfo
 	b, e := os.ReadFile(filepath.Join(dir, "build.json"))
 	if e != nil {
@@ -726,8 +775,12 @@ func render(dir string) error {
 		table, packet := best[lang+"/table/round_trip"], best[lang+"/packet/round_trip"]
 		fmt.Fprintf(&readme, "| %s | %.0f%% | %.0f%% |\n", names[lang], fastest/table*100, packet/table*100)
 	}
-	fmt.Fprintln(&readme, "\nFastest table = 100%. Each language’s packet wire = 100%. Lower is better.")
-	text := fmt.Sprintf("# Fixed Table details\n\n%s / %s, %s. Revision `%s` (dirty: %t). %d interleaved rounds, one discarded warmup per path per round. Separate standard packet storage and table closure storage carry the same 64 logical records. Table byte counts are exact averages; record padding is not serialized.\n\nHeadline percentages use the best measured round-trip rate, following packet README convention. Round trip includes read and write; dividing both by two leaves both ratios unchanged. Fixed Table %% = fastest table rate / this table rate × 100; vs Packet Wire %% = this packet rate / this table rate × 100.\n\n| Language | Wire | Path | Best µs/op | Median µs/op | Spread | Mean bytes/op |\n|---|---|---|---:|---:|---:|---:|\n", info.OS, info.Arch, info.Host, info.Revision, info.Dirty, roundCount) + details.String() + "\n`build.json` records compiler/runtime and binary/corpus identity. `round-*.csv` contains every measured sample; `load.json` records load. The shared producer verified packet -> table -> packet identity for all 64 records before any clock.\n"
+	fmt.Fprintln(&readme, "\nFastest table = 100%. Each language’s packet wire = 100%; below 100% beats packet. Lower is better.")
+	fmt.Fprintln(&readme, "\n"+checksCaption)
+	text := fmt.Sprintf("# Fixed Table details\n\n%s / %s, %s. Revision `%s` (dirty: %t). %d interleaved rounds, one discarded warmup per path per round. Separate standard packet storage and table closure storage carry the same 64 logical records. Table byte counts are exact averages; record padding is not serialized.\n\nHeadline percentages use the best measured round-trip rate, following packet README convention. Seven rounds intentionally follow that convention, with a 4/3 wire-order imbalance; no additional attempts are selected from the separate bracketing controls. Each per-path warmup uses the full 4,000,000 packet or 400,000 table iterations. Table round trips reset the target inside the clock; packet round trips do not require that reset. Round trip includes read and write; dividing both by two leaves both ratios unchanged. Fixed Table %% = fastest table rate / this table rate × 100; vs Packet Wire %% = this packet rate / this table rate × 100.\n\n| Language | Wire | Path | Best µs/op | Median µs/op | Spread | Mean bytes/op |\n|---|---|---|---:|---:|---:|---:|\n", info.OS, info.Arch, info.Host, info.Revision, info.Dirty, roundCount) + details.String() + "\n" + checksDetails + "\n\n`build.json` records compiler/runtime and binary/corpus identity. `round-*.csv` contains every measured sample; `load.json` records load. `window.json` records the operator READY/START receipt, process names/PIDs/CPU, periodic and boundary samples, and the complete OK verdict. Known foreign build/benchmark processes refuse the sitting; ordinary desktop load is recorded without a universal threshold. Process sampling can miss brief or unusually named work, so the receipt and bracketing controls remain necessary. The shared producer verified packet -> table -> packet identity for all 64 records before any clock. `completion.json` binds the complete raw evidence by SHA-256; rendering verifies it without requiring old local binaries. This detects changed evidence, not a deliberately dishonest operator.\n"
+	if !writeOutputs {
+		return nil
+	}
 	for p, b := range map[string][]byte{"README.md": readme.Bytes(), "DETAILS.md": []byte(text), "results.csv": csvOut.Bytes()} {
 		if e := os.WriteFile(filepath.Join(dir, p), b, 0644); e != nil {
 			return e
@@ -741,6 +794,7 @@ func main() {
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
 	reuse := flag.Bool("reuse-build", false, "use previously hashed binaries and corpus")
+	receipt := flag.String("quiet-window", "", "operator READY/START receipt or reference, required for run")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {
@@ -763,6 +817,9 @@ func main() {
 	if *mode != "build" && *mode != "gate" && *mode != "run" {
 		fail(errors.New("unknown mode"))
 	}
+	if *mode == "run" && strings.TrimSpace(*receipt) == "" {
+		fail(errors.New("run requires -quiet-window with the operator’s READY/START receipt or reference"))
+	}
 	if !*reuse {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
@@ -784,7 +841,7 @@ func main() {
 	if len(langs) != 4 {
 		fail(errors.New("published pass requires all four languages"))
 	}
-	if e := measure(langs, *out, *rounds, info); e != nil {
+	if e := measure(langs, *out, *rounds, info, *receipt); e != nil {
 		fail(e)
 	}
 }

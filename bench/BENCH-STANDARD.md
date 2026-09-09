@@ -561,8 +561,43 @@ oracle, binary/corpus hashes and one interleaved sitting. Its compact report is
 `Language | Fixed Table % | vs Packet Wire %`: fastest table is 100%, and each
 language's own packet wire is 100% in the second column. Both ratios use the
 best round-trip rate; details retain medians, absolute costs and spread. Results
-on different architectures are separate pages. Existing cross-family refusal
-rules in the general tools remain unchanged.
+on different architectures are separate pages. The compact page labels the
+checks mismatch: packet C/C++/C# has `checks=removed` (debug asserts and bounds/
+range checks compile out), packet Go has `checks=always` (bounds, range and
+sticky-error checks remain), and table has `checks=contract` (debug asserts
+compile out; wire/API validation remains). The driver refuses other axes. This
+keeps each packet implementation's fastest release form while naming the
+validation work paid by each side; it does not relax the general tools' existing
+cross-family or unlabelled cross-checks refusal rules.
+
+The paired pass requires an operator READY/START receipt or reference. Its
+`window.json` records START/END, names/PIDs/parent PIDs/CPU and load before clocks,
+every two seconds during runners and at their boundaries, with an `OK` or
+`INVALID` verdict. Every control and measured runner needs matching before/after
+samples. Known foreign compiler/build/benchmark processes refuse,
+including idle build servers; only the coordinator's actual process ancestry
+and descendants are excluded, never every tool sharing a name or parent app.
+Normal desktop load is recorded without a universal threshold. Monitoring is
+supported on macOS/Linux; unsupported platforms, missing samples beyond ten
+seconds or more than 10,000 samples refuse timing. No process arguments or
+environments are captured. Brief or unusually named workloads can escape
+sampling, so `OK` is the checked verdict, not proof of exclusive CPU use.
+The receipt and bracketing controls remain necessary.
+
+Seven rounds intentionally keep the packet convention's 4/3 order imbalance.
+Warmups use the full per-path iteration count: 4,000,000 packet or 400,000 table
+operations. Table target reset is inside the round-trip clock; packet does not
+need it. Best-of-N remains the requested reporting convention, with medians and
+spread retained in details rather than substituted into headline ratios.
+
+`completion.json` binds the exact build/window/load/control/round raw file set
+by SHA-256 after all measurement gates and actual binary/corpus hash checks.
+Every render verifies the seal first, then checks CSV completeness, identities,
+controls and spread. Rendering an archived sitting requires its evidence, not
+historical local binaries. Reuse for new measurement requires the same source
+HEAD and actual recorded binaries/corpus. Changed, missing or additional raw
+evidence refuses publication. This is integrity checking, not a signature or
+protection against a deliberately dishonest operator.
 
 The following describes the retained historical representative corpus. Its
 logical-type substitutions and independent value producer mean its rows do
