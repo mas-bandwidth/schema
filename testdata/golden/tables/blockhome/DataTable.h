@@ -2190,13 +2190,38 @@ inline void ArmorConfigReset( ArmorConfig & value );
 inline void FiringGroupReset( FiringGroup & value );
 inline void GunnerSettingsReset( GunnerSettings & value );
 
-inline void ArmorPlateReset( ArmorPlate & value ) { value = ArmorPlate(); }
+inline void ArmorPlateReset( ArmorPlate & value )
+{
+    value.thickness = 0.0;
+    value.material = 0;
+    value.layer = 0;
+}
 
-inline void ArmorConfigReset( ArmorConfig & value ) { value = ArmorConfig(); }
+inline void ArmorConfigReset( ArmorConfig & value )
+{
+    ArmorPlateReset( value.front );
+    ArmorPlateReset( value.rear );
+    value.rating = 0.0f;
+    value.tier = 0;
+}
 
-inline void FiringGroupReset( FiringGroup & value ) { value = FiringGroup(); }
+inline void FiringGroupReset( FiringGroup & value )
+{
+    value.barrel = 0;
+    value.cooldown = 0.0f;
+}
 
-inline void GunnerSettingsReset( GunnerSettings & value ) { value = GunnerSettings(); }
+inline void GunnerSettingsReset( GunnerSettings & value )
+{
+    FiringGroupReset( value.firing_groups[0] );
+    for ( int32_t i = 1; i < 32; i++ ) { value.firing_groups[i] = value.firing_groups[0]; }
+    value.firing_groups_count = 0;
+    FiringGroupReset( value.missile_groups[0] );
+    for ( int32_t i = 1; i < 4; i++ ) { value.missile_groups[i] = value.missile_groups[0]; }
+    value.missile_groups_count = 0;
+    value.reload_seconds = 0.0f;
+    value.gunner_id = 0;
+}
 
 inline int64_t ArmorPlateMeasureMessageBody( int64_t at, const ArmorPlate & value );
 inline bool ArmorPlateSaveMessageBody( TableBitWriter & w, const ArmorPlate & value );

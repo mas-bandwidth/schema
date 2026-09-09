@@ -2265,7 +2265,11 @@ inline void StampReset( Stamp & value )
     value.seq = 0;
 }
 
-inline void LineReset( Line & value ) { value = Line(); }
+inline void LineReset( Line & value )
+{
+    memset( value.text, 0, sizeof( value.text ) );
+    value.text_length = 0;
+}
 
 inline int64_t CaptionMeasureMessageBody( int64_t at, const Caption & value );
 inline bool CaptionSaveMessageBody( TableBitWriter & w, const Caption & value );

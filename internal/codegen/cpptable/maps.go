@@ -1011,8 +1011,11 @@ func (g *tableGen) mapValueStorageType(f *ir.Field) string {
 func (g *tableGen) emitMapValueReset(f *ir.Field) {
 	value := ir.MapValueField(f)
 	saved := g.indent
+	owner := g.owner
 	g.indent = ""
+	g.owner = mapEntryOf(f)
 	g.emitTableResetField(value)
+	g.owner = owner
 	g.indent = saved
 }
 
