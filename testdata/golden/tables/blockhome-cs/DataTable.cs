@@ -33,8 +33,6 @@ namespace Blockhome
             return true;
         }
 
-        public static bool CollectTyped(ArmorPlate v, ref TableWire.Ids ids) => ArmorPlateCollectTyped(v, ref ids);
-
         public static long ArmorPlateBodySizeTyped(ArmorPlate v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -43,8 +41,6 @@ namespace Blockhome
             if (v.Layer != 0) { n += TableWire.VarSize(ids.Reference(0x84e39fec29768c56ul)) + 2; }
             return n;
         }
-
-        public static long BodySizeTyped(ArmorPlate v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => ArmorPlateBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void ArmorPlateWriteBodyTyped(ref TableWire.Writer w, ArmorPlate v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -65,8 +61,6 @@ namespace Blockhome
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, ArmorPlate v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => ArmorPlateWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long ArmorPlateSaveTyped(ArmorPlate value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -94,8 +88,6 @@ namespace Blockhome
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(ArmorPlate value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => ArmorPlateSaveTyped(value, buffer, vocabulary, measure);
 
         public static long ArmorPlateMeasure(ArmorPlate value)
         {
@@ -146,8 +138,6 @@ namespace Blockhome
             return true;
         }
 
-        public static bool CollectTyped(ArmorConfig v, ref TableWire.Ids ids) => ArmorConfigCollectTyped(v, ref ids);
-
         public static long ArmorConfigBodySizeTyped(ArmorConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -160,8 +150,6 @@ namespace Blockhome
             if (v.Tier != 0) { n += TableWire.VarSize(ids.Reference(0x1e6f84ef2eb65989ul)) + 2; }
             return n;
         }
-
-        public static long BodySizeTyped(ArmorConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => ArmorConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void ArmorConfigWriteBodyTyped(ref TableWire.Writer w, ArmorConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -182,8 +170,6 @@ namespace Blockhome
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, ArmorConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => ArmorConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long ArmorConfigSaveTyped(ArmorConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -211,8 +197,6 @@ namespace Blockhome
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(ArmorConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => ArmorConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long ArmorConfigMeasure(ArmorConfig value)
         {
@@ -258,8 +242,6 @@ namespace Blockhome
             return true;
         }
 
-        public static bool CollectTyped(FiringGroup v, ref TableWire.Ids ids) => FiringGroupCollectTyped(v, ref ids);
-
         public static long FiringGroupBodySizeTyped(FiringGroup v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -267,8 +249,6 @@ namespace Blockhome
             if (v.Cooldown != 0.0f) { n += TableWire.VarSize(ids.Reference(0xdc2cbe6953343d48ul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(FiringGroup v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => FiringGroupBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void FiringGroupWriteBodyTyped(ref TableWire.Writer w, FiringGroup v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -284,8 +264,6 @@ namespace Blockhome
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, FiringGroup v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => FiringGroupWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long FiringGroupSaveTyped(FiringGroup value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -313,8 +291,6 @@ namespace Blockhome
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(FiringGroup value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => FiringGroupSaveTyped(value, buffer, vocabulary, measure);
 
         public static long FiringGroupMeasure(FiringGroup value)
         {
@@ -390,8 +366,6 @@ namespace Blockhome
             return true;
         }
 
-        public static bool CollectTyped(GunnerSettings v, ref TableWire.Ids ids) => GunnerSettingsCollectTyped(v, ref ids);
-
         public static long GunnerSettingsBodySizeTyped(GunnerSettings v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -442,8 +416,6 @@ namespace Blockhome
             if (v.GunnerId != 0) { n += TableWire.VarSize(ids.Reference(0xbd9be53180256e02ul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(GunnerSettings v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => GunnerSettingsBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void GunnerSettingsWriteBodyTyped(ref TableWire.Writer w, GunnerSettings v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -525,8 +497,6 @@ namespace Blockhome
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, GunnerSettings v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => GunnerSettingsWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long GunnerSettingsSaveTyped(GunnerSettings value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = GunnerSettingsTableType();
@@ -553,8 +523,6 @@ namespace Blockhome
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(GunnerSettings value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => GunnerSettingsSaveTyped(value, buffer, vocabulary, measure);
 
         public static long GunnerSettingsMeasure(GunnerSettings value)
         {

@@ -176,8 +176,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(TeamConfig v, ref TableWire.Ids ids) => TeamConfigCollectTyped(v, ref ids);
-
         public static long TeamConfigBodySizeTyped(TeamConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -187,8 +185,6 @@ namespace Tabledemo
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
             return n;
         }
-
-        public static long BodySizeTyped(TeamConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => TeamConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void TeamConfigWriteBodyTyped(ref TableWire.Writer w, TeamConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -202,8 +198,6 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, TeamConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => TeamConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long TeamConfigSaveTyped(TeamConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -231,8 +225,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(TeamConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => TeamConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long TeamConfigMeasure(TeamConfig value)
         {
@@ -278,8 +270,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(GunnerConfig v, ref TableWire.Ids ids) => GunnerConfigCollectTyped(v, ref ids);
-
         public static long GunnerConfigBodySizeTyped(GunnerConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -287,8 +277,6 @@ namespace Tabledemo
             if (v.Tracking != false) { n += TableWire.VarSize(ids.Reference(0xa6bf719a4602b0bcul)) + 2; }
             return n;
         }
-
-        public static long BodySizeTyped(GunnerConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => GunnerConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void GunnerConfigWriteBodyTyped(ref TableWire.Writer w, GunnerConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -304,8 +292,6 @@ namespace Tabledemo
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, GunnerConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => GunnerConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long GunnerConfigSaveTyped(GunnerConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -333,8 +319,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(GunnerConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => GunnerConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long GunnerConfigMeasure(GunnerConfig value)
         {
@@ -384,8 +368,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(TurretConfig v, ref TableWire.Ids ids) => TurretConfigCollectTyped(v, ref ids);
-
         public static long TurretConfigBodySizeTyped(TurretConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -396,8 +378,6 @@ namespace Tabledemo
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
             return n;
         }
-
-        public static long BodySizeTyped(TurretConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => TurretConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void TurretConfigWriteBodyTyped(ref TableWire.Writer w, TurretConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -416,8 +396,6 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[2], ref ids, default, payload_2);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, TurretConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => TurretConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long TurretConfigSaveTyped(TurretConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -445,8 +423,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(TurretConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => TurretConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long TurretConfigMeasure(TurretConfig value)
         {
@@ -498,8 +474,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(HullConfig v, ref TableWire.Ids ids) => HullConfigCollectTyped(v, ref ids);
-
         public static long HullConfigBodySizeTyped(HullConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -510,8 +484,6 @@ namespace Tabledemo
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
             return n;
         }
-
-        public static long BodySizeTyped(HullConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => HullConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void HullConfigWriteBodyTyped(ref TableWire.Writer w, HullConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -530,8 +502,6 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[2], ref ids, default, payload_2);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, HullConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => HullConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long HullConfigSaveTyped(HullConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -559,8 +529,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(HullConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => HullConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long HullConfigMeasure(HullConfig value)
         {
@@ -615,8 +583,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(KeyedConfig v, ref TableWire.Ids ids) => KeyedConfigCollectTyped(v, ref ids);
-
         public static long KeyedConfigBodySizeTyped(KeyedConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -630,8 +596,6 @@ namespace Tabledemo
             return n;
         }
 
-        public static long BodySizeTyped(KeyedConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => KeyedConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static void KeyedConfigWriteBodyTyped(ref TableWire.Writer w, KeyedConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
             TableFieldInfo[] fields = KeyedConfigTableType().Fields;
@@ -643,8 +607,6 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[2], ref ids, default, payload_2);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, KeyedConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => KeyedConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long KeyedConfigSaveTyped(KeyedConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -672,8 +634,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(KeyedConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => KeyedConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long KeyedConfigMeasure(KeyedConfig value)
         {
@@ -718,8 +678,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(ScoreBoard v, ref TableWire.Ids ids) => ScoreBoardCollectTyped(v, ref ids);
-
         public static long ScoreBoardBodySizeTyped(ScoreBoard v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -729,8 +687,6 @@ namespace Tabledemo
             return n;
         }
 
-        public static long BodySizeTyped(ScoreBoard v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => ScoreBoardBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static void ScoreBoardWriteBodyTyped(ref TableWire.Writer w, ScoreBoard v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
             TableFieldInfo[] fields = ScoreBoardTableType().Fields;
@@ -738,8 +694,6 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, ScoreBoard v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => ScoreBoardWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long ScoreBoardSaveTyped(ScoreBoard value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -767,8 +721,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(ScoreBoard value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => ScoreBoardSaveTyped(value, buffer, vocabulary, measure);
 
         public static long ScoreBoardMeasure(ScoreBoard value)
         {

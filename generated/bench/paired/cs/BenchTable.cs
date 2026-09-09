@@ -4936,8 +4936,6 @@ namespace Bench
             return true;
         }
 
-        public static bool CollectTyped(MixedEntity v, ref TableWire.Ids ids) => MixedEntityCollectTyped(v, ref ids);
-
         public static long MixedEntityBodySizeTyped(MixedEntity v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -4958,8 +4956,6 @@ namespace Bench
             if (v.Firing != false) { n += TableWire.VarSize(ids.Reference(0x7674cfd19b9031caul)) + 2; }
             return n;
         }
-
-        public static long BodySizeTyped(MixedEntity v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => MixedEntityBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void MixedEntityWriteBodyTyped(ref TableWire.Writer w, MixedEntity v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -5029,8 +5025,6 @@ namespace Bench
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, MixedEntity v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => MixedEntityWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long MixedEntitySaveTyped(MixedEntity value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = MixedEntityTableType();
@@ -5057,8 +5051,6 @@ namespace Bench
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(MixedEntity value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => MixedEntitySaveTyped(value, buffer, vocabulary, measure);
 
         public static long MixedEntityMeasure(MixedEntity value)
         {
@@ -5104,8 +5096,6 @@ namespace Bench
             return true;
         }
 
-        public static bool CollectTyped(MixedStat v, ref TableWire.Ids ids) => MixedStatCollectTyped(v, ref ids);
-
         public static long MixedStatBodySizeTyped(MixedStat v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -5113,8 +5103,6 @@ namespace Bench
             if (v.Delta != 0) { n += TableWire.VarSize(ids.Reference(0x52076675ec13a0c1ul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(MixedStat v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => MixedStatBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void MixedStatWriteBodyTyped(ref TableWire.Writer w, MixedStat v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -5130,8 +5118,6 @@ namespace Bench
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, MixedStat v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => MixedStatWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long MixedStatSaveTyped(MixedStat value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -5159,8 +5145,6 @@ namespace Bench
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(MixedStat value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => MixedStatSaveTyped(value, buffer, vocabulary, measure);
 
         public static long MixedStatMeasure(MixedStat value)
         {
@@ -5210,8 +5194,6 @@ namespace Bench
             return true;
         }
 
-        public static bool CollectTyped(MixedHitEvent v, ref TableWire.Ids ids) => MixedHitEventCollectTyped(v, ref ids);
-
         public static long MixedHitEventBodySizeTyped(MixedHitEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -5221,8 +5203,6 @@ namespace Bench
             if (v.Crit != false) { n += TableWire.VarSize(ids.Reference(0x126167908c9aa52dul)) + 2; }
             return n;
         }
-
-        public static long BodySizeTyped(MixedHitEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => MixedHitEventBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void MixedHitEventWriteBodyTyped(ref TableWire.Writer w, MixedHitEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -5248,8 +5228,6 @@ namespace Bench
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, MixedHitEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => MixedHitEventWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long MixedHitEventSaveTyped(MixedHitEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -5277,8 +5255,6 @@ namespace Bench
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(MixedHitEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => MixedHitEventSaveTyped(value, buffer, vocabulary, measure);
 
         public static long MixedHitEventMeasure(MixedHitEvent value)
         {
@@ -5324,8 +5300,6 @@ namespace Bench
             return true;
         }
 
-        public static bool CollectTyped(MixedChatEvent v, ref TableWire.Ids ids) => MixedChatEventCollectTyped(v, ref ids);
-
         public static long MixedChatEventBodySizeTyped(MixedChatEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -5333,8 +5307,6 @@ namespace Bench
             if (v.Speaker != 0) { n += TableWire.VarSize(ids.Reference(0xfbf1ac4d96ebd022ul)) + 3; }
             return n;
         }
-
-        public static long BodySizeTyped(MixedChatEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => MixedChatEventBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void MixedChatEventWriteBodyTyped(ref TableWire.Writer w, MixedChatEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -5350,8 +5322,6 @@ namespace Bench
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, MixedChatEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => MixedChatEventWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long MixedChatEventSaveTyped(MixedChatEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -5379,8 +5349,6 @@ namespace Bench
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(MixedChatEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => MixedChatEventSaveTyped(value, buffer, vocabulary, measure);
 
         public static long MixedChatEventMeasure(MixedChatEvent value)
         {
@@ -5426,8 +5394,6 @@ namespace Bench
             return true;
         }
 
-        public static bool CollectTyped(MixedPickupEvent v, ref TableWire.Ids ids) => MixedPickupEventCollectTyped(v, ref ids);
-
         public static long MixedPickupEventBodySizeTyped(MixedPickupEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -5435,8 +5401,6 @@ namespace Bench
             if (v.Amount != 0) { n += TableWire.VarSize(ids.Reference(0x8113fe7ea2b16969ul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(MixedPickupEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => MixedPickupEventBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void MixedPickupEventWriteBodyTyped(ref TableWire.Writer w, MixedPickupEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -5452,8 +5416,6 @@ namespace Bench
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, MixedPickupEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => MixedPickupEventWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long MixedPickupEventSaveTyped(MixedPickupEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -5481,8 +5443,6 @@ namespace Bench
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(MixedPickupEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => MixedPickupEventSaveTyped(value, buffer, vocabulary, measure);
 
         public static long MixedPickupEventMeasure(MixedPickupEvent value)
         {
@@ -5598,8 +5558,6 @@ namespace Bench
             return true;
         }
 
-        public static bool CollectTyped(BenchMixed v, ref TableWire.Ids ids) => BenchMixedCollectTyped(v, ref ids);
-
         public static long BenchMixedBodySizeTyped(BenchMixed v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -5665,8 +5623,6 @@ namespace Bench
             n += TableWire.BodySizeField(v, fields[26], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(BenchMixed v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => BenchMixedBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void BenchMixedWriteBodyTyped(ref TableWire.Writer w, BenchMixed v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -5804,8 +5760,6 @@ namespace Bench
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, BenchMixed v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => BenchMixedWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long BenchMixedSaveTyped(BenchMixed value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = BenchMixedTableType();
@@ -5832,8 +5786,6 @@ namespace Bench
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(BenchMixed value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => BenchMixedSaveTyped(value, buffer, vocabulary, measure);
 
         public static long BenchMixedMeasure(BenchMixed value)
         {

@@ -4,6 +4,9 @@ package compiler
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -376,3 +379,218 @@ table Subject {
 		t.Errorf("found bare Instance. in SubjectTableInfo holder body:\n%s", holderBody)
 	}
 }
+
+// TestCsTypedVsDynamicWireEquivalence verifies that typed fast paths and dynamic
+// descriptor walks produce identical wire bytes across normal, guarded, and optional
+// array fields.
+func TestCsTypedVsDynamicWireEquivalence(t *testing.T) {
+	const src = `package probe
+
+type Leaf {
+    value int32 = 0
+}
+
+table Subject {
+    normal [2]Leaf
+    counted [..2]Leaf
+    on bool
+    if on {
+        guarded [2]Leaf
+    }
+    opt ?[2]Leaf
+    opt_counted ?[..2]Leaf
+}
+`
+	files := csFiles(t, src)
+	subjectCs, ok := files["ProbeTable.cs"]
+	if !ok {
+		t.Fatalf("ProbeTable.cs not found in generated output; got keys: %v", files)
+	}
+	text := string(subjectCs)
+
+	// Structural assertions:
+	// 1. Leaf typed helpers must be generated.
+	for _, want := range []string{
+		"public static bool LeafCollectTyped(Leaf v, ref TableWire.Ids ids)",
+		"public static long LeafBodySizeTyped(Leaf v, ref TableWire.Ids ids",
+		"public static void LeafWriteBodyTyped(ref TableWire.Writer w, Leaf v, ref TableWire.Ids ids",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("expected %q in generated output", want)
+		}
+	}
+
+	// 2. Normal and counted arrays must use the typed helper calls.
+	if !strings.Contains(text, "LeafBodySizeTyped(v.Normal[i_0], ref ids)") {
+		t.Errorf("expected LeafBodySizeTyped call for normal array")
+	}
+	if !strings.Contains(text, "LeafBodySizeTyped(v.Counted[i_1], ref ids)") {
+		t.Errorf("expected LeafBodySizeTyped call for counted array")
+	}
+	if !strings.Contains(text, "LeafWriteBodyTyped(ref w, v.Normal[i_0], ref ids)") {
+		t.Errorf("expected LeafWriteBodyTyped call for normal array")
+	}
+	if !strings.Contains(text, "LeafWriteBodyTyped(ref w, v.Counted[i_1], ref ids)") {
+		t.Errorf("expected LeafWriteBodyTyped call for counted array")
+	}
+
+	// 3. Guarded and optional arrays must NOT use typed child calls directly;
+	// they must fall back to dynamic descriptor dispatch (BodySizeField / WriteBodyField).
+	if strings.Contains(text, "LeafBodySizeTyped(v.Guarded") {
+		t.Errorf("guarded array must not use typed child delegation")
+	}
+	if strings.Contains(text, "LeafBodySizeTyped(v.Opt[") {
+		t.Errorf("optional uncounted array must not use typed child delegation")
+	}
+	if strings.Contains(text, "LeafBodySizeTyped(v.OptCounted[") {
+		t.Errorf("optional counted array must not use typed child delegation")
+	}
+
+	// 4. Unqualified alias overloads must not be emitted.
+	for _, unwanted := range []string{
+		"public static bool CollectTyped(Subject ",
+		"public static long BodySizeTyped(Subject ",
+		"public static void WriteBodyTyped(ref TableWire.Writer w, Subject ",
+		"public static long SaveTyped(Subject ",
+	} {
+		if strings.Contains(text, unwanted) {
+			t.Errorf("found unwanted unqualified alias overload: %q", unwanted)
+		}
+	}
+
+	// 5. If dotnet is available, compile and run end-to-end wire equivalence verification.
+	dotnet := findDotnet()
+	if dotnet == "" {
+		return
+	}
+
+	runtime, err := filepath.Abs("../../serialize.cs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(runtime, "src", "Serialize.cs")); err != nil {
+		t.Skip("serialize.cs unavailable")
+	}
+
+	dir := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	csproj := `<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><AllowUnsafeBlocks>true</AllowUnsafeBlocks></PropertyGroup>
+<ItemGroup><Compile Include="` + filepath.ToSlash(runtime) + `/src/Serialize.cs" /><Compile Include="` + filepath.ToSlash(runtime) + `/src/Int128Pair.cs" /></ItemGroup>
+</Project>`
+	if err := os.WriteFile(filepath.Join(dir, "probe.csproj"), []byte(csproj), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	const programCs = `using System;
+using Probe;
+
+static class Program
+{
+    static void AssertEqual(string name, Subject s)
+    {
+        Span<ulong> ids1 = stackalloc ulong[64];
+        Span<ulong> ids2 = stackalloc ulong[64];
+        Span<byte> buf1 = stackalloc byte[1024];
+        Span<byte> buf2 = stackalloc byte[1024];
+
+        long mTyped = Schema.SubjectMeasure(s);
+        long mDyn = Schema.TableWire.Save(s, Schema.SubjectTableType(), Span<byte>.Empty, ids2, true);
+        if (mTyped != mDyn)
+        {
+            Console.Error.WriteLine($"{name}: measure divergence: typed {mTyped} vs dynamic {mDyn}");
+            Environment.Exit(1);
+        }
+
+        long nTyped = Schema.SubjectSave(s, buf1);
+        long nDyn = Schema.TableWire.Save(s, Schema.SubjectTableType(), buf2, ids1, false);
+        if (nTyped != nDyn)
+        {
+            Console.Error.WriteLine($"{name}: size divergence: typed {nTyped} vs dynamic {nDyn}");
+            Environment.Exit(1);
+        }
+        if (nTyped != mTyped)
+        {
+            Console.Error.WriteLine($"{name}: save len {nTyped} != measure {mTyped}");
+            Environment.Exit(1);
+        }
+        if (!buf1.Slice(0, (int)nTyped).SequenceEqual(buf2.Slice(0, (int)nDyn)))
+        {
+            Console.Error.WriteLine($"{name}: byte divergence between typed and dynamic save!");
+            Environment.Exit(1);
+        }
+    }
+
+    static void Main()
+    {
+        // 1. All defaults
+        AssertEqual("defaults", new Subject());
+
+        // 2. Normal populated
+        Subject s2 = new Subject();
+        s2.Normal[0].Value = 10; s2.Normal[1].Value = 20;
+        s2.CountedCount = 2; s2.Counted[0].Value = 30; s2.Counted[1].Value = 40;
+        AssertEqual("normal populated", s2);
+
+        // 3. Guarded array: on = false, elements nonzero
+        Subject s3 = new Subject();
+        s3.On = false;
+        s3.Guarded[0].Value = 50; s3.Guarded[1].Value = 60;
+        AssertEqual("guarded on=false", s3);
+
+        // 4. Guarded array: on = true, elements nonzero
+        Subject s4 = new Subject();
+        s4.On = true;
+        s4.Guarded[0].Value = 50; s4.Guarded[1].Value = 60;
+        AssertEqual("guarded on=true", s4);
+
+        // 5. Optional uncounted array: opt_present = false, elements nonzero
+        Subject s5 = new Subject();
+        s5.OptPresent = false;
+        s5.Opt[0].Value = 70; s5.Opt[1].Value = 80;
+        AssertEqual("opt uncounted absent", s5);
+
+        // 6. Optional uncounted array: opt_present = true
+        Subject s6 = new Subject();
+        s6.OptPresent = true;
+        s6.Opt[0].Value = 70; s6.Opt[1].Value = 80;
+        AssertEqual("opt uncounted present", s6);
+
+        // 7. Optional counted array: opt_counted_present = false, opt_counted_count = 2 (Rowan case c1)
+        Subject s7 = new Subject();
+        s7.OptCountedPresent = false;
+        s7.OptCountedCount = 2;
+        s7.OptCounted[0].Value = 90; s7.OptCounted[1].Value = 100;
+        AssertEqual("opt counted absent with count=2", s7);
+
+        // 8. Optional counted array: opt_counted_present = true, opt_counted_count = 0 (Rowan case c2)
+        Subject s8 = new Subject();
+        s8.OptCountedPresent = true;
+        s8.OptCountedCount = 0;
+        AssertEqual("opt counted present with count=0", s8);
+
+        // 9. Optional counted array: opt_counted_present = true, opt_counted_count = 2
+        Subject s9 = new Subject();
+        s9.OptCountedPresent = true;
+        s9.OptCountedCount = 2;
+        s9.OptCounted[0].Value = 90; s9.OptCounted[1].Value = 100;
+        AssertEqual("opt counted present with count=2", s9);
+    }
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "Program.cs"), []byte(programCs), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(dotnet, "run", "--configuration", "Release", "-property:UseSharedCompilation=false")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("dotnet run failed: %v\n%s", err, out)
+	}
+}
+

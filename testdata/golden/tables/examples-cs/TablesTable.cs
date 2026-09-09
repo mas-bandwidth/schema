@@ -161,8 +161,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(RootConfig v, ref TableWire.Ids ids) => RootConfigCollectTyped(v, ref ids);
-
         public static long RootConfigBodySizeTyped(RootConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -193,8 +191,6 @@ namespace Tabledemo
             return n;
         }
 
-        public static long BodySizeTyped(RootConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RootConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static void RootConfigWriteBodyTyped(ref TableWire.Writer w, RootConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
             TableFieldInfo[] fields = RootConfigTableType().Fields;
@@ -224,8 +220,6 @@ namespace Tabledemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RootConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RootConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RootConfigSaveTyped(RootConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RootConfigTableType();
@@ -252,8 +246,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RootConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RootConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RootConfigMeasure(RootConfig value)
         {
@@ -308,8 +300,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(WeaponConfig v, ref TableWire.Ids ids) => WeaponConfigCollectTyped(v, ref ids);
-
         public static long WeaponConfigBodySizeTyped(WeaponConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -322,8 +312,6 @@ namespace Tabledemo
             n += TableWire.BodySizeField(v, fields[5], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(WeaponConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => WeaponConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void WeaponConfigWriteBodyTyped(ref TableWire.Writer w, WeaponConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -357,8 +345,6 @@ namespace Tabledemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, WeaponConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => WeaponConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long WeaponConfigSaveTyped(WeaponConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = WeaponConfigTableType();
@@ -385,8 +371,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(WeaponConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => WeaponConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long WeaponConfigMeasure(WeaponConfig value)
         {
@@ -460,8 +444,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(LoadoutConfig v, ref TableWire.Ids ids) => LoadoutConfigCollectTyped(v, ref ids);
-
         public static long LoadoutConfigBodySizeTyped(LoadoutConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -508,8 +490,6 @@ namespace Tabledemo
             }
             return n;
         }
-
-        public static long BodySizeTyped(LoadoutConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => LoadoutConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void LoadoutConfigWriteBodyTyped(ref TableWire.Writer w, LoadoutConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -568,8 +548,6 @@ namespace Tabledemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, LoadoutConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => LoadoutConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long LoadoutConfigSaveTyped(LoadoutConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = LoadoutConfigTableType();
@@ -596,8 +574,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(LoadoutConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => LoadoutConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long LoadoutConfigMeasure(LoadoutConfig value)
         {
@@ -668,8 +644,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(ProfileConfig v, ref TableWire.Ids ids) => ProfileConfigCollectTyped(v, ref ids);
-
         public static long ProfileConfigBodySizeTyped(ProfileConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -692,8 +666,6 @@ namespace Tabledemo
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[12] = payload_12; }
             return n;
         }
-
-        public static long BodySizeTyped(ProfileConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => ProfileConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void ProfileConfigWriteBodyTyped(ref TableWire.Writer w, ProfileConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -753,8 +725,6 @@ namespace Tabledemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, ProfileConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => ProfileConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long ProfileConfigSaveTyped(ProfileConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = ProfileConfigTableType();
@@ -781,8 +751,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(ProfileConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => ProfileConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long ProfileConfigMeasure(ProfileConfig value)
         {
@@ -828,8 +796,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(Attachment v, ref TableWire.Ids ids) => AttachmentCollectTyped(v, ref ids);
-
         public static long AttachmentBodySizeTyped(Attachment v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -837,8 +803,6 @@ namespace Tabledemo
             if (v.Power != 1.0f) { n += TableWire.VarSize(ids.Reference(0xeef9d1358ae7b4e6ul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(Attachment v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => AttachmentBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void AttachmentWriteBodyTyped(ref TableWire.Writer w, Attachment v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -854,8 +818,6 @@ namespace Tabledemo
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, Attachment v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => AttachmentWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long AttachmentSaveTyped(Attachment value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -883,8 +845,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(Attachment value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => AttachmentSaveTyped(value, buffer, vocabulary, measure);
 
         public static long AttachmentMeasure(Attachment value)
         {
@@ -928,16 +888,12 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(Buff v, ref TableWire.Ids ids) => BuffCollectTyped(v, ref ids);
-
         public static long BuffBodySizeTyped(Buff v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
             if (v.Multiplier != 1.0f) { n += TableWire.VarSize(ids.Reference(0x9adc623a805c87c6ul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(Buff v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => BuffBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void BuffWriteBodyTyped(ref TableWire.Writer w, Buff v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -948,8 +904,6 @@ namespace Tabledemo
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, Buff v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => BuffWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long BuffSaveTyped(Buff value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -977,8 +931,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(Buff value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => BuffSaveTyped(value, buffer, vocabulary, measure);
 
         public static long BuffMeasure(Buff value)
         {
@@ -1022,16 +974,12 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(Debuff v, ref TableWire.Ids ids) => DebuffCollectTyped(v, ref ids);
-
         public static long DebuffBodySizeTyped(Debuff v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
             if (v.Amount != 0) { n += TableWire.VarSize(ids.Reference(0x8113fe7ea2b16969ul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(Debuff v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => DebuffBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void DebuffWriteBodyTyped(ref TableWire.Writer w, Debuff v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1042,8 +990,6 @@ namespace Tabledemo
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, Debuff v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => DebuffWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long DebuffSaveTyped(Debuff value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -1071,8 +1017,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(Debuff value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => DebuffSaveTyped(value, buffer, vocabulary, measure);
 
         public static long DebuffMeasure(Debuff value)
         {

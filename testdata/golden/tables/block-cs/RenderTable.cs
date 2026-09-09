@@ -423,8 +423,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderFrame v, ref TableWire.Ids ids) => RenderFrameCollectTyped(v, ref ids);
-
         public static long RenderFrameBodySizeTyped(RenderFrame v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -523,8 +521,6 @@ namespace Blockdemo
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[9] = payload_9; }
             return n;
         }
-
-        public static long BodySizeTyped(RenderFrame v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderFrameBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderFrameWriteBodyTyped(ref TableWire.Writer w, RenderFrame v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -628,8 +624,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderFrame v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderFrameWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderFrameSaveTyped(RenderFrame value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderFrameTableType();
@@ -656,8 +650,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderFrame value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderFrameSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderFrameMeasure(RenderFrame value)
         {
@@ -712,8 +704,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderCamera v, ref TableWire.Ids ids) => RenderCameraCollectTyped(v, ref ids);
-
         public static long RenderCameraBodySizeTyped(RenderCamera v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -728,8 +718,6 @@ namespace Blockdemo
             if (v.Fov != 0.0f) { n += TableWire.VarSize(ids.Reference(0xdcb27c18fed9e15cul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(RenderCamera v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderCameraBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderCameraWriteBodyTyped(ref TableWire.Writer w, RenderCamera v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -761,8 +749,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderCamera v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderCameraWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderCameraSaveTyped(RenderCamera value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderCameraTableType();
@@ -789,8 +775,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderCamera value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderCameraSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderCameraMeasure(RenderCamera value)
         {
@@ -855,8 +839,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderShip v, ref TableWire.Ids ids) => RenderShipCollectTyped(v, ref ids);
-
         public static long RenderShipBodySizeTyped(RenderShip v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -876,8 +858,6 @@ namespace Blockdemo
             if (v.PredictedExplode != false) { n += TableWire.VarSize(ids.Reference(0x4d5be97ba1b9cb81ul)) + 2; }
             return n;
         }
-
-        public static long BodySizeTyped(RenderShip v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderShipBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderShipWriteBodyTyped(ref TableWire.Writer w, RenderShip v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -922,8 +902,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderShip v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderShipWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderShipSaveTyped(RenderShip value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderShipTableType();
@@ -950,8 +928,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderShip value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderShipSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderShipMeasure(RenderShip value)
         {
@@ -1012,8 +988,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderTurret v, ref TableWire.Ids ids) => RenderTurretCollectTyped(v, ref ids);
-
         public static long RenderTurretBodySizeTyped(RenderTurret v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -1030,8 +1004,6 @@ namespace Blockdemo
             if (v.HasTargetLock != false) { n += TableWire.VarSize(ids.Reference(0x1554fa45a1220171ul)) + 2; }
             return n;
         }
-
-        public static long BodySizeTyped(RenderTurret v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderTurretBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderTurretWriteBodyTyped(ref TableWire.Writer w, RenderTurret v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1077,8 +1049,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderTurret v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderTurretWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderTurretSaveTyped(RenderTurret value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderTurretTableType();
@@ -1105,8 +1075,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderTurret value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderTurretSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderTurretMeasure(RenderTurret value)
         {
@@ -1163,8 +1131,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderMissile v, ref TableWire.Ids ids) => RenderMissileCollectTyped(v, ref ids);
-
         public static long RenderMissileBodySizeTyped(RenderMissile v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -1180,8 +1146,6 @@ namespace Blockdemo
             n += TableWire.BodySizeField(v, fields[6], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(RenderMissile v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderMissileBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderMissileWriteBodyTyped(ref TableWire.Writer w, RenderMissile v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1210,8 +1174,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderMissile v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderMissileWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderMissileSaveTyped(RenderMissile value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderMissileTableType();
@@ -1238,8 +1200,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderMissile value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderMissileSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderMissileMeasure(RenderMissile value)
         {
@@ -1296,8 +1256,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderDynamicProp v, ref TableWire.Ids ids) => RenderDynamicPropCollectTyped(v, ref ids);
-
         public static long RenderDynamicPropBodySizeTyped(RenderDynamicProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -1313,8 +1271,6 @@ namespace Blockdemo
             n += TableWire.BodySizeField(v, fields[6], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(RenderDynamicProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderDynamicPropBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderDynamicPropWriteBodyTyped(ref TableWire.Writer w, RenderDynamicProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1343,8 +1299,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderDynamicProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderDynamicPropWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderDynamicPropSaveTyped(RenderDynamicProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderDynamicPropTableType();
@@ -1371,8 +1325,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderDynamicProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderDynamicPropSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderDynamicPropMeasure(RenderDynamicProp value)
         {
@@ -1429,8 +1381,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderStaticProp v, ref TableWire.Ids ids) => RenderStaticPropCollectTyped(v, ref ids);
-
         public static long RenderStaticPropBodySizeTyped(RenderStaticProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -1446,8 +1396,6 @@ namespace Blockdemo
             n += TableWire.BodySizeField(v, fields[6], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(RenderStaticProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderStaticPropBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderStaticPropWriteBodyTyped(ref TableWire.Writer w, RenderStaticProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1476,8 +1424,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderStaticProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderStaticPropWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderStaticPropSaveTyped(RenderStaticProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderStaticPropTableType();
@@ -1504,8 +1450,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderStaticProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderStaticPropSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderStaticPropMeasure(RenderStaticProp value)
         {
@@ -1564,8 +1508,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderCosmeticProp v, ref TableWire.Ids ids) => RenderCosmeticPropCollectTyped(v, ref ids);
-
         public static long RenderCosmeticPropBodySizeTyped(RenderCosmeticProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -1582,8 +1524,6 @@ namespace Blockdemo
             n += TableWire.BodySizeField(v, fields[7], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(RenderCosmeticProp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderCosmeticPropBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderCosmeticPropWriteBodyTyped(ref TableWire.Writer w, RenderCosmeticProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1617,8 +1557,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderCosmeticProp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderCosmeticPropWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderCosmeticPropSaveTyped(RenderCosmeticProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderCosmeticPropTableType();
@@ -1645,8 +1583,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderCosmeticProp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderCosmeticPropSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderCosmeticPropMeasure(RenderCosmeticProp value)
         {
@@ -1701,8 +1637,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderLaser v, ref TableWire.Ids ids) => RenderLaserCollectTyped(v, ref ids);
-
         public static long RenderLaserBodySizeTyped(RenderLaser v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -1717,8 +1651,6 @@ namespace Blockdemo
             n += TableWire.BodySizeField(v, fields[5], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(RenderLaser v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderLaserBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderLaserWriteBodyTyped(ref TableWire.Writer w, RenderLaser v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1741,8 +1673,6 @@ namespace Blockdemo
             TableWire.WriteBodyField(ref w, v, fields[5], ref ids);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderLaser v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderLaserWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long RenderLaserSaveTyped(RenderLaser value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -1770,8 +1700,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderLaser value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderLaserSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderLaserMeasure(RenderLaser value)
         {
@@ -1828,8 +1756,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderExplosion v, ref TableWire.Ids ids) => RenderExplosionCollectTyped(v, ref ids);
-
         public static long RenderExplosionBodySizeTyped(RenderExplosion v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -1845,8 +1771,6 @@ namespace Blockdemo
             n += TableWire.BodySizeField(v, fields[6], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(RenderExplosion v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderExplosionBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderExplosionWriteBodyTyped(ref TableWire.Writer w, RenderExplosion v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1875,8 +1799,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderExplosion v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderExplosionWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RenderExplosionSaveTyped(RenderExplosion value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RenderExplosionTableType();
@@ -1903,8 +1825,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderExplosion value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderExplosionSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderExplosionMeasure(RenderExplosion value)
         {
@@ -1952,8 +1872,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderVector3 v, ref TableWire.Ids ids) => RenderVector3CollectTyped(v, ref ids);
-
         public static long RenderVector3BodySizeTyped(RenderVector3 v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -1962,8 +1880,6 @@ namespace Blockdemo
             if (v.Z != 0.0) { n += TableWire.VarSize(ids.Reference(0xaf63f74c86021a6dul)) + 9; }
             return n;
         }
-
-        public static long BodySizeTyped(RenderVector3 v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderVector3BodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderVector3WriteBodyTyped(ref TableWire.Writer w, RenderVector3 v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -1984,8 +1900,6 @@ namespace Blockdemo
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderVector3 v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderVector3WriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long RenderVector3SaveTyped(RenderVector3 value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -2013,8 +1927,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderVector3 value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderVector3SaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderVector3Measure(RenderVector3 value)
         {
@@ -2064,8 +1976,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(RenderQuaternion v, ref TableWire.Ids ids) => RenderQuaternionCollectTyped(v, ref ids);
-
         public static long RenderQuaternionBodySizeTyped(RenderQuaternion v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -2075,8 +1985,6 @@ namespace Blockdemo
             if (v.W != 1.0) { n += TableWire.VarSize(ids.Reference(0xaf63ea4c86020456ul)) + 9; }
             return n;
         }
-
-        public static long BodySizeTyped(RenderQuaternion v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RenderQuaternionBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RenderQuaternionWriteBodyTyped(ref TableWire.Writer w, RenderQuaternion v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -2102,8 +2010,6 @@ namespace Blockdemo
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, RenderQuaternion v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RenderQuaternionWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long RenderQuaternionSaveTyped(RenderQuaternion value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -2131,8 +2037,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RenderQuaternion value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RenderQuaternionSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RenderQuaternionMeasure(RenderQuaternion value)
         {

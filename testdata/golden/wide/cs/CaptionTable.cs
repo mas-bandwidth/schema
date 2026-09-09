@@ -104,8 +104,6 @@ namespace Wide
             return true;
         }
 
-        public static bool CollectTyped(Caption v, ref TableWire.Ids ids) => CaptionCollectTyped(v, ref ids);
-
         public static long CaptionBodySizeTyped(Caption v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -129,8 +127,6 @@ namespace Wide
             return n;
         }
 
-        public static long BodySizeTyped(Caption v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => CaptionBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static void CaptionWriteBodyTyped(ref TableWire.Writer w, Caption v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
             TableFieldInfo[] fields = CaptionTableType().Fields;
@@ -152,8 +148,6 @@ namespace Wide
             TableWire.WriteBodyField(ref w, v, fields[3], ref ids);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, Caption v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => CaptionWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long CaptionSaveTyped(Caption value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -181,8 +175,6 @@ namespace Wide
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(Caption value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => CaptionSaveTyped(value, buffer, vocabulary, measure);
 
         public static long CaptionMeasure(Caption value)
         {
@@ -230,8 +222,6 @@ namespace Wide
             return true;
         }
 
-        public static bool CollectTyped(Stamp v, ref TableWire.Ids ids) => StampCollectTyped(v, ref ids);
-
         public static long StampBodySizeTyped(Stamp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -241,8 +231,6 @@ namespace Wide
             if (v.Seq != 0) { n += TableWire.VarSize(ids.Reference(0x823b8a195ce2133cul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(Stamp v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => StampBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void StampWriteBodyTyped(ref TableWire.Writer w, Stamp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -256,8 +244,6 @@ namespace Wide
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, Stamp v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => StampWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long StampSaveTyped(Stamp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -285,8 +271,6 @@ namespace Wide
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(Stamp value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => StampSaveTyped(value, buffer, vocabulary, measure);
 
         public static long StampMeasure(Stamp value)
         {
@@ -332,8 +316,6 @@ namespace Wide
             return true;
         }
 
-        public static bool CollectTyped(Line v, ref TableWire.Ids ids) => LineCollectTyped(v, ref ids);
-
         public static long LineBodySizeTyped(Line v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -343,8 +325,6 @@ namespace Wide
             return n;
         }
 
-        public static long BodySizeTyped(Line v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => LineBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static void LineWriteBodyTyped(ref TableWire.Writer w, Line v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
             TableFieldInfo[] fields = LineTableType().Fields;
@@ -352,8 +332,6 @@ namespace Wide
             TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, Line v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => LineWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long LineSaveTyped(Line value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -381,8 +359,6 @@ namespace Wide
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(Line value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => LineSaveTyped(value, buffer, vocabulary, measure);
 
         public static long LineMeasure(Line value)
         {

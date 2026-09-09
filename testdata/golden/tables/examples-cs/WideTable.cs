@@ -49,8 +49,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(WideBlob v, ref TableWire.Ids ids) => WideBlobCollectTyped(v, ref ids);
-
         public static long WideBlobBodySizeTyped(WideBlob v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -63,8 +61,6 @@ namespace Tabledemo
             return n;
         }
 
-        public static long BodySizeTyped(WideBlob v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => WideBlobBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static void WideBlobWriteBodyTyped(ref TableWire.Writer w, WideBlob v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
             TableFieldInfo[] fields = WideBlobTableType().Fields;
@@ -75,8 +71,6 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[2], ref ids, default, payload_2);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, WideBlob v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => WideBlobWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long WideBlobSaveTyped(WideBlob value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -104,8 +98,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(WideBlob value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => WideBlobSaveTyped(value, buffer, vocabulary, measure);
 
         public static long WideBlobMeasure(WideBlob value)
         {

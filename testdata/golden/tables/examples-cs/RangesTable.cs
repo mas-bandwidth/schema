@@ -123,8 +123,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(RangedSigned v, ref TableWire.Ids ids) => RangedSignedCollectTyped(v, ref ids);
-
         public static long RangedSignedBodySizeTyped(RangedSigned v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -149,8 +147,6 @@ namespace Tabledemo
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[16] = payload_16; }
             return n;
         }
-
-        public static long BodySizeTyped(RangedSigned v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RangedSignedBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RangedSignedWriteBodyTyped(ref TableWire.Writer w, RangedSigned v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -240,8 +236,6 @@ namespace Tabledemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RangedSigned v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RangedSignedWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RangedSignedSaveTyped(RangedSigned value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RangedSignedTableType();
@@ -268,8 +262,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RangedSigned value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RangedSignedSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RangedSignedMeasure(RangedSigned value)
         {
@@ -347,8 +339,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(RangedUnsigned v, ref TableWire.Ids ids) => RangedUnsignedCollectTyped(v, ref ids);
-
         public static long RangedUnsignedBodySizeTyped(RangedUnsigned v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -373,8 +363,6 @@ namespace Tabledemo
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[16] = payload_16; }
             return n;
         }
-
-        public static long BodySizeTyped(RangedUnsigned v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RangedUnsignedBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RangedUnsignedWriteBodyTyped(ref TableWire.Writer w, RangedUnsigned v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -464,8 +452,6 @@ namespace Tabledemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RangedUnsigned v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RangedUnsignedWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RangedUnsignedSaveTyped(RangedUnsigned value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RangedUnsignedTableType();
@@ -492,8 +478,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RangedUnsigned value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RangedUnsignedSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RangedUnsignedMeasure(RangedUnsigned value)
         {
@@ -547,8 +531,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(RangedWidths v, ref TableWire.Ids ids) => RangedWidthsCollectTyped(v, ref ids);
-
         public static long RangedWidthsBodySizeTyped(RangedWidths v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -560,8 +542,6 @@ namespace Tabledemo
             if (v.B48 != 0) { n += TableWire.VarSize(ids.Reference(0xff8b681912a535a1ul)) + 9; }
             return n;
         }
-
-        public static long BodySizeTyped(RangedWidths v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => RangedWidthsBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void RangedWidthsWriteBodyTyped(ref TableWire.Writer w, RangedWidths v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -598,8 +578,6 @@ namespace Tabledemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, RangedWidths v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => RangedWidthsWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long RangedWidthsSaveTyped(RangedWidths value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = RangedWidthsTableType();
@@ -626,8 +604,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(RangedWidths value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => RangedWidthsSaveTyped(value, buffer, vocabulary, measure);
 
         public static long RangedWidthsMeasure(RangedWidths value)
         {

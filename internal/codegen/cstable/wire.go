@@ -37,7 +37,7 @@ func isScalarLeafStruct(st *ir.Struct) bool {
 }
 
 func isChildScalarArray(f *ir.Field) (*ir.Struct, bool) {
-	if f.Array == ir.ArrayNone || f.KeyEnum != "" || f.Type.Pointer || f.Type.Kind != ir.TNamed {
+	if f.Array == ir.ArrayNone || f.Type.Optional || f.Guard != "" || f.KeyEnum != "" || f.Type.Pointer || f.Type.Kind != ir.TNamed {
 		return nil, false
 	}
 	st, ok := f.Type.Ref.(*ir.Struct)
@@ -116,7 +116,6 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 		}
 	}
 	g.pf("    return true;\n}\n\n")
-	g.pf("public static bool CollectTyped(%s v, ref TableWire.Ids ids) => %sCollectTyped(v, ref ids);\n\n", name, name)
 }
 
 func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
@@ -161,7 +160,8 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			g.pf("        if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
 			g.pf("    }\n")
 		} else {
-			if f.Array != ir.ArrayNone && f.KeyEnum == "" && tableScalarKind(f) == tkTable {
+			switch {
+			case f.Array != ir.ArrayNone && f.KeyEnum == "" && tableScalarKind(f) == tkTable:
 				g.pf("    scoped Span<long> elemCache_%d = default;\n", i)
 				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
 				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
@@ -170,16 +170,15 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 				g.pf("        elemOffset += take;\n    }\n")
 				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids, elemCache_%d, out long payload_%d);\n", i, i, i)
 				g.pf("    if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
-			} else if isPayloadPrefixed(f) {
+			case isPayloadPrefixed(f):
 				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids, default, out long payload_%d);\n", i, i)
 				g.pf("    if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
-			} else {
+			default:
 				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids);\n", i)
 			}
 		}
 	}
 	g.pf("    return n;\n}\n\n")
-	g.pf("public static long BodySizeTyped(%s v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => %sBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);\n\n", name, name)
 }
 
 func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
@@ -234,7 +233,8 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			g.pf("            %sWriteBodyTyped(ref w, v.%s[i_%d], ref ids);\n", childName, prop, i)
 			g.pf("        }\n    }\n")
 		} else {
-			if f.Array != ir.ArrayNone && f.KeyEnum == "" && tableScalarKind(f) == tkTable {
+			switch {
+			case f.Array != ir.ArrayNone && f.KeyEnum == "" && tableScalarKind(f) == tkTable:
 				g.pf("    scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
 				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
@@ -243,16 +243,15 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 				g.pf("        elemOffset += take;\n    }\n")
 				g.pf("    long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
 				g.pf("    TableWire.WriteBodyField(ref w, v, fields[%d], ref ids, elemCache_%d, payload_%d);\n", i, i, i)
-			} else if isPayloadPrefixed(f) {
+			case isPayloadPrefixed(f):
 				g.pf("    long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
 				g.pf("    TableWire.WriteBodyField(ref w, v, fields[%d], ref ids, default, payload_%d);\n", i, i)
-			} else {
+			default:
 				g.pf("    TableWire.WriteBodyField(ref w, v, fields[%d], ref ids);\n", i)
 			}
 		}
 	}
 	g.pf("    w.Var(0);\n}\n\n")
-	g.pf("public static void WriteBodyTyped(ref TableWire.Writer w, %s v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => %sWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);\n\n", name, name)
 }
 
 func (g *tableGen) emitSaveTyped(st *ir.Struct) {
@@ -279,7 +278,6 @@ func (g *tableGen) emitSaveTyped(st *ir.Struct) {
 	g.pf("    for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }\n")
 	g.pf("    w.Fixed((ulong)ids.Count, 8);\n")
 	g.pf("    return w.Offset;\n}\n\n")
-	g.pf("public static long SaveTyped(%s value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => %sSaveTyped(value, buffer, vocabulary, measure);\n\n", name, name)
 }
 
 func (g *tableGen) emitTypedWireSurface(st *ir.Struct) {

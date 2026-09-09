@@ -82,8 +82,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(PaddedRow v, ref TableWire.Ids ids) => PaddedRowCollectTyped(v, ref ids);
-
         public static long PaddedRowBodySizeTyped(PaddedRow v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -101,8 +99,6 @@ namespace Blockdemo
             n += TableWire.BodySizeField(v, fields[7], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(PaddedRow v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => PaddedRowBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void PaddedRowWriteBodyTyped(ref TableWire.Writer w, PaddedRow v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -137,8 +133,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, PaddedRow v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => PaddedRowWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long PaddedRowSaveTyped(PaddedRow value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = PaddedRowTableType();
@@ -165,8 +159,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(PaddedRow value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => PaddedRowSaveTyped(value, buffer, vocabulary, measure);
 
         public static long PaddedRowMeasure(PaddedRow value)
         {
@@ -222,8 +214,6 @@ namespace Blockdemo
             return true;
         }
 
-        public static bool CollectTyped(PaddedFrame v, ref TableWire.Ids ids) => PaddedFrameCollectTyped(v, ref ids);
-
         public static long PaddedFrameBodySizeTyped(PaddedFrame v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -244,8 +234,6 @@ namespace Blockdemo
             n += TableWire.BodySizeField(v, fields[3], ref ids);
             return n;
         }
-
-        public static long BodySizeTyped(PaddedFrame v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => PaddedFrameBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void PaddedFrameWriteBodyTyped(ref TableWire.Writer w, PaddedFrame v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -275,8 +263,6 @@ namespace Blockdemo
             w.Var(0);
         }
 
-        public static void WriteBodyTyped(ref TableWire.Writer w, PaddedFrame v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => PaddedFrameWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static long PaddedFrameSaveTyped(PaddedFrame value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
             TableTypeInfo type = PaddedFrameTableType();
@@ -303,8 +289,6 @@ namespace Blockdemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(PaddedFrame value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => PaddedFrameSaveTyped(value, buffer, vocabulary, measure);
 
         public static long PaddedFrameMeasure(PaddedFrame value)
         {

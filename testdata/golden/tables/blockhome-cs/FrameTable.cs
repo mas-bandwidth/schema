@@ -63,8 +63,6 @@ namespace Blockhome
             return true;
         }
 
-        public static bool CollectTyped(PartRow v, ref TableWire.Ids ids) => PartRowCollectTyped(v, ref ids);
-
         public static long PartRowBodySizeTyped(PartRow v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -77,8 +75,6 @@ namespace Blockhome
             if (v.Slot != 0) { n += TableWire.VarSize(ids.Reference(0x6a771618f6fe31d1ul)) + 2; }
             return n;
         }
-
-        public static long BodySizeTyped(PartRow v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => PartRowBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void PartRowWriteBodyTyped(ref TableWire.Writer w, PartRow v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -99,8 +95,6 @@ namespace Blockhome
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, PartRow v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => PartRowWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long PartRowSaveTyped(PartRow value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -128,8 +122,6 @@ namespace Blockhome
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(PartRow value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => PartRowSaveTyped(value, buffer, vocabulary, measure);
 
         public static long PartRowMeasure(PartRow value)
         {
@@ -180,8 +172,6 @@ namespace Blockhome
             return true;
         }
 
-        public static bool CollectTyped(PartFrame v, ref TableWire.Ids ids) => PartFrameCollectTyped(v, ref ids);
-
         public static long PartFrameBodySizeTyped(PartFrame v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -200,8 +190,6 @@ namespace Blockhome
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
             return n;
         }
-
-        public static long BodySizeTyped(PartFrame v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => PartFrameBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void PartFrameWriteBodyTyped(ref TableWire.Writer w, PartFrame v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -224,8 +212,6 @@ namespace Blockhome
             TableWire.WriteBodyField(ref w, v, fields[1], ref ids, elemCache_1, payload_1);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, PartFrame v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => PartFrameWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long PartFrameSaveTyped(PartFrame value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -253,8 +239,6 @@ namespace Blockhome
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(PartFrame value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => PartFrameSaveTyped(value, buffer, vocabulary, measure);
 
         public static long PartFrameMeasure(PartFrame value)
         {

@@ -40,8 +40,6 @@ namespace Tabledemo
             return true;
         }
 
-        public static bool CollectTyped(ArchiveConfig v, ref TableWire.Ids ids) => ArchiveConfigCollectTyped(v, ref ids);
-
         public static long ArchiveConfigBodySizeTyped(ArchiveConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -51,8 +49,6 @@ namespace Tabledemo
             if (v.Count != 1) { n += TableWire.VarSize(ids.Reference(0xb1e5e28e4479a274ul)) + 5; }
             return n;
         }
-
-        public static long BodySizeTyped(ArchiveConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => ArchiveConfigBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static void ArchiveConfigWriteBodyTyped(ref TableWire.Writer w, ArchiveConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
@@ -66,8 +62,6 @@ namespace Tabledemo
             }
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, ArchiveConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => ArchiveConfigWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long ArchiveConfigSaveTyped(ArchiveConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -95,8 +89,6 @@ namespace Tabledemo
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(ArchiveConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => ArchiveConfigSaveTyped(value, buffer, vocabulary, measure);
 
         public static long ArchiveConfigMeasure(ArchiveConfig value)
         {

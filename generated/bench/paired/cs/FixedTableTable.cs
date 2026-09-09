@@ -37,8 +37,6 @@ namespace Bench
             return true;
         }
 
-        public static bool CollectTyped(FixedTable v, ref TableWire.Ids ids) => FixedTableCollectTyped(v, ref ids);
-
         public static long FixedTableBodySizeTyped(FixedTable v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
@@ -48,8 +46,6 @@ namespace Bench
             return n;
         }
 
-        public static long BodySizeTyped(FixedTable v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default) => FixedTableBodySizeTyped(v, ref ids, rootPayloadSizes, rootElemSizes);
-
         public static void FixedTableWriteBodyTyped(ref TableWire.Writer w, FixedTable v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
         {
             TableFieldInfo[] fields = FixedTableTableType().Fields;
@@ -57,8 +53,6 @@ namespace Bench
             TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
             w.Var(0);
         }
-
-        public static void WriteBodyTyped(ref TableWire.Writer w, FixedTable v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default) => FixedTableWriteBodyTyped(ref w, v, ref ids, rootPayloadSizes, rootElemSizes);
 
         public static long FixedTableSaveTyped(FixedTable value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
         {
@@ -86,8 +80,6 @@ namespace Bench
             w.Fixed((ulong)ids.Count, 8);
             return w.Offset;
         }
-
-        public static long SaveTyped(FixedTable value, Span<byte> buffer, Span<ulong> vocabulary, bool measure) => FixedTableSaveTyped(value, buffer, vocabulary, measure);
 
         public static long FixedTableMeasure(FixedTable value)
         {
