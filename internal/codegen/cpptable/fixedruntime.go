@@ -27,6 +27,7 @@ enum : uint8_t
     kTableFixedOrdinal = 3, // a variant ordinal, remapped through the plan's own table
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
+    kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
 // arg on a kTableFixedText entry
@@ -38,6 +39,18 @@ enum : uint8_t
 };
 
 inline constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
+
+// §4'S WIDENING RUNGS, and the fixed form spends no rule of its own on them: a
+// kind that GREW since the writer decodes at the writer's width and lands
+// exactly, counting one widened. Coming back DOWN the ladder, or across two
+// of them, is a kind that MOVED and is reported rather than reinterpreted.
+inline bool TableFixedWidens( uint8_t from, uint8_t to )
+{
+    if ( from >= 6 && from <= 9 && to >= 6 && to <= 9 ) { return to > from; }  // u8 .. u64
+    if ( from >= 2 && from <= 5 && to >= 2 && to <= 5 ) { return to > from; }  // i8 .. i64
+    return from == 10 && to == 11;                                            // f32 -> f64
+}
+inline bool TableFixedSignedKind( uint8_t kind ) { return kind >= 2 && kind <= 5; }
 
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
@@ -52,6 +65,7 @@ struct TableFixedEntry
     uint8_t op = 0;
     uint8_t arg = 0;
     uint8_t dstsize = 0;
+    uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
 
 template <int N> struct TableFixedPlan
@@ -231,7 +245,24 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, const ui
             {
                 uint64_t raw = 0;
                 memcpy( &raw, src + p.src, p.size );
+                if ( p.sign != 0 )
+                {
+                    // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the
+                    // whole reason a widen is an op and not a short copy.
+                    const unsigned bits = p.size * 8u;
+                    const uint64_t top = 1ull << ( bits - 1 );
+                    if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+                }
                 memcpy( dst + p.dst, &raw, p.dstsize );
+                report->widened++;
+                break;
+            }
+            case kTableFixedWidenF:
+            {
+                float f = 0.0f;
+                memcpy( &f, src + p.src, 4 );
+                const double d = (double) f;
+                memcpy( dst + p.dst, &d, 8 );
                 report->widened++;
                 break;
             }
@@ -443,6 +474,16 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     const uint32_t aux_at = my_at + d.aux;
     if ( te.kind != me.kind )
     {
+        if ( TableFixedWidens( te.kind, me.kind ) )
+        {
+            TableFixedEntry e;
+            e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
+            e.guard = guard; e.arg = arg;
+            e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
+            e.sign = TableFixedSignedKind( te.kind ) ? 1u : 0u;
+            TableFixedPush( c, e );
+            return;
+        }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
         if ( c.report != NULL ) { c.report->kind_mismatch++; }
         return;

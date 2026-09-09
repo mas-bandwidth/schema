@@ -217,6 +217,11 @@ define tables_generate
 	# THE LIST UNIT WITH NO MAP IN IT (docs/SPEC-TABLES.md §2.9, schema#380):
 	# where the tool's cook half and the reference's are held to one artifact
 	$(1) generate --lang cpp --out $(2)/l1 test/tables/L1.schema
+	# THE FIXED FORM'S VERSIONING PAIR (docs/SPEC-TABLES.md §3.4): a widened
+	# field, a rename under `was`, a field each side does not have, and a whole
+	# nested TYPE the older side has no name for
+	$(1) generate --lang cpp --out $(2)/fx1 test/tables/FX1.schema
+	$(1) generate --lang cpp --out $(2)/fx2 test/tables/FX2.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -239,7 +244,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -4302,6 +4307,21 @@ bench-paired-gate:
 
 .PHONY: bench-paired-corpus bench-paired-check bench-paired-gate
 
+# THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
+# path is a design decision with a price, and this is the price: the
+# plan-driven reader running its identity plan against straight-line
+# constant-offset loads written by hand, over the paired unit's own 64
+# records. It prints a ratio; the ruling's bound is ~1.5x. Not part of
+# `make test` — it is a clock, and clocks do not gate a build.
+build/schema_bench_fixedform: generated/bench/paired/cpp/.stamp test/bench/fixedform_measure.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -O2 -Igenerated/bench/paired/cpp test/bench/fixedform_measure.cpp -o $@
+
+bench-fixedform-measure: build/schema_bench_fixedform
+	./build/schema_bench_fixedform 4000 9
+
+.PHONY: bench-fixedform-measure
+
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
 # emits (issue #30). `make test` regenerates every tracked generated file in
@@ -5589,6 +5609,27 @@ toolchain-negative-control:
 # positive half runs first, against the shipped W2, so the two answers are
 # read side by side.
 .PHONY: tables-was-negative-control
+# THE FIXED FORM'S VERSIONING CONFORMANCE (docs/SPEC-TABLES.md §3.4). One
+# binary, every case of §3.4's "held by test" row: the identity plan, an older
+# writer, a newer writer with an unknown field AND an unknown nested type, a
+# rename under `was`, a widened field, an enum variant and a union arm inserted
+# in the middle, a keyed array whose keys moved, an optional against a value,
+# and the NEGATIVE CONTROLS — the wrong plan, a block that is not a block, a
+# form byte this reader does not carry, and a plan that does not fit.
+build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+
+tables-fixedform: build/schema_test_fixedform
+	./build/schema_test_fixedform
+
+test: tables-fixedform
+
+.PHONY: tables-fixedform
+
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/w2 -I$(SERIALIZE) test/tables/was_control_main.cpp \

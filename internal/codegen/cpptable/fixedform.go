@@ -32,6 +32,10 @@ import (
 // Nothing rides under it in a record — it is a block kind and not a wire kind.
 const fixedKindOptional = 35
 
+// fixedLeafCap bounds the compile-time plan array. Past it the constexpr walk
+// is a build-time cost nobody asked for; see fixedRoots.
+const fixedLeafCap = 4096
+
 // ---------------------------------------------------------------------------
 // THE LAYOUT: a constant size per field
 // ---------------------------------------------------------------------------
@@ -161,6 +165,58 @@ func fixedSupported(st *ir.Struct, depth int) bool {
 		}
 	}
 	return true
+}
+
+// fixedFlatType reports a type whose STORAGE IMAGE IS ITS WIRE IMAGE: the
+// declared order is the storage order, there is no padding anywhere in it, and
+// no field of it reorders against the wire. An array of such a type is ONE run
+// however many elements it has, which is what keeps a plan small and what
+// makes the whole of a big array one move.
+func (g *tableGen) fixedFlatType(st *ir.Struct) bool {
+	for _, f := range st.Fields {
+		if f.Type.Optional || f.KeyEnum != "" || f.Array == ir.ArrayCounted {
+			return false
+		}
+		switch f.Type.Kind {
+		case ir.TString, ir.TWString, ir.TBytes, ir.TMap:
+			return false
+		}
+		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
+			return false
+		}
+		if !g.fixedFlatElem(f) {
+			return false
+		}
+	}
+	// and the C ABI agrees: no padding anywhere in the record
+	return ir.RecordLayout(g.unit, st).Size == fixedTypeBytes(st)
+}
+
+// fixedFlatElem is the same question about ONE element of a field.
+func (g *tableGen) fixedFlatElem(f *ir.Field) bool {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return g.fixedFlatType(r)
+		case *ir.Union:
+			return false
+		}
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TWString, ir.TBytes, ir.TMap:
+		return false
+	}
+	return true
+}
+
+// fixedKeyedSlots is the raw slot storage of a keyed array: a TABLE's keyed
+// field is a TableKeyed whose slots sit behind `.slots`, and a closure type's
+// is the packet backend's plain array (docs/SPEC-TABLES.md §2.4).
+func fixedKeyedSlots(owner *ir.Struct, f *ir.Field) string {
+	if f.KeyEnum != "" && owner.IsTable {
+		return f.Name + ".slots"
+	}
+	return f.Name
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +400,13 @@ func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 		if !st.IsTable || st.IsMapEntry() || g.isVar(st.Name) || !fixedSupported(st, 0) {
 			continue
 		}
+		// A PLAN IS BUILT AT COMPILE TIME, in an array the compiler sizes, so a
+		// type whose leaves do not fit one does not carry this form. It is a
+		// bound on the REFERENCE and not on the wire: nothing about §3.4 stops
+		// such a type, and the follow-on is a plan built at load time instead.
+		if g.fixedLeafCount(st) > fixedLeafCap {
+			continue
+		}
 		out = append(out, st)
 	}
 	return out
@@ -404,24 +467,34 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 
 // fixedLeafCount bounds the entries a type's leaf walk writes, which sizes the
 // constexpr plan array. It counts leaves BEFORE coalescing.
-func fixedLeafCount(st *ir.Struct) int {
+func (g *tableGen) fixedLeafCount(st *ir.Struct) int {
 	n := 0
 	for _, f := range st.Fields {
-		n += fixedFieldLeafCount(f)
+		n += g.fixedFieldLeafCount(f)
 	}
 	return n
 }
 
-func fixedFieldLeafCount(f *ir.Field) int {
-	per := fixedElementLeafCount(f)
+func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
+	per := g.fixedElementLeafCount(f)
+	flat := g.fixedFlatElem(f)
 	n := per
 	switch {
 	case f.KeyEnum != "":
 		n = int(f.KeyEnumRef.Max) * per
+		if flat {
+			n = 1
+		}
 	case f.Array == ir.ArrayFixed:
 		n = int(f.ArrayBound) * per
+		if flat {
+			n = 1
+		}
 	case f.Array == ir.ArrayCounted:
 		n = 1 + int(f.ArrayBound)*per
+		if flat {
+			n = 2
+		}
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		n = 1
 	}
@@ -431,15 +504,15 @@ func fixedFieldLeafCount(f *ir.Field) int {
 	return n
 }
 
-func fixedElementLeafCount(f *ir.Field) int {
+func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			return fixedLeafCount(r)
+			return g.fixedLeafCount(r)
 		case *ir.Union:
 			n := 1 // the tag
 			for _, v := range r.Variants {
-				n += fixedFieldLeafCount(v.F)
+				n += g.fixedFieldLeafCount(v.F)
 			}
 			return n
 		}
@@ -501,9 +574,19 @@ func (g *tableGen) emitFixedTextLeaf(st *ir.Struct, f *ir.Field, base, units int
 
 func (g *tableGen) emitFixedElementLoop(st *ir.Struct, f *ir.Field, base, count int64) {
 	elem := fixedElementBytes(f)
+	if g.fixedFlatElem(f) {
+		// THE WHOLE ARRAY IS ONE RUN: its storage image is its wire image, so
+		// the elements need no walk at all and the plan carries one entry
+		// however many of them there are.
+		g.pf("    static_assert( sizeof( %s ) == %d, \"%s.%s: a flat element's storage IS its wire image\" );\n",
+			g.fixedElemStorage(f), elem, st.Name, f.Name)
+		g.pf("    out[n++] = TableFixedEntry{ src + %du, dst + %s, %du, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0 }; // %s, whole\n",
+			base, offOf(st.Name, fixedKeyedSlots(st, f)), count*elem, f.Name)
+		return
+	}
 	g.pf("    for ( uint32_t i = 0; i < %du; ++i )\n    {\n", count)
 	g.pf("        const uint32_t es = src + %du + i * %du;\n", base, elem)
-	g.pf("        const uint32_t ed = dst + %s + i * (uint32_t) sizeof( %s );\n", offOf(st.Name, f.Name), g.fixedElemStorage(f))
+	g.pf("        const uint32_t ed = dst + %s + i * (uint32_t) sizeof( %s );\n", offOf(st.Name, fixedKeyedSlots(st, f)), g.fixedElemStorage(f))
 	g.emitFixedElementLeavesAt(f, "es", "ed", 8)
 	g.pf("    }\n")
 }
@@ -568,6 +651,7 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, indent
 // ---- the template writer ---------------------------------------------------
 
 func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
+	g.fixedOwner = st
 	g.pf("// %s's stores. The template — the hash, then zeros — is memcpy'd first,\n", st.Name)
 	g.pf("// which is also what zero-fills every byte of declared slack.\n")
 	g.pf("inline void %sFixedWriteBody( uint8_t * b, const %s & value )\n{\n", st.Name, st.Name)
@@ -580,7 +664,7 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("}\n\n")
 }
 
-func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, indent int) {
+func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, indent int) { //nolint:gocyclo
 	ind := strings.Repeat(" ", indent)
 	base := off
 	if f.Type.Optional {
@@ -589,7 +673,7 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitFixedWriteLoop(f, base, f.KeyEnumRef.Max, buf, val+"."+f.Name+".slots", indent)
+		g.emitFixedWriteLoop(f, base, f.KeyEnumRef.Max, buf, val+"."+fixedKeyedSlots(g.fixedOwner, f), indent)
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedWriteLoop(f, base, f.ArrayBound, buf, val+"."+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
@@ -692,7 +776,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	leaves := fixedLeafCount(st)
+	leaves := g.fixedLeafCount(st)
 	g.pf("// THE IDENTITY PLAN, coalesced at COMPILE TIME out of %d leaves.\n", leaves)
 	g.pf("inline constexpr auto %sFixedPlan = TableFixedBuildPlan<%d>( %sFixedLeaves );\n\n", st.Name, leaves, st.Name)
 

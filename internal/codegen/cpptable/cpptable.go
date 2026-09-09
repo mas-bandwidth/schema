@@ -84,6 +84,9 @@ func tablePut(width int) string { return fmt.Sprintf("put%d", width*8) }
 func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
 
 type tableGen struct {
+	// fixedOwner is the type whose fixed-form writer is being emitted, which is
+	// what says whether a keyed array's slots are spelled `.slots` (§2.4)
+	fixedOwner  *ir.Struct
 	unit        *ir.Unit
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table

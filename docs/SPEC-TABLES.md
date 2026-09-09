@@ -5847,10 +5847,25 @@ constant size and its field count. Every entry is followed immediately by its
   | `15` union | its ARMS, the arm's ordinal being its position from `1` |
   | `16` enum-keyed array | TWO children, the KEY ENUM then the ELEMENT |
   | `30` enum | its VARIANTS, each at kind `32`, size `0`, the variant's ordinal being its position from `1` |
+  | `35` the OPTIONAL WRAPPER | ONE child, the payload |
   | anything else | none |
 
-A field's `id` is the field name's; a variant's is the variant name's; an arm's
-is the arm name's; a table entry's is the TYPE name's. **A NESTED TYPE'S ENTRIES
+**KIND `35` IS THE ONE KIND THIS BLOCK ADDS TO §3'S CLOSED SET, and it is a
+BLOCK kind and not a WIRE kind**: nothing rides under it in a record, and its
+size is one present byte plus its child's. It exists because §2.3's rule that
+`?T` and a plain `T` nesting are WIRE-IDENTICAL is a rule of §3's body, where
+presence IS the field riding. **ON THIS FORM THEY ARE ONE BYTE APART**, so
+moving a field between the two spellings is an edit a reader must be able to
+SEE, and the kind is what lets it: the edit reads as `kind_mismatch` and the
+field takes its declared default, rather than every byte after it sliding by
+one. That is a departure from §2.3, it is stated here rather than left to be
+discovered, and it is the price of a present flag Glenn asked for by name.
+
+**ENTRY `0` CARRIES THE ROOT TYPE'S NAME ID, AND EVERY OTHER ENTRY CARRIES THE
+NAME ID OF THE FIELD, VARIANT OR ARM IT DESCRIBES.** A nested type is named by
+the field that holds it, because that is the name a reader matches on: a type
+renamed with its field left alone is not an edit this wire can see, and a field
+renamed is exactly the edit `was =` exists for (§5). **A NESTED TYPE'S ENTRIES
 ARE WRITTEN AT EVERY PLACE IT APPEARS**, not once with a back reference, because
 the block has no references and adding them would buy bytes in a structure sent
 once and cost the reader the one thing it has, a straight walk.
@@ -6085,6 +6100,14 @@ reason is the one §4.2 already gives for not planting `2`.
   wrong plan fail is a test that never checked the right one worked.
 - **THE PAIRED CORPUS**, sixty-four logical records on the packet wire and on
   this one, whose per-record byte account is a published row.
+- **A REFERENCE BOUND, named because it is the REFERENCE's and not the WIRE's.**
+  The C++ reference builds its identity plan at COMPILE TIME, in an array the
+  compiler sizes, so a type whose leaves do not fit one does not carry the form
+  in that backend. **AN ARRAY OF A FLAT TYPE IS ONE LEAF** — a type whose
+  storage image is its wire image, which is most of them — so the bound is
+  reached only by a large array of a type carrying text, a count, a union or an
+  optional. Nothing in §3.4 stops such a type, and the follow-on is a plan built
+  at load time instead of at compile time, through the same loop.
 - **THE MEASUREMENT, and it is the reason this form has one reader and not
   two.** The plan-driven read running its identity plan, against straight-line
   constant-offset loads generated directly, over the same records on one host.
