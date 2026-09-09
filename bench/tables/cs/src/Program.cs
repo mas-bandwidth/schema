@@ -13,9 +13,8 @@
 // Language-specific discipline, the same choices the type leg made:
 //   - escape barriers: a static sink accumulates observed byte counts and
 //     GC.KeepAlive holds the decoded object, so the JIT cannot delete the work
-//   - the read path loads into ONE reused instance, reset first — the
-//     tolerant wire elides a field at its default, so resetting is part of a
-//     correct read into reused storage and stays inside the clock
+//   - the read path loads into ONE reused instance; public Load restores
+//     declared defaults inside the clock, with no separate runner reset
 //   - the warmup run per path doubles as the JIT warmup
 //
 // THIS FILE IS SHAPE-BLIND: it names the generated type at its call sites and
@@ -283,6 +282,33 @@ static class Program
             }
         }
 
+        // gate 3: reused storage must also round-trip, including the last-to-first
+        // transition. Public Load owns default restoration; do not reset between loads.
+        T outValue = make();
+        for (int k = 0; k < 2 * NumVariants; k++)
+        {
+            int index = k & (NumVariants - 1);
+            if (!load(outValue, new ReadOnlySpan<byte>(gVariants[index], 0, gLengths[index])))
+            {
+                Fail(name, "load into reused target failed");
+                return;
+            }
+            long wrote = save(outValue, new Span<byte>(gTwin));
+            if (wrote != gLengths[index])
+            {
+                Fail(name, "reused target round-trip length differs");
+                return;
+            }
+            for (int i = 0; i < gLengths[index]; i++)
+            {
+                if (gTwin[i] != gVariants[index][i])
+                {
+                    Fail(name, "reused target round-trip bytes differ");
+                    return;
+                }
+            }
+        }
+
         if (gGate) return;
 
         double[] writeRates = new double[gNumRuns];
@@ -309,16 +335,14 @@ static class Program
             }
         }
 
-        // ROUND-TRIP: reset, load a variant buffer, re-save what came out. The
+        // ROUND-TRIP: load a variant buffer, re-save what came out. The
         // load's output IS the save's input, so every loaded field is observed
         // by construction (§2.7's read-side sink problem dissolved).
-        T outValue = make();
         for (int run = -1; run < gNumRuns; run++)
         {
             Stopwatch sw = Stopwatch.StartNew();
             for (long i = 0; i < iters; i++)
             {
-                reset(outValue);
                 if (!load(outValue, new ReadOnlySpan<byte>(gVariants[(int)(i & (NumVariants - 1))], 0, gLengths[(int)(i & (NumVariants - 1))])))
                 {
                     Fail(name, "load failed in loop");

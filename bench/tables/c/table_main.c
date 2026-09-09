@@ -330,12 +330,8 @@ static double load_variants( const char * name )
    the one measured shape
    ------------------------------------------------------------------------
 
-   THE READ ARM RESETS BEFORE IT LOADS, and that is not overhead the runner
-   added: the tolerant wire ELIDES a field at its default (§3), so `Load` fills
-   only what actually rode and a reused instance would otherwise keep the
-   previous record's values in the elided fields. Resetting is part of a correct
-   read into reused storage, in every language, so it is inside the clock rather
-   than hidden outside it. */
+   Public Load restores declared defaults before overlaying the fields on the
+   wire (§3). That work stays inside the clock; the runner adds no separate reset. */
 
 static TableMixed g_instances[NumVariants];
 static TableMixed g_out;
@@ -382,6 +378,25 @@ static void bench_table( const char * name, const char * golden, long base_iters
         }
     }
 
+    /* gate 3: reused storage must also round-trip, including the last-to-first
+       transition. Public Load owns default restoration; do not reset between loads. */
+    for ( k = 0; k < 2 * NumVariants; k++ )
+    {
+        const int index = k & ( NumVariants - 1 );
+        int64_t wrote;
+        if ( !bench_load( &g_out, variant( index ), g_lengths[index] ) )
+        {
+            fail( name, "load into reused target failed" );
+            return;
+        }
+        wrote = table_mixed_save( &g_out, g_twin, BufferSize );
+        if ( wrote != g_lengths[index] || memcmp( g_twin, variant( index ), (size_t) g_lengths[index] ) != 0 )
+        {
+            fail( name, "reused target round-trip bytes differ" );
+            return;
+        }
+    }
+
     if ( g_gate ) return;
 
     /* WRITE: save the 64 pre-loaded instances round-robin. */
@@ -400,7 +415,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
         if ( run >= 0 ) { write_rates[run] = (double) iters / elapsed; }
     }
 
-    /* ROUND-TRIP: reset, load a variant buffer, then re-save what came out. */
+    /* ROUND-TRIP: load a variant buffer, then re-save what came out. */
     for ( run = -1; run < g_num_runs; run++ )
     {
         double start = time_now();
@@ -408,7 +423,6 @@ static void bench_table( const char * name, const char * golden, long base_iters
         for ( i = 0; i < iters; i++ )
         {
             int64_t wrote;
-            table_mixed_reset( &g_out );
             if ( !bench_load( &g_out, variant( i & ( NumVariants - 1 ) ), g_lengths[i & ( NumVariants - 1 )] ) )
             {
                 fail( name, "load failed in loop" );

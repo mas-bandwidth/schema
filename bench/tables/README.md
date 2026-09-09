@@ -108,11 +108,11 @@ The sitting is the type bench's, clause for clause (BENCH-STANDARD.md §1.5,
   pairwise distinct, so no single buffer can be memorised by the branch
   predictor or the caches. `bytes_per_op` is constant by construction rather
   than by assertion.
-- **The read arm resets before it loads**, and that is not overhead the runner
-  added: `Load` fills only the fields that actually rode, so a reused instance
-  would otherwise keep the previous record's values in the elided ones.
-  Resetting is part of a correct read into reused storage, in every language,
-  so it sits inside the clock rather than hidden outside it.
+- **Public `Load` restores declared defaults** before overlaying the fields
+  on the wire. That work stays inside the clock; the runner adds no separate
+  reset. Before timing, two complete corpus rotations load into one reused
+  target without caller resets and must re-save byte-identically, including
+  the last-to-first transition.
 
 ### Why this is a separate pass from `bench/run.sh`
 

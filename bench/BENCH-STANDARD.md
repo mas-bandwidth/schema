@@ -596,9 +596,13 @@ artifact format and manifest remain unchanged.
 
 Seven rounds intentionally keep the packet convention's 4/3 order imbalance.
 Warmups use the full per-path iteration count: 4,000,000 packet or 400,000 table
-operations. Table target reset is inside the round-trip clock; packet does not
-need it. Best-of-N remains the requested reporting convention, with medians and
-spread retained in details rather than substituted into headline ratios.
+operations. Public table Load restores declared defaults inside the round-trip
+clock; the runner adds no separate reset. Packet does not need that reset.
+Before timing, two complete corpus rotations must load into one reused target
+without caller resets and re-save the exact expected bytes, including the
+last-to-first transition. Best-of-N remains the requested reporting convention,
+with medians and spread retained in details rather than substituted into headline
+ratios.
 
 `completion.json` binds the exact build/window/load/control/round raw file set
 by SHA-256 after all measurement gates and actual binary/corpus hash checks.
@@ -642,10 +646,10 @@ clauses are restated because the wire differs:
   `bytes_per_op` moves. The producer (`test/bench/table_main.cpp`) holds them
   off by construction and REFUSES to emit a corpus whose 64 records are not
   all the same length.
-- **The read arm resets before it loads**, inside the clock. `Load` fills only
-  what rode, so resetting is part of a correct read into reused storage in
-  every language; hiding it outside the clock would publish a decode number
-  that no caller can obtain.
+- **Public `Load` restores declared defaults** before overlaying the fields
+  on the wire. That work stays inside the clock; the runner adds no separate
+  reset. Two complete corpus rotations into one reused target must pass exact
+  re-save checks before timing, with no caller resets between loads.
 
 **Why the pass is separate from `bench/run.sh`.** `corpus_id` is computed over
 the goldens a RUN loaded (§1.6). Folding the table corpus into the type pass

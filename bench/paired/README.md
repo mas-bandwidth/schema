@@ -37,8 +37,9 @@ before the first clock. Each round runs both wires for each language, alternatin
 their order. There is one discarded warmup per measured path, using the full 4,000,000 packet
 or 400,000 table operations. The measured iteration counts are the same, both
 whole rotations of the 64 records. Seven rounds follow the packet reporting
-convention, including the 4/3 wire-order imbalance. Table round trips reset the
-target inside the clock; packet round trips do not need that reset. Each row must exceed 200 ms; a spread above
+convention, including the 4/3 wire-order imbalance. Public table Load restores
+declared defaults inside the clock; the runner adds no separate reset. Packet
+round trips do not need that reset. Each row must exceed 200 ms; a spread above
 15% refuses publication of the complete pass. ARM and x64 are separate sittings
 and separate results pages.
 
@@ -121,7 +122,9 @@ Table default elision and enum ID sets vary the encoded record lengths even
 though the schema is a fixed table. The paired table corpus therefore has a
 64-entry little-endian uint32 length index beside its concatenated records.
 Each runner validates every length, the exact record count and total, the first
-record's golden, and all 64 load/re-save results before timing. Timed operations
+record's golden, and all 64 load/re-save results before timing. Two further
+rotations load into one reused target without caller resets and must re-save
+the exact expected bytes, including the last-to-first transition. Timed operations
 check the corresponding record length. `bytes_per_op` reports the exact mean;
 staggered buffer padding never counts as serialized bytes.
 

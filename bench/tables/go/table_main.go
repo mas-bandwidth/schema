@@ -214,12 +214,8 @@ func loadVariants(name string) float64 {
 
 // benchTable is the data-driven table driver.
 //
-// THE READ ARM RESETS BEFORE IT LOADS, and that is not overhead the runner
-// added: the tolerant wire ELIDES a field at its default (§3), so `Load` fills
-// only what actually rode and a reused instance would otherwise keep the
-// previous record's values in the elided fields. Resetting is part of a correct
-// read into reused storage, in every language, so it is inside the clock rather
-// than hidden outside it.
+// Public Load restores declared defaults before overlaying the fields on the
+// wire (§3). That work stays inside the clock; the runner adds no separate reset.
 func benchTable[T any](name, golden string, baseIters int64,
 	reset func(*T), save func(*T, []byte) int64, load func(*T, []byte) bool) {
 	iters := baseIters
@@ -252,6 +248,22 @@ func benchTable[T any](name, golden string, baseIters int64,
 		}
 	}
 
+	// gate 3: reused storage must also round-trip, including the last-to-first
+	// transition. Public Load owns default restoration; do not reset between loads.
+	var out T
+	for k := 0; k < 2*numVariants; k++ {
+		index := k & (numVariants - 1)
+		if !load(&out, variant(index)[:lengths[index]]) {
+			fail(name, "load into reused target failed")
+			return
+		}
+		wrote := save(&out, twin[:])
+		if wrote != lengths[index] || string(twin[:lengths[index]]) != string(variant(index)[:lengths[index]]) {
+			fail(name, "reused target round-trip bytes differ")
+			return
+		}
+	}
+
 	if gateOnly {
 		return
 	}
@@ -280,15 +292,13 @@ func benchTable[T any](name, golden string, baseIters int64,
 		}
 	}
 
-	// ROUND-TRIP: reset, load a variant buffer, then re-save what came out. The
+	// ROUND-TRIP: load a variant buffer, then re-save what came out. The
 	// load needs no sink discipline of its own — its output IS the save's
 	// input, so every loaded field is observed by construction (§2.7's
 	// read-side sink problem dissolved rather than equalized).
-	var out T
 	for run := -1; run < numRuns; run++ {
 		start := time.Now()
 		for i := int64(0); i < iters; i++ {
-			reset(&out)
 			if !load(&out, variant(int(i & (numVariants - 1)))[:lengths[i&(numVariants-1)]]) {
 				fail(name, "load failed in loop")
 				return

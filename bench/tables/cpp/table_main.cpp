@@ -275,12 +275,8 @@ static double load_variants( const char * name )
 // the data-driven table driver
 // ------------------------------------------------------------------------------------------
 //
-// THE READ ARM RESETS BEFORE IT LOADS, and that is not overhead the runner
-// added: the tolerant wire ELIDES a field at its default (§3), so `Load`
-// fills only what actually rode and a reused instance would otherwise keep
-// the previous record's values in the elided fields. Resetting is part of a
-// correct read into reused storage, in every language, so it is inside the
-// clock rather than hidden outside it.
+// Public Load restores declared defaults before overlaying the fields on the
+// wire (§3). That work stays inside the clock; the runner adds no separate reset.
 template <typename T, typename ResetFn, typename SaveFn, typename LoadFn>
 static void bench_table( const char * name, const char * golden, long base_iters,
                          ResetFn reset_fn, SaveFn save_fn, LoadFn load_fn )
@@ -320,6 +316,25 @@ static void bench_table( const char * name, const char * golden, long base_iters
         }
     }
 
+    // gate 3: reused storage must also round-trip, including the last-to-first
+    // transition. Public Load owns default restoration; do not reset between loads.
+    static T out;
+    for ( int k = 0; k < 2 * NumVariants; k++ )
+    {
+        const int index = k & ( NumVariants - 1 );
+        if ( !load_fn( out, variant( index ), g_lengths[index] ) )
+        {
+            fail( name, "load into reused target failed" );
+            return;
+        }
+        const int64_t wrote = save_fn( out, g_twin, BufferSize );
+        if ( wrote != g_lengths[index] || memcmp( g_twin, variant( index ), (size_t) g_lengths[index] ) != 0 )
+        {
+            fail( name, "reused target round-trip bytes differ" );
+            return;
+        }
+    }
+
     if ( g_gate ) return;
 
     double write_rates[MaxNumRuns];
@@ -348,17 +363,15 @@ static void bench_table( const char * name, const char * golden, long base_iters
             write_rates[run] = double( iters ) / time;
     }
 
-    // ROUND-TRIP: reset, load a variant buffer, then re-save what came out.
+    // ROUND-TRIP: load a variant buffer, then re-save what came out.
     // The load needs no sink discipline of its own — its output IS the save's
     // input, so every loaded field is observed by construction (§2.7's
     // read-side sink problem dissolved rather than equalized).
-    static T out;
     for ( int run = -1; run < g_num_runs; run++ )
     {
         double start = time_now();
         for ( long i = 0; i < iters; i++ )
         {
-            reset_fn( out );
             if ( !load_fn( out, variant( i & ( NumVariants - 1 ) ), g_lengths[i & ( NumVariants - 1 )] ) )
             {
                 fail( name, "load failed in loop" );
