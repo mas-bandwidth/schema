@@ -7,7 +7,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-func tableMessageForm(u *ir.Unit, variable bool) string {
+func tableMessageForm(u *ir.Unit, variable, hasProbes bool) string {
 	var b strings.Builder
 	b.WriteString("#ifndef SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n#define SCHEMA_" + strings.ToUpper(u.Package) + "_TABLE_MESSAGE\n")
 	entries, announcement := ir.TableVocabulary(u), ir.TableAnnouncement(u)
@@ -21,7 +21,12 @@ func tableMessageForm(u *ir.Unit, variable bool) string {
 	if variable {
 		nodes = "TableNumbering * nodes; int64_t index_bits;"
 	}
-	b.WriteString(strings.ReplaceAll(cMessageBits, "@NODES@", nodes))
+	checkDefault := ""
+	if hasProbes {
+		checkDefault = ",check_default"
+	}
+	bits := strings.ReplaceAll(cMessageBits, "@CHECK_DEFAULT@", checkDefault)
+	b.WriteString(strings.ReplaceAll(bits, "@NODES@", nodes))
 	b.WriteString(cMessageNumbers)
 	b.WriteString(cMessageShape)
 	b.WriteString(cMessageAnnounce)
@@ -38,7 +43,7 @@ func tableMessageForm(u *ir.Unit, variable bool) string {
 // A null output performs exactly the same walk as a save, counting bits.
 // Reads and writes touch only the bytes occupied by the requested value.
 const cMessageBits = `
-typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow,check_default; @NODES@ } TableBitWriter;
+typedef struct TableBitWriter { uint8_t * buffer; int64_t capacity,bits; int overflow@CHECK_DEFAULT@; @NODES@ } TableBitWriter;
 typedef struct TableBitReader { const uint8_t * buffer; int64_t bits,offset; } TableBitReader;
 static SCHEMA_UNUSED TableBitWriter table_bit_writer(uint8_t * buffer,int64_t capacity)
 { TableBitWriter w;memset(&w,0,sizeof(w));w.buffer=buffer;w.capacity=capacity;return w; }

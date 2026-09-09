@@ -1465,7 +1465,6 @@ static SCHEMA_UNUSED int fixed_table_save_body( TableWriter * w, const FixedTabl
         table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 35, 0x7ce4fd9430e80ceaull, 13 );
             if ( w->buffer == NULL )
             {
@@ -1561,9 +1560,6 @@ static SCHEMA_UNUSED int fixed_table_save_message_body(TableBitWriter * w,const 
  probe.check_default=1;
  if(!bench_mixed_save_message_body(&probe,&value->value)) return 0;
  if(probe.bits>kTableMessageRefBitsHere) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,28,kTableMessageRefBitsHere);
   if(!bench_mixed_save_message_body(w,&value->value)) return 0;
  }

@@ -1513,7 +1513,6 @@ static SCHEMA_UNUSED int wide_blob_save_body( TableWriter * w, const WideBlob * 
         if ( value->label_length < 0 || value->label_length > 70000 ) { return 0; }
         if ( value->label_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 35, 0x39f7fcec8fcb623dull, 12 );
             if ( w->buffer == NULL )
             {
@@ -1534,7 +1533,6 @@ static SCHEMA_UNUSED int wide_blob_save_body( TableWriter * w, const WideBlob * 
         if ( value->payload_length < 0 || value->payload_length > 70000 ) { return 0; }
         if ( value->payload_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 122, 0xcfb8a9d063b5e9e5ull, 14 );
             if ( w->buffer == NULL )
             {
@@ -1555,7 +1553,6 @@ static SCHEMA_UNUSED int wide_blob_save_body( TableWriter * w, const WideBlob * 
         if ( value->samples_count < 0 || value->samples_count > 70000 ) { return 0; }
         if ( value->samples_count > 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 136, 0xe3b1ca6a3b48dddcull, 14 );
             if ( w->buffer == NULL )
             {
@@ -1752,9 +1749,6 @@ static SCHEMA_UNUSED int wide_blob_save_message_body(TableBitWriter * w,const Wi
  { /* label */
  if(value->label_length<0 || value->label_length>70000) return 0;
  if(value->label_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,107,kTableMessageRefBitsHere);
   if(value->label_length<0 || value->label_length>70000) return 0;
   table_bit_put(w,(uint64_t)value->label_length,17);
@@ -1765,9 +1759,6 @@ static SCHEMA_UNUSED int wide_blob_save_message_body(TableBitWriter * w,const Wi
  { /* payload */
  if(value->payload_length<0 || value->payload_length>70000) return 0;
  if(value->payload_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,108,kTableMessageRefBitsHere);
   if(value->payload_length<0 || value->payload_length>70000) return 0;
   table_bit_put(w,(uint64_t)value->payload_length,17);
@@ -1778,9 +1769,6 @@ static SCHEMA_UNUSED int wide_blob_save_message_body(TableBitWriter * w,const Wi
  { /* samples */
  if(value->samples_count<0 || value->samples_count>70000) return 0;
  if(value->samples_count>0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,109,kTableMessageRefBitsHere);
   if(value->samples_count<0 || value->samples_count>70000) return 0;
   table_bit_put(w,(uint64_t)value->samples_count-0,17);

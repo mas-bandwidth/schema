@@ -124,12 +124,44 @@ type tableGen struct {
 	owner    *ir.Struct      // the closure member whose codec is being emitted
 	variable map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
 	targets  map[string]bool // tables some pointer targets (ir.PointerTargets)
+	probed   map[string]bool // structs that can be reached by a check_default probe
+	hasProbes bool           // unit carries at least one check_default probe
 	// idOrdinal is the unit's id vocabulary as id -> ORDINAL (§3): the index
 	// an id takes in ir.TableWireIds, which is what a generated header hands
 	// table_writer_id_at beside the id itself. Built on first use.
 	idOrdinal map[uint64]int
 	body      strings.Builder
 	includes  map[string]bool // referenced files -> #include "<base>Table.h"
+}
+
+func (g *tableGen) canProbe(st *ir.Struct) bool {
+	return g.hasProbes && g.probed != nil && g.probed[st.Name]
+}
+
+// tableDefaultProbedStructs returns the set of struct names that can be reached
+// by a default or slot probe (check_default = 1). A struct can only be probed if
+// it is the target of a scalar table write or an enum-keyed table slot write.
+func tableDefaultProbedStructs(u *ir.Unit) map[string]bool {
+	closure := ir.TableClosure(u)
+	probed := map[string]bool{}
+	for name := range closure {
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if ir.TableWireScalarKind(f) != tkTable {
+				continue
+			}
+			if f.KeyEnum != "" || (f.Array == ir.ArrayNone && !f.IsList() && !f.IsMap() && !f.Type.Optional) {
+				probed[f.Type.Name] = true
+			}
+		}
+	}
+	return probed
 }
 
 func (g *tableGen) pf(format string, args ...any) {
@@ -521,8 +553,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// table has one, and a consumer includes and compiles it only if it uses
 	// the form. The Table header below carries not one symbol of it.
 	out := generateBlockFiles(u, blocks, variable, targets)
+	probed := tableDefaultProbedStructs(u)
+	hasProbes := len(probed) > 0
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
+		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
 			includes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -531,7 +565,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				members = append(members, st)
 			}
 		}
-		cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets,
+		cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
 			includes: map[string]bool{}}
 		g.emitTableShapes(members)
 		if len(members) > 0 {
@@ -730,7 +764,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	h.WriteString("\n")
 	h.WriteString(tableCookRuntime(u.Package))
 	h.WriteString(tableCookWriteRuntime)
-	h.WriteString(tableMessageForm(u, g.anyVariable))
+	h.WriteString(tableMessageForm(u, g.anyVariable, g.hasProbes))
 	if g.anyVariable {
 		h.WriteString(tableCookGraphRuntime)
 		h.WriteString(g.retainRuntime())

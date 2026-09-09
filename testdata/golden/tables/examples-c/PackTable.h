@@ -1591,7 +1591,6 @@ static SCHEMA_UNUSED int gunner_settings_save_body( TableWriter * w, const Gunne
     { /* reaction */
         if ( !( value->reaction == 0.2f ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 101, 0xb75aa3662201646aull, 10 );
             table_writer_put32( w, table_float_to_bits( value->reaction ) );
         }
@@ -1599,7 +1598,6 @@ static SCHEMA_UNUSED int gunner_settings_save_body( TableWriter * w, const Gunne
     { /* tracking */
         if ( !( value->tracking == 0 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 90, 0xa6bf719a4602b0bcull, 1 );
             table_writer_put8( w, value->tracking ? 1 : 0 );
         }
@@ -1608,7 +1606,6 @@ static SCHEMA_UNUSED int gunner_settings_save_body( TableWriter * w, const Gunne
         if ( value->callsign_length < 0 || value->callsign_length > 24 ) { return 0; }
         if ( value->callsign_length != 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 53, 0x5bc44627b9848818ull, 12 );
             if ( w->buffer == NULL )
             {
@@ -1743,18 +1740,12 @@ static SCHEMA_UNUSED int gunner_settings_save_message_body(TableBitWriter * w,co
  (void)value;
  { /* reaction */
  if(!(value->reaction == 0.2f)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,11,kTableMessageRefBitsHere);
   table_bit_put(w,table_float_to_bits(value->reaction),32);
  }
  }
  { /* tracking */
  if(!(value->tracking == 0)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,12,kTableMessageRefBitsHere);
   table_bit_put(w,value->tracking ? 1 : 0,1);
  }
@@ -1762,9 +1753,6 @@ static SCHEMA_UNUSED int gunner_settings_save_message_body(TableBitWriter * w,co
  { /* callsign */
  if(value->callsign_length<0 || value->callsign_length>24) return 0;
  if(value->callsign_length != 0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,13,kTableMessageRefBitsHere);
   if(value->callsign_length<0 || value->callsign_length>24) return 0;
   table_bit_put(w,(uint64_t)value->callsign_length,5);
@@ -3111,7 +3099,6 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
     { /* version */
         if ( !( value->version == 1 ) )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 107, 0xbb62c62c9808ea37ull, 8 );
             table_writer_put32( w, (uint32_t) ( value->version ) );
         }
@@ -3122,7 +3109,6 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         table_writer_rewind(&default_probe);
         if ( default_probe.offset > 1 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 68, 0x7fb43557b54149ceull, 13 );
             if ( w->buffer == NULL )
             {
@@ -3151,7 +3137,6 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         }
         if ( rides )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 25, 0x294a5c4913e1ad44ull, 16 );
             if ( w->buffer == NULL )
             {
@@ -3177,7 +3162,6 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         }
         if ( rides )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 80, 0x9cda940a344e1571ull, 16 );
             if ( w->buffer == NULL )
             {
@@ -3198,7 +3182,6 @@ static SCHEMA_UNUSED int pack_config_save_body( TableWriter * w, const PackConfi
         if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; }
         if ( value->reserves_count > 0 )
         {
-            if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_header_at( w, 64, 0x77707fccd201c228ull, 14 );
             int64_t element_sizes[3]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
@@ -3498,9 +3481,6 @@ static SCHEMA_UNUSED int pack_config_save_message_body(TableBitWriter * w,const 
  (void)value;
  { /* version */
  if(!(value->version == 1)) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,27,kTableMessageRefBitsHere);
   table_bit_put(w,(uint64_t)(value->version)-UINT64_C(0),32);
  }
@@ -3513,9 +3493,6 @@ static SCHEMA_UNUSED int pack_config_save_message_body(TableBitWriter * w,const 
  probe.check_default=1;
  if(!global_settings_save_message_body(&probe,&value->global)) return 0;
  if(probe.bits>kTableMessageRefBitsHere) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,28,kTableMessageRefBitsHere);
   if(!global_settings_save_message_body(w,&value->global)) return 0;
  }
@@ -3535,9 +3512,6 @@ static SCHEMA_UNUSED int pack_config_save_message_body(TableBitWriter * w,const 
   break;
   } }
  if(rides) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,29,kTableMessageRefBitsHere);
   { uint32_t count=0;
   int32_t i;
@@ -3584,9 +3558,6 @@ static SCHEMA_UNUSED int pack_config_save_message_body(TableBitWriter * w,const 
   break;
   } }
  if(rides) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,30,kTableMessageRefBitsHere);
   { uint32_t count=0;
   int32_t i;
@@ -3615,9 +3586,6 @@ static SCHEMA_UNUSED int pack_config_save_message_body(TableBitWriter * w,const 
  { /* reserves */
  if(value->reserves_count<0 || value->reserves_count>3) return 0;
  if(value->reserves_count>0) {
-  if(w->check_default) {w->bits=kTableMessageRefBitsHere+1;
-  return 1;
-  }
   table_bit_put(w,31,kTableMessageRefBitsHere);
   if(value->reserves_count<0 || value->reserves_count>3) return 0;
   table_bit_put(w,(uint64_t)value->reserves_count-0,2);
