@@ -66,7 +66,17 @@ func main() {
 	case "check":
 		fs := flag.NewFlagSet("check", flag.ExitOnError)
 		fs.BoolVar(&verbose, "verbose", false, "report the package and protocol id on success")
+		// §3.4'S RECORD SIZE GATE, and it is OFF by default. Two bounds are
+		// always on and need no flag: a fixed table warns past 4096 bytes of
+		// record body, and past 65536 it does not carry the fixed form at all
+		// because no conforming reader decodes a record that size. This flag
+		// is the third, a project's own POLICY: set it and a fixed table past
+		// it does not compile, which is how a team makes *"effectively, fixed
+		// tables should only be used for small things"* a gate rather than
+		// advice. It is not a wire fact and moves neither of the other two.
+		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		paths, err := compiler.GatherPaths(fs.Args())
 		if err != nil {
@@ -186,7 +196,9 @@ func main() {
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
+		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		unit := loadUnit(c, fs.Args())
 		files, err := c.Generate(unit, *lang, compiler.Options{})
@@ -587,8 +599,8 @@ func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage strin
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
-  schema check      [--verbose] [dir|files...]
-  schema generate   [--lang <target>] [--out generated] [--verbose] [dir|files...]
+  schema check      [--verbose] [--fixed-record-limit N] [dir|files...]
+  schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
@@ -607,6 +619,12 @@ the unit as it sits on disk and leaves it alone, so a read-only tree works and
 a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack and unpack exit nonzero when their read report is
 not silent; --tolerate accepts it.
+
+A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
+form past 65536, which is the size no conforming reader decodes
+(docs/SPEC-TABLES.md §3.4) — every read and write copies the whole of it, and
+fixed tables are for small things. --fixed-record-limit turns that advice into
+a gate: a fixed table past the limit given does not compile.
 `)
 }
 

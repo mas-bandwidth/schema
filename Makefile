@@ -5614,8 +5614,9 @@ toolchain-negative-control:
 # writer, a newer writer with an unknown field AND an unknown nested type, a
 # rename under `was`, a widened field, an enum variant and a union arm inserted
 # in the middle, a keyed array whose keys moved, an optional against a value,
-# and the NEGATIVE CONTROLS — the wrong plan, a block that is not a block, a
-# form byte this reader does not carry, and a plan that does not fit.
+# and the NEGATIVE CONTROLS — the wrong plan, a form byte this reader does not
+# carry, a plan that does not fit, and ONE CORRUPTED-LAYOUT CASE PER NAMED RULE
+# a reader holds an untrusted peer's layout to.
 build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
