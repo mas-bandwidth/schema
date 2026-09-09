@@ -51,7 +51,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, closure: closure, blocks: blocks}
+		g := &gen{unit: u, file: f, closure: closure}
 		if body := g.recordsModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_records.rs"] = body
 		}
@@ -105,26 +105,12 @@ type gen struct {
 	unit    *ir.Unit
 	file    *ir.File
 	closure map[string]bool
-	blocks  *ir.BlockUnit
-	banner  string
 
-	body   strings.Builder
-	indent string
+	body strings.Builder
 }
 
 func (g *gen) pf(format string, args ...any) {
-	s := fmt.Sprintf(format, args...)
-	if g.indent != "" && s != "" {
-		trailing := strings.HasSuffix(s, "\n")
-		if trailing {
-			s = s[:len(s)-1]
-		}
-		s = g.indent + strings.ReplaceAll(s, "\n", "\n"+g.indent)
-		if trailing {
-			s += "\n"
-		}
-	}
-	g.body.WriteString(s)
+	fmt.Fprintf(&g.body, format, args...)
 }
 
 // header is the generated-file banner every module carries.

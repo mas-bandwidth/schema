@@ -61,7 +61,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, home: home}
+		g := &gen{unit: u, file: f}
 		g.emitFile(f.Base == home)
 		g.needsCrate = g.needsCrate || len(deps[f.Base]) > 0 || (g.needsStreams && f.Base != home)
 		out[strings.ToLower(f.Base)+".rs"] = g.assemble()
@@ -100,7 +100,7 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 		has := f.Base == home
 		for _, d := range f.Decls {
 			switch d.(type) {
-			case *ir.Const, *ir.Enum, *ir.Flags, *ir.Struct:
+			case *ir.Const, *ir.Enum, *ir.Flags, *ir.Struct, *ir.Union:
 				has = true
 			}
 		}
@@ -161,7 +161,6 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 type gen struct {
 	unit *ir.Unit
 	file *ir.File
-	home string // the file that carries PROTOCOL_ID and Error/Result
 
 	body             strings.Builder
 	bulkBytes        map[*ir.Field]bool // fixed [N]u8 arrays at statically byte-aligned positions (ir.AlignedFixedByteArrays)
