@@ -23,7 +23,7 @@ func TestGoTableOpenDistinctnessIsBounded(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"n > 256",
+		"n < 8 || n > 256",
 		"var seen [512]uint64",
 		"var used [512]uint8",
 		"probes < 512",
@@ -86,6 +86,42 @@ func TestOpenDistinctnessVerdict(t *testing.T) {
 	ok, report = loadIds([]uint64{COLLIDE_A, COLLIDE_B})
 	if !ok || report.Malformed || report.Verdict != TableOpenOk {
 		t.Fatalf("hash-slot collision of distinct ids: %+v", report)
+	}
+	probe := []uint64{COLLIDE_A, COLLIDE_B}
+	for x := uint64(1); len(probe) < 8; x++ {
+		if x != COLLIDE_A && x != COLLIDE_B {
+			probe = append(probe, x)
+		}
+	}
+	ok, report = loadIds(probe)
+	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+		t.Fatalf("hash-slot collision on the probe path: %+v", report)
+	}
+	seven := make([]uint64, 7)
+	for i := range seven {
+		seven[i] = uint64(i + 1)
+	}
+	ok, report = loadIds(seven)
+	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+		t.Fatalf("7 distinct pairwise floor: %+v", report)
+	}
+	seven[6] = 1
+	ok, report = loadIds(seven)
+	if ok || !report.Malformed || report.Verdict != TableOpenDamaged {
+		t.Fatalf("7 with duplicate: %+v", report)
+	}
+	eight := make([]uint64, 8)
+	for i := range eight {
+		eight[i] = uint64(i + 1)
+	}
+	ok, report = loadIds(eight)
+	if !ok || report.Malformed || report.Verdict != TableOpenOk {
+		t.Fatalf("8 distinct probe path: %+v", report)
+	}
+	eight[7] = 1
+	ok, report = loadIds(eight)
+	if ok || !report.Malformed || report.Verdict != TableOpenDamaged {
+		t.Fatalf("8 with duplicate: %+v", report)
 	}
 	over := make([]uint64, 257)
 	for i := range over {
