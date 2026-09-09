@@ -82,6 +82,19 @@ func (g *tableGen) emitWireField(f *ir.Field, expr, ind string) {
 		g.pf("%s}\n%s}\n", i, ind)
 		return
 	}
+	if !g.retain && f.KeyEnum == "" && kind == tkTable {
+		g.pf("%s{\n", ind)
+		i := ind + "\t"
+		g.pf("%smark := w.Ids.Count; ref := w.Ids.RefAt(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
+		g.pf("%sn := %sMeasureBody(&%s, w.Ids)\n", i, f.Type.Name, expr)
+		g.pf("%sif n < 0 || w.Ids.Overflow { return false }\n", i)
+		cond := "n > 1"
+		if f.Type.Optional {
+			cond = "true"
+		}
+		g.pf("%sif %s {\n%s if w.Measuring { w.Advance(tableLebBytes(ref)+1+tableLebBytes(uint64(n))+n) } else {\n%s  w.Ids.Truncate(start); w.Header(ref, %d); w.PutLeb(uint64(n))\n%s  if !%sSaveBody(w, &%s) { return false }\n%s }\n%s} else { w.Ids.Truncate(mark) }\n%s}\n", i, cond, i, i, kind, i, f.Type.Name, expr, i, i, ind)
+		return
+	}
 	g.pf("%s{\n", ind)
 	i := ind + "\t"
 	g.pf("%smark := w.Ids.Count; ref := w.Ids.RefAt(%d, 0x%016x); start := w.Ids.Count\n", i, g.knownOrdinal(ir.TableFieldWireId(f)), ir.TableFieldWireId(f))
