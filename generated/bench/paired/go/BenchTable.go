@@ -408,6 +408,10 @@ func (w *TableWriter) Put128(lo, hi uint64) {
 }
 
 func (w *TableWriter) PutLeb(v uint64) {
+	if v < 128 {
+		w.Put8(uint8(v))
+		return
+	}
 	// Groups assemble in a ten-byte stack buffer and go to Raw once. Spelling
 	// is the old loop's, group for group. One Advance covers the value; raw's
 	// capacity test is untouched. A value that does not fit now leaves the
