@@ -3207,7 +3207,8 @@ static SCHEMA_UNUSED int tally_save_body( TableWriter * w, const Tally * value )
             table_writer_id_at( w, 19, 0x732dfbcc9b0cf0bbull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* hits */

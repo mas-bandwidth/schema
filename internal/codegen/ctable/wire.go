@@ -595,7 +595,10 @@ func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
 		g.pf("            %s\n", g.wireIdCall(ir.TableFieldWireId(f)))
 		g.pf("            payload_bytes += %d; /* kind and fixed-width payload */\n        }\n", 1+tableKindWidth(ir.TableWireScalarKind(f)))
 	}
-	g.pf("        table_writer_raw( w, NULL, payload_bytes );\n        return !w->overflow;\n    }\n")
+	// This branch only measures. Advance with the same overflow check as raw
+	// without exposing a null source to fortified memcpy after inlining.
+	g.pf("        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }\n")
+	g.pf("        else { w->offset += payload_bytes; }\n        return !w->overflow;\n    }\n")
 }
 
 func (g *tableGen) emitWireWrite(st *ir.Struct) {

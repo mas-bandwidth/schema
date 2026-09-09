@@ -5357,7 +5357,8 @@ static SCHEMA_UNUSED int ranged_widths_save_body( TableWriter * w, const RangedW
             table_writer_id_at( w, 147, 0xff8b681912a535a1ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* b8 */

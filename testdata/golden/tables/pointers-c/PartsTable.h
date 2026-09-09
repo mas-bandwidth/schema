@@ -3456,7 +3456,8 @@ static SCHEMA_UNUSED int colour_save_body( TableWriter * w, const Colour * value
             table_writer_id_at( w, 33, 0xaf63df4c8601f1a5ull );
             payload_bytes += 2; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* r */

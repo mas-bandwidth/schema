@@ -5094,7 +5094,8 @@ static SCHEMA_UNUSED int attachment_save_body( TableWriter * w, const Attachment
             table_writer_id_at( w, 140, 0xeef9d1358ae7b4e6ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* slot */
@@ -5419,7 +5420,8 @@ static SCHEMA_UNUSED int buff_save_body( TableWriter * w, const Buff * value )
             table_writer_id_at( w, 79, 0x9adc623a805c87c6ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* multiplier */
@@ -5626,7 +5628,8 @@ static SCHEMA_UNUSED int debuff_save_body( TableWriter * w, const Debuff * value
             table_writer_id_at( w, 69, 0x8113fe7ea2b16969ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* amount */

@@ -10174,7 +10174,8 @@ static SCHEMA_UNUSED int render_vector3_save_body( TableWriter * w, const Render
             table_writer_id_at( w, 54, 0xaf63f74c86021a6dull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* x */
@@ -10593,7 +10594,8 @@ static SCHEMA_UNUSED int render_quaternion_save_body( TableWriter * w, const Ren
             table_writer_id_at( w, 51, 0xaf63ea4c86020456ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* x */

@@ -3405,7 +3405,8 @@ static SCHEMA_UNUSED int mixed_stat_save_body( TableWriter * w, const MixedStat 
             table_writer_id_at( w, 21, 0x52076675ec13a0c1ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* stat_id */
@@ -3747,7 +3748,8 @@ static SCHEMA_UNUSED int mixed_hit_event_save_body( TableWriter * w, const Mixed
             table_writer_id_at( w, 6, 0x126167908c9aa52dull );
             payload_bytes += 2; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* target_id */
@@ -4282,7 +4284,8 @@ static SCHEMA_UNUSED int mixed_chat_event_save_body( TableWriter * w, const Mixe
             table_writer_id_at( w, 76, 0xfbf1ac4d96ebd022ull );
             payload_bytes += 3; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* channel */
@@ -4650,7 +4653,8 @@ static SCHEMA_UNUSED int mixed_pickup_event_save_body( TableWriter * w, const Mi
             table_writer_id_at( w, 39, 0x8113fe7ea2b16969ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
-        table_writer_raw( w, NULL, payload_bytes );
+        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
+        else { w->offset += payload_bytes; }
         return !w->overflow;
     }
     { /* item_id */
