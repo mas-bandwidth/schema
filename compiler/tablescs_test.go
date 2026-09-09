@@ -593,4 +593,3 @@ static class Program
 		t.Fatalf("dotnet run failed: %v\n%s", err, out)
 	}
 }
-
