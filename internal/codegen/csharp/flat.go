@@ -652,8 +652,11 @@ func (g *gen) flatReadRangedPiece(item *ir.FieldItem, name string) (flatPiece, b
 		// out-of-range WITHOUT latching, so the fold changes nothing
 		lo, _ := g.rangeArgs(f, "ulong")
 		diff := new(big.Int).Sub(f.IntMax, f.IntMin)
+		// The unpacked source is masked to the piece's own width (flatMaskLit,
+		// and a 64-bit piece is a whole chunk), so a refusal whose span fills
+		// that width can never fire — the same predicate flatVacuousRange uses.
 		return flatPiece{item: item, bits: bits, read: func(ind, src string) {
-			if diff.Cmp(maxUint64) != 0 {
+			if !flatVacuousRange(f.IntMin, f.IntMax) {
 				g.sf("%sif (%s > %s) // a read rejects out-of-range (SPEC §5) — not latched\n", ind, src, diff.String())
 				g.sf("%s{\n%s    return false;\n%s}\n", ind, ind, ind)
 			}
