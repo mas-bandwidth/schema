@@ -115,8 +115,16 @@ func (w *TableWriter) Put64(v uint64) {
 }
 
 func (w *TableWriter) PutLeb(v uint64) {
-	for v >= 128 { w.Put8(uint8(v) | 128); v >>= 7 }
-	w.Put8(uint8(v))
+	// Groups assemble in a ten-byte stack buffer and go to Raw once. Spelling
+	// is the old loop's, group for group. One Advance covers the value; raw's
+	// capacity test is untouched. A value that does not fit now leaves the
+	// buffer alone rather than filling it first; Save answers -1.
+	var b [10]byte
+	n := 0
+	for v >= 128 { b[n] = uint8(v) | 128; v >>= 7; n++ }
+	b[n] = uint8(v)
+	n++
+	w.Raw(b[:n])
 }
 
 func (w *TableWriter) Id(id uint64) { w.PutLeb(w.Ids.Ref(id)) }
