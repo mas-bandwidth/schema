@@ -125,6 +125,37 @@ func fixedSupported(st *ir.Struct, depth int) bool {
 	return true
 }
 
+// fixedFlatType reports a type whose STORAGE IMAGE IS ITS WIRE IMAGE: the
+// declared order is the storage order, there is no padding anywhere in it, and
+// no field of it reorders against the wire. An array of such a type is ONE run
+// however many elements it has, which is what keeps a plan small and what
+// makes the whole of a big array one move.
+func (g *tableGen) fixedFlatType(st *ir.Struct) bool {
+	// In C#, all schema structs are generated as classes (reference types), so
+	// an array of structs is an array of object references, never flat memory.
+	return false
+}
+
+// fixedFlatElem is the same question about ONE element of a field. In C#,
+// only primitives, enums, and flags have value-type array storage matching the wire.
+func (g *tableGen) fixedFlatElem(f *ir.Field) bool {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return g.fixedFlatType(r)
+		case *ir.Union:
+			return false
+		case *ir.Enum, *ir.Flags:
+			return true
+		}
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TWString, ir.TBytes, ir.TMap:
+		return false
+	}
+	return true
+}
+
 func (g *tableGen) fixedLeafCount(st *ir.Struct) int {
 	n := 0
 	for _, f := range st.Fields {
@@ -135,14 +166,24 @@ func (g *tableGen) fixedLeafCount(st *ir.Struct) int {
 
 func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
 	per := g.fixedElementLeafCount(f)
+	flat := g.fixedFlatElem(f)
 	n := per
 	switch {
 	case f.KeyEnum != "":
 		n = int(f.KeyEnumRef.Max) * per
+		if flat {
+			n = 1
+		}
 	case f.Array == ir.ArrayFixed:
 		n = int(f.ArrayBound) * per
+		if flat {
+			n = 1
+		}
 	case f.Array == ir.ArrayCounted:
 		n = 1 + int(f.ArrayBound)*per
+		if flat {
+			n = 2
+		}
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		n = 1
 	}
@@ -241,10 +282,25 @@ type fixedPlanEntry struct {
 }
 
 type fixedRootBuild struct {
+	g       *tableGen
 	entries []fixedBlockEntry
 	dstRows []string
 	slots   []fixedSlot
 	plan    []fixedPlanEntry
+}
+
+func (b *fixedRootBuild) fixedFlatElem(f *ir.Field) bool {
+	if b.g == nil {
+		return false
+	}
+	return b.g.fixedFlatElem(f)
+}
+
+func (b *fixedRootBuild) flatSpanSetter(fieldExpr, elemType string, elemBytes int64) string {
+	if elemType == "byte" {
+		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
+	}
+	return fmt.Sprintf("(t, b, l) => { if (%s != null) MemoryMarshal.Cast<byte, %s>(b.Slice(0, Math.Min(b.Length, %s.Length * %d))).CopyTo(%s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
 }
 
 func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
@@ -272,13 +328,22 @@ func (b *fixedRootBuild) countFieldSlots(f *ir.Field) int {
 	if f.Type.Optional {
 		n++
 	}
+	flat := b.fixedFlatElem(f)
 	switch {
 	case f.KeyEnum != "":
 		n += int(f.KeyEnumRef.Max) * b.countElementSlots(f)
 	case f.Array == ir.ArrayCounted:
-		n += 1 + int(f.ArrayBound)*b.countElementSlots(f)
+		if flat {
+			n += 2
+		} else {
+			n += 1 + int(f.ArrayBound)*b.countElementSlots(f)
+		}
 	case f.Array == ir.ArrayFixed:
-		n += int(f.ArrayBound) * b.countElementSlots(f)
+		if flat {
+			n += 1
+		} else {
+			n += int(f.ArrayBound) * b.countElementSlots(f)
+		}
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		n += 2
 	default:
@@ -519,7 +584,8 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			guard: kFixedNoGuard,
 			op:    1,
 		})
-		elemSlots := b.countElementSlots(f)
+		elemWireSize := fixedElementBytes(f)
+		totalElemBytes := f.ArrayBound * elemWireSize
 		elemBaseSlot := len(b.slots)
 		b.entries = append(b.entries, fixedBlockEntry{
 			id:       id,
@@ -528,19 +594,36 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			children: 1,
 			note:     f.Name,
 		})
-		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, %d, %d, 1, 0)", elemBaseSlot-baseSlot, elemSlots, countSlot-baseSlot))
-		b.pushElementBlockOnly(f, 0, "element")
-		elemWireSize := fixedElementBytes(f)
-		for i := 0; i < int(f.ArrayBound); i++ {
-			elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
-			elemWire := fieldWireBase + fixedCountBytes + int64(i)*elemWireSize
-			*wireOff = elemWire
-			b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+		if b.fixedFlatElem(f) {
+			b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, 0, %d, 1, 0)", elemBaseSlot-baseSlot, countSlot-baseSlot))
+			b.pushElementBlockOnly(f, 0, "element")
+			elemType := csFieldType(f.Type)
+			b.slots = append(b.slots, fixedSlot{
+				setBytes: b.flatSpanSetter(fieldExpr, elemType, elemWireSize),
+			})
+			b.plan = append(b.plan, fixedPlanEntry{
+				src:   fieldWireBase + fixedCountBytes,
+				dst:   elemBaseSlot,
+				size:  totalElemBytes,
+				guard: kFixedNoGuard,
+				op:    0,
+			})
+		} else {
+			elemSlots := b.countElementSlots(f)
+			b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, %d, %d, 1, 0)", elemBaseSlot-baseSlot, elemSlots, countSlot-baseSlot))
+			b.pushElementBlockOnly(f, 0, "element")
+			for i := 0; i < int(f.ArrayBound); i++ {
+				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
+				elemWire := fieldWireBase + fixedCountBytes + int64(i)*elemWireSize
+				*wireOff = elemWire
+				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+			}
 		}
 		*wireOff = fieldWireBase + size
 
 	case f.Array == ir.ArrayFixed:
-		elemSlots := b.countElementSlots(f)
+		elemWireSize := fixedElementBytes(f)
+		totalElemBytes := f.ArrayBound * elemWireSize
 		elemBaseSlot := len(b.slots)
 		b.entries = append(b.entries, fixedBlockEntry{
 			id:       id,
@@ -549,14 +632,30 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			children: 1,
 			note:     f.Name,
 		})
-		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, %d, 0, 0, 0)", elemBaseSlot-baseSlot, elemSlots))
-		b.pushElementBlockOnly(f, 0, "element")
-		elemWireSize := fixedElementBytes(f)
-		for i := 0; i < int(f.ArrayBound); i++ {
-			elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
-			elemWire := fieldWireBase + int64(i)*elemWireSize
-			*wireOff = elemWire
-			b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+		if b.fixedFlatElem(f) {
+			b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, 0, 0, 0, 0)", elemBaseSlot-baseSlot))
+			b.pushElementBlockOnly(f, 0, "element")
+			elemType := csFieldType(f.Type)
+			b.slots = append(b.slots, fixedSlot{
+				setBytes: b.flatSpanSetter(fieldExpr, elemType, elemWireSize),
+			})
+			b.plan = append(b.plan, fixedPlanEntry{
+				src:   fieldWireBase,
+				dst:   elemBaseSlot,
+				size:  totalElemBytes,
+				guard: kFixedNoGuard,
+				op:    0,
+			})
+		} else {
+			elemSlots := b.countElementSlots(f)
+			b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, %d, 0, 0, 0)", elemBaseSlot-baseSlot, elemSlots))
+			b.pushElementBlockOnly(f, 0, "element")
+			for i := 0; i < int(f.ArrayBound); i++ {
+				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
+				elemWire := fieldWireBase + int64(i)*elemWireSize
+				*wireOff = elemWire
+				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+			}
 		}
 		*wireOff = fieldWireBase + size
 
@@ -932,26 +1031,56 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			guard: kFixedNoGuard,
 			op:    1,
 		})
-		elemSlots := b.countElementSlots(f)
-		elemBaseSlot := len(b.slots)
 		elemWireSize := fixedElementBytes(f)
-		for i := 0; i < int(f.ArrayBound); i++ {
-			elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
-			elemWire := fieldWireBase + fixedCountBytes + int64(i)*elemWireSize
-			*wireOff = elemWire
-			b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+		totalElemBytes := f.ArrayBound * elemWireSize
+		elemBaseSlot := len(b.slots)
+		if b.fixedFlatElem(f) {
+			elemType := csFieldType(f.Type)
+			b.slots = append(b.slots, fixedSlot{
+				setBytes: b.flatSpanSetter(fieldExpr, elemType, elemWireSize),
+			})
+			b.plan = append(b.plan, fixedPlanEntry{
+				src:   fieldWireBase + fixedCountBytes,
+				dst:   elemBaseSlot,
+				size:  totalElemBytes,
+				guard: kFixedNoGuard,
+				op:    0,
+			})
+		} else {
+			elemSlots := b.countElementSlots(f)
+			for i := 0; i < int(f.ArrayBound); i++ {
+				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
+				elemWire := fieldWireBase + fixedCountBytes + int64(i)*elemWireSize
+				*wireOff = elemWire
+				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+			}
 		}
 		*wireOff = fieldWireBase + size
 
 	case f.Array == ir.ArrayFixed:
-		elemSlots := b.countElementSlots(f)
-		elemBaseSlot := len(b.slots)
 		elemWireSize := fixedElementBytes(f)
-		for i := 0; i < int(f.ArrayBound); i++ {
-			elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
-			elemWire := fieldWireBase + int64(i)*elemWireSize
-			*wireOff = elemWire
-			b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+		totalElemBytes := f.ArrayBound * elemWireSize
+		elemBaseSlot := len(b.slots)
+		if b.fixedFlatElem(f) {
+			elemType := csFieldType(f.Type)
+			b.slots = append(b.slots, fixedSlot{
+				setBytes: b.flatSpanSetter(fieldExpr, elemType, elemWireSize),
+			})
+			b.plan = append(b.plan, fixedPlanEntry{
+				src:   fieldWireBase,
+				dst:   elemBaseSlot,
+				size:  totalElemBytes,
+				guard: kFixedNoGuard,
+				op:    0,
+			})
+		} else {
+			elemSlots := b.countElementSlots(f)
+			for i := 0; i < int(f.ArrayBound); i++ {
+				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
+				elemWire := fieldWireBase + int64(i)*elemWireSize
+				*wireOff = elemWire
+				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+			}
 		}
 		*wireOff = fieldWireBase + size
 
@@ -1081,15 +1210,18 @@ func (g *tableGen) emitFixedWriteField(owner *ir.Struct, f *ir.Field, off int64,
 		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), %s.%sCount);\n", ind, buf, base, val, prop)
 		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, buf, val+"."+prop, indent)
 	case f.Type.Kind == ir.TString:
-		g.pf("%sint len_%s = %s.%s != null ? System.Math.Clamp(%s.%sLength, 0, %d) : 0;\n", ind, f.Name, val, prop, val, prop, f.Type.Size)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
 		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%sint len_%s = %s.%s != null ? System.Math.Clamp(%s.%sLength, 0, %d) : 0;\n", ind, f.Name, val, prop, val, prop, f.Type.Size)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
 		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
 		g.pf("%sif (len_%s > 0) { MemoryMarshal.AsBytes(%s.%s.AsSpan(0, len_%s)).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%sint len_%s = %s.%s != null ? System.Math.Clamp(%s.%sLength, 0, %d) : 0;\n", ind, f.Name, val, prop, val, prop, f.Type.Size)
+		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
 		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), len_%s);\n", ind, buf, base, f.Name)
 		g.pf("%sif (len_%s > 0) { %s.%s.AsSpan(0, len_%s).CopyTo(%s.Slice(%d)); }\n", ind, f.Name, val, prop, f.Name, buf, base+4)
 	default:
@@ -1104,6 +1236,19 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 	if owner != nil && owner.IsTable {
 		slotsExpr = expr + ".Slots"
 	}
+	if g.fixedFlatElem(f) {
+		elemType := csFieldType(f.Type)
+		slice := fmt.Sprintf("%s.Slice(%d)", buf, base)
+		if base == 0 {
+			slice = buf
+		}
+		if elemType == "byte" {
+			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %d)).CopyTo(%s); }\n", ind, slotsExpr, slotsExpr, slotsExpr, count, slice)
+		} else {
+			g.pf("%sif (%s != null) { MemoryMarshal.AsBytes(%s.AsSpan(0, Math.Min(%s.Length, %d))).CopyTo(%s); }\n", ind, slotsExpr, slotsExpr, slotsExpr, count, slice)
+		}
+		return
+	}
 	g.pf("%sif (%s != null)\n%s{\n", ind, slotsExpr, ind)
 	g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, count, slotsExpr, ind)
 	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elem), fmt.Sprintf("%s[i]", slotsExpr), indent+8)
@@ -1113,6 +1258,19 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, count int64, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := fixedElementBytes(f)
+	if g.fixedFlatElem(f) {
+		elemType := csFieldType(f.Type)
+		slice := fmt.Sprintf("%s.Slice(%d)", buf, base)
+		if base == 0 {
+			slice = buf
+		}
+		if elemType == "byte" {
+			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %d)).CopyTo(%s); }\n", ind, expr, expr, expr, count, slice)
+		} else {
+			g.pf("%sif (%s != null) { MemoryMarshal.AsBytes(%s.AsSpan(0, Math.Min(%s.Length, %d))).CopyTo(%s); }\n", ind, expr, expr, expr, count, slice)
+		}
+		return
+	}
 	g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
 	g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, count, expr, ind)
 	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elem), fmt.Sprintf("%s[i]", expr), indent+8)
@@ -1208,7 +1366,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 }
 
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
-	b := &fixedRootBuild{}
+	b := &fixedRootBuild{g: g}
 	b.entries = append(b.entries, fixedBlockEntry{
 		id:       ir.TableWireId(st.WireName()),
 		kind:     ir.TableKindTable,
