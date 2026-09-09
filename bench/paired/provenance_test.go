@@ -134,7 +134,7 @@ func TestCompletedPassRejectsChangedEvidence(t *testing.T) {
 }
 
 func TestCompletedPassRejectsMissingExtraOrMixedSamples(t *testing.T) {
-	for _, kind := range []string{"missing", "extra", "renamed", "mixed", "symlink"} {
+	for _, kind := range []string{"missing", "surplus", "renamed", "mixed", "symlink"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newProvenanceFixture(t, 7, "first")
 			if err := sealPass(f.dir); err != nil {
@@ -147,8 +147,8 @@ func TestCompletedPassRejectsMissingExtraOrMixedSamples(t *testing.T) {
 				if err := os.Remove(path); err != nil {
 					t.Fatal(err)
 				}
-			case "extra":
-				writeProvenanceFile(t, f.dir, "round-7-go-packet.csv", []byte("extra sample"))
+			case "surplus":
+				writeProvenanceFile(t, f.dir, "round-7-go-packet.csv", []byte("surplus sample"))
 			case "renamed":
 				if err := os.Rename(path, filepath.Join(f.dir, "round-2-rust-packet.csv")); err != nil {
 					t.Fatal(err)
@@ -202,7 +202,7 @@ func TestCompletedPassRejectsTrimmedRounds(t *testing.T) {
 }
 
 func TestCompletedPassRequiresExactManifest(t *testing.T) {
-	for _, kind := range []string{"absent", "version", "rounds", "missing", "duplicate", "extra", "digest"} {
+	for _, kind := range []string{"absent", "version", "rounds", "missing", "duplicate", "surplus", "digest"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newProvenanceFixture(t, 7, "manifest")
 			if kind != "absent" {
@@ -226,7 +226,7 @@ func TestCompletedPassRequiresExactManifest(t *testing.T) {
 					manifest.Files = manifest.Files[1:]
 				case "duplicate":
 					manifest.Files[1] = manifest.Files[0]
-				case "extra":
+				case "surplus":
 					manifest.Files = append(manifest.Files, passFile{Name: "unrecorded.csv"})
 				case "digest":
 					manifest.Files[0].SHA256 = "not a digest"
@@ -241,7 +241,7 @@ func TestCompletedPassRequiresExactManifest(t *testing.T) {
 }
 
 func TestSealRequiresCurrentArtifactsAndCompleteInputs(t *testing.T) {
-	for _, kind := range []string{"binary changed", "corpus changed", "binary missing", "corpus missing", "binary unrecorded", "corpus unrecorded", "missing sample", "extra sample", "invalid window", "incomplete window"} {
+	for _, kind := range []string{"binary changed", "corpus changed", "binary missing", "corpus missing", "binary unrecorded", "corpus unrecorded", "missing sample", "surplus sample", "invalid window", "incomplete window"} {
 		t.Run(kind, func(t *testing.T) {
 			f := newProvenanceFixture(t, 7, "unsealed")
 			switch kind {
@@ -270,8 +270,8 @@ func TestSealRequiresCurrentArtifactsAndCompleteInputs(t *testing.T) {
 				if err := os.Remove(filepath.Join(f.dir, "round-6-cs-table.csv")); err != nil {
 					t.Fatal(err)
 				}
-			case "extra sample":
-				writeProvenanceFile(t, f.dir, "unexpected.csv", []byte("extra"))
+			case "surplus sample":
+				writeProvenanceFile(t, f.dir, "unexpected.csv", []byte("surplus"))
 			case "invalid window":
 				writeProvenanceJSON(t, f.dir, "window.json", map[string]string{"verdict": "INVALID"})
 			case "incomplete window":
