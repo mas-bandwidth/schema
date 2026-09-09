@@ -291,7 +291,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    image.set(%sFixedPrefill);            // the declared defaults, one prefill\n", st.Name)
 	g.pf("    TableFixedRun(entries, entryCount, bytes, at + 8, image, remap, report);\n")
-	g.pf("    %sFixedDecode(values[k], imageView, 0);\n", st.Name)
+	g.pf("    %sFixedDecode(values[k], imageView, 0, report);\n", st.Name)
 	g.pf("    at += recordBytes;\n")
 	g.pf("  }\n  return n;\n}\n\n")
 }

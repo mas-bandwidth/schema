@@ -86,6 +86,52 @@ func TestFixedImageIsContiguous(t *testing.T) {
 	}
 }
 
+// `bytes(N)` RIDES AS A COUNTED ARRAY, so its destination row has to be the
+// COUNTED ARRAY's row and not the text row. The two spell the same two numbers
+// in the opposite order — an array entry's `dst` is the ELEMENT BASE and its
+// `aux` is where the count lands, which is the pair the plan compiler's array
+// case reads — so getting them the other way round lands the count in the
+// buffer and the first four content bytes in the used length, on every record
+// a COMPILED plan reads. The identity plan never noticed, because it is one
+// copy of the whole body and reads no row at all.
+func TestFixedBytesRowIsTheCountedArrayRow(t *testing.T) {
+	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
+	st := findTable(t, u, "FixedTable")
+	w := fixedWalkRoot(st)
+
+	// BenchMixed carries one of each: `player_name string(15)` is TEXT, whose
+	// row is dst = the length, aux = the buffer; `payload bytes(16)` is an
+	// ARRAY, whose row is the other way round.
+	var text, array *fixedDst
+	for i, e := range w.entries {
+		switch w.entries[i].note {
+		case "player_name":
+			text = &w.dst[i]
+		case "payload":
+			array = &w.dst[i]
+		}
+		_ = e
+	}
+	if text == nil || array == nil {
+		t.Fatal("the corpus no longer carries both a string(N) and a bytes(N) field")
+	}
+	if text.aux != text.dst+fixedCountBytes {
+		t.Fatalf("string(N): aux = %d, the buffer stands %d past the length at %d",
+			text.aux, fixedCountBytes, text.dst)
+	}
+	if array.counted != 1 {
+		t.Fatalf("bytes(N): counted = %d, a used length rides in front of it", array.counted)
+	}
+	if array.dst != array.aux+fixedCountBytes {
+		t.Fatalf("bytes(N): dst = %d and aux = %d — on an ARRAY row dst is the element base and aux is the count, "+
+			"so dst must stand %d past aux; spelled the other way round the compiled plan lands the count in the buffer",
+			array.dst, array.aux, fixedCountBytes)
+	}
+	if array.stride != 1 {
+		t.Fatalf("bytes(N): stride = %d, its elements are single bytes", array.stride)
+	}
+}
+
 func findTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 	t.Helper()
 	for _, f := range u.Files {

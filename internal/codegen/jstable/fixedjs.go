@@ -361,7 +361,7 @@ func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
 func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("// caller handed in — filled, never returned, exactly as Read<Name>Flat is.\n")
-	g.pf("export function %sFixedDecode(value, view, at) {\n", st.Name)
+	g.pf("export function %sFixedDecode(value, view, at, report) {\n", st.Name)
 	var cur int64
 	for _, f := range st.Fields {
 		g.emitDecodeField(f, "at", cur, "value", "  ")
@@ -378,19 +378,41 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 	case f.Array == ir.ArrayFixed:
 		g.emitDecodeLoop(f, base, at, f.ArrayBound, val+"."+name, ind)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%s%s.%sCount = view.getInt32(%s, true);\n", ind, val, name, off(base, at))
+		g.emitDecodeCount(ind, val+"."+name+"Count", off(base, at), f.ArrayBound)
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, f.ArrayBound, val+"."+name, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		g.pf("%s%s.%sLength = view.getInt32(%s, true);\n", ind, val, name, off(base, at))
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
 		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
 			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
 	case f.Type.Kind == ir.TWString:
-		g.pf("%s%s.%sLength = view.getInt32(%s, true);\n", ind, val, name, off(base, at))
+		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
 		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint16(%s + i * 2, true); }\n",
 			ind, f.Type.Size, val, name, off(base, at+fixedCountBytes))
 	default:
 		g.emitDecodeElement(f, base, at, val+"."+name, ind)
 	}
+}
+
+// emitDecodeCount is §3.4's `count` op, inline: a count or a length is read out
+// of the image and CLAMPED to THIS reader's own bound, counting one `clamped`
+// if it fired.
+//
+// THE COMPILED PLAN'S OWN count op has already done this — OP_COUNT and
+// OP_TEXT clamp on the way into the image — so on that path this is a
+// no-op and no counter moves twice. It is here for the IDENTITY path, which
+// is ONE OP_COPY of the whole body: a record under this build's own hash
+// still arrives from a writer this reader cannot vouch for, and a count or a
+// length it carries is a number the consumer would otherwise index the
+// reader's own storage by. The bound is the reader's, never the record's.
+// This is the twin of javatable/fixedform.go's emitScatterCount and of
+// rusttable/fixedform.go's emitFixedScatterCount.
+func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64) {
+	g.pf("%s{\n", ind)
+	g.pf("%s  let n = view.getInt32(%s, true);\n", ind, at)
+	g.pf("%s  if (n < 0) { n = 0; report.clamped++; } else if (n > %d) { n = %d; report.clamped++; }\n",
+		ind, bound, bound)
+	g.pf("%s  %s = n;\n", ind, dst)
+	g.pf("%s}\n", ind)
 }
 
 func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at, count int64, expr, ind string) {
@@ -404,7 +426,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%s%sFixedDecode(%s, view, %s);\n", ind, r.Name, expr, off(base, at))
+			g.pf("%s%sFixedDecode(%s, view, %s, report);\n", ind, r.Name, expr, off(base, at))
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)

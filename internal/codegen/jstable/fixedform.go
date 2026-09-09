@@ -275,10 +275,15 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 			fixedDst{dst: base, stride: fixedElementBytes(f), aux: aux, counted: counted})
 		fixedWalkElement(w, f, 0, "element", 0)
 	case f.Type.Kind == ir.TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, and the
-		// text flavour on the row is what lands it in one move
+		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, so the row
+		// is the COUNTED ARRAY's row and not the text row: on an array entry
+		// `dst` is the ELEMENT BASE and `aux` is where the count lands, which
+		// is the pair the plan compiler's array case reads (fixedruntime.go,
+		// `case 14`). Spelling it the other way round — the text row's
+		// order — landed the count in the buffer and the first four content
+		// bytes in the used length, on every record a compiled plan read.
 		w.push(fixedBlockEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			fixedDst{dst: at, stride: 1, aux: at + fixedCountBytes, counted: 1, arg: fixedTextBytes})
+			fixedDst{dst: at + fixedCountBytes, stride: 1, aux: at, counted: 1, arg: fixedTextBytes})
 		w.push(fixedBlockEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, fixedDst{})
 	case f.Type.Kind == ir.TString:
 		w.push(fixedBlockEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},

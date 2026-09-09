@@ -48,8 +48,100 @@ export async function checkFixedForm(check, generated, corpusDir) {
   const fx2home = await load("fx2/Tblfx2Table.js");
 
   await pairedCorpus(check, bench, fixed, corpusDir);
+  forgedCounts(check, bench, fixed, corpusDir);
   versioning(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
+}
+
+// ---------------------------------------------------------------------------
+// THE IDENTITY PATH CLAMPS TOO: a forged count or length never reaches the
+// consumer
+// ---------------------------------------------------------------------------
+//
+// THE READ SIDE ALWAYS CHECKS, and "every read path" includes the IDENTITY
+// one. A record whose block hashes to this build's own is read as ONE OP_COPY
+// of the whole body — no per-field op runs at all — so the compiled plan's own
+// `count` op, which clamps, never fires. But the hash is a WIRE IDENTITY and
+// not a security claim (the runtime says so itself): a record carrying this
+// build's own hash still arrives from a writer this reader cannot vouch for,
+// and the count or length it carries is the number the consumer will index
+// this reader's own storage by.
+//
+// So the projection clamps, on BOTH paths, to THIS reader's bound — and counts
+// one `clamped` when it fires, which is §4's event and not a refusal: the
+// record still reads. Below, each forged value is planted in a record of the
+// reference's own corpus, one at a time, and the bound is what comes out.
+function forgedCounts(check, bench, fixed, corpusDir) {
+  const corpus = new Uint8Array(readFileSync(resolve(corpusDir, "bench_fixed.bin")));
+  const head = 5 + fixed.FixedTableFixedBlockBytes;
+
+  // ONE record of the reference's corpus, framed as a file of its own, so the
+  // forged byte is the only thing that differs from bytes already proved good.
+  const oneRecord = () => Uint8Array.from(corpus.subarray(0, head + fixed.FixedTableFixedRecordBytes));
+  const BODY = head + 8; // the first record's body, past its hash
+
+  // BenchMixed's body offsets, the same constants the emitter lays down
+  const AT_ENTITIES = 52;   // entities [1..8]MixedEntity
+  const AT_STATS = 464;     // stats    [..80]MixedStat
+  const AT_NAME = 1126;     // player_name string(15)
+  const AT_PAYLOAD = 1145;  // payload     bytes(16)
+  const AT_HAS_EXTRA = 1227; // has_extra bool
+
+  const read = (bytes) => {
+    const values = [new bench.FixedTable()];
+    const report = new bench.TableFixedReport();
+    const n = fixed.FixedTableFixedLoad(values, 1, bytes, bytes.length,
+      fixed.FixedTableFixedNewPlan(), report);
+    return { n, report, v: values[0].Value };
+  };
+
+  // THE POSITIVE CONTROL FIRST: an untouched record moves no counter. Without
+  // it a clamp that fired on every record would read as a pass below.
+  {
+    const r = read(oneRecord());
+    check(r.n === 1 && r.report.clamped === 0,
+      "IDENTITY CLAMP: an untouched record of the reference's corpus clamps nothing");
+  }
+
+  const forged = [
+    ["entities count", AT_ENTITIES, 9999, 8, (v) => v.EntitiesCount],
+    ["entities count, negative", AT_ENTITIES, -1, 0, (v) => v.EntitiesCount],
+    ["stats count", AT_STATS, 0x7fffffff, 80, (v) => v.StatsCount],
+    ["player_name length", AT_NAME, 9999, 15, (v) => v.PlayerNameLength],
+    ["payload length", AT_PAYLOAD, 9999, 16, (v) => v.PayloadLength],
+  ];
+  for (const [what, at, plant, bound, get] of forged) {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + at, plant, true);
+    const r = read(bytes);
+    check(r.n === 1 && !r.report.malformed && r.report.refused === 0,
+      `IDENTITY CLAMP: a forged ${what} is a clamp and not a refusal — the record still reads`);
+    check(get(r.v) === bound,
+      `IDENTITY CLAMP: a forged ${what} of ${plant} reaches the consumer as this reader's bound ${bound} (got ${get(r.v)})`);
+    check(r.report.clamped === 1,
+      `IDENTITY CLAMP: a forged ${what} moves clamped exactly once (got ${r.report.clamped})`);
+  }
+
+  // A COUNT ALREADY IN BOUNDS IS NOT TOUCHED, and the counter does not move
+  // for it: a clamp that fired on a legal value would be a counter nobody
+  // could read.
+  {
+    const bytes = oneRecord();
+    new DataView(bytes.buffer).setInt32(BODY + AT_ENTITIES, 8, true);
+    const r = read(bytes);
+    check(r.n === 1 && r.v.EntitiesCount === 8 && r.report.clamped === 0,
+      "IDENTITY CLAMP: a count AT the bound is not a clamp and moves no counter");
+  }
+
+  // A BOOL LANDS AS `byte != 0`, whatever the byte holds — §3.4's own rule,
+  // and never damage, so a peer's 2 is true and no counter moves for it.
+  {
+    const bytes = oneRecord();
+    bytes[BODY + AT_HAS_EXTRA] = 2;
+    const r = read(bytes);
+    check(r.n === 1 && r.v.HasExtra === true && r.report.clamped === 0,
+      "IDENTITY CLAMP: a bool byte of 2 lands as true and moves no counter");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +420,7 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     plan.image.set(new Uint8Array(plan.image.length)); // the prefill
     fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0]),
       1, body, 0, plan.image, null, wr);
-    fx1home.FxRootFixedDecode(wrong[0], plan.view, 0);
+    fx1home.FxRootFixedDecode(wrong[0], plan.view, 0, wr);
     check(wrong[0].Keep !== right[0].Keep || wrong[0].Renamed !== right[0].Renamed ||
       wrong[0].Nested.A !== right[0].Nested.A || wrong[0].Nested.B !== right[0].Nested.B,
       "NEGATIVE CONTROL: the identity plan run over another writer's record comes out WRONG");
