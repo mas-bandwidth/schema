@@ -1110,10 +1110,16 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			default:
 				lo, _ := g.rangeArgs(f, "ulong")
 				diff := new(big.Int).Sub(f.IntMax, f.IntMin)
+				bits := ir.BitsRequired(f.IntMin, f.IntMax)
 				g.sf("%s{\n%s    ulong offsetValue = 0;\n", ind, ind)
-				g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits64(ref offsetValue, %d)", g.rv(), ir.BitsRequired(f.IntMin, f.IntMax)), "")
-				if diff.Cmp(maxUint64) != 0 {
-					// a full-width diff cannot overflow its own read — elided
+				g.call(ind+"    ", fmt.Sprintf("%s.SerializeBits64(ref offsetValue, %d)", g.rv(), bits), "")
+				// A successful read bounds the offset to its encoded width:
+				// Serialize.cs ReadBitsUnchecked masks every decoded chunk with
+				// (1<<bits)-1 unconditionally — that mask is the decode, not a
+				// check, so it stays in every build mode. Reject encodings only
+				// when the declared span leaves headroom in that encoded width.
+				maxOffset := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+				if diff.Cmp(maxOffset) < 0 {
 					g.sf("%s    if (offsetValue > %s) // a read rejects out-of-range (SPEC §5) — not latched\n", ind, diff.String())
 					g.sf("%s    {\n%s        return false;\n%s    }\n", ind, ind, ind)
 				}

@@ -673,10 +673,15 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 				g.pf("%sread_int64( stream, %s, %s, %s );\n", ind, name, lo, hi)
 			default:
 				diff := new(big.Int).Sub(f.IntMax, f.IntMin)
+				bits := bitsRequired(f.IntMin, f.IntMax)
 				g.pf("%s{\n%s    uint64_t offset_value = 0;\n", ind, ind)
-				g.pf("%s    read_bits( stream, offset_value, %d );\n", ind, bitsRequired(f.IntMin, f.IntMax))
-				if diff.Cmp(maxUint64) != 0 {
-					// a full-width diff cannot overflow its own read — elided
+				g.pf("%s    read_bits( stream, offset_value, %d );\n", ind, bits)
+				// A successful read bounds the offset to its encoded width:
+				// serialize.h:1520 masks every decoded chunk with (1<<bits)-1
+				// unconditionally. Reject encodings only when the declared span
+				// leaves headroom in that encoded width.
+				maxOffset := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+				if diff.Cmp(maxOffset) < 0 {
 					g.pf("%s    if ( offset_value > %sull )\n%s    {\n%s        return false;\n%s    }\n", ind, diff.String(), ind, ind, ind)
 				}
 				if f.IntMin.Sign() == 0 {
