@@ -347,13 +347,13 @@ func (g *tableGen) emitTableResetDeclarations(members []*ir.Struct) {
 }
 
 func (g *tableGen) emitTableReset(st *ir.Struct) {
-	if !st.IsTable {
-		// a closure `type` is declared in <Base>.h and bounded by a packet: one
-		// value-init says exactly what its own initializers say, and costs the
-		// size of a packet field to compile
-		g.pf("inline void %sReset( %s & value ) { value = %s(); }\n\n", st.Name, st.Name, st.Name)
-		return
-	}
+	owner := g.owner
+	g.owner = st
+	defer func() { g.owner = owner }()
+	// A closure `type` shares packet storage, but table defaults are this
+	// wire's: an absent counted array is empty even when its packet constructor
+	// starts at a positive minimum. Reset members through the table rules so
+	// that distinction also reaches nested values and every backing array slot.
 	g.pf("inline void %sReset( %s & value )\n{\n", st.Name, st.Name)
 	if len(st.Fields) == 0 {
 		g.pf("    (void) value;\n")
@@ -410,7 +410,7 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
 		g.pf("    value.%s_length = 0;\n", f.Name)
 	case f.KeyEnum != "":
-		g.emitTableResetArray("value."+f.Name+".slots", f.ArrayBound, typ, selfInit, f)
+		g.emitTableResetArray(g.keyedSlots("value.", f), f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayFixed:
 		g.emitTableResetArray("value."+f.Name, f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
