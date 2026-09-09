@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 
 use serialize::{ReadStream, Stream, WriteStream};
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-pub const PROTOCOL_ID: u64 = 0x8d12c3149393f40f;
+pub const PROTOCOL_ID: u64 = 0xc93127c82f083edf;
 
 /// The generated crate's error: the runtime's own errors pass through;
 /// Validation is a read rejecting the wire (SPEC §4.3, §4.7).
@@ -996,13 +996,7 @@ pub struct BenchMixed {
     pub ping: u16, // wire [0, 250]
     pub crc_hint: u32,
     pub has_extra: bool, // = true in new() (zero value otherwise)
-
-    // has_extra — wire branch; storage holds both sides, a read zeroes the
-    // untaken side (SPEC §5)
     pub extra: i32, // wire [0, 255]
-
-    // !has_extra — wire branch; storage holds both sides, a read zeroes the
-    // untaken side (SPEC §5)
     pub idle_ticks: i32, // wire [0, 15]
 }
 
@@ -1059,7 +1053,7 @@ impl BenchMixed {
 
 // BENCH_MIXED_MAX_BITS is the longest wire path; align pads at worst case (SPEC §6.1).
 // BENCH_MIXED_MAX_BYTES is rounded up to the 8-byte write-buffer granularity.
-pub const BENCH_MIXED_MAX_BITS: u64 = 3626;
+pub const BENCH_MIXED_MAX_BITS: u64 = 3630;
 pub const BENCH_MIXED_MAX_BYTES: usize = 456;
 
 #[inline(always)]
@@ -1179,23 +1173,16 @@ pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Re
     }
     stream.serialize_align()?;
     debug_assert!(value.crc_hint < 1 << 24, "crc_hint above the bits(24) wire width");
+    debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
+    debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
     let f0: u64 = u64::from(value.crc_hint);
     let f1: u64 = u64::from(value.has_extra);
-    let mut w0 = (f0 | (f1 << 24)) as u32;
-    stream.serialize_bits(&mut w0, 25)?;
-    if value.has_extra {
-        debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
-        {
-            let mut offset_value = value.extra as u32;
-            stream.serialize_bits(&mut offset_value, 8)?;
-        }
-    } else {
-        debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
-        {
-            let mut offset_value = value.idle_ticks as u32;
-            stream.serialize_bits(&mut offset_value, 4)?;
-        }
-    }
+    let f2: u64 = u64::from(value.extra as u32);
+    let f3: u64 = u64::from(value.idle_ticks as u32);
+    let mut w0 = (f0 | (f1 << 24) | (f2 << 25)) as u32;
+    stream.serialize_bits(&mut w0, 32)?;
+    let mut w1 = ((f2 >> 7) | (f3 << 1)) as u32;
+    stream.serialize_bits(&mut w1, 5)?;
     Ok(())
 }
 
@@ -1305,19 +1292,18 @@ pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> 
     }
     stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
     let mut c: u32 = 0;
-    stream.serialize_bits(&mut c, 25)?;
+    stream.serialize_bits(&mut c, 32)?;
     let c0 = u64::from(c);
+    stream.serialize_bits(&mut c, 5)?;
+    let c1 = u64::from(c);
     let v0: u64 = c0 & 0xffffff;
     value.crc_hint = v0 as u32;
     let v1: u64 = (c0 >> 24) & 0x1;
     value.has_extra = v1 != 0;
-    if value.has_extra {
-        stream.serialize_int(&mut value.extra, 0, 255)?;
-        value.idle_ticks = 0;
-    } else {
-        stream.serialize_int(&mut value.idle_ticks, 0, 15)?;
-        value.extra = 0;
-    }
+    let v2: u64 = ((c0 >> 25) | (c1 << 7)) & 0xff;
+    value.extra = v2 as i32;
+    let v3: u64 = (c1 >> 1) & 0xf;
+    value.idle_ticks = v3 as i32;
     Ok(())
 }
 

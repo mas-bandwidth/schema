@@ -5940,7 +5940,9 @@ rules and not a bucket they fall into.
 *"Effectively, fixed tables should only be used for small things."* — the
 project owner. That is a design rule, and a design rule nobody is told about is
 not a rule, so **THE COMPILER SAYS IT, WITH THE TABLE'S NAME AND THE SIZE IN THE
-MESSAGE**, at two bounds that are different kinds of thing.
+MESSAGE**. There are two numbers and a flag, and they are three different kinds
+of thing — advice, the wire, and a project's own policy — which is why they are
+three and not one.
 
 - **4096 BYTES OF RECORD BODY: A WARNING, ALWAYS ON.** Past it the table still
   carries the fixed form and everything about §3.4 holds; the compiler names the
@@ -6219,10 +6221,18 @@ all nine ports and by every file on a disk, and form `2`'s bitpacked body is the
 released one. **So the fixed form takes `3`**, and no existing byte is
 reinterpreted.
 
-**§4.2'S UNKNOWN-FORM NEGATIVE CONTROL MOVES FROM `3` TO `4`.** It plants a byte
-that must be a named refusal and never damage, and the byte it plants has to be
-one no form defines, which `3` no longer is. `4` is the next such byte and the
-reason is the one §4.2 already gives for not planting `2`.
+**§4.2'S UNKNOWN-FORM NEGATIVE CONTROL MUST MOVE FROM `3` TO `4`, AND HAS NOT
+YET.** It plants a byte that must be a named refusal and never damage, and the
+byte it plants has to be one NO FORM DEFINES, which `3` no longer is. `4` is the
+next such byte and the reason is the one §4.2 already gives for not planting
+`2`. **THE CONTROL STILL PLANTS `3` TODAY** — `test/tables/main.cpp`'s
+`test_form_byte_refusals`, the shared conformance row `form_three`, and the
+variable root's `LoadMeasure` case beside it. It still passes, because a form-1
+reader does refuse byte `3`; what it no longer does is TEST WHAT IT SAYS IT
+TESTS, since `3` is now a form this build carries and the control's whole
+premise is a byte no form defines. Moving it renames a conformance row every leg
+reads, so it is a change of its own and is named here rather than assumed:
+**named follow-on, §15.**
 
 ---
 
@@ -12034,6 +12044,25 @@ inspects everything in the schema built:
     class has four members and not five.
 
 ## 15. Named follow-ons
+
+- **THE UNKNOWN-FORM NEGATIVE CONTROL STILL PLANTS `3`** (§3.4, §4.2). The
+  control's premise is a byte NO FORM DEFINES, and `3` is now the fixed form,
+  so the control passes while testing something other than what it says.
+  Moving it to `4` is three lines of `test/tables/main.cpp` and a rename of the
+  shared conformance row `form_three` in `reports.txt`, `MANIFEST.txt`,
+  `FORMAT.md` and `testdata/wire/tables/`, which every leg reads — so it is a
+  change of its own rather than a line in the row that introduced form `3`.
+  Nothing about it is undecided: §3.4 already says which byte it moves to and
+  why.
+- **A GENERATED READER DOES NOT DISPATCH ON THE FORM BYTE** (§3.4). §3.4 says a
+  reader for a fixed-table type "accepts BOTH, by the form byte". The C++
+  reference emits TWO entry points instead — `<T>Load` for form `1` and
+  `<T>FixedLoad` for form `3` — and each refuses the other's byte, the fixed
+  one naming it `newer_form` even where the byte is `1`, which is OLDER. The
+  page's rule is right and the reference is one dispatch short of it: one
+  reader that reads the byte and calls the one that carries it, and a
+  `previous_form` beside `newer_form` for a byte this form is ahead of. It is
+  a surface decision on top of two working readers, not a wire question.
 
 - **AN OPTIONAL MAP VALUE'S PRESENCE COMPANION HAS NO HANDLE** (§2.3, §2.8).
   `?T` and `?[N]T` store the value beside a `bool` presence companion, which
