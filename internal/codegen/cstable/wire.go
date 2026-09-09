@@ -37,17 +37,12 @@ func isScalarLeafStruct(st *ir.Struct) bool {
 }
 
 func isChildScalarArray(f *ir.Field) (*ir.Struct, bool) {
-	if f.Array == ir.ArrayNone || f.Type.Optional || f.Guard != "" || f.KeyEnum != "" || f.Type.Pointer || f.Type.Kind != ir.TNamed {
-		return nil, false
+	if !f.IsMap() && !f.IsList() && f.KeyEnum == "" && !f.Type.Pointer && f.Guard == "" && !f.Type.Optional && (f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted) && f.Type.Kind == ir.TNamed {
+		if st, ok := f.Type.Ref.(*ir.Struct); ok && isScalarLeafStruct(st) {
+			return st, true
+		}
 	}
-	st, ok := f.Type.Ref.(*ir.Struct)
-	if !ok {
-		return nil, false
-	}
-	if !isScalarLeafStruct(st) {
-		return nil, false
-	}
-	return st, true
+	return nil, false
 }
 
 func needsElemOffset(st *ir.Struct) bool {
@@ -134,7 +129,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			cond := leafRideCondition(f)
 			kind := tableScalarKind(f)
 			width := tableKindWidth(kind)
-			g.pf("    if (%s) { n += TableWire.VarSize(ids.Reference(0x%016xul)) + %d; }\n", cond, id, 1+width)
+			g.pf("    if (%s) { n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + %d; }\n", cond, g.knownOrdinal(id), id, 1+width)
 		} else if childSt, ok := isChildScalarArray(f); ok {
 			prop := member(f)
 			childName := childSt.Name
@@ -156,7 +151,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			g.pf("            nChild_%d += TableWire.VarSize((ulong)childBody) + childBody;\n", i)
 			g.pf("        }\n")
 			g.pf("        long payload_%d = 1 + TableWire.VarSize((ulong)count_%d) + nChild_%d;\n", i, i, i)
-			g.pf("        n += TableWire.VarSize(ids.Reference(0x%016xul)) + 1 + TableWire.VarSize((ulong)payload_%d) + payload_%d;\n", id, i, i)
+			g.pf("        n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + 1 + TableWire.VarSize((ulong)payload_%d) + payload_%d;\n", g.knownOrdinal(id), id, i, i)
 			g.pf("        if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
 			g.pf("    }\n")
 		} else {
@@ -198,7 +193,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			width := tableKindWidth(kind)
 			raw := csRawGet("v."+member(f), f.Type)
 			g.pf("    if (%s)\n    {\n", cond)
-			g.pf("        w.Header(ids.Reference(0x%016xul), %d);\n", id, kind)
+			g.pf("        w.HeaderAt(%d, 0x%016xul, %d, ref ids);\n", g.knownOrdinal(id), id, kind)
 			g.pf("        w.Fixed(%s, %d);\n", raw, width)
 			g.pf("    }\n")
 		} else if childSt, ok := isChildScalarArray(f); ok {
@@ -210,7 +205,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			} else {
 				g.pf("    int count_%d = %d;\n    {\n", i, f.ArrayBound)
 			}
-			g.pf("        w.Header(ids.Reference(0x%016xul), 14);\n", id)
+			g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", g.knownOrdinal(id), id)
 			g.pf("        scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
 			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
 			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
@@ -263,7 +258,9 @@ func (g *tableGen) emitSaveTyped(st *ir.Struct) {
 	g.pf("        slots = 1;\n")
 	g.pf("        while (slots < vocabulary.Length * 2) { slots <<= 1; }\n    }\n")
 	g.pf("    Span<int> index = stackalloc int[slots];\n")
-	g.pf("    TableWire.Ids ids = new TableWire.Ids(vocabulary, index);\n")
+	g.pf("    Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;\n")
+	g.pf("    Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;\n")
+	g.pf("    TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);\n")
 	g.pf("    if (!%sCollectTyped(value, ref ids)) { return -1; }\n", name)
 	g.pf("    int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;\n")
 	g.pf("    Span<long> rootPayloadSizes = stackalloc long[cachedFields];\n")
@@ -410,11 +407,41 @@ public static partial class TableWire
     {
         public Span<ulong> Values;
         public Span<int> Slots;
+        public Span<uint> OrdinalSlots;
+        public Span<int> OrdinalOf;
         public int Count;
         internal Graph Graph;
-        public Ids(Span<ulong> values) { Values = values; Slots = default; Count = 0; Graph = null; }
+        public Ids(Span<ulong> values)
+        {
+            Values = values;
+            Slots = default;
+            OrdinalSlots = default;
+            OrdinalOf = default;
+            Count = 0;
+            Graph = null;
+        }
         public Ids(Span<ulong> values, Span<int> slots)
-        { Values = values; Slots = slots; Slots.Clear(); Count = 0; Graph = null; }
+        {
+            Values = values;
+            Slots = slots;
+            if (!Slots.IsEmpty) { Slots.Clear(); }
+            OrdinalSlots = default;
+            OrdinalOf = default;
+            Count = 0;
+            Graph = null;
+        }
+        public Ids(Span<ulong> values, Span<int> slots, Span<uint> ordinalSlots, Span<int> ordinalOf)
+        {
+            Values = values;
+            Slots = slots;
+            if (!Slots.IsEmpty) { Slots.Clear(); }
+            OrdinalSlots = ordinalSlots;
+            if (!OrdinalSlots.IsEmpty) { OrdinalSlots.Clear(); }
+            OrdinalOf = ordinalOf;
+            if (!OrdinalOf.IsEmpty) { OrdinalOf.Fill(-1); }
+            Count = 0;
+            Graph = null;
+        }
         int Slot(ulong id)
         {
             int mask = Slots.Length - 1;
@@ -422,11 +449,56 @@ public static partial class TableWire
             while (Slots[slot] != 0 && Values[Slots[slot] - 1] != id) { slot = (slot + 1) & mask; }
             return slot;
         }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ulong Reference(ulong id)
         {
             if (!Slots.IsEmpty) { return (ulong)Slots[Slot(id)]; }
             for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
             return 0;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ulong Ref(ulong id)
+        {
+            if (!Slots.IsEmpty)
+            {
+                int slot = Slot(id);
+                if (Slots[slot] != 0) { return (ulong)Slots[slot]; }
+                if (Count == Values.Length) { return 0; }
+                Values[Count] = id;
+                if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+                Count++;
+                Slots[slot] = Count;
+                return (ulong)Count;
+            }
+            for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
+            if (Count == Values.Length) { return 0; }
+            Values[Count] = id;
+            if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+            Count++;
+            return (ulong)Count;
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ulong RefAt(int ordinal, ulong id)
+        {
+            if (!OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
+            {
+                uint s = OrdinalSlots[ordinal];
+                if (s != 0) { return (ulong)s; }
+            }
+            return RefAtMiss(ordinal, id);
+        }
+        ulong RefAtMiss(int ordinal, ulong id)
+        {
+            ulong r = Ref(id);
+            if (r != 0 && !OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
+            {
+                OrdinalSlots[ordinal] = (uint)r;
+                if (!OrdinalOf.IsEmpty && (int)(r - 1) < OrdinalOf.Length)
+                {
+                    OrdinalOf[(int)(r - 1)] = ordinal;
+                }
+            }
+            return r;
         }
         public bool Add(ulong id)
         {
@@ -435,13 +507,39 @@ public static partial class TableWire
                 int slot = Slot(id);
                 if (Slots[slot] != 0) { return true; }
                 if (Count == Values.Length) { return false; }
-                Values[Count++] = id; Slots[slot] = Count;
+                Values[Count] = id;
+                if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+                Count++;
+                Slots[slot] = Count;
                 return true;
             }
             if (Reference(id) != 0) { return true; }
             if (Count == Values.Length) { return false; }
-            Values[Count++] = id;
+            Values[Count] = id;
+            if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
+            Count++;
             return true;
+        }
+        public void Truncate(int mark)
+        {
+            while (Count > 0 && Count > mark)
+            {
+                Count--;
+                if (!Slots.IsEmpty)
+                {
+                    int slot = Slot(Values[Count]);
+                    Slots[slot] = 0;
+                }
+                if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length)
+                {
+                    int o = OrdinalOf[Count];
+                    if (o >= 0 && !OrdinalSlots.IsEmpty && (uint)o < (uint)OrdinalSlots.Length)
+                    {
+                        OrdinalSlots[o] = 0;
+                    }
+                    OrdinalOf[Count] = -1;
+                }
+            }
         }
     }
 
@@ -477,6 +575,11 @@ public static partial class TableWire
                 return;
             }
             Var(reference); Byte(kind);
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void HeaderAt(int ordinal, ulong id, byte kind, ref Ids ids)
+        {
+            Header(ids.RefAt(ordinal, id), kind);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Var(ulong v)
@@ -905,7 +1008,9 @@ public static partial class TableWire
             while (slots < vocabulary.Length * 2) { slots <<= 1; }
         }
         Span<int> index = stackalloc int[slots];
-        Ids ids = new Ids(vocabulary, index);
+        Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+        Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+        Ids ids = new Ids(vocabulary, index, ordinalSlots, ordinalOf);
         if (type.Variable) { ids.Graph = Number(value, type); if (ids.Graph == null) { return -1; } }
         if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
         // Reuse the root's measured length prefixes while writing its fields,

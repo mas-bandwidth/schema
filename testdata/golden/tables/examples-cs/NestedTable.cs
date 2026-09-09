@@ -46,7 +46,7 @@ namespace Tabledemo
             TableFieldInfo[] fields = ArchiveConfigTableType().Fields;
             n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
-            if (v.Count != 1) { n += TableWire.VarSize(ids.Reference(0xb1e5e28e4479a274ul)) + 5; }
+            if (v.Count != 1) { n += TableWire.VarSize(ids.RefAt(97, 0xb1e5e28e4479a274ul)) + 5; }
             return n;
         }
 
@@ -57,7 +57,7 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
             if (v.Count != 1)
             {
-                w.Header(ids.Reference(0xb1e5e28e4479a274ul), 4);
+                w.HeaderAt(97, 0xb1e5e28e4479a274ul, 4, ref ids);
                 w.Fixed((ulong)(long)v.Count, 4);
             }
             w.Var(0);
@@ -73,7 +73,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!ArchiveConfigCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];

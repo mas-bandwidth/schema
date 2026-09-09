@@ -70,7 +70,7 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = PatrolTableType().Fields;
-            if (v.Active != false) { n += TableWire.VarSize(ids.Reference(0x6580790b036f0c6ful)) + 2; }
+            if (v.Active != false) { n += TableWire.VarSize(ids.RefAt(57, 0x6580790b036f0c6ful)) + 2; }
             n += TableWire.BodySizeField(v, fields[1], ref ids);
             n += TableWire.BodySizeField(v, fields[2], ref ids);
             n += TableWire.BodySizeField(v, fields[3], ref ids);
@@ -85,7 +85,7 @@ namespace Tabledemo
             TableFieldInfo[] fields = PatrolTableType().Fields;
             if (v.Active != false)
             {
-                w.Header(ids.Reference(0x6580790b036f0c6ful), 1);
+                w.HeaderAt(57, 0x6580790b036f0c6ful, 1, ref ids);
                 w.Fixed(v.Active ? 1ul : 0ul, 1);
             }
             TableWire.WriteBodyField(ref w, v, fields[1], ref ids);
@@ -107,7 +107,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!PatrolCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];

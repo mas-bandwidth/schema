@@ -71,8 +71,8 @@ namespace Blockhome
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
             n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
-            if (v.PartId != 0) { n += TableWire.VarSize(ids.Reference(0x04d6206b33415104ul)) + 5; }
-            if (v.Slot != 0) { n += TableWire.VarSize(ids.Reference(0x6a771618f6fe31d1ul)) + 2; }
+            if (v.PartId != 0) { n += TableWire.VarSize(ids.RefAt(1, 0x04d6206b33415104ul)) + 5; }
+            if (v.Slot != 0) { n += TableWire.VarSize(ids.RefAt(13, 0x6a771618f6fe31d1ul)) + 2; }
             return n;
         }
 
@@ -85,12 +85,12 @@ namespace Blockhome
             TableWire.WriteBodyField(ref w, v, fields[1], ref ids, default, payload_1);
             if (v.PartId != 0)
             {
-                w.Header(ids.Reference(0x04d6206b33415104ul), 8);
+                w.HeaderAt(1, 0x04d6206b33415104ul, 8, ref ids);
                 w.Fixed((ulong)v.PartId, 4);
             }
             if (v.Slot != 0)
             {
-                w.Header(ids.Reference(0x6a771618f6fe31d1ul), 6);
+                w.HeaderAt(13, 0x6a771618f6fe31d1ul, 6, ref ids);
                 w.Fixed((ulong)v.Slot, 1);
             }
             w.Var(0);
@@ -106,7 +106,9 @@ namespace Blockhome
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!PartRowCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -177,7 +179,7 @@ namespace Blockhome
             long n = 1;
             TableFieldInfo[] fields = PartFrameTableType().Fields;
             int elemOffset = 0;
-            if (v.Version != 0) { n += TableWire.VarSize(ids.Reference(0xbb62c62c9808ea37ul)) + 9; }
+            if (v.Version != 0) { n += TableWire.VarSize(ids.RefAt(21, 0xbb62c62c9808ea37ul)) + 9; }
             scoped Span<long> elemCache_1 = default;
             if (!rootElemSizes.IsEmpty)
             {
@@ -197,7 +199,7 @@ namespace Blockhome
             int elemOffset = 0;
             if (v.Version != 0)
             {
-                w.Header(ids.Reference(0xbb62c62c9808ea37ul), 9);
+                w.HeaderAt(21, 0xbb62c62c9808ea37ul, 9, ref ids);
                 w.Fixed((ulong)v.Version, 8);
             }
             scoped ReadOnlySpan<long> elemCache_1 = default;
@@ -223,7 +225,9 @@ namespace Blockhome
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!PartFrameCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];

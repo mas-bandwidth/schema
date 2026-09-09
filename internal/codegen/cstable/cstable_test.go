@@ -131,6 +131,27 @@ func TestIsChildScalarArray(t *testing.T) {
 			},
 			wantOk: false,
 		},
+		{
+			name: "map field",
+			field: &ir.Field{
+				Name:       "mapField",
+				Array:      ir.ArrayFixed,
+				ArrayBound: 4,
+				MapEntry:   &ir.Struct{Name: "Entry"},
+				Type:       ir.FieldType{Kind: ir.TNamed, Ref: leafStruct},
+			},
+			wantOk: false,
+		},
+		{
+			name: "list scalar array",
+			field: &ir.Field{
+				Name:       "listField",
+				Array:      ir.ArrayList,
+				ArrayBound: 4,
+				Type:       ir.FieldType{Kind: ir.TNamed, Ref: leafStruct},
+			},
+			wantOk: false,
+		},
 	}
 
 	for _, tc := range tests {

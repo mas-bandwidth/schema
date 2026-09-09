@@ -127,22 +127,22 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = RangedSignedTableType().Fields;
-            if (v.I8Span != 0) { n += TableWire.VarSize(ids.Reference(0x48121511bf702eb5ul)) + 2; }
-            if (v.I8Low != 0) { n += TableWire.VarSize(ids.Reference(0x942bfe3168090f7dul)) + 2; }
-            if (v.I8High != 0) { n += TableWire.VarSize(ids.Reference(0xd182acd105b55dd1ul)) + 2; }
-            if (v.I8Inside != 0) { n += TableWire.VarSize(ids.Reference(0xef9ded23c8912a81ul)) + 2; }
-            if (v.I16Span != 0) { n += TableWire.VarSize(ids.Reference(0xb655574ea23760b4ul)) + 3; }
-            if (v.I16Low != 0) { n += TableWire.VarSize(ids.Reference(0xd217b3af8d7a2bdeul)) + 3; }
-            if (v.I16High != 0) { n += TableWire.VarSize(ids.Reference(0x90652f70c9127900ul)) + 3; }
-            if (v.I16Inside != 0) { n += TableWire.VarSize(ids.Reference(0x6a659d7c354db158ul)) + 3; }
-            if (v.I32Span != 0) { n += TableWire.VarSize(ids.Reference(0xe693bd88532c91d6ul)) + 5; }
-            if (v.I32Low != 0) { n += TableWire.VarSize(ids.Reference(0x065ee827cf99fbb4ul)) + 5; }
-            if (v.I32High != 0) { n += TableWire.VarSize(ids.Reference(0xc9b121c4c2a186eeul)) + 5; }
-            if (v.I32Inside != 0) { n += TableWire.VarSize(ids.Reference(0xd363dfa465acf27aul)) + 5; }
-            if (v.I64Span != 0) { n += TableWire.VarSize(ids.Reference(0x7549c70700c49d6ful)) + 9; }
-            if (v.I64Low != 0) { n += TableWire.VarSize(ids.Reference(0x1cce6617419771dbul)) + 9; }
-            if (v.I64High != 0) { n += TableWire.VarSize(ids.Reference(0x3b54fa60620b5597ul)) + 9; }
-            if (v.I64Inside != 0) { n += TableWire.VarSize(ids.Reference(0xd308fcb98ece5d23ul)) + 9; }
+            if (v.I8Span != 0) { n += TableWire.VarSize(ids.RefAt(43, 0x48121511bf702eb5ul)) + 2; }
+            if (v.I8Low != 0) { n += TableWire.VarSize(ids.RefAt(76, 0x942bfe3168090f7dul)) + 2; }
+            if (v.I8High != 0) { n += TableWire.VarSize(ids.RefAt(126, 0xd182acd105b55dd1ul)) + 2; }
+            if (v.I8Inside != 0) { n += TableWire.VarSize(ids.RefAt(141, 0xef9ded23c8912a81ul)) + 2; }
+            if (v.I16Span != 0) { n += TableWire.VarSize(ids.RefAt(100, 0xb655574ea23760b4ul)) + 3; }
+            if (v.I16Low != 0) { n += TableWire.VarSize(ids.RefAt(127, 0xd217b3af8d7a2bdeul)) + 3; }
+            if (v.I16High != 0) { n += TableWire.VarSize(ids.RefAt(75, 0x90652f70c9127900ul)) + 3; }
+            if (v.I16Inside != 0) { n += TableWire.VarSize(ids.RefAt(58, 0x6a659d7c354db158ul)) + 3; }
+            if (v.I32Span != 0) { n += TableWire.VarSize(ids.RefAt(137, 0xe693bd88532c91d6ul)) + 5; }
+            if (v.I32Low != 0) { n += TableWire.VarSize(ids.RefAt(5, 0x065ee827cf99fbb4ul)) + 5; }
+            if (v.I32High != 0) { n += TableWire.VarSize(ids.RefAt(118, 0xc9b121c4c2a186eeul)) + 5; }
+            if (v.I32Inside != 0) { n += TableWire.VarSize(ids.RefAt(129, 0xd363dfa465acf27aul)) + 5; }
+            if (v.I64Span != 0) { n += TableWire.VarSize(ids.RefAt(63, 0x7549c70700c49d6ful)) + 9; }
+            if (v.I64Low != 0) { n += TableWire.VarSize(ids.RefAt(16, 0x1cce6617419771dbul)) + 9; }
+            if (v.I64High != 0) { n += TableWire.VarSize(ids.RefAt(36, 0x3b54fa60620b5597ul)) + 9; }
+            if (v.I64Inside != 0) { n += TableWire.VarSize(ids.RefAt(128, 0xd308fcb98ece5d23ul)) + 9; }
             n += TableWire.BodySizeField(v, fields[16], ref ids, default, out long payload_16);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[16] = payload_16; }
             return n;
@@ -153,82 +153,82 @@ namespace Tabledemo
             TableFieldInfo[] fields = RangedSignedTableType().Fields;
             if (v.I8Span != 0)
             {
-                w.Header(ids.Reference(0x48121511bf702eb5ul), 2);
+                w.HeaderAt(43, 0x48121511bf702eb5ul, 2, ref ids);
                 w.Fixed((ulong)(long)v.I8Span, 1);
             }
             if (v.I8Low != 0)
             {
-                w.Header(ids.Reference(0x942bfe3168090f7dul), 2);
+                w.HeaderAt(76, 0x942bfe3168090f7dul, 2, ref ids);
                 w.Fixed((ulong)(long)v.I8Low, 1);
             }
             if (v.I8High != 0)
             {
-                w.Header(ids.Reference(0xd182acd105b55dd1ul), 2);
+                w.HeaderAt(126, 0xd182acd105b55dd1ul, 2, ref ids);
                 w.Fixed((ulong)(long)v.I8High, 1);
             }
             if (v.I8Inside != 0)
             {
-                w.Header(ids.Reference(0xef9ded23c8912a81ul), 2);
+                w.HeaderAt(141, 0xef9ded23c8912a81ul, 2, ref ids);
                 w.Fixed((ulong)(long)v.I8Inside, 1);
             }
             if (v.I16Span != 0)
             {
-                w.Header(ids.Reference(0xb655574ea23760b4ul), 3);
+                w.HeaderAt(100, 0xb655574ea23760b4ul, 3, ref ids);
                 w.Fixed((ulong)(long)v.I16Span, 2);
             }
             if (v.I16Low != 0)
             {
-                w.Header(ids.Reference(0xd217b3af8d7a2bdeul), 3);
+                w.HeaderAt(127, 0xd217b3af8d7a2bdeul, 3, ref ids);
                 w.Fixed((ulong)(long)v.I16Low, 2);
             }
             if (v.I16High != 0)
             {
-                w.Header(ids.Reference(0x90652f70c9127900ul), 3);
+                w.HeaderAt(75, 0x90652f70c9127900ul, 3, ref ids);
                 w.Fixed((ulong)(long)v.I16High, 2);
             }
             if (v.I16Inside != 0)
             {
-                w.Header(ids.Reference(0x6a659d7c354db158ul), 3);
+                w.HeaderAt(58, 0x6a659d7c354db158ul, 3, ref ids);
                 w.Fixed((ulong)(long)v.I16Inside, 2);
             }
             if (v.I32Span != 0)
             {
-                w.Header(ids.Reference(0xe693bd88532c91d6ul), 4);
+                w.HeaderAt(137, 0xe693bd88532c91d6ul, 4, ref ids);
                 w.Fixed((ulong)(long)v.I32Span, 4);
             }
             if (v.I32Low != 0)
             {
-                w.Header(ids.Reference(0x065ee827cf99fbb4ul), 4);
+                w.HeaderAt(5, 0x065ee827cf99fbb4ul, 4, ref ids);
                 w.Fixed((ulong)(long)v.I32Low, 4);
             }
             if (v.I32High != 0)
             {
-                w.Header(ids.Reference(0xc9b121c4c2a186eeul), 4);
+                w.HeaderAt(118, 0xc9b121c4c2a186eeul, 4, ref ids);
                 w.Fixed((ulong)(long)v.I32High, 4);
             }
             if (v.I32Inside != 0)
             {
-                w.Header(ids.Reference(0xd363dfa465acf27aul), 4);
+                w.HeaderAt(129, 0xd363dfa465acf27aul, 4, ref ids);
                 w.Fixed((ulong)(long)v.I32Inside, 4);
             }
             if (v.I64Span != 0)
             {
-                w.Header(ids.Reference(0x7549c70700c49d6ful), 5);
+                w.HeaderAt(63, 0x7549c70700c49d6ful, 5, ref ids);
                 w.Fixed((ulong)(long)v.I64Span, 8);
             }
             if (v.I64Low != 0)
             {
-                w.Header(ids.Reference(0x1cce6617419771dbul), 5);
+                w.HeaderAt(16, 0x1cce6617419771dbul, 5, ref ids);
                 w.Fixed((ulong)(long)v.I64Low, 8);
             }
             if (v.I64High != 0)
             {
-                w.Header(ids.Reference(0x3b54fa60620b5597ul), 5);
+                w.HeaderAt(36, 0x3b54fa60620b5597ul, 5, ref ids);
                 w.Fixed((ulong)(long)v.I64High, 8);
             }
             if (v.I64Inside != 0)
             {
-                w.Header(ids.Reference(0xd308fcb98ece5d23ul), 5);
+                w.HeaderAt(128, 0xd308fcb98ece5d23ul, 5, ref ids);
                 w.Fixed((ulong)(long)v.I64Inside, 8);
             }
             long payload_16 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[16] : -1;
@@ -246,7 +246,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!RangedSignedCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -343,22 +345,22 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = RangedUnsignedTableType().Fields;
-            if (v.U8Span != 0) { n += TableWire.VarSize(ids.Reference(0x0f8897557f37c021ul)) + 2; }
-            if (v.U8Low != 0) { n += TableWire.VarSize(ids.Reference(0x2e17553f8200a2a1ul)) + 2; }
-            if (v.U8High != 1) { n += TableWire.VarSize(ids.Reference(0xa0e5c60df9301b7dul)) + 2; }
-            if (v.U8Inside != 1) { n += TableWire.VarSize(ids.Reference(0x1cb2c073a6f5844dul)) + 2; }
-            if (v.U16Span != 0) { n += TableWire.VarSize(ids.Reference(0x4ca0c150b1790960ul)) + 3; }
-            if (v.U16Low != 0) { n += TableWire.VarSize(ids.Reference(0xf252136836b04cb2ul)) + 3; }
-            if (v.U16High != 1) { n += TableWire.VarSize(ids.Reference(0x4f37e1f216e7610cul)) + 3; }
-            if (v.U16Inside != 1) { n += TableWire.VarSize(ids.Reference(0xd176b605978f3304ul)) + 3; }
-            if (v.U32Span != 0) { n += TableWire.VarSize(ids.Reference(0x200b924de7479cdaul)) + 5; }
-            if (v.U32Low != 0) { n += TableWire.VarSize(ids.Reference(0xa53d2f2a31b5acb0ul)) + 5; }
-            if (v.U32High != 1) { n += TableWire.VarSize(ids.Reference(0x9759be8ea1a4e3d2ul)) + 5; }
-            if (v.U32Inside != 1) { n += TableWire.VarSize(ids.Reference(0x8dc515fc082e3c0eul)) + 5; }
-            if (v.U64Span != 0) { n += TableWire.VarSize(ids.Reference(0xbeecef11dbdf8973ul)) + 9; }
-            if (v.U64Low != 0) { n += TableWire.VarSize(ids.Reference(0x0117ad66e0fff227ul)) + 9; }
-            if (v.U64High != 1ul) { n += TableWire.VarSize(ids.Reference(0xf2b45af3b50689dbul)) + 9; }
-            if (v.U64Inside != 1ul) { n += TableWire.VarSize(ids.Reference(0x713e12017eebcaf7ul)) + 9; }
+            if (v.U8Span != 0) { n += TableWire.VarSize(ids.RefAt(8, 0x0f8897557f37c021ul)) + 2; }
+            if (v.U8Low != 0) { n += TableWire.VarSize(ids.RefAt(28, 0x2e17553f8200a2a1ul)) + 2; }
+            if (v.U8High != 1) { n += TableWire.VarSize(ids.RefAt(84, 0xa0e5c60df9301b7dul)) + 2; }
+            if (v.U8Inside != 1) { n += TableWire.VarSize(ids.RefAt(15, 0x1cb2c073a6f5844dul)) + 2; }
+            if (v.U16Span != 0) { n += TableWire.VarSize(ids.RefAt(46, 0x4ca0c150b1790960ul)) + 3; }
+            if (v.U16Low != 0) { n += TableWire.VarSize(ids.RefAt(143, 0xf252136836b04cb2ul)) + 3; }
+            if (v.U16High != 1) { n += TableWire.VarSize(ids.RefAt(48, 0x4f37e1f216e7610cul)) + 3; }
+            if (v.U16Inside != 1) { n += TableWire.VarSize(ids.RefAt(125, 0xd176b605978f3304ul)) + 3; }
+            if (v.U32Span != 0) { n += TableWire.VarSize(ids.RefAt(21, 0x200b924de7479cdaul)) + 5; }
+            if (v.U32Low != 0) { n += TableWire.VarSize(ids.RefAt(87, 0xa53d2f2a31b5acb0ul)) + 5; }
+            if (v.U32High != 1) { n += TableWire.VarSize(ids.RefAt(78, 0x9759be8ea1a4e3d2ul)) + 5; }
+            if (v.U32Inside != 1) { n += TableWire.VarSize(ids.RefAt(74, 0x8dc515fc082e3c0eul)) + 5; }
+            if (v.U64Span != 0) { n += TableWire.VarSize(ids.RefAt(109, 0xbeecef11dbdf8973ul)) + 9; }
+            if (v.U64Low != 0) { n += TableWire.VarSize(ids.RefAt(0, 0x0117ad66e0fff227ul)) + 9; }
+            if (v.U64High != 1ul) { n += TableWire.VarSize(ids.RefAt(144, 0xf2b45af3b50689dbul)) + 9; }
+            if (v.U64Inside != 1ul) { n += TableWire.VarSize(ids.RefAt(62, 0x713e12017eebcaf7ul)) + 9; }
             n += TableWire.BodySizeField(v, fields[16], ref ids, default, out long payload_16);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[16] = payload_16; }
             return n;
@@ -369,82 +371,82 @@ namespace Tabledemo
             TableFieldInfo[] fields = RangedUnsignedTableType().Fields;
             if (v.U8Span != 0)
             {
-                w.Header(ids.Reference(0x0f8897557f37c021ul), 6);
+                w.HeaderAt(8, 0x0f8897557f37c021ul, 6, ref ids);
                 w.Fixed((ulong)v.U8Span, 1);
             }
             if (v.U8Low != 0)
             {
-                w.Header(ids.Reference(0x2e17553f8200a2a1ul), 6);
+                w.HeaderAt(28, 0x2e17553f8200a2a1ul, 6, ref ids);
                 w.Fixed((ulong)v.U8Low, 1);
             }
             if (v.U8High != 1)
             {
-                w.Header(ids.Reference(0xa0e5c60df9301b7dul), 6);
+                w.HeaderAt(84, 0xa0e5c60df9301b7dul, 6, ref ids);
                 w.Fixed((ulong)v.U8High, 1);
             }
             if (v.U8Inside != 1)
             {
-                w.Header(ids.Reference(0x1cb2c073a6f5844dul), 6);
+                w.HeaderAt(15, 0x1cb2c073a6f5844dul, 6, ref ids);
                 w.Fixed((ulong)v.U8Inside, 1);
             }
             if (v.U16Span != 0)
             {
-                w.Header(ids.Reference(0x4ca0c150b1790960ul), 7);
+                w.HeaderAt(46, 0x4ca0c150b1790960ul, 7, ref ids);
                 w.Fixed((ulong)v.U16Span, 2);
             }
             if (v.U16Low != 0)
             {
-                w.Header(ids.Reference(0xf252136836b04cb2ul), 7);
+                w.HeaderAt(143, 0xf252136836b04cb2ul, 7, ref ids);
                 w.Fixed((ulong)v.U16Low, 2);
             }
             if (v.U16High != 1)
             {
-                w.Header(ids.Reference(0x4f37e1f216e7610cul), 7);
+                w.HeaderAt(48, 0x4f37e1f216e7610cul, 7, ref ids);
                 w.Fixed((ulong)v.U16High, 2);
             }
             if (v.U16Inside != 1)
             {
-                w.Header(ids.Reference(0xd176b605978f3304ul), 7);
+                w.HeaderAt(125, 0xd176b605978f3304ul, 7, ref ids);
                 w.Fixed((ulong)v.U16Inside, 2);
             }
             if (v.U32Span != 0)
             {
-                w.Header(ids.Reference(0x200b924de7479cdaul), 8);
+                w.HeaderAt(21, 0x200b924de7479cdaul, 8, ref ids);
                 w.Fixed((ulong)v.U32Span, 4);
             }
             if (v.U32Low != 0)
             {
-                w.Header(ids.Reference(0xa53d2f2a31b5acb0ul), 8);
+                w.HeaderAt(87, 0xa53d2f2a31b5acb0ul, 8, ref ids);
                 w.Fixed((ulong)v.U32Low, 4);
             }
             if (v.U32High != 1)
             {
-                w.Header(ids.Reference(0x9759be8ea1a4e3d2ul), 8);
+                w.HeaderAt(78, 0x9759be8ea1a4e3d2ul, 8, ref ids);
                 w.Fixed((ulong)v.U32High, 4);
             }
             if (v.U32Inside != 1)
             {
-                w.Header(ids.Reference(0x8dc515fc082e3c0eul), 8);
+                w.HeaderAt(74, 0x8dc515fc082e3c0eul, 8, ref ids);
                 w.Fixed((ulong)v.U32Inside, 4);
             }
             if (v.U64Span != 0)
             {
-                w.Header(ids.Reference(0xbeecef11dbdf8973ul), 9);
+                w.HeaderAt(109, 0xbeecef11dbdf8973ul, 9, ref ids);
                 w.Fixed((ulong)v.U64Span, 8);
             }
             if (v.U64Low != 0)
             {
-                w.Header(ids.Reference(0x0117ad66e0fff227ul), 9);
+                w.HeaderAt(0, 0x0117ad66e0fff227ul, 9, ref ids);
                 w.Fixed((ulong)v.U64Low, 8);
             }
             if (v.U64High != 1ul)
             {
-                w.Header(ids.Reference(0xf2b45af3b50689dbul), 9);
+                w.HeaderAt(144, 0xf2b45af3b50689dbul, 9, ref ids);
                 w.Fixed((ulong)v.U64High, 8);
             }
             if (v.U64Inside != 1ul)
             {
-                w.Header(ids.Reference(0x713e12017eebcaf7ul), 9);
+                w.HeaderAt(62, 0x713e12017eebcaf7ul, 9, ref ids);
                 w.Fixed((ulong)v.U64Inside, 8);
             }
             long payload_16 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[16] : -1;
@@ -462,7 +464,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!RangedUnsignedCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -534,12 +538,12 @@ namespace Tabledemo
         public static long RangedWidthsBodySizeTyped(RangedWidths v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
-            if (v.B8 != 0) { n += TableWire.VarSize(ids.Reference(0x08a60c07b54d8dc7ul)) + 2; }
-            if (v.B16 != 0) { n += TableWire.VarSize(ids.Reference(0xff95701912ad97beul)) + 3; }
-            if (v.B32 != 0) { n += TableWire.VarSize(ids.Reference(0xff9c5c1912b39470ul)) + 5; }
-            if (v.B64 != 0) { n += TableWire.VarSize(ids.Reference(0xff92701912ab61e7ul)) + 9; }
-            if (v.B12 != 0) { n += TableWire.VarSize(ids.Reference(0xff95741912ad9e8aul)) + 3; }
-            if (v.B48 != 0) { n += TableWire.VarSize(ids.Reference(0xff8b681912a535a1ul)) + 9; }
+            if (v.B8 != 0) { n += TableWire.VarSize(ids.RefAt(6, 0x08a60c07b54d8dc7ul)) + 2; }
+            if (v.B16 != 0) { n += TableWire.VarSize(ids.RefAt(149, 0xff95701912ad97beul)) + 3; }
+            if (v.B32 != 0) { n += TableWire.VarSize(ids.RefAt(151, 0xff9c5c1912b39470ul)) + 5; }
+            if (v.B64 != 0) { n += TableWire.VarSize(ids.RefAt(148, 0xff92701912ab61e7ul)) + 9; }
+            if (v.B12 != 0) { n += TableWire.VarSize(ids.RefAt(150, 0xff95741912ad9e8aul)) + 3; }
+            if (v.B48 != 0) { n += TableWire.VarSize(ids.RefAt(147, 0xff8b681912a535a1ul)) + 9; }
             return n;
         }
 
@@ -547,32 +551,32 @@ namespace Tabledemo
         {
             if (v.B8 != 0)
             {
-                w.Header(ids.Reference(0x08a60c07b54d8dc7ul), 6);
+                w.HeaderAt(6, 0x08a60c07b54d8dc7ul, 6, ref ids);
                 w.Fixed((ulong)v.B8, 1);
             }
             if (v.B16 != 0)
             {
-                w.Header(ids.Reference(0xff95701912ad97beul), 7);
+                w.HeaderAt(149, 0xff95701912ad97beul, 7, ref ids);
                 w.Fixed((ulong)v.B16, 2);
             }
             if (v.B32 != 0)
             {
-                w.Header(ids.Reference(0xff9c5c1912b39470ul), 8);
+                w.HeaderAt(151, 0xff9c5c1912b39470ul, 8, ref ids);
                 w.Fixed((ulong)v.B32, 4);
             }
             if (v.B64 != 0)
             {
-                w.Header(ids.Reference(0xff92701912ab61e7ul), 9);
+                w.HeaderAt(148, 0xff92701912ab61e7ul, 9, ref ids);
                 w.Fixed((ulong)v.B64, 8);
             }
             if (v.B12 != 0)
             {
-                w.Header(ids.Reference(0xff95741912ad9e8aul), 7);
+                w.HeaderAt(150, 0xff95741912ad9e8aul, 7, ref ids);
                 w.Fixed((ulong)v.B12, 2);
             }
             if (v.B48 != 0)
             {
-                w.Header(ids.Reference(0xff8b681912a535a1ul), 9);
+                w.HeaderAt(147, 0xff8b681912a535a1ul, 9, ref ids);
                 w.Fixed((ulong)v.B48, 8);
             }
             w.Var(0);
@@ -588,7 +592,9 @@ namespace Tabledemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!RangedWidthsCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];

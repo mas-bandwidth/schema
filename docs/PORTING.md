@@ -513,6 +513,8 @@ plain-cache line.
 |---|---|---|---|---|---|---|---|---|
 | ✅ `testdata/golden/tables/examples/KeyedTable.h:2245-2249` | ✅ `internal/codegen/ctable/ctable.go:45-50` (defined in `<Base>Table.c`) | ❌ #518 | ✅ `internal/codegen/gotable/codecs.go` (`emitTableDescriptor`) | ❌ #411 (the plain-cache idiom) | ✅ `TestJavaDescriptorsAreSafelyPublished` | ❌ #516 | ❌ #514 | ❌ #515 |
 
+**C# Table Serialization Contract.** In C#, generated typed `<Name>Save` entry points perform direct typed field reads and compile-time ordinal indexing, and therefore do not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors (such as getter swapping, custom defaults, guard overrides, or field id alterations). Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations.
+
 ### M14 — The `&node` label in the text form
 
 **Method.** A pointered tree reads and writes as nested tables; a node shared
@@ -919,6 +921,24 @@ read back as `0x7ff8000020000000`, which is the quiet bit the conversion set.
 | cpp | c | rust | go | cs | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|
 | ✅ `tables-float-nan` `tables-float-nan-negative-control`, and the TOOL's two engines (`TestOracleCarriesTheFloatBitPattern`, `TestOracleWidensTheFloatBitPattern`, `TestACookCarriesAFloatBitPattern`) | ✅ `TestCTableWireWidening` `tables-c-wire-fuzz` | ❌ #366 | ✅ `internal/codegen/gotable/wire.go` (`tableWidenFloat`), `TestWireSignalingNaNWideningAndLEBOverflow`; hardware-conversion and tenth-byte-guard overlays both fail the regression | ✅ `tables-cs-leg` (integer-only float widening preserves NaN payload bits) | ❌ #366 | ❌ #366 | ❌ #366 | ❌ #366 |
+
+### M22 — Typed table serialization fast path
+
+**Method.** Fixed tables emit typed save entry points and bodies (`<Name>Save`, `<Name>CollectTyped`, `<Name>BodySizeTyped`, `<Name>WriteBodyTyped`) that perform direct typed field reads, compile-time ordinal indexing, and pre-sized buffer operations without dynamic reflection or descriptor delegate dispatches. In C#, generated typed `<Name>Save` entry points perform direct typed field reads and compile-time ordinal indexing, and therefore do not observe runtime mutations of TableFieldInfo / TableTypeInfo descriptors. Polymorphic `TableWire.Save(object)` remains the descriptor-driven entry point that observes runtime descriptor mutations.
+
+**Reference.** `internal/codegen/cstable/wire.go`
+
+**Proven in.** C# (#814, #815), Go (#795, #803), C (#775), C++ (#775).
+
+**Measured effect.** Bypasses descriptor delegate dispatches and hash probes on repeat lookups, eliminating up to 19% of serialization overhead in C#.
+
+**Negative control.** `TestCsRefAtShape` and `TestCsTypedVsDynamicWireEquivalence`.
+
+**Targets:** none
+
+| cpp | c | rust | go | cs | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|
+| ✅ `internal/codegen/cpptable/codecs.go` | ✅ `internal/codegen/ctable/wire.go` | ❌ #518 | ✅ `internal/codegen/gotable/wire.go` | ✅ `internal/codegen/cstable/wire.go` | ❌ #517 | ❌ #516 | ❌ #514 | ❌ #515 |
 
 ### I1 — The independent allocation gate
 

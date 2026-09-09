@@ -86,10 +86,10 @@ namespace Blockdemo
         {
             long n = 1;
             TableFieldInfo[] fields = PaddedRowTableType().Fields;
-            if (v.Tag != 0) { n += TableWire.VarSize(ids.Reference(0x56d7ab194448a4f3ul)) + 2; }
-            if (v.Value != 0.0) { n += TableWire.VarSize(ids.Reference(0x7ce4fd9430e80ceaul)) + 9; }
-            if (v.Flag != false) { n += TableWire.VarSize(ids.Reference(0xd5f2d079088c0b17ul)) + 2; }
-            if (v.Id != 0) { n += TableWire.VarSize(ids.Reference(0x08b72e07b55c3ac0ul)) + 5; }
+            if (v.Tag != 0) { n += TableWire.VarSize(ids.RefAt(25, 0x56d7ab194448a4f3ul)) + 2; }
+            if (v.Value != 0.0) { n += TableWire.VarSize(ids.RefAt(36, 0x7ce4fd9430e80ceaul)) + 9; }
+            if (v.Flag != false) { n += TableWire.VarSize(ids.RefAt(73, 0xd5f2d079088c0b17ul)) + 2; }
+            if (v.Id != 0) { n += TableWire.VarSize(ids.RefAt(0, 0x08b72e07b55c3ac0ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[4], ref ids, default, out long payload_4);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[4] = payload_4; }
             n += TableWire.BodySizeField(v, fields[5], ref ids, default, out long payload_5);
@@ -105,22 +105,22 @@ namespace Blockdemo
             TableFieldInfo[] fields = PaddedRowTableType().Fields;
             if (v.Tag != 0)
             {
-                w.Header(ids.Reference(0x56d7ab194448a4f3ul), 6);
+                w.HeaderAt(25, 0x56d7ab194448a4f3ul, 6, ref ids);
                 w.Fixed((ulong)v.Tag, 1);
             }
             if (v.Value != 0.0)
             {
-                w.Header(ids.Reference(0x7ce4fd9430e80ceaul), 11);
+                w.HeaderAt(36, 0x7ce4fd9430e80ceaul, 11, ref ids);
                 w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Value)), 8);
             }
             if (v.Flag != false)
             {
-                w.Header(ids.Reference(0xd5f2d079088c0b17ul), 1);
+                w.HeaderAt(73, 0xd5f2d079088c0b17ul, 1, ref ids);
                 w.Fixed(v.Flag ? 1ul : 0ul, 1);
             }
             if (v.Id != 0)
             {
-                w.Header(ids.Reference(0x08b72e07b55c3ac0ul), 8);
+                w.HeaderAt(0, 0x08b72e07b55c3ac0ul, 8, ref ids);
                 w.Fixed((ulong)v.Id, 4);
             }
             long payload_4 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[4] : -1;
@@ -143,7 +143,9 @@ namespace Blockdemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!PaddedRowCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
@@ -219,8 +221,8 @@ namespace Blockdemo
             long n = 1;
             TableFieldInfo[] fields = PaddedFrameTableType().Fields;
             int elemOffset = 0;
-            if (v.Marker != 0) { n += TableWire.VarSize(ids.Reference(0xeddcb72b15486e77ul)) + 2; }
-            if (v.Stamp != 0) { n += TableWire.VarSize(ids.Reference(0xee7ba9ad45c64144ul)) + 9; }
+            if (v.Marker != 0) { n += TableWire.VarSize(ids.RefAt(81, 0xeddcb72b15486e77ul)) + 2; }
+            if (v.Stamp != 0) { n += TableWire.VarSize(ids.RefAt(83, 0xee7ba9ad45c64144ul)) + 9; }
             scoped Span<long> elemCache_2 = default;
             if (!rootElemSizes.IsEmpty)
             {
@@ -241,12 +243,12 @@ namespace Blockdemo
             int elemOffset = 0;
             if (v.Marker != 0)
             {
-                w.Header(ids.Reference(0xeddcb72b15486e77ul), 6);
+                w.HeaderAt(81, 0xeddcb72b15486e77ul, 6, ref ids);
                 w.Fixed((ulong)v.Marker, 1);
             }
             if (v.Stamp != 0)
             {
-                w.Header(ids.Reference(0xee7ba9ad45c64144ul), 9);
+                w.HeaderAt(83, 0xee7ba9ad45c64144ul, 9, ref ids);
                 w.Fixed((ulong)v.Stamp, 8);
             }
             scoped ReadOnlySpan<long> elemCache_2 = default;
@@ -273,7 +275,9 @@ namespace Blockdemo
                 while (slots < vocabulary.Length * 2) { slots <<= 1; }
             }
             Span<int> index = stackalloc int[slots];
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index);
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
             if (!PaddedFrameCollectTyped(value, ref ids)) { return -1; }
             int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
             Span<long> rootPayloadSizes = stackalloc long[cachedFields];
