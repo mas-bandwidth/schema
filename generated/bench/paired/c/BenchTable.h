@@ -1690,7 +1690,7 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_save_( TableWriter * w, c
     {
         case MIXED_EVENT_TYPE_NONE: table_writer_leb( w, 0 ); break;
         case MIXED_EVENT_TYPE_HIT:
-            table_writer_id_at( w, 16, 0x33732819300680aaull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 16, 0x33732819300680aaull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1706,7 +1706,7 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_save_( TableWriter * w, c
             }
             break;
         case MIXED_EVENT_TYPE_CHAT:
-            table_writer_id_at( w, 75, 0xf2a38d910b5b348bull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 75, 0xf2a38d910b5b348bull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -1722,7 +1722,7 @@ static SCHEMA_UNUSED int schema_bench_mixed_event_wire_save_( TableWriter * w, c
             }
             break;
         case MIXED_EVENT_TYPE_PICKUP:
-            table_writer_id_at( w, 50, 0x9fa3a41c86ecb765ull ); table_writer_put8( w, 13 );
+            table_writer_header_at( w, 50, 0x9fa3a41c86ecb765ull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
