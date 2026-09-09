@@ -196,8 +196,18 @@ static partial class Program
             FX1.FxRoot v = new FX1.FxRoot();
             FX1.TableReport r3 = new FX1.TableReport();
             long bad = FX1.Schema.FxRootFixedLoad(v, broken, plan, r3);
-            Check(bad < 0 && r3.Refused && (r3.Reason == "layout_malformed" || r3.Reason == "block_malformed"), "REFUSED BY NAME: layout_malformed");
+            Check(bad < 0 && r3.Refused && r3.Reason == "layout_malformed", "REFUSED BY NAME: layout_malformed");
             Check(r3.Unknown == 0 && r3.KindMismatch == 0 && !r3.Malformed, "REFUSED BY NAME: a refusal moves no counter");
+        }
+
+        {
+            byte[] unknownKind = (byte[])w2.Clone();
+            unknownKind[17] = 99; // byte 17 is root entry kind byte in the layout
+            FX1.FxRoot v = new FX1.FxRoot();
+            FX1.TableReport rKind = new FX1.TableReport();
+            long bad = FX1.Schema.FxRootFixedLoad(v, unknownKind, plan, rKind);
+            Check(bad < 0 && rKind.Refused && rKind.Reason == "layout_malformed", "REFUSED BY NAME: unknown wire kind refuses as layout_malformed");
+            Check(rKind.Unknown == 0 && rKind.KindMismatch == 0 && !rKind.Malformed, "REFUSED BY NAME: unknown kind refusal moves no counter");
         }
 
         // A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE.
