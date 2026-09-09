@@ -2370,17 +2370,86 @@ inline void MixedChatEventReset( MixedChatEvent & value );
 inline void MixedPickupEventReset( MixedPickupEvent & value );
 inline void BenchMixedReset( BenchMixed & value );
 
-inline void MixedEntityReset( MixedEntity & value ) { value = MixedEntity(); }
+inline void MixedEntityReset( MixedEntity & value )
+{
+    value.entity_id = 0;
+    value.pos_x = 0;
+    value.pos_y = 0;
+    value.pos_z = 0;
+    value.yaw = 0;
+    value.pitch = 0;
+    value.vel_x = 0;
+    value.vel_y = 0;
+    value.vel_z = 0;
+    value.health = 0;
+    value.weapon = MixedWeapon::None;
+    value.damage = 0;
+    value.moving = false;
+    value.firing = false;
+}
 
-inline void MixedStatReset( MixedStat & value ) { value = MixedStat(); }
+inline void MixedStatReset( MixedStat & value )
+{
+    value.stat_id = 0;
+    value.delta = 0;
+}
 
-inline void MixedHitEventReset( MixedHitEvent & value ) { value = MixedHitEvent(); }
+inline void MixedHitEventReset( MixedHitEvent & value )
+{
+    value.target_id = 0;
+    value.damage = 0;
+    value.hit_kind = 0;
+    value.crit = false;
+}
 
-inline void MixedChatEventReset( MixedChatEvent & value ) { value = MixedChatEvent(); }
+inline void MixedChatEventReset( MixedChatEvent & value )
+{
+    value.channel = 0;
+    value.speaker = 0;
+}
 
-inline void MixedPickupEventReset( MixedPickupEvent & value ) { value = MixedPickupEvent(); }
+inline void MixedPickupEventReset( MixedPickupEvent & value )
+{
+    value.item_id = 0;
+    value.amount = 0;
+}
 
-inline void BenchMixedReset( BenchMixed & value ) { value = BenchMixed(); }
+inline void BenchMixedReset( BenchMixed & value )
+{
+    value.sequence = 0;
+    value.ack_sequence = 0;
+    value.ack_bits = 0;
+    value.session_id = 0;
+    value.client_id = 0;
+    value.nonce = 0;
+    value.world_time = 0;
+    value.frame_tick = 0;
+    value.server_time = 0;
+    MixedEntityReset( value.entities[0] );
+    for ( int32_t i = 1; i < 8; i++ ) { value.entities[i] = value.entities[0]; }
+    value.entities_count = 0;
+    MixedStatReset( value.stats[0] );
+    for ( int32_t i = 1; i < 80; i++ ) { value.stats[i] = value.stats[0]; }
+    value.stats_count = 0;
+    value.game_event = MixedEvent();
+    memset( value.loadout, 0, sizeof( value.loadout ) );
+    memset( value.player_name, 0, sizeof( value.player_name ) );
+    value.player_name_length = 0;
+    memset( value.payload, 0, sizeof( value.payload ) );
+    value.payload_length = 0;
+    value.aim_x = 0.0f;
+    value.aim_y = 0.0f;
+    value.aim_z = 0.0f;
+    value.recoil = 0.0f;
+    value.drift = 0.0;
+    value.wide_key = 0;
+    value.flux = 0;
+    value.ping = 0;
+    value.crc_hint = 0;
+    value.has_extra = true;
+    value.extra = 0;
+    value.idle_ticks = 0;
+}
 
 inline int64_t MixedEntityMeasureMessageBody( int64_t at, const MixedEntity & value );
 inline bool MixedEntitySaveMessageBody( TableBitWriter & w, const MixedEntity & value );
