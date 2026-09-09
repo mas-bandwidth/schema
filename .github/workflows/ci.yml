@@ -30,7 +30,8 @@ name: CI
 # doing. It wants the same treatment the negative controls have here, and
 # issue #684 owns giving it that. Its control is the reason
 # tables-big-endian-negative-control sits in the plan's exclusion list rather
-# than in a group: this job runs it on every pull request already.
+# than in a group: this job runs it on every pull request already. The C twin,
+# tables-c-big-endian-negative-control, rides the same job for the same reason.
 #
 # CERTIFICATION IS certify.yml: the inline gates, the full `make test` chain on
 # both OSes, every `tables-<lang>-release` target. It runs nightly and on
@@ -514,6 +515,12 @@ jobs:
       # has four cores and the leg was spending them one at a time.
       - name: the big-endian leg, and its negative control
         run: make -j"$(nproc)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+
+      # The C twin of that control: put16 never reaches table_writer_finish's
+      # #else arm, so a C-side byte-order defect there would leave the job green.
+      # Serial after the C++ control because both overlay-rebuild the compiler.
+      - name: the C big-endian negative control
+        run: make tables-c-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
       # And the GO table leg on the same target. Go cross-compiles, so the
       # conformance driver is one env var away from a big-endian binary, and
