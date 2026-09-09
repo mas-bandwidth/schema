@@ -455,9 +455,46 @@ static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffe
     span = (int64_t) count * 8 + 8;
     *r = table_reader_make( buffer + 1, bytes - span - 1, report );
     r->ids = buffer + bytes - span; r->id_count = count; r->nested = 0;
-    for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {
-        if ( table_reader_id_at( r, i+1 ) == table_reader_id_at( r, j+1 ) ) { report->malformed = 1; return 0; }
-    } }
+    /* THE ENTRIES ARE DISTINCT: a table that carries one id twice is malformed
+       for the whole wire (docs/SPEC-TABLES.md §3). Count is attacker-controlled
+       up to (bytes-9)/8; an unbounded stack table is a stack-overflow primitive.
+       The open-addressed path therefore runs only at count<=256 with 512 slots.
+       A slot occupied by a different id is not a duplicate: compare the stored
+       id, not the hash. Probe length is capped at the slot count so a colliding
+       attacker-chosen set cannot walk forever. Exhausted probes and counts
+       above the bound keep the pairwise walk, which is the same verdict. The
+       mix is table_writer_id's. */
+    if ( count > 1 )
+    {
+        int pairwise = count > 256;
+        if ( !pairwise )
+        {
+            uint64_t seen[512];
+            uint8_t used[512];
+            memset( used, 0, sizeof( used ) );
+            for ( i = 0; i < count; i++ )
+            {
+                uint64_t id = table_reader_id_at( r, i + 1 );
+                uint64_t hash = id;
+                uint32_t slot, probes;
+                hash ^= hash >> 33; hash *= UINT64_C(0xff51afd7ed558ccd); hash ^= hash >> 33;
+                slot = (uint32_t) hash & 511u;
+                for ( probes = 0; probes < 512; probes++ )
+                {
+                    if ( !used[slot] ) { used[slot] = 1; seen[slot] = id; break; }
+                    if ( seen[slot] == id ) { report->malformed = 1; return 0; }
+                    slot = (slot + 1) & 511u;
+                }
+                if ( probes == 512 ) { pairwise = 1; break; }
+            }
+        }
+        if ( pairwise )
+        {
+            for ( i = 1; i < count; i++ ) { for ( j = 0; j < i; j++ ) {
+                if ( table_reader_id_at( r, i+1 ) == table_reader_id_at( r, j+1 ) ) { report->malformed = 1; return 0; }
+            } }
+        }
+    }
     /* Root slack invalidates the whole file before any overlay. A stopped
        body is different: its successfully decoded prefix must survive. */
     tail = *r;
