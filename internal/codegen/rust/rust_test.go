@@ -8,7 +8,11 @@
 package rust
 
 import (
+	"fmt"
 	"math/big"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -137,7 +141,8 @@ func TestRenderArgOverflowGate(t *testing.T) {
 }
 
 // TestAssembleLibExportsUnionModule verifies that a module declaring ONLY a
-// union is re-exported via `pub use <mod>::*;` rather than marked as documentation-only.
+// union is re-exported via `pub use <mod>::*;` rather than marked as documentation-only,
+// and that its generated code imports the Stream trait so wire methods compile.
 func TestAssembleLibExportsUnionModule(t *testing.T) {
 	const srcHome = `package unionexport
 type Marker {
@@ -172,8 +177,80 @@ union Event {
 	}
 
 	lib := string(files["lib.rs"])
-	want := "mod types;\npub use types::*;\n"
-	if !strings.Contains(lib, want) {
+	wantLib := "mod types;\npub use types::*;\n"
+	if !strings.Contains(lib, wantLib) {
 		t.Fatalf("lib.rs does not export union module types:\n%s", lib)
+	}
+
+	types := string(files["types.rs"])
+	wantTrait := "use serialize::{ReadStream, Stream, WriteStream};\n"
+	if !strings.Contains(types, wantTrait) {
+		t.Fatalf("types.rs does not bring Stream trait into scope:\n%s", types)
+	}
+
+	// Verify compilation with cargo when available.
+	var serializePath string
+	if p := os.Getenv("SERIALIZE_RS"); p != "" {
+		if fi, err := os.Stat(filepath.Join(p, "Cargo.toml")); err == nil && !fi.IsDir() {
+			serializePath, _ = filepath.Abs(p)
+		}
+	}
+	if serializePath == "" {
+		candidates := []string{
+			"../../../../serialize.rs",
+			"../../../../../serialize.rs",
+			"../../../serialize.rs",
+			"../../serialize.rs",
+		}
+		for _, rel := range candidates {
+			p, err := filepath.Abs(rel)
+			if err == nil {
+				if fi, err := os.Stat(filepath.Join(p, "Cargo.toml")); err == nil && !fi.IsDir() {
+					serializePath = p
+					break
+				}
+			}
+		}
+	}
+
+	cargoBin, err := exec.LookPath("cargo")
+	if err != nil {
+		if fi, err2 := os.Stat("/opt/homebrew/opt/rustup/bin/cargo"); err2 == nil && !fi.IsDir() {
+			cargoBin = "/opt/homebrew/opt/rustup/bin/cargo"
+		}
+	}
+
+	if cargoBin == "" || serializePath == "" {
+		t.Logf("cargo (%s) or serialize.rs (%s) not found; skipping compilation check", cargoBin, serializePath)
+		return
+	}
+
+	dir := t.TempDir()
+	srcDir := filepath.Join(dir, "src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cargoToml := fmt.Sprintf(`[package]
+name = "unionexport"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+serialize = { package = "serialize-official", path = %q }
+`, serializePath)
+	if err := os.WriteFile(filepath.Join(dir, "Cargo.toml"), []byte(cargoToml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(srcDir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cmd := exec.Command(cargoBin, "check", "--quiet")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(cargoBin)+":"+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("generated union-only crate does not compile: %v\n%s", err, out)
 	}
 }

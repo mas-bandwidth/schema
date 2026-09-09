@@ -97,13 +97,7 @@ func assembleLib(u *ir.Unit, modules map[string]string, extra []string) []byte {
 	exports := map[string]bool{}
 	home := ir.ProtocolIdHome(u)
 	for _, f := range u.Files {
-		has := f.Base == home
-		for _, d := range f.Decls {
-			switch d.(type) {
-			case *ir.Const, *ir.Enum, *ir.Flags, *ir.Struct, *ir.Union:
-				has = true
-			}
-		}
+		has := f.Base == home || len(f.Decls) > 0
 		exports[strings.ToLower(f.Base)] = has
 	}
 
