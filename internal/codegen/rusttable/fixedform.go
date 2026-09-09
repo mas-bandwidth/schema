@@ -143,55 +143,61 @@ func fixedElementBytes(f *ir.Field) int64 {
 		case *ir.Struct:
 			return fixedTypeBytes(r)
 		case *ir.Union:
-			widest := int64(0)
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue
-				}
-				if n := fixedFieldBytes(v.F); n > widest {
-					widest = n
-				}
-			}
-			return int64(ir.StorageBitsFor(r.Max)/8) + widest
+			return fixedUnionBytes(r)
 		}
 	}
 	return fixedStorageBytes(f.Type)
 }
 
-// fixedSupported reports whether a type's whole closure is one THIS PORT
-// carries on this form.
+// fixedUnionBytes is C(union): the TAG at the width its variant count derives,
+// then the WIDEST ARM. The slack between a narrower arm and the widest is
+// declared slack and it rides ZERO, from the template (§3.4).
+func fixedUnionBytes(un *ir.Union) int64 {
+	widest := int64(0)
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if n := fixedFieldBytes(v.F); n > widest {
+			widest = n
+		}
+	}
+	return fixedUnionTagBytes(un) + widest
+}
+
+// fixedUnionTagBytes is the union tag's storage width on this wire, which is
+// what the runtime's TableFixedBlock::tag_bytes recovers from a block entry:
+// the entry's size less its widest arm.
+func fixedUnionTagBytes(un *ir.Union) int64 {
+	return int64(ir.StorageBitsFor(un.Max)) / 8
+}
+
+// tagMax is the greatest value a tag of `width` bytes holds.
+func tagMax(width int64) int64 {
+	if width >= 8 {
+		return math.MaxInt64
+	}
+	return int64(1)<<(8*width) - 1
+}
+
+// fixedSupported reports whether a type's whole closure is one this form
+// carries. It is §3.4's OWN LAW and nothing of this port's: a POINTER, a MAP
+// and an unbounded `[]T` have no bound to be constant at — they are what makes
+// a table VARIABLE (§2.2) — a GUARDED BRANCH is refused because its whole
+// intent is to make the body vary, and a union arm carrying text or an array
+// is the one shape the reference does not lay out. Every port asks
+// ir.FixedSupported and no port answers it twice.
 //
-// A POINTER, a MAP and an unbounded `[]T` have no bound to be constant at —
-// they are what makes a table VARIABLE (§2.2) — and a GUARDED BRANCH is
-// refused for the owner's own reason, that its whole intent is to make the
-// body vary. Those three are §3.4's refusals and they are every port's.
-//
-// A UNION is THIS PORT'S, and it is the port's EXISTING one rather than a new
-// one: the fixed form's value is the unit's blittable `<Name>Row`, and a Rust
-// union is a real enum with no committed payload layout, so a record reaching
-// one has no Row (cook.go's `cookable`, docs/SPEC-TABLES.md §15). The
-// runtime's plan compiler carries the union's ops regardless, so landing the
-// `#[repr(C)]` union twin is a change to this file and to nothing on the wire.
+// THE UNION REFUSAL THAT USED TO LIVE HERE IS GONE. It was this port's own —
+// the fixed form's value is the unit's blittable `<Name>Row` and a Rust union
+// on the packet wire is a real enum with no committed payload layout, so a
+// record reaching one had no Row. The `#[repr(C)]` twin (cook.go's `rowable`)
+// is that Row, laid out by ir.UnionLayout and held to it by const asserts, so
+// a union-reaching table has a fixed form here now and NOTHING ON THE WIRE
+// MOVED: the block, the hash and every byte of every record are what they
+// were, and what changed is only where a value lands on the way in and out.
 func fixedSupported(st *ir.Struct, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
-			return false
-		}
-		if f.Type.Kind == ir.TNamed {
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				if !fixedSupported(r, depth+1) {
-					return false
-				}
-			case *ir.Union:
-				return false // this port's named follow-on, above
-			}
-		}
-	}
-	return true
+	return ir.FixedSupported(st, depth)
 }
 
 // ---------------------------------------------------------------------------
@@ -460,12 +466,13 @@ func fixedPutBig(out []byte, v *big.Int, width int64) {
 
 // fixedRoots is every table of this file the fixed form is emitted for. A
 // table that reaches a POINTER, a MAP or an unbounded array is VARIABLE and
-// keeps §3 entirely; one that reaches a UNION has no blittable Row here, which
-// is this port's own named follow-on (see fixedSupported).
+// keeps §3 entirely; one that reaches a union carrying text or an array is
+// §3.4's own refusal, and it is the same shape this port has no Row for
+// (cook.go's `rowable`), so the two questions have one answer.
 func (g *gen) fixedRoots() []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range orderTables(g.file.Tables) {
-		if !st.IsTable || st.IsMapEntry() || !fixedSupported(st, 0) || !g.cookable(st.Name) {
+		if !st.IsTable || st.IsMapEntry() || !fixedSupported(st, 0) || !g.rowable(st.Name) {
 			continue
 		}
 		out = append(out, st)
@@ -478,15 +485,28 @@ func (g *gen) fixedRoots() []*ir.Struct {
 // type is emitted by the file that DECLARES it, exactly as its Row is, so two
 // roots sharing one nested type do not define it twice.
 func unitFixedTypes(u *ir.Unit, closure map[string]bool) map[string]bool {
-	seen := map[string]bool{}
-	var order []*ir.Struct
+	seen, _ := unitFixedClosure(u, closure)
+	return seen
+}
+
+// unitFixedUnions is every UNION reachable by value from a fixed root anywhere
+// in the unit — the closure whose twin, writer and scatter have to exist. A
+// union is emitted by the file that DECLARES it, exactly as a record is.
+func unitFixedUnions(u *ir.Unit, closure map[string]bool) map[string]bool {
+	_, unions := unitFixedClosure(u, closure)
+	return unions
+}
+
+// unitFixedClosure is the one walk both of the above are a view of.
+func unitFixedClosure(u *ir.Unit, closure map[string]bool) (types, unions map[string]bool) {
+	types, unions = map[string]bool{}, map[string]bool{}
 	for _, f := range u.Files {
 		g := &gen{unit: u, file: f, closure: closure}
 		for _, st := range g.fixedRoots() {
-			fixedCollectTypes(st, seen, &order)
+			fixedCollectTypes(st, types, unions)
 		}
 	}
-	return seen
+	return types, unions
 }
 
 // anyFixedRoot reports whether the unit carries a fixed root anywhere, which
@@ -506,14 +526,20 @@ func anyFixedRoot(u *ir.Unit, closure map[string]bool) bool {
 // plan and the one plan-driven load for every fixed root it declares.
 func (g *gen) fixedModule() []byte {
 	roots := g.fixedRoots()
-	reach := unitFixedTypes(g.unit, g.closure)
+	reach, reachUnions := unitFixedClosure(g.unit, g.closure)
 	var members []*ir.Struct
 	for _, st := range g.cookRoots() {
 		if reach[st.Name] {
 			members = append(members, st)
 		}
 	}
-	if len(members) == 0 && len(roots) == 0 {
+	var unions []*ir.Union
+	for _, un := range g.fileRowUnions() {
+		if reachUnions[un.Name] {
+			unions = append(unions, un)
+		}
+	}
+	if len(members) == 0 && len(roots) == 0 && len(unions) == 0 {
 		return nil
 	}
 	g.body.Reset()
@@ -547,6 +573,10 @@ func (g *gen) fixedModule() []byte {
 use crate::*;
 
 `)
+	for _, un := range unions {
+		g.emitFixedWriteUnion(un)
+		g.emitFixedScatterUnion(un)
+	}
 	for _, st := range members {
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
@@ -557,7 +587,7 @@ use crate::*;
 	return []byte(g.body.String())
 }
 
-func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct) {
+func fixedCollectTypes(st *ir.Struct, seen, unions map[string]bool) {
 	if seen[st.Name] {
 		return
 	}
@@ -566,11 +596,33 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		if f.Type.Kind != ir.TNamed {
 			continue
 		}
-		if r, ok := f.Type.Ref.(*ir.Struct); ok {
-			fixedCollectTypes(r, seen, order)
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			fixedCollectTypes(r, seen, unions)
+		case *ir.Union:
+			fixedCollectUnion(r, seen, unions)
 		}
 	}
-	*order = append(*order, st)
+}
+
+// fixedCollectUnion descends an ARM exactly as a field is descended (§2.6): an
+// arm's payload is a record of the closure like any other.
+func fixedCollectUnion(un *ir.Union, seen, unions map[string]bool) {
+	if unions[un.Name] {
+		return
+	}
+	unions[un.Name] = true
+	for _, v := range un.Variants {
+		if v.F == nil || v.F.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch r := v.F.Type.Ref.(type) {
+		case *ir.Struct:
+			fixedCollectTypes(r, seen, unions)
+		case *ir.Union:
+			fixedCollectUnion(r, seen, unions)
+		}
+	}
 }
 
 // ---- the template writer ---------------------------------------------------
@@ -635,10 +687,9 @@ func (g *gen) emitFixedWriteElement(f *ir.Field, off int64, expr string) {
 
 func (g *gen) emitFixedWriteElementAt(f *ir.Field, at, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
-	if r, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
-		n := fixedTypeBytes(r)
+	if name, n, nested := fixedNestedBody(f); nested {
 		g.pf("%slet at = %s;\n", ind, at)
-		g.pf("%s%s(&mut b[at..at + %d], &%s);\n", ind, fn(r.Name, "fixed_write_body"), n, expr)
+		g.pf("%s%s(&mut b[at..at + %d], &%s);\n", ind, fn(name, "fixed_write_body"), n, expr)
 		return
 	}
 	width := fixedElementBytes(f)
@@ -766,10 +817,9 @@ func (g *gen) emitFixedScatterSlots(f *ir.Field, base, count int64) {
 
 func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 	ind := strings.Repeat(" ", indent)
-	if r, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
-		n := fixedTypeBytes(r)
+	if name, n, nested := fixedNestedBody(f); nested {
 		g.pf("%s{\n%s    let at = %s;\n", ind, ind, at)
-		g.pf("%s    %s(&b[at..at + %d], &mut %s, report);\n", ind, fn(r.Name, "fixed_scatter"), n, dst)
+		g.pf("%s    %s(&b[at..at + %d], &mut %s, report);\n", ind, fn(name, "fixed_scatter"), n, dst)
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -798,6 +848,115 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 // fixedSlotType is ONE slot's Rust type in the Row — the cooked spelling,
 // because the Row IS the cooked record (docs/SPEC-TABLES.md §7.2).
 func (g *gen) fixedSlotType(f *ir.Field) string { return cookElemType(f) }
+
+// fixedNestedBody names the generated write/scatter pair one element goes
+// through when the element is a DECLARATION rather than a leaf, and the
+// constant size of it. A UNION IS ONE OF THOSE: its pair is emitted beside a
+// record's and called exactly the same way, which is what keeps a union inside
+// an array, or inside a nested type, from being a case anywhere else in this
+// file.
+func fixedNestedBody(f *ir.Field) (name string, size int64, ok bool) {
+	if f == nil || f.Type.Kind != ir.TNamed {
+		return "", 0, false
+	}
+	switch r := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return r.Name, fixedTypeBytes(r), true
+	case *ir.Union:
+		return r.Name, fixedUnionBytes(r), true
+	}
+	return "", 0, false
+}
+
+// ---- the union's stores and its scatter (docs/SPEC-TABLES.md §3.4, §15) ----
+
+// emitFixedWriteUnion is a union's stores: the TAG at its own storage width and
+// then the LIVE ARM ONLY. Everything past the arm is DECLARED SLACK and it
+// rides ZERO — not because this function writes zeros, but because it does not
+// touch those bytes and the template already did (§3.4). A None union is
+// therefore a tag and nothing else, which is exactly the C reference's switch
+// with no matching case.
+func (g *gen) emitFixedWriteUnion(un *ir.Union) {
+	tagw := fixedUnionTagBytes(un)
+	g.pf("/// %s's stores: the TAG at its declared storage width, then the LIVE ARM.\n", un.Name)
+	g.pf("/// The bytes between a narrower arm and the widest are declared slack and\n")
+	g.pf("/// they stay the template's zeros, which this function reaches by not\n")
+	g.pf("/// touching them (§3.4).\n")
+	g.pf("pub fn %s(b: &mut [u8], value: &%sRow) {\n", fn(un.Name, "fixed_write_body"), un.Name)
+	if tagw == 1 {
+		g.pf("    b[0] = value.tag;\n")
+	} else {
+		g.pf("    b[0..%d].copy_from_slice(&value.tag.to_le_bytes());\n", tagw)
+	}
+	g.pf("    match value.tag {\n")
+	for i, v := range un.Variants {
+		g.pf("        %d => {\n", i+1)
+		g.pf("            // SAFETY: THE TAG NAMES THE LIVE ARM — the twin's whole contract,\n")
+		g.pf("            // and the same one the C reference's storage struct carries. The\n")
+		g.pf("            // tag was just matched against `%s`, every arm is plain data\n", v.Name)
+		g.pf("            // with no niche in it, and the overlay's zero form is a value of\n")
+		g.pf("            // every arm — so a Row whose tag was set without its arm reads a\n")
+		g.pf("            // zero payload rather than an invalid one.\n")
+		g.pf("            let arm = unsafe { value.arms.%s };\n", v.Name)
+		g.emitFixedWriteElementAt(v.F, fmt.Sprintf("%d", tagw), "arm", 12)
+		g.pf("        }\n")
+	}
+	g.pf("        _ => {} // None, and any tag no arm of this build names: the tag is all of it\n")
+	g.pf("    }\n}\n\n")
+}
+
+// emitFixedScatterUnion lands one union's image in the value: the TAG, clamped
+// to this build's own arm count, and then the arm the tag selects.
+//
+// A TAG BEYOND THE ARM COUNT LANDS AS NONE AND COUNTS ONE CLAMPED. It is the
+// same rule a count gets and for the same reason — the image is a stranger's
+// bytes on the identity path, where the tag rides verbatim, and an ordinal past
+// the set is out of range exactly as a count past the bound is. On the compiled
+// path the runtime has already written MY ordinal under THEIR tag's guard, so
+// the value arriving here is one of mine and the clamp does not fire.
+//
+// THE ARM IS RECONSTRUCTED AND THEN WRITTEN, which is the packet codec's reader
+// shape ("every read reconstructs the selected payload") and also what keeps
+// this side free of `unsafe`: a WRITE of a union field is safe in Rust, and
+// only a read is not.
+func (g *gen) emitFixedScatterUnion(un *ir.Union) {
+	tagw := fixedUnionTagBytes(un)
+	raw := fixedRawUint(tagw)
+	g.pf("/// %s: one union image landed in the value — the tag, then the live arm.\n", un.Name)
+	g.pf("pub fn %s(b: &[u8], value: &mut %sRow, report: &mut TableFixedReport) {\n",
+		fn(un.Name, "fixed_scatter"), un.Name)
+	g.pf("    // nothing of the caller's previous value survives: the empty union first,\n")
+	g.pf("    // and then the tag and the one arm it names\n")
+	g.pf("    *value = %sRow::default();\n", un.Name)
+	if tagw == 1 {
+		g.pf("    let tag_raw = b[0];\n")
+	} else {
+		g.pf("    let tag_raw = %s::from_le_bytes(b[0..%d].try_into().expect(\"the tag's width\"));\n", raw, tagw)
+	}
+	if int64(len(un.Variants)) < tagMax(tagw) {
+		g.pf("    // A TAG PAST THE ARM COUNT IS OUT OF RANGE, as a count past its bound is:\n")
+		g.pf("    // it lands as None and counts one clamped rather than selecting nothing\n")
+		g.pf("    // silently.\n")
+		g.pf("    if tag_raw > %d {\n        report.clamped += 1;\n    } else {\n        value.tag = tag_raw;\n    }\n", len(un.Variants))
+	} else {
+		// EVERY VALUE OF THE TAG'S WIDTH NAMES AN ARM, so there is no
+		// out-of-range tag to clamp and a comparison here would be one the
+		// type's own limits make useless — which rustc says out loud.
+		g.pf("    // every value the tag's width holds names an arm of this build, so there\n")
+		g.pf("    // is no out-of-range ordinal here to clamp\n")
+		g.pf("    value.tag = tag_raw;\n")
+	}
+	g.pf("    match value.tag {\n")
+	for i, v := range un.Variants {
+		g.pf("        %d => {\n", i+1)
+		g.pf("            let mut arm = %s::default();\n", cookElemType(v.F))
+		g.emitFixedScatterElement(v.F, fmt.Sprintf("%d", tagw), "arm", 12)
+		g.pf("            value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
+		g.pf("        }\n")
+	}
+	g.pf("        _ => {} // None: the overlay stays the zeros the default laid down\n")
+	g.pf("    }\n}\n\n")
+}
 
 // ---- the root's surface ----------------------------------------------------
 

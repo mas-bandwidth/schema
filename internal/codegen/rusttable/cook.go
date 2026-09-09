@@ -57,12 +57,13 @@ func (g *gen) cookModule() []byte {
 // records for the same reason — it is the thing being asserted.
 func (g *gen) recordsModule() []byte {
 	roots := g.cookRoots()
-	if len(roots) == 0 {
+	unions := g.fileRowUnions()
+	if len(roots) == 0 && len(unions) == 0 {
 		return nil
 	}
-	any := false
+	any := len(unions) > 0
 	for _, st := range roots {
-		if g.cookable(st.Name) {
+		if g.rowable(st.Name) {
 			any = true
 			break
 		}
@@ -78,7 +79,9 @@ func (g *gen) recordsModule() []byte {
 	b.WriteString("use crate::*;\n\n")
 
 	g.body.Reset()
+	g.emitUnionRows(unions)
 	g.emitCookRows(roots)
+	g.emitUnionLayout(unions)
 	g.emitCookLayout(roots, false)
 	b.WriteString(g.body.String())
 	return []byte(b.String())
@@ -280,14 +283,73 @@ pub unsafe fn table_cook_open(
 
 // ---- the blittable records (docs/SPEC-TABLES.md §7.2, §19.3) ----
 
-// cookable reports whether a record has a Rust cooked form. A UNION does not:
-// Rust spells a union as a real enum (SPEC §6.1), which has no committed
-// payload layout, and a #[repr(C)] union twin for the cooked family is a
-// NAMED FOLLOW-ON rather than something to improvise inside a record. A
-// record that reaches one by value has none either, transitively.
+// cookable reports whether a record has a Rust COOKED form — the read handle
+// and the reflective descriptor. A record that reaches a UNION by value does
+// not: a cooked walk over a union is a descriptor whose fields OVERLAP, which
+// is a reflection question and not a layout one, and it is the piece §15's
+// follow-on still owes. The union's LAYOUT is settled (see [gen.rowable]) and
+// the fixed form reads and writes one; what is missing is what a walker would
+// do with it.
 func (g *gen) cookable(name string) bool {
+	return g.reaches(name, func(*ir.Union) bool { return false })
+}
+
+// rowable reports whether a record has a blittable `<Name>Row` — which is the
+// question the FIXED FORM asks, because a fixed record is plain data and a Row
+// is exactly that (docs/SPEC-TABLES.md §7.2, §19.3).
+//
+// A UNION HAS ONE NOW. Rust spells a union on the packet wire as a real enum
+// (SPEC §6.1), which has no committed payload layout, so the Row family used
+// to stop at one; the twin below is the `#[repr(C)]` TAG BESIDE A `#[repr(C)]`
+// UNION OF THE ARMS that ir.UnionLayout already models and the C++ reference
+// already spells — the tag at offset zero at its own width, the arms overlaid
+// at the greatest arm alignment, the whole rounded up. Nothing on the wire
+// moves: it is where the bytes LAND that this decides.
+//
+// What it does not carry is an arm whose storage needs a COMPANION — text, or
+// an array with its count — because such an arm is an unnamed struct of two
+// pieces in the C++ overlay and this port would have to name it. §3.4's own
+// layout law refuses those arms outright (ir.FixedSupported), so the two
+// refusals are one and nothing that reaches this form is turned away by it.
+func (g *gen) rowable(name string) bool {
+	return g.reaches(name, unionRowable)
+}
+
+// reaches walks a record's by-value closure and asks `ok` of every union it
+// meets. It is the one walk cookable and rowable differ only in the answer to.
+func (g *gen) reaches(name string, ok func(*ir.Union) bool) bool {
 	seen := map[string]bool{}
+	seenUnion := map[*ir.Union]bool{}
 	var walk func(n string) bool
+	var walkUnion func(un *ir.Union) bool
+	// AN ARM REACHES A DECLARATION EXACTLY AS A FIELD DOES (§2.6), a union arm
+	// that is itself a union included, so the question is asked of every union
+	// in the closure and not only of the ones a field names directly.
+	walkUnion = func(un *ir.Union) bool {
+		if seenUnion[un] {
+			return true
+		}
+		seenUnion[un] = true
+		if !ok(un) {
+			return false
+		}
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch arm := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				if !walk(arm.Name) {
+					return false
+				}
+			case *ir.Union:
+				if !walkUnion(arm) {
+					return false
+				}
+			}
+		}
+		return true
+	}
 	walk = func(n string) bool {
 		if seen[n] {
 			return true
@@ -306,7 +368,9 @@ func (g *gen) cookable(name string) bool {
 			}
 			switch ref := f.Type.Ref.(type) {
 			case *ir.Union:
-				return false
+				if !walkUnion(ref) {
+					return false
+				}
 			case *ir.Struct:
 				if !walk(ref.Name) {
 					return false
@@ -316,6 +380,104 @@ func (g *gen) cookable(name string) bool {
 		return true
 	}
 	return walk(name)
+}
+
+// unionRowable reports whether a union has a blittable twin here: every arm
+// carries a payload and every payload is ONE PIECE of storage — a scalar, or a
+// nested record. An arm of text, or of an array with its count, is two pieces
+// that must occupy one slot of the overlay, which the C++ reference spells as
+// an unnamed struct; naming those is the remaining follow-on and §3.4's layout
+// law refuses the same arms, so nothing is lost here that this form carries.
+func unionRowable(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if v.F == nil {
+			return false // a payload-free arm has no storage to overlay
+		}
+		a := v.F
+		if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
+			a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes ||
+			a.Type.Optional || a.Type.Blob() {
+			return false
+		}
+	}
+	return true
+}
+
+// unitRowUnions is every union the unit's Row family needs a twin for: the
+// ones a rowable closure member reaches by value, keyed by name. A union is
+// emitted by the file that DECLARES it, exactly as a record's Row is.
+func unitRowUnions(u *ir.Unit, closure map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	g := &gen{unit: u, closure: closure}
+	seen := map[string]bool{}
+	var walk func(name string)
+	var walkUnion func(un *ir.Union)
+	walkUnion = func(un *ir.Union) {
+		if out[un.Name] {
+			return
+		}
+		out[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	walk = func(name string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			return
+		}
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	for name := range closure {
+		if g.rowable(name) {
+			walk(name)
+		}
+	}
+	return out
+}
+
+// fileRowUnions is the unions THIS FILE declares that the unit's Row family
+// needs, in declaration order.
+func (g *gen) fileRowUnions() []*ir.Union {
+	need := unitRowUnions(g.unit, g.closure)
+	var out []*ir.Union
+	for _, d := range g.file.Decls {
+		if un, isUnion := d.(*ir.Union); isUnion && need[un.Name] && unionRowable(un) {
+			out = append(out, un)
+		}
+	}
+	// a union with a TABLE arm lives beside Decls, not inside it (§2.6)
+	for _, un := range g.file.TableUnions {
+		if need[un.Name] && unionRowable(un) {
+			out = append(out, un)
+		}
+	}
+	return out
 }
 
 // emitCookRows emits one #[repr(C)] <Name>Row per cookable record the file
@@ -330,13 +492,93 @@ func (g *gen) emitCookRows(members []*ir.Struct) {
 	g.pf("// `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md §11), so no declaration\n")
 	g.pf("// in the unit can take it.\n\n")
 	for _, st := range members {
-		if !g.cookable(st.Name) {
-			g.pf("// %s has NO cooked record: its by-value closure reaches a union, and a\n", st.Name)
-			g.pf("// Rust union is a real enum with no committed payload layout. The\n")
-			g.pf("// #[repr(C)] union twin is a named follow-on (docs/SPEC-TABLES.md §15).\n\n")
+		if !g.rowable(st.Name) {
+			g.pf("// %s has NO blittable record: its by-value closure reaches a union with\n", st.Name)
+			g.pf("// an arm whose storage needs a COMPANION beside it — text, or an array\n")
+			g.pf("// with its count — which is two pieces in one slot of the overlay and the\n")
+			g.pf("// one arm shape this port does not name yet (docs/SPEC-TABLES.md §15).\n\n")
 			continue
 		}
 		g.emitCookRow(st)
+	}
+}
+
+// ---- the union twin (docs/SPEC-TABLES.md §7.2, §15) ----
+
+// emitUnionRows emits one <Name>Row per union the Row family reaches: the TAG
+// at offset zero at its own storage width, and the arms overlaid in a
+// #[repr(C)] union beside it. It is ir.UnionLayout exactly, and the C++
+// reference's own storage exactly — C++ spells the overlay as an ANONYMOUS
+// union inside the struct, which Rust has no form for, so the overlay is a
+// named member and `offset_of!` says the two agree.
+func (g *gen) emitUnionRows(unions []*ir.Union) {
+	if len(unions) == 0 {
+		return
+	}
+	g.pf("// THE UNION TWINS. A union's blittable form is a TAG beside a #[repr(C)]\n")
+	g.pf("// UNION OF THE ARMS (docs/SPEC-TABLES.md §7.2, §15): the tag at offset zero\n")
+	g.pf("// at the width its variant count derives, the arms overlaid at the greatest\n")
+	g.pf("// arm alignment, the whole rounded up — which is ir.UnionLayout, the same\n")
+	g.pf("// model the C++ reference's storage struct meets and the same one the const\n")
+	g.pf("// asserts below hold this build to.\n")
+	g.pf("//\n")
+	g.pf("// THE TAG NAMES THE LIVE ARM, and that is the type's whole contract — the\n")
+	g.pf("// same one the C reference's storage carries, where reading `as.hit` with\n")
+	g.pf("// `type != HIT` is equally wrong and equally unchecked. Rust says it out\n")
+	g.pf("// loud: a READ of an arm is `unsafe` and every one of them in this crate is\n")
+	g.pf("// guarded by the tag. A WRITE of an arm is safe and needs no guard.\n")
+	g.pf("// `Row` and `RowArms` are CLAIMED suffixes (docs/SPEC-TABLES.md §11).\n\n")
+	for _, un := range unions {
+		g.emitUnionRow(un)
+	}
+}
+
+func (g *gen) emitUnionRow(un *ir.Union) {
+	size, align, tag, armOffset := ir.UnionLayout(g.unit, un)
+	g.pf("// %s — the union twin: %d bytes, aligned %d; a %d-byte tag, the arms at %d.\n",
+		un.Name, size, align, tag, armOffset)
+	g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub struct %sRow {\n", un.Name)
+	g.pf("    pub tag: %s, // 0 is None (the empty union); then each arm in declared order\n", rustUint(ir.StorageBitsFor(un.Max)))
+	g.pf("    pub arms: %sRowArms,\n", un.Name)
+	g.pf("}\n\n")
+	g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub union %sRowArms {\n", un.Name)
+	for _, v := range un.Variants {
+		g.pf("    pub %s: %s, // %s\n", v.Name, cookElemType(v.F), tableFieldTypeName(v.F))
+	}
+	g.pf("}\n\n")
+	for _, name := range []string{un.Name + "Row", un.Name + "RowArms"} {
+		g.pf("impl Default for %s {\n", name)
+		g.pf("    fn default() -> Self {\n")
+		g.pf("        // the empty union: tag zero and an overlay of zeros, which is a value\n")
+		g.pf("        // of every arm — each is plain data with no niche in it\n")
+		g.pf("        unsafe { core::mem::zeroed() }\n")
+		g.pf("    }\n}\n\n")
+	}
+}
+
+// emitUnionLayout is the union twin's share of THE LAYOUT CONTRACT
+// (docs/SPEC-TABLES.md §20.3): the size, the alignment, the tag at zero and
+// the overlay where ir.UnionLayout puts it — plus every arm at offset zero
+// inside the overlay, which is what the C++ reference asserts of each arm
+// directly.
+func (g *gen) emitUnionLayout(unions []*ir.Union) {
+	for _, un := range unions {
+		size, align, _, armOffset := ir.UnionLayout(g.unit, un)
+		g.pf("const _: () = assert!(core::mem::size_of::<%sRow>() == %d, \"%sRow's size moved (docs/SPEC-TABLES.md §20.3)\");\n",
+			un.Name, size, un.Name)
+		g.pf("const _: () = assert!(core::mem::align_of::<%sRow>() == %d, \"%sRow's alignment moved (docs/SPEC-TABLES.md §20.3)\");\n",
+			un.Name, align, un.Name)
+		g.pf("const _: () = assert!(core::mem::offset_of!(%sRow, tag) == 0, \"%sRow: the tag leads the union storage\");\n",
+			un.Name, un.Name)
+		g.pf("const _: () = assert!(core::mem::offset_of!(%sRow, arms) == %d, \"%sRow: the arms are overlaid here\");\n",
+			un.Name, armOffset, un.Name)
+		for _, v := range un.Variants {
+			g.pf("const _: () = assert!(core::mem::offset_of!(%sRowArms, %s) == 0, \"%sRowArms.%s: every arm starts the overlay\");\n",
+				un.Name, v.Name, un.Name, v.Name)
+		}
+	}
+	if len(unions) > 0 {
+		g.pf("\n")
 	}
 }
 
@@ -424,6 +666,11 @@ func cookElemType(f *ir.Field) string {
 			return "u64"
 		case *ir.Struct:
 			return ref.Name + "Row"
+		case *ir.Union:
+			// A UNION SLOT IS ITS TWIN (docs/SPEC-TABLES.md §7.2, §15): the tag
+			// beside the #[repr(C)] overlay of the arms, laid out by
+			// ir.UnionLayout exactly as the C++ reference's storage is.
+			return ref.Name + "Row"
 		}
 	}
 	return "u8"
@@ -441,7 +688,7 @@ func (g *gen) emitCookLayout(members []*ir.Struct, _ bool) {
 	g.pf("// makes a cook's bytes readable here. Neither side's layout is inferred\n")
 	g.pf("// from the other's.\n")
 	for _, st := range members {
-		if !g.cookable(st.Name) {
+		if !g.rowable(st.Name) {
 			continue
 		}
 		layout := ir.RecordLayout(g.unit, st)

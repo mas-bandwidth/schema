@@ -18,6 +18,13 @@
 //
 // And the NEGATIVE CONTROLS, because a test that never watched the wrong plan
 // fail never checked the right one worked.
+//
+// THE UNION IS HERE TOO (docs/SPEC-TABLES.md §15). The reference's own paired
+// bench corpus — 64 records of BenchMixed, whose `game_event` is a three-arm
+// union — is read, value-checked against a straight-line decode of its own
+// bytes, and saved back byte for byte; the FE1/FE2 pair slides an ARM INTO THE
+// MIDDLE of a union and reads it back through a compiled plan; and a forged tag
+// past the arm count is watched landing as None.
 use std::fs;
 use std::process::exit;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -434,12 +441,374 @@ fn the_negative_controls(dir: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// THE UNION, ON THE REFERENCE'S OWN BENCH CORPUS (docs/SPEC-TABLES.md §15)
+//
+// bench/paired/corpus/bench_fixed.bin is 64 records of BenchMixed written by
+// the C++ reference, and BenchMixed carries `game_event MixedEvent` — a
+// three-arm union whose pinned arm is `hit`. It is the shape this port had no
+// blittable `<Name>Row` for until the `#[repr(C)]` twin landed, and it is
+// therefore the one file that proves the twin: nothing on the wire moved, so
+// the bytes have to come back EXACTLY, and the block has to be the corpus's
+// byte for byte before any of that means anything.
+//
+// AND THE VALUES, from a STRAIGHT-LINE DECODE OF THE GOLDEN'S OWN BYTES at the
+// offsets the C reference asserts (`BenchMixed.game_event` at body 1108, the
+// arm at 1109). A read and a write that agreed with each other and with
+// nothing else would round-trip too; this is the second road to the answer,
+// and it shares no code with the plan or the scatter.
+// ---------------------------------------------------------------------------
+
+const BENCH_RECORDS: usize = 64;
+
+/// The union's place in the record BODY, from the C++ reference's own
+/// static_asserts (generated/bench/paired/c/FixedTableTable.h): the tag byte,
+/// then the `hit` arm's four members at their declared storage widths.
+const EVENT_TAG: usize = 1108;
+const EVENT_ARM: usize = 1109;
+
+fn u32_at(b: &[u8], at: usize) -> u32 {
+    u32::from_le_bytes(b[at..at + 4].try_into().expect("four bytes"))
+}
+
+fn the_bench_corpus(dir: &str) {
+    let golden = slurp(dir, "bench_fixed.bin");
+    let vocab = slurp(dir, "bench_fixed.vocab");
+
+    // THE BLOCK IS THE CORPUS'S BLOCK, and that one comparison is what says
+    // this leg speaks the form and not a near miss: the positions, the ids, the
+    // kinds, the record's size and the hash every record carries are all
+    // settled by these bytes.
+    check(
+        vocab == benchfixed::FIXED_TABLE_FIXED_BLOCK,
+        "bench_fixed: this build's vocabulary block IS the corpus's, byte for byte",
+    );
+    check(
+        benchfixed::FIXED_TABLE_FIXED_HASH == 0x32f1_c4a3_02a2_24eb,
+        "bench_fixed: the pinned block hash",
+    );
+
+    let mut values = vec![benchfixed::FixedTableRow::default(); BENCH_RECORDS];
+    let mut plan = vec![benchfixed::TableFixedEntry::default(); 2048];
+    let mut remap = vec![0u16; 2048];
+    let mut report = benchfixed::TableFixedReport::default();
+    let n = benchfixed::fixed_table_fixed_load(
+        &mut values,
+        &golden,
+        &mut plan,
+        &mut remap,
+        &mut report,
+    );
+    check(n == Some(BENCH_RECORDS), "bench_fixed: all 64 records load");
+    check(
+        report == benchfixed::TableFixedReport::default(),
+        "bench_fixed: its own block is the identity plan, and a clean read moves no counter",
+    );
+    let n = n.unwrap_or(0);
+
+    // THE BYTES ARE THE REFERENCE'S, which reaches the tag, the live arm and
+    // every byte of the union's declared slack.
+    let mut out = vec![0u8; benchfixed::fixed_table_fixed_measure(n)];
+    let wrote = benchfixed::fixed_table_fixed_save(&values[..n], &mut out);
+    check(wrote == Some(out.len()), "bench_fixed: save fills what measure says");
+    check(out == golden, "bench_fixed: the bytes are the C++ reference's, exactly");
+
+    // A REUSED TARGET ROUND-TRIPS TOO: the load owns the prefill, so nothing is
+    // reset between passes — the same gate the C++ and C legs run.
+    for _ in 0..2 {
+        let mut again = benchfixed::TableFixedReport::default();
+        let m = benchfixed::fixed_table_fixed_load(
+            &mut values,
+            &golden,
+            &mut plan,
+            &mut remap,
+            &mut again,
+        );
+        let mut twin = vec![0u8; benchfixed::fixed_table_fixed_measure(m.unwrap_or(0))];
+        benchfixed::fixed_table_fixed_save(&values[..m.unwrap_or(0)], &mut twin);
+        check(twin == golden, "bench_fixed: a reused target round-trips too");
+    }
+
+    // AND THE VALUES. The straight-line decode below reads the golden's own
+    // bytes at the reference's offsets; the loop compares every record's union
+    // against it.
+    let block_bytes = u32_at(&golden, 1) as usize;
+    let rest = &golden[5 + block_bytes..];
+    let record = benchfixed::FIXED_TABLE_FIXED_RECORD_BYTES;
+    let mut hits = 0;
+    for k in 0..n {
+        let body = &rest[k * record + 8..(k + 1) * record];
+        let event = values[k].value.game_event;
+        check(
+            event.tag == body[EVENT_TAG],
+            "bench_fixed: the tag landed as the record carries it",
+        );
+        if event.tag != 1 {
+            continue; // `game_event` is STRUCTURE, pinned to `hit` in every record
+        }
+        hits += 1;
+        // SAFETY: the tag is 1, which names `hit`; the twin's contract is that
+        // the tag names the live arm, and the scatter that landed this value is
+        // what set both.
+        let hit = unsafe { event.arms.hit };
+        check(
+            u32::from(hit.target_id) == u32_at(body, EVENT_ARM)
+                && hit.damage == u32_at(body, EVENT_ARM + 4) as i32
+                && hit.hit_kind == u32_at(body, EVENT_ARM + 8) as i32
+                && hit.crit == (body[EVENT_ARM + 12] != 0),
+            "bench_fixed: the live arm's every member is the golden's own bytes",
+        );
+    }
+    check(hits == BENCH_RECORDS, "bench_fixed: `hit` is the pinned arm in all 64 records");
+
+    // THE COMPILED PLAN OVER MY OWN BLOCK, which is where the union's own ops
+    // live: the runtime writes MY tag as a `const` under THEIR tag's GUARD and
+    // then each arm's entries behind that guard. The identity plan is one move
+    // and never touches them, so without this the union's compiler branch is
+    // never run over a record whose answer is already pinned.
+    compiled_self_plan!(
+        dir, "bench_fixed.bin", benchfixed, FixedTableRow, BENCH_RECORDS,
+        fixed_table_fixed_load, fixed_table_fixed_save, fixed_table_fixed_measure,
+        FIXED_TABLE_FIXED_BLOCK, FIXED_TABLE_FIXED_COUNTED, FIXED_TABLE_FIXED_DEFAULTS,
+        FIXED_TABLE_FIXED_BODY_BYTES, fixed_table_fixed_scatter
+    );
+}
+
+// ---------------------------------------------------------------------------
+// THE ORDINAL SLIDE: an enum and a UNION that both gained a variant in the
+// middle (docs/SPEC-TABLES.md §3.4)
+//
+// FE2 inserts `Electrum` between Bronze and Silver, so Silver and Gold both
+// slide by one; and it inserts the `shield` arm between `boost` and `ward`, so
+// `ward`'s tag slides from 2 to 3 and the arm behind the tag moves with it. A
+// reader that took the number for its own would read Gold as Silver and a ward
+// as a shield, and NEITHER EDIT IS VISIBLE IN A RECORD'S BYTES — the ordinal is
+// the only thing that carries them.
+//
+// §3.4's answer to both is that AN ORDINAL IS A POSITION IN THE LAYOUT and the
+// plan REMAPS it BY NAME: the `ordinal` op resolves a variant through the
+// plan's own table, and a union's tag is written as MY ordinal under THEIR
+// tag's guard.
+// ---------------------------------------------------------------------------
+
+fn the_ordinal_slide() {
+    // FE1 writes: Gold with a `ward`, and Bronze with a `boost`.
+    let older = [
+        tblfe1::FeRootRow {
+            grade: 3, // Gold
+            effect: tblfe1::EffectRow {
+                tag: 2, // ward
+                arms: tblfe1::EffectRowArms {
+                    ward: tblfe1::WardRow { charge: 41 },
+                },
+            },
+            tail: 99,
+        },
+        tblfe1::FeRootRow {
+            grade: 1, // Bronze
+            effect: tblfe1::EffectRow {
+                tag: 1, // boost
+                arms: tblfe1::EffectRowArms {
+                    boost: tblfe1::BoostRow { power: 17 },
+                },
+            },
+            tail: 100,
+        },
+    ];
+    let mut slide = vec![0u8; tblfe1::fe_root_fixed_measure(older.len())];
+    check(
+        tblfe1::fe_root_fixed_save(&older, &mut slide) == Some(slide.len()),
+        "the slide: FE1 writes its two records",
+    );
+
+    let mut values = [tblfe2::FeRootRow::default(); 4];
+    let mut plan = [tblfe2::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfe2::TableFixedReport::default();
+    let n = tblfe2::fe_root_fixed_load(&mut values, &slide, &mut plan, &mut remap, &mut report);
+    check(n == Some(2), "the slide: FE2 reads both of FE1's records");
+    check(values[0].grade == 4, "the slide: the enum's Gold slid 3 -> 4 and was REMAPPED");
+    check(values[0].effect.tag == 3, "the slide: the union's `ward` tag slid 2 -> 3");
+    // SAFETY: the tag is 3, which is FE2's `ward`; the scatter set both.
+    check(
+        unsafe { values[0].effect.arms.ward }.charge == 41,
+        "the slide: and the ARM BEHIND the slid tag landed",
+    );
+    check(
+        values[1].grade == 1 && values[1].effect.tag == 1,
+        "the slide: Bronze did not slide, and neither did the `boost` arm",
+    );
+    // SAFETY: the tag is 1, which is FE2's `boost`.
+    check(
+        unsafe { values[1].effect.arms.boost }.power == 17,
+        "the slide: the unslid arm's payload",
+    );
+    check(
+        values[0].tail == 99 && values[1].tail == 100,
+        "the slide: the field past the union is undisturbed",
+    );
+    check(report.kind_mismatch == 0, "the slide: a slide is not a `kind_mismatch`");
+    check(
+        report.unknown == 0,
+        "the slide: `shield` is a field this WRITER does not carry, so nothing counts",
+    );
+    check(
+        report.clamped == 0 && !report.malformed && !report.refused,
+        "the slide: a slide does not damage and does not clamp",
+    );
+
+    // AND BACK: FE1 reading FE2. `Electrum` and `shield` are variants this
+    // reader has no name for, so the ordinal resolves to NONE and the arm is
+    // simply never a source.
+    let newer = [tblfe2::FeRootRow {
+        grade: 2, // Electrum, which FE1 cannot name
+        effect: tblfe2::EffectRow {
+            tag: 2, // shield, which FE1 cannot name
+            arms: tblfe2::EffectRowArms {
+                shield: tblfe2::ShieldRow { plating: 5 },
+            },
+        },
+        tail: 8,
+    }];
+    let mut back = vec![0u8; tblfe2::fe_root_fixed_measure(newer.len())];
+    tblfe2::fe_root_fixed_save(&newer, &mut back);
+
+    let mut values = [tblfe1::FeRootRow::default(); 4];
+    let mut plan = [tblfe1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfe1::TableFixedReport::default();
+    let n = tblfe1::fe_root_fixed_load(&mut values, &back, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "coming back: FE1 reads FE2's record");
+    check(values[0].grade == 0, "coming back: a variant this reader cannot name resolves to None");
+    check(
+        values[0].effect.tag == 0,
+        "coming back: an ARM this reader cannot name leaves the tag at None",
+    );
+    check(values[0].tail == 8, "coming back: and the field past it still lands");
+    check(
+        report.clamped == 0 && !report.malformed && !report.refused,
+        "coming back: nothing was damaged and nothing was clamped",
+    );
+}
+
+// ---------------------------------------------------------------------------
+
+fn the_union_controls(dir: &str) {
+    // A TAG PAST THE ARM COUNT LANDS AS NONE AND COUNTS ONE CLAMPED, which is
+    // the ruling this form takes on a forged ordinal: the identity plan copies
+    // the tag verbatim out of a stranger's record, so the scatter is where the
+    // range is closed — the same place a count's bound is closed.
+    let golden = slurp(dir, "bench_fixed.bin");
+    let block_bytes = u32_at(&golden, 1) as usize;
+    let head = 5 + block_bytes;
+    let record = benchfixed::FIXED_TABLE_FIXED_RECORD_BYTES;
+    let mut forged = golden[..head + record].to_vec();
+    forged[head + 8 + EVENT_TAG] = 250; // no arm of this build is the 250th
+
+    let mut values = vec![benchfixed::FixedTableRow::default(); 1];
+    let mut plan = vec![benchfixed::TableFixedEntry::default(); 2048];
+    let mut remap = vec![0u16; 2048];
+    let mut report = benchfixed::TableFixedReport::default();
+    let n = benchfixed::fixed_table_fixed_load(
+        &mut values,
+        &forged,
+        &mut plan,
+        &mut remap,
+        &mut report,
+    );
+    check(n == Some(1), "a forged tag: the record still reads");
+    check(
+        values[0].value.game_event.tag == 0,
+        "a forged tag: a tag past the arm count lands as None",
+    );
+    check(report.clamped == 1, "a forged tag: and it counts ONE clamped");
+    check(
+        !report.malformed && !report.refused && report.kind_mismatch == 0,
+        "a forged tag: nothing else fired — an out-of-range ordinal is not damage",
+    );
+    check(
+        values[0].value.sequence != 0,
+        "a forged tag: every field beside the union still landed",
+    );
+
+    // AND ON THE COMPILED PATH. §3.4's ruling is that there is ONE reader path,
+    // so a forged tag has to land as None there too — and it does, by a
+    // different mechanism worth stating: the compiler writes MY ordinal as a
+    // `const` under THEIR tag's GUARD, so a tag that matches no arm of the
+    // writer's fires no entry at all and the image keeps the prefill's zero.
+    // Nothing is out of range by the time the scatter sees it, which is why
+    // this case lands None and counts NOTHING, where the identity path above
+    // counts one clamped.
+    {
+        let older = [tblfe1::FeRootRow {
+            grade: 1,
+            effect: tblfe1::EffectRow {
+                tag: 2, // ward
+                arms: tblfe1::EffectRowArms {
+                    ward: tblfe1::WardRow { charge: 41 },
+                },
+            },
+            tail: 77,
+        }];
+        let mut file = vec![0u8; tblfe1::fe_root_fixed_measure(1)];
+        tblfe1::fe_root_fixed_save(&older, &mut file);
+        // FE1's body is `grade`, then the union, then `tail`: the tag leads the
+        // union storage, so it is the byte after `grade`.
+        let block_bytes = u32_at(&file, 1) as usize;
+        let tag_at = 5 + block_bytes + 8 + 1;
+        file[tag_at] = 250; // no arm of FE1's is the 250th either
+
+        let mut values = [tblfe2::FeRootRow::default(); 4];
+        let mut plan = [tblfe2::TableFixedEntry::default(); 512];
+        let mut remap = [0u16; 512];
+        let mut report = tblfe2::TableFixedReport::default();
+        let n =
+            tblfe2::fe_root_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report);
+        check(n == Some(1), "a forged tag, compiled plan: the record still reads");
+        check(
+            values[0].effect.tag == 0,
+            "a forged tag, compiled plan: a tag no arm of the WRITER's names lands as None",
+        );
+        check(
+            values[0].tail == 77,
+            "a forged tag, compiled plan: the field past the union still lands",
+        );
+        check(
+            !report.malformed && !report.refused,
+            "a forged tag, compiled plan: no damage and no refusal",
+        );
+    }
+
+    // AND THE NEGATIVE CONTROL FOR THE CONTROL: the UNFORGED record's tag is
+    // the pinned arm, so the clamp above is the forgery and not the reader.
+    let mut clean = benchfixed::TableFixedReport::default();
+    benchfixed::fixed_table_fixed_load(
+        &mut values,
+        &golden[..head + record],
+        &mut plan,
+        &mut remap,
+        &mut clean,
+    );
+    check(
+        values[0].value.game_event.tag == 1 && clean.clamped == 0,
+        "NEGATIVE CONTROL: the same record unforged lands `hit` and clamps nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
-    let dir = match std::env::args().nth(1) {
+    let mut args = std::env::args().skip(1);
+    let dir = match args.next() {
         Some(d) => d,
         None => {
-            println!("usage: rust-fixedform <corpus dir>");
+            println!("usage: rust-fixedform <corpus dir> <bench paired corpus dir>");
+            exit(1);
+        }
+    };
+    let bench = match args.next() {
+        Some(d) => d,
+        None => {
+            println!("usage: rust-fixedform <corpus dir> <bench paired corpus dir>");
             exit(1);
         }
     };
@@ -448,11 +817,16 @@ fn main() {
     an_older_writer(&dir);
     a_newer_writer(&dir);
     an_optional(&dir);
+    the_bench_corpus(&bench);
+    the_ordinal_slide();
     the_negative_controls(&dir);
+    the_union_controls(&bench);
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
         println!("rust fixed form: {failures} FAILED");
         exit(1);
     }
-    println!("rust fixed form: the bytes are the C++ reference's, and the versioned path is the path");
+    println!(
+        "rust fixed form: the bytes are the C++ reference's — the union corpus with them — and the versioned path is the path"
+    );
 }

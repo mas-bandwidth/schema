@@ -14,6 +14,11 @@ path = "src/main.rs"
 [dependencies]
 tblfx1 = { path = "../../build/tables-generated-rust/tblfx1" }
 tblfx2 = { path = "../../build/tables-generated-rust/tblfx2" }
+tblfe1 = { path = "../../build/tables-generated-rust/tblfe1" }
+tblfe2 = { path = "../../build/tables-generated-rust/tblfe2" }
 tblp1 = { path = "../../build/tables-generated-rust/tblp1" }
 tblp3 = { path = "../../build/tables-generated-rust/tblp3" }
 tabledemo = { path = "../../build/tables-generated-rust/tabledemo" }
+# the PAIRED BENCH UNIT: Bench.schema and FixedTable.schema as one unit, which
+# is the unit that carries a UNION through this form
+benchfixed = { path = "../../build/tables-generated-rust/benchfixed" }

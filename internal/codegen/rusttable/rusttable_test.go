@@ -265,11 +265,11 @@ func TestCookLayoutIsAssertedAtCompileTime(t *testing.T) {
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----------------
 
-// unionReaching is a table whose by-value closure reaches a UNION. Rust spells
-// a union as a real enum with no committed payload layout, so such a record has
-// no blittable Row (cook.go's `cookable`) and therefore no fixed form here —
-// the port's own named follow-on, and the same one the cooked form already
-// names.
+// unionReaching is a table whose by-value closure reaches a UNION. It USED to
+// have no fixed form here: the value is the unit's blittable `<Name>Row` and
+// Rust spells a union on the packet wire as a real enum with no committed
+// payload layout, so the Row family stopped at one. The `#[repr(C)]` twin
+// (cook.go's `rowable`) is that Row, and this is now an ordinary fixed root.
 const unionReaching = `package probe
 
 type Boost
@@ -291,6 +291,26 @@ union Effect
 table Holder
 {
     effect Effect
+    tail   int32
+}
+`
+
+// unionWithTextArm is the arm shape that is STILL refused, and it is refused
+// by §3.4's own layout law rather than by this port: an arm whose storage needs
+// a COMPANION beside it — a string's used length, a counted array's count — is
+// two pieces that must occupy one slot of the overlay, which the C++ reference
+// spells as an unnamed struct and no port lays out yet.
+const unionWithTextArm = `package probe
+
+union Note
+{
+    text  string(8)
+    tally int32
+}
+
+table Holder
+{
+    note Note
 }
 `
 
@@ -324,13 +344,65 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		t.Error("the identity plan is not ONE entry — the whole body in one move (docs/SPEC-TABLES.md §3.4)")
 	}
 
-	// A UNION reaches no Row here, so it reaches no fixed form either.
+	// A UNION HAS A ROW NOW, so a union-reaching table has a fixed form: the
+	// twin's tag beside the #[repr(C)] overlay, the union's own store-and-
+	// scatter pair, and the whole surface of an ordinary fixed root.
 	union := generate(t, unionReaching)
-	if _, ok := union["probe_fixed.rs"]; ok {
-		t.Error("a table whose closure reaches a union got a fixed form; Rust has no committed union layout")
+	if _, ok := union["probe_fixed.rs"]; !ok {
+		t.Fatalf("a union-reaching table got no fixed form; got %v", keysOf(union))
 	}
-	if _, ok := union[FixedRuntimeModule+".rs"]; ok {
+	if _, ok := union[FixedRuntimeModule+".rs"]; !ok {
+		t.Errorf("no %s.rs beside a union-reaching fixed root", FixedRuntimeModule)
+	}
+	ubody := string(union["probe_fixed.rs"])
+	for _, want := range []string{
+		"HOLDER_FIXED_HASH", "holder_fixed_save", "holder_fixed_load",
+		"effect_fixed_write_body", "effect_fixed_scatter",
+		"let arm = unsafe { value.arms.boost };",
+		"value.arms.ward = arm;",
+		"report.clamped += 1;",
+	} {
+		if !strings.Contains(ubody, want) {
+			t.Errorf("the union's fixed surface is missing %q", want)
+		}
+	}
+	urecords := string(union["probe_records.rs"])
+	for _, want := range []string{
+		"pub struct EffectRow {",
+		"pub tag: u8,",
+		"pub arms: EffectRowArms,",
+		"pub union EffectRowArms {",
+		"const _: () = assert!(core::mem::offset_of!(EffectRow, tag) == 0,",
+		"const _: () = assert!(core::mem::offset_of!(EffectRowArms, boost) == 0,",
+		"pub effect: EffectRow,",
+	} {
+		if !strings.Contains(urecords, want) {
+			t.Errorf("the union twin is missing %q", want)
+		}
+	}
+	// THE TWIN IS ir.UnionLayout AND NOTHING THIS FILE INVENTED: a one-byte tag,
+	// the arms overlaid at the greatest arm alignment, the whole rounded up.
+	if !strings.Contains(urecords, "const _: () = assert!(core::mem::size_of::<EffectRow>() == 8,") ||
+		!strings.Contains(urecords, "const _: () = assert!(core::mem::offset_of!(EffectRow, arms) == 4,") {
+		t.Error("the union twin's layout is not ir.UnionLayout's (docs/SPEC-TABLES.md §7.2, §20.3)")
+	}
+	// AND THE UNION'S OWN READ IS THE ONLY `unsafe` ON THIS PATH. A write of a
+	// union field is safe in Rust, so the scatter has none at all.
+	if strings.Contains(ubody, "unsafe { &mut") {
+		t.Error("the scatter took a mutable reference into the overlay; a WRITE of a union field needs none")
+	}
+
+	// THE ARM SHAPE THAT IS STILL REFUSED, and it is §3.4's refusal: an arm
+	// whose storage needs a companion beside it.
+	text := generate(t, unionWithTextArm)
+	if _, ok := text["probe_fixed.rs"]; ok {
+		t.Error("a union with a TEXT arm got a fixed form; the overlay's companion pieces are unnamed here")
+	}
+	if _, ok := text[FixedRuntimeModule+".rs"]; ok {
 		t.Error("the fixed runtime rode into a unit with no fixed root at all")
+	}
+	if strings.Contains(string(text["probe_records.rs"]), "pub union NoteRowArms") {
+		t.Error("a union with a companioned arm got a twin; its arm is two pieces in one slot")
 	}
 
 	// A POINTER makes its holder VARIABLE (§2.2), which §3.4 refuses outright:

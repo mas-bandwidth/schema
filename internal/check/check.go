@@ -3701,6 +3701,23 @@ func (c *checker) checkClaimedNames() {
 				addRust(ir.RustConstName(name+"Type")+"_"+ir.RustConstName(v.Name), whyCTag, v.Pos, name+"Type"+ir.GoExportName(v.Name))
 			}
 			addRust("enum_name_"+ir.RustSnake(name+"Type"), fmt.Sprintf("union %s's generated tag debug-name function (C form)", name), d.Pos)
+			// THE UNION TWIN (docs/SPEC-TABLES.md §7.2, §15): the blittable
+			// `<Name>Row` a union takes in the Rust table surface, and the
+			// `#[repr(C)]` overlay of its arms beside it. C++ spells the
+			// overlay as an ANONYMOUS union inside the struct and claims
+			// nothing for it; Rust has no anonymous union, so the overlay is a
+			// real type with a real name and the name is claimed like any
+			// other. Both are claimed for EVERY union of a unit that declares
+			// a table, on this list's standing rule: a name free today must
+			// not become a collision the day a table gains a field of this
+			// type. `<Name>Row`'s pair for a `type` and a `table` is claimed
+			// through tableGeneratedVerbs; a union is not a closure member
+			// there, so its two are claimed here.
+			if len(c.tables) > 0 {
+				whyRow := fmt.Sprintf("union %s's generated blittable twin (docs/SPEC-TABLES.md §7.2, §15)", name)
+				add(name+"Row", whyRow, d.Pos)
+				add(name+"RowArms", whyRow, d.Pos)
+			}
 		case *ast.FlagsDecl:
 			add(name+"Count", fmt.Sprintf("flags %s's generated Count constant", name), d.Pos)
 			addRust(ir.RustConstName(name+"Count"), fmt.Sprintf("flags %s's generated Count constant (Rust/C form)", name), d.Pos, name+"Count")
