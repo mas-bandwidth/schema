@@ -27,7 +27,7 @@ static BM_TYPE BM_CAT( g_instances_, BM_SUFFIX )[NumVariants];
 
 static void BM_FUNC( const char * name, const char * golden, long base_iters )
 {
-    const long iters = base_iters / IterScale;
+    const long iters = g_iterations ? g_iterations : base_iters / IterScale;
     BM_TYPE * instances = BM_CAT( g_instances_, BM_SUFFIX );
     BM_TYPE out;
     int bytes_per_op;

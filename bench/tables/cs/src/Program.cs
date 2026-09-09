@@ -40,6 +40,7 @@ static class Program
     const int MaxNumRuns = 7;           // median of 7 (N >= 5), after 1 warmup run
     static bool gIndexed;
     static readonly int[] gLengths = new int[NumVariants];
+    static long gIterations = 0; // explicit diagnostic count; defaults stay standard
     static int gNumRuns = MaxNumRuns;   // --round K drops this to 1 (§2.4)
     const int NumVariants = 64;         // read-path variant buffers
 
@@ -238,7 +239,7 @@ static class Program
                               Func<T> make, ResetOf<T> reset, SaveOf<T> save, LoadOf<T> load)
         where T : class
     {
-        long iters = baseIters;
+        long iters = gIterations > 0 ? gIterations : baseIters;
 
         double bytesPerOp = LoadVariants(name);
         if (bytesPerOp < 0)
@@ -400,6 +401,15 @@ static class Program
             {
                 gVariantDir = args[++i];
             }
+            else if (args[i] == "--iterations" && i + 1 < args.Length)
+            {
+                if (!long.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out long n) || n <= 0 || n > 2147483584L || n % NumVariants != 0)
+                {
+                    Console.Error.WriteLine("--iterations requires a positive multiple of 64 up to 2147483584");
+                    return 1;
+                }
+                gIterations = n;
+            }
             else if (args[i] == "--round" && i + 1 < args.Length)
             {
                 if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int k) || k < 0)
@@ -411,7 +421,7 @@ static class Program
             }
             else
             {
-                Console.Error.WriteLine("usage: schematablesbench [--indexed] [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]");
+                Console.Error.WriteLine("usage: schematablesbench [--indexed] [--gate] [--csv] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]");
                 return 1;
             }
         }

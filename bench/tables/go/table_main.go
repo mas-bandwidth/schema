@@ -44,6 +44,7 @@ import (
 
 // sink defeats dead-code elimination of the computed lengths. It is written
 // every iteration and read once at the end.
+var iterations int64 // explicit diagnostic count; zero keeps the standard count
 var sink uint64
 
 const (
@@ -219,6 +220,9 @@ func loadVariants(name string) float64 {
 func benchTable[T any](name, golden string, baseIters int64,
 	reset func(*T), save func(*T, []byte) int64, load func(*T, []byte) bool) {
 	iters := baseIters
+	if iterations > 0 {
+		iters = iterations
+	}
 
 	bytesPerOp := loadVariants(name)
 	if bytesPerOp < 0 {
@@ -352,6 +356,14 @@ func main() {
 		case args[i] == "--variant-dir" && i+1 < len(args):
 			i++
 			variantDir = args[i]
+		case args[i] == "--iterations" && i+1 < len(args):
+			i++
+			n, err := strconv.ParseInt(args[i], 10, 64)
+			if err != nil || n <= 0 || n > 2147483584 || n%64 != 0 {
+				fmt.Fprintln(os.Stderr, "--iterations requires a positive multiple of 64 up to 2147483584")
+				os.Exit(1)
+			}
+			iterations = n
 		case args[i] == "--round" && i+1 < len(args):
 			i++
 			if k, err := strconv.ParseInt(args[i], 10, 64); err != nil || k < 0 {
@@ -360,7 +372,7 @@ func main() {
 			}
 			numRuns = 1
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--indexed] [--gate] [--csv] [--round K] [--iterations N] [--wire-dir <dir>] [--variant-dir <dir>]\n", os.Args[0])
 			os.Exit(1)
 		}
 	}

@@ -38,6 +38,7 @@ import (
 
 const MaxNumRuns = 7 // median of 7 (N >= 5), after 1 warmup run
 var gGate bool
+var gIterations int64     // explicit diagnostic count; zero keeps the standard count
 var gQuick = false        // --quick: bench_mixed only, 3 measured runs
 var gNumRuns = MaxNumRuns // --round K drops this to 1 (§2.4: one warmup + one
 // measured run per round; the driver aggregates across rounds)
@@ -234,6 +235,9 @@ func loadVariants(name string) int64 {
 func benchDataDriven[T any](name, golden string, iters int64,
 	writeFn func(*serialize.WriteStream, *T) error,
 	readFn func(*serialize.ReadStream, *T) error) {
+	if gIterations > 0 {
+		iters = gIterations
+	}
 
 	bytesPerOp := loadVariants(name)
 	if bytesPerOp < 0 {
@@ -404,6 +408,14 @@ func main() {
 		case args[i] == "--variant-dir" && i+1 < len(args):
 			i++
 			gVariantDir = args[i]
+		case args[i] == "--iterations" && i+1 < len(args):
+			i++
+			n, err := strconv.ParseInt(args[i], 10, 64)
+			if err != nil || n <= 0 || n > 2147483584 || n%64 != 0 {
+				fmt.Fprintln(os.Stderr, "--iterations requires a positive multiple of 64 up to 2147483584")
+				os.Exit(1)
+			}
+			gIterations = n
 		case args[i] == "--round" && i+1 < len(args):
 			// §2.4: one warmup + one measured run of every benchmark, then
 			// exit. K only identifies the round to the interleaved driver,
@@ -434,7 +446,7 @@ func main() {
 			}
 			defer pprof.StopCPUProfile()
 		default:
-			fmt.Fprintf(os.Stderr, "usage: %s [--gate] [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>] [--cpuprofile <file>]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "usage: %s [--gate] [--csv] [--round K] [--iterations N] [--quick] [--wire-dir <dir>] [--variant-dir <dir>] [--cpuprofile <file>]\n", os.Args[0])
 			os.Exit(1)
 		}
 	}

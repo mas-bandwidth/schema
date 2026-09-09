@@ -32,6 +32,7 @@ static partial class Program
     const int MaxNumRuns = 7;   // median of 7 (N >= 5), after 1 warmup run
     static bool gGate = false;
     static bool gQuick = false; // --quick: bench_mixed only, 3 measured runs
+    static long gIterations = 0; // explicit diagnostic count; defaults stay standard
     static int gNumRuns = MaxNumRuns; // --round K drops this to 1 (§2.4: one warmup +
                                       // one measured run per round; the driver
                                       // aggregates across rounds)
@@ -281,6 +282,7 @@ static partial class Program
         Func<WriteStream, T, bool> writeFn, Func<ReadStream, T, bool> readFn)
         where T : class, new()
     {
+        if (gIterations > 0) iters = gIterations;
         long bytesPerOp = LoadVariants(name);
         if (bytesPerOp < 0)
         {
@@ -476,6 +478,15 @@ static partial class Program
             {
                 gWireDir = args[++i];
             }
+            else if (args[i] == "--iterations" && i + 1 < args.Length)
+            {
+                if (!long.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out long n) || n <= 0 || n > 2147483584L || n % NumVariants != 0)
+                {
+                    Console.Error.WriteLine("--iterations requires a positive multiple of 64 up to 2147483584");
+                    return 1;
+                }
+                gIterations = n;
+            }
             else if (args[i] == "--round" && i + 1 < args.Length)
             {
                 // §2.4: one warmup + one measured run of every benchmark,
@@ -494,7 +505,7 @@ static partial class Program
             }
             else
             {
-                Console.Error.WriteLine("usage: schemabench [--gate] [--csv] [--round K] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]");
+                Console.Error.WriteLine("usage: schemabench [--gate] [--csv] [--round K] [--iterations N] [--quick] [--wire-dir <dir>] [--variant-dir <dir>]");
                 return 1;
             }
         }
