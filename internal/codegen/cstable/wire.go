@@ -166,8 +166,11 @@ public static partial class TableWire
         public Span<byte> Buffer;
         public int Offset;
         public Writer(Span<byte> buffer) { Buffer = buffer; Offset = 0; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Byte(byte v) { Buffer[Offset++] = v; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Raw(ReadOnlySpan<byte> v) { v.CopyTo(Buffer.Slice(Offset)); Offset += v.Length; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Fixed(ulong v, int n)
         {
             switch (n)
@@ -180,6 +183,7 @@ public static partial class TableWire
             }
             Offset += n;
         }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Header(ulong reference, byte kind)
         {
             if (reference < 128)
@@ -190,6 +194,7 @@ public static partial class TableWire
             }
             Var(reference); Byte(kind);
         }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Var(ulong v)
         {
             if (v < 128) { Byte((byte)v); return; }
@@ -205,8 +210,11 @@ public static partial class TableWire
         public int Offset;
         public Reader(ReadOnlySpan<byte> buffer, ReadOnlySpan<byte> vocabulary)
         { Buffer = buffer; Vocabulary = vocabulary; Offset = 0; Graph = null; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Has(int n) { return n >= 0 && n <= Buffer.Length - Offset; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public byte Byte() { return Buffer[Offset++]; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ulong Fixed(int n)
         {
             ulong v;
@@ -224,6 +232,7 @@ public static partial class TableWire
             Offset += n;
             return v;
         }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Var(out ulong v)
         {
             if ((uint)Offset < (uint)Buffer.Length)
@@ -249,6 +258,7 @@ public static partial class TableWire
             Offset = start;
             return false;
         }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Ref(out ulong reference, out ulong id)
         {
             id = 0;
