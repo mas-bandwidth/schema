@@ -299,8 +299,18 @@ func tableOpen(data []byte, report *TableReport) (TableReader, TableOpenVerdict)
 			}
 		}
 	}
-	if r.EndsEarly() { return r, TableOpenDamaged }
 	return r, TableOpenOk
+}
+
+// tableOpenFramed is tableOpen plus the framing pre-walk. Variable-class Load,
+// LoadMeasure, LoadBuilder and the announcement still answer an early end this
+// way; their real walk is a node scan or the announcement, a different question.
+// schema #773 left those sites with the pre-walk. The fixed root Load does not
+// use this: it answers the early end from its own cursor after LoadBody.
+func tableOpenFramed(data []byte, report *TableReport) (TableReader, TableOpenVerdict) {
+	r, verdict := tableOpen(data, report)
+	if verdict == TableOpenOk && r.EndsEarly() { return r, TableOpenDamaged }
+	return r, verdict
 }
 
 func tableKindWidens(from, to uint8) bool {

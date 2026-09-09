@@ -100,7 +100,7 @@ func AnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  if report==nil {var ignored TableReport;report=&ignored};if v.Announced||v.Refused{return tableMessageRefuse(report,"second_announcement")};ok:=tableAnnounceRead(v,data,report);if !ok{v.Refused=true};return ok
 }
 func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
- r,verdict:=tableOpen(data,report);if verdict!=TableOpenOk {if verdict==TableOpenRefused {reason:="newer_form";if len(data)>0&&data[0]==2 {reason="message_form_as_file"};return tableMessageRefuse(report,reason)};report.Malformed=true;return false}
+ r,verdict:=tableOpenFramed(data,report);if verdict!=TableOpenOk {if verdict==TableOpenRefused {reason:="newer_form";if len(data)>0&&data[0]==2 {reason="message_form_as_file"};return tableMessageRefuse(report,reason)};report.Malformed=true;return false}
  versionCount,wordsCount:=0,0;var words []byte
  for {ref,ok:=r.Leb();if !ok{report.Malformed=true;return false};if ref==0 {break};id,ok:=r.Resolve(ref);if !ok||!r.Has(1){report.Malformed=true;return false};kind:=r.Get8();switch id {case 0xfffffffffffffffe:if kind!=9||!r.Has(8){report.Malformed=true;return false};v.BuildVersion=r.Get64();versionCount++
  case 0xfffffffffffffffd:if kind!=14{report.Malformed=true;return false};sub,ok:=r.Body();if !ok||!sub.Has(1)||sub.Get8()!=6{report.Malformed=true;return false};n,ok:=sub.Leb();if !ok||n>uint64(len(sub.Buffer))||int64(n)!=int64(len(sub.Buffer))-sub.Offset{report.Malformed=true;return false};limit:=v.MaxBytes;if limit==0{limit=64*1024};if int64(n)>limit{return tableMessageRefuse(report,"vocabulary_too_large")};words=sub.Buffer[sub.Offset:];wordsCount++
