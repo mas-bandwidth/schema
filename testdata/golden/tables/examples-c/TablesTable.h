@@ -2311,48 +2311,84 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_podium_( TableWrit
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_backups_( TableWriter * w, const LoadoutConfig * value )
+static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_backups_( TableWriter * w, const LoadoutConfig * value, int64_t * element_sizes )
 {
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) 2 );
     for ( i = 0; i < 2; i++ )
     {
-        if ( w->buffer == NULL )
+        if ( element_sizes != NULL && i < 2 )
         {
-            int64_t frame_begin = w->offset;
-            if ( !weapon_config_save_body( w, &value->backups[i] ) ) { return 0; }
-            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            if ( w->buffer == NULL )
+            {
+                int64_t begin = w->offset;
+                if ( !weapon_config_save_body( w, &value->backups[i] ) ) { return 0; }
+                element_sizes[i] = w->offset - begin;
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+            }
+            else
+            {
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+                if ( !weapon_config_save_body( w, &value->backups[i] ) ) { return 0; }
+            }
         }
         else
         {
-            TableWriter probe = table_writer_probe( w );
-            if ( !weapon_config_save_body( &probe, &value->backups[i] ) ) { return 0; }
-            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-            if ( !weapon_config_save_body( w, &value->backups[i] ) ) { return 0; }
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !weapon_config_save_body( w, &value->backups[i] ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !weapon_config_save_body( &probe, &value->backups[i] ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !weapon_config_save_body( w, &value->backups[i] ) ) { return 0; }
+            }
         }
     }
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_attachments_( TableWriter * w, const LoadoutConfig * value )
+static SCHEMA_UNUSED int schema_tabledemo_loadout_config_wire_attachments_( TableWriter * w, const LoadoutConfig * value, int64_t * element_sizes )
 {
     if ( value->attachments_count < 0 || value->attachments_count > 8 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->attachments_count );
     for ( i = 0; i < value->attachments_count; i++ )
     {
-        if ( w->buffer == NULL )
+        if ( element_sizes != NULL && i < 8 )
         {
-            int64_t frame_begin = w->offset;
-            if ( !attachment_save_body( w, &value->attachments[i] ) ) { return 0; }
-            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            if ( w->buffer == NULL )
+            {
+                int64_t begin = w->offset;
+                if ( !attachment_save_body( w, &value->attachments[i] ) ) { return 0; }
+                element_sizes[i] = w->offset - begin;
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+            }
+            else
+            {
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+                if ( !attachment_save_body( w, &value->attachments[i] ) ) { return 0; }
+            }
         }
         else
         {
-            TableWriter probe = table_writer_probe( w );
-            if ( !attachment_save_body( &probe, &value->attachments[i] ) ) { return 0; }
-            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-            if ( !attachment_save_body( w, &value->attachments[i] ) ) { return 0; }
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !attachment_save_body( w, &value->attachments[i] ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !attachment_save_body( &probe, &value->attachments[i] ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !attachment_save_body( w, &value->attachments[i] ) ) { return 0; }
+            }
         }
     }
     return !w->overflow;
@@ -2455,18 +2491,19 @@ static SCHEMA_UNUSED int loadout_config_save_body( TableWriter * w, const Loadou
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xde28f0f5118acc24ull ); table_writer_put8( w, 14 );
+            int64_t element_sizes[2]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !schema_tabledemo_loadout_config_wire_backups_( w, value ) ) { return 0; }
+                if ( !schema_tabledemo_loadout_config_wire_backups_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 TableWriter probe = table_writer_probe( w );
-                if ( !schema_tabledemo_loadout_config_wire_backups_( &probe, value ) ) { return 0; }
+                if ( !schema_tabledemo_loadout_config_wire_backups_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !schema_tabledemo_loadout_config_wire_backups_( w, value ) ) { return 0; }
+                if ( !schema_tabledemo_loadout_config_wire_backups_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
     }
@@ -2476,18 +2513,19 @@ static SCHEMA_UNUSED int loadout_config_save_body( TableWriter * w, const Loadou
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0xf901aa0340249a41ull ); table_writer_put8( w, 14 );
+            int64_t element_sizes[8]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !schema_tabledemo_loadout_config_wire_attachments_( w, value ) ) { return 0; }
+                if ( !schema_tabledemo_loadout_config_wire_attachments_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 TableWriter probe = table_writer_probe( w );
-                if ( !schema_tabledemo_loadout_config_wire_attachments_( &probe, value ) ) { return 0; }
+                if ( !schema_tabledemo_loadout_config_wire_attachments_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !schema_tabledemo_loadout_config_wire_attachments_( w, value ) ) { return 0; }
+                if ( !schema_tabledemo_loadout_config_wire_attachments_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
     }
@@ -4488,49 +4526,85 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_version_note_( TableW
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_weapons_( TableWriter * w, const RootConfig * value )
+static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_weapons_( TableWriter * w, const RootConfig * value, int64_t * element_sizes )
 {
     if ( value->weapons_count < 0 || value->weapons_count > 8 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->weapons_count );
     for ( i = 0; i < value->weapons_count; i++ )
     {
-        if ( w->buffer == NULL )
+        if ( element_sizes != NULL && i < 8 )
         {
-            int64_t frame_begin = w->offset;
-            if ( !weapon_config_save_body( w, &value->weapons[i] ) ) { return 0; }
-            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            if ( w->buffer == NULL )
+            {
+                int64_t begin = w->offset;
+                if ( !weapon_config_save_body( w, &value->weapons[i] ) ) { return 0; }
+                element_sizes[i] = w->offset - begin;
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+            }
+            else
+            {
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+                if ( !weapon_config_save_body( w, &value->weapons[i] ) ) { return 0; }
+            }
         }
         else
         {
-            TableWriter probe = table_writer_probe( w );
-            if ( !weapon_config_save_body( &probe, &value->weapons[i] ) ) { return 0; }
-            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-            if ( !weapon_config_save_body( w, &value->weapons[i] ) ) { return 0; }
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !weapon_config_save_body( w, &value->weapons[i] ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !weapon_config_save_body( &probe, &value->weapons[i] ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !weapon_config_save_body( w, &value->weapons[i] ) ) { return 0; }
+            }
         }
     }
     return !w->overflow;
 }
 
-static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_profiles_( TableWriter * w, const RootConfig * value )
+static SCHEMA_UNUSED int schema_tabledemo_root_config_wire_profiles_( TableWriter * w, const RootConfig * value, int64_t * element_sizes )
 {
     if ( value->profiles_count < 0 || value->profiles_count > 4 ) { return 0; }
     int32_t i;
     table_writer_put8( w, 13 ); table_writer_leb( w, (uint64_t) value->profiles_count );
     for ( i = 0; i < value->profiles_count; i++ )
     {
-        if ( w->buffer == NULL )
+        if ( element_sizes != NULL && i < 4 )
         {
-            int64_t frame_begin = w->offset;
-            if ( !profile_config_save_body( w, &value->profiles[i] ) ) { return 0; }
-            table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            if ( w->buffer == NULL )
+            {
+                int64_t begin = w->offset;
+                if ( !profile_config_save_body( w, &value->profiles[i] ) ) { return 0; }
+                element_sizes[i] = w->offset - begin;
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+            }
+            else
+            {
+                table_writer_leb( w, (uint64_t) element_sizes[i] );
+                if ( !profile_config_save_body( w, &value->profiles[i] ) ) { return 0; }
+            }
         }
         else
         {
-            TableWriter probe = table_writer_probe( w );
-            if ( !profile_config_save_body( &probe, &value->profiles[i] ) ) { return 0; }
-            table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-            if ( !profile_config_save_body( w, &value->profiles[i] ) ) { return 0; }
+            if ( w->buffer == NULL )
+            {
+                int64_t frame_begin = w->offset;
+                if ( !profile_config_save_body( w, &value->profiles[i] ) ) { return 0; }
+                table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
+            }
+            else
+            {
+                TableWriter probe = table_writer_probe( w );
+                if ( !profile_config_save_body( &probe, &value->profiles[i] ) ) { return 0; }
+                table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
+                if ( !profile_config_save_body( w, &value->profiles[i] ) ) { return 0; }
+            }
         }
     }
     return !w->overflow;
@@ -4566,18 +4640,19 @@ static SCHEMA_UNUSED int root_config_save_body( TableWriter * w, const RootConfi
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x41cbd901b87fabb6ull ); table_writer_put8( w, 14 );
+            int64_t element_sizes[8]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !schema_tabledemo_root_config_wire_weapons_( w, value ) ) { return 0; }
+                if ( !schema_tabledemo_root_config_wire_weapons_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 TableWriter probe = table_writer_probe( w );
-                if ( !schema_tabledemo_root_config_wire_weapons_( &probe, value ) ) { return 0; }
+                if ( !schema_tabledemo_root_config_wire_weapons_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !schema_tabledemo_root_config_wire_weapons_( w, value ) ) { return 0; }
+                if ( !schema_tabledemo_root_config_wire_weapons_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
     }
@@ -4587,18 +4662,19 @@ static SCHEMA_UNUSED int root_config_save_body( TableWriter * w, const RootConfi
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             table_writer_id( w, 0x8181e61fc0436767ull ); table_writer_put8( w, 14 );
+            int64_t element_sizes[4]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
-                if ( !schema_tabledemo_root_config_wire_profiles_( w, value ) ) { return 0; }
+                if ( !schema_tabledemo_root_config_wire_profiles_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );
             }
             else
             {
                 TableWriter probe = table_writer_probe( w );
-                if ( !schema_tabledemo_root_config_wire_profiles_( &probe, value ) ) { return 0; }
+                if ( !schema_tabledemo_root_config_wire_profiles_( &probe, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
                 table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );
-                if ( !schema_tabledemo_root_config_wire_profiles_( w, value ) ) { return 0; }
+                if ( !schema_tabledemo_root_config_wire_profiles_( w, value, w->buffer != NULL ? element_sizes : NULL ) ) { return 0; }
             }
         }
     }
