@@ -2001,6 +2001,29 @@ static SCHEMA_UNUSED void table_fixed_put128_i( uint8_t * b, serialize_int128_t 
     table_fixed_put64( b + 8, (uint64_t) v.hi );
 }
 
+/* ---- the 128-bit COMPARE, for the read-side bounds -------------------------
+
+   The straight-line bounds pass (docs/SPEC-TABLES.md §3.4) compares a value
+   against its declared min and max. C++ writes that as < and >, because
+   serialize's 128-bit types carry the operators; C's are STRUCTS, so the same
+   two lines are these two functions. Each answers -1, 0 or 1, the high half
+   deciding first, and the SIGNED twin reads its high half as two's complement
+   — which is the whole difference between them. */
+static SCHEMA_UNUSED int table_fixed_cmp128_u( serialize_uint128_t a, uint64_t bhi, uint64_t blo )
+{
+    if ( (uint64_t) a.hi != bhi ) { return (uint64_t) a.hi < bhi ? -1 : 1; }
+    if ( (uint64_t) a.lo != blo ) { return (uint64_t) a.lo < blo ? -1 : 1; }
+    return 0;
+}
+static SCHEMA_UNUSED int table_fixed_cmp128_i( serialize_int128_t a, uint64_t bhi, uint64_t blo )
+{
+    const int64_t ah = (int64_t) a.hi;
+    const int64_t bh = (int64_t) bhi;
+    if ( ah != bh ) { return ah < bh ? -1 : 1; }
+    if ( (uint64_t) a.lo != blo ) { return (uint64_t) a.lo < blo ? -1 : 1; }
+    return 0;
+}
+
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
 static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
@@ -3252,6 +3275,150 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
     schema_bench_bench_mixed_fixed_write_body_( b + 0, &value->value );
 }
 
+/* MixedEntity's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_clamp_body_( MixedEntity * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->entity_id > 4095ull ) { value->entity_id = 4095ull; (*clamped)++; } /* bits(12) width clamp */
+    if ( value->pos_x < -16383 ) { value->pos_x = -16383; (*clamped)++; }
+    else if ( value->pos_x > 16383 ) { value->pos_x = 16383; (*clamped)++; }
+    if ( value->pos_y < -16383 ) { value->pos_y = -16383; (*clamped)++; }
+    else if ( value->pos_y > 16383 ) { value->pos_y = 16383; (*clamped)++; }
+    if ( value->pos_z < -16383 ) { value->pos_z = -16383; (*clamped)++; }
+    else if ( value->pos_z > 16383 ) { value->pos_z = 16383; (*clamped)++; }
+    if ( value->yaw > 511ull ) { value->yaw = 511ull; (*clamped)++; } /* bits(9) width clamp */
+    if ( value->pitch > 511ull ) { value->pitch = 511ull; (*clamped)++; } /* bits(9) width clamp */
+    if ( value->vel_x < -2048 ) { value->vel_x = -2048; (*clamped)++; }
+    else if ( value->vel_x > 2047 ) { value->vel_x = 2047; (*clamped)++; }
+    if ( value->vel_y < -2048 ) { value->vel_y = -2048; (*clamped)++; }
+    else if ( value->vel_y > 2047 ) { value->vel_y = 2047; (*clamped)++; }
+    if ( value->vel_z < -2048 ) { value->vel_z = -2048; (*clamped)++; }
+    else if ( value->vel_z > 2047 ) { value->vel_z = 2047; (*clamped)++; }
+    if ( value->health < 0 ) { value->health = 0; (*clamped)++; }
+    else if ( value->health > 1000 ) { value->health = 1000; (*clamped)++; }
+    if ( (uint64_t) value->weapon > 15u ) { value->weapon = MIXED_WEAPON_NONE; (*clamped)++; }
+}
+
+/* MixedStat's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_clamp_body_( MixedStat * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->stat_id > 255ull ) { value->stat_id = 255ull; (*clamped)++; } /* bits(8) width clamp */
+    if ( value->delta < -512 ) { value->delta = -512; (*clamped)++; }
+    else if ( value->delta > 511 ) { value->delta = 511; (*clamped)++; }
+}
+
+/* MixedHitEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_clamp_body_( MixedHitEvent * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->target_id > 4095ull ) { value->target_id = 4095ull; (*clamped)++; } /* bits(12) width clamp */
+    if ( value->damage < 0 ) { value->damage = 0; (*clamped)++; }
+    else if ( value->damage > 4095 ) { value->damage = 4095; (*clamped)++; }
+    if ( value->hit_kind < 0 ) { value->hit_kind = 0; (*clamped)++; }
+    else if ( value->hit_kind > 7 ) { value->hit_kind = 7; (*clamped)++; }
+}
+
+/* MixedChatEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_clamp_body_( MixedChatEvent * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->channel < 0 ) { value->channel = 0; (*clamped)++; }
+    else if ( value->channel > 3 ) { value->channel = 3; (*clamped)++; }
+    if ( value->speaker > 4095ull ) { value->speaker = 4095ull; (*clamped)++; } /* bits(12) width clamp */
+}
+
+/* MixedPickupEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_clamp_body_( MixedPickupEvent * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->item_id > 1023ull ) { value->item_id = 1023ull; (*clamped)++; } /* bits(10) width clamp */
+    if ( value->amount < 0 ) { value->amount = 0; (*clamped)++; }
+    else if ( value->amount > 255 ) { value->amount = 255; (*clamped)++; }
+}
+
+/* BenchMixed's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_clamp_body_( BenchMixed * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->sequence > 65535ull ) { value->sequence = 65535ull; (*clamped)++; } /* bits(16) width clamp */
+    if ( value->ack_sequence < 0 ) { value->ack_sequence = 0; (*clamped)++; }
+    else if ( value->ack_sequence > 65535 ) { value->ack_sequence = 65535; (*clamped)++; }
+    if ( value->world_time < -1000000000000ll ) { value->world_time = -1000000000000ll; (*clamped)++; }
+    else if ( value->world_time > 1000000000000ll ) { value->world_time = 1000000000000ll; (*clamped)++; }
+    if ( value->frame_tick > 281474976710655ull ) { value->frame_tick = 281474976710655ull; (*clamped)++; } /* bits(48) width clamp */
+    if ( value->server_time < 0 ) { value->server_time = 0; (*clamped)++; }
+    else if ( value->server_time > 16776960 ) { value->server_time = 16776960; (*clamped)++; }
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->entities_count; ++i )
+        {
+            schema_bench_mixed_entity_fixed_clamp_body_( &value->entities[i], clamped );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->stats_count; ++i )
+        {
+            schema_bench_mixed_stat_fixed_clamp_body_( &value->stats[i], clamped );
+        }
+    }
+    if ( (uint32_t) value->game_event.type > 3u ) { value->game_event.type = MIXED_EVENT_TYPE_NONE; (*clamped)++; }
+    switch ( value->game_event.type )
+    {
+        case MIXED_EVENT_TYPE_HIT:
+        {
+            schema_bench_mixed_hit_event_fixed_clamp_body_( &value->game_event.as.hit, clamped );
+            break;
+        }
+        case MIXED_EVENT_TYPE_CHAT:
+        {
+            schema_bench_mixed_chat_event_fixed_clamp_body_( &value->game_event.as.chat, clamped );
+            break;
+        }
+        case MIXED_EVENT_TYPE_PICKUP:
+        {
+            schema_bench_mixed_pickup_event_fixed_clamp_body_( &value->game_event.as.pickup, clamped );
+            break;
+        }
+        default: break;
+    }
+    if ( value->aim_x < -1.0f ) { value->aim_x = -1.0f; (*clamped)++; }
+    else if ( value->aim_x > 1.0f ) { value->aim_x = 1.0f; (*clamped)++; }
+    if ( value->aim_y < -1.0f ) { value->aim_y = -1.0f; (*clamped)++; }
+    else if ( value->aim_y > 1.0f ) { value->aim_y = 1.0f; (*clamped)++; }
+    if ( value->aim_z < -1.0f ) { value->aim_z = -1.0f; (*clamped)++; }
+    else if ( value->aim_z > 1.0f ) { value->aim_z = 1.0f; (*clamped)++; }
+    if ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) { value->flux = serialize_int128_make( 18446744004990074880ull, 0ull ); (*clamped)++; }
+    else if ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 ) { value->flux = serialize_int128_make( 68719476736ull, 0ull ); (*clamped)++; }
+    if ( value->ping > 64000 ) { value->ping = 64000; (*clamped)++; }
+    if ( value->crc_hint > 16777215ull ) { value->crc_hint = 16777215ull; (*clamped)++; } /* bits(24) width clamp */
+    if ( value->extra < 0 ) { value->extra = 0; (*clamped)++; }
+    else if ( value->extra > 255 ) { value->extra = 255; (*clamped)++; }
+    if ( value->idle_ticks < 0 ) { value->idle_ticks = 0; (*clamped)++; }
+    else if ( value->idle_ticks > 15 ) { value->idle_ticks = 15; (*clamped)++; }
+}
+
+/* FixedTable's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_clamp_body_( FixedTable * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    schema_bench_bench_mixed_fixed_clamp_body_( &value->value, clamped );
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_bench_fixed_table_fixed_clamp_( FixedTable * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_bench_fixed_table_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
+}
+
 /* ---- FixedTable, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -3412,7 +3579,7 @@ static SCHEMA_UNUSED const TableFixedDst fixed_table_fixed_dst[] = {
     { 1244, 1, 0, 0, 0 }, /* loadout */
     { 0, 0, 0, 0, 0 }, /* element */
     { 1264, 0, 1248, 0, 1 }, /* player_name */
-    { 1284, 1, 1268, 1, 3 }, /* payload */
+    { 1268, 1, 1284, 1, 3 }, /* payload */
     { 0, 0, 0, 0, 0 }, /* u8 */
     { 1288, 0, 0, 0, 0 }, /* aim_x */
     { 1292, 0, 0, 0, 0 }, /* aim_y */
@@ -3706,6 +3873,7 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
             if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
             memcpy( image, at + 8, (size_t) 1236 );
             schema_bench_fixed_table_fixed_scatter_( image, values + k, report );
+            schema_bench_fixed_table_fixed_clamp_( values + k, report ); /* the bounds the scatter does not hold (§3.4) */
             at += 8 + 1236;
         }
         return count;
@@ -3724,6 +3892,9 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_bench_fixed_table_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;

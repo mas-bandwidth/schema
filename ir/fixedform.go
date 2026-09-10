@@ -433,10 +433,21 @@ func tableFixedWalkPayload(w *tableFixedWalk, owner string, f *Field, id uint64,
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindArray, Size: size, Children: 1, Note: f.Name}, spec)
 		tableFixedWalkElement(w, f, 0, "element", nil)
 	case f.Type.Kind == TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, and the
-		// text flavour on the row is what makes the reader land it in one move
+		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, SO ITS
+		// DESTINATION ROW IS AN ARRAY'S: Dst is the buffer the elements land in
+		// and Aux is the live count beside it. It is stated here because the
+		// TEXT row above is the other way round — Dst the length, Aux the
+		// buffer — and a `bytes(N)` written under the text convention hands a
+		// plan compiled from a stranger's layout a count destination that is
+		// the buffer's first four bytes and an element destination that is the
+		// length field. The identity plan lands this field with the TEXT op and
+		// reads neither column, so only the compiled path saw it.
+		//
+		// Meta still carries the text flavour: the identity walk below spends
+		// it, and a port that lands `bytes(N)` in one move on the compiled path
+		// reads it from here rather than deriving it a second time.
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindArray, Size: size, Children: 1, Note: f.Name},
-			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Stride1: true, Aux: tableFixedTerm1(owner, f.Name), Counted: 1, Meta: 3})
+			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name), Stride1: true, Aux: tableFixedTerm1(owner, f.Name+"_length"), Counted: 1, Meta: 3})
 		w.push(TableFixedLayoutEntry{ID: 0, Kind: TableKindU8, Size: 1, Children: 0, Note: "u8"}, TableFixedDstSpec{})
 	case f.Type.Kind == TString:
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindString, Size: size, Children: 0, Note: f.Name},
@@ -1109,4 +1120,80 @@ func tableFixedMergeRanges(raw []TableFixedRange) []TableFixedRange {
 		out = append(out, r)
 	}
 	return out
+}
+
+// ---------------------------------------------------------------------------
+// THE READ-SIDE BOUNDS
+//
+// A fixed record is a positional image, so the reader's ONE loop moves bytes
+// and asks nothing about what they mean. Two things a declaration bounds are
+// therefore not held by the loop at all on the identity path: a RANGED SCALAR's
+// declared min and max, and an ORDINAL's set — a union tag past the arm count,
+// an enum ordinal past the enum's top value.
+//
+// They are held by STRAIGHT-LINE CODE in the generated decode, after the copy,
+// and never by plan entries. A plan entry per bounded field is an entry on
+// EVERY read of every record, which is the cost the identity plan exists to
+// avoid; the Elixir port measured what that does. A COMPILED plan is a
+// different matter — it is built once per peer — but it lands values into the
+// same storage, so the same straight-line pass covers it and it needs no op of
+// its own either.
+//
+// THE PASS RUNS OVER STORAGE, NOT OVER THE WIRE, which is what makes it one
+// pass for both plans. It walks only what a read can have written: a counted
+// array's LIVE elements and not its slack, and an optional's payload only when
+// the present byte says so.
+// ---------------------------------------------------------------------------
+
+// TableFixedClampNeeded answers whether a type's closure declares anything the
+// read side bounds — the question that keeps a unit of unbounded scalars from
+// carrying one line of this (§2.2's zero-cost rule).
+func TableFixedClampNeeded(st *Struct) bool {
+	return tableFixedClampNeeded(st, map[string]bool{})
+}
+
+func tableFixedClampNeeded(st *Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if tableFixedClampNeededField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// TableFixedClampNeededField is the same question about ONE field, which is
+// what lets an emitter skip a field, an arm or a whole subtree without
+// emitting a line for it.
+func TableFixedClampNeededField(f *Field) bool {
+	return tableFixedClampNeededField(f, map[string]bool{})
+}
+
+func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
+	if f.Type.Kind == TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *Struct:
+			return tableFixedClampNeeded(r, seen)
+		case *Union:
+			// THE TAG ITSELF IS A BOUND: a stored tag past the arm count names
+			// no arm, so it lands None and counts.
+			return true
+		case *Enum:
+			// AND SO IS AN ORDINAL: past the enum's top value it is a value the
+			// enum cannot hold at all.
+			_ = r
+			return true
+		}
+		return false
+	}
+	if _, _, ok := TableRawRange(f); ok {
+		return true
+	}
+	if f.HasFloatRange {
+		return true
+	}
+	return f.Type.Kind == TBits && int64(f.Type.Width) < 8*TableFixedStorageBytes(f.Type)
 }

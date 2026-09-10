@@ -2000,6 +2000,29 @@ static SCHEMA_UNUSED void table_fixed_put128_i( uint8_t * b, serialize_int128_t 
     table_fixed_put64( b + 8, (uint64_t) v.hi );
 }
 
+/* ---- the 128-bit COMPARE, for the read-side bounds -------------------------
+
+   The straight-line bounds pass (docs/SPEC-TABLES.md §3.4) compares a value
+   against its declared min and max. C++ writes that as < and >, because
+   serialize's 128-bit types carry the operators; C's are STRUCTS, so the same
+   two lines are these two functions. Each answers -1, 0 or 1, the high half
+   deciding first, and the SIGNED twin reads its high half as two's complement
+   — which is the whole difference between them. */
+static SCHEMA_UNUSED int table_fixed_cmp128_u( serialize_uint128_t a, uint64_t bhi, uint64_t blo )
+{
+    if ( (uint64_t) a.hi != bhi ) { return (uint64_t) a.hi < bhi ? -1 : 1; }
+    if ( (uint64_t) a.lo != blo ) { return (uint64_t) a.lo < blo ? -1 : 1; }
+    return 0;
+}
+static SCHEMA_UNUSED int table_fixed_cmp128_i( serialize_int128_t a, uint64_t bhi, uint64_t blo )
+{
+    const int64_t ah = (int64_t) a.hi;
+    const int64_t bh = (int64_t) bhi;
+    if ( ah != bh ) { return ah < bh ? -1 : 1; }
+    if ( (uint64_t) a.lo != blo ) { return (uint64_t) a.lo < blo ? -1 : 1; }
+    return 0;
+}
+
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
 static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
