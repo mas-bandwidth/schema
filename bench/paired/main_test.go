@@ -292,17 +292,20 @@ func TestTableOnlyLanguageIsTableWireOnly(t *testing.T) {
 			t.Fatal("a table leg keeps wire/API validation:", lang)
 		}
 		args := runner("table", lang, "--gate").args
-		if lang == "java" {
+		switch lang {
+		case "java":
 			// The class, by name, on the classpath the build filled.
 			if args[0] != javaExecutable() || !contains(args, javaClassDir) || !contains(args, "TableMain") {
 				t.Fatal(args)
 			}
-		} else if lang == "js" {
+		case "js":
 			if args[0] != nodeExecutable() || args[1] != binary("table", lang) {
 				t.Fatal(args)
 			}
-		} else if args[0] != binary("table", lang) {
-			t.Fatal(args)
+		default:
+			if args[0] != binary("table", lang) {
+				t.Fatal(args)
+			}
 		}
 		if !contains(args, "--indexed") || !contains(args, "bench/paired/corpus") {
 			t.Fatal(args)
