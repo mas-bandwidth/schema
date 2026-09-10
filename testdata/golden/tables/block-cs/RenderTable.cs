@@ -7,6 +7,8 @@
 // unit's protocol id.
 
 using System;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Blockdemo
 {
@@ -2790,6 +2792,2225 @@ namespace Blockdemo
         public static long RenderQuaternionToJson(RenderQuaternion value, Span<byte> buffer)
         {
             return TableJson.Write(value, RenderQuaternionTableType(), buffer, false);
+        }
+
+        // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+        //
+        // A record is an eight-byte hash of the writer's vocabulary block and then
+        // the values in declared order, every field at its declared storage width.
+        // The writer is the constant bytes memcpy'd and then stores; the reader is
+        // ONE loop over ONE plan, the identity plan here and a plan compiled from
+        // the writer's own block for anybody else.
+
+        // RenderVector3's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderVector3FixedWriteBody(Span<byte> b, RenderVector3 value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteDoubleLittleEndian(b, value.X);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(8), value.Y);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(16), value.Z);
+        }
+
+        // RenderQuaternion's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderQuaternionFixedWriteBody(Span<byte> b, RenderQuaternion value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteDoubleLittleEndian(b, value.X);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(8), value.Y);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(16), value.Z);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(24), value.W);
+        }
+
+        // RenderCamera's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderCameraFixedWriteBody(Span<byte> b, RenderCamera value)
+        {
+            if (value == null) return;
+            RenderVector3FixedWriteBody(b, value.Position);
+            RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), (int)value.CameraId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(60), (int)value.CameraType);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.TargetObjectId);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(68), value.Fov);
+        }
+
+        // RenderShip's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderShipFixedWriteBody(Span<byte> b, RenderShip value)
+        {
+            if (value == null) return;
+            RenderVector3FixedWriteBody(b, value.Position);
+            RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(56), (ulong)value.Flags);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.ObjectId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(68), (int)value.TargetObjectId);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(72), value.Thrust);
+            b.Slice(76)[0] = unchecked((byte)value.ObjectSequence);
+            b.Slice(77)[0] = (byte)value.ShipType;
+            b.Slice(78)[0] = (byte)value.Team;
+            b.Slice(79)[0] = (byte)(value.HasTargetLock ? 1 : 0);
+            b.Slice(80)[0] = (byte)(value.PredictedExplode ? 1 : 0);
+        }
+
+        // RenderTurret's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderTurretFixedWriteBody(Span<byte> b, RenderTurret value)
+        {
+            if (value == null) return;
+            RenderQuaternionFixedWriteBody(b, value.Rotation);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), (long)value.Flags);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(40), (int)value.ObjectId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(44), (int)value.ParentObjectId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(48), (int)value.TurretIndex);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), (int)value.TargetObjectId);
+            b.Slice(56)[0] = unchecked((byte)value.ObjectSequence);
+            b.Slice(57)[0] = (byte)value.Team;
+            b.Slice(58)[0] = (byte)(value.HasTargetLock ? 1 : 0);
+        }
+
+        // RenderMissile's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderMissileFixedWriteBody(Span<byte> b, RenderMissile value)
+        {
+            if (value == null) return;
+            RenderVector3FixedWriteBody(b, value.Position);
+            RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(56), (long)value.Flags);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.ObjectId);
+            b.Slice(68)[0] = unchecked((byte)value.ObjectSequence);
+            b.Slice(69)[0] = (byte)value.MissileType;
+            b.Slice(70)[0] = (byte)value.Team;
+        }
+
+        // RenderDynamicProp's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderDynamicPropFixedWriteBody(Span<byte> b, RenderDynamicProp value)
+        {
+            if (value == null) return;
+            RenderVector3FixedWriteBody(b, value.Position);
+            RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(56), (long)value.Flags);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.ObjectId);
+            b.Slice(68)[0] = unchecked((byte)value.ObjectSequence);
+            b.Slice(69)[0] = (byte)value.PropType;
+            b.Slice(70)[0] = (byte)value.Team;
+        }
+
+        // RenderStaticProp's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderStaticPropFixedWriteBody(Span<byte> b, RenderStaticProp value)
+        {
+            if (value == null) return;
+            RenderVector3FixedWriteBody(b, value.Position);
+            RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(56), value.Scale);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(64), (long)value.Flags);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(72), (int)value.StaticPropId);
+            b.Slice(76)[0] = (byte)value.PropType;
+            b.Slice(77)[0] = (byte)value.Team;
+        }
+
+        // RenderCosmeticProp's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderCosmeticPropFixedWriteBody(Span<byte> b, RenderCosmeticProp value)
+        {
+            if (value == null) return;
+            RenderVector3FixedWriteBody(b, value.Position);
+            RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(56), value.Scale);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(64), (long)value.Flags);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(72), (int)value.CosmeticPropId);
+            b.Slice(76)[0] = unchecked((byte)value.PropSequence);
+            b.Slice(77)[0] = (byte)value.PropType;
+            b.Slice(78)[0] = (byte)value.Team;
+        }
+
+        // RenderLaser's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderLaserFixedWriteBody(Span<byte> b, RenderLaser value)
+        {
+            if (value == null) return;
+            RenderVector3FixedWriteBody(b, value.Start);
+            RenderVector3FixedWriteBody(b.Slice(24), value.Finish);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(48), value.T);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), (int)value.LaserId);
+            b.Slice(60)[0] = (byte)value.LaserType;
+            b.Slice(61)[0] = (byte)value.Team;
+        }
+
+        // RenderExplosion's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void RenderExplosionFixedWriteBody(Span<byte> b, RenderExplosion value)
+        {
+            if (value == null) return;
+            RenderVector3FixedWriteBody(b, value.Position);
+            RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(56), value.T);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(64), (int)value.ExplosionId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(68), (int)value.ParentObjectId);
+            b.Slice(72)[0] = (byte)value.ExplosionType;
+            b.Slice(73)[0] = (byte)value.Team;
+        }
+
+        // ---- RenderCamera, the fixed form ----
+
+        public const long RenderCameraFixedBodyBytes = 72;
+        public const long RenderCameraFixedRecordBytes = 8 + RenderCameraFixedBodyBytes;
+        public const ulong RenderCameraFixedHash = 0x74ade5c3866f68d1ul;
+
+        public static readonly byte[] RenderCameraFixedLayout = new byte[] {
+            0x0e, 0x00, 0x00, 0x00, 0x06, 0x03, 0xf3, 0x15, 0x9d, 0xb2, 0xc6, 0x11, 0x0d, 0x48, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2e, 0xb9,
+            0x4a, 0x08, 0x0f, 0x70, 0x61, 0x9f, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9b,
+            0x0c, 0xfd, 0xff, 0xc7, 0x3d, 0x6d, 0x33, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        };
+        public const long RenderCameraFixedLayoutBytes = 242;
+
+        public static readonly TableFixedDst[] RenderCameraFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderCamera
+            new TableFixedDst(0, 0, 0, 0, 0), // position
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // rotation
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // w
+            new TableFixedDst(7, 0, 0, 0, 0), // camera_id
+            new TableFixedDst(8, 0, 0, 0, 0), // camera_type
+            new TableFixedDst(9, 0, 0, 0, 0), // target_object_id
+            new TableFixedDst(10, 0, 0, 0, 0), // fov
+        };
+
+        public static readonly TableFixedSlot<RenderCamera>[] RenderCameraFixedSlots = new TableFixedSlot<RenderCamera>[] {
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.CameraId = unchecked((uint)v)),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.CameraType = unchecked((uint)v)),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Fov = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Fov = (float)d),
+        };
+
+        public static readonly TableFixedPlan RenderCameraFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(60u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(64u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(68u, 10u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderCameraFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderCameraFixedLayoutBytes + count * RenderCameraFixedRecordBytes;
+        }
+
+        public static long RenderCameraFixedSave(ReadOnlySpan<RenderCamera> values, Span<byte> buffer)
+        {
+            long need = RenderCameraFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderCameraFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderCameraFixedLayoutBytes);
+            RenderCameraFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderCameraFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderCameraFixedHash);
+                at.Slice(8, (int)RenderCameraFixedBodyBytes).Clear();
+                RenderCameraFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderCameraFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderCameraFixedSave(RenderCamera[] values, Span<byte> buffer)
+        {
+            return RenderCameraFixedSave((ReadOnlySpan<RenderCamera>)values, buffer);
+        }
+
+        public static long RenderCameraFixedSave(RenderCamera value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderCamera> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderCameraFixedSave(span, buffer);
+        }
+
+        public static long RenderCameraFixedLoad(
+            Span<RenderCamera> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderCameraFixedPlan;
+            long record_bytes = RenderCameraFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderCameraFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderCameraFixedLayout, RenderCameraFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderCamera(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderCameraFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderCameraFixedLoad(RenderCamera[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderCameraFixedLoad((Span<RenderCamera>)values, data, plan, report);
+        }
+
+        public static long RenderCameraFixedLoad(RenderCamera value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderCamera> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderCameraFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderCamera dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderCameraFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- RenderShip, the fixed form ----
+
+        public const long RenderShipFixedBodyBytes = 81;
+        public const long RenderShipFixedRecordBytes = 8 + RenderShipFixedBodyBytes;
+        public const ulong RenderShipFixedHash = 0x890e08a270d96102ul;
+
+        public static readonly byte[] RenderShipFixedLayout = new byte[] {
+            0x1a, 0x00, 0x00, 0x00, 0x07, 0x60, 0xad, 0x3f, 0xd9, 0xed, 0x00, 0x5b, 0x0d, 0x51, 0x00, 0x00,
+            0x00, 0x0b, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+            0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+            0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xc2, 0xb9, 0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x73, 0xcd, 0x00, 0x31, 0xcb, 0x87, 0xd5, 0xcf, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x68, 0x72, 0xe7, 0xa2, 0x86, 0x2e, 0x7d, 0x1f, 0x1e, 0x01, 0x00, 0x00, 0x00,
+            0x03, 0x00, 0x00, 0x00, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xdb, 0x23, 0x0e, 0xd0, 0xa3, 0x21, 0x23, 0x6c, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e,
+            0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3,
+            0xec, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7,
+            0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e,
+            0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1,
+            0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
+            0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long RenderShipFixedLayoutBytes = 446;
+
+        public static readonly TableFixedDst[] RenderShipFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderShip
+            new TableFixedDst(0, 0, 0, 0, 0), // position
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // rotation
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // w
+            new TableFixedDst(7, 0, 0, 0, 0), // flags
+            new TableFixedDst(8, 0, 0, 0, 0), // object_id
+            new TableFixedDst(9, 0, 0, 0, 0), // target_object_id
+            new TableFixedDst(10, 0, 0, 0, 0), // thrust
+            new TableFixedDst(11, 0, 0, 0, 0), // object_sequence
+            new TableFixedDst(12, 0, 0, 0, 0), // ship_type
+            new TableFixedDst(0, 0, 0, 0, 0), // Fighter
+            new TableFixedDst(0, 0, 0, 0, 0), // Bomber
+            new TableFixedDst(0, 0, 0, 0, 0), // Freighter
+            new TableFixedDst(13, 0, 0, 0, 0), // team
+            new TableFixedDst(0, 0, 0, 0, 0), // Red
+            new TableFixedDst(0, 0, 0, 0, 0), // Blue
+            new TableFixedDst(0, 0, 0, 0, 0), // Green
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+            new TableFixedDst(14, 0, 0, 0, 0), // has_target_lock
+            new TableFixedDst(15, 0, 0, 0, 0), // predicted_explode
+        };
+
+        public static readonly TableFixedSlot<RenderShip>[] RenderShipFixedSlots = new TableFixedSlot<RenderShip>[] {
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Flags = v),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Thrust = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Thrust = (float)d),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v)),
+            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { if (v > 3) { t.ShipType = 0; if (rep != null) rep.Clamped++; } else { t.ShipType = (ShipType)v; } }),
+            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.HasTargetLock = v != 0),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.PredictedExplode = v != 0),
+        };
+
+        public static readonly TableFixedPlan RenderShipFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 7u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(64u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(68u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(72u, 10u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(76u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(77u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(78u, 13u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(79u, 14u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(80u, 15u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderShipFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderShipFixedLayoutBytes + count * RenderShipFixedRecordBytes;
+        }
+
+        public static long RenderShipFixedSave(ReadOnlySpan<RenderShip> values, Span<byte> buffer)
+        {
+            long need = RenderShipFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderShipFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderShipFixedLayoutBytes);
+            RenderShipFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderShipFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderShipFixedHash);
+                at.Slice(8, (int)RenderShipFixedBodyBytes).Clear();
+                RenderShipFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderShipFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderShipFixedSave(RenderShip[] values, Span<byte> buffer)
+        {
+            return RenderShipFixedSave((ReadOnlySpan<RenderShip>)values, buffer);
+        }
+
+        public static long RenderShipFixedSave(RenderShip value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderShip> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderShipFixedSave(span, buffer);
+        }
+
+        public static long RenderShipFixedLoad(
+            Span<RenderShip> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderShipFixedPlan;
+            long record_bytes = RenderShipFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderShipFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderShipFixedLayout, RenderShipFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderShip(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderShipFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderShipFixedLoad(RenderShip[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderShipFixedLoad((Span<RenderShip>)values, data, plan, report);
+        }
+
+        public static long RenderShipFixedLoad(RenderShip value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderShip> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderShipFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderShip dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderShipFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- RenderTurret, the fixed form ----
+
+        public const long RenderTurretFixedBodyBytes = 59;
+        public const long RenderTurretFixedRecordBytes = 8 + RenderTurretFixedBodyBytes;
+        public const ulong RenderTurretFixedHash = 0x9e443be2f7294b72ul;
+
+        public static readonly byte[] RenderTurretFixedLayout = new byte[] {
+            0x12, 0x00, 0x00, 0x00, 0x9f, 0xc2, 0x08, 0xa4, 0x1f, 0x18, 0x34, 0x40, 0x0d, 0x3b, 0x00, 0x00,
+            0x00, 0x09, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5, 0x0d, 0x20, 0x00,
+            0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02, 0x86, 0x4c, 0xea, 0x63,
+            0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a, 0xf7, 0x85, 0xa9, 0xa1,
+            0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x98, 0xf1, 0x07, 0x2c,
+            0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93, 0x6c, 0x04, 0xb4,
+            0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x1f, 0x54,
+            0xed, 0x6a, 0x1a, 0xa1, 0x88, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc2, 0xb9,
+            0x52, 0x69, 0x15, 0x6a, 0x0c, 0x6a, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
+            0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
+            0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long RenderTurretFixedLayoutBytes = 310;
+
+        public static readonly TableFixedDst[] RenderTurretFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderTurret
+            new TableFixedDst(0, 0, 0, 0, 0), // rotation
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // w
+            new TableFixedDst(4, 0, 0, 0, 0), // flags
+            new TableFixedDst(5, 0, 0, 0, 0), // object_id
+            new TableFixedDst(6, 0, 0, 0, 0), // parent_object_id
+            new TableFixedDst(7, 0, 0, 0, 0), // turret_index
+            new TableFixedDst(8, 0, 0, 0, 0), // target_object_id
+            new TableFixedDst(9, 0, 0, 0, 0), // object_sequence
+            new TableFixedDst(10, 0, 0, 0, 0), // team
+            new TableFixedDst(0, 0, 0, 0, 0), // Red
+            new TableFixedDst(0, 0, 0, 0, 0), // Blue
+            new TableFixedDst(0, 0, 0, 0, 0), // Green
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+            new TableFixedDst(11, 0, 0, 0, 0), // has_target_lock
+        };
+
+        public static readonly TableFixedSlot<RenderTurret>[] RenderTurretFixedSlots = new TableFixedSlot<RenderTurret>[] {
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ParentObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.TurretIndex = unchecked((uint)v)),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v)),
+            new TableFixedSlot<RenderTurret>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.HasTargetLock = v != 0),
+        };
+
+        public static readonly TableFixedPlan RenderTurretFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(44u, 6u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(52u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 9u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(57u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(58u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderTurretFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderTurretFixedLayoutBytes + count * RenderTurretFixedRecordBytes;
+        }
+
+        public static long RenderTurretFixedSave(ReadOnlySpan<RenderTurret> values, Span<byte> buffer)
+        {
+            long need = RenderTurretFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderTurretFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderTurretFixedLayoutBytes);
+            RenderTurretFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderTurretFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderTurretFixedHash);
+                at.Slice(8, (int)RenderTurretFixedBodyBytes).Clear();
+                RenderTurretFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderTurretFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderTurretFixedSave(RenderTurret[] values, Span<byte> buffer)
+        {
+            return RenderTurretFixedSave((ReadOnlySpan<RenderTurret>)values, buffer);
+        }
+
+        public static long RenderTurretFixedSave(RenderTurret value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderTurret> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderTurretFixedSave(span, buffer);
+        }
+
+        public static long RenderTurretFixedLoad(
+            Span<RenderTurret> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderTurretFixedPlan;
+            long record_bytes = RenderTurretFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderTurretFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderTurretFixedLayout, RenderTurretFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderTurret(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderTurretFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderTurretFixedLoad(RenderTurret[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderTurretFixedLoad((Span<RenderTurret>)values, data, plan, report);
+        }
+
+        public static long RenderTurretFixedLoad(RenderTurret value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderTurret> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderTurretFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderTurret dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderTurretFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- RenderMissile, the fixed form ----
+
+        public const long RenderMissileFixedBodyBytes = 71;
+        public const long RenderMissileFixedRecordBytes = 8 + RenderMissileFixedBodyBytes;
+        public const ulong RenderMissileFixedHash = 0xf7ec4593b531c59aul;
+
+        public static readonly byte[] RenderMissileFixedLayout = new byte[] {
+            0x15, 0x00, 0x00, 0x00, 0x5b, 0x13, 0xda, 0x14, 0x11, 0xb3, 0xda, 0x93, 0x0d, 0x47, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+            0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+            0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xbc, 0xb4, 0x07, 0x2c, 0x0e, 0x2a, 0x1b, 0x15, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00,
+            0x00, 0x00, 0xca, 0xaf, 0x76, 0x5a, 0xd2, 0xa4, 0xd0, 0xf5, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x5d, 0x07, 0xd9, 0xf6, 0x72, 0x79, 0x8d, 0x47, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00,
+            0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long RenderMissileFixedLayoutBytes = 361;
+
+        public static readonly TableFixedDst[] RenderMissileFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderMissile
+            new TableFixedDst(0, 0, 0, 0, 0), // position
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // rotation
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // w
+            new TableFixedDst(7, 0, 0, 0, 0), // flags
+            new TableFixedDst(8, 0, 0, 0, 0), // object_id
+            new TableFixedDst(9, 0, 0, 0, 0), // object_sequence
+            new TableFixedDst(10, 0, 0, 0, 0), // missile_type
+            new TableFixedDst(0, 0, 0, 0, 0), // Seeker
+            new TableFixedDst(0, 0, 0, 0, 0), // Dumb
+            new TableFixedDst(11, 0, 0, 0, 0), // team
+            new TableFixedDst(0, 0, 0, 0, 0), // Red
+            new TableFixedDst(0, 0, 0, 0, 0), // Blue
+            new TableFixedDst(0, 0, 0, 0, 0), // Green
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+        };
+
+        public static readonly TableFixedSlot<RenderMissile>[] RenderMissileFixedSlots = new TableFixedSlot<RenderMissile>[] {
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v)),
+            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { if (v > 2) { t.MissileType = 0; if (rep != null) rep.Clamped++; } else { t.MissileType = (MissileType)v; } }),
+            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+        };
+
+        public static readonly TableFixedPlan RenderMissileFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 7u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(64u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(68u, 9u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(69u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(70u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderMissileFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderMissileFixedLayoutBytes + count * RenderMissileFixedRecordBytes;
+        }
+
+        public static long RenderMissileFixedSave(ReadOnlySpan<RenderMissile> values, Span<byte> buffer)
+        {
+            long need = RenderMissileFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderMissileFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderMissileFixedLayoutBytes);
+            RenderMissileFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderMissileFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderMissileFixedHash);
+                at.Slice(8, (int)RenderMissileFixedBodyBytes).Clear();
+                RenderMissileFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderMissileFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderMissileFixedSave(RenderMissile[] values, Span<byte> buffer)
+        {
+            return RenderMissileFixedSave((ReadOnlySpan<RenderMissile>)values, buffer);
+        }
+
+        public static long RenderMissileFixedSave(RenderMissile value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderMissile> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderMissileFixedSave(span, buffer);
+        }
+
+        public static long RenderMissileFixedLoad(
+            Span<RenderMissile> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderMissileFixedPlan;
+            long record_bytes = RenderMissileFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderMissileFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderMissileFixedLayout, RenderMissileFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderMissile(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderMissileFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderMissileFixedLoad(RenderMissile[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderMissileFixedLoad((Span<RenderMissile>)values, data, plan, report);
+        }
+
+        public static long RenderMissileFixedLoad(RenderMissile value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderMissile> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderMissileFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderMissile dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderMissileFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- RenderDynamicProp, the fixed form ----
+
+        public const long RenderDynamicPropFixedBodyBytes = 71;
+        public const long RenderDynamicPropFixedRecordBytes = 8 + RenderDynamicPropFixedBodyBytes;
+        public const ulong RenderDynamicPropFixedHash = 0x79301f61e3f56e22ul;
+
+        public static readonly byte[] RenderDynamicPropFixedLayout = new byte[] {
+            0x16, 0x00, 0x00, 0x00, 0x47, 0x01, 0xb4, 0x1b, 0x0e, 0xd0, 0xa6, 0xcc, 0x0d, 0x47, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x5a,
+            0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12,
+            0x98, 0xf1, 0x07, 0x2c, 0xb4, 0xda, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x46, 0x3c, 0x76, 0x85, 0x52, 0x01, 0xe0, 0x5d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
+            0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00,
+            0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
+            0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long RenderDynamicPropFixedLayoutBytes = 378;
+
+        public static readonly TableFixedDst[] RenderDynamicPropFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderDynamicProp
+            new TableFixedDst(0, 0, 0, 0, 0), // position
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // rotation
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // w
+            new TableFixedDst(7, 0, 0, 0, 0), // flags
+            new TableFixedDst(8, 0, 0, 0, 0), // object_id
+            new TableFixedDst(9, 0, 0, 0, 0), // object_sequence
+            new TableFixedDst(10, 0, 0, 0, 0), // prop_type
+            new TableFixedDst(0, 0, 0, 0, 0), // Rock
+            new TableFixedDst(0, 0, 0, 0, 0), // Station
+            new TableFixedDst(0, 0, 0, 0, 0), // Beacon
+            new TableFixedDst(11, 0, 0, 0, 0), // team
+            new TableFixedDst(0, 0, 0, 0, 0), // Red
+            new TableFixedDst(0, 0, 0, 0, 0), // Blue
+            new TableFixedDst(0, 0, 0, 0, 0), // Green
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+        };
+
+        public static readonly TableFixedSlot<RenderDynamicProp>[] RenderDynamicPropFixedSlots = new TableFixedSlot<RenderDynamicProp>[] {
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v)),
+            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }),
+            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+        };
+
+        public static readonly TableFixedPlan RenderDynamicPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 7u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(64u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(68u, 9u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(69u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(70u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderDynamicPropFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderDynamicPropFixedLayoutBytes + count * RenderDynamicPropFixedRecordBytes;
+        }
+
+        public static long RenderDynamicPropFixedSave(ReadOnlySpan<RenderDynamicProp> values, Span<byte> buffer)
+        {
+            long need = RenderDynamicPropFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderDynamicPropFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderDynamicPropFixedLayoutBytes);
+            RenderDynamicPropFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderDynamicPropFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderDynamicPropFixedHash);
+                at.Slice(8, (int)RenderDynamicPropFixedBodyBytes).Clear();
+                RenderDynamicPropFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderDynamicPropFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderDynamicPropFixedSave(RenderDynamicProp[] values, Span<byte> buffer)
+        {
+            return RenderDynamicPropFixedSave((ReadOnlySpan<RenderDynamicProp>)values, buffer);
+        }
+
+        public static long RenderDynamicPropFixedSave(RenderDynamicProp value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderDynamicProp> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderDynamicPropFixedSave(span, buffer);
+        }
+
+        public static long RenderDynamicPropFixedLoad(
+            Span<RenderDynamicProp> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderDynamicPropFixedPlan;
+            long record_bytes = RenderDynamicPropFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderDynamicPropFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderDynamicPropFixedLayout, RenderDynamicPropFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderDynamicProp(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderDynamicPropFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderDynamicPropFixedLoad(RenderDynamicProp[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderDynamicPropFixedLoad((Span<RenderDynamicProp>)values, data, plan, report);
+        }
+
+        public static long RenderDynamicPropFixedLoad(RenderDynamicProp value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderDynamicProp> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderDynamicPropFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderDynamicProp dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderDynamicPropFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- RenderStaticProp, the fixed form ----
+
+        public const long RenderStaticPropFixedBodyBytes = 78;
+        public const long RenderStaticPropFixedRecordBytes = 8 + RenderStaticPropFixedBodyBytes;
+        public const ulong RenderStaticPropFixedHash = 0xa63b40147f0f5066ul;
+
+        public static readonly byte[] RenderStaticPropFixedLayout = new byte[] {
+            0x16, 0x00, 0x00, 0x00, 0xfe, 0x76, 0x52, 0x86, 0x2b, 0xd6, 0x9a, 0xc1, 0x0d, 0x4e, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x91, 0x1d,
+            0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec,
+            0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xc3, 0x95, 0x4b, 0x57, 0xab, 0xa7, 0x3d, 0xd2, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00,
+            0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00,
+            0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
+            0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long RenderStaticPropFixedLayoutBytes = 378;
+
+        public static readonly TableFixedDst[] RenderStaticPropFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderStaticProp
+            new TableFixedDst(0, 0, 0, 0, 0), // position
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // rotation
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // w
+            new TableFixedDst(7, 0, 0, 0, 0), // scale
+            new TableFixedDst(8, 0, 0, 0, 0), // flags
+            new TableFixedDst(9, 0, 0, 0, 0), // static_prop_id
+            new TableFixedDst(10, 0, 0, 0, 0), // prop_type
+            new TableFixedDst(0, 0, 0, 0, 0), // Rock
+            new TableFixedDst(0, 0, 0, 0, 0), // Station
+            new TableFixedDst(0, 0, 0, 0, 0), // Beacon
+            new TableFixedDst(11, 0, 0, 0, 0), // team
+            new TableFixedDst(0, 0, 0, 0, 0), // Red
+            new TableFixedDst(0, 0, 0, 0, 0), // Blue
+            new TableFixedDst(0, 0, 0, 0, 0), // Green
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+        };
+
+        public static readonly TableFixedSlot<RenderStaticProp>[] RenderStaticPropFixedSlots = new TableFixedSlot<RenderStaticProp>[] {
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Scale = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Scale = d),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.StaticPropId = unchecked((uint)v)),
+            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }),
+            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+        };
+
+        public static readonly TableFixedPlan RenderStaticPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 7u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(64u, 8u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(72u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(76u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(77u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderStaticPropFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderStaticPropFixedLayoutBytes + count * RenderStaticPropFixedRecordBytes;
+        }
+
+        public static long RenderStaticPropFixedSave(ReadOnlySpan<RenderStaticProp> values, Span<byte> buffer)
+        {
+            long need = RenderStaticPropFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderStaticPropFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderStaticPropFixedLayoutBytes);
+            RenderStaticPropFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderStaticPropFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderStaticPropFixedHash);
+                at.Slice(8, (int)RenderStaticPropFixedBodyBytes).Clear();
+                RenderStaticPropFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderStaticPropFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderStaticPropFixedSave(RenderStaticProp[] values, Span<byte> buffer)
+        {
+            return RenderStaticPropFixedSave((ReadOnlySpan<RenderStaticProp>)values, buffer);
+        }
+
+        public static long RenderStaticPropFixedSave(RenderStaticProp value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderStaticProp> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderStaticPropFixedSave(span, buffer);
+        }
+
+        public static long RenderStaticPropFixedLoad(
+            Span<RenderStaticProp> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderStaticPropFixedPlan;
+            long record_bytes = RenderStaticPropFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderStaticPropFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderStaticPropFixedLayout, RenderStaticPropFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderStaticProp(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderStaticPropFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderStaticPropFixedLoad(RenderStaticProp[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderStaticPropFixedLoad((Span<RenderStaticProp>)values, data, plan, report);
+        }
+
+        public static long RenderStaticPropFixedLoad(RenderStaticProp value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderStaticProp> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderStaticPropFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderStaticProp dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderStaticPropFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- RenderCosmeticProp, the fixed form ----
+
+        public const long RenderCosmeticPropFixedBodyBytes = 79;
+        public const long RenderCosmeticPropFixedRecordBytes = 8 + RenderCosmeticPropFixedBodyBytes;
+        public const ulong RenderCosmeticPropFixedHash = 0x72a2fa1985def98eul;
+
+        public static readonly byte[] RenderCosmeticPropFixedLayout = new byte[] {
+            0x17, 0x00, 0x00, 0x00, 0x6f, 0x63, 0x76, 0xe7, 0xba, 0xbd, 0xf5, 0x5f, 0x0d, 0x4f, 0x00, 0x00,
+            0x00, 0x08, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x91, 0x1d,
+            0x1a, 0xb7, 0xfb, 0xb9, 0xac, 0x6a, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec,
+            0x5a, 0xf7, 0x85, 0xa9, 0xa1, 0xa3, 0x17, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x26, 0x2e, 0x6b, 0xe5, 0x49, 0x44, 0x6e, 0xb6, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x28, 0xc2, 0xdd, 0xcb, 0x3b, 0xf7, 0x7b, 0x4d, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xad, 0x5d, 0x4c, 0x5e, 0x15, 0x6f, 0x62, 0xe5, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03,
+            0x00, 0x00, 0x00, 0x34, 0xe2, 0x74, 0xef, 0x2b, 0x17, 0xa6, 0xca, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x53, 0xd6, 0x52, 0x28, 0xac, 0xac, 0x98, 0x4f, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x19, 0x30, 0xea, 0x44, 0x47, 0x7e, 0x3a, 0x7f, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01,
+            0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00,
+            0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
+            0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long RenderCosmeticPropFixedLayoutBytes = 395;
+
+        public static readonly TableFixedDst[] RenderCosmeticPropFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderCosmeticProp
+            new TableFixedDst(0, 0, 0, 0, 0), // position
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // rotation
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // w
+            new TableFixedDst(7, 0, 0, 0, 0), // scale
+            new TableFixedDst(8, 0, 0, 0, 0), // flags
+            new TableFixedDst(9, 0, 0, 0, 0), // cosmetic_prop_id
+            new TableFixedDst(10, 0, 0, 0, 0), // prop_sequence
+            new TableFixedDst(11, 0, 0, 0, 0), // prop_type
+            new TableFixedDst(0, 0, 0, 0, 0), // Rock
+            new TableFixedDst(0, 0, 0, 0, 0), // Station
+            new TableFixedDst(0, 0, 0, 0, 0), // Beacon
+            new TableFixedDst(12, 0, 0, 0, 0), // team
+            new TableFixedDst(0, 0, 0, 0, 0), // Red
+            new TableFixedDst(0, 0, 0, 0, 0), // Blue
+            new TableFixedDst(0, 0, 0, 0, 0), // Green
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+        };
+
+        public static readonly TableFixedSlot<RenderCosmeticProp>[] RenderCosmeticPropFixedSlots = new TableFixedSlot<RenderCosmeticProp>[] {
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Scale = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Scale = d),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.CosmeticPropId = unchecked((uint)v)),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.PropSequence = unchecked((byte)v)),
+            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }),
+            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+        };
+
+        public static readonly TableFixedPlan RenderCosmeticPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 7u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(64u, 8u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(72u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(76u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(77u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(78u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderCosmeticPropFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderCosmeticPropFixedLayoutBytes + count * RenderCosmeticPropFixedRecordBytes;
+        }
+
+        public static long RenderCosmeticPropFixedSave(ReadOnlySpan<RenderCosmeticProp> values, Span<byte> buffer)
+        {
+            long need = RenderCosmeticPropFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderCosmeticPropFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderCosmeticPropFixedLayoutBytes);
+            RenderCosmeticPropFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderCosmeticPropFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderCosmeticPropFixedHash);
+                at.Slice(8, (int)RenderCosmeticPropFixedBodyBytes).Clear();
+                RenderCosmeticPropFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderCosmeticPropFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderCosmeticPropFixedSave(RenderCosmeticProp[] values, Span<byte> buffer)
+        {
+            return RenderCosmeticPropFixedSave((ReadOnlySpan<RenderCosmeticProp>)values, buffer);
+        }
+
+        public static long RenderCosmeticPropFixedSave(RenderCosmeticProp value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderCosmeticProp> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderCosmeticPropFixedSave(span, buffer);
+        }
+
+        public static long RenderCosmeticPropFixedLoad(
+            Span<RenderCosmeticProp> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderCosmeticPropFixedPlan;
+            long record_bytes = RenderCosmeticPropFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderCosmeticPropFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderCosmeticPropFixedLayout, RenderCosmeticPropFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderCosmeticProp(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderCosmeticPropFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderCosmeticPropFixedLoad(RenderCosmeticProp[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderCosmeticPropFixedLoad((Span<RenderCosmeticProp>)values, data, plan, report);
+        }
+
+        public static long RenderCosmeticPropFixedLoad(RenderCosmeticProp value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderCosmeticProp> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderCosmeticPropFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderCosmeticProp dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderCosmeticPropFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- RenderLaser, the fixed form ----
+
+        public const long RenderLaserFixedBodyBytes = 62;
+        public const long RenderLaserFixedRecordBytes = 8 + RenderLaserFixedBodyBytes;
+        public const ulong RenderLaserFixedHash = 0x99df0a3db4b1eebdul;
+
+        public static readonly byte[] RenderLaserFixedLayout = new byte[] {
+            0x13, 0x00, 0x00, 0x00, 0x94, 0xd9, 0x23, 0x6c, 0xbe, 0x7d, 0x94, 0xb0, 0x0d, 0x3e, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf2, 0x40, 0x15, 0xb9, 0xba, 0xa5, 0x17,
+            0x69, 0x0d, 0x18, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0x02, 0x02,
+            0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xec, 0x94,
+            0x02, 0x39, 0x5f, 0xc0, 0x29, 0xcd, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41,
+            0x38, 0x13, 0x42, 0xc2, 0x93, 0xb5, 0x96, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+            0x5e, 0x80, 0xf4, 0xd8, 0x72, 0xa1, 0xe8, 0x94, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xfa, 0xef, 0x7e, 0x96, 0xa7, 0x5a, 0x74, 0xa0, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x04,
+            0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long RenderLaserFixedLayoutBytes = 327;
+
+        public static readonly TableFixedDst[] RenderLaserFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderLaser
+            new TableFixedDst(0, 0, 0, 0, 0), // start
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // finish
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(6, 0, 0, 0, 0), // t
+            new TableFixedDst(7, 0, 0, 0, 0), // laser_id
+            new TableFixedDst(8, 0, 0, 0, 0), // laser_type
+            new TableFixedDst(0, 0, 0, 0, 0), // Pulse
+            new TableFixedDst(0, 0, 0, 0, 0), // Beam
+            new TableFixedDst(9, 0, 0, 0, 0), // team
+            new TableFixedDst(0, 0, 0, 0, 0), // Red
+            new TableFixedDst(0, 0, 0, 0, 0), // Blue
+            new TableFixedDst(0, 0, 0, 0, 0), // Green
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+        };
+
+        public static readonly TableFixedSlot<RenderLaser>[] RenderLaserFixedSlots = new TableFixedSlot<RenderLaser>[] {
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.X = d),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.Y = d),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.Z = d),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.X = d),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.Y = d),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.Z = d),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.T = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.T = d),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.LaserId = unchecked((uint)v)),
+            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { if (v > 2) { t.LaserType = 0; if (rep != null) rep.Clamped++; } else { t.LaserType = (LaserType)v; } }),
+            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+        };
+
+        public static readonly TableFixedPlan RenderLaserFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(60u, 8u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(61u, 9u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderLaserFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderLaserFixedLayoutBytes + count * RenderLaserFixedRecordBytes;
+        }
+
+        public static long RenderLaserFixedSave(ReadOnlySpan<RenderLaser> values, Span<byte> buffer)
+        {
+            long need = RenderLaserFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderLaserFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderLaserFixedLayoutBytes);
+            RenderLaserFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderLaserFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderLaserFixedHash);
+                at.Slice(8, (int)RenderLaserFixedBodyBytes).Clear();
+                RenderLaserFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderLaserFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderLaserFixedSave(RenderLaser[] values, Span<byte> buffer)
+        {
+            return RenderLaserFixedSave((ReadOnlySpan<RenderLaser>)values, buffer);
+        }
+
+        public static long RenderLaserFixedSave(RenderLaser value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderLaser> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderLaserFixedSave(span, buffer);
+        }
+
+        public static long RenderLaserFixedLoad(
+            Span<RenderLaser> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderLaserFixedPlan;
+            long record_bytes = RenderLaserFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderLaserFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderLaserFixedLayout, RenderLaserFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderLaser(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderLaserFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderLaserFixedLoad(RenderLaser[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderLaserFixedLoad((Span<RenderLaser>)values, data, plan, report);
+        }
+
+        public static long RenderLaserFixedLoad(RenderLaser value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderLaser> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderLaserFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderLaser dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderLaserFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- RenderExplosion, the fixed form ----
+
+        public const long RenderExplosionFixedBodyBytes = 74;
+        public const long RenderExplosionFixedRecordBytes = 8 + RenderExplosionFixedBodyBytes;
+        public const ulong RenderExplosionFixedHash = 0xf71917b507eff722ul;
+
+        public static readonly byte[] RenderExplosionFixedLayout = new byte[] {
+            0x15, 0x00, 0x00, 0x00, 0xf8, 0xe5, 0xc9, 0x85, 0xb5, 0x38, 0xc7, 0x0c, 0x0d, 0x4a, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c, 0xf4, 0x63, 0xaf, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86, 0x4c, 0xf7, 0x63, 0xaf,
+            0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a,
+            0xb5, 0x0d, 0x20, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5,
+            0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x54, 0x15, 0x02, 0x86, 0x4c,
+            0xf4, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0x1a, 0x02, 0x86,
+            0x4c, 0xf7, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x56, 0x04, 0x02,
+            0x86, 0x4c, 0xea, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0x02,
+            0x02, 0x86, 0x4c, 0xe9, 0x63, 0xaf, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x78,
+            0xd7, 0x6e, 0xb1, 0xa0, 0x3f, 0x7f, 0xfd, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x93, 0x6c, 0x04, 0xb4, 0x3c, 0x7b, 0xee, 0x0b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xe5, 0x3b, 0x39, 0xd3, 0x9c, 0xeb, 0x89, 0xdc, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00,
+            0x00, 0x00, 0xec, 0xeb, 0xad, 0x52, 0xd9, 0xc8, 0x2c, 0x3d, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x34, 0xe6, 0x80, 0x93, 0xf7, 0x6e, 0x73, 0xc8, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x2c, 0xc3, 0xaf, 0x19, 0xef, 0xd9, 0x23, 0xfa, 0x1e, 0x01, 0x00, 0x00,
+            0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long RenderExplosionFixedLayoutBytes = 361;
+
+        public static readonly TableFixedDst[] RenderExplosionFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // RenderExplosion
+            new TableFixedDst(0, 0, 0, 0, 0), // position
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // rotation
+            new TableFixedDst(0, 0, 0, 0, 0), // x
+            new TableFixedDst(1, 0, 0, 0, 0), // y
+            new TableFixedDst(2, 0, 0, 0, 0), // z
+            new TableFixedDst(3, 0, 0, 0, 0), // w
+            new TableFixedDst(7, 0, 0, 0, 0), // t
+            new TableFixedDst(8, 0, 0, 0, 0), // explosion_id
+            new TableFixedDst(9, 0, 0, 0, 0), // parent_object_id
+            new TableFixedDst(10, 0, 0, 0, 0), // explosion_type
+            new TableFixedDst(0, 0, 0, 0, 0), // Small
+            new TableFixedDst(0, 0, 0, 0, 0), // Large
+            new TableFixedDst(11, 0, 0, 0, 0), // team
+            new TableFixedDst(0, 0, 0, 0, 0), // Red
+            new TableFixedDst(0, 0, 0, 0, 0), // Blue
+            new TableFixedDst(0, 0, 0, 0, 0), // Green
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+        };
+
+        public static readonly TableFixedSlot<RenderExplosion>[] RenderExplosionFixedSlots = new TableFixedSlot<RenderExplosion>[] {
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.T = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.T = d),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.ExplosionId = unchecked((uint)v)),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.ParentObjectId = unchecked((uint)v)),
+            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { if (v > 2) { t.ExplosionType = 0; if (rep != null) rep.Clamped++; } else { t.ExplosionType = (ExplosionType)v; } }),
+            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+        };
+
+        public static readonly TableFixedPlan RenderExplosionFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 1u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 2u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 7u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(64u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(68u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(72u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(73u, 11u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long RenderExplosionFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + RenderExplosionFixedLayoutBytes + count * RenderExplosionFixedRecordBytes;
+        }
+
+        public static long RenderExplosionFixedSave(ReadOnlySpan<RenderExplosion> values, Span<byte> buffer)
+        {
+            long need = RenderExplosionFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderExplosionFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)RenderExplosionFixedLayoutBytes);
+            RenderExplosionFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)RenderExplosionFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, RenderExplosionFixedHash);
+                at.Slice(8, (int)RenderExplosionFixedBodyBytes).Clear();
+                RenderExplosionFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)RenderExplosionFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long RenderExplosionFixedSave(RenderExplosion[] values, Span<byte> buffer)
+        {
+            return RenderExplosionFixedSave((ReadOnlySpan<RenderExplosion>)values, buffer);
+        }
+
+        public static long RenderExplosionFixedSave(RenderExplosion value, Span<byte> buffer)
+        {
+            ReadOnlySpan<RenderExplosion> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return RenderExplosionFixedSave(span, buffer);
+        }
+
+        public static long RenderExplosionFixedLoad(
+            Span<RenderExplosion> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = RenderExplosionFixedPlan;
+            long record_bytes = RenderExplosionFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != RenderExplosionFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, RenderExplosionFixedLayout, RenderExplosionFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new RenderExplosion(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, RenderExplosionFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long RenderExplosionFixedLoad(RenderExplosion[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return RenderExplosionFixedLoad((Span<RenderExplosion>)values, data, plan, report);
+        }
+
+        public static long RenderExplosionFixedLoad(RenderExplosion value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<RenderExplosion> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return RenderExplosionFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            RenderExplosion dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, RenderExplosionFixedSlots, src, dst, report, planBytes);
         }
     }
 

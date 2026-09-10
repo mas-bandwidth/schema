@@ -93,6 +93,30 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "elixir" {
+			// THE PREFILL IS WHERE A TABLE DEFAULT LIVES IN THIS PORT
+			// (internal/codegen/elixirtable/fixeddefaults.go): the fixed form's
+			// one answer to "absent field" is a constant image of the declared
+			// defaults laid out as RECORD BYTES, and it is the write template
+			// too. So the check is that the bytes are in it — the length in
+			// front of the text, the text, and the flags word — and beside it
+			// that the value surface's construction carries the same values.
+			if err != nil {
+				t.Fatalf("elixir refused supported table defaults: %v", err)
+			}
+			code := string(out["ProbeFixed.ex"])
+			for _, want := range []string{
+				// "untitled" behind its length, then "ab" behind its own, then Jump|Crouch
+				`@ship_prefill "\x08\x00\x00\x00\x75\x6E\x74\x69\x74\x6C\x65\x64`,
+				`\x02\x00\x00\x00\x61\x62`,
+				`defstruct name: "\x75\x6E\x74\x69\x74\x6C\x65\x64", tag: "\x61\x62", caps: 3`,
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("elixir default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "rust" {
 			// THE FIXED FORM NEEDS THE DEFAULTS: §3.4's answer to a field a
 			// record does not carry is a PREFILL of the declared defaults, and
@@ -113,6 +137,33 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			} {
 				if !strings.Contains(all.String(), want) {
 					t.Errorf("the rust prefill image lacks %q", want)
+				}
+			}
+			continue
+		}
+		if target == "java" {
+			// THE PREFILL IS WHERE A TABLE DEFAULT LIVES IN THIS PORT
+			// (internal/codegen/javatable/fixedform.go, fixedDefaultImage): the
+			// fixed form's one answer to "absent field" is a constant image of
+			// the declared defaults laid out as RECORD BYTES, and it is the
+			// write template too. So the check is that the bytes are in it —
+			// the length in front of the text, the text, the bytes default
+			// behind its own length, and the flags mask — and beside it that
+			// the value surface constructs the same values.
+			if err != nil {
+				t.Fatalf("java refused supported table defaults: %v", err)
+			}
+			code := string(out["ShipFixed.java"])
+			for _, want := range []string{
+				// "untitled" behind its length 8, then "ab" behind its length 2, then Jump|Crouch
+				"8, 0, 0, 0, 117, 110, 116, 105, 116, 108, 101, 100,",
+				"2, 0, 0, 0, 97, 98, 0, 0, 3, 0, 0, 0,",
+				"public int nameLength = 8;",
+				"public int tagLength = 2;",
+				"public long caps = 3L;",
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("java default output lacks %q", want)
 				}
 			}
 			continue
