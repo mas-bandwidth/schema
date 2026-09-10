@@ -91,9 +91,9 @@ func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFi
 func tableFixedGet32(b []byte) uint32 { return binary.LittleEndian.Uint32(b) }
 func tableFixedGet64(b []byte) uint64 { return binary.LittleEndian.Uint64(b) }
 
-func tableFixedHashOf(block []byte) uint64 {
+func tableFixedHashOf(layout []byte) uint64 {
 	h := uint64(0xcbf29ce484222325)
-	for _, c := range block {
+	for _, c := range layout {
 		h ^= uint64(c)
 		h *= 0x100000001b3
 	}
