@@ -1388,6 +1388,228 @@ fn the_text_content_rule(dir: &str) {
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE.
+//
+// Identity's hole list is empty because the identity plan is one Copy of the
+// whole body; a compiled plan that leaves a field out has that field in the
+// list. There is no identity flag in the load loop. The negative control
+// sabotages the identity plan so it leaves a hole: if that hole did not take
+// the declared default, the empty-list claim would be false.
+// ---------------------------------------------------------------------------
+
+fn the_prefill_holes(dir: &str) {
+    const BODY: usize = tblfx1::FX_ROOT_FIXED_BODY_BYTES;
+    let mut cover = [0u8; BODY];
+    let mut hole_buf = [tblfx1::TableFixedHole::default(); BODY];
+
+    let n = tblfx1::table_fixed_holes(&tblfx1::FX_ROOT_FIXED_PLAN, &mut cover, &mut hole_buf);
+    check(n == 0, "identity: the hole list is empty — the plan writes every byte");
+
+    // IDENTITY DIRTY DEST STILL ROUND-TRIPS. Holes empty means the plan
+    // overwrites the whole image, then the scatter overwrites the whole value.
+    {
+        let golden = slurp(dir, "fx1.bin");
+        let mut values = [tblfx1::FxRootRow::default(); 8];
+        for v in &mut values {
+            v.keep = 0xFFFF_FFFF;
+            v.gone = 999;
+            v.renamed = 999;
+            v.narrow = 0xFFFF;
+        }
+        let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+        let mut remap = [0u16; 512];
+        let mut report = tblfx1::TableFixedReport::default();
+        let n = tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report)
+            .unwrap_or(0);
+        check(n == 2, "identity dirty dest: both records load");
+        let mut out = vec![0u8; tblfx1::fx_root_fixed_measure(n)];
+        tblfx1::fx_root_fixed_save(&values[..n], &mut out);
+        check(out == golden, "identity dirty dest: holes empty, so the plan overwrites everything");
+    }
+
+    // COMPILED MISSING FIELD KEEPS THE DECLARED DEFAULT, and the dest was
+    // poisoned so leftover dest cannot stand in for the hole.
+    {
+        let golden = slurp(dir, "fx1.bin");
+        let mut values = [tblfx2::FxRootRow::default(); 8];
+        for v in &mut values {
+            v.added = 999;
+            v.extra.x = 77;
+            v.extra.y = 88;
+        }
+        let mut plan = [tblfx2::TableFixedEntry::default(); 512];
+        let mut remap = [0u16; 512];
+        let mut report = tblfx2::TableFixedReport::default();
+        let n = tblfx2::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
+        check(n == Some(2), "compiled missing field: both records load");
+        check(
+            values[0].added == 11,
+            "compiled missing field: a field the writer does not carry keeps its declared default",
+        );
+        check(
+            values[0].extra.x == 0 && values[0].extra.y == 0,
+            "compiled missing field: a whole nested type the writer does not carry keeps its defaults",
+        );
+        check(values[0].keep == 4242, "compiled missing field: an unmoved field still lands");
+    }
+
+    // NEGATIVE CONTROL: a sabotaged identity plan that leaves a hole must take
+    // the default, or the empty-list claim is false.
+    {
+        let mut sab = tblfx1::FX_ROOT_FIXED_PLAN;
+        check(
+            sab[0].size as usize == BODY && sab[0].size >= 4,
+            "NEGATIVE CONTROL: the identity plan is one Copy of the whole body",
+        );
+        sab[0].size -= 4;
+        let n = tblfx1::table_fixed_holes(&sab, &mut cover, &mut hole_buf);
+        check(n == 1, "NEGATIVE CONTROL: a sabotaged identity plan that leaves a hole has a non-empty list");
+        check(
+            hole_buf[0].off == BODY as u32 - 4 && hole_buf[0].size == 4,
+            "NEGATIVE CONTROL: the hole is exactly the four bytes the sabotaged Copy no longer writes",
+        );
+
+        let golden = slurp(dir, "fx1.bin");
+        let rec = records_at(&golden);
+        let body = &golden[rec + 8..rec + 8 + BODY];
+        check(
+            body[BODY - 4..] != tblfx1::FX_ROOT_FIXED_DEFAULTS[BODY - 4..],
+            "NEGATIVE CONTROL: the fixture's last four bytes are not already the default",
+        );
+
+        let mut image = [0xAAu8; BODY];
+        for h in &hole_buf[..n] {
+            let o = h.off as usize;
+            let z = h.size as usize;
+            image[o..o + z].copy_from_slice(&tblfx1::FX_ROOT_FIXED_DEFAULTS[o..o + z]);
+        }
+        let mut report = tblfx1::TableFixedReport::default();
+        tblfx1::table_fixed_run(&sab, &[], body, &mut image, &mut report);
+        check(
+            image[BODY - 4..] == tblfx1::FX_ROOT_FIXED_DEFAULTS[BODY - 4..],
+            "NEGATIVE CONTROL: the hole takes the declared default, not the dirty dest and not the record",
+        );
+        check(
+            image[BODY - 4..] != [0xAA, 0xAA, 0xAA, 0xAA],
+            "NEGATIVE CONTROL: the dirty dest did not survive in the hole",
+        );
+    }
+}
+
+// THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4), and this is the Rust twin of
+// the reference's slack_case. A `string(N)` shorter than N, a `bytes(N)`
+// shorter than N, and a `[..N]T` with unused slots are DECLARED bytes carrying
+// no value: what rides in them is the TEMPLATE'S ZEROS, never whatever this
+// writer's storage held past the used length or the live count.
+//
+// THE CONTROL IS THE STAIN: the storage past the used length and the live
+// count is filled with a byte a clean record carries nowhere, the test proves
+// the stain IS in the storage, then proves the WIRE carries none of it, then
+// proves a whole-span copy of the same storage WOULD have carried it. There is
+// one writer; identity and compiled both call it.
+fn the_write_slack() {
+    let mut v = tblfx1::FxRootRow::default();
+    v.keep = 11;
+    v.narrow = 22;
+    v.renamed = 33;
+    v.gone = 44;
+    v.nested.a = 55;
+    v.nested.b = 66;
+    v.label = [0xAA; 9];
+    v.label[0] = b'h';
+    v.label[1] = b'i';
+    v.label_length = 2;
+    v.marks = [0x5A5A5A5A; 4];
+    v.marks[0] = 7;
+    v.marks_count = 1;
+    v.blob = [0x11; 6];
+    v.blob[0] = 0xDE;
+    v.blob[1] = 0xAD;
+    v.blob_length = 2;
+
+    check(
+        v.label[2] == 0xAA,
+        "CONTROL: the text slack really is stained in storage",
+    );
+    check(
+        v.marks[1] == 0x5A5A5A5A,
+        "CONTROL: the array slack really is stained in storage",
+    );
+    check(
+        v.blob[2] == 0x11,
+        "CONTROL: the bytes slack really is stained in storage",
+    );
+
+    let mut file = vec![0u8; tblfx1::fx_root_fixed_measure(1)];
+    let wrote = tblfx1::fx_root_fixed_save(&[v], &mut file);
+    check(wrote == Some(file.len()), "slack: the record saves");
+    let body_at = records_at(&file) + 8;
+    let body = &file[body_at..body_at + tblfx1::FX_ROOT_FIXED_BODY_BYTES];
+    check(
+        !body.contains(&0xAA),
+        "SLACK IS ZERO: not one stained TEXT byte reached the wire",
+    );
+    check(
+        !body.contains(&0x5A),
+        "SLACK IS ZERO: not one stained ARRAY byte reached the wire",
+    );
+    check(
+        !body.contains(&0x11),
+        "SLACK IS ZERO: not one stained BYTES byte reached the wire",
+    );
+
+    // NEGATIVE CONTROL: the same storage copied WHOLE — which is what the
+    // writer did before this fix — carries the stain, so the checks above
+    // discriminate and are not passing for some other reason.
+    check(
+        v.label.contains(&0xAA),
+        "NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain",
+    );
+    check(
+        v.marks[3] == 0x5A5A5A5A,
+        "NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain",
+    );
+    check(
+        v.blob[5] == 0x11,
+        "NEGATIVE CONTROL: a whole-span copy WOULD have carried the bytes stain",
+    );
+
+    let mut back = [tblfx1::FxRootRow::default(); 1];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "slack: the record reads");
+    check(
+        back[0].label_length == 2
+            && back[0].label[0] == b'h'
+            && back[0].label[1] == b'i'
+            && back[0].label[2] == 0,
+        "slack: the used length reads, and the buffer terminates at it",
+    );
+    check(
+        back[0].marks_count == 1 && back[0].marks[0] == 7,
+        "slack: the live count reads",
+    );
+    check(
+        back[0].marks[1] == 0 && back[0].marks[2] == 0 && back[0].marks[3] == 0,
+        "slack: an unused slot lands as the wire's zero and not as some writer's leftover",
+    );
+    check(
+        back[0].blob_length == 2 && back[0].blob[0] == 0xDE && back[0].blob[1] == 0xAD,
+        "slack: the live bytes length reads",
+    );
+    check(
+        back[0].blob[2] == 0 && back[0].blob[3] == 0 && back[0].blob[4] == 0 && back[0].blob[5] == 0,
+        "slack: unused bytes land as the wire's zero",
+    );
+    check(
+        report == tblfx1::TableFixedReport::default(),
+        "slack: a clean read moves no counter",
+    );
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let dir = match args.next() {
@@ -1405,7 +1627,9 @@ fn main() {
         }
     };
     the_write(&dir);
+    the_write_slack();
     the_compiled_plan(&dir);
+    the_prefill_holes(&dir);
     an_older_writer(&dir);
     a_newer_writer(&dir);
     an_optional(&dir);

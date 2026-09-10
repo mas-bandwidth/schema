@@ -59,9 +59,17 @@ func refuseValueDefaults(u *ir.Unit, target string) error {
 		}
 	}
 	if len(form1Names) > 0 && !slices.Contains(valueDefaultTargets, target) {
-		carry, flags := carriers(valueDefaultTargets)
-		return fmt.Errorf("unit puts a string, bytes or flags default in a table closure (%s): table-wire defaults are %s only today, and the %s form is a named follow-on; generate with %s, or drop the default (SPEC §4.2)",
-			englishList(form1Names), englishList(carry), target, englishList(flags))
+		// Rust has no form-1 table wire, but form 3's prefill image IS the
+		// declared defaults — string and bytes included. A unit whose every
+		// table is a fixed root therefore carries them. A variable table in
+		// the unit still has nowhere to put them, and is refused as before.
+		if target == "rust" && rustFixedFormCarriesValueDefaults(u) {
+			// fall through to the packet check, which rust already carries
+		} else {
+			carry, flags := carriers(valueDefaultTargets)
+			return fmt.Errorf("unit puts a string, bytes or flags default in a table closure (%s): table-wire defaults are %s only today, and the %s form is a named follow-on; generate with %s, or drop the default (SPEC §4.2)",
+				englishList(form1Names), englishList(carry), target, englishList(flags))
+		}
 	}
 	if len(packetNames) == 0 || slices.Contains(packetValueDefaultTargets, target) {
 		return nil
@@ -138,4 +146,23 @@ func form1TableClosure(u *ir.Unit) map[string]bool {
 		walk(name)
 	}
 	return closure
+}
+
+// rustFixedFormCarriesValueDefaults reports that every table in the unit is a
+// fixed root, so form 3's prefill image is where a string, bytes or flags
+// default lives. One variable table in the unit is enough to refuse: rust has
+// no form-1 Reset to put the default on.
+func rustFixedFormCarriesValueDefaults(u *ir.Unit) bool {
+	if len(u.Tables) == 0 {
+		return false
+	}
+	for _, st := range u.Tables {
+		if st.IsMapEntry() {
+			continue
+		}
+		if !ir.TableFixedSupported(st, 0) {
+			return false
+		}
+	}
+	return true
 }

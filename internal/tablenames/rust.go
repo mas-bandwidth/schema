@@ -31,6 +31,8 @@ func init() {
 		Name{Name: "TableFixedBlock", What: "a parsed vocabulary block: the bytes and the entry count"},
 		Name{Name: "TableFixedBlockEntry", What: "one block entry — an id, a kind, a constant size and a child count"},
 		Name{Name: "TableFixedHash", What: "fnv1a64 over a block's bytes, which is the eight bytes every record carries", Scoped: true},
+		Name{Name: "TableFixedHole", What: "one dst range the plan does not land"},
+		Name{Name: "TableFixedHoles", What: "the complement of the unguarded dest writes — what the prefill copies into", Scoped: true},
 		Name{Name: "TableFixedRun", What: "THE ONE READ LOOP: one plan over one record body", Scoped: true},
 		Name{Name: "TableFixedCompile", What: "the plan compiler, run once per peer and never once per record", Scoped: true},
 		Name{Name: "TableFixedHeaderBytes", What: "the fixed form's pinned header: sixteen bytes, the body at 16 (§3)", RustConst: true},

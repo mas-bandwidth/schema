@@ -26,6 +26,7 @@
 // of the const measure that reads their length.
 #![allow(unused_imports)]
 #![allow(clippy::large_const_arrays)]
+#![allow(clippy::large_stack_arrays)]
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 

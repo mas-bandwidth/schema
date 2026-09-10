@@ -309,7 +309,7 @@ func (g *gen) cookable(name string) bool {
 // What it does not carry is an arm whose storage needs a COMPANION — text, or
 // an array with its count — because such an arm is an unnamed struct of two
 // pieces in the C++ overlay and this port would have to name it. §3.4's own
-// layout law refuses those arms outright (ir.FixedSupported), so the two
+// layout law refuses those arms outright (ir.TableFixedSupported), so the two
 // refusals are one and nothing that reaches this form is turned away by it.
 func (g *gen) rowable(name string) bool {
 	return g.reaches(name, unionRowable)

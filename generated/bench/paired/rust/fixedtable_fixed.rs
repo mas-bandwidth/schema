@@ -26,6 +26,7 @@
 // of the const measure that reads their length.
 #![allow(unused_imports)]
 #![allow(clippy::large_const_arrays)]
+#![allow(clippy::large_stack_arrays)]
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 
@@ -296,11 +297,15 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
     Some(need)
 }
 
-/// THE READ: a prefill and ONE loop over ONE plan, then the scatter. The
-/// identity plan when the file's layout hashes to this build's own, a plan
-/// compiled once from the writer's layout otherwise — SAME LOOP either way,
-/// which is the owner's ruling that this form's cost must not move when a
-/// peer ships (docs/SPEC-TABLES.md §3.4).
+/// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when
+/// the file's layout hashes to this build's own, a plan compiled once from the
+/// writer's layout otherwise — SAME LOOP either way, which is the owner's
+/// ruling that this form's cost must not move when a peer ships
+/// (docs/SPEC-TABLES.md §3.4).
+///
+/// The PREFILL copies declared defaults into exactly the dest ranges the plan
+/// that will run does not write. Identity's hole list is empty — one `Copy` of
+/// the whole body — so the same loop is a no-op on that path.
 ///
 /// The plan's storage is the CALLER's, declared by capacity: this codec never
 /// allocates, and a layout whose plan does not fit is a refusal by name.
@@ -378,13 +383,25 @@ pub fn fixed_table_fixed_load(
         return report.refuse(TableFixedReason::BatchTooLarge);
     }
     let entries: &[TableFixedEntry] = if identity { &FIXED_TABLE_FIXED_PLAN } else { &plan[..compiled] };
+    // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
+    // `Copy` over the whole body, so the hole list is empty and the loop below
+    // is a no-op. A compiled plan that leaves a field out has that field in
+    // the list, and the declared default is what it keeps. Same loop either way.
+    let mut cover = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
+    let mut hole_buf = [TableFixedHole::default(); FIXED_TABLE_FIXED_BODY_BYTES];
+    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);
+    let holes = &hole_buf[..hole_n];
     let mut image = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
     for k in 0..n {
         let record = &rest[k * record_bytes..(k + 1) * record_bytes];
         if u64::from_le_bytes(record[..8].try_into().expect("eight bytes")) != hash {
             return report.refuse(TableFixedReason::NoBlock);
         }
-        image.copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS); // the declared defaults, one prefill
+        for h in holes {
+            let o = h.off as usize;
+            let z = h.size as usize;
+            image[o..o + z].copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS[o..o + z]);
+        }
         table_fixed_run(entries, remap, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);
         // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the

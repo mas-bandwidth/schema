@@ -136,6 +136,15 @@ impl Default for TableFixedEntry {
     }
 }
 
+/// One dst range the plan does not land. The load copies declared defaults
+/// into exactly these. Identity's list is empty: its plan is one Copy of the
+/// whole body.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct TableFixedHole {
+    pub off: u32,
+    pub size: u32,
+}
+
 /// EVERY REFUSAL IS BY NAME (docs/SPEC-TABLES.md §3.4). None of these is one of
 /// §4's six events: in each of them nothing was decoded and there is nothing to
 /// count.
@@ -293,10 +302,11 @@ fn signed_kind(kind: u8) -> bool {
 
 // ---- THE ONE READ LOOP ------------------------------------------------------
 //
-// A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it was handed
-// is the only thing that differs between reading this build's own record and
-// reading anybody else's, which is the owner's ruling that this form's cost
-// must not move when a peer ships.
+// A READ IS THE HOLES OF THIS PLAN, THIS LOOP, AND NOTHING ELSE. Which plan it
+// was handed is the only thing that differs between reading this build's own
+// record and reading anybody else's, which is the owner's ruling that this
+// form's cost must not move when a peer ships. The prefill copies defaults into
+// exactly the dest ranges the plan does not write; identity's list is empty.
 //
 // EVERY REACH INTO ` + "`src`" + ` IS CHECKED, because ` + "`src`" + ` is framed by a stranger's
 // block: a plan offset past the record is framing damage, and it is reported
@@ -450,6 +460,60 @@ pub fn table_fixed_run(
             }
         }
     }
+}
+
+/// Complement of the unguarded dest writes. Guarded entries (union arms,
+/// compiled tag consts) are not always written, so they stay holes and keep
+/// the defaults. The write sizes match table_fixed_run. cover is scratch the
+/// size of the destination image; out holds at most cover.len() holes.
+pub fn table_fixed_holes(
+    plan: &[TableFixedEntry],
+    cover: &mut [u8],
+    out: &mut [TableFixedHole],
+) -> usize {
+    cover.fill(0);
+    for p in plan {
+        if p.guard != TABLE_FIXED_NO_GUARD {
+            continue;
+        }
+        let (off, n) = match p.op {
+            TableFixedOp::Copy | TableFixedOp::Const => (p.dst, p.size),
+            TableFixedOp::Count => (p.dst, 4),
+            TableFixedOp::Text => (p.dst, 4u32.saturating_add(p.size)),
+            TableFixedOp::Ordinal | TableFixedOp::Widen => (p.dst, u32::from(p.dstsize)),
+            TableFixedOp::WidenF => (p.dst, 8),
+        };
+        if n == 0 {
+            continue;
+        }
+        let start = off as usize;
+        if start >= cover.len() {
+            continue;
+        }
+        let end = start.saturating_add(n as usize).min(cover.len());
+        cover[start..end].fill(1);
+    }
+    let mut n = 0usize;
+    let mut i = 0usize;
+    while i < cover.len() {
+        if cover[i] != 0 {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        i += 1;
+        while i < cover.len() && cover[i] == 0 {
+            i += 1;
+        }
+        if n < out.len() {
+            out[n] = TableFixedHole {
+                off: start as u32,
+                size: (i - start) as u32,
+            };
+            n += 1;
+        }
+    }
+    n
 }
 
 // ---- THE BLOCK --------------------------------------------------------------

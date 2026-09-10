@@ -111,6 +111,15 @@ type Loose
 			// ports that carry neither table form.
 			for _, target := range []string{"dart"} {
 				_, err := New().Generate(u, target, Options{})
+				// Rust's form-3 prefill carries string/bytes/flags defaults on a
+				// unit of fixed roots. A variable table, a union arm of text, a
+				// pointer or a map still has nowhere to put them.
+				if target == "rust" && !tc.form1 {
+					if err != nil {
+						t.Fatalf("rust form 3 refused table defaults on a unit of fixed roots: %v", err)
+					}
+					continue
+				}
 				if !tc.form1 {
 					if err != nil && strings.Contains(err.Error(), "table-wire defaults") {
 						t.Errorf("fixed-form defaults refused as form-1 table-wire: %v", err)

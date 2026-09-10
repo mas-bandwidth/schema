@@ -607,3 +607,126 @@ func TestFixedFormCarriesWideText(t *testing.T) {
 		t.Error("the field after the wstring does not start at 24")
 	}
 }
+
+// rustFn is the source of one generated function, from its signature to the
+// matching close brace, so a pin can name the load loop without matching the
+// rest of the module.
+func rustFn(body, name string) string {
+	sig := "pub fn " + name + "("
+	i := strings.Index(body, sig)
+	if i < 0 {
+		return ""
+	}
+	n := 0
+	for j := i; j < len(body); j++ {
+		switch body[j] {
+		case '{':
+			n++
+		case '}':
+			n--
+			if n == 0 {
+				return body[i : j+1]
+			}
+		}
+	}
+	return body[i:]
+}
+
+// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: prefill the bytes
+// the plan does not write. The compiler computes the unwritten ranges; the
+// load copies defaults into exactly those; identity's list is empty because
+// its plan is one Copy of the whole body. There is no identity flag in the
+// record loop — an empty list is what skips the work.
+func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
+	out := generate(t, valueOnly)
+	body := string(out["probe_fixed.rs"])
+	load := rustFn(body, "config_fixed_load")
+	if load == "" {
+		t.Fatal("config_fixed_load was not emitted")
+	}
+	if !strings.Contains(load, "table_fixed_holes") {
+		t.Error("the load does not compute the plan's unwritten ranges")
+	}
+	if !strings.Contains(load, "CONFIG_FIXED_DEFAULTS") {
+		t.Error("the load has no default image to copy into holes")
+	}
+	i := strings.Index(load, "for k in 0..n")
+	if i < 0 {
+		t.Fatal("the load has no record loop")
+	}
+	loop := load[i:]
+	if strings.Contains(loop, "identity") {
+		t.Error("the load loop still branches on identity; an empty hole list is what skips work")
+	}
+	runtime := string(out[FixedRuntimeModule+".rs"])
+	for _, want := range []string{
+		"struct TableFixedHole",
+		"fn table_fixed_holes",
+		"TABLE_FIXED_HEADER_BYTES",
+		"TABLE_FIXED_HASH_AT",
+	} {
+		if !strings.Contains(runtime, want) {
+			t.Errorf("the fixed runtime is missing %q", want)
+		}
+	}
+}
+
+// liveWriteSrc is FX1's leftover in miniature: a counted array, a bytes(N)
+// and a string(N). The writer used to dump the whole bound after body.fill(0),
+// so slack of a short count/length rode. There is ONE writer; identity and
+// compiled both call it.
+const liveWriteSrc = `package probe
+
+table Probe
+{
+    marks [..4]int32
+    blob  bytes(6)
+    label string(8)
+}
+`
+
+// TestFixedFormWriteIsLiveCountAndLength holds the leftover: write LIVE
+// count/length only, and the slack stays the template's zeros. Copying
+// `0..4` / `blob[..6]` / `label[..8]` put storage past the used count and
+// length on the wire.
+func TestFixedFormWriteIsLiveCountAndLength(t *testing.T) {
+	out := generate(t, liveWriteSrc)
+	body := string(out["probe_fixed.rs"])
+	write := rustFn(body, "probe_fixed_write_body")
+	if write == "" {
+		t.Fatal("probe_fixed_write_body was not emitted")
+	}
+	for _, want := range []string{
+		"for i in 0..value.marks_count.clamp(0, 4) as usize",
+		"let n = value.blob_length.clamp(0, 6) as usize;",
+		"copy_from_slice(&value.blob[..n]);",
+		"let n = value.label_length.clamp(0, 8) as usize;",
+		"copy_from_slice(&value.label[..n]);",
+		"value.marks_count >= 0 && value.marks_count <= 4,",
+		"value.blob_length >= 0 && value.blob_length <= 6,",
+		"value.label_length >= 0 && value.label_length <= 8,",
+	} {
+		if !strings.Contains(write, want) {
+			t.Errorf("the writer is missing live count/length %q", want)
+		}
+	}
+	for _, stale := range []string{
+		"for i in 0..4",
+		"value.blob[..6]",
+		"value.label[..8]",
+	} {
+		if strings.Contains(write, stale) {
+			t.Errorf("the writer still dumps the bound: %q", stale)
+		}
+	}
+	save := rustFn(body, "probe_fixed_save")
+	if save == "" {
+		t.Fatal("probe_fixed_save was not emitted")
+	}
+	if !strings.Contains(save, "probe_fixed_write_body") {
+		t.Error("the save does not call the one writer; identity and compiled share it")
+	}
+	if strings.Contains(save, "if identity") || strings.Contains(save, "if !identity") {
+		t.Error("the save still branches on identity; there is one writer for both paths")
+	}
+}
