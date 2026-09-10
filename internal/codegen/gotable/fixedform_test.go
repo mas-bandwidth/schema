@@ -126,18 +126,23 @@ func TestRoundTrip(t *testing.T) {
 	if n := PointFixedLoad(got, buf, plan, &r); n != 1 || r != (TableReport{}) || got[0] != one {
 		t.Fatalf("got %+v report %+v n=%d", got[0], r, n)
 	}
-	other := append([]byte(nil), buf...)
-	other[0] = 4
-	r = TableReport{}
-	if n := PointFixedLoad(got, other, plan, &r); n >= 0 || r.Reason != "newer_form" {
-		t.Fatalf("newer_form: %d %+v", n, r)
-	}
-	for _, form := range []byte{0, 1, 2} {
-		older := append([]byte(nil), buf...)
-		older[0] = form
+	// EVERY ASSIGNED FORM BYTE HAS ITS OWN NAME (docs/SPEC-TABLES.md §3, THE
+	// FIRST BYTE): 1 the variable form, 2 the message form, 3 this one. A byte
+	// the registry has not assigned — 0 among them, there being no form 0 for
+	// a file to be a previous form of — is newer_form, "a form byte this
+	// reader does not carry".
+	for form, want := range map[byte]string{
+		0:    "newer_form",
+		1:    "previous_form",
+		2:    "message_form_as_file",
+		4:    "newer_form",
+		0xFF: "newer_form",
+	} {
+		wrong := append([]byte(nil), buf...)
+		wrong[0] = form
 		r = TableReport{}
-		if n := PointFixedLoad(got, older, plan, &r); n >= 0 || r.Reason != "previous_form" || r.Verdict != TableOpenRefused {
-			t.Fatalf("FixedLoad previous_form form %d: %d %+v", form, n, r)
+		if n := PointFixedLoad(got, wrong, plan, &r); n >= 0 || r.Reason != want || r.Verdict != TableOpenRefused || r.Malformed {
+			t.Fatalf("FixedLoad form %d: want %s, got %d %+v", form, want, n, r)
 		}
 	}
 	broken := append([]byte(nil), buf...)

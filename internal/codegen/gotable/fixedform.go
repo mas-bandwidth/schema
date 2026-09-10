@@ -18,7 +18,8 @@
 // #823), not on the shape: a table the compiler merely derived into the fixed
 // mode asked for nothing and keeps the form-1 Load it never lost, even though
 // this backend also emits form 3 for it. FixedLoad itself is the form-3 reader
-// either way and answers previous_form for form < 3, newer_form for form > 3.
+// either way, and it answers by the form REGISTRY (§3): previous_form for 1,
+// message_form_as_file for 2, newer_form for every byte §3 has not assigned.
 // The C++ reference still accepts form 1 by the form byte; this port does not
 // copy that for a declared fixed table.
 package gotable
@@ -694,8 +695,19 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
 	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	// THE FORM REGISTRY IS THREE (docs/SPEC-TABLES.md §3, THE FIRST BYTE): 1
+	// the variable form, 2 the message form, 3 this one. Each assigned byte
+	// gets its OWN name, and `newer_form` — "a form byte this reader does not
+	// carry" — is what is left for a byte the registry has not assigned yet,
+	// 0 among them. There is no form 0 for a file to be a PREVIOUS form of,
+	// and form 2 is a form this build DOES carry through another surface, so
+	// §3's own rule for it is `message_form_as_file`: its table is somewhere
+	// else (SPEC-TABLES §4, `unknown_form`).
 	g.pf("\tif data[0] != TableFixedForm {\n")
-	g.pf("\t\tif data[0] < TableFixedForm {\n\t\t\treturn tableFixedRefuse(report, \"previous_form\")\n\t\t}\n")
+	g.pf("\t\tswitch data[0] {\n")
+	g.pf("\t\tcase 1: // the VARIABLE form, and the only form this one is newer than\n\t\t\treturn tableFixedRefuse(report, \"previous_form\")\n")
+	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, \"message_form_as_file\")\n")
+	g.pf("\t\t}\n")
 	g.pf("\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
 	g.pf("\tlayoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])\n")
 	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
