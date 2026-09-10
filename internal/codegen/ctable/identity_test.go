@@ -40,6 +40,30 @@ func tableH(t *testing.T, src string) string {
 	return ""
 }
 
+func mustIndex(t *testing.T, s, needle string) int {
+	t.Helper()
+	i := strings.Index(s, needle)
+	if i < 0 {
+		t.Fatalf("%q missing", needle)
+	}
+	return i
+}
+
+func fromNeedle(t *testing.T, s, needle string) string {
+	t.Helper()
+	return s[mustIndex(t, s, needle):]
+}
+
+func between(t *testing.T, s, start, end string) string {
+	t.Helper()
+	i := mustIndex(t, s, start)
+	j := mustIndex(t, s, end)
+	if j < i {
+		t.Fatalf("%q is before %q", end, start)
+	}
+	return s[i:j]
+}
+
 func TestIdentityPlanIsCopiesOnly(t *testing.T) {
 	u := unitFrom(t, identityHeldSchema)
 	st := u.Tables["Held"]
@@ -66,7 +90,7 @@ func TestIdentityPlanIsCopiesOnly(t *testing.T) {
 
 func TestIdentityLoadSkipsPrefill(t *testing.T) {
 	h := tableH(t, identityHeldSchema)
-	load := h[strings.Index(h, "held_fixed_load"):]
+	load := fromNeedle(t, h, "held_fixed_load")
 	end := strings.Index(load, "\n}\n")
 	if end < 0 {
 		t.Fatal("held_fixed_load not closed")
@@ -75,13 +99,11 @@ func TestIdentityLoadSkipsPrefill(t *testing.T) {
 	if !strings.Contains(load, "if ( identity )") {
 		t.Fatal("identity path not branched")
 	}
-	idStart := strings.Index(load, "if ( identity )")
-	elseStart := strings.Index(load, "else")
-	id := load[idStart:elseStart]
+	id := between(t, load, "if ( identity )", "else")
 	if strings.Contains(id, "held_reset") {
 		t.Fatal("identity path still prefills defaults")
 	}
-	if !strings.Contains(load[elseStart:], "held_reset") {
+	if !strings.Contains(fromNeedle(t, load, "else"), "held_reset") {
 		t.Fatal("compiled path dropped the prefill")
 	}
 	if strings.Contains(id, "kTableFixedCount") || strings.Contains(id, "kTableFixedText") {
@@ -101,8 +123,8 @@ func TestIdentityFlatIsMemcpyEmptyScatter(t *testing.T) {
 	if !strings.Contains(h, "memcpy( values + k, at + 8, sizeof( values[k] ) )") {
 		t.Fatal("flat identity read is not memcpy")
 	}
-	load := h[strings.Index(h, "flat_fixed_load"):]
-	id := load[strings.Index(load, "if ( identity )"):strings.Index(load, "else")]
+	load := fromNeedle(t, h, "flat_fixed_load")
+	id := between(t, load, "if ( identity )", "else")
 	if strings.Contains(id, "table_fixed_run") {
 		t.Fatal("flat identity still scatters")
 	}
@@ -176,8 +198,8 @@ func TestIdentityPaddedDoesNotMemcpyTheStruct(t *testing.T) {
 		t.Fatal("uint8 then uint32 is padded; memcpy of the struct would be a wire-byte move")
 	}
 	h := tableH(t, identityPadSchema)
-	load := h[strings.Index(h, "pad_fixed_load"):]
-	id := load[strings.Index(load, "if ( identity )"):strings.Index(load, "else")]
+	load := fromNeedle(t, h, "pad_fixed_load")
+	id := between(t, load, "if ( identity )", "else")
 	if strings.Contains(id, "memcpy( values + k, at + 8, sizeof( values[k] ) )") {
 		t.Fatal("padded identity memcpy'd the struct; that is a wire-byte move")
 	}
@@ -239,6 +261,16 @@ func TestIdentityFlatRoundTripFromDirty(t *testing.T) {
 #include <stdio.h>
 #include <string.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+/* gcc -O2 inlines table_fixed_copy_run into a stack Flat (8 bytes) and
+   refuses the compiled path's 16-byte unroll (-Werror=array-bounds). Identity
+   is memcpy of sizeof(Flat); dest arrives here as a pointer gcc cannot bound. */
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+static int64_t load_flat(Flat *loaded, const uint8_t *file, int64_t need, TableFixedEntry *plan, TableReport *report)
+{
+    return flat_fixed_load(loaded, 1, file, need, plan, 8, report);
+}
 int main(void)
 {
     Flat value, loaded;
@@ -252,7 +284,7 @@ int main(void)
     CHECK(flat_fixed_save(&value, 1, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = flat_fixed_load(&loaded, 1, file, need, plan, 8, &report);
+    n = load_flat(&loaded, file, need, plan, &report);
     CHECK(n == 1);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded.a == 1 && loaded.b == 2);
