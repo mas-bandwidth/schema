@@ -953,22 +953,42 @@ func (g *fixedGen) emitCheckWrite(st *ir.Struct, cls string) {
 }
 
 func (g *fixedGen) emitWriteField(f *ir.Field, off int64, buf, at, val string, indent int) {
+	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
+		// is present, and when the flag is 0 what rides is zero. It is ONE `if`
+		// here rather than a rule anywhere else, because the template already
+		// put the zeros there — so an absent optional costs the writer the
+		// branch and not one store, and a caller's untouched payload storage
+		// never reaches the wire.
+		ind := strings.Repeat(" ", indent)
+		name := javaName(f.Name)
+		g.pf("%sTableFixed.put8(%s, %s + %d, %s.%sPresent ? 1 : 0);\n", ind, buf, at, off, val, name)
+		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
+		g.emitWritePayload(f, off+fixedPresentBytes, buf, at, val, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitWritePayload(f, off, buf, at, val, indent)
+}
+
+func (g *fixedGen) emitWritePayload(f *ir.Field, off int64, buf, at, val string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	name := javaName(f.Name)
 	base := off
-	if f.Type.Optional {
-		g.pf("%sTableFixed.put8(%s, %s + %d, %s.%sPresent ? 1 : 0);\n", ind, buf, at, base, val, name)
-		base += fixedPresentBytes
-	}
 	switch {
 	case f.KeyEnum != "":
 		g.emitWriteLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, indent)
 	case f.Array == ir.ArrayFixed:
 		g.emitWriteLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, indent)
 	case f.Array == ir.ArrayCounted:
+		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
+		// slots' STORAGE on the wire, which for an array of a type with
+		// declared defaults is the element's default image and not zero — a
+		// value nobody wrote, riding as if somebody had.
 		g.pf("%sTableFixed.put32(%s, %s + %d, %s.%sCount);\n", ind, buf, at, base, val, name)
-		// the bound, matching this SHA's C++ oracle. Scatter walks Count.
-		g.emitWriteLoop(f, base+fixedCountBytes, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, indent)
+		g.emitWriteLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		// TEXT WRITES ITS LENGTH UNITS onto the zeroed template: the slack past
 		// the used bytes is already zero and the writer never touches it.

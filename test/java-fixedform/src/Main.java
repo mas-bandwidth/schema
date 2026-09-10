@@ -123,13 +123,48 @@ public final class Main {
         check(n == 2, "p3.bin: two records");
         check(v[0].linkPresent && v[0].link.value == 88, "p3.bin: an optional that is PRESENT");
         check(!v[1].linkPresent, "p3.bin: an optional that is ABSENT");
-        // THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT (§3.4), which is
-        // exactly why `?T` and a plain `T` are ONE BYTE APART on this form.
-        check(v[1].link.value == 99 && textOf(v[1].link.tag, v[1].link.tagLength).equals("still"),
-                "p3.bin: an ABSENT optional's payload rides WHOLE all the same (§3.4)");
+        // THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT (§3.4) — which is
+        // exactly why `?T` and a plain `T` are ONE BYTE APART on this form — AND
+        // WHEN THE FLAG IS 0 WHAT RIDES IS ZERO. The reference's own storage for
+        // this record carries 99 and "still" behind the false flag ON PURPOSE:
+        // that is the stain the oracle plants, and the FILE carries none of it.
+        // So an absent optional is a hole in the record and never a window into
+        // the writer's memory.
+        check(v[1].link.value == 0 && v[1].link.tagLength == 0,
+                "p3.bin: an ABSENT optional's payload rides WHOLE, and behind a false flag it is the template's zeros (§3.4)");
         final byte[] back = new byte[tblp3.ChainFixed.measure(n)];
         check(tblp3.ChainFixed.save(v, n, back) == back.length, "p3.bin: save fills what measure says");
         check(Arrays.equals(back, golden), "p3.bin: the bytes are the C++ reference's, exactly");
+        // AND THIS PORT'S OWN WRITER DOES THE SAME. The stain goes in the VALUE
+        // this time, which the C++ oracle cannot reach from here, and the wire
+        // must carry none of it — while the SAME payload PRESENT does put those
+        // bytes on the wire, so the check is about the FLAG and not about a
+        // payload never having been written.
+        final tblp3.ChainFixed.Value[] stained = { new tblp3.ChainFixed.Value() };
+        stained[0].nameLength = 6;
+        setText(stained[0].name, "absent");
+        stained[0].linkPresent = false;
+        stained[0].link.value = 99;
+        stained[0].link.tagLength = 5;
+        setText(stained[0].link.tag, "still");
+        final byte[] stainedBytes = new byte[tblp3.ChainFixed.measure(1)];
+        tblp3.ChainFixed.save(stained, 1, stainedBytes);
+        final tblp3.ChainFixed.Value[] clean = { new tblp3.ChainFixed.Value() };
+        clean[0].nameLength = 6;
+        setText(clean[0].name, "absent");
+        clean[0].linkPresent = false;
+        final byte[] cleanBytes = new byte[tblp3.ChainFixed.measure(1)];
+        tblp3.ChainFixed.save(clean, 1, cleanBytes);
+        check(Arrays.equals(stainedBytes, cleanBytes),
+                "p3: an absent optional this port writes carries the template's zeros, not the caller's storage");
+        stained[0].linkPresent = true;
+        clean[0].linkPresent = true;
+        final byte[] stainedPresent = new byte[tblp3.ChainFixed.measure(1)];
+        tblp3.ChainFixed.save(stained, 1, stainedPresent);
+        final byte[] cleanPresent = new byte[tblp3.ChainFixed.measure(1)];
+        tblp3.ChainFixed.save(clean, 1, cleanPresent);
+        check(!Arrays.equals(stainedPresent, cleanPresent),
+                "p3: and the SAME payload PRESENT does put those bytes on the wire");
     }
 
     static void keyedWrite(String dir) {
@@ -148,8 +183,10 @@ public final class Main {
         check(v[1].hulls[2].turrets[0].damage == 16.0f, "keyed: a keyed array nested in a keyed array");
         check(v[1].hulls[0].turrets[0].gunnerPresent, "keyed: an optional section that is PRESENT");
         check(!v[1].hulls[0].turrets[1].gunnerPresent, "keyed: an optional section that is ABSENT");
-        check(v[1].hulls[0].turrets[1].gunner.reaction == 0.3f,
-                "keyed: an ABSENT optional's payload rides WHOLE all the same (§3.4)");
+        // ... and behind a false flag the payload that rides is the template's
+        // zeros (§3.4), not the writer's storage.
+        check(v[1].hulls[0].turrets[1].gunner.reaction == 0.0f,
+                "keyed: an ABSENT optional's payload rides WHOLE, and behind a false flag it is the template's zeros (§3.4)");
         final byte[] back = new byte[tabledemo.KeyedConfigFixed.measure(n)];
         check(tabledemo.KeyedConfigFixed.save(v, n, back) == back.length, "keyed.bin: save fills what measure says");
         check(Arrays.equals(back, golden), "keyed.bin: the bytes are the C++ reference's, exactly");
