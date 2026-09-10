@@ -48,6 +48,13 @@ int main( void )
     fixed_ut1_shared_lane_control( g_buffer, n );
     fixed_ut2_read_ut1( g_buffer, n );
 
+    n = fixed_fx1_write_out_of_range( g_buffer, BufferBytes );
+    fixed_check( n == fixed_fx1_bytes(), "FX1 out-of-range save" );
+    fixed_fx1_bounds( g_buffer, n );
+    fixed_fx2_bounds( g_buffer, n );
+    fixed_ut1_bounds();
+    fixed_v1_bounds();
+
     n = fixed_ut2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
     fixed_ut1_read_ut2( g_buffer, n );

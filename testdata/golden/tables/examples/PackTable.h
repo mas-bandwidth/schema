@@ -6701,6 +6701,46 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
     }
 }
 
+// ShipEntry's read-side bounds.
+inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
+    {
+        if ( value.hardpoints[i] < 0 ) { value.hardpoints[i] = 0; clamped++; }
+        else if ( value.hardpoints[i] > 8 ) { value.hardpoints[i] = 8; clamped++; }
+    }
+}
+
+// GlobalSettings's read-side bounds.
+inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.tick_rate < 1 ) { value.tick_rate = 1; clamped++; }
+    else if ( value.tick_rate > 240 ) { value.tick_rate = 240; clamped++; }
+    if ( (uint64_t) value.difficulty > 3u ) { value.difficulty = Difficulty::None; clamped++; }
+}
+
+// PackConfig's read-side bounds.
+inline void PackConfigFixedClampBody( PackConfig & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    GlobalSettingsFixedClampBody( value.global, clamped );
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        ShipEntryFixedClampBody( value.ships.slots[i], clamped );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        if ( value.thresholds.slots[i] < 0 ) { value.thresholds.slots[i] = 0; clamped++; }
+        else if ( value.thresholds.slots[i] > 1000 ) { value.thresholds.slots[i] = 1000; clamped++; }
+    }
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
+    {
+        ShipEntryFixedClampBody( value.reserves[i], clamped );
+    }
+}
+
 // ---- GunnerSettings, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -6834,6 +6874,19 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void ShipEntryFixedClamp( ShipEntry & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    ShipEntryFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- ShipEntry, the fixed form ----
@@ -6985,9 +7038,25 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
         ShipEntryReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        ShipEntryFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void GlobalSettingsFixedClamp( GlobalSettings & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    GlobalSettingsFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- GlobalSettings, the fixed form ----
@@ -7131,9 +7200,25 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
         GlobalSettingsReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        GlobalSettingsFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void PackConfigFixedClamp( PackConfig & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    PackConfigFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- PackConfig, the fixed form ----
@@ -7396,6 +7481,9 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
         PackConfigReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        PackConfigFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

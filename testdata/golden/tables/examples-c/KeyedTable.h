@@ -5110,6 +5110,55 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
     schema_tabledemo_score_board_fixed_write_body_( b + 222, &value->scores );
 }
 
+/* TeamConfig's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_clamp_body_( TeamConfig * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->spawn_count < 0 ) { value->spawn_count = 0; (*clamped)++; }
+    else if ( value->spawn_count > 64 ) { value->spawn_count = 64; (*clamped)++; }
+}
+
+/* ScoreBoard's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_board_fixed_clamp_body_( ScoreBoard * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            if ( value->per_team[i] < 0 ) { value->per_team[i] = 0; (*clamped)++; }
+            else if ( value->per_team[i] > 100000 ) { value->per_team[i] = 100000; (*clamped)++; }
+        }
+    }
+}
+
+/* KeyedConfig's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_config_fixed_clamp_body_( KeyedConfig * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            schema_tabledemo_team_config_fixed_clamp_body_( &value->teams[i], clamped );
+        }
+    }
+    schema_tabledemo_score_board_fixed_clamp_body_( &value->scores, clamped );
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_tabledemo_team_config_fixed_clamp_( TeamConfig * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_tabledemo_team_config_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
+}
+
 /* ---- TeamConfig, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -5247,6 +5296,9 @@ static SCHEMA_UNUSED int64_t team_config_fixed_load( TeamConfig * values, int64_
         team_config_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_tabledemo_team_config_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
@@ -5718,6 +5770,19 @@ static SCHEMA_UNUSED int64_t hull_config_fixed_load( HullConfig * values, int64_
     return count;
 }
 
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_tabledemo_keyed_config_fixed_clamp_( KeyedConfig * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_tabledemo_keyed_config_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
+}
+
 /* ---- KeyedConfig, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -5955,6 +6020,9 @@ static SCHEMA_UNUSED int64_t keyed_config_fixed_load( KeyedConfig * values, int6
         keyed_config_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_tabledemo_keyed_config_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;

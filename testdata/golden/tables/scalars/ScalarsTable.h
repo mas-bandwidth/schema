@@ -6125,6 +6125,74 @@ inline void SimStateFixedWriteBody( uint8_t * b, const SimState & value )
     PoseFixedWriteBody( b + 223, value.spawn );
 }
 
+// Pose's read-side bounds.
+inline void PoseFixedClampBody( Pose & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.x < -1966080000ll ) { value.x = -1966080000ll; clamped++; }
+    else if ( value.x > 1966080000ll ) { value.x = 1966080000ll; clamped++; }
+    if ( value.y < -1966080000ll ) { value.y = -1966080000ll; clamped++; }
+    else if ( value.y > 1966080000ll ) { value.y = 1966080000ll; clamped++; }
+    if ( value.heading > 23592960 ) { value.heading = 23592960; clamped++; }
+}
+
+// SimState's read-side bounds.
+inline void SimStateFixedClampBody( SimState & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.tilt > 112 ) { value.tilt = 112; clamped++; }
+    if ( value.angle < -11796480 ) { value.angle = -11796480; clamped++; }
+    else if ( value.angle > 11796480 ) { value.angle = 11796480; clamped++; }
+    if ( value.position < -1966080000ll ) { value.position = -1966080000ll; clamped++; }
+    else if ( value.position > 1966080000ll ) { value.position = 1966080000ll; clamped++; }
+    if ( value.reach < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) { value.reach = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); clamped++; }
+    else if ( value.reach > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ) { value.reach = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ); clamped++; }
+    if ( value.ticks < 0 ) { value.ticks = 0; clamped++; }
+    else if ( value.ticks > 1000000 ) { value.ticks = 1000000; clamped++; }
+    if ( value.ratio > 240 ) { value.ratio = 240; clamped++; }
+    if ( value.speed > 65536000 ) { value.speed = 65536000; clamped++; }
+    if ( value.span > 18446744073709486080ull ) { value.span = 18446744073709486080ull; clamped++; }
+    if ( value.mass > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ) { value.mass = ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ); clamped++; }
+    if ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
+    else if ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
+    if ( value.energy < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) { value.energy = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); clamped++; }
+    else if ( value.energy > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) { value.energy = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ); clamped++; }
+    if ( value.scale < -524288 ) { value.scale = -524288; clamped++; }
+    else if ( value.scale > 524288 ) { value.scale = 524288; clamped++; }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        if ( value.samples[i] < -524288 ) { value.samples[i] = -524288; clamped++; }
+        else if ( value.samples[i] > 524288 ) { value.samples[i] = 524288; clamped++; }
+    }
+    for ( int64_t i = 0; i < (int64_t) value.weights_count; ++i )
+    {
+        if ( value.weights[i] > 25600 ) { value.weights[i] = 25600; clamped++; }
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        if ( value.axes.slots[i] < -429496729600ll ) { value.axes.slots[i] = -429496729600ll; clamped++; }
+        else if ( value.axes.slots[i] > 429496729600ll ) { value.axes.slots[i] = 429496729600ll; clamped++; }
+    }
+    PoseFixedClampBody( value.pose, clamped );
+    if ( value.spawn_present )
+    {
+        PoseFixedClampBody( value.spawn, clamped );
+    }
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void SimStateFixedClamp( SimState & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    SimStateFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- SimState, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -6333,6 +6401,9 @@ inline int64_t SimStateFixedLoad( SimState * values, int64_t capacity, const uin
         SimStateReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        SimStateFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

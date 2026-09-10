@@ -1013,3 +1013,79 @@ func TableFixedHasWriteBound(u *Unit) bool {
 	}
 	return false
 }
+
+// ---------------------------------------------------------------------------
+// THE READ-SIDE BOUNDS
+//
+// A fixed record is a positional image, so the reader's ONE loop moves bytes
+// and asks nothing about what they mean. Two things a declaration bounds are
+// therefore not held by the loop at all on the identity path: a RANGED SCALAR's
+// declared min and max, and an ORDINAL's set — a union tag past the arm count,
+// an enum ordinal past the enum's top value.
+//
+// They are held by STRAIGHT-LINE CODE in the generated decode, after the copy,
+// and never by plan entries. A plan entry per bounded field is an entry on
+// EVERY read of every record, which is the cost the identity plan exists to
+// avoid; the Elixir port measured what that does. A COMPILED plan is a
+// different matter — it is built once per peer — but it lands values into the
+// same storage, so the same straight-line pass covers it and it needs no op of
+// its own either.
+//
+// THE PASS RUNS OVER STORAGE, NOT OVER THE WIRE, which is what makes it one
+// pass for both plans. It walks only what a read can have written: a counted
+// array's LIVE elements and not its slack, and an optional's payload only when
+// the present byte says so.
+// ---------------------------------------------------------------------------
+
+// TableFixedClampNeeded answers whether a type's closure declares anything the
+// read side bounds — the question that keeps a unit of unbounded scalars from
+// carrying one line of this (§2.2's zero-cost rule).
+func TableFixedClampNeeded(st *Struct) bool {
+	return tableFixedClampNeeded(st, map[string]bool{})
+}
+
+func tableFixedClampNeeded(st *Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if tableFixedClampNeededField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+// TableFixedClampNeededField is the same question about ONE field, which is
+// what lets an emitter skip a field, an arm or a whole subtree without
+// emitting a line for it.
+func TableFixedClampNeededField(f *Field) bool {
+	return tableFixedClampNeededField(f, map[string]bool{})
+}
+
+func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
+	if f.Type.Kind == TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *Struct:
+			return tableFixedClampNeeded(r, seen)
+		case *Union:
+			// THE TAG ITSELF IS A BOUND: a stored tag past the arm count names
+			// no arm, so it lands None and counts.
+			return true
+		case *Enum:
+			// AND SO IS AN ORDINAL: past the enum's top value it is a value the
+			// enum cannot hold at all.
+			_ = r
+			return true
+		}
+		return false
+	}
+	if _, _, ok := TableRawRange(f); ok {
+		return true
+	}
+	if f.HasFloatRange {
+		return true
+	}
+	return f.Type.Kind == TBits && int64(f.Type.Width) < 8*TableFixedStorageBytes(f.Type)
+}

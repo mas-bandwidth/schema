@@ -824,6 +824,115 @@ static void union_text_case()
     }
 }
 
+// ---------------------------------------------------------------------------
+
+// THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4). A fixed
+// record is a positional image and the one read loop moves bytes: it asks
+// nothing about what they mean. Two things a declaration bounds are therefore
+// not the loop's at all — a RANGED SCALAR's declared min and max, and an
+// ORDINAL's set: a union tag past the arm count, an enum ordinal past the
+// enum's top value.
+//
+// They are held by STRAIGHT-LINE CODE in the generated decode, after the copy,
+// and never by plan entries: an entry per bounded field is a test on every read
+// of every record, which is the cost the identity plan exists to avoid. The
+// pass runs over STORAGE, so ONE pass covers the identity plan and a plan
+// compiled from a stranger's layout alike.
+//
+// THE POISON IS WRITTEN THROUGH THE WRITER, not poked into the bytes: the write
+// side's own bounds are debug-only by rule and a range is not one of them, so a
+// caller CAN put an out-of-range value on the wire and a reader is what has to
+// answer for it.
+static void bounds_case()
+{
+    // 1. A RANGED SCALAR, both ends, on the identity path.
+    tblfx1::FxRoot one;
+    tblfx1::FxRootReset( one );
+    one.keep = 1u;
+    one.renamed = 5000;  // declared | min = 0, max = 1000
+    one.gone = -7;       // and the low end of the same declaration
+    one.nested.a = 111;
+    one.nested.b = 222;
+    std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "bounds: FX1 save" );
+    {
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "bounds: the record reads" );
+        check( back.renamed == 1000, "RANGE: a value past max lands at max" );
+        check( back.gone == 0, "RANGE: a value under min lands at min" );
+        check( r.clamped == 2, "RANGE: two clamps, counted" );
+        check( back.nested.a == 111 && back.nested.b == 222, "RANGE: an in-range neighbour is untouched" );
+    }
+
+    // THE NEGATIVE CONTROL: the read loop ALONE, with no straight-line pass
+    // after it. The same record, the same plan, and the out-of-range value
+    // survives — which is what says the bound is held by the pass and not by
+    // something else that would have caught it anyway.
+    {
+        tblfx1::FxRoot loose;
+        tblfx1::FxRootReset( loose );
+        tblfx1::TableReport r;
+        const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+        tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
+                               body, (uint8_t *) &loose, &r );
+        check( loose.renamed == 5000 && loose.gone == -7,
+               "NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
+        check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
+    }
+
+    // 2. THE SAME NUMBERS THROUGH A COMPILED PLAN. FX2 reads the same record
+    // through a plan compiled from FX1's layout, and the bound is the same one.
+    {
+        tblfx2::FxRoot back;
+        tblfx2::TableReport r;
+        std::vector<tblfx2::TableFixedEntry> plan( 2048 );
+        check( tblfx2::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 2048, &r ) == 1,
+               "bounds, compiled: the record reads" );
+        check( back.renamed_to == 1000, "RANGE, compiled: the same clamp through a compiled plan" );
+        check( r.clamped == 1, "RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
+    }
+
+    // 3. A UNION TAG PAST THE ARM COUNT lands None and counts.
+    {
+        tblut1::UtRoot v;
+        tblut1::UtRootReset( v );
+        v.head = 1;
+        v.tail = 2;
+        v.pick.type = (tblut1::PickType) 7; // UT1 declares two arms
+        std::vector<uint8_t> uw( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+        check( tblut1::UtRootFixedSave( &v, 1, uw.data(), (int64_t) uw.size() ) == (int64_t) uw.size(), "bounds: UT1 save" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, uw.data(), (int64_t) uw.size(), plan.data(), 1024, &r ) == 1,
+               "bounds: the union record reads" );
+        check( back.pick.type == tblut1::PickType::None, "ORDINAL: a tag past the arm count lands None" );
+        check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
+        check( back.head == 1 && back.tail == 2, "ORDINAL: the rest of the record stands" );
+    }
+
+    // 4. AN ENUM ORDINAL PAST THE ENUM'S TOP VALUE lands None and counts.
+    {
+        tblv1::Cfg v;
+        tblv1::CfgReset( v );
+        v.grade = (tblv1::Grade) 9; // V1's Grade tops out at Gold
+        std::vector<uint8_t> vw( (size_t) tblv1::CfgFixedMeasure( 1 ) );
+        check( tblv1::CfgFixedSave( &v, 1, vw.data(), (int64_t) vw.size() ) == (int64_t) vw.size(), "bounds: V1 save" );
+
+        tblv1::Cfg back;
+        tblv1::TableReport r;
+        std::vector<tblv1::TableFixedEntry> plan( 8192 );
+        check( tblv1::CfgFixedLoad( &back, 1, vw.data(), (int64_t) vw.size(), plan.data(), 8192, &r ) == 1,
+               "bounds: the enum record reads" );
+        check( back.grade == tblv1::Grade::None, "ORDINAL: an ordinal past the enum's top value lands None" );
+        check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -836,6 +945,7 @@ int main()
     slack_case();
     union_text_case();
     bytes_row_case();
+    bounds_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }

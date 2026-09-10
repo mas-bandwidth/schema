@@ -97,3 +97,27 @@ void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes )
                  "C two lanes, back: the arm's string(8), whole" );
     fixed_check( back.pick.as.b.m == 555, "C two lanes, back: the arm's other field" );
 }
+
+/* A UNION TAG PAST THE ARM COUNT names no arm: it lands None — the same nothing
+   an unset union holds — and COUNTS as a clamp (docs/SPEC-TABLES.md §3.4). */
+void fixed_ut1_bounds( void )
+{
+    static uint8_t file[4096];
+    UtRoot v, back;
+    TableReport r;
+    int64_t n;
+
+    ut_root_reset( &v );
+    v.head = 1;
+    v.tail = 2;
+    v.pick.type = (PickType) 7; /* UT1 declares two arms */
+    n = ut_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
+    fixed_check( n == ut_root_fixed_measure( 1 ), "C bounds: UT1 save" );
+
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( ut_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, &r ) == 1,
+                 "C bounds: the union record reads" );
+    fixed_check( back.pick.type == PICK_TYPE_NONE, "C ORDINAL: a tag past the arm count lands None" );
+    fixed_check( r.clamped == 1, "C ORDINAL: and counts as a clamp" );
+    fixed_check( back.head == 1 && back.tail == 2, "C ORDINAL: the rest of the record stands" );
+}

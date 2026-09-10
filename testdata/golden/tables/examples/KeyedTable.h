@@ -6957,6 +6957,49 @@ inline void KeyedConfigFixedWriteBody( uint8_t * b, const KeyedConfig & value )
     ScoreBoardFixedWriteBody( b + 222, value.scores );
 }
 
+// TeamConfig's read-side bounds.
+inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.spawn_count < 0 ) { value.spawn_count = 0; clamped++; }
+    else if ( value.spawn_count > 64 ) { value.spawn_count = 64; clamped++; }
+}
+
+// ScoreBoard's read-side bounds.
+inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        if ( value.per_team[i] < 0 ) { value.per_team[i] = 0; clamped++; }
+        else if ( value.per_team[i] > 100000 ) { value.per_team[i] = 100000; clamped++; }
+    }
+}
+
+// KeyedConfig's read-side bounds.
+inline void KeyedConfigFixedClampBody( KeyedConfig & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        TeamConfigFixedClampBody( value.teams.slots[i], clamped );
+    }
+    ScoreBoardFixedClampBody( value.scores, clamped );
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void TeamConfigFixedClamp( TeamConfig & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    TeamConfigFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- TeamConfig, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -7085,6 +7128,9 @@ inline int64_t TeamConfigFixedLoad( TeamConfig * values, int64_t capacity, const
         TeamConfigReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        TeamConfigFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
@@ -7529,6 +7575,19 @@ inline int64_t HullConfigFixedLoad( HullConfig * values, int64_t capacity, const
     return n;
 }
 
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void KeyedConfigFixedClamp( KeyedConfig & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    KeyedConfigFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- KeyedConfig, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -7757,6 +7816,9 @@ inline int64_t KeyedConfigFixedLoad( KeyedConfig * values, int64_t capacity, con
         KeyedConfigReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        KeyedConfigFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
