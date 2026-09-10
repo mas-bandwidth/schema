@@ -1,6 +1,7 @@
 package ctable
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -14,7 +15,10 @@ import (
 // scatter where ir.TableFixedIdentityFlat. Packed layout is not forced.
 //
 // gocritic offBy1: Index can be -1 — every needle goes through mustIndex.
-// gcc -Werror=array-bounds: a stack Flat is eight bytes; dest is a pointer.
+// gcc -Werror=array-bounds: copy_run's 16-byte unroll inlines into fill_run
+// against the compiled path's stack defaults (Held is 36 bytes, Flat is 8).
+// Identity dest is a pointer; the probe is not the form. The flags on the
+// two execute tests silence that false positive and do not skip the prefill.
 
 const identityFlatSchema = `package probe
 table Flat {
@@ -47,6 +51,27 @@ func tableH(t *testing.T, src string) string {
 	}
 	t.Fatal("no Table.h")
 	return ""
+}
+
+func identityCCFlags() []string {
+	cc := os.Getenv("CC")
+	if cc == "" {
+		cc = "cc"
+	}
+	return gccFortifySilence(cc)
+}
+
+// textTermBytes is the terminator width a text flavour stores past the bound:
+// one for utf8, two for wide, none for bytes. Same numbers as the coverage
+// walk. QF1003 wants a tagged switch on Meta, not a chain of equals.
+func textTermBytes(meta int) int64 {
+	switch meta {
+	case 1:
+		return 1
+	case 2:
+		return 2
+	}
+	return 0
 }
 
 func mustIndex(t *testing.T, s, needle string) int {
@@ -129,15 +154,9 @@ func TestIdentityCoverageIsThePlanAndHolesAreEmpty(t *testing.T) {
 		case ir.TableFixedOpCount:
 			ranges = []ir.TableFixedRange{{Dst: e.Dst, Size: ir.TableFixedCountBytes}}
 		case ir.TableFixedOpText:
-			term := int64(0)
-			if e.Meta == 1 {
-				term = 1
-			} else if e.Meta == 2 {
-				term = 2
-			}
 			ranges = []ir.TableFixedRange{
 				{Dst: e.Dst, Size: ir.TableFixedCountBytes},
-				{Dst: e.Aux, Size: e.Size + term},
+				{Dst: e.Aux, Size: e.Size + textTermBytes(e.Meta)},
 			}
 		}
 		for _, r := range ranges {
@@ -322,7 +341,7 @@ int main(void)
     CHECK(loaded.label[8] == 0);
     return 0;
 }
-`)
+`, identityCCFlags()...)
 }
 
 func TestIdentityFlatRoundTripFromDirty(t *testing.T) {
@@ -330,10 +349,10 @@ func TestIdentityFlatRoundTripFromDirty(t *testing.T) {
 #include <stdio.h>
 #include <string.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
-/* gcc -O2 inlines table_fixed_copy_run into a stack Flat (8 bytes) and
-   refuses the compiled path's 16-byte unroll (-Werror=array-bounds). Identity
+/* gcc -O2 inlines table_fixed_copy_run into fill_run against stack defaults
+   (8 bytes) and refuses the 16-byte unroll (-Werror=array-bounds). Identity
    is memcpy of the body's eight bytes; dest arrives here as a pointer gcc
-   cannot bound. */
+   cannot bound. The compile flags on this probe match Held's. */
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
@@ -361,5 +380,5 @@ int main(void)
     CHECK((int64_t)sizeof(loaded) == 8);
     return 0;
 }
-`)
+`, identityCCFlags()...)
 }

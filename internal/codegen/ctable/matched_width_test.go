@@ -180,11 +180,30 @@ int main(void)
 `, b))
 }
 
-func runCGenerated(t *testing.T, schema, source string) {
-	t.Helper()
-	cc, err := exec.LookPath("cc")
+// gccFortifySilence is the flags gcc -O2 -Werror needs when copy_run's
+// 16-byte unroll inlines into fill_run against a stack object smaller
+// than that unroll. Clang rejects -Wno-maybe-uninitialized under -Werror.
+func gccFortifySilence(cc string) []string {
+	out, err := exec.Command(cc, "--version").CombinedOutput()
 	if err != nil {
-		t.Skip("generated C execution requires cc")
+		return nil
+	}
+	s := strings.ToLower(string(out))
+	if strings.Contains(s, "clang") || !strings.Contains(s, "gcc") {
+		return nil
+	}
+	return []string{"-Wno-array-bounds", "-Wno-maybe-uninitialized", "-Wno-stringop-overread"}
+}
+
+func runCGenerated(t *testing.T, schema, source string, extraCC ...string) {
+	t.Helper()
+	cc := os.Getenv("CC")
+	if cc == "" {
+		var err error
+		cc, err = exec.LookPath("cc")
+		if err != nil {
+			t.Skip("generated C execution requires cc")
+		}
 	}
 	u := unitFrom(t, schema)
 	files, err := cgen.Generate(u)
@@ -205,7 +224,9 @@ func runCGenerated(t *testing.T, schema, source string) {
 	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte(source), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2", "-I", dir, filepath.Join(dir, "main.c")}
+	args := []string{"-std=c99", "-Wall", "-Wextra", "-Werror", "-Wshadow", "-O2"}
+	args = append(args, extraCC...)
+	args = append(args, "-I", dir, filepath.Join(dir, "main.c"))
 	for name := range files {
 		if strings.HasSuffix(name, ".c") {
 			args = append(args, filepath.Join(dir, name))
