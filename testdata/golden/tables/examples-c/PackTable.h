@@ -4986,7 +4986,10 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ship_en
         }
     }
     table_fixed_put8( b + 64, value->gunner_present ? 1 : 0 );
-    schema_tabledemo_gunner_settings_fixed_write_body_( b + 65, &value->gunner );
+    if ( value->gunner_present )
+    {
+        schema_tabledemo_gunner_settings_fixed_write_body_( b + 65, &value->gunner );
+    }
 }
 
 /* GlobalSettings's stores. The template — the hash, then zeros — is memcpy'd first,

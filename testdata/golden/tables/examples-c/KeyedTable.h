@@ -5055,7 +5055,10 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_turret_
     table_fixed_putf32( b + 0, value->damage );
     table_fixed_putf32( b + 4, value->cooldown );
     table_fixed_put8( b + 8, value->gunner_present ? 1 : 0 );
-    schema_tabledemo_gunner_config_fixed_write_body_( b + 9, &value->gunner );
+    if ( value->gunner_present )
+    {
+        schema_tabledemo_gunner_config_fixed_write_body_( b + 9, &value->gunner );
+    }
 }
 
 /* HullConfig's stores. The template — the hash, then zeros — is memcpy'd first,

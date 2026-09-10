@@ -54,6 +54,7 @@ int main( void )
     fixed_fx2_bounds( g_buffer, n );
     fixed_ut1_bounds();
     fixed_v1_bounds();
+    fixed_v1_absent_optional();
 
     n = fixed_ut2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut2_bytes(), "UT2 save" );

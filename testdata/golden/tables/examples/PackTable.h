@@ -6659,7 +6659,10 @@ inline void ShipEntryFixedWriteBody( uint8_t * b, const ShipEntry & value )
         TableFixedPut32( b + 48 + i * 4 + 0, (uint32_t) value.hardpoints[i] );
     }
     TableFixedPut8( b + 64, value.gunner_present ? 1 : 0 );
-    GunnerSettingsFixedWriteBody( b + 65, value.gunner );
+    if ( value.gunner_present )
+    {
+        GunnerSettingsFixedWriteBody( b + 65, value.gunner );
+    }
 }
 
 // GlobalSettings's stores. The prefill — the hash, then zeros — is memcpy'd first,

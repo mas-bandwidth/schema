@@ -170,12 +170,24 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 }
 
 func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, indent int) {
+	if f.Type.Optional {
+		/* AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		   (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
+		   is present, and when the flag is 0 what rides is zero. One `if`, and
+		   the template already put the zeros there. */
+		ind := strings.Repeat(" ", indent)
+		g.pf("%stable_fixed_put8( %s + %d, %s%s_present ? 1 : 0 );\n", ind, buf, off, val, f.Name)
+		g.pf("%sif ( %s%s_present )\n%s{\n", ind, val, f.Name, ind)
+		g.emitFixedWritePayload(f, off+ir.TableFixedPresentBytes, buf, val, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedWritePayload(f, off, buf, val, indent)
+}
+
+func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	base := off
-	if f.Type.Optional {
-		g.pf("%stable_fixed_put8( %s + %d, %s%s_present ? 1 : 0 );\n", ind, buf, base, val, f.Name)
-		base += ir.TableFixedPresentBytes
-	}
 	switch {
 	case f.KeyEnum != "":
 		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): no count, no slack.

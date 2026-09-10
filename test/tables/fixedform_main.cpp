@@ -933,6 +933,68 @@ static void bounds_case()
     }
 }
 
+// ---------------------------------------------------------------------------
+
+// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS (docs/SPEC-TABLES.md
+// §3.4): the payload rides WHOLE whether or not it is present, and when the
+// flag is 0 what rides is ZERO. It is one `if` in the writer, and what it buys
+// is that a caller's untouched payload storage never reaches the wire — an
+// absent optional is a hole in the record and not a window into the writer's
+// memory.
+//
+// THE CONTROL IS THE STAIN, as it is for every other kind of slack: the payload
+// storage is filled with a byte a clean record carries nowhere, the test proves
+// the stain IS there, then proves the WIRE carries none of it, and then proves
+// the SAME payload PRESENT does put those bytes on the wire — so the check is
+// discriminating and not passing because the writer never wrote a payload at
+// all.
+static void absent_optional_case()
+{
+    tblp3::Chain v;
+    tblp3::ChainReset( v );
+    std::strcpy( v.name, "absent" );
+    v.name_length = 6;
+    v.link_present = false;
+    v.link.value = 0x5A5A5A;
+    std::memset( v.link.tag, 0x5A, sizeof( v.link.tag ) );
+    v.link.tag_length = 5;
+    check( (uint8_t) v.link.tag[0] == 0x5Au, "CONTROL: the absent payload really is stained in storage" );
+
+    std::vector<uint8_t> w( (size_t) tblp3::ChainFixedMeasure( 1 ) );
+    check( tblp3::ChainFixedSave( &v, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "absent optional: the record saves" );
+    const uint8_t * body = w.data() + tblp3::kTableFixedHeaderBytes + 4 + tblp3::ChainFixedLayoutBytes + 8;
+    const size_t body_bytes = (size_t) tblp3::ChainFixedBodyBytes;
+    check( std::memchr( body, 0x5A, body_bytes ) == NULL,
+           "ABSENT OPTIONAL: not one byte of the absent payload reached the wire" );
+
+    // and the reader reads what the flag says, with the payload at its defaults
+    {
+        tblp3::Chain back;
+        tblp3::TableReport r;
+        std::vector<tblp3::TableFixedEntry> plan( 1024 );
+        check( tblp3::ChainFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "absent optional: the record reads" );
+        check( !back.link_present, "absent optional: the flag" );
+        check( back.link.value == 0 && back.link.tag_length == 0, "absent optional: the payload reads as the wire's zeros" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "absent optional: a clean read moves no counter" );
+    }
+
+    // THE DISCRIMINATING HALF: the same payload, PRESENT. Those bytes do reach
+    // the wire, so the check above is about the flag and not about the writer
+    // never having written a payload.
+    {
+        tblp3::Chain present = v;
+        present.link_present = true;
+        present.link.tag_length = 4;
+        std::vector<uint8_t> pw( (size_t) tblp3::ChainFixedMeasure( 1 ) );
+        check( tblp3::ChainFixedSave( &present, 1, pw.data(), (int64_t) pw.size() ) == (int64_t) pw.size(),
+               "absent optional: the present twin saves" );
+        const uint8_t * pbody = pw.data() + tblp3::kTableFixedHeaderBytes + 4 + tblp3::ChainFixedLayoutBytes + 8;
+        check( std::memchr( pbody, 0x5A, (size_t) tblp3::ChainFixedBodyBytes ) != NULL,
+               "NEGATIVE CONTROL: the SAME payload PRESENT really does reach the wire" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -946,6 +1008,7 @@ int main()
     union_text_case();
     bytes_row_case();
     bounds_case();
+    absent_optional_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }

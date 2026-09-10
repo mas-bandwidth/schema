@@ -6122,7 +6122,10 @@ inline void SimStateFixedWriteBody( uint8_t * b, const SimState & value )
     }
     PoseFixedWriteBody( b + 202, value.pose );
     TableFixedPut8( b + 222, value.spawn_present ? 1 : 0 );
-    PoseFixedWriteBody( b + 223, value.spawn );
+    if ( value.spawn_present )
+    {
+        PoseFixedWriteBody( b + 223, value.spawn );
+    }
 }
 
 // Pose's read-side bounds.

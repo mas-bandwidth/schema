@@ -6914,7 +6914,10 @@ inline void TurretConfigFixedWriteBody( uint8_t * b, const TurretConfig & value 
     TableFixedPutF32( b + 0, value.damage );
     TableFixedPutF32( b + 4, value.cooldown );
     TableFixedPut8( b + 8, value.gunner_present ? 1 : 0 );
-    GunnerConfigFixedWriteBody( b + 9, value.gunner );
+    if ( value.gunner_present )
+    {
+        GunnerConfigFixedWriteBody( b + 9, value.gunner );
+    }
 }
 
 // HullConfig's stores. The prefill — the hash, then zeros — is memcpy'd first,

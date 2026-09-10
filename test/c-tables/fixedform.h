@@ -59,6 +59,7 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes );
 void fixed_fx2_bounds( const uint8_t * data, int64_t bytes );
 void fixed_ut1_bounds( void );
 void fixed_v1_bounds( void );
+void fixed_v1_absent_optional( void );
 
 /* THE BYTE-FLIP FUZZ's reader (docs/SPEC-TABLES.md §3.4, "held by test"): it
    makes no claim about the values, only that the read answers one of the three
