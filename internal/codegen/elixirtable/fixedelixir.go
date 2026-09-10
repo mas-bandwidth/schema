@@ -647,13 +647,13 @@ func (g *fixedGen) emitLines(lines []string) {
 // list it builds, so a record of eighty elements allocates ONE tuple for the
 // list and none for the count.
 //
-// THE FAST CLAUSE IS THE PACKET READER'S SHAPE. A record whose every ranged
-// leaf is already inside this reader's bounds (and whose floats are finite)
-// matches STRAIGHT INTO THE STRUCT: no `R.clamps`, no `min/max`, no
-// `R.f32_value` binary per float, no helper per scalar. The slow clause is the
-// hostile path and keeps the clamp. :eprof of the paired load named
-// `R.clamps` and the two list walkers as the remaining read; the float helper
-// was one percent.
+// THERE IS ONE CLAUSE AND THE CLAMP IS IN IT. A record read through the
+// identity plan and a record read through a compiled one reach the SAME head,
+// so the bound every value is held to is written once and exercised by every
+// read (Glenn, 2026-09-10: "one codepath always, whether version matches or
+// not... fewer cases to test"). An in-range clause that skipped the clamp
+// would be a second projection to test and a second place for a bound to go
+// stale, and this form has neither.
 //
 // IT WALKS ONLY WHAT A READ CAN HAVE WRITTEN, which is the reference's rule
 // (internal/codegen/cpptable/fixedform.go): a counted array's LIVE elements
@@ -663,17 +663,13 @@ func (g *fixedGen) emitLines(lines []string) {
 
 // rseg is one type's decode: the MATCH segments consuming its image, the
 // STATEMENTS that turn what they bound into terms and move the count, and the
-// FIELDS it contributes to the struct. The FAST half is the in-range clause:
-// floats matched as floats, ranged leaves used as they stand, no clamp helper.
+// FIELDS it contributes to the struct. One of each, because there is one
+// clause.
 type rseg struct {
-	match     []string
-	matchFast []string
-	post      []postStmt
-	postFast  []postStmt
-	keys      []string
-	vals      []node
-	valsFast  []node
-	guards    []string
+	match []string
+	post  []postStmt
+	keys  []string
+	vals  []node
 }
 
 // postStmt is one `name = value` the projection makes after its match: a SHAPE
@@ -684,46 +680,20 @@ type postStmt struct {
 	val  node
 }
 
-func (r *rseg) field(name string, slow, fast node) {
+func (r *rseg) field(name string, v node) {
 	r.keys = append(r.keys, name)
-	r.vals = append(r.vals, slow)
-	r.valsFast = append(r.valsFast, fast)
+	r.vals = append(r.vals, v)
 }
 
 func (r *rseg) stmt(name string, v node) {
 	r.post = append(r.post, postStmt{name: name, val: v})
 }
 
-func (r *rseg) stmtBoth(name string, v node) {
-	p := postStmt{name: name, val: v}
-	r.post = append(r.post, p)
-	r.postFast = append(r.postFast, p)
-}
-
 func (r *rseg) merge(o rseg) {
 	r.match = append(r.match, o.match...)
-	r.matchFast = append(r.matchFast, o.matchFast...)
 	r.post = append(r.post, o.post...)
-	r.postFast = append(r.postFast, o.postFast...)
 	r.keys = append(r.keys, o.keys...)
 	r.vals = append(r.vals, o.vals...)
-	r.valsFast = append(r.valsFast, o.valsFast...)
-	r.guards = append(r.guards, o.guards...)
-}
-
-func (r rseg) hasFast() bool {
-	if len(r.guards) > 0 {
-		return true
-	}
-	if len(r.matchFast) != len(r.match) {
-		return true
-	}
-	for i := range r.match {
-		if r.matchFast[i] != r.match[i] {
-			return true
-		}
-	}
-	return false
 }
 
 func (g *fixedGen) readType(st *ir.Struct, prefix string) rseg {
@@ -743,9 +713,8 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 	var out rseg
 	if f.Type.Optional {
 		out.match = append(out.match, "p_"+v+"::unsigned-8")
-		out.matchFast = append(out.matchFast, "p_"+v+"::unsigned-8")
 		flag := rawf("p_%s != 0", v)
-		out.field(f.Name+"_present", flag, flag)
+		out.field(f.Name+"_present", flag)
 		var payload rseg
 		g.readPayload(&payload, f, v, rawf("p_%s != 0", v))
 		// THE COUNT AND THE DAMAGE FLAG MOVE ONLY WHEN PRESENT: the payload's
@@ -753,20 +722,15 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 		// the flag was set. An absent optional's payload is unspecified (§3.4)
 		// and does not fire the content rule.
 		out.match = append(out.match, payload.match...)
-		out.matchFast = append(out.matchFast, payload.matchFast...)
-		out.stmtBoth("c_"+v, raw("c"))
-		out.stmtBoth("m_"+v, raw("m"))
+		out.stmt("c_"+v, raw("c"))
+		out.stmt("m_"+v, raw("m"))
 		for _, p := range payload.post {
 			out.post = append(out.post, postStmt{name: forkName(p.name, v), val: forkNode(p.val, v)})
 		}
-		for _, p := range payload.postFast {
-			out.postFast = append(out.postFast, postStmt{name: forkName(p.name, v), val: forkNode(p.val, v)})
-		}
-		out.stmtBoth("c", rawf("if(p_%s != 0, do: c_%s, else: c)", v, v))
-		out.stmtBoth("m", rawf("if(p_%s != 0, do: m_%s, else: m)", v, v))
+		out.stmt("c", rawf("if(p_%s != 0, do: c_%s, else: c)", v, v))
+		out.stmt("m", rawf("if(p_%s != 0, do: m_%s, else: m)", v, v))
 		out.keys = append(out.keys, payload.keys...)
 		out.vals = append(out.vals, payload.vals...)
-		out.valsFast = append(out.valsFast, payload.valsFast...)
 		return out
 	}
 	g.readPayload(&out, f, v, raw("true"))
@@ -804,32 +768,24 @@ func forkText(s, v string) string {
 func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 	switch {
 	case f.KeyEnum != "":
-		g.readElements(out, f, v, rawf("%d", f.KeyEnumRef.Max), rawf("%d", f.KeyEnumRef.Max))
+		g.readElements(out, f, v, rawf("%d", f.KeyEnumRef.Max))
 	case f.Array == ir.ArrayFixed:
-		g.readElements(out, f, v, rawf("%d", f.ArrayBound), rawf("%d", f.ArrayBound))
+		g.readElements(out, f, v, rawf("%d", f.ArrayBound))
 	case f.Array == ir.ArrayCounted:
 		// THE COUNT IS CLAMPED HERE, to this reader's own bound, counting one
 		// `clamped` if it moved (§4), and ONLY THE LIVE ELEMENTS ARE WALKED.
 		seg := "n_" + v + "::little-signed-32"
 		out.match = append(out.match, seg)
-		out.matchFast = append(out.matchFast, seg)
 		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.ArrayBound))
-		out.guards = append(out.guards, fmt.Sprintf("n_%s >= 0", v), fmt.Sprintf("n_%s <= %d", v, f.ArrayBound))
-		g.readElements(out, f, v,
-			rawf("min(max(n_%s, 0), %d)", v, f.ArrayBound),
-			raw("n_"+v))
+		g.readElements(out, f, v, rawf("min(max(n_%s, 0), %d)", v, f.ArrayBound))
 	case f.Type.Kind == ir.TString:
 		g.readText(out, f, v, 1, present)
 	case f.Type.Kind == ir.TBytes:
 		segN := "n_" + v + "::little-signed-32"
 		segB := fmt.Sprintf("b_%s::binary-size(%d)", v, f.Type.Size)
 		out.match = append(out.match, segN, segB)
-		out.matchFast = append(out.matchFast, segN, segB)
 		out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, f.Type.Size))
-		out.guards = append(out.guards, fmt.Sprintf("n_%s >= 0", v), fmt.Sprintf("n_%s <= %d", v, f.Type.Size))
-		out.field(f.Name,
-			rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, f.Type.Size),
-			rawf("binary_part(b_%s, 0, n_%s)", v, v))
+		out.field(f.Name, rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, f.Type.Size))
 	case f.Type.Kind == ir.TWString:
 		g.readText(out, f, v, 2, present)
 	default:
@@ -847,26 +803,18 @@ func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, unit int64, presen
 	segN := "n_" + v + "::little-signed-32"
 	segB := fmt.Sprintf("b_%s::binary-size(%d)", v, bytes)
 	out.match = append(out.match, segN, segB)
-	out.matchFast = append(out.matchFast, segN, segB)
 	out.stmt("c", rawf("R.clamps(c, n_%s, 0, %d)", v, bound))
-	out.guards = append(out.guards, fmt.Sprintf("n_%s >= 0", v), fmt.Sprintf("n_%s <= %d", v, bound))
-	usedSlow := rawf("binary_part(b_%s, 0, %d * min(max(n_%s, 0), %d))", v, unit, v, bound)
-	usedFast := rawf("binary_part(b_%s, 0, %d * n_%s)", v, unit, v)
+	used := rawf("binary_part(b_%s, 0, %d * min(max(n_%s, 0), %d))", v, unit, v, bound)
 	if unit == 1 {
-		usedSlow = rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, bound)
-		usedFast = rawf("binary_part(b_%s, 0, n_%s)", v, v)
+		used = rawf("binary_part(b_%s, 0, min(max(n_%s, 0), %d))", v, v, bound)
 	}
 	def := g.fixedElemDefaultTerm(f)
 	helper := "R.text"
 	if f.Type.Kind == ir.TWString {
 		helper = "R.wtext"
 	}
-	out.stmt("{t_"+v+", m}", call(helper, usedSlow, raw(def), raw("m"), present))
-	out.postFast = append(out.postFast, postStmt{
-		name: "{t_" + v + ", m}",
-		val:  call(helper, usedFast, raw(def), raw("m"), present),
-	})
-	out.field(f.Name, raw("t_"+v), raw("t_"+v))
+	out.stmt("{t_"+v+", m}", call(helper, used, raw(def), raw("m"), present))
+	out.field(f.Name, raw("t_"+v))
 }
 
 // readElements binds a field's whole run of elements and walks the LIVE ones
@@ -874,67 +822,56 @@ func (g *fixedGen) readText(out *rseg, f *ir.Field, v string, unit int64, presen
 // is a comprehension; a small fixed run of unbounded leaves is matched in the
 // parent so there is no sub-binary per field; anything with a bound in it is a
 // walk of its own.
-func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live, liveFast node) {
+func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live node) {
 	elem := fixedElementBytes(f)
 	bound := fixedRunBound(f)
 	if f.Array == ir.ArrayFixed && bound > 0 && bound <= 16 && f.Type.Kind != ir.TNamed {
 		d := g.leafDec(f, "e")
 		if d.count == nil {
-			var names []string
+			var terms []string
 			for i := range bound {
 				name := fmt.Sprintf("f_%s_%d", v, i)
-				seg := strings.Replace(d.spec, "f_e", name, 1)
-				segFast := strings.Replace(d.specFast, "f_e", name, 1)
-				out.match = append(out.match, seg)
-				out.matchFast = append(out.matchFast, segFast)
-				names = append(names, name)
+				out.match = append(out.match, strings.Replace(d.spec, "f_e", name, 1))
+				// EACH SLOT IS WRAPPED THE WAY ONE LEAF IS. The segment binds
+				// what the wire holds — a float's BITS, a bool's byte — and the
+				// term is what the leaf makes of it, so a run of floats matched
+				// in the parent lands floats and not integers.
+				terms = append(terms, strings.ReplaceAll(d.wrap.flat(), "f_e", name))
 			}
-			list := raw("[" + strings.Join(names, ", ") + "]")
-			out.field(f.Name, list, list)
+			out.field(f.Name, listNode{items: terms})
 			return
 		}
 	}
 	seg := fmt.Sprintf("b_%s::binary-size(%d)", v, bound*elem)
 	out.match = append(out.match, seg)
-	out.matchFast = append(out.matchFast, seg)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			callSlow := call(fmt.Sprintf("%s%s_fixed_list", g.moduleOf(r), ir.RustSnake(r.Name)), raw("b_"+v), live, raw("c"), raw("m"))
-			callFast := call(fmt.Sprintf("%s%s_fixed_list", g.moduleOf(r), ir.RustSnake(r.Name)), raw("b_"+v), liveFast, raw("c"), raw("m"))
-			out.stmt("{l_"+v+", c, m}", callSlow)
-			out.postFast = append(out.postFast, postStmt{name: "{l_" + v + ", c, m}", val: callFast})
-			out.field(f.Name, raw("l_"+v), raw("l_"+v))
+			name := fmt.Sprintf("%s%s_fixed_list", g.moduleOf(r), ir.RustSnake(r.Name))
+			out.stmt("{l_"+v+", c, m}", call(name, raw("b_"+v), live, raw("c"), raw("m")))
+			out.field(f.Name, raw("l_"+v))
 			return
 		case *ir.Union:
-			callSlow := call(fmt.Sprintf("%s%s_fixed_list", g.unionModule(r), ir.RustSnake(r.Name)), raw("b_"+v), live, raw("c"), raw("m"))
-			callFast := call(fmt.Sprintf("%s%s_fixed_list", g.unionModule(r), ir.RustSnake(r.Name)), raw("b_"+v), liveFast, raw("c"), raw("m"))
-			out.stmt("{l_"+v+", c, m}", callSlow)
-			out.postFast = append(out.postFast, postStmt{name: "{l_" + v + ", c, m}", val: callFast})
-			out.field(f.Name, raw("l_"+v), raw("l_"+v))
+			name := fmt.Sprintf("%s%s_fixed_list", g.unionModule(r), ir.RustSnake(r.Name))
+			out.stmt("{l_"+v+", c, m}", call(name, raw("b_"+v), live, raw("c"), raw("m")))
+			out.field(f.Name, raw("l_"+v))
 			return
 		}
 	}
 	d := g.leafDec(f, "e")
 	if d.count == nil {
-		out.stmtBoth("l_"+v, forNode{gen: fmt.Sprintf("<<%s <- %s>>", d.spec, "b_"+v), body: d.wrap})
+		out.stmt("l_"+v, forNode{gen: fmt.Sprintf("<<%s <- %s>>", d.spec, "b_"+v), body: d.wrap})
 		if f.Array == ir.ArrayCounted {
-			takeSlow := call("Enum.take", raw("l_"+v), live)
-			takeFast := call("Enum.take", raw("l_"+v), liveFast)
-			out.stmt("l_"+v, takeSlow)
-			out.postFast = append(out.postFast, postStmt{name: "l_" + v, val: takeFast})
+			out.stmt("l_"+v, call("Enum.take", raw("l_"+v), live))
 		}
-		out.field(f.Name, raw("l_"+v), raw("l_"+v))
+		out.field(f.Name, raw("l_"+v))
 		return
 	}
-	callSlow := call(g.leafListName(v), raw("b_"+v), live, raw("c"), raw("m"))
-	callFast := call(g.leafListName(v), raw("b_"+v), liveFast, raw("c"), raw("m"))
-	out.stmt("{l_"+v+", c, m}", callSlow)
-	out.postFast = append(out.postFast, postStmt{name: "{l_" + v + ", c, m}", val: callFast})
-	out.field(f.Name, raw("l_"+v), raw("l_"+v))
+	out.stmt("{l_"+v+", c, m}", call(g.leafListName(v), raw("b_"+v), live, raw("c"), raw("m")))
+	out.field(f.Name, raw("l_"+v))
 	g.leafLists = append(g.leafLists, leafList{
-		name: g.leafListName(v), spec: d.spec, wrap: d.wrap, wrapFast: d.wrapFast,
-		count: d.count, guards: d.guards, bytes: ir.TableFixedStorageBytes(f.Type),
+		name: g.leafListName(v), spec: d.spec, wrap: d.wrap,
+		count: d.count, bytes: ir.TableFixedStorageBytes(f.Type),
 	})
 }
 
@@ -953,13 +890,11 @@ func (g *fixedGen) leafListName(v string) string {
 // leafList is a walk over a run of BOUNDED leaves — a ranged integer, an enum
 // ordinal — which a comprehension cannot count.
 type leafList struct {
-	name     string
-	spec     string
-	wrap     node
-	wrapFast node
-	count    node
-	guards   []string
-	bytes    int64
+	name  string
+	spec  string
+	wrap  node
+	count node
+	bytes int64
 }
 
 // readElement binds ONE element, inlining a nested type whose image is a run of
@@ -971,58 +906,49 @@ func (g *fixedGen) readElement(out *rseg, f *ir.Field, v, field string) {
 			if fixedFlatType(r) {
 				sub := g.readType(r, v+"_")
 				out.match = append(out.match, sub.match...)
-				out.matchFast = append(out.matchFast, sub.matchFast...)
 				out.post = append(out.post, sub.post...)
-				out.postFast = append(out.postFast, sub.postFast...)
-				out.guards = append(out.guards, sub.guards...)
-				out.field(field, g.structNodeOf(r, sub), g.structNodeFast(r, sub))
+				out.field(field, g.structNodeOf(r, sub))
 				return
 			}
-			seg := fmt.Sprintf("b_%s::binary-size(%d)", v, fixedTypeBytes(r))
-			out.match = append(out.match, seg)
-			out.matchFast = append(out.matchFast, seg)
-			calln := rawf("%s(b_%s, c, m)", g.decodeName(r), v)
-			out.stmtBoth("{f_"+v+", c, m}", calln)
-			out.field(field, raw("f_"+v), raw("f_"+v))
+			out.match = append(out.match, fmt.Sprintf("b_%s::binary-size(%d)", v, fixedTypeBytes(r)))
+			out.stmt("{f_"+v+", c, m}", rawf("%s(b_%s, c, m)", g.decodeName(r), v))
+			out.field(field, raw("f_"+v))
 			return
 		case *ir.Union:
-			seg := fmt.Sprintf("b_%s::binary-size(%d)", v, fixedElementBytes(f))
-			out.match = append(out.match, seg)
-			out.matchFast = append(out.matchFast, seg)
-			calln := rawf("%s%s_fixed_decode(b_%s, c, m)", g.unionModule(r), ir.RustSnake(r.Name), v)
-			out.stmtBoth("{f_"+v+", c, m}", calln)
-			out.field(field, raw("f_"+v), raw("f_"+v))
+			out.match = append(out.match, fmt.Sprintf("b_%s::binary-size(%d)", v, fixedElementBytes(f)))
+			out.stmt("{f_"+v+", c, m}", rawf("%s%s_fixed_decode(b_%s, c, m)", g.unionModule(r), ir.RustSnake(r.Name), v))
+			out.field(field, raw("f_"+v))
 			return
 		}
 	}
 	d := g.leafDec(f, v)
 	out.match = append(out.match, d.spec)
-	out.matchFast = append(out.matchFast, d.specFast)
 	if d.count != nil {
 		out.stmt("c", d.count)
 	}
-	out.guards = append(out.guards, d.guards...)
-	out.field(field, d.wrap, d.wrapFast)
+	out.field(field, d.wrap)
 }
 
 func (g *fixedGen) decodeName(st *ir.Struct) string {
 	return fmt.Sprintf("%s%s_fixed_decode", g.moduleOf(st), ir.RustSnake(st.Name))
 }
 
-// leafDec is a LEAF's match segment, the term it makes, the fast-path term,
-// the count statement it moves, and the guard the fast clause uses.
+// leafDec is a LEAF's match segment, the term it makes, and the count
+// statement it moves.
 //
 // A RANGED INTEGER CLAMPS HERE, against the READER's own bounds and nothing
 // else — the bounds do not ride on this form (§3.4). AN ENUM ORDINAL PAST THE
 // LAST VARIANT IS NOT A VARIANT: it lands None (0) and counts one `clamped`,
 // which is the same answer §3 gives a value outside its range.
+//
+// A FLOAT IS MATCHED AS ITS BITS AND NEVER AS A FLOAT, because `::float-32`
+// does not match a NaN or an infinity and a form that read those as a match
+// failure would need a second clause for them. The bits are one match for
+// every value the kind can hold.
 type leafDec struct {
-	spec     string
-	specFast string
-	wrap     node
-	wrapFast node
-	count    node
-	guards   []string
+	spec  string
+	wrap  node
+	count node
 }
 
 func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
@@ -1032,40 +958,24 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:
 			n := len(r.Variants)
-			spec := fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits)
 			return leafDec{
-				spec: spec, specFast: spec,
-				wrap:     rawf("if(%s <= %d, do: %s, else: 0)", name, n, name),
-				wrapFast: raw(name),
-				count:    rawf("R.past(c, %s, %d)", name, n),
-				guards:   []string{fmt.Sprintf("%s <= %d", name, n)},
+				spec:  fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits),
+				wrap:  rawf("if(%s <= %d, do: %s, else: 0)", name, n, name),
+				count: rawf("R.past(c, %s, %d)", name, n),
 			}
 		case *ir.Flags:
-			spec := name + "::little-unsigned-64"
-			return leafDec{spec: spec, specFast: spec, wrap: raw(name), wrapFast: raw(name)}
+			return leafDec{spec: name + "::little-unsigned-64", wrap: raw(name)}
 		}
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		// A BOOL LANDS AS `byte != 0`, which is what a form that writes 0 or 1
 		// and reads anything owes a hostile writer.
-		spec := name + "::unsigned-8"
-		w := raw(name + " != 0")
-		return leafDec{spec: spec, specFast: spec, wrap: w, wrapFast: w}
+		return leafDec{spec: name + "::unsigned-8", wrap: raw(name + " != 0")}
 	case ir.TFloat32:
-		return leafDec{
-			spec:     name + "::little-unsigned-32",
-			specFast: name + "::float-32-little",
-			wrap:     rawf("R.f32_value(%s)", name),
-			wrapFast: raw(name),
-		}
+		return leafDec{spec: name + "::little-unsigned-32", wrap: rawf("R.f32_value(%s)", name)}
 	case ir.TFloat64:
-		return leafDec{
-			spec:     name + "::little-unsigned-64",
-			specFast: name + "::float-64-little",
-			wrap:     rawf("R.f64_value(%s)", name),
-			wrapFast: raw(name),
-		}
+		return leafDec{spec: name + "::little-unsigned-64", wrap: rawf("R.f64_value(%s)", name)}
 	}
 	spec := fmt.Sprintf("%s::little-unsigned-%d", name, width)
 	if f.Type.Signed {
@@ -1073,23 +983,17 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 	}
 	lo, hi := fixedRangeOf(f)
 	if lo == "nil" {
-		return leafDec{spec: spec, specFast: spec, wrap: raw(name), wrapFast: raw(name)}
+		return leafDec{spec: spec, wrap: raw(name)}
 	}
 	return leafDec{
-		spec: spec, specFast: spec,
-		wrap:     call("min", call("max", raw(name), raw(lo)), raw(hi)),
-		wrapFast: raw(name),
-		count:    call("R.clamps", raw("c"), raw(name), raw(lo), raw(hi)),
-		guards:   []string{fmt.Sprintf("%s >= %s", name, lo), fmt.Sprintf("%s <= %s", name, hi)},
+		spec:  spec,
+		wrap:  call("min", call("max", raw(name), raw(lo)), raw(hi)),
+		count: call("R.clamps", raw("c"), raw(name), raw(lo), raw(hi)),
 	}
 }
 
 func (g *fixedGen) structNodeOf(st *ir.Struct, r rseg) node {
 	return structNode{mod: g.ns + "." + st.Name, keys: r.keys, vals: r.vals}
-}
-
-func (g *fixedGen) structNodeFast(st *ir.Struct, r rseg) node {
-	return structNode{mod: g.ns + "." + st.Name, keys: r.keys, vals: r.valsFast}
 }
 
 // ---------------------------------------------------------------------------
@@ -1123,16 +1027,9 @@ func (g *fixedGen) typeHelpers(st *ir.Struct) {
 }
 
 func (g *fixedGen) emitDecodeClauses(st *ir.Struct, name string, r rseg, args []string, col int) {
-	resultSlow := triple(g.structNodeOf(st, r), raw("c"), raw("m"))
-	if r.hasFast() {
-		g.emitMatchHead("def", name, r.matchFast, args, col, "_::binary", r.guards)
-		g.emitPost(r.postFast, 4)
-		g.pf("    %s\n", triple(g.structNodeFast(st, r), raw("c"), raw("m")).render(4, 4, 0))
-		g.pf("  end\n\n")
-	}
 	g.emitMatchHead("def", name, r.match, args, col, "_::binary", nil)
 	g.emitPost(r.post, 4)
-	g.pf("    %s\n", resultSlow.render(4, 4, 0))
+	g.pf("    %s\n", triple(g.structNodeOf(st, r), raw("c"), raw("m")).render(4, 4, 0))
 	g.pf("  end\n\n")
 }
 
@@ -1140,19 +1037,12 @@ func (g *fixedGen) emitListHelpers(st *ir.Struct, snake string, size int64, r rs
 	g.pf("  # A RUN OF %s: the LIVE elements walked into a list, the count riding beside\n", st.Name)
 	g.pf("  # it, and not a byte of the slack behind them read. Several elements per clause\n")
 	g.pf("  # where the record is small, consed onto the recursive tail in order, no reverse.\n")
-	g.pf("  # Hostile falls through to one element and the clamp.\n")
+	g.pf("  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same\n")
+	g.pf("  # counters — so it saves the match and the call and never a bound.\n")
 	g.emitForwardListBase("def", snake+"_fixed_list")
 	if fixedFlatType(st) {
-		if k := listUnrollK(size); k > 1 && r.hasFast() && r.unrollable() {
+		if k := listUnrollK(size); k > 1 {
 			g.emitUnrolledFlatList(st, snake, r, k)
-		}
-		if r.hasFast() {
-			g.emitMatchHead("def", snake+"_fixed_list", r.matchFast, []string{"n", "c", "m"}, 2, "rest::binary", r.guards)
-			g.emitPost(r.postFast, 4)
-			g.emitLines(g.assign("v", g.structNodeFast(st, r), 4))
-			g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
-			g.pf("    {[v | tail], c, m}\n")
-			g.pf("  end\n\n")
 		}
 		g.emitMatchHead("def", snake+"_fixed_list", r.match, []string{"n", "c", "m"}, 2, "rest::binary", nil)
 		g.emitPost(r.post, 4)
@@ -1169,14 +1059,8 @@ func (g *fixedGen) emitListHelpers(st *ir.Struct, snake string, size int64, r rs
 
 	for _, l := range g.leafLists {
 		g.emitForwardListBase("defp", l.name)
-		if k := listUnrollK(l.bytes); k > 1 && len(l.guards) > 0 {
+		if k := listUnrollK(l.bytes); k > 1 {
 			g.emitUnrolledLeafList(l, k)
-		}
-		if len(l.guards) > 0 {
-			g.emitMatchHead("defp", l.name, []string{l.spec}, []string{"n", "c", "m"}, 2, "rest::binary", l.guards)
-			g.pf("    {tail, c, m} = %s(rest, n - 1, c, m)\n", l.name)
-			g.pf("    {[%s | tail], c, m}\n", l.wrapFast.flat())
-			g.pf("  end\n\n")
 		}
 		g.emitMatchHead("defp", l.name, []string{l.spec}, []string{"n", "c", "m"}, 2, "rest::binary", nil)
 		g.emitLines(g.assign("{tail, c, m}", call(l.name, raw("rest"), raw("n - 1"), l.count, raw("m")), 4))
@@ -1206,30 +1090,29 @@ func listUnrollK(size int64) int {
 	return k
 }
 
-func (r rseg) unrollable() bool {
-	// The slow clause's clamp statements ride `post`. The fast unroll only
-	// needs matchFast, guards and valsFast, so a ranged leaf is still a leaf.
-	return len(r.postFast) == 0
-}
-
 func (g *fixedGen) emitForwardListBase(kw, name string) {
 	g.emitShortDef(fmt.Sprintf("%s %s(_bin, 0, c, m)", kw, name), "{[], c, m}")
 }
 
 func (g *fixedGen) emitUnrolledFlatList(st *ir.Struct, snake string, r rseg, k int) {
 	var segs []string
-	guards := []string{fmt.Sprintf("n >= %d", k)}
 	elems := make([]rseg, k)
 	for i := range k {
 		elems[i] = suffixRseg(r, strconv.Itoa(i))
-		segs = append(segs, elems[i].matchFast...)
-		guards = append(guards, elems[i].guards...)
+		segs = append(segs, elems[i].match...)
 	}
-	g.emitMatchHead("def", snake+"_fixed_list", segs, []string{"n", "c", "m"}, 2, "rest::binary", guards)
+	g.emitMatchHead("def", snake+"_fixed_list", segs, []string{"n", "c", "m"}, 2, "rest::binary",
+		[]string{fmt.Sprintf("n >= %d", k)})
 	names := make([]string, k)
 	for i, el := range elems {
 		names[i] = fmt.Sprintf("v%d", i)
-		g.emitLines(g.assign(names[i], g.structNodeFast(st, el), 4))
+		// THE COUNT THREADS THROUGH THE k ELEMENTS IN ORDER, which is the
+		// order the one-element clause would have visited them in, so the
+		// unroll cannot change what `clamped` reports.
+		for _, p := range el.post {
+			g.emitLines(g.assign(p.name, p.val, 4))
+		}
+		g.emitLines(g.assign(names[i], g.structNodeOf(st, el), 4))
 	}
 	g.pf("    {tail, c, m} = %s_fixed_list(rest, n - %d, c, m)\n", snake, k)
 	g.pf("    {[%s | tail], c, m}\n", strings.Join(names, ", "))
@@ -1238,17 +1121,25 @@ func (g *fixedGen) emitUnrolledFlatList(st *ir.Struct, snake string, r rseg, k i
 
 func (g *fixedGen) emitUnrolledLeafList(l leafList, k int) {
 	segs := make([]string, k)
-	guards := []string{fmt.Sprintf("n >= %d", k)}
-	wraps := make([]string, k)
+	names := make([]string, k)
 	for i := range k {
 		suf := strconv.Itoa(i)
 		segs[i] = suffixIdent(l.spec, suf)
-		guards = append(guards, suffixAll(l.guards, suf)...)
-		wraps[i] = suffixIdent(l.wrapFast.flat(), suf)
+		names[i] = "v" + suf
 	}
-	g.emitMatchHead("defp", l.name, segs, []string{"n", "c", "m"}, 2, "rest::binary", guards)
+	g.emitMatchHead("defp", l.name, segs, []string{"n", "c", "m"}, 2, "rest::binary",
+		[]string{fmt.Sprintf("n >= %d", k)})
+	for i := range k {
+		// THE COUNT THREADS THROUGH THE k ELEMENTS IN ORDER, which is the order
+		// the one-element clause would have visited them in, so the unroll
+		// cannot change what `clamped` reports. Each element's term is BOUND
+		// rather than written into the cons, which keeps the tail one line.
+		suf := strconv.Itoa(i)
+		g.emitLines(g.assign("c", raw(suffixIdent(l.count.flat(), suf)), 4))
+		g.emitLines(g.assign(names[i], raw(suffixIdent(l.wrap.flat(), suf)), 4))
+	}
 	g.pf("    {tail, c, m} = %s(rest, n - %d, c, m)\n", l.name, k)
-	g.pf("    {[%s | tail], c, m}\n", strings.Join(wraps, ", "))
+	g.pf("    {[%s | tail], c, m}\n", strings.Join(names, ", "))
 	g.pf("  end\n\n")
 }
 
@@ -1268,16 +1159,14 @@ func suffixAll(ss []string, suf string) []string {
 
 func suffixRseg(r rseg, suf string) rseg {
 	out := rseg{
-		match:     suffixAll(r.match, suf),
-		matchFast: suffixAll(r.matchFast, suf),
-		keys:      append([]string{}, r.keys...),
-		guards:    suffixAll(r.guards, suf),
+		match: suffixAll(r.match, suf),
+		keys:  append([]string{}, r.keys...),
+	}
+	for _, p := range r.post {
+		out.post = append(out.post, postStmt{name: p.name, val: raw(suffixIdent(p.val.flat(), suf))})
 	}
 	for _, v := range r.vals {
 		out.vals = append(out.vals, raw(suffixIdent(v.flat(), suf)))
-	}
-	for _, v := range r.valsFast {
-		out.valsFast = append(out.valsFast, raw(suffixIdent(v.flat(), suf)))
 	}
 	return out
 }
@@ -1576,9 +1465,10 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # THE IDENTITY PLAN, coalesced by the same rule the runtime's compiler uses:\n")
 	g.pf("  # two neighbouring copies whose source and destination both advance together\n")
 	g.pf("  # are one entry. In the image domain source and destination are the same\n")
-	g.pf("  # number, so a record of plain scalars collapses to a SINGLE run. THE IDENTITY\n")
-	g.pf("  # READ DOES NOT RUN IT — a record whose hash is this build's own is projected\n")
-	g.pf("  # straight out of the file — it is here for a caller who compiles plans.\n")
+	g.pf("  # number, so a record of plain scalars collapses to a SINGLE run. THE READ\n")
+	g.pf("  # RUNS THIS PLAN like any other: a plan whose one entry covers the whole\n")
+	g.pf("  # image lands the body itself as the image, which is a fact about the PLAN's\n")
+	g.pf("  # SHAPE and not about whose build wrote the record (FixedRuntime.assemble/2).\n")
 	g.pf("  @%s_plan %s\n\n", snake, g.planLiteral(plan))
 
 	g.pf("  def %s_fixed_body_bytes, do: @%s_body_bytes\n", snake, snake)
@@ -1624,20 +1514,19 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.emitLoad(st, snake)
 }
 
-// emitLoad prints the root's reader: the form byte, the layout, and then ONE
-// of two paths — the IDENTITY path, where the hash is this build's own and
-// every record is projected straight out of the file, or the FOREIGN path,
-// where a plan compiled once from the writer's layout lands each record onto
-// the prefill first. The verdict is a tagged tuple and never an exception.
+// emitLoad prints the root's reader: the form byte, the layout, the plan the
+// layout's hash selects, and THE ONE LOOP that runs it. There is no second
+// path for a record this build wrote — the identity plan is data, and the same
+// `R.run` walks it (Glenn, 2026-09-10: "one codepath always, whether version
+// matches or not"). The verdict is a tagged tuple and never an exception.
 func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  @doc \"\"\"\n")
 	g.pf("  Read a form-3 FILE of %s records.\n\n", st.Name)
 	g.pf("  `{:ok, values, report}` or `{:error, reason, report}`, the reason BY NAME.\n")
 	g.pf("  Hostile bytes never raise: this is the family read verdict, the same one\n")
 	g.pf("  the packet codec answers with.\n\n")
-	g.pf("  A record whose hash is this build's own is ONE binary pattern match; any\n")
-	g.pf("  other hash runs a plan compiled once from the writer's layout, and the\n")
-	g.pf("  same projection reads what the plan landed.\n")
+	g.pf("  THE SAME LOOP RUNS OVER THE SAME PLAN whether the writer is this build or\n")
+	g.pf("  another, and the only thing that differs is which plan it was handed.\n")
 	g.pf("  \"\"\"\n")
 	g.pf("  def %s_fixed_load(data, opts \\\\ []) when is_binary(data) do\n", snake)
 	g.pf("    report = R.report()\n\n")
@@ -1652,55 +1541,14 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
-	g.pf("  # THE LAYOUT IS THIS BUILD'S OWN OR IT IS NOT, and that is one comparison of\n")
-	g.pf("  # bytes before any hash is computed; a stranger's layout is hashed.\n")
+	g.pf("  # THE READ: a plan, a split, and one prefill-and-project per record. The\n")
+	g.pf("  # plan's own ops hold the writer's values to this reader's bounds and count;\n")
+	g.pf("  # the projection holds them again as it lands them, which costs nothing on a\n")
+	g.pf("  # value already inside the bound and is what lets the IDENTITY plan — which\n")
+	g.pf("  # carries no ops at all, being one copy run — reach the same clamp.\n")
 	g.pf("  defp %s_fixed_records(stated, layout, records, report, opts) do\n", snake)
-	g.pf("    hash = if(layout == @%s_layout, do: @%s_hash, else: R.hash(layout))\n", snake, snake)
+	g.pf("    hash = R.hash(layout)\n")
 	g.pf("    copy = Keyword.get(opts, :copy, false)\n\n")
-	g.pf("    if hash == @%s_hash do\n", snake)
-	g.pf("      %s_fixed_identity(stated, records, copy, report)\n", snake)
-	g.pf("    else\n")
-	g.pf("      %s_fixed_foreign(hash, stated, layout, records, copy, report, opts)\n", snake)
-	g.pf("    end\n")
-	g.pf("  end\n\n")
-
-	g.pf("  # THE IDENTITY PATH: no plan, no prefill, no copy. Each record's hash is\n")
-	g.pf("  # matched as a literal and its body projected in place.\n")
-	g.pf("  defp %s_fixed_identity(stated, records, copy, report) do\n", snake)
-	g.pf("    with :ok <- %s_fixed_header_names_it(stated, @%s_hash),\n", snake, snake)
-	g.pf("         {:ok, values, c, m} <- %s_fixed_identity_loop(records, copy, [], 0, false) do\n", snake)
-	g.pf("      {:ok, values, R.damaged(R.clamped(report, c), m)}\n")
-	g.pf("    else\n")
-	g.pf("      {:error, why} -> {:error, why, report}\n")
-	g.pf("    end\n")
-	g.pf("  end\n\n")
-
-	g.pf("  # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows\n")
-	g.pf("  # the record size from the layout, so the count is arithmetic. BYTES LEFT\n")
-	g.pf("  # OVER ARE `malformed`, which is §3's rule for the same reason; a record\n")
-	g.pf("  # whose hash names no layout this reader holds is a refusal by name.\n")
-	g.pf("  # `malformed` ALSO RIDES BESIDE THE COUNT on a well-framed file: ill-formed\n")
-	g.pf("  # text is one field's damage and the rest of the record stands.\n")
-	g.pf("  defp %s_fixed_identity_loop(<<>>, _copy, acc, c, m),\n", snake)
-	g.pf("    do: {:ok, :lists.reverse(acc), c, m}\n\n")
-	g.emitIdentityRecord(snake, false)
-	g.emitIdentityRecord(snake, true)
-	g.pf("  defp %s_fixed_identity_loop(\n", snake)
-	g.pf("         <<_::little-unsigned-64, _::binary-size(@%s_body_bytes), _::binary>>,\n", snake)
-	g.pf("         _copy,\n")
-	g.pf("         _acc,\n")
-	g.pf("         _c,\n")
-	g.pf("         _m\n")
-	g.pf("       ) do\n")
-	g.pf("    {:error, :no_layout}\n")
-	g.pf("  end\n\n")
-	g.emitShortDef(fmt.Sprintf("defp %s_fixed_identity_loop(_records, _copy, _acc, _c, _m)", snake), "{:error, :malformed}")
-
-	g.pf("  # THE FOREIGN PATH: the plan compiled once from the writer's layout and cached\n")
-	g.pf("  # by hash, run over each record onto the prefill, and the same projection\n")
-	g.pf("  # over what it landed. The plan's own ops already held the writer's values\n")
-	g.pf("  # to this reader's bounds and counted, so the projection counts nothing more.\n")
-	g.pf("  defp %s_fixed_foreign(hash, stated, layout, records, copy, report, opts) do\n", snake)
 	g.pf("    with {:ok, plan, size, report} <- %s_fixed_plan_for(hash, layout, report, opts),\n", snake)
 	g.pf("         :ok <- %s_fixed_header_names_it(stated, hash),\n", snake)
 	g.pf("         {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
@@ -1717,9 +1565,14 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
-	g.pf("  # THE PLAN for any hash but this build's own: the one compiled ONCE from the\n")
-	g.pf("  # writer's layout and cached by hash. A caller may own the plan instead and\n")
-	g.pf("  # hand it in through `plan:`.\n")
+	g.pf("  # THE PLAN: the identity plan for this build's own hash, and for any other\n")
+	g.pf("  # hash the one compiled ONCE from the writer's layout and cached by hash.\n")
+	g.pf("  # A caller may own the plan instead and hand it in through `plan:`. THIS IS\n")
+	g.pf("  # THE WHOLE OF THE VERSION QUESTION: two heads selecting `{plan, size}` and\n")
+	g.pf("  # nothing else, and one loop behind them.\n")
+	g.emitPlanForHead(snake)
+	g.pf("    {:ok, @%s_plan, @%s_body_bytes, report}\n", snake, snake)
+	g.pf("  end\n\n")
 	g.pf("  defp %s_fixed_plan_for(hash, layout, report, opts) do\n", snake)
 	g.pf("    cap = Keyword.get(opts, :plan_capacity, R.plan_capacity())\n\n")
 	g.pf("    case Keyword.get(opts, :plan) || R.cached(__MODULE__, hash) do\n")
@@ -1754,12 +1607,17 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  defp %s_fixed_header_names_it(stated, hash) when stated == hash, do: :ok\n", snake)
 	g.pf("  defp %s_fixed_header_names_it(_stated, _hash), do: {:error, :layout_malformed}\n\n", snake)
 
+	g.pf("  # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows\n")
+	g.pf("  # the record size from the layout, so the count is arithmetic. BYTES LEFT\n")
+	g.pf("  # OVER ARE `malformed`, which is §3's rule for the same reason.\n")
 	g.pf("  defp %s_fixed_split(<<>>, _hash, _size, acc), do: {:ok, :lists.reverse(acc)}\n\n", snake)
 	g.pf("  defp %s_fixed_split(records, hash, size, acc) do\n", snake)
 	g.pf("    case records do\n")
 	g.pf("      <<h::little-unsigned-64, body::binary-size(^size), rest::binary>> when h == hash ->\n")
 	g.pf("        %s_fixed_split(rest, hash, size, [body | acc])\n\n", snake)
 	g.pf("      <<_::little-unsigned-64, _::binary-size(^size), _::binary>> ->\n")
+	g.pf("        # A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY\n")
+	g.pf("        # NAME, never a guess and never damage.\n")
 	g.pf("        {:error, :no_layout}\n\n")
 	g.pf("      _ ->\n")
 	g.pf("        {:error, :malformed}\n")
@@ -1767,32 +1625,16 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  end\n\n")
 }
 
-// emitIdentityRecord is one identity-loop clause for `copy: false` (the body
-// is already a sub-binary of the file) or `copy: true` (`:binary.copy/1` once
-// per record, no helper). The hash is a LITERAL so the match is the identity.
-func (g *fixedGen) emitIdentityRecord(snake string, copy bool) {
-	g.pf("  defp %s_fixed_identity_loop(\n", snake)
-	g.pf("         %s,\n", binNode{segs: []string{
-		fmt.Sprintf("@%s_hash::little-unsigned-64", snake),
-		fmt.Sprintf("body::binary-size(@%s_body_bytes)", snake),
-		"rest::binary",
-	}}.render(9, 9, 1))
-	if copy {
-		g.pf("         true,\n")
-	} else {
-		g.pf("         false,\n")
+// emitPlanForHead prints the identity clause's head, breaking the guard onto
+// its own line where the one-line form outgrows the formatter's width.
+func (g *fixedGen) emitPlanForHead(snake string) {
+	head := fmt.Sprintf("  defp %s_fixed_plan_for(hash, _layout, report, _opts)", snake)
+	guard := fmt.Sprintf(" when hash == @%s_hash do", snake)
+	if fits(0, 0, head+guard) {
+		g.pf("%s%s\n", head, guard)
+		return
 	}
-	g.pf("         acc,\n")
-	g.pf("         c,\n")
-	g.pf("         m\n")
-	g.pf("       ) do\n")
-	if copy {
-		g.pf("    {value, c, m} = %s_fixed_decode(:binary.copy(body), c, m)\n", snake)
-	} else {
-		g.pf("    {value, c, m} = %s_fixed_decode(body, c, m)\n", snake)
-	}
-	g.pf("    %s_fixed_identity_loop(rest, %t, [value | acc], c, m)\n", snake, copy)
-	g.pf("  end\n\n")
+	g.pf("%s\n       %s\n", head, strings.TrimSpace(guard))
 }
 
 // dstLiteral spells MY SIDE of the layout: one row per entry.

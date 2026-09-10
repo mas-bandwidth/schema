@@ -162,18 +162,19 @@ defmodule Bench.FixedRuntime do
   none — which is what a record whose every ranged value was already in range
   hands back, so the common read allocates no new map at all.
 
-  THE COUNTING IS THE GENERATED DECODE'S ON THE IDENTITY PATH (docs/SPEC-TABLES.md
-  §3.4, and the fold this leg made): the plan there is ONE identity copy and
-  carries no `count`, `text` or `clamp` op to count from, so the projection's own
-  `_fixed_clamped` pass answers how many bounds the record's values crossed and
-  this is where that number joins §4's six.
+  THE COUNTING IS THE GENERATED DECODE'S, for every plan (docs/SPEC-TABLES.md
+  §3.4, and the fold this leg made). A compiled plan's ops hold a foreign
+  writer's values to this reader's bounds before the projection sees them, and
+  the IDENTITY plan — ONE copy run, carrying no `count`, `text` or `clamp` op at
+  all — carries none. The projection clamps and counts either way, which is why
+  there is one decode and not two, and this is where its number joins §4's six.
   """
   def clamped(report, 0), do: report
   def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))
 
   @doc """
   Set `malformed` when the projection's damage flag rode true, and the same
-  report back when it did not — so a clean identity read allocates no new map.
+  report back when it did not — so a clean read allocates no new map.
   """
   def damaged(report, false), do: report
   def damaged(report, true), do: %{report | malformed: true}
@@ -326,10 +327,10 @@ defmodule Bench.FixedRuntime do
   @doc """
   One record's body, DETACHED from the file it was read out of when `copy`.
 
-  THE FAST PATH HANDS BACK SUB-BINARIES, AND A SUB-BINARY KEEPS ITS WHOLE
-  PARENT ALIVE. A record whose plan is the identity plan needs no image built —
-  the body IS the image, which is a reference and not a copy, and that is where
-  this form's read speed comes from. The projection then binds each text field
+  THE READ HANDS BACK SUB-BINARIES, AND A SUB-BINARY KEEPS ITS WHOLE PARENT
+  ALIVE. A record whose plan is ONE run covering the whole image needs no image
+  built — the body IS the image, which is a reference and not a copy, and that
+  is where this form's read speed comes from. The projection then binds each text field
   as a sub-binary of THAT, so an eight-byte name lifted out of an eighty-kilobyte
   file is an eight-byte term that holds eighty kilobytes off the collector for
   as long as anything keeps it. Hold a few strings out of a big file and the

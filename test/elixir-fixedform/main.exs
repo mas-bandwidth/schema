@@ -479,14 +479,14 @@ compiled_is_identity = fn name, layout, dst, plan, prefill, decode, values ->
     Enum.all?(both, fn {{a, _}, {b, _}} -> decode.(a, 0) == decode.(b, 0) end)
   )
 
-  # THE COUNTER MOVES ON BOTH PATHS, and the identity path never moves it MORE.
-  # THE IDENTITY PATH CHECKS IN THE PROJECTION, which walks only what a read can
-  # have written — a counted array's LIVE elements and never its slack, the
-  # reference's own rule (docs/SPEC-TABLES.md §3.4: slack is unspecified on
-  # read and moves no counter). A COMPILED plan checks in the interpreter, whose
-  # entries are static and so cover EVERY slot of a run, slack included; over a
-  # clean body the two agree exactly, and over a hostile one the compiled plan
-  # can only count more, never less.
+  # THE COUNTER MOVES THE SAME ON BOTH PLANS, AND THE PROPERTY IS `==`. Both
+  # count only what a read can have written — a counted array's LIVE elements
+  # and never its slack, the reference's own rule (docs/SPEC-TABLES.md §3.4:
+  # slack is unspecified on read and moves no counter). The projection walks
+  # the live run; the interpreter's counter-moving ops ride inside `:live` and
+  # `:present` wrappers so slack and an absent optional's payload never fire
+  # one. A `<=` here would admit a compiled plan counting slack, which is what
+  # that wrapping exists to make impossible.
   #
   # A HOSTILE BODY RIDES BESIDE THE REAL ONES: every byte 0xFF, so every
   # declared bound is crossed at once. A corpus whose values are all in range
@@ -495,13 +495,8 @@ compiled_is_identity = fn name, layout, dst, plan, prefill, decode, values ->
   counted = both ++ [run_both.(hostile)]
 
   Leg.check(
-    "#{name}: the identity path counts the `clamped` a compiled plan counts on a clean body",
-    Enum.all?(both, fn {{_, a}, {_, b}} -> a == b end)
-  )
-
-  Leg.check(
-    "#{name}: and never more than a compiled plan counts over slack",
-    Enum.all?(counted, fn {{_, a}, {_, b}} -> a <= b end)
+    "#{name}: a compiled plan counts the `clamped` the identity plan counts, slack and all",
+    Enum.all?(counted, fn {{_, a}, {_, b}} -> a == b end)
   )
 
   Leg.check(

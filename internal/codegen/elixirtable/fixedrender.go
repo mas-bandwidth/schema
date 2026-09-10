@@ -137,6 +137,31 @@ func hangs(n node) bool {
 	return ok
 }
 
+// listNode is `[a, b, c]` — a run of leaves matched in the parent and wrapped
+// one at a time. The formatter breaks a list ONE ITEM PER LINE, two columns in
+// from the line the `[` opened on, with the `]` back at that column.
+type listNode struct{ items []string }
+
+func (l listNode) flat() string { return "[" + strings.Join(l.items, ", ") + "]" }
+
+func (l listNode) render(at, ind, tail int) string {
+	if one := l.flat(); fits(at, tail, one) {
+		return one
+	}
+	pad := indentOf(ind + 2)
+	var b strings.Builder
+	b.WriteString("[\n")
+	for i, it := range l.items {
+		sep := ","
+		if i == len(l.items)-1 {
+			sep = ""
+		}
+		b.WriteString(pad + it + sep + "\n")
+	}
+	b.WriteString(indentOf(ind) + "]")
+	return b.String()
+}
+
 // binNode is `<<a, b, c>>`, which the formatter FILLS GREEDILY to the width
 // with continuations two columns in — the one shape it does not break one item
 // per line, so long as every item is short.
