@@ -127,8 +127,8 @@ func gone(lk *Table) error {
 // CHANGE BEST: which field is at this offset; then the `?`, which is the exact
 // account of a move the width would report vaguely; then the width, the fact
 // that slides every field after it; then the kind, the held type, the array
-// element, the enum a keyed array is keyed by, the range and the default — the facts that move no byte and change
-// what the bytes say.
+// element, the enum a keyed array is keyed by, the range and the default —
+// the facts that move no byte and change what the bytes say.
 func diffTable(lk, lv *Table, policy Policy) error {
 	for i, want := range lk.Entries {
 		where := fmt.Sprintf("%s %s: entry %d, field %s (id=0x%016x)", lk.Decl, lk.Name, i+1, want.Name, want.Id)
