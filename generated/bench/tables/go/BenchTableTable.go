@@ -1645,6 +1645,13 @@ const (
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
 
+// Arg IS ONE LANE WITH SEVERAL MEANINGS, mirrored from the reference: the
+// byte a GUARD expects at src[Guard], a text entry's flavour, and a const
+// entry's arm ordinal. No entry uses two of them at once, which is why it
+// works, and the coalescer compares it because two runs under different
+// guards must not merge. Splitting the lane is a REFERENCE-SIDE change
+// (cpptable/fixedruntime.go, its own uint8 arg) and had not landed on
+// fixed-table-form at b7fdb475; this port matches the reference until it does.
 type TableFixedEntry struct {
 	Src, Dst, Size, Aux, Guard uint32
 	Op, Arg, DstSize, Sign     uint8
