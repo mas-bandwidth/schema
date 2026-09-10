@@ -53,6 +53,7 @@ behaviour.
 | `(uint8_t) 8` in `table_fixed_tag_at` | `8u` | `8u` |
 | union-arm `my_arm = mi + 1` then `c.argw =` | `c.argw =` then `my_arm = mi + 1` | my_arm then argw |
 | `const T * p` in the runtime | `const T & p` | `T REF` |
+| `TableFixedEntryLands( &plan[i] )` | `TableFixedEntryLands( plan[i] )` | `TableFixedEntryLands( plan[i] )` — same pointer/ref as Apply, for the prefill's cover-minus-plan |
 | `int i; for ( i =` | `for ( int i =` | C++ for-init |
 | `remap` (ordinal table) | `table` | `table` |
 | `wide` (f32→f64 local) | `d` | `d` |

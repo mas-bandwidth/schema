@@ -221,8 +221,11 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
         fixed_check( table_fixed_parse_layout( fx_root_fixed_layout, (int64_t) sizeof( fx_root_fixed_layout ), &parsed, &why ) != 0,
                      "C bounds, compiled-own: this build's layout parses" );
         memset( &cr, 0, sizeof( cr ) );
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
         made = table_fixed_compile( &parsed, fx_root_fixed_layout, (int32_t) sizeof( fx_root_fixed_layout ),
-                                    fx_root_fixed_dst, compiled, 1024, &guarded, &cr );
+                                    fx_root_fixed_dst, fx_root_fixed_cover, fx_root_fixed_cover_count,
+                                    compiled, 1024, &guarded, &fill_at, &fill_count, &cr );
         fixed_check( made > 0, "C bounds, compiled-own: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {

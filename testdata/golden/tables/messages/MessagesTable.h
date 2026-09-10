@@ -2471,6 +2471,117 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     report->widened += widened;
 }
 
+// ---- THE PREFILL -----------------------------------------------------------
+//
+// §3.4'S PREFILL ANSWERS ONE QUESTION — what does a field the record does not
+// carry hold? — and the owner's rule is that it answers it for EXACTLY THE
+// BYTES THE PLAN DOES NOT LAND, and no others. Prefilling a byte the plan is
+// about to overwrite is a write thrown away, and a form whose write makes two
+// passes over a body should not have its read make three.
+//
+// So the prefill is A LIST OF RANGES rather than a whole-value reset, and it is
+// computed where the plan is: the type's own VALUE BYTES — the identity plan's
+// destinations, laid down sorted and merged by the schema compiler as
+// <Name>FixedCover — MINUS every byte this plan lands.
+//
+// THE IDENTITY PLAN'S LIST IS EMPTY, and that is the rule's LIMIT CASE and not
+// an exception to it: its destinations ARE the value bytes, so there is nothing
+// left to subtract. Which is why nothing in the read loop asks whether the plan
+// it is running is the identity one — it runs the list it was handed, and that
+// list is empty.
+
+struct TableFixedFill
+{
+    uint32_t dst = 0;
+    uint32_t size = 0;
+};
+
+// THE PREFILL ITSELF: the declared defaults, into the ranges named and nowhere
+// else. The default image is the caller's own storage reset once per read, not
+// per record.
+inline void TableFixedFillRun( const TableFixedFill * fill, int32_t count,
+                               const uint8_t * TABLE_RESTRICT defaults, uint8_t * TABLE_RESTRICT dst )
+{
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        TableFixedCopyRun( dst + fill[i].dst, defaults + fill[i].dst, fill[i].size );
+    }
+}
+
+// TableFixedEntryLands is the bytes of the READER'S OWN STORAGE one entry
+// writes — TWO runs, because a text entry lands a length and a buffer and every
+// other op lands one run and leaves the second empty.
+//
+// A GUARDED ENTRY COUNTS AS LANDING ITS BYTES. It is a union arm, and an arm's
+// storage is the arm's: the tag says which one is live and nothing reads the
+// others. What must never be conditional is the TAG, and the compiler below
+// lays an unguarded one down for exactly this reason.
+inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
+{
+    lands[0] = e.dst;
+    lands[1] = e.dst;
+    lands[2] = 0;
+    lands[3] = 0;
+    switch ( e.op )
+    {
+        case kTableFixedCount: lands[1] = e.dst + 4u; break;
+        case kTableFixedText:
+        {
+            const uint32_t unit = ( e.meta == kTableFixedTextWide ) ? 2u : 1u;
+            lands[1] = e.dst + 4u;
+            lands[2] = e.aux;
+            lands[3] = e.aux + e.size + ( e.meta == kTableFixedTextBytes ? 0u : unit );
+            break;
+        }
+        case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
+        case kTableFixedWiden:
+        case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
+        default: lands[1] = e.dst + e.size; break; // copy, const
+    }
+}
+
+// TableFixedFills is the subtraction: the cover MINUS everything the plan
+// lands, as a list of ranges, answered into the out array or merely counted
+// when it is NULL. It walks the cover once and, at each position, asks the plan what
+// run starts there and where the next one starts — so it costs the plan's
+// length per RUN of the answer, once per file and never per record. The plan's
+// length is the caller's declared plan capacity, which is what bounds it.
+inline int32_t TableFixedFills( const TableFixedEntry * plan, int32_t count,
+                                const TableFixedFill * cover, int32_t cover_count,
+                                TableFixedFill * out )
+{
+    int32_t n = 0;
+    for ( int32_t r = 0; r < cover_count; ++r )
+    {
+        const uint32_t hi = cover[r].dst + cover[r].size;
+        uint32_t pos = cover[r].dst;
+        while ( pos < hi )
+        {
+            uint32_t end = pos;  // the end of the landed run that covers pos
+            uint32_t next = hi;  // where the next landed run starts, past pos
+            for ( int32_t i = 0; i < count; ++i )
+            {
+                uint32_t lands[4];
+                TableFixedEntryLands( plan[i], lands );
+                for ( int32_t q = 0; q < 4; q += 2 )
+                {
+                    const uint32_t lo = lands[q];
+                    const uint32_t top = lands[q + 1];
+                    if ( top <= lo ) { continue; }
+                    if ( lo <= pos && pos < top ) { if ( top > end ) { end = top; } }
+                    else if ( lo > pos && lo < next ) { next = lo; }
+                }
+            }
+            if ( end > pos ) { pos = end; continue; }
+            if ( next > hi ) { next = hi; }
+            if ( out != NULL ) { out[n].dst = pos; out[n].size = next - pos; }
+            n++;
+            pos = next;
+        }
+    }
+    return n;
+}
+
 // ---- THE LAYOUT ------------------------------------------------------------
 //
 // An entry is SEVENTEEN BYTES and the layout is a COUNT and a run of them.
@@ -2870,6 +2981,22 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
     return at;
 }
 
+// TableFixedLayFills reserves the prefill's ranges in the SAME POOL the remap
+// tables come out of, above the entries and growing downward, and answers the
+// byte offset of the array from the plan's base. The pool is the caller's plan
+// storage: this codec allocates nothing, here as everywhere, and a plan whose
+// pool does not fit is a refusal by name.
+inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
+{
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    // ROUNDED SO THE ARRAY IS ALIGNED: a remap table is laid in units of two
+    // bytes and this array's members are four wide.
+    c.pool = ( c.pool + n * (int32_t) sizeof( TableFixedFill ) + 3 ) & ~3;
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    return (uint32_t) ( total - c.pool );
+}
+
+
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
@@ -3020,6 +3147,20 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint8_t saved_argw = c.argw;
             c.argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : 1u;
             int32_t my_arm = mi + 1;
+            // THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED. Every tag value
+            // below is written under THEIR tag's guard, so a record naming an
+            // arm this build does not have would land no tag at all — and the
+            // prefill cannot answer for it, because those bytes are named by
+            // the guarded entries. The plan is partitioned unguarded-first, so
+            // this is overwritten by the arm that matches and stands when none
+            // does. It is the ONE byte this form writes twice, and it is the
+            // compiled path's alone.
+            {
+                TableFixedEntry none;
+                none.src = their_at; none.dst = aux_at; none.size = my_tag;
+                none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                TableFixedPush( c, none );
+            }
             for ( uint32_t k = 0; k < me.children && my_arm < mine.count; ++k )
             {
                 const TableFixedLayoutEntry ma = TableFixedEntryAt( mine, my_arm );
@@ -3103,7 +3244,9 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
 inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
                                   const uint8_t * my_layout, int32_t my_layout_bytes,
                                   const TableFixedDst * dst,
+                                  const TableFixedFill * cover, int32_t cover_count,
                                   TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
+                                  uint32_t * fill_at, int32_t * fill_count,
                                   TableReport * report )
 {
     TableFixedLayoutView mine;
@@ -3144,6 +3287,18 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     }
     if ( plain == c.count ) { split = out; }
     if ( guarded != NULL ) { *guarded = split; }
+    // THE PREFILL'S RANGES, out of the same pool and by the same rule: the
+    // type's value bytes minus everything this plan lands.
+    c.count = out;
+    *fill_at = 0;
+    *fill_count = TableFixedFills( plan, out, cover, cover_count, NULL );
+    if ( *fill_count > 0 )
+    {
+        const uint32_t at = TableFixedLayFills( c, *fill_count );
+        if ( c.overflow ) { return -1; }
+        TableFixedFills( plan, out, cover, cover_count, (TableFixedFill *) (void *) ( (uint8_t *) plan + at ) );
+        *fill_at = at;
+    }
     return out;
 }
 
@@ -3166,6 +3321,8 @@ struct TableFixedPlanCacheSlot
     int32_t count = 0;
     int32_t guarded = 0;
     int64_t record_bytes = 0;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     uint8_t made = 0;
 };
 
@@ -3191,6 +3348,8 @@ inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntr
         cache.slots[i].count = 0;
         cache.slots[i].guarded = 0;
         cache.slots[i].record_bytes = 0;
+        cache.slots[i].fill = NULL;
+        cache.slots[i].fill_count = 0;
         cache.slots[i].made = 0;
     }
 }
@@ -14243,7 +14402,7 @@ inline bool PingLoadMessages( Ping * values, int64_t * count, const TableVocabul
 // the values in declared order, every field at its declared storage width.
 // The writer is the constant bytes memcpy'd and then stores; the reader is
 // ONE loop over ONE plan, the identity plan here and a plan compiled from
-// the writer's own layout for anybody else.
+// the writer's own layout for anybody else. There is no second reader.
 
 // THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
 // schema compiler rather than folded by this one, because they are the same
@@ -14449,6 +14608,20 @@ constexpr TableFixedEntry UserFixedPlan[] = {
 constexpr int32_t UserFixedPlanCount = 1;
 constexpr int32_t UserFixedPlanGuarded = 1;
 
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill UserFixedCover[] = {
+    { 0u, 17u },
+    { 20u, 4u },
+};
+constexpr int32_t UserFixedCoverCount = 2;
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -14480,6 +14653,12 @@ inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buff
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
 // writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
+//
+// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
+// ranges the plan compiler works out once, and on the identity plan that list
+// is EMPTY — so this read writes no byte twice, and it is one rule for both
+// plans rather than a flag that asks which one this is.
 inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
@@ -14507,6 +14686,8 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
     int32_t entry_count = UserFixedPlanCount;
     int32_t entry_guarded = UserFixedPlanGuarded;
     int64_t record_bytes = UserFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     if ( hash != UserFixedHash )
     {
         // ANOTHER WRITER: the same loop, over a plan compiled from its layout
@@ -14527,6 +14708,8 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
             entry_count = hit->count;
             entry_guarded = hit->guarded;
             record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
         }
         else
         {
@@ -14543,9 +14726,13 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
                 storing = 1;
             }
             int32_t compiled_guarded = 0;
-            const int32_t made = TableFixedCompile( parsed, UserFixedLayout, (int32_t) UserFixedLayoutBytes, UserFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, UserFixedLayout, (int32_t) UserFixedLayoutBytes, UserFixedDst,
+                                                   UserFixedCover, UserFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
             record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
             {
@@ -14554,6 +14741,8 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
                 cache->slots[cache->used].count = made;
                 cache->slots[cache->used].guarded = compiled_guarded;
                 cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
                 cache->slots[cache->used].made = 1;
                 cache->used++;
             }
@@ -14570,9 +14759,19 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
+    User defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        UserReset( defaults );
+    }
     for ( int64_t k = 0; k < n; ++k )
     {
-        UserReset( values[k] ); // the declared defaults, one prefill
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -14642,6 +14841,20 @@ constexpr TableFixedEntry ScriptFixedPlan[] = {
 constexpr int32_t ScriptFixedPlanCount = 2;
 constexpr int32_t ScriptFixedPlanGuarded = 2;
 
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill ScriptFixedCover[] = {
+    { 0u, 65u },
+    { 68u, 8u },
+};
+constexpr int32_t ScriptFixedCoverCount = 2;
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -14673,6 +14886,12 @@ inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
 // writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
+//
+// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
+// ranges the plan compiler works out once, and on the identity plan that list
+// is EMPTY — so this read writes no byte twice, and it is one rule for both
+// plans rather than a flag that asks which one this is.
 inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
@@ -14700,6 +14919,8 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
     int32_t entry_count = ScriptFixedPlanCount;
     int32_t entry_guarded = ScriptFixedPlanGuarded;
     int64_t record_bytes = ScriptFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     if ( hash != ScriptFixedHash )
     {
         // ANOTHER WRITER: the same loop, over a plan compiled from its layout
@@ -14720,6 +14941,8 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
             entry_count = hit->count;
             entry_guarded = hit->guarded;
             record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
         }
         else
         {
@@ -14736,9 +14959,13 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
                 storing = 1;
             }
             int32_t compiled_guarded = 0;
-            const int32_t made = TableFixedCompile( parsed, ScriptFixedLayout, (int32_t) ScriptFixedLayoutBytes, ScriptFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, ScriptFixedLayout, (int32_t) ScriptFixedLayoutBytes, ScriptFixedDst,
+                                                   ScriptFixedCover, ScriptFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
             record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
             {
@@ -14747,6 +14974,8 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
                 cache->slots[cache->used].count = made;
                 cache->slots[cache->used].guarded = compiled_guarded;
                 cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
                 cache->slots[cache->used].made = 1;
                 cache->used++;
             }
@@ -14763,9 +14992,19 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
+    Script defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        ScriptReset( defaults );
+    }
     for ( int64_t k = 0; k < n; ++k )
     {
-        ScriptReset( values[k] ); // the declared defaults, one prefill
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -14824,6 +15063,19 @@ constexpr TableFixedEntry SelectionFixedPlan[] = {
 constexpr int32_t SelectionFixedPlanCount = 1;
 constexpr int32_t SelectionFixedPlanGuarded = 1;
 
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill SelectionFixedCover[] = {
+    { 0u, 16u },
+};
+constexpr int32_t SelectionFixedCoverCount = 1;
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -14855,6 +15107,12 @@ inline int64_t SelectionFixedSave( const Selection * values, int64_t count, uint
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
 // writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
+//
+// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
+// ranges the plan compiler works out once, and on the identity plan that list
+// is EMPTY — so this read writes no byte twice, and it is one rule for both
+// plans rather than a flag that asks which one this is.
 inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
@@ -14882,6 +15140,8 @@ inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const u
     int32_t entry_count = SelectionFixedPlanCount;
     int32_t entry_guarded = SelectionFixedPlanGuarded;
     int64_t record_bytes = SelectionFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     if ( hash != SelectionFixedHash )
     {
         // ANOTHER WRITER: the same loop, over a plan compiled from its layout
@@ -14902,6 +15162,8 @@ inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const u
             entry_count = hit->count;
             entry_guarded = hit->guarded;
             record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
         }
         else
         {
@@ -14918,9 +15180,13 @@ inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const u
                 storing = 1;
             }
             int32_t compiled_guarded = 0;
-            const int32_t made = TableFixedCompile( parsed, SelectionFixedLayout, (int32_t) SelectionFixedLayoutBytes, SelectionFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, SelectionFixedLayout, (int32_t) SelectionFixedLayoutBytes, SelectionFixedDst,
+                                                   SelectionFixedCover, SelectionFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
             record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
             {
@@ -14929,6 +15195,8 @@ inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const u
                 cache->slots[cache->used].count = made;
                 cache->slots[cache->used].guarded = compiled_guarded;
                 cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
                 cache->slots[cache->used].made = 1;
                 cache->used++;
             }
@@ -14945,9 +15213,19 @@ inline int64_t SelectionFixedLoad( Selection * values, int64_t capacity, const u
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
+    Selection defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        SelectionReset( defaults );
+    }
     for ( int64_t k = 0; k < n; ++k )
     {
-        SelectionReset( values[k] ); // the declared defaults, one prefill
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
@@ -15005,6 +15283,19 @@ constexpr TableFixedEntry RemoveTextFixedPlan[] = {
 constexpr int32_t RemoveTextFixedPlanCount = 1;
 constexpr int32_t RemoveTextFixedPlanGuarded = 1;
 
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill RemoveTextFixedCover[] = {
+    { 0u, 16u },
+};
+constexpr int32_t RemoveTextFixedCoverCount = 1;
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -15036,6 +15327,12 @@ inline int64_t RemoveTextFixedSave( const RemoveText * values, int64_t count, ui
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
 // writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
+//
+// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
+// ranges the plan compiler works out once, and on the identity plan that list
+// is EMPTY — so this read writes no byte twice, and it is one rule for both
+// plans rather than a flag that asks which one this is.
 inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
@@ -15063,6 +15360,8 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
     int32_t entry_count = RemoveTextFixedPlanCount;
     int32_t entry_guarded = RemoveTextFixedPlanGuarded;
     int64_t record_bytes = RemoveTextFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     if ( hash != RemoveTextFixedHash )
     {
         // ANOTHER WRITER: the same loop, over a plan compiled from its layout
@@ -15083,6 +15382,8 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
             entry_count = hit->count;
             entry_guarded = hit->guarded;
             record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
         }
         else
         {
@@ -15099,9 +15400,13 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
                 storing = 1;
             }
             int32_t compiled_guarded = 0;
-            const int32_t made = TableFixedCompile( parsed, RemoveTextFixedLayout, (int32_t) RemoveTextFixedLayoutBytes, RemoveTextFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, RemoveTextFixedLayout, (int32_t) RemoveTextFixedLayoutBytes, RemoveTextFixedDst,
+                                                   RemoveTextFixedCover, RemoveTextFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
             record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
             {
@@ -15110,6 +15415,8 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
                 cache->slots[cache->used].count = made;
                 cache->slots[cache->used].guarded = compiled_guarded;
                 cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
                 cache->slots[cache->used].made = 1;
                 cache->used++;
             }
@@ -15126,9 +15433,19 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
+    RemoveText defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        RemoveTextReset( defaults );
+    }
     for ( int64_t k = 0; k < n; ++k )
     {
-        RemoveTextReset( values[k] ); // the declared defaults, one prefill
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
@@ -15206,6 +15523,21 @@ constexpr TableFixedEntry OpenDocumentFixedPlan[] = {
 constexpr int32_t OpenDocumentFixedPlanCount = 3;
 constexpr int32_t OpenDocumentFixedPlanGuarded = 3;
 
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill OpenDocumentFixedCover[] = {
+    { 0u, 65u },
+    { 68u, 5u },
+    { 76u, 8u },
+};
+constexpr int32_t OpenDocumentFixedCoverCount = 3;
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -15237,6 +15569,12 @@ inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
 // writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
+//
+// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
+// ranges the plan compiler works out once, and on the identity plan that list
+// is EMPTY — so this read writes no byte twice, and it is one rule for both
+// plans rather than a flag that asks which one this is.
 inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
@@ -15264,6 +15602,8 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
     int32_t entry_count = OpenDocumentFixedPlanCount;
     int32_t entry_guarded = OpenDocumentFixedPlanGuarded;
     int64_t record_bytes = OpenDocumentFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     if ( hash != OpenDocumentFixedHash )
     {
         // ANOTHER WRITER: the same loop, over a plan compiled from its layout
@@ -15284,6 +15624,8 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
             entry_count = hit->count;
             entry_guarded = hit->guarded;
             record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
         }
         else
         {
@@ -15300,9 +15642,13 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
                 storing = 1;
             }
             int32_t compiled_guarded = 0;
-            const int32_t made = TableFixedCompile( parsed, OpenDocumentFixedLayout, (int32_t) OpenDocumentFixedLayoutBytes, OpenDocumentFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, OpenDocumentFixedLayout, (int32_t) OpenDocumentFixedLayoutBytes, OpenDocumentFixedDst,
+                                                   OpenDocumentFixedCover, OpenDocumentFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
             record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
             {
@@ -15311,6 +15657,8 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
                 cache->slots[cache->used].count = made;
                 cache->slots[cache->used].guarded = compiled_guarded;
                 cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
                 cache->slots[cache->used].made = 1;
                 cache->used++;
             }
@@ -15327,9 +15675,19 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
+    OpenDocument defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        OpenDocumentReset( defaults );
+    }
     for ( int64_t k = 0; k < n; ++k )
     {
-        OpenDocumentReset( values[k] ); // the declared defaults, one prefill
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -15399,6 +15757,20 @@ constexpr TableFixedEntry SaveDocumentFixedPlan[] = {
 constexpr int32_t SaveDocumentFixedPlanCount = 2;
 constexpr int32_t SaveDocumentFixedPlanGuarded = 2;
 
+// THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
+// a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
+// two fields holds nothing, so nothing defaults it — and neither is anything
+// else the identity plan above does not land, because this IS that plan's
+// destinations. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS (§3.4), so
+// against the identity plan it is empty and the identity read writes no byte
+// twice; a plan compiled from a stranger's layout subtracts itself from it
+// once, when the plan is compiled, and prefills exactly the rest.
+constexpr TableFixedFill SaveDocumentFixedCover[] = {
+    { 0u, 65u },
+    { 68u, 5u },
+};
+constexpr int32_t SaveDocumentFixedCoverCount = 2;
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -15430,6 +15802,12 @@ inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
 // writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
+//
+// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
+// ranges the plan compiler works out once, and on the identity plan that list
+// is EMPTY — so this read writes no byte twice, and it is one rule for both
+// plans rather than a flag that asks which one this is.
 inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
@@ -15457,6 +15835,8 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
     int32_t entry_count = SaveDocumentFixedPlanCount;
     int32_t entry_guarded = SaveDocumentFixedPlanGuarded;
     int64_t record_bytes = SaveDocumentFixedRecordBytes;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
     if ( hash != SaveDocumentFixedHash )
     {
         // ANOTHER WRITER: the same loop, over a plan compiled from its layout
@@ -15477,6 +15857,8 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
             entry_count = hit->count;
             entry_guarded = hit->guarded;
             record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
         }
         else
         {
@@ -15493,9 +15875,13 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
                 storing = 1;
             }
             int32_t compiled_guarded = 0;
-            const int32_t made = TableFixedCompile( parsed, SaveDocumentFixedLayout, (int32_t) SaveDocumentFixedLayoutBytes, SaveDocumentFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, SaveDocumentFixedLayout, (int32_t) SaveDocumentFixedLayoutBytes, SaveDocumentFixedDst,
+                                                   SaveDocumentFixedCover, SaveDocumentFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
             record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
             {
@@ -15504,6 +15890,8 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
                 cache->slots[cache->used].count = made;
                 cache->slots[cache->used].guarded = compiled_guarded;
                 cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
                 cache->slots[cache->used].made = 1;
                 cache->used++;
             }
@@ -15520,9 +15908,19 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
+    SaveDocument defaults;
+    if ( fill_count > 0 )
+    {
+        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        SaveDocumentReset( defaults );
+    }
     for ( int64_t k = 0; k < n; ++k )
     {
-        SaveDocumentReset( values[k] ); // the declared defaults, one prefill
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the

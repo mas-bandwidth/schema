@@ -27,6 +27,7 @@ package ir
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 )
 
@@ -1099,6 +1100,113 @@ func TableFixedHasWriteBound(u *Unit) bool {
 		}
 	}
 	return false
+}
+
+// ---------------------------------------------------------------------------
+// THE IDENTITY READ'S SHAPE, AND THE PREFILL'S DOMAIN
+//
+// What a record whose hash is this build's own costs to read, and what a field
+// the record does not carry holds, are both decided HERE rather than per port,
+// for the same reason the plan is: two ports that answer them differently read
+// the same record differently.
+// ---------------------------------------------------------------------------
+
+// TableFixedIdentityFlat reports whether THIS BUILD'S STORAGE IMAGE IS THE WIRE
+// IMAGE for a type — every leaf at the same offset in both, in the same order,
+// with nothing between them that the wire does not carry.
+//
+// It is not a separate proof: the COALESCER already answers it. Adjacent leaves
+// whose source and destination advance together become one entry, so a type
+// whose storage is its wire image coalesces to exactly ONE unguarded COPY over
+// the whole body from offset zero — and a type that has one byte of padding, or
+// one count that rides ahead of its array on the wire and behind it in storage,
+// or one text length, does not. A backend that sees that plan may read a record
+// with ONE memcpy into the caller's own struct and emit no scatter at all.
+func TableFixedIdentityFlat(u *Unit, st *Struct) bool {
+	plan, guarded := TableFixedBuildPlan(u, st)
+	if len(plan) != 1 || guarded != 1 {
+		return false
+	}
+	e := plan[0]
+	return e.Op == TableFixedOpCopy && e.Guard == TableFixedNoGuard &&
+		e.Src == 0 && e.Dst == 0 && e.Size == TableFixedTypeBytes(st)
+}
+
+// TableFixedRange is a half-open run of THE READER'S OWN STORAGE, in bytes.
+type TableFixedRange struct {
+	Dst, Size int64
+}
+
+// TableFixedIdentityCoverage is every byte of this build's own storage the
+// IDENTITY plan lands a value in, sorted and merged — which is the same thing
+// as every byte of the type that HOLDS a declared value, because the identity
+// plan has an entry for every declared leaf and nothing else does.
+//
+// IT IS THE PREFILL'S DOMAIN. §3.4's prefill answers ONE question — what does a
+// field the record does not carry hold? — and the owner's rule is that it
+// answers it for exactly the bytes the plan does not land: the reader prefills
+// THIS SET MINUS the plan's own destinations and nothing more. The identity
+// plan's destinations ARE this set, so its list is empty and the identity read
+// writes no byte twice; a plan compiled from a stranger's layout subtracts what
+// it does land and prefills the rest. One rule, with the identity plan as its
+// limit case rather than as an exception to it.
+//
+// PADDING IS NOT IN IT. A byte between two fields holds no declared value, so
+// nothing reads it and nothing needs to default it — which is also why the set
+// is derived from the plan's leaves rather than from sizeof.
+func TableFixedIdentityCoverage(u *Unit, st *Struct) []TableFixedRange {
+	plan, _ := TableFixedBuildPlan(u, st)
+	var raw []TableFixedRange
+	for _, e := range plan {
+		switch e.Op {
+		case TableFixedOpCopy:
+			raw = append(raw, TableFixedRange{Dst: e.Dst, Size: e.Size})
+		case TableFixedOpCount:
+			// THE ENTRY'S SIZE IS THE BOUND, NOT THE MOVE: a count lands as the
+			// int32 its storage is.
+			raw = append(raw, TableFixedRange{Dst: e.Dst, Size: TableFixedCountBytes})
+		case TableFixedOpText:
+			raw = append(raw, TableFixedRange{Dst: e.Dst, Size: TableFixedCountBytes})
+			// THE TERMINATOR IS STORAGE THE WIRE DOES NOT CARRY, and it is one
+			// unit past the declared bound for exactly that (§3.4). Bytes are
+			// not terminated, so bytes do not have it.
+			raw = append(raw, TableFixedRange{Dst: e.Aux, Size: e.Size + tableFixedTermBytes(e.Meta)})
+		}
+	}
+	return tableFixedMergeRanges(raw)
+}
+
+// tableFixedTermBytes is a text flavour's terminator width: one for utf8, two
+// for wide, none for bytes. The flavours are the runtime's kTableFixedText*.
+func tableFixedTermBytes(meta int) int64 {
+	switch meta {
+	case 1:
+		return 1
+	case 2:
+		return 2
+	}
+	return 0
+}
+
+func tableFixedMergeRanges(raw []TableFixedRange) []TableFixedRange {
+	sort.Slice(raw, func(i, j int) bool { return raw[i].Dst < raw[j].Dst })
+	var out []TableFixedRange
+	for _, r := range raw {
+		if r.Size <= 0 {
+			continue
+		}
+		if len(out) > 0 {
+			last := &out[len(out)-1]
+			if r.Dst <= last.Dst+last.Size {
+				if end := r.Dst + r.Size; end > last.Dst+last.Size {
+					last.Size = end - last.Dst
+				}
+				continue
+			}
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------

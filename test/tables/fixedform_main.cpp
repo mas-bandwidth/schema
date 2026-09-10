@@ -691,8 +691,11 @@ static void bytes_row_case()
         std::vector<tblfx2::TableFixedEntry> plan( 2048 );
         int32_t guarded = 0;
         tblfx2::TableReport compile_report;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
         const int32_t made = tblfx2::TableFixedCompile( theirs, tblfx2::FxRootFixedLayout, (int32_t) tblfx2::FxRootFixedLayoutBytes,
-                                                        rowset, plan.data(), 2048, &guarded, &compile_report );
+                                                        rowset, tblfx2::FxRootFixedCover, tblfx2::FxRootFixedCoverCount,
+                                                        plan.data(), 2048, &guarded, &fill_at, &fill_count, &compile_report );
         check( made > 0, "bytes row: the plan compiles either way — the rows are not what refuses" );
         // THE DESTINATION IS OVERSIZED ON PURPOSE. The wrong rows put an
         // element destination where the LENGTH FIELD is, and six bytes of
@@ -896,8 +899,11 @@ static void bounds_case()
         std::vector<tblfx1::TableFixedEntry> compiled( 1024 );
         int32_t guarded = 0;
         tblfx1::TableReport cr;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
         const int32_t made = tblfx1::TableFixedCompile( parsed, tblfx1::FxRootFixedLayout, (int32_t) tblfx1::FxRootFixedLayoutBytes,
-                                                        tblfx1::FxRootFixedDst, compiled.data(), 1024, &guarded, &cr );
+                                                        tblfx1::FxRootFixedDst, tblfx1::FxRootFixedCover, tblfx1::FxRootFixedCoverCount,
+                                                        compiled.data(), 1024, &guarded, &fill_at, &fill_count, &cr );
         check( made > 0, "bounds, compiled-own: the plan compiles" );
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
@@ -1001,8 +1007,11 @@ static void bounds_case()
         std::vector<tblv1::TableFixedEntry> compiled( 8192 );
         int32_t guarded = 0;
         tblv1::TableReport cr;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
         const int32_t made = tblv1::TableFixedCompile( parsed, tblv1::CfgFixedLayout, (int32_t) tblv1::CfgFixedLayoutBytes,
-                                                       tblv1::CfgFixedDst, compiled.data(), 8192, &guarded, &cr );
+                                                       tblv1::CfgFixedDst, tblv1::CfgFixedCover, tblv1::CfgFixedCoverCount,
+                                                       compiled.data(), 8192, &guarded, &fill_at, &fill_count, &cr );
         check( made > 0, "live-count: the plan compiles" );
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )

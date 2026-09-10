@@ -105,8 +105,12 @@ void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
         TableReport r;
         int right;
 
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+
         made = table_fixed_compile( &theirs, fx_root_fixed_layout, (int32_t) sizeof( fx_root_fixed_layout ),
-                                    rowset, g_plan, PlanCapacity, &guarded, NULL );
+                                    rowset, fx_root_fixed_cover, fx_root_fixed_cover_count,
+                                    g_plan, PlanCapacity, &guarded, &fill_at, &fill_count, NULL );
         fixed_check( made > 0, "C bytes row: the plan compiles either way — the rows are not what refuses" );
         memset( storage, 0, sizeof( storage ) );
         back = (FxRoot *) (void *) storage;

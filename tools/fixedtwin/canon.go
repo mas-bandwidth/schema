@@ -81,7 +81,7 @@ var (
 	reCLayBoundsPtr   = regexp.MustCompile(`uint8_t \* at;\s*`)
 	reCLayBoundsBody  = regexp.MustCompile(`at = \(uint8_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ \(uint32_t\) \( total - c\.pool \) \);\s*memcpy\( at, &lo, 8 \);\s*memcpy\( at \+ 8, &hi, 8 \);\s*return \(uint32_t\) \( total - c\.pool \);`)
 	reCppLayBoundsDst = regexp.MustCompile(`uint8_t \* dst = \(uint8_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ at \);`)
-	rePtrApply        = regexp.MustCompile(`TableFixedApply\(\s*&plan\[i\]`)
+	rePtrApply        = regexp.MustCompile(`(TableFixed(?:Apply|EntryLands)\(\s*)&plan\[i\]`)
 	reAmpCounters     = regexp.MustCompile(`,\s*&clamped,\s*&widened\s*\)`)
 	reStaticAssert    = regexp.MustCompile(`SCHEMA_TABLE_STATIC_ASSERT\s*\(\s*\w+\s*,\s*`)
 	reOffsetof        = regexp.MustCompile(`\boffsetof\s*\(`)
@@ -299,7 +299,7 @@ func normalizeSyntax(s string) string {
 	s = reForU32k.ReplaceAllString(s, "for ( uint32_t k =")
 	s = reForU32j.ReplaceAllString(s, "for ( uint32_t j =")
 	s = reForDeclJK.ReplaceAllString(s, "")
-	s = rePtrApply.ReplaceAllString(s, "TableFixedApply( plan[i]")
+	s = rePtrApply.ReplaceAllString(s, "${1}plan[i]")
 	s = reAmpCounters.ReplaceAllString(s, ", clamped, widened )")
 	s = reOffsetof.ReplaceAllString(s, "__builtin_offsetof(")
 	s = reBuiltinOff.ReplaceAllString(s, "__builtin_offsetof(")
@@ -315,6 +315,8 @@ func normalizeSyntax(s string) string {
 		{"inline int TableFixedParseLayout", "inline bool TableFixedParseLayout"},
 		{"const TableFixedEntry * p", "const TableFixedEntry REF p"},
 		{"const TableFixedEntry & p", "const TableFixedEntry REF p"},
+		{"const TableFixedEntry * e", "const TableFixedEntry REF e"},
+		{"const TableFixedEntry & e", "const TableFixedEntry REF e"},
 		{"int32_t * clamped, int32_t * widened", "int32_t REF clamped, int32_t REF widened"},
 		{"int32_t & clamped, int32_t & widened", "int32_t REF clamped, int32_t REF widened"},
 		{"const TableFixedLayoutView * ", "const TableFixedLayoutView REF "},

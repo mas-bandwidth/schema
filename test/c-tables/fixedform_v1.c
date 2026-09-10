@@ -82,8 +82,11 @@ void fixed_v1_bounds( void )
         fixed_check( table_fixed_parse_layout( cfg_fixed_layout, (int64_t) sizeof( cfg_fixed_layout ), &parsed, &why ) != 0,
                      "C live-count: this build's layout parses" );
         memset( &compile_r, 0, sizeof( compile_r ) );
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
         made = table_fixed_compile( &parsed, cfg_fixed_layout, (int32_t) sizeof( cfg_fixed_layout ),
-                                    cfg_fixed_dst, compiled, 8192, &guarded, &compile_r );
+                                    cfg_fixed_dst, cfg_fixed_cover, cfg_fixed_cover_count,
+                                    compiled, 8192, &guarded, &fill_at, &fill_count, &compile_r );
         fixed_check( made > 0, "C live-count: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
