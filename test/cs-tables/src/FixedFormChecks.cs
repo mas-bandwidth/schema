@@ -41,6 +41,8 @@ static partial class Program
         one.Gone = 654;
         one.Nested.A = 111;
         one.Nested.B = 222;
+        one.BlobLength = 4;
+        one.Blob[0] = 0xDE; one.Blob[1] = 0xAD; one.Blob[2] = 0xBE; one.Blob[3] = 0xEF;
 
         byte[] w1 = new byte[FX1.Schema.FxRootFixedMeasure(1)];
         Check(FX1.Schema.FxRootFixedSave(one, w1) == w1.Length, "FX1 save");
@@ -54,6 +56,7 @@ static partial class Program
             Check(n == 1, "same schema: one record");
             Check(back.Keep == 4242u && back.Narrow == 40000 && back.Renamed == 321 && back.Gone == 654, "same schema: the scalars");
             Check(back.Nested.A == 111 && back.Nested.B == 222, "same schema: the nesting");
+            Check(back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF, "same schema: the blob");
             Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused,
                   "same schema: a clean read moves no counter");
         }
@@ -72,6 +75,7 @@ static partial class Program
             Check(back.Added == 11, "MISSING: a field the writer does not carry takes its declared default");
             Check(back.Extra.X == 0 && back.Extra.Y == 0, "MISSING: a whole nested type takes its defaults");
             Check(back.Nested.A == 111 && back.Nested.B == 222, "older writer: the nesting");
+            Check(back.BlobLength == 4 && back.Blob[0] == 0xDE && back.Blob[1] == 0xAD && back.Blob[2] == 0xBE && back.Blob[3] == 0xEF, "older writer: the blob");
             Check(r.Unknown == 1, "older writer: `gone` is the one field this reader cannot name");
             Check(r.KindMismatch == 0 && !r.Malformed && !r.Refused, "older writer: nothing else fired");
         }
@@ -88,6 +92,8 @@ static partial class Program
             two.Nested.B = 44;
             two.Extra.X = 55;
             two.Extra.Y = 66;
+            two.BlobLength = 4;
+            two.Blob[0] = 0xCA; two.Blob[1] = 0xFE; two.Blob[2] = 0xBA; two.Blob[3] = 0xBE;
             byte[] w2 = new byte[FX2.Schema.FxRootFixedMeasure(1)];
             Check(FX2.Schema.FxRootFixedSave(two, w2) == w2.Length, "FX2 save");
 
@@ -100,6 +106,7 @@ static partial class Program
             Check(back.Renamed == 808, "newer writer: `was =` reads the other way too");
             Check(back.Gone == 9, "newer writer: a field the writer dropped takes its declared default");
             Check(back.Nested.A == 33 && back.Nested.B == 44, "newer writer: the nesting lands past the unknown type");
+            Check(back.BlobLength == 4 && back.Blob[0] == 0xCA && back.Blob[1] == 0xFE && back.Blob[2] == 0xBA && back.Blob[3] == 0xBE, "newer writer: the blob");
             Check(r.Unknown == 2, "newer writer: two names this reader does not have");
             Check(r.KindMismatch == 1, "newer writer: uint32 into uint16 is a kind that moved, not a widening");
             Check(back.Narrow == 3, "newer writer: a narrowing leaves the declared default");
