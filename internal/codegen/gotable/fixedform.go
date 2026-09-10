@@ -485,13 +485,6 @@ func (g *tableGen) emitFixedElementLoop(st *ir.Struct, f *ir.Field, base, count 
 	g.pf("\t}\n")
 }
 
-func (g *tableGen) fixedElemStorage(f *ir.Field) string {
-	if f.Type.Kind == ir.TNamed {
-		return f.Type.Name
-	}
-	return goFieldType(f.Type)
-}
-
 func (g *tableGen) sizeofGo(f *ir.Field) string {
 	if f.Type.Kind == ir.TNamed {
 		switch f.Type.Ref.(type) {
