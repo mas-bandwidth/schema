@@ -22,6 +22,86 @@ static void fill( FxRoot * value )
     value->gone = 654;
     value->nested.a = 111;
     value->nested.b = 222;
+    value->label[0] = 'h';
+    value->label[1] = 'i';
+    value->label_length = 2;
+    value->marks[0] = 7;
+    value->marks_count = 1;
+    /* A `bytes(N)` IS AN ARRAY OF u8 ON THIS WIRE (§3.4), so its destination
+       row is an ARRAY's — the buffer, and the live length beside it — and not
+       a text field's, which is the other way round. Only a COMPILED plan reads
+       those columns, so only FX2's read of this record can tell. */
+    value->blob[0] = 0xDE; value->blob[1] = 0xAD; value->blob[2] = 0xBE; value->blob[3] = 0xEF;
+    value->blob_length = 4;
+}
+
+/* THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4), and this is the C twin of the
+   reference's slack_case. A `string(N)` shorter than N and a `[..N]T` with
+   unused slots are DECLARED bytes carrying no value: what rides in them is the
+   TEMPLATE'S ZEROS, never whatever this writer's storage held past the used
+   length or the live count.
+
+   THE CONTROL IS THE STAIN: the storage past the used length and the live
+   count is filled with a byte a clean record carries nowhere, the test proves
+   the stain IS in the storage, then proves the WIRE carries none of it, then
+   proves a whole-span copy of the same storage WOULD have carried it. */
+void fixed_fx1_slack( void )
+{
+    static uint8_t file[8192];
+    static TableFixedEntry plan[PlanCapacity];
+    FxRoot v, back;
+    TableReport r;
+    const uint8_t * body;
+    size_t body_bytes;
+    uint8_t whole[sizeof( v.label )];
+    int32_t marks[4];
+    int k;
+    int64_t need, n;
+
+    fx_root_reset( &v );
+    v.keep = 11u;
+    v.narrow = 22u;
+    v.renamed = 33;
+    v.gone = 44;
+    v.nested.a = 55;
+    v.nested.b = 66;
+    memset( v.label, 0xAA, sizeof( v.label ) );
+    v.label[0] = 'h';
+    v.label[1] = 'i';
+    v.label_length = 2;
+    for ( k = 0; k < 4; k++ ) { v.marks[k] = 0x5A5A5A5A; }
+    v.marks[0] = 7;
+    v.marks_count = 1;
+
+    fixed_check( (uint8_t) v.label[2] == 0xAAu, "C CONTROL: the text slack really is stained in storage" );
+    fixed_check( v.marks[1] == 0x5A5A5A5A, "C CONTROL: the array slack really is stained in storage" );
+
+    need = fx_root_fixed_measure( 1 );
+    fixed_check( need <= (int64_t) sizeof( file ), "C slack: the record fits the buffer" );
+    fixed_check( fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) ) == need, "C slack: the record saves" );
+    body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
+    body_bytes = (size_t) fx_root_fixed_body_bytes;
+    fixed_check( memchr( body, 0xAA, body_bytes ) == NULL,
+                 "C SLACK IS ZERO: not one stained TEXT byte reached the wire" );
+    fixed_check( memchr( body, 0x5A, body_bytes ) == NULL,
+                 "C SLACK IS ZERO: not one stained ARRAY byte reached the wire" );
+
+    memcpy( whole, v.label, sizeof( v.label ) );
+    fixed_check( memchr( whole, 0xAA, sizeof( whole ) ) != NULL,
+                 "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain" );
+    memcpy( marks, v.marks, sizeof( marks ) );
+    fixed_check( marks[3] == 0x5A5A5A5A,
+                 "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
+
+    memset( &r, 0, sizeof( r ) );
+    n = fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, &r );
+    fixed_check( n == 1, "C slack: the record reads" );
+    fixed_check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
+                 "C slack: the used length reads, and the buffer terminates at it" );
+    fixed_check( back.marks_count == 1 && back.marks[0] == 7, "C slack: the live count reads" );
+    fixed_check( back.marks[1] == 0 && back.marks[2] == 0 && back.marks[3] == 0,
+                 "C slack: an unused slot lands as the wire's zero" );
+    fixed_check( r.clamped == 0 && !r.malformed && !r.refused, "C slack: a clean read moves no counter" );
 }
 
 int64_t fixed_fx1_bytes( void ) { return fx_root_fixed_measure( 1 ); }
@@ -71,4 +151,55 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
     fixed_check( r.kind_mismatch == 1, "newer writer: uint32 into uint16 is a kind that moved, not a widening" );
     fixed_check( back.narrow == 3, "newer writer: a narrowing leaves the declared default" );
     fixed_check( !r.malformed && !r.refused, "newer writer: no damage and no refusal" );
+}
+
+/* THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4). A fixed
+   record is a positional image and the one read loop moves bytes: it asks
+   nothing about what they mean. A RANGED SCALAR's declared min and max are held
+   by STRAIGHT-LINE CODE in the generated decode, after the copy, and never by
+   plan entries — an entry per bounded field is a test on every read of every
+   record, which is the cost the identity plan exists to avoid.
+
+   THE POISON IS WRITTEN THROUGH THE WRITER and not poked into the bytes: the
+   write side's own bounds are debug-only by rule and a range is not one of
+   them, so a caller CAN put an out-of-range value on the wire and the reader is
+   what has to answer for it. */
+int64_t fixed_fx1_write_out_of_range( uint8_t * buffer, int64_t capacity )
+{
+    FxRoot v;
+    fx_root_reset( &v );
+    v.keep = 1u;
+    v.renamed = 5000;  /* declared | min = 0, max = 1000 */
+    v.gone = -7;       /* and the low end of the same declaration */
+    v.nested.a = 111;
+    v.nested.b = 222;
+    return fx_root_fixed_save( &v, 1, buffer, capacity );
+}
+
+void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
+{
+    FxRoot back, loose;
+    TableReport r;
+    const uint8_t * body;
+
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r ) == 1,
+                 "C bounds: the record reads" );
+    fixed_check( back.renamed == 1000, "C RANGE: a value past max lands at max" );
+    fixed_check( back.gone == 0, "C RANGE: a value under min lands at min" );
+    fixed_check( r.clamped == 2, "C RANGE: two clamps, counted" );
+    fixed_check( back.nested.a == 111 && back.nested.b == 222, "C RANGE: an in-range neighbour is untouched" );
+
+    /* THE NEGATIVE CONTROL: the read loop ALONE, with no straight-line pass
+       after it. The same record, the same plan, and the out-of-range value
+       survives — which is what says the bound is held by the pass and not by
+       something else that would have caught it anyway. */
+    fx_root_reset( &loose );
+    memset( &r, 0, sizeof( r ) );
+    body = data + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
+    table_fixed_run( fx_root_fixed_plan, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
+                     body, (uint8_t *) &loose, &r );
+    fixed_check( loose.renamed == 5000 && loose.gone == -7,
+                 "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
+    fixed_check( r.clamped == 0, "C NEGATIVE CONTROL: and counts nothing" );
 }

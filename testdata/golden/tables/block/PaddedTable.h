@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -2279,7 +2284,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2333,7 +2338,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2455,14 +2466,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2885,7 +2896,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -3141,7 +3152,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -5369,18 +5380,22 @@ inline void PaddedRowFixedWriteBody( uint8_t * b, const PaddedRow & value )
     TableFixedPutF64( b + 1, value.value );
     TableFixedPut8( b + 9, value.flag ? 1 : 0 );
     TableFixedPut32( b + 10, (uint32_t) value.id );
+    schema_assert( value.label_length >= 0 && value.label_length <= 15 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 14, (uint32_t) value.label_length );
-    memcpy( b + 18, value.label, 15 );
-    for ( int64_t i = 0; i < 4; ++i )
+    memcpy( b + 18, value.label, (size_t) ( value.label_length ) );
+    for ( int64_t i = 0; i < (int64_t) 4; ++i )
     {
         TableFixedPut16( b + 33 + i * 2 + 0, (uint16_t) value.slots[i] );
     }
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) 4; ++i )
     {
         TableFixedPut8( b + 41 + i * 1 + 0, (uint8_t) value.teams.slots[i] );
     }
     TableFixedPut8( b + 45, value.counter_present ? 1 : 0 );
-    TableFixedPut32( b + 46, (uint32_t) value.counter );
+    if ( value.counter_present )
+    {
+        TableFixedPut32( b + 46, (uint32_t) value.counter );
+    }
 }
 
 // PaddedFrame's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -5390,13 +5405,15 @@ inline void PaddedFrameFixedWriteBody( uint8_t * b, const PaddedFrame & value )
     (void) b; (void) value;
     TableFixedPut8( b + 0, (uint8_t) value.marker );
     TableFixedPut64( b + 1, (uint64_t) value.stamp );
+    schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 9, (uint32_t) value.rows_count );
-    for ( int64_t i = 0; i < 64; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.rows_count; ++i )
     {
         PaddedRowFixedWriteBody( b + 13 + i * 50 + 0, value.rows[i] );
     }
+    schema_assert( value.blob_length >= 0 && value.blob_length <= 12 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 3213, (uint32_t) value.blob_length );
-    memcpy( b + 3217, value.blob, 12 );
+    memcpy( b + 3217, value.blob, (size_t) ( value.blob_length ) );
 }
 
 // ---- PaddedRow, the fixed form ----
@@ -5463,13 +5480,13 @@ constexpr TableFixedDst PaddedRowFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry PaddedRowFixedPlan[] = {
-    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1u, 8u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 10u, 20u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 14u, 40u, 15u, 24u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 33u, 44u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 45u, 60u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 46u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
+    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1u, 8u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 10u, 20u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 14u, 40u, 15u, 24u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 33u, 44u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 45u, 60u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 46u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
 };
 constexpr int32_t PaddedRowFixedPlanCount = 7;
 constexpr int32_t PaddedRowFixedPlanGuarded = 7;
@@ -5631,7 +5648,7 @@ constexpr TableFixedDst PaddedFrameFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // element
     { 0, 0, (uint32_t) __builtin_offsetof( PaddedRow, counter_present ), 0, 0 }, // counter ?
     { (uint32_t) __builtin_offsetof( PaddedRow, counter ), 0, 0, 0, 0 }, // counter
-    { (uint32_t) __builtin_offsetof( PaddedFrame, blob_length ), 1, (uint32_t) __builtin_offsetof( PaddedFrame, blob ), 1, 3 }, // blob
+    { (uint32_t) __builtin_offsetof( PaddedFrame, blob ), 1, (uint32_t) __builtin_offsetof( PaddedFrame, blob_length ), 1, 3 }, // blob
     { 0, 0, 0, 0, 0 }, // u8
 };
 
@@ -5642,458 +5659,458 @@ constexpr TableFixedDst PaddedFrameFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry PaddedFrameFixedPlan[] = {
-    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // marker
-    { 1u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // stamp
-    { 9u, 4112u, 64u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // rows count
-    { 13u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 14u, 24u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 23u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 27u, 56u, 15u, 40u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 46u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 58u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 59u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 63u, 80u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 64u, 88u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 73u, 100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 77u, 120u, 15u, 104u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 96u, 124u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 108u, 140u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 109u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 113u, 144u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 114u, 152u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 123u, 164u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 127u, 184u, 15u, 168u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 146u, 188u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 158u, 204u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 159u, 200u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 163u, 208u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 164u, 216u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 173u, 228u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 177u, 248u, 15u, 232u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 196u, 252u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 208u, 268u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 209u, 264u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 213u, 272u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 214u, 280u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 223u, 292u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 227u, 312u, 15u, 296u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 246u, 316u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 258u, 332u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 259u, 328u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 263u, 336u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 264u, 344u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 273u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 277u, 376u, 15u, 360u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 296u, 380u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 308u, 396u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 309u, 392u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 313u, 400u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 314u, 408u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 323u, 420u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 327u, 440u, 15u, 424u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 346u, 444u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 358u, 460u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 359u, 456u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 363u, 464u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 364u, 472u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 373u, 484u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 377u, 504u, 15u, 488u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 396u, 508u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 408u, 524u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 409u, 520u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 413u, 528u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 414u, 536u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 423u, 548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 427u, 568u, 15u, 552u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 446u, 572u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 458u, 588u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 459u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 463u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 464u, 600u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 473u, 612u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 477u, 632u, 15u, 616u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 496u, 636u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 508u, 652u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 509u, 648u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 513u, 656u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 514u, 664u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 523u, 676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 527u, 696u, 15u, 680u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 546u, 700u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 558u, 716u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 559u, 712u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 563u, 720u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 564u, 728u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 573u, 740u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 577u, 760u, 15u, 744u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 596u, 764u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 608u, 780u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 609u, 776u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 613u, 784u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 614u, 792u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 623u, 804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 627u, 824u, 15u, 808u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 646u, 828u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 658u, 844u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 659u, 840u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 663u, 848u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 664u, 856u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 673u, 868u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 677u, 888u, 15u, 872u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 696u, 892u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 708u, 908u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 709u, 904u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 713u, 912u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 714u, 920u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 723u, 932u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 727u, 952u, 15u, 936u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 746u, 956u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 758u, 972u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 759u, 968u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 763u, 976u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 764u, 984u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 773u, 996u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 777u, 1016u, 15u, 1000u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 796u, 1020u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 808u, 1036u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 809u, 1032u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 813u, 1040u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 814u, 1048u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 823u, 1060u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 827u, 1080u, 15u, 1064u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 846u, 1084u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 858u, 1100u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 859u, 1096u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 863u, 1104u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 864u, 1112u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 873u, 1124u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 877u, 1144u, 15u, 1128u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 896u, 1148u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 908u, 1164u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 909u, 1160u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 913u, 1168u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 914u, 1176u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 923u, 1188u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 927u, 1208u, 15u, 1192u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 946u, 1212u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 958u, 1228u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 959u, 1224u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 963u, 1232u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 964u, 1240u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 973u, 1252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 977u, 1272u, 15u, 1256u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 996u, 1276u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1008u, 1292u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1009u, 1288u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1013u, 1296u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1014u, 1304u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1023u, 1316u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1027u, 1336u, 15u, 1320u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1046u, 1340u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1058u, 1356u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1059u, 1352u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1063u, 1360u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1064u, 1368u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1073u, 1380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1077u, 1400u, 15u, 1384u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1096u, 1404u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1108u, 1420u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1109u, 1416u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1113u, 1424u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1114u, 1432u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1123u, 1444u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1127u, 1464u, 15u, 1448u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1146u, 1468u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1158u, 1484u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1159u, 1480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1163u, 1488u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1164u, 1496u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1173u, 1508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1177u, 1528u, 15u, 1512u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1196u, 1532u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1208u, 1548u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1209u, 1544u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1213u, 1552u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1214u, 1560u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1223u, 1572u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1227u, 1592u, 15u, 1576u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1246u, 1596u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1258u, 1612u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1259u, 1608u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1263u, 1616u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1264u, 1624u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1273u, 1636u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1277u, 1656u, 15u, 1640u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1296u, 1660u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1308u, 1676u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1309u, 1672u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1313u, 1680u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1314u, 1688u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1323u, 1700u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1327u, 1720u, 15u, 1704u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1346u, 1724u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1358u, 1740u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1359u, 1736u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1363u, 1744u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1364u, 1752u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1373u, 1764u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1377u, 1784u, 15u, 1768u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1396u, 1788u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1408u, 1804u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1409u, 1800u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1413u, 1808u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1414u, 1816u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1423u, 1828u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1427u, 1848u, 15u, 1832u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1446u, 1852u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1458u, 1868u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1459u, 1864u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1463u, 1872u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1464u, 1880u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1473u, 1892u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1477u, 1912u, 15u, 1896u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1496u, 1916u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1508u, 1932u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1509u, 1928u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1513u, 1936u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1514u, 1944u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1523u, 1956u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1527u, 1976u, 15u, 1960u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1546u, 1980u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1558u, 1996u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1559u, 1992u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1563u, 2000u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1564u, 2008u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1573u, 2020u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1577u, 2040u, 15u, 2024u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1596u, 2044u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1608u, 2060u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1609u, 2056u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1613u, 2064u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1614u, 2072u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1623u, 2084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1627u, 2104u, 15u, 2088u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1646u, 2108u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1658u, 2124u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1659u, 2120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1663u, 2128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1664u, 2136u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1673u, 2148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1677u, 2168u, 15u, 2152u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1696u, 2172u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1708u, 2188u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1709u, 2184u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1713u, 2192u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1714u, 2200u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1723u, 2212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1727u, 2232u, 15u, 2216u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1746u, 2236u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1758u, 2252u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1759u, 2248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1763u, 2256u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1764u, 2264u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1773u, 2276u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1777u, 2296u, 15u, 2280u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1796u, 2300u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1808u, 2316u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1809u, 2312u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1813u, 2320u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1814u, 2328u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1823u, 2340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1827u, 2360u, 15u, 2344u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1846u, 2364u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1858u, 2380u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1859u, 2376u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1863u, 2384u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1864u, 2392u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1873u, 2404u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1877u, 2424u, 15u, 2408u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1896u, 2428u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1908u, 2444u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1909u, 2440u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1913u, 2448u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1914u, 2456u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1923u, 2468u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1927u, 2488u, 15u, 2472u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1946u, 2492u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 1958u, 2508u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 1959u, 2504u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 1963u, 2512u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 1964u, 2520u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 1973u, 2532u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 1977u, 2552u, 15u, 2536u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 1996u, 2556u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2008u, 2572u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2009u, 2568u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2013u, 2576u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2014u, 2584u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2023u, 2596u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2027u, 2616u, 15u, 2600u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2046u, 2620u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2058u, 2636u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2059u, 2632u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2063u, 2640u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2064u, 2648u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2073u, 2660u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2077u, 2680u, 15u, 2664u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2096u, 2684u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2108u, 2700u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2109u, 2696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2113u, 2704u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2114u, 2712u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2123u, 2724u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2127u, 2744u, 15u, 2728u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2146u, 2748u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2158u, 2764u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2159u, 2760u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2163u, 2768u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2164u, 2776u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2173u, 2788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2177u, 2808u, 15u, 2792u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2196u, 2812u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2208u, 2828u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2209u, 2824u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2213u, 2832u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2214u, 2840u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2223u, 2852u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2227u, 2872u, 15u, 2856u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2246u, 2876u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2258u, 2892u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2259u, 2888u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2263u, 2896u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2264u, 2904u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2273u, 2916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2277u, 2936u, 15u, 2920u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2296u, 2940u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2308u, 2956u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2309u, 2952u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2313u, 2960u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2314u, 2968u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2323u, 2980u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2327u, 3000u, 15u, 2984u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2346u, 3004u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2358u, 3020u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2359u, 3016u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2363u, 3024u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2364u, 3032u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2373u, 3044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2377u, 3064u, 15u, 3048u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2396u, 3068u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2408u, 3084u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2409u, 3080u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2413u, 3088u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2414u, 3096u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2423u, 3108u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2427u, 3128u, 15u, 3112u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2446u, 3132u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2458u, 3148u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2459u, 3144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2463u, 3152u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2464u, 3160u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2473u, 3172u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2477u, 3192u, 15u, 3176u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2496u, 3196u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2508u, 3212u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2509u, 3208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2513u, 3216u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2514u, 3224u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2523u, 3236u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2527u, 3256u, 15u, 3240u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2546u, 3260u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2558u, 3276u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2559u, 3272u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2563u, 3280u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2564u, 3288u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2573u, 3300u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2577u, 3320u, 15u, 3304u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2596u, 3324u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2608u, 3340u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2609u, 3336u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2613u, 3344u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2614u, 3352u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2623u, 3364u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2627u, 3384u, 15u, 3368u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2646u, 3388u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2658u, 3404u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2659u, 3400u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2663u, 3408u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2664u, 3416u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2673u, 3428u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2677u, 3448u, 15u, 3432u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2696u, 3452u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2708u, 3468u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2709u, 3464u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2713u, 3472u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2714u, 3480u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2723u, 3492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2727u, 3512u, 15u, 3496u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2746u, 3516u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2758u, 3532u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2759u, 3528u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2763u, 3536u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2764u, 3544u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2773u, 3556u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2777u, 3576u, 15u, 3560u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2796u, 3580u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2808u, 3596u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2809u, 3592u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2813u, 3600u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2814u, 3608u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2823u, 3620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2827u, 3640u, 15u, 3624u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2846u, 3644u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2858u, 3660u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2859u, 3656u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2863u, 3664u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2864u, 3672u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2873u, 3684u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2877u, 3704u, 15u, 3688u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2896u, 3708u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2908u, 3724u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2909u, 3720u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2913u, 3728u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2914u, 3736u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2923u, 3748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2927u, 3768u, 15u, 3752u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2946u, 3772u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 2958u, 3788u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 2959u, 3784u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 2963u, 3792u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 2964u, 3800u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 2973u, 3812u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 2977u, 3832u, 15u, 3816u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 2996u, 3836u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 3008u, 3852u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 3009u, 3848u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 3013u, 3856u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 3014u, 3864u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 3023u, 3876u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 3027u, 3896u, 15u, 3880u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 3046u, 3900u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 3058u, 3916u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 3059u, 3912u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 3063u, 3920u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 3064u, 3928u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 3073u, 3940u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 3077u, 3960u, 15u, 3944u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 3096u, 3964u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 3108u, 3980u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 3109u, 3976u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 3113u, 3984u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 3114u, 3992u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 3123u, 4004u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 3127u, 4024u, 15u, 4008u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 3146u, 4028u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 3158u, 4044u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 3159u, 4040u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 3163u, 4048u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tag
-    { 3164u, 4056u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // value
-    { 3173u, 4068u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // id
-    { 3177u, 4088u, 15u, 4072u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // label
-    { 3196u, 4092u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // slots, whole
-    { 3208u, 4108u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter present
-    { 3209u, 4104u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counter
-    { 3213u, 4128u, 12u, 4116u, kTableFixedNoGuard, kTableFixedText, 3, 0, 0 }, // blob
+    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // marker
+    { 1u, 8u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // stamp
+    { 9u, 4112u, 64u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // rows count
+    { 13u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 14u, 24u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 23u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 27u, 56u, 15u, 40u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 46u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 58u, 76u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 59u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 63u, 80u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 64u, 88u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 73u, 100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 77u, 120u, 15u, 104u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 96u, 124u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 108u, 140u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 109u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 113u, 144u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 114u, 152u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 123u, 164u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 127u, 184u, 15u, 168u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 146u, 188u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 158u, 204u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 159u, 200u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 163u, 208u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 164u, 216u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 173u, 228u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 177u, 248u, 15u, 232u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 196u, 252u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 208u, 268u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 209u, 264u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 213u, 272u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 214u, 280u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 223u, 292u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 227u, 312u, 15u, 296u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 246u, 316u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 258u, 332u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 259u, 328u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 263u, 336u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 264u, 344u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 273u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 277u, 376u, 15u, 360u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 296u, 380u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 308u, 396u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 309u, 392u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 313u, 400u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 314u, 408u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 323u, 420u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 327u, 440u, 15u, 424u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 346u, 444u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 358u, 460u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 359u, 456u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 363u, 464u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 364u, 472u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 373u, 484u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 377u, 504u, 15u, 488u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 396u, 508u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 408u, 524u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 409u, 520u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 413u, 528u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 414u, 536u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 423u, 548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 427u, 568u, 15u, 552u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 446u, 572u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 458u, 588u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 459u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 463u, 592u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 464u, 600u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 473u, 612u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 477u, 632u, 15u, 616u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 496u, 636u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 508u, 652u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 509u, 648u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 513u, 656u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 514u, 664u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 523u, 676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 527u, 696u, 15u, 680u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 546u, 700u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 558u, 716u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 559u, 712u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 563u, 720u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 564u, 728u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 573u, 740u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 577u, 760u, 15u, 744u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 596u, 764u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 608u, 780u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 609u, 776u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 613u, 784u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 614u, 792u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 623u, 804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 627u, 824u, 15u, 808u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 646u, 828u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 658u, 844u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 659u, 840u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 663u, 848u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 664u, 856u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 673u, 868u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 677u, 888u, 15u, 872u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 696u, 892u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 708u, 908u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 709u, 904u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 713u, 912u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 714u, 920u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 723u, 932u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 727u, 952u, 15u, 936u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 746u, 956u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 758u, 972u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 759u, 968u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 763u, 976u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 764u, 984u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 773u, 996u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 777u, 1016u, 15u, 1000u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 796u, 1020u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 808u, 1036u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 809u, 1032u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 813u, 1040u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 814u, 1048u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 823u, 1060u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 827u, 1080u, 15u, 1064u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 846u, 1084u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 858u, 1100u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 859u, 1096u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 863u, 1104u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 864u, 1112u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 873u, 1124u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 877u, 1144u, 15u, 1128u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 896u, 1148u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 908u, 1164u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 909u, 1160u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 913u, 1168u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 914u, 1176u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 923u, 1188u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 927u, 1208u, 15u, 1192u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 946u, 1212u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 958u, 1228u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 959u, 1224u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 963u, 1232u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 964u, 1240u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 973u, 1252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 977u, 1272u, 15u, 1256u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 996u, 1276u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1008u, 1292u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1009u, 1288u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1013u, 1296u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1014u, 1304u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1023u, 1316u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1027u, 1336u, 15u, 1320u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1046u, 1340u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1058u, 1356u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1059u, 1352u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1063u, 1360u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1064u, 1368u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1073u, 1380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1077u, 1400u, 15u, 1384u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1096u, 1404u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1108u, 1420u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1109u, 1416u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1113u, 1424u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1114u, 1432u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1123u, 1444u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1127u, 1464u, 15u, 1448u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1146u, 1468u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1158u, 1484u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1159u, 1480u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1163u, 1488u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1164u, 1496u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1173u, 1508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1177u, 1528u, 15u, 1512u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1196u, 1532u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1208u, 1548u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1209u, 1544u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1213u, 1552u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1214u, 1560u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1223u, 1572u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1227u, 1592u, 15u, 1576u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1246u, 1596u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1258u, 1612u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1259u, 1608u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1263u, 1616u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1264u, 1624u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1273u, 1636u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1277u, 1656u, 15u, 1640u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1296u, 1660u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1308u, 1676u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1309u, 1672u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1313u, 1680u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1314u, 1688u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1323u, 1700u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1327u, 1720u, 15u, 1704u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1346u, 1724u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1358u, 1740u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1359u, 1736u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1363u, 1744u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1364u, 1752u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1373u, 1764u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1377u, 1784u, 15u, 1768u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1396u, 1788u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1408u, 1804u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1409u, 1800u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1413u, 1808u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1414u, 1816u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1423u, 1828u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1427u, 1848u, 15u, 1832u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1446u, 1852u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1458u, 1868u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1459u, 1864u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1463u, 1872u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1464u, 1880u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1473u, 1892u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1477u, 1912u, 15u, 1896u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1496u, 1916u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1508u, 1932u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1509u, 1928u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1513u, 1936u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1514u, 1944u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1523u, 1956u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1527u, 1976u, 15u, 1960u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1546u, 1980u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1558u, 1996u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1559u, 1992u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1563u, 2000u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1564u, 2008u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1573u, 2020u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1577u, 2040u, 15u, 2024u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1596u, 2044u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1608u, 2060u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1609u, 2056u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1613u, 2064u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1614u, 2072u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1623u, 2084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1627u, 2104u, 15u, 2088u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1646u, 2108u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1658u, 2124u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1659u, 2120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1663u, 2128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1664u, 2136u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1673u, 2148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1677u, 2168u, 15u, 2152u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1696u, 2172u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1708u, 2188u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1709u, 2184u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1713u, 2192u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1714u, 2200u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1723u, 2212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1727u, 2232u, 15u, 2216u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1746u, 2236u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1758u, 2252u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1759u, 2248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1763u, 2256u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1764u, 2264u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1773u, 2276u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1777u, 2296u, 15u, 2280u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1796u, 2300u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1808u, 2316u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1809u, 2312u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1813u, 2320u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1814u, 2328u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1823u, 2340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1827u, 2360u, 15u, 2344u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1846u, 2364u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1858u, 2380u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1859u, 2376u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1863u, 2384u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1864u, 2392u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1873u, 2404u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1877u, 2424u, 15u, 2408u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1896u, 2428u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1908u, 2444u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1909u, 2440u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1913u, 2448u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1914u, 2456u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1923u, 2468u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1927u, 2488u, 15u, 2472u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1946u, 2492u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 1958u, 2508u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 1959u, 2504u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 1963u, 2512u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 1964u, 2520u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 1973u, 2532u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 1977u, 2552u, 15u, 2536u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 1996u, 2556u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2008u, 2572u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2009u, 2568u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2013u, 2576u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2014u, 2584u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2023u, 2596u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2027u, 2616u, 15u, 2600u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2046u, 2620u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2058u, 2636u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2059u, 2632u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2063u, 2640u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2064u, 2648u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2073u, 2660u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2077u, 2680u, 15u, 2664u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2096u, 2684u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2108u, 2700u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2109u, 2696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2113u, 2704u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2114u, 2712u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2123u, 2724u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2127u, 2744u, 15u, 2728u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2146u, 2748u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2158u, 2764u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2159u, 2760u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2163u, 2768u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2164u, 2776u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2173u, 2788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2177u, 2808u, 15u, 2792u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2196u, 2812u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2208u, 2828u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2209u, 2824u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2213u, 2832u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2214u, 2840u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2223u, 2852u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2227u, 2872u, 15u, 2856u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2246u, 2876u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2258u, 2892u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2259u, 2888u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2263u, 2896u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2264u, 2904u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2273u, 2916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2277u, 2936u, 15u, 2920u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2296u, 2940u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2308u, 2956u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2309u, 2952u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2313u, 2960u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2314u, 2968u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2323u, 2980u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2327u, 3000u, 15u, 2984u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2346u, 3004u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2358u, 3020u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2359u, 3016u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2363u, 3024u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2364u, 3032u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2373u, 3044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2377u, 3064u, 15u, 3048u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2396u, 3068u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2408u, 3084u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2409u, 3080u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2413u, 3088u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2414u, 3096u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2423u, 3108u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2427u, 3128u, 15u, 3112u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2446u, 3132u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2458u, 3148u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2459u, 3144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2463u, 3152u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2464u, 3160u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2473u, 3172u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2477u, 3192u, 15u, 3176u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2496u, 3196u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2508u, 3212u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2509u, 3208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2513u, 3216u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2514u, 3224u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2523u, 3236u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2527u, 3256u, 15u, 3240u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2546u, 3260u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2558u, 3276u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2559u, 3272u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2563u, 3280u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2564u, 3288u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2573u, 3300u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2577u, 3320u, 15u, 3304u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2596u, 3324u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2608u, 3340u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2609u, 3336u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2613u, 3344u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2614u, 3352u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2623u, 3364u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2627u, 3384u, 15u, 3368u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2646u, 3388u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2658u, 3404u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2659u, 3400u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2663u, 3408u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2664u, 3416u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2673u, 3428u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2677u, 3448u, 15u, 3432u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2696u, 3452u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2708u, 3468u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2709u, 3464u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2713u, 3472u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2714u, 3480u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2723u, 3492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2727u, 3512u, 15u, 3496u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2746u, 3516u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2758u, 3532u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2759u, 3528u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2763u, 3536u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2764u, 3544u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2773u, 3556u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2777u, 3576u, 15u, 3560u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2796u, 3580u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2808u, 3596u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2809u, 3592u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2813u, 3600u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2814u, 3608u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2823u, 3620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2827u, 3640u, 15u, 3624u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2846u, 3644u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2858u, 3660u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2859u, 3656u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2863u, 3664u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2864u, 3672u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2873u, 3684u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2877u, 3704u, 15u, 3688u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2896u, 3708u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2908u, 3724u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2909u, 3720u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2913u, 3728u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2914u, 3736u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2923u, 3748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2927u, 3768u, 15u, 3752u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2946u, 3772u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 2958u, 3788u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 2959u, 3784u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 2963u, 3792u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 2964u, 3800u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 2973u, 3812u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 2977u, 3832u, 15u, 3816u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 2996u, 3836u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 3008u, 3852u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 3009u, 3848u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 3013u, 3856u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 3014u, 3864u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 3023u, 3876u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 3027u, 3896u, 15u, 3880u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 3046u, 3900u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 3058u, 3916u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 3059u, 3912u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 3063u, 3920u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 3064u, 3928u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 3073u, 3940u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 3077u, 3960u, 15u, 3944u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 3096u, 3964u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 3108u, 3980u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 3109u, 3976u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 3113u, 3984u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 3114u, 3992u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 3123u, 4004u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 3127u, 4024u, 15u, 4008u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 3146u, 4028u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 3158u, 4044u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 3159u, 4040u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 3163u, 4048u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tag
+    { 3164u, 4056u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // value
+    { 3173u, 4068u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // id
+    { 3177u, 4088u, 15u, 4072u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // label
+    { 3196u, 4092u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // slots, whole
+    { 3208u, 4108u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter present
+    { 3209u, 4104u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counter
+    { 3213u, 4128u, 12u, 4116u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0 }, // blob
 };
 constexpr int32_t PaddedFrameFixedPlanCount = 452;
 constexpr int32_t PaddedFrameFixedPlanGuarded = 452;

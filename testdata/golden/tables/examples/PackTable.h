@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -2346,7 +2351,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2400,7 +2405,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2522,14 +2533,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2952,7 +2963,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -3208,7 +3219,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -6626,8 +6637,9 @@ inline void GunnerSettingsFixedWriteBody( uint8_t * b, const GunnerSettings & va
     (void) b; (void) value;
     TableFixedPutF32( b + 0, value.reaction );
     TableFixedPut8( b + 4, value.tracking ? 1 : 0 );
+    schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 5, (uint32_t) value.callsign_length );
-    memcpy( b + 9, value.callsign, 24 );
+    memcpy( b + 9, value.callsign, (size_t) ( value.callsign_length ) );
 }
 
 // ShipEntry's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -6635,17 +6647,22 @@ inline void GunnerSettingsFixedWriteBody( uint8_t * b, const GunnerSettings & va
 inline void ShipEntryFixedWriteBody( uint8_t * b, const ShipEntry & value )
 {
     (void) b; (void) value;
+    schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.display_name_length );
-    memcpy( b + 4, value.display_name, 32 );
+    memcpy( b + 4, value.display_name, (size_t) ( value.display_name_length ) );
     TableFixedPutF32( b + 36, value.health );
     TableFixedPutF32( b + 40, value.mass );
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 44, (uint32_t) value.hardpoints_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
     {
         TableFixedPut32( b + 48 + i * 4 + 0, (uint32_t) value.hardpoints[i] );
     }
     TableFixedPut8( b + 64, value.gunner_present ? 1 : 0 );
-    GunnerSettingsFixedWriteBody( b + 65, value.gunner );
+    if ( value.gunner_present )
+    {
+        GunnerSettingsFixedWriteBody( b + 65, value.gunner );
+    }
 }
 
 // GlobalSettings's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -6655,9 +6672,10 @@ inline void GlobalSettingsFixedWriteBody( uint8_t * b, const GlobalSettings & va
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.tick_rate );
     TableFixedPut8( b + 4, (uint8_t) value.difficulty );
+    schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 5, (uint32_t) value.build_note_length );
-    memcpy( b + 9, value.build_note, 48 );
-    for ( int64_t i = 0; i < 3; ++i )
+    memcpy( b + 9, value.build_note, (size_t) ( value.build_note_length ) );
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPutF32( b + 57 + i * 4 + 0, value.spawn_delays[i] );
     }
@@ -6670,18 +6688,59 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.version );
     GlobalSettingsFixedWriteBody( b + 4, value.global );
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         ShipEntryFixedWriteBody( b + 73 + i * 98 + 0, value.ships.slots[i] );
     }
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut32( b + 367 + i * 4 + 0, (uint32_t) value.thresholds.slots[i] );
     }
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 379, (uint32_t) value.reserves_count );
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
     {
         ShipEntryFixedWriteBody( b + 383 + i * 98 + 0, value.reserves[i] );
+    }
+}
+
+// ShipEntry's read-side bounds.
+inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
+    {
+        if ( value.hardpoints[i] < 0 ) { value.hardpoints[i] = 0; clamped++; }
+        else if ( value.hardpoints[i] > 8 ) { value.hardpoints[i] = 8; clamped++; }
+    }
+}
+
+// GlobalSettings's read-side bounds.
+inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.tick_rate < 1 ) { value.tick_rate = 1; clamped++; }
+    else if ( value.tick_rate > 240 ) { value.tick_rate = 240; clamped++; }
+    if ( (uint64_t) value.difficulty > 3u ) { value.difficulty = Difficulty::None; clamped++; }
+}
+
+// PackConfig's read-side bounds.
+inline void PackConfigFixedClampBody( PackConfig & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    GlobalSettingsFixedClampBody( value.global, clamped );
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        ShipEntryFixedClampBody( value.ships.slots[i], clamped );
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        if ( value.thresholds.slots[i] < 0 ) { value.thresholds.slots[i] = 0; clamped++; }
+        else if ( value.thresholds.slots[i] > 1000 ) { value.thresholds.slots[i] = 1000; clamped++; }
+    }
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
+    {
+        ShipEntryFixedClampBody( value.reserves[i], clamped );
     }
 }
 
@@ -6722,8 +6781,8 @@ constexpr TableFixedDst GunnerSettingsFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry GunnerSettingsFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 5u, 32u, 24u, 5u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // callsign
+    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 5u, 32u, 24u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // callsign
 };
 constexpr int32_t GunnerSettingsFixedPlanCount = 2;
 constexpr int32_t GunnerSettingsFixedPlanGuarded = 2;
@@ -6820,6 +6879,19 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
     return n;
 }
 
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void ShipEntryFixedClamp( ShipEntry & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    ShipEntryFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- ShipEntry, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -6871,13 +6943,13 @@ constexpr TableFixedDst ShipEntryFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry ShipEntryFixedPlan[] = {
-    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // display_name
-    { 36u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 44u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // hardpoints count
-    { 48u, 48u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // hardpoints, whole
-    { 64u, 104u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 65u, 68u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 70u, 100u, 24u, 73u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // callsign
+    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // display_name
+    { 36u, 40u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 44u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // hardpoints count
+    { 48u, 48u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // hardpoints, whole
+    { 64u, 104u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 65u, 68u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 70u, 100u, 24u, 73u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // callsign
 };
 constexpr int32_t ShipEntryFixedPlanCount = 7;
 constexpr int32_t ShipEntryFixedPlanGuarded = 7;
@@ -6969,9 +7041,25 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
         ShipEntryReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        ShipEntryFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void GlobalSettingsFixedClamp( GlobalSettings & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    GlobalSettingsFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- GlobalSettings, the fixed form ----
@@ -7021,9 +7109,9 @@ constexpr TableFixedDst GlobalSettingsFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry GlobalSettingsFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tick_rate
-    { 5u, 56u, 48u, 5u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // build_note
-    { 57u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // spawn_delays, whole
+    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tick_rate
+    { 5u, 56u, 48u, 5u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // build_note
+    { 57u, 60u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // spawn_delays, whole
 };
 constexpr int32_t GlobalSettingsFixedPlanCount = 3;
 constexpr int32_t GlobalSettingsFixedPlanGuarded = 3;
@@ -7115,9 +7203,25 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
         GlobalSettingsReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        GlobalSettingsFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void PackConfigFixedClamp( PackConfig & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    PackConfigFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- PackConfig, the fixed form ----
@@ -7242,53 +7346,53 @@ constexpr TableFixedDst PackConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry PackConfigFixedPlan[] = {
-    { 0u, 0u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // version
-    { 9u, 60u, 48u, 9u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // build_note
-    { 61u, 64u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // spawn_delays, whole
-    { 73u, 112u, 32u, 76u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // display_name
-    { 109u, 116u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // hardpoints count
-    { 121u, 124u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // hardpoints, whole
-    { 137u, 180u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 138u, 144u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 143u, 176u, 24u, 149u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // callsign
-    { 171u, 220u, 32u, 184u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // display_name
-    { 207u, 224u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 215u, 248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // hardpoints count
-    { 219u, 232u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // hardpoints, whole
-    { 235u, 288u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 236u, 252u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 241u, 284u, 24u, 257u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // callsign
-    { 269u, 328u, 32u, 292u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // display_name
-    { 305u, 332u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 313u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // hardpoints count
-    { 317u, 340u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // hardpoints, whole
-    { 333u, 396u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 334u, 360u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 339u, 392u, 24u, 365u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // callsign
-    { 367u, 400u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thresholds, whole
-    { 379u, 736u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // reserves count
-    { 383u, 448u, 32u, 412u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // display_name
-    { 419u, 452u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 427u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // hardpoints count
-    { 431u, 460u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // hardpoints, whole
-    { 447u, 516u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 448u, 480u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 453u, 512u, 24u, 485u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // callsign
-    { 481u, 556u, 32u, 520u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // display_name
-    { 517u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 525u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // hardpoints count
-    { 529u, 568u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // hardpoints, whole
-    { 545u, 624u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 546u, 588u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 551u, 620u, 24u, 593u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // callsign
-    { 579u, 664u, 32u, 628u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // display_name
-    { 615u, 668u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 623u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // hardpoints count
-    { 627u, 676u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // hardpoints, whole
-    { 643u, 732u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 644u, 696u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 649u, 728u, 24u, 701u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // callsign
+    { 0u, 0u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // version
+    { 9u, 60u, 48u, 9u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // build_note
+    { 61u, 64u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // spawn_delays, whole
+    { 73u, 112u, 32u, 76u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // display_name
+    { 109u, 116u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // hardpoints count
+    { 121u, 124u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // hardpoints, whole
+    { 137u, 180u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 138u, 144u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 143u, 176u, 24u, 149u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // callsign
+    { 171u, 220u, 32u, 184u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // display_name
+    { 207u, 224u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 215u, 248u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // hardpoints count
+    { 219u, 232u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // hardpoints, whole
+    { 235u, 288u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 236u, 252u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 241u, 284u, 24u, 257u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // callsign
+    { 269u, 328u, 32u, 292u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // display_name
+    { 305u, 332u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 313u, 356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // hardpoints count
+    { 317u, 340u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // hardpoints, whole
+    { 333u, 396u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 334u, 360u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 339u, 392u, 24u, 365u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // callsign
+    { 367u, 400u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thresholds, whole
+    { 379u, 736u, 3u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // reserves count
+    { 383u, 448u, 32u, 412u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // display_name
+    { 419u, 452u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 427u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // hardpoints count
+    { 431u, 460u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // hardpoints, whole
+    { 447u, 516u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 448u, 480u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 453u, 512u, 24u, 485u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // callsign
+    { 481u, 556u, 32u, 520u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // display_name
+    { 517u, 560u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 525u, 584u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // hardpoints count
+    { 529u, 568u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // hardpoints, whole
+    { 545u, 624u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 546u, 588u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 551u, 620u, 24u, 593u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // callsign
+    { 579u, 664u, 32u, 628u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // display_name
+    { 615u, 668u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 623u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // hardpoints count
+    { 627u, 676u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // hardpoints, whole
+    { 643u, 732u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 644u, 696u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 649u, 728u, 24u, 701u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // callsign
 };
 constexpr int32_t PackConfigFixedPlanCount = 47;
 constexpr int32_t PackConfigFixedPlanGuarded = 47;
@@ -7380,6 +7484,9 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
         PackConfigReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        PackConfigFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

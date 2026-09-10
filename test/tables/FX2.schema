@@ -26,4 +26,7 @@ table FxRoot
     added      int32 = 11 | min = 0, max = 1000
     nested     FxNested
     extra      FxExtra
+    label      string(8) = "fx"
+    marks      [..4]int32
+    blob       bytes(6)
 }

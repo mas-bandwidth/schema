@@ -343,24 +343,36 @@ func formatFloat(v float64, single bool) string {
 // The names carry NO package scope. A consumer defines them once for the whole
 // program, the way it defines serialize_assert once, and every generated header
 // in every package picks the definition up.
-const tableHooks = `
-// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
-//
-// schema_assert — the runtime's own assert, and the refusal a debugger reads.
-// NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes ` + "`#define schema_assert serialize_assert`" + ` before
-// including this header and both halves land in one handler.
-#ifndef schema_assert
-#include <assert.h>
-#define schema_assert assert
-#endif // #ifndef schema_assert
-
+const tableHooks = tableAssertHook + `
 // schema_fatal — what stands after the assert on a path that cannot continue.
 // NDEBUG does not remove it. Supply it and <stdlib.h> is never included.
 #ifndef schema_fatal
 #include <stdlib.h> // abort
 #define schema_fatal abort
 #endif // #ifndef schema_fatal
+`
+
+// tableAssertHook is the ASSERT half of the hooks on its own, because the two
+// halves reach two different sets of units: schema_fatal stands after a refusal
+// that aborts, which only the keyed accessor and the list accessor have, while
+// schema_assert alone is what the FIXED FORM's write-side bounds need (§3.4) —
+// and those are debug-only, so nothing after them has to abort.
+const tableAssertHook = `
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
 `
 
 // tableAllocatorHook is the DEFAULT allocator pair behind the same #ifndef,
@@ -1602,6 +1614,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		// The relocatability and standard-layout asserts read the COMPILER
 		// INTRINSICS, so <type_traits> — 124 headers on its own — is not here.
 		h.WriteString("#pragma once\n\n#include <stdint.h>\n#include <string.h> // the prefill's scalar-array fills\n#include <stddef.h> // offsetof, for the reflection descriptors\n")
+		// THE FIXED FORM'S WRITE-SIDE BOUNDS need schema_assert and nothing
+		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
+		// counted array's live count, checked debug-only, with no abort behind
+		// them. A unit of plain scalars declares neither and gets no hook.
+		if !anyKeyed && !anyList && ir.TableFixedHasWriteBound(u) {
+			h.WriteString(tableAssertHook)
+		}
 		if anyKeyed || anyList {
 			// ENUM-KEYED arrays and UNBOUNDED arrays only: indexing a keyed array
 			// by None, or a list past its count, is a program error in EVERY
