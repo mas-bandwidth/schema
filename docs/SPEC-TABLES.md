@@ -81,11 +81,20 @@ three: `1` the VARIABLE FORM, `2` the MESSAGE FORM, `3` the FIXED FORM.
 **ONE FORM BYTE PER CLASS.** Form `3` is the FIXED table's wire and form `1`
 is the VARIABLE table's, and neither reads for the other. Form `1` does not
 move: it is what §3 describes, it is what every variable table writes, and it
-is what an old file on a disk is. The form-`1` machinery a FIXED table
-currently carries — the emitted reader and writer a fixed-size table has on
-the variable wire, from the days when both classes rode form `1` — is
-SCHEDULED FOR REMOVAL once form `3` lands, so that a fixed table has one wire
-and one pair of paths and not two of each.
+is what an old file on a disk is.
+
+**THE VARIABLE FORM CARRIES NO FIXED-TABLE PATHS.** Form `1` has ONE engine
+and every table rides it. Every path an emitter held ONLY to make a FIXED
+table fast on the variable wire — a constant-width measure summed from
+declared leaf widths, a typed save that skipped the descriptor walk, a
+sizing-to-write element cache, an ordinal-slot accelerator behind a field
+header — is GONE, because form `3` is where a fixed table's speed is bought
+now and *"we do not want fixed tables to ever encode as the old way"*. What a
+fixed-size table KEEPS on form `1` is the same measure, save and load a
+variable table has, and it keeps them for the reason §3.4 states: an old file
+on a disk is form `1`, and a leg that has not landed form `3` yet still writes
+it. The paths that went were speed and nothing else; not one byte of form `1`
+moved with them.
 
 **The variable table is the ESCAPE HATCH THAT LETS THE OTHER TWO BE
 STRICT.** A fixed table refuses what would make it variable; a type
