@@ -102,11 +102,12 @@ type Loose
 			src := "package vdef\nflags Caps { Jump, Crouch }\n" +
 				tc.decl + " Badge {\n" + fields + "}\n" + tc.edge + packet
 			u := unitFromSource(t, src)
-			// JAVA IS NOT ON THIS LIST ANY MORE: it carries the table half too
-			// (compiler/target_java.go), the way go and rust do, and its own
+			// NEITHER JAVA NOR ELIXIR IS ON THIS LIST ANY MORE: java carries
+			// the table half (compiler/target_java.go) the way go and rust do,
+			// and elixir carries it too (compiler/target_elixir.go). Their
 			// carrier test is TestTableValueDefaultsCarriers. What is left here
 			// is the ports that carry neither table form.
-			for _, target := range []string{"js", "dart", "elixir"} {
+			for _, target := range []string{"js", "dart"} {
 				_, err := New().Generate(u, target, Options{})
 				if !tc.form1 {
 					if err != nil && strings.Contains(err.Error(), "table-wire defaults") {
@@ -124,7 +125,7 @@ type Loose
 						t.Errorf("refusal does not name %q: %v", want, err)
 					}
 				}
-				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs, --lang go, --lang java and --lang rust, or drop the default") {
+				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs, --lang elixir, --lang go, --lang java and --lang rust, or drop the default") {
 					t.Errorf("table refusal includes a supported packet field or names %s as a table carrier: %v", target, err)
 				}
 			}

@@ -179,7 +179,11 @@ type fastCommandReceipt struct {
 }
 
 type fastEvidence struct {
-	Status        string               `json:"status"`
+	Status string `json:"status"`
+	// Languages is what this diagnostic measured. It is recorded because fast
+	// mode takes a subset, so a reader of the summary cannot infer it from the
+	// published set.
+	Languages     []string             `json:"languages,omitempty"`
 	Reason        string               `json:"reason,omitempty"`
 	Started       string               `json:"started"`
 	Ended         string               `json:"ended,omitempty"`
@@ -242,8 +246,9 @@ func (f *fastCollector) capture(ctx context.Context, c command, phase string) (o
 		return nil, err
 	}
 	defer func() { resultErr = errors.Join(resultErr, log.Close()) }()
-	cmd := exec.CommandContext(ctx, c.args[0], c.args[1:]...)
+	cmd := exec.CommandContext(ctx, c.program(), c.args[1:]...)
 	cmd.Dir = c.dir
+	cmd.Env = c.environment()
 	cmd.WaitDelay = time.Second
 	var stdout bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, log
@@ -287,10 +292,13 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		return errors.New("refusing to overwrite diagnostic directory")
 	}
+	// THE BUILD HAS TO CARRY WHAT THIS RUN MEASURES, and nothing more: a
+	// diagnostic over one leg is a legitimate thing to ask for, and requiring a
+	// build of the other legs to ask it would make the subset flag a lie.
 	for _, lang := range langs {
 		for _, wire := range wiresFor(lang) {
 			if info.Binaries[binary(wire, lang)] == "" {
-				return fmt.Errorf("cached build lacks %s/%s; run the all-language gate first", lang, wire)
+				return fmt.Errorf("cached build lacks %s/%s; build it first (-mode build -langs %s)", lang, wire, lang)
 			}
 		}
 	}
@@ -395,6 +403,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if gitValue(".", statusArgs...) != "" {
 		return errors.New("source changed during fast diagnostic")
 	}
+	f.evidence.Languages = langs
 	if err := writeFastSummary(tmp, langs, f.evidence); err != nil {
 		return err
 	}
