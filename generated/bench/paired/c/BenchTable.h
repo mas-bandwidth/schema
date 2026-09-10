@@ -1815,6 +1815,55 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     return out;
 }
 
+/* ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+
+   THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+   table of 64, the plan bytes they point at are a slab the caller hands
+   init, and overflow is a miss — compile into the caller's plan buffer and
+   do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+   hash never consults it. compiles counts successful compiles through this
+   cache, which is the pin; made is 1 on a slot after the compile that
+   filled it. */
+
+enum { kTableFixedPlanCacheCapacity = 64 };
+
+typedef struct TableFixedPlanCacheSlot
+{
+    uint64_t hash;
+    TableFixedEntry * plan;
+    int32_t count;
+    int32_t guarded;
+    int64_t record_bytes;
+    uint8_t made;
+} TableFixedPlanCacheSlot;
+
+typedef struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage; /* capacity * stride entries, caller-owned */
+    int32_t stride;            /* entries per slot, the plan capacity */
+    int32_t used;
+    int32_t compiles;
+} TableFixedPlanCache;
+
+static SCHEMA_UNUSED void table_fixed_plan_cache_init( TableFixedPlanCache * cache, TableFixedEntry * storage, int32_t stride )
+{
+    int32_t i;
+    cache->storage = storage;
+    cache->stride = stride;
+    cache->used = 0;
+    cache->compiles = 0;
+    for ( i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache->slots[i].hash = 0;
+        cache->slots[i].plan = NULL;
+        cache->slots[i].count = 0;
+        cache->slots[i].guarded = 0;
+        cache->slots[i].record_bytes = 0;
+        cache->slots[i].made = 0;
+    }
+}
+
 /* ---- the 128-bit moves, ONLY where serialize.h is present ------------------
 
    C++ SPELLS THIS AS ONE TEMPLATE over a builtin 128-bit integer, and C has

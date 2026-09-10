@@ -3048,6 +3048,54 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     return out;
 }
 
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].made = 0;
+    }
+}
+
 } // namespace blockhome
 
 #endif // BLOCKHOME_SCHEMA_TABLE_PRIMITIVES

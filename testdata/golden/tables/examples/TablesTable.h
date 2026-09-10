@@ -3292,6 +3292,54 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     return out;
 }
 
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].made = 0;
+    }
+}
+
 } // namespace tabledemo
 
 #endif // TABLEDEMO_SCHEMA_TABLE_PRIMITIVES
@@ -8818,26 +8866,28 @@ inline void LoadoutConfigFixedWriteBody( uint8_t * b, const LoadoutConfig & valu
 }
 
 // Debuff's read-side bounds.
-inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped )
+inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.amount < 0 ) { value.amount = 0; clamped++; }
-    else if ( value.amount > 100 ) { value.amount = 100; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 100 );
+    value.amount = ( value.amount < 0 ) ? 0 : ( ( value.amount > 100 ) ? 100 : value.amount );
 }
 
 // WeaponConfig's read-side bounds.
-inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped )
+inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.penetration < 0 ) { value.penetration = 0; clamped++; }
-    else if ( value.penetration > 10 ) { value.penetration = 10; clamped++; }
-    if ( value.channel > 63ull ) { value.channel = 63ull; clamped++; } // bits(6) width clamp
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.penetration < 0 ) | (int) ( value.penetration > 10 );
+    value.penetration = ( value.penetration < 0 ) ? 0 : ( ( value.penetration > 10 ) ? 10 : value.penetration );
+    // bits(6) width clamp
+    clamped += ( value.channel > 63ull );
+    value.channel = ( value.channel > 63ull ) ? 63ull : value.channel;
     if ( (uint32_t) value.effect.type > 2u ) { value.effect.type = EffectType::None; clamped++; }
     switch ( value.effect.type )
     {
         case EffectType::Debuff:
         {
-            DebuffFixedClampBody( value.effect.debuff, clamped );
+            DebuffFixedClampBody( value.effect.debuff, clamped, damaged );
             break;
         }
         default: break;
@@ -8845,17 +8895,17 @@ inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped 
 }
 
 // Attachment's read-side bounds.
-inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped )
+inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.slot < 0 ) { value.slot = 0; clamped++; }
-    else if ( value.slot > 7 ) { value.slot = 7; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.slot < 0 ) | (int) ( value.slot > 7 );
+    value.slot = ( value.slot < 0 ) ? 0 : ( ( value.slot > 7 ) ? 7 : value.slot );
 }
 
 // LoadoutConfig's read-side bounds.
-inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clamped )
+inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.grade > 3u ) { value.grade = Grade::None; clamped++; }
     for ( int64_t i = 0; i < (int64_t) value.grades_count; ++i )
     {
@@ -8865,14 +8915,14 @@ inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clampe
     {
         if ( (uint64_t) value.podium[i] > 3u ) { value.podium[i] = Grade::None; clamped++; }
     }
-    WeaponConfigFixedClampBody( value.primary, clamped );
+    WeaponConfigFixedClampBody( value.primary, clamped, damaged );
     for ( int64_t i = 0; i < 2; ++i )
     {
-        WeaponConfigFixedClampBody( value.backups[i], clamped );
+        WeaponConfigFixedClampBody( value.backups[i], clamped, damaged );
     }
     for ( int64_t i = 0; i < (int64_t) value.attachments_count; ++i )
     {
-        AttachmentFixedClampBody( value.attachments[i], clamped );
+        AttachmentFixedClampBody( value.attachments[i], clamped, damaged );
     }
 }
 
@@ -8885,8 +8935,13 @@ inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clampe
 inline void WeaponConfigFixedClamp( WeaponConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
-    WeaponConfigFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    WeaponConfigFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- WeaponConfig, the fixed form ----
@@ -8978,9 +9033,9 @@ inline int64_t WeaponConfigFixedSave( const WeaponConfig * values, int64_t count
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t WeaponConfigFixedLoad( WeaponConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -9008,19 +9063,58 @@ inline int64_t WeaponConfigFixedLoad( WeaponConfig * values, int64_t capacity, c
     int64_t record_bytes = WeaponConfigFixedRecordBytes;
     if ( hash != WeaponConfigFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, WeaponConfigFixedLayout, (int32_t) WeaponConfigFixedLayoutBytes, WeaponConfigFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, WeaponConfigFixedLayout, (int32_t) WeaponConfigFixedLayoutBytes, WeaponConfigFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -9052,8 +9146,13 @@ inline int64_t WeaponConfigFixedLoad( WeaponConfig * values, int64_t capacity, c
 inline void LoadoutConfigFixedClamp( LoadoutConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
-    LoadoutConfigFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    LoadoutConfigFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- LoadoutConfig, the fixed form ----
@@ -9225,9 +9324,9 @@ inline int64_t LoadoutConfigFixedSave( const LoadoutConfig * values, int64_t cou
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t LoadoutConfigFixedLoad( LoadoutConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -9255,19 +9354,58 @@ inline int64_t LoadoutConfigFixedLoad( LoadoutConfig * values, int64_t capacity,
     int64_t record_bytes = LoadoutConfigFixedRecordBytes;
     if ( hash != LoadoutConfigFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, LoadoutConfigFixedLayout, (int32_t) LoadoutConfigFixedLayoutBytes, LoadoutConfigFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, LoadoutConfigFixedLayout, (int32_t) LoadoutConfigFixedLayoutBytes, LoadoutConfigFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a

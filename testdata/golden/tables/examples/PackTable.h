@@ -3292,6 +3292,54 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     return out;
 }
 
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].made = 0;
+    }
+}
+
 } // namespace tabledemo
 
 #endif // TABLEDEMO_SCHEMA_TABLE_PRIMITIVES
@@ -6704,44 +6752,90 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
     }
 }
 
-// ShipEntry's read-side bounds.
-inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped )
+// GunnerSettings's read-side bounds.
+inline void GunnerSettingsFixedClampBody( GunnerSettings & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) )
+    {
+        memset( value.callsign, 0, sizeof( value.callsign ) );
+        value.callsign_length = 0;
+        damaged++;
+    }
+}
+
+// ShipEntry's read-side bounds.
+inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) )
+    {
+        memset( value.display_name, 0, sizeof( value.display_name ) );
+        value.display_name_length = 0;
+        damaged++;
+    }
     for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
     {
-        if ( value.hardpoints[i] < 0 ) { value.hardpoints[i] = 0; clamped++; }
-        else if ( value.hardpoints[i] > 8 ) { value.hardpoints[i] = 8; clamped++; }
+        clamped += (int) ( value.hardpoints[i] < 0 ) | (int) ( value.hardpoints[i] > 8 );
+        value.hardpoints[i] = ( value.hardpoints[i] < 0 ) ? 0 : ( ( value.hardpoints[i] > 8 ) ? 8 : value.hardpoints[i] );
+    }
+    if ( value.gunner_present )
+    {
+        GunnerSettingsFixedClampBody( value.gunner, clamped, damaged );
     }
 }
 
 // GlobalSettings's read-side bounds.
-inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clamped )
+inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.tick_rate < 1 ) { value.tick_rate = 1; clamped++; }
-    else if ( value.tick_rate > 240 ) { value.tick_rate = 240; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
+    value.tick_rate = ( value.tick_rate < 1 ) ? 1 : ( ( value.tick_rate > 240 ) ? 240 : value.tick_rate );
     if ( (uint64_t) value.difficulty > 3u ) { value.difficulty = Difficulty::None; clamped++; }
+    if ( !TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) )
+    {
+        memset( value.build_note, 0, sizeof( value.build_note ) );
+        value.build_note_length = 0;
+        damaged++;
+    }
 }
 
 // PackConfig's read-side bounds.
-inline void PackConfigFixedClampBody( PackConfig & value, int32_t & clamped )
+inline void PackConfigFixedClampBody( PackConfig & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    GlobalSettingsFixedClampBody( value.global, clamped );
+    (void) value; (void) clamped; (void) damaged;
+    GlobalSettingsFixedClampBody( value.global, clamped, damaged );
     for ( int64_t i = 0; i < 3; ++i )
     {
-        ShipEntryFixedClampBody( value.ships.slots[i], clamped );
+        ShipEntryFixedClampBody( value.ships.slots[i], clamped, damaged );
     }
     for ( int64_t i = 0; i < 3; ++i )
     {
-        if ( value.thresholds.slots[i] < 0 ) { value.thresholds.slots[i] = 0; clamped++; }
-        else if ( value.thresholds.slots[i] > 1000 ) { value.thresholds.slots[i] = 1000; clamped++; }
+        clamped += (int) ( value.thresholds.slots[i] < 0 ) | (int) ( value.thresholds.slots[i] > 1000 );
+        value.thresholds.slots[i] = ( value.thresholds.slots[i] < 0 ) ? 0 : ( ( value.thresholds.slots[i] > 1000 ) ? 1000 : value.thresholds.slots[i] );
     }
     for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
     {
-        ShipEntryFixedClampBody( value.reserves[i], clamped );
+        ShipEntryFixedClampBody( value.reserves[i], clamped, damaged );
     }
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void GunnerSettingsFixedClamp( GunnerSettings & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    GunnerSettingsFixedClampBody( value, clamped, damaged );
+    report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- GunnerSettings, the fixed form ----
@@ -6817,9 +6911,9 @@ inline int64_t GunnerSettingsFixedSave( const GunnerSettings * values, int64_t c
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -6847,19 +6941,58 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
     int64_t record_bytes = GunnerSettingsFixedRecordBytes;
     if ( hash != GunnerSettingsFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, GunnerSettingsFixedLayout, (int32_t) GunnerSettingsFixedLayoutBytes, GunnerSettingsFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, GunnerSettingsFixedLayout, (int32_t) GunnerSettingsFixedLayoutBytes, GunnerSettingsFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -6874,6 +7007,9 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
         GunnerSettingsReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        GunnerSettingsFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
@@ -6888,8 +7024,13 @@ inline int64_t GunnerSettingsFixedLoad( GunnerSettings * values, int64_t capacit
 inline void ShipEntryFixedClamp( ShipEntry & value, TableReport * report )
 {
     int32_t clamped = 0;
-    ShipEntryFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    ShipEntryFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- ShipEntry, the fixed form ----
@@ -6984,9 +7125,9 @@ inline int64_t ShipEntryFixedSave( const ShipEntry * values, int64_t count, uint
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -7014,19 +7155,58 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
     int64_t record_bytes = ShipEntryFixedRecordBytes;
     if ( hash != ShipEntryFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, ShipEntryFixedLayout, (int32_t) ShipEntryFixedLayoutBytes, ShipEntryFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, ShipEntryFixedLayout, (int32_t) ShipEntryFixedLayoutBytes, ShipEntryFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -7058,8 +7238,13 @@ inline int64_t ShipEntryFixedLoad( ShipEntry * values, int64_t capacity, const u
 inline void GlobalSettingsFixedClamp( GlobalSettings & value, TableReport * report )
 {
     int32_t clamped = 0;
-    GlobalSettingsFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    GlobalSettingsFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- GlobalSettings, the fixed form ----
@@ -7146,9 +7331,9 @@ inline int64_t GlobalSettingsFixedSave( const GlobalSettings * values, int64_t c
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -7176,19 +7361,58 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
     int64_t record_bytes = GlobalSettingsFixedRecordBytes;
     if ( hash != GlobalSettingsFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, GlobalSettingsFixedLayout, (int32_t) GlobalSettingsFixedLayoutBytes, GlobalSettingsFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, GlobalSettingsFixedLayout, (int32_t) GlobalSettingsFixedLayoutBytes, GlobalSettingsFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -7220,8 +7444,13 @@ inline int64_t GlobalSettingsFixedLoad( GlobalSettings * values, int64_t capacit
 inline void PackConfigFixedClamp( PackConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
-    PackConfigFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    PackConfigFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- PackConfig, the fixed form ----
@@ -7427,9 +7656,9 @@ inline int64_t PackConfigFixedSave( const PackConfig * values, int64_t count, ui
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -7457,19 +7686,58 @@ inline int64_t PackConfigFixedLoad( PackConfig * values, int64_t capacity, const
     int64_t record_bytes = PackConfigFixedRecordBytes;
     if ( hash != PackConfigFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, PackConfigFixedLayout, (int32_t) PackConfigFixedLayoutBytes, PackConfigFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, PackConfigFixedLayout, (int32_t) PackConfigFixedLayoutBytes, PackConfigFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a

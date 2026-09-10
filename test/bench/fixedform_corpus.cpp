@@ -77,7 +77,7 @@ int main( int argc, char ** argv )
     std::vector<bench::TableFixedEntry> plan( 8192 );
     bench::TableReport report;
     const int64_t n = bench::FixedTableFixedLoad( back.data(), (int64_t) Count, out.data(), need,
-                                                  plan.data(), (int32_t) plan.size(), &report );
+                                                  plan.data(), (int32_t) plan.size(), NULL, &report );
     if ( n != (int64_t) Count ) { std::fprintf( stderr, "fixed load failed: %lld\n", (long long) n ); return 1; }
     for ( size_t k = 0; k < Count; ++k )
     {

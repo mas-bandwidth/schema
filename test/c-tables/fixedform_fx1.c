@@ -94,7 +94,7 @@ void fixed_fx1_slack( void )
                  "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
 
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, &r );
+    n = fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "C slack: the record reads" );
     fixed_check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
                  "C slack: the used length reads, and the buffer terminates at it" );
@@ -121,7 +121,7 @@ void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
     TableReport r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
+    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "same schema: one record" );
     fixed_check( back.keep == 4242u && back.narrow == 40000u && back.renamed == 321 && back.gone == 654,
                  "same schema: the scalars" );
@@ -141,7 +141,7 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
     TableReport r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
+    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "newer writer: one record" );
     fixed_check( back.keep == 5150u, "newer writer: an unmoved field lands past the unknowns" );
     fixed_check( back.renamed == 808, "newer writer: `was =` reads the other way too" );
@@ -183,7 +183,7 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
     const uint8_t * body;
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r ) == 1,
+    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C bounds: the record reads" );
     fixed_check( back.renamed == 1000, "C RANGE: a value past max lands at max" );
     fixed_check( back.gone == 0, "C RANGE: a value under min lands at min" );
@@ -202,4 +202,87 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
     fixed_check( loose.renamed == 5000 && loose.gone == -7,
                  "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
     fixed_check( r.clamped == 0, "C NEGATIVE CONTROL: and counts nothing" );
+}
+
+/* THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4), the C twin of
+   the reference's. A `string(N)`'s used bytes are well-formed UTF-8 with no
+   zero among them — the same rule SPEC.md §4.7 puts on the packet wire, where
+   the whole read refuses. HERE THE RECORD IS POSITIONAL, so the damage is one
+   field's: the field reads its DECLARED DEFAULT, one `malformed` counts, and
+   the rest of the record stands.
+
+   The poison is written THROUGH THE WRITER, because it can be: the write side's
+   bounds are the used length and the live count, both debug-only, and neither
+   is a content rule. */
+void fixed_fx1_text_content( void )
+{
+    static const struct { const char * what; const char * bytes; int32_t length; } cases[] = {
+        { "C TEXT: a lone 0xFF is no lead byte",           "\xFF",     1 },
+        { "C TEXT: a truncated two-byte sequence",         "\xC3",     1 },
+        { "C TEXT: a bare continuation byte",              "\x80",     1 },
+        { "C TEXT: an overlong encoding of NUL",           "\xC0\x80", 2 },
+        { "C TEXT: an INTERIOR NULL among the used bytes", "a\0b",     3 }
+    };
+    static uint8_t file[8192];
+    size_t k;
+    int64_t n;
+
+    for ( k = 0; k < sizeof( cases ) / sizeof( cases[0] ); k++ )
+    {
+        FxRoot v, back;
+        TableReport r;
+
+        fx_root_reset( &v );
+        v.keep = 1234u;
+        v.nested.a = 7;
+        memcpy( v.label, cases[k].bytes, (size_t) cases[k].length );
+        v.label_length = cases[k].length;
+
+        n = fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
+        fixed_check( n == fx_root_fixed_measure( 1 ), "C text content: the record saves" );
+
+        memset( &r, 0, sizeof( r ) );
+        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
+                     "C text content: the record reads" );
+        fixed_check( r.malformed, cases[k].what );
+        fixed_check( back.label_length == 2 && strcmp( back.label, "fx" ) == 0,
+                     "C TEXT CONTENT: the damaged field reads its DECLARED DEFAULT" );
+        fixed_check( back.keep == 1234u && back.nested.a == 7,
+                     "C TEXT CONTENT: and the rest of the record stands" );
+        fixed_check( !r.refused, "C TEXT CONTENT: damage is not a refusal" );
+
+        if ( k == 0 )
+        {
+            /* THE NEGATIVE CONTROL: the read loop alone, with no content pass
+               after it — the bytes that are not text stand with nothing said. */
+            FxRoot loose;
+            TableReport r2;
+            const uint8_t * body;
+            fx_root_reset( &loose );
+            memset( &r2, 0, sizeof( r2 ) );
+            body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
+            table_fixed_run( fx_root_fixed_plan, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
+                             body, (uint8_t *) &loose, &r2 );
+            fixed_check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
+                         "C NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
+            fixed_check( !r2.malformed, "C NEGATIVE CONTROL: and says nothing about it" );
+        }
+    }
+
+    /* AND WELL-FORMED TEXT IS UNTOUCHED, which is what makes the cases above
+       discriminating. */
+    {
+        FxRoot v, back;
+        TableReport r;
+        fx_root_reset( &v );
+        memcpy( v.label, "\xC3\xA9t\xC3\xA9", 5 ); /* "ete" with acutes */
+        v.label_length = 5;
+        n = fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
+        memset( &r, 0, sizeof( r ) );
+        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
+                     "C text content: the well-formed record reads" );
+        fixed_check( back.label_length == 5 && memcmp( back.label, "\xC3\xA9t\xC3\xA9", 5 ) == 0,
+                     "C TEXT CONTENT: well-formed multi-byte UTF-8 rides whole" );
+        fixed_check( !r.malformed && r.clamped == 0, "C TEXT CONTENT: and moves no counter" );
+    }
 }

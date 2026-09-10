@@ -541,5 +541,9 @@ func init() {
 		Name{Name: "table_fixed_tag_bytes", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_union_arm_bytes", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_widens", What: "the fixed form's widening rungs"},
+		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per peer and never once per record"},
+		Name{Name: "TableFixedPlanCacheSlot", What: "one cached compiled plan: hash, plan pointer, count, record_bytes"},
+		Name{Name: "kTableFixedPlanCacheCapacity", What: "the plan cache's named bound: 64, overflow is a miss"},
+		Name{Name: "table_fixed_plan_cache_init", What: "bind caller-owned slot storage to a plan cache"},
 	)
 }

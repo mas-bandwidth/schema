@@ -1816,6 +1816,55 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     return out;
 }
 
+/* ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+
+   THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+   table of 64, the plan bytes they point at are a slab the caller hands
+   init, and overflow is a miss — compile into the caller's plan buffer and
+   do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+   hash never consults it. compiles counts successful compiles through this
+   cache, which is the pin; made is 1 on a slot after the compile that
+   filled it. */
+
+enum { kTableFixedPlanCacheCapacity = 64 };
+
+typedef struct TableFixedPlanCacheSlot
+{
+    uint64_t hash;
+    TableFixedEntry * plan;
+    int32_t count;
+    int32_t guarded;
+    int64_t record_bytes;
+    uint8_t made;
+} TableFixedPlanCacheSlot;
+
+typedef struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage; /* capacity * stride entries, caller-owned */
+    int32_t stride;            /* entries per slot, the plan capacity */
+    int32_t used;
+    int32_t compiles;
+} TableFixedPlanCache;
+
+static SCHEMA_UNUSED void table_fixed_plan_cache_init( TableFixedPlanCache * cache, TableFixedEntry * storage, int32_t stride )
+{
+    int32_t i;
+    cache->storage = storage;
+    cache->stride = stride;
+    cache->used = 0;
+    cache->compiles = 0;
+    for ( i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache->slots[i].hash = 0;
+        cache->slots[i].plan = NULL;
+        cache->slots[i].count = 0;
+        cache->slots[i].guarded = 0;
+        cache->slots[i].record_bytes = 0;
+        cache->slots[i].made = 0;
+    }
+}
+
 /* ---- the 128-bit moves, ONLY where serialize.h is present ------------------
 
    C++ SPELLS THIS AS ONE TEMPLATE over a builtin 128-bit integer, and C has
@@ -3117,91 +3166,109 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
 }
 
 /* MixedEntity's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_clamp_body_( MixedEntity * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_clamp_body_( MixedEntity * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->entity_id > 4095ull ) { value->entity_id = 4095ull; (*clamped)++; } /* bits(12) width clamp */
-    if ( value->pos_x < -16383 ) { value->pos_x = -16383; (*clamped)++; }
-    else if ( value->pos_x > 16383 ) { value->pos_x = 16383; (*clamped)++; }
-    if ( value->pos_y < -16383 ) { value->pos_y = -16383; (*clamped)++; }
-    else if ( value->pos_y > 16383 ) { value->pos_y = 16383; (*clamped)++; }
-    if ( value->pos_z < -16383 ) { value->pos_z = -16383; (*clamped)++; }
-    else if ( value->pos_z > 16383 ) { value->pos_z = 16383; (*clamped)++; }
-    if ( value->yaw > 511ull ) { value->yaw = 511ull; (*clamped)++; } /* bits(9) width clamp */
-    if ( value->pitch > 511ull ) { value->pitch = 511ull; (*clamped)++; } /* bits(9) width clamp */
-    if ( value->vel_x < -2048 ) { value->vel_x = -2048; (*clamped)++; }
-    else if ( value->vel_x > 2047 ) { value->vel_x = 2047; (*clamped)++; }
-    if ( value->vel_y < -2048 ) { value->vel_y = -2048; (*clamped)++; }
-    else if ( value->vel_y > 2047 ) { value->vel_y = 2047; (*clamped)++; }
-    if ( value->vel_z < -2048 ) { value->vel_z = -2048; (*clamped)++; }
-    else if ( value->vel_z > 2047 ) { value->vel_z = 2047; (*clamped)++; }
-    if ( value->health < 0 ) { value->health = 0; (*clamped)++; }
-    else if ( value->health > 1000 ) { value->health = 1000; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(12) width clamp */
+    (*clamped) += ( value->entity_id > 4095ull );
+    value->entity_id = ( value->entity_id > 4095ull ) ? 4095ull : value->entity_id;
+    (*clamped) += (int) ( value->pos_x < -16383 ) | (int) ( value->pos_x > 16383 );
+    value->pos_x = ( value->pos_x < -16383 ) ? -16383 : ( ( value->pos_x > 16383 ) ? 16383 : value->pos_x );
+    (*clamped) += (int) ( value->pos_y < -16383 ) | (int) ( value->pos_y > 16383 );
+    value->pos_y = ( value->pos_y < -16383 ) ? -16383 : ( ( value->pos_y > 16383 ) ? 16383 : value->pos_y );
+    (*clamped) += (int) ( value->pos_z < -16383 ) | (int) ( value->pos_z > 16383 );
+    value->pos_z = ( value->pos_z < -16383 ) ? -16383 : ( ( value->pos_z > 16383 ) ? 16383 : value->pos_z );
+    /* bits(9) width clamp */
+    (*clamped) += ( value->yaw > 511ull );
+    value->yaw = ( value->yaw > 511ull ) ? 511ull : value->yaw;
+    /* bits(9) width clamp */
+    (*clamped) += ( value->pitch > 511ull );
+    value->pitch = ( value->pitch > 511ull ) ? 511ull : value->pitch;
+    (*clamped) += (int) ( value->vel_x < -2048 ) | (int) ( value->vel_x > 2047 );
+    value->vel_x = ( value->vel_x < -2048 ) ? -2048 : ( ( value->vel_x > 2047 ) ? 2047 : value->vel_x );
+    (*clamped) += (int) ( value->vel_y < -2048 ) | (int) ( value->vel_y > 2047 );
+    value->vel_y = ( value->vel_y < -2048 ) ? -2048 : ( ( value->vel_y > 2047 ) ? 2047 : value->vel_y );
+    (*clamped) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
+    value->vel_z = ( value->vel_z < -2048 ) ? -2048 : ( ( value->vel_z > 2047 ) ? 2047 : value->vel_z );
+    (*clamped) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
+    value->health = ( value->health < 0 ) ? 0 : ( ( value->health > 1000 ) ? 1000 : value->health );
     if ( (uint64_t) value->weapon > 15u ) { value->weapon = MIXED_WEAPON_NONE; (*clamped)++; }
 }
 
 /* MixedStat's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_clamp_body_( MixedStat * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_clamp_body_( MixedStat * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->stat_id > 255ull ) { value->stat_id = 255ull; (*clamped)++; } /* bits(8) width clamp */
-    if ( value->delta < -512 ) { value->delta = -512; (*clamped)++; }
-    else if ( value->delta > 511 ) { value->delta = 511; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(8) width clamp */
+    (*clamped) += ( value->stat_id > 255ull );
+    value->stat_id = ( value->stat_id > 255ull ) ? 255ull : value->stat_id;
+    (*clamped) += (int) ( value->delta < -512 ) | (int) ( value->delta > 511 );
+    value->delta = ( value->delta < -512 ) ? -512 : ( ( value->delta > 511 ) ? 511 : value->delta );
 }
 
 /* MixedHitEvent's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_clamp_body_( MixedHitEvent * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_clamp_body_( MixedHitEvent * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->target_id > 4095ull ) { value->target_id = 4095ull; (*clamped)++; } /* bits(12) width clamp */
-    if ( value->damage < 0 ) { value->damage = 0; (*clamped)++; }
-    else if ( value->damage > 4095 ) { value->damage = 4095; (*clamped)++; }
-    if ( value->hit_kind < 0 ) { value->hit_kind = 0; (*clamped)++; }
-    else if ( value->hit_kind > 7 ) { value->hit_kind = 7; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(12) width clamp */
+    (*clamped) += ( value->target_id > 4095ull );
+    value->target_id = ( value->target_id > 4095ull ) ? 4095ull : value->target_id;
+    (*clamped) += (int) ( value->damage < 0 ) | (int) ( value->damage > 4095 );
+    value->damage = ( value->damage < 0 ) ? 0 : ( ( value->damage > 4095 ) ? 4095 : value->damage );
+    (*clamped) += (int) ( value->hit_kind < 0 ) | (int) ( value->hit_kind > 7 );
+    value->hit_kind = ( value->hit_kind < 0 ) ? 0 : ( ( value->hit_kind > 7 ) ? 7 : value->hit_kind );
 }
 
 /* MixedChatEvent's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_clamp_body_( MixedChatEvent * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_clamp_body_( MixedChatEvent * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->channel < 0 ) { value->channel = 0; (*clamped)++; }
-    else if ( value->channel > 3 ) { value->channel = 3; (*clamped)++; }
-    if ( value->speaker > 4095ull ) { value->speaker = 4095ull; (*clamped)++; } /* bits(12) width clamp */
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += (int) ( value->channel < 0 ) | (int) ( value->channel > 3 );
+    value->channel = ( value->channel < 0 ) ? 0 : ( ( value->channel > 3 ) ? 3 : value->channel );
+    /* bits(12) width clamp */
+    (*clamped) += ( value->speaker > 4095ull );
+    value->speaker = ( value->speaker > 4095ull ) ? 4095ull : value->speaker;
 }
 
 /* MixedPickupEvent's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_clamp_body_( MixedPickupEvent * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_clamp_body_( MixedPickupEvent * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->item_id > 1023ull ) { value->item_id = 1023ull; (*clamped)++; } /* bits(10) width clamp */
-    if ( value->amount < 0 ) { value->amount = 0; (*clamped)++; }
-    else if ( value->amount > 255 ) { value->amount = 255; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(10) width clamp */
+    (*clamped) += ( value->item_id > 1023ull );
+    value->item_id = ( value->item_id > 1023ull ) ? 1023ull : value->item_id;
+    (*clamped) += (int) ( value->amount < 0 ) | (int) ( value->amount > 255 );
+    value->amount = ( value->amount < 0 ) ? 0 : ( ( value->amount > 255 ) ? 255 : value->amount );
 }
 
 /* BenchMixed's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_clamp_body_( BenchMixed * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_clamp_body_( BenchMixed * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->sequence > 65535ull ) { value->sequence = 65535ull; (*clamped)++; } /* bits(16) width clamp */
-    if ( value->ack_sequence < 0 ) { value->ack_sequence = 0; (*clamped)++; }
-    else if ( value->ack_sequence > 65535 ) { value->ack_sequence = 65535; (*clamped)++; }
-    if ( value->world_time < -1000000000000ll ) { value->world_time = -1000000000000ll; (*clamped)++; }
-    else if ( value->world_time > 1000000000000ll ) { value->world_time = 1000000000000ll; (*clamped)++; }
-    if ( value->frame_tick > 281474976710655ull ) { value->frame_tick = 281474976710655ull; (*clamped)++; } /* bits(48) width clamp */
-    if ( value->server_time < 0 ) { value->server_time = 0; (*clamped)++; }
-    else if ( value->server_time > 16776960 ) { value->server_time = 16776960; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(16) width clamp */
+    (*clamped) += ( value->sequence > 65535ull );
+    value->sequence = ( value->sequence > 65535ull ) ? 65535ull : value->sequence;
+    (*clamped) += (int) ( value->ack_sequence < 0 ) | (int) ( value->ack_sequence > 65535 );
+    value->ack_sequence = ( value->ack_sequence < 0 ) ? 0 : ( ( value->ack_sequence > 65535 ) ? 65535 : value->ack_sequence );
+    (*clamped) += (int) ( value->world_time < -1000000000000ll ) | (int) ( value->world_time > 1000000000000ll );
+    value->world_time = ( value->world_time < -1000000000000ll ) ? -1000000000000ll : ( ( value->world_time > 1000000000000ll ) ? 1000000000000ll : value->world_time );
+    /* bits(48) width clamp */
+    (*clamped) += ( value->frame_tick > 281474976710655ull );
+    value->frame_tick = ( value->frame_tick > 281474976710655ull ) ? 281474976710655ull : value->frame_tick;
+    (*clamped) += (int) ( value->server_time < 0 ) | (int) ( value->server_time > 16776960 );
+    value->server_time = ( value->server_time < 0 ) ? 0 : ( ( value->server_time > 16776960 ) ? 16776960 : value->server_time );
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->entities_count; ++i )
         {
-            schema_bench_mixed_entity_fixed_clamp_body_( &value->entities[i], clamped );
+            schema_bench_mixed_entity_fixed_clamp_body_( &value->entities[i], clamped, damaged );
         }
     }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->stats_count; ++i )
         {
-            schema_bench_mixed_stat_fixed_clamp_body_( &value->stats[i], clamped );
+            schema_bench_mixed_stat_fixed_clamp_body_( &value->stats[i], clamped, damaged );
         }
     }
     if ( (uint32_t) value->game_event.type > 3u ) { value->game_event.type = MIXED_EVENT_TYPE_NONE; (*clamped)++; }
@@ -3209,42 +3276,51 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     {
         case MIXED_EVENT_TYPE_HIT:
         {
-            schema_bench_mixed_hit_event_fixed_clamp_body_( &value->game_event.as.hit, clamped );
+            schema_bench_mixed_hit_event_fixed_clamp_body_( &value->game_event.as.hit, clamped, damaged );
             break;
         }
         case MIXED_EVENT_TYPE_CHAT:
         {
-            schema_bench_mixed_chat_event_fixed_clamp_body_( &value->game_event.as.chat, clamped );
+            schema_bench_mixed_chat_event_fixed_clamp_body_( &value->game_event.as.chat, clamped, damaged );
             break;
         }
         case MIXED_EVENT_TYPE_PICKUP:
         {
-            schema_bench_mixed_pickup_event_fixed_clamp_body_( &value->game_event.as.pickup, clamped );
+            schema_bench_mixed_pickup_event_fixed_clamp_body_( &value->game_event.as.pickup, clamped, damaged );
             break;
         }
         default: break;
     }
-    if ( value->aim_x < -1.0f ) { value->aim_x = -1.0f; (*clamped)++; }
-    else if ( value->aim_x > 1.0f ) { value->aim_x = 1.0f; (*clamped)++; }
-    if ( value->aim_y < -1.0f ) { value->aim_y = -1.0f; (*clamped)++; }
-    else if ( value->aim_y > 1.0f ) { value->aim_y = 1.0f; (*clamped)++; }
-    if ( value->aim_z < -1.0f ) { value->aim_z = -1.0f; (*clamped)++; }
-    else if ( value->aim_z > 1.0f ) { value->aim_z = 1.0f; (*clamped)++; }
-    if ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) { value->flux = serialize_int128_make( 18446744004990074880ull, 0ull ); (*clamped)++; }
-    else if ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 ) { value->flux = serialize_int128_make( 68719476736ull, 0ull ); (*clamped)++; }
-    if ( value->ping > 64000 ) { value->ping = 64000; (*clamped)++; }
-    if ( value->crc_hint > 16777215ull ) { value->crc_hint = 16777215ull; (*clamped)++; } /* bits(24) width clamp */
-    if ( value->extra < 0 ) { value->extra = 0; (*clamped)++; }
-    else if ( value->extra > 255 ) { value->extra = 255; (*clamped)++; }
-    if ( value->idle_ticks < 0 ) { value->idle_ticks = 0; (*clamped)++; }
-    else if ( value->idle_ticks > 15 ) { value->idle_ticks = 15; (*clamped)++; }
+    if ( !table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) )
+    {
+        memset( value->player_name, 0, sizeof( value->player_name ) );
+        value->player_name_length = 0;
+        (*damaged)++;
+    }
+    (*clamped) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
+    value->aim_x = ( value->aim_x < -1.0f ) ? -1.0f : ( ( value->aim_x > 1.0f ) ? 1.0f : value->aim_x );
+    (*clamped) += (int) ( value->aim_y < -1.0f ) | (int) ( value->aim_y > 1.0f );
+    value->aim_y = ( value->aim_y < -1.0f ) ? -1.0f : ( ( value->aim_y > 1.0f ) ? 1.0f : value->aim_y );
+    (*clamped) += (int) ( value->aim_z < -1.0f ) | (int) ( value->aim_z > 1.0f );
+    value->aim_z = ( value->aim_z < -1.0f ) ? -1.0f : ( ( value->aim_z > 1.0f ) ? 1.0f : value->aim_z );
+    (*clamped) += (int) ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
+    value->flux = ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) ? serialize_int128_make( 18446744004990074880ull, 0ull ) : ( ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 ) ? serialize_int128_make( 68719476736ull, 0ull ) : value->flux );
+    (*clamped) += ( value->ping > 64000 );
+    value->ping = ( value->ping > 64000 ) ? 64000 : value->ping;
+    /* bits(24) width clamp */
+    (*clamped) += ( value->crc_hint > 16777215ull );
+    value->crc_hint = ( value->crc_hint > 16777215ull ) ? 16777215ull : value->crc_hint;
+    (*clamped) += (int) ( value->extra < 0 ) | (int) ( value->extra > 255 );
+    value->extra = ( value->extra < 0 ) ? 0 : ( ( value->extra > 255 ) ? 255 : value->extra );
+    (*clamped) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
+    value->idle_ticks = ( value->idle_ticks < 0 ) ? 0 : ( ( value->idle_ticks > 15 ) ? 15 : value->idle_ticks );
 }
 
 /* FixedTable's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_clamp_body_( FixedTable * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_clamp_body_( FixedTable * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    schema_bench_bench_mixed_fixed_clamp_body_( &value->value, clamped );
+    (void) value; (void) clamped; (void) damaged;
+    schema_bench_bench_mixed_fixed_clamp_body_( &value->value, clamped, damaged );
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -3256,8 +3332,13 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
 static SCHEMA_UNUSED void schema_bench_fixed_table_fixed_clamp_( FixedTable * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_bench_fixed_table_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_bench_fixed_table_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- FixedTable, the fixed form ---- */
@@ -3511,9 +3592,9 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_save( const FixedTable * values, 
 
 /* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
    the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+   writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4). */
 static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     uint32_t layout_bytes;
@@ -3547,20 +3628,63 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
     record_bytes = 8 + 1236;
     if ( hash != fixed_table_fixed_hash )
     {
-        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
+           and CACHED BY HASH, so the compile is paid once per peer, not per record.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
            every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        const TableFixedPlanCacheSlot * hit = NULL;
+        TableFixedEntry * dest;
+        int32_t dest_capacity;
+        int storing;
+        int32_t i;
         TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
-        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
-        made = table_fixed_compile( &parsed, fixed_table_fixed_layout, (int32_t) sizeof( fixed_table_fixed_layout ), fixed_table_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+        if ( cache != NULL )
+        {
+            for ( i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
+            dest = plan;
+            dest_capacity = plan_capacity;
+            storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            made = table_fixed_compile( &parsed, fixed_table_fixed_layout, (int32_t) sizeof( fixed_table_fixed_layout ), fixed_table_fixed_dst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+            record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
        the layout's own rules each refuse under their own name first, so a

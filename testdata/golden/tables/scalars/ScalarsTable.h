@@ -3192,6 +3192,54 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     return out;
 }
 
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].made = 0;
+    }
+}
+
 // sixteen bytes, the LOW 64-bit half first, which is this wire's order for the
 // family everywhere else (docs/SPEC-TABLES.md §3).
 inline void TableFixedPut128( uint8_t * b, serialize::int128_t v )
@@ -6129,57 +6177,64 @@ inline void SimStateFixedWriteBody( uint8_t * b, const SimState & value )
 }
 
 // Pose's read-side bounds.
-inline void PoseFixedClampBody( Pose & value, int32_t & clamped )
+inline void PoseFixedClampBody( Pose & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.x < -1966080000ll ) { value.x = -1966080000ll; clamped++; }
-    else if ( value.x > 1966080000ll ) { value.x = 1966080000ll; clamped++; }
-    if ( value.y < -1966080000ll ) { value.y = -1966080000ll; clamped++; }
-    else if ( value.y > 1966080000ll ) { value.y = 1966080000ll; clamped++; }
-    if ( value.heading > 23592960 ) { value.heading = 23592960; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.x < -1966080000ll ) | (int) ( value.x > 1966080000ll );
+    value.x = ( value.x < -1966080000ll ) ? -1966080000ll : ( ( value.x > 1966080000ll ) ? 1966080000ll : value.x );
+    clamped += (int) ( value.y < -1966080000ll ) | (int) ( value.y > 1966080000ll );
+    value.y = ( value.y < -1966080000ll ) ? -1966080000ll : ( ( value.y > 1966080000ll ) ? 1966080000ll : value.y );
+    clamped += ( value.heading > 23592960 );
+    value.heading = ( value.heading > 23592960 ) ? 23592960 : value.heading;
 }
 
 // SimState's read-side bounds.
-inline void SimStateFixedClampBody( SimState & value, int32_t & clamped )
+inline void SimStateFixedClampBody( SimState & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.tilt > 112 ) { value.tilt = 112; clamped++; }
-    if ( value.angle < -11796480 ) { value.angle = -11796480; clamped++; }
-    else if ( value.angle > 11796480 ) { value.angle = 11796480; clamped++; }
-    if ( value.position < -1966080000ll ) { value.position = -1966080000ll; clamped++; }
-    else if ( value.position > 1966080000ll ) { value.position = 1966080000ll; clamped++; }
-    if ( value.reach < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) { value.reach = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ); clamped++; }
-    else if ( value.reach > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ) { value.reach = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ); clamped++; }
-    if ( value.ticks < 0 ) { value.ticks = 0; clamped++; }
-    else if ( value.ticks > 1000000 ) { value.ticks = 1000000; clamped++; }
-    if ( value.ratio > 240 ) { value.ratio = 240; clamped++; }
-    if ( value.speed > 65536000 ) { value.speed = 65536000; clamped++; }
-    if ( value.span > 18446744073709486080ull ) { value.span = 18446744073709486080ull; clamped++; }
-    if ( value.mass > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ) { value.mass = ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ); clamped++; }
-    if ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
-    else if ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
-    if ( value.energy < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) { value.energy = serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ); clamped++; }
-    else if ( value.energy > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) { value.energy = serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ); clamped++; }
-    if ( value.scale < -524288 ) { value.scale = -524288; clamped++; }
-    else if ( value.scale > 524288 ) { value.scale = 524288; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += ( value.tilt > 112 );
+    value.tilt = ( value.tilt > 112 ) ? 112 : value.tilt;
+    clamped += (int) ( value.angle < -11796480 ) | (int) ( value.angle > 11796480 );
+    value.angle = ( value.angle < -11796480 ) ? -11796480 : ( ( value.angle > 11796480 ) ? 11796480 : value.angle );
+    clamped += (int) ( value.position < -1966080000ll ) | (int) ( value.position > 1966080000ll );
+    value.position = ( value.position < -1966080000ll ) ? -1966080000ll : ( ( value.position > 1966080000ll ) ? 1966080000ll : value.position );
+    clamped += (int) ( value.reach < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) | (int) ( value.reach > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) );
+    value.reach = ( value.reach < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) : ( ( value.reach > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) : value.reach );
+    clamped += (int) ( value.ticks < 0 ) | (int) ( value.ticks > 1000000 );
+    value.ticks = ( value.ticks < 0 ) ? 0 : ( ( value.ticks > 1000000 ) ? 1000000 : value.ticks );
+    clamped += ( value.ratio > 240 );
+    value.ratio = ( value.ratio > 240 ) ? 240 : value.ratio;
+    clamped += ( value.speed > 65536000 );
+    value.speed = ( value.speed > 65536000 ) ? 65536000 : value.speed;
+    clamped += ( value.span > 18446744073709486080ull );
+    value.span = ( value.span > 18446744073709486080ull ) ? 18446744073709486080ull : value.span;
+    clamped += ( value.mass > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) );
+    value.mass = ( value.mass > ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ) ? ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) : value.mass;
+    clamped += (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    value.flux = ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : ( ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : value.flux );
+    clamped += (int) ( value.energy < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) | (int) ( value.energy > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) );
+    value.energy = ( value.energy < serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) : ( ( value.energy > serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) : value.energy );
+    clamped += (int) ( value.scale < -524288 ) | (int) ( value.scale > 524288 );
+    value.scale = ( value.scale < -524288 ) ? -524288 : ( ( value.scale > 524288 ) ? 524288 : value.scale );
     for ( int64_t i = 0; i < 3; ++i )
     {
-        if ( value.samples[i] < -524288 ) { value.samples[i] = -524288; clamped++; }
-        else if ( value.samples[i] > 524288 ) { value.samples[i] = 524288; clamped++; }
+        clamped += (int) ( value.samples[i] < -524288 ) | (int) ( value.samples[i] > 524288 );
+        value.samples[i] = ( value.samples[i] < -524288 ) ? -524288 : ( ( value.samples[i] > 524288 ) ? 524288 : value.samples[i] );
     }
     for ( int64_t i = 0; i < (int64_t) value.weights_count; ++i )
     {
-        if ( value.weights[i] > 25600 ) { value.weights[i] = 25600; clamped++; }
+        clamped += ( value.weights[i] > 25600 );
+        value.weights[i] = ( value.weights[i] > 25600 ) ? 25600 : value.weights[i];
     }
     for ( int64_t i = 0; i < 3; ++i )
     {
-        if ( value.axes.slots[i] < -429496729600ll ) { value.axes.slots[i] = -429496729600ll; clamped++; }
-        else if ( value.axes.slots[i] > 429496729600ll ) { value.axes.slots[i] = 429496729600ll; clamped++; }
+        clamped += (int) ( value.axes.slots[i] < -429496729600ll ) | (int) ( value.axes.slots[i] > 429496729600ll );
+        value.axes.slots[i] = ( value.axes.slots[i] < -429496729600ll ) ? -429496729600ll : ( ( value.axes.slots[i] > 429496729600ll ) ? 429496729600ll : value.axes.slots[i] );
     }
-    PoseFixedClampBody( value.pose, clamped );
+    PoseFixedClampBody( value.pose, clamped, damaged );
     if ( value.spawn_present )
     {
-        PoseFixedClampBody( value.spawn, clamped );
+        PoseFixedClampBody( value.spawn, clamped, damaged );
     }
 }
 
@@ -6192,8 +6247,13 @@ inline void SimStateFixedClampBody( SimState & value, int32_t & clamped )
 inline void SimStateFixedClamp( SimState & value, TableReport * report )
 {
     int32_t clamped = 0;
-    SimStateFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    SimStateFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- SimState, the fixed form ----
@@ -6347,9 +6407,9 @@ inline int64_t SimStateFixedSave( const SimState * values, int64_t count, uint8_
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t SimStateFixedLoad( SimState * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -6377,19 +6437,58 @@ inline int64_t SimStateFixedLoad( SimState * values, int64_t capacity, const uin
     int64_t record_bytes = SimStateFixedRecordBytes;
     if ( hash != SimStateFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, SimStateFixedLayout, (int32_t) SimStateFixedLayoutBytes, SimStateFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, SimStateFixedLayout, (int32_t) SimStateFixedLayoutBytes, SimStateFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
