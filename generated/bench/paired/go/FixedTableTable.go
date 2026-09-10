@@ -657,7 +657,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	{
 		es := src + 1108
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.GameEvent))
-		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(MixedEvent{}.Type)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
+		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(MixedEvent{}.Type)), Size: 1, Aux: 3, Guard: tableFixedNoGuard, Op: tableFixedTag} // the tag
 		n++
 		{ // arm hit, ordinal 1
 			guardAt := n

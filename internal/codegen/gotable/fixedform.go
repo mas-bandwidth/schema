@@ -520,8 +520,12 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			return
 		case *ir.Union:
 			tag := int64(ir.StorageBitsFor(r.Max) / 8)
-			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag\n",
-				ind, src, dst, offGo(f.Type.Name, "Type"), tag)
+			// THE TAG IS NOT A COPY: a tag naming no arm of this reader lands
+			// as None and counts `unknown`, the way form 1 answers an arm id
+			// it does not know (docs/SPEC-TABLES.md §4). Aux carries this
+			// reader's own arm count.
+			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedTag} // the tag\n",
+				ind, src, dst, offGo(f.Type.Name, "Type"), tag, len(r.Variants))
 			g.pf("%sn++\n", ind)
 			for i, v := range r.Variants {
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
