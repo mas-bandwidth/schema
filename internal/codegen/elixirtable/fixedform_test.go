@@ -155,6 +155,56 @@ func TestFixedImageIsContiguous(t *testing.T) {
 // coalescing rule reaching its best case, which in the image domain is the
 // whole body in one move. A plan that grew a second entry means the destination
 // stopped being the image.
+// Clamp and ordinal count LIVE elements only. The identity plan is static, so
+// each slot still has an op; slack is a :live wrap against the count, and an
+// absent optional's payload is a :present wrap. C++ walks items_count.
+func TestIdentityPlanLiveCountShape(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+enum Grade { Bronze, Gold }
+
+table Probe
+{
+    marks  [..4]int32 | min = 0, max = 10
+    grades [..4]Grade
+    note   ?int32 | min = 0, max = 10
+}
+`)
+	st := findTable(t, u, "Probe")
+	plan := fixedIdentityPlan(st)
+	var markClamps, gradeOrdinals, noteClamps int
+	for _, e := range plan {
+		switch e.op {
+		case "clamp":
+			if e.hasPresent {
+				noteClamps++
+				if len(e.lives) != 0 {
+					t.Fatalf("absent-optional clamp is live-wrapped: %s", e)
+				}
+			} else {
+				markClamps++
+				if len(e.lives) != 1 || e.lives[0].dst != 0 || e.lives[0].index != int64(markClamps-1) {
+					t.Fatalf("marks clamp %d not LIVE-wrapped to count@0 index %d: %s", markClamps-1, markClamps-1, e)
+				}
+			}
+		case "ordinal":
+			gradeOrdinals++
+			if len(e.lives) != 1 || e.lives[0].dst != 20 || e.lives[0].index != int64(gradeOrdinals-1) {
+				t.Fatalf("grades ordinal %d not LIVE-wrapped to count@20 index %d: %s", gradeOrdinals-1, gradeOrdinals-1, e)
+			}
+		}
+	}
+	if markClamps != 4 {
+		t.Fatalf("marks clamp ops = %d, want 4 LIVE-wrapped slots", markClamps)
+	}
+	if gradeOrdinals != 4 {
+		t.Fatalf("grades ordinal ops = %d, want 4 LIVE-wrapped slots", gradeOrdinals)
+	}
+	if noteClamps != 1 {
+		t.Fatalf("optional payload clamp ops = %d, want 1 present-wrapped", noteClamps)
+	}
+}
+
 func TestIdentityPlanOfPlainScalarsIsOneRun(t *testing.T) {
 	u := unitFrom(t, `package probe
 

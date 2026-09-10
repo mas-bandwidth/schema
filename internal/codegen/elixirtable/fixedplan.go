@@ -27,7 +27,9 @@ import (
 // and the sentence is loose — a length that arrived hostile has to be clamped
 // whoever wrote it — so this port emits `count` and `text` on the identity path
 // too, and adds `clamp` where §3.4's op table says a RANGED integer clamps on
-// load. That is stated rather than left to be found.
+// load. Clamp and ordinal count LIVE elements only: a counted array's slack
+// and an absent optional's payload move no counter, the same as C++ walking
+// items_count. That is stated rather than left to be found.
 
 // fixedPlanEntry is one entry of a plan as this port spells it: a tagged tuple,
 // so THE ONE READ LOOP dispatches on a function head — the BEAM's own fastest
@@ -42,6 +44,18 @@ type fixedPlanEntry struct {
 	guard    string // "" outside a union arm
 	guardSrc string
 	guardTag string
+
+	// lives and present wrap COUNTER-MOVING ops so slack and an absent
+	// optional's payload never count. A copy is unspecified on read and is
+	// not wrapped. C++ walks items_count / present on the storage pass;
+	// this plan is static, so the skip is a runtime guard on the same numbers.
+	lives      []liveRef
+	hasPresent bool
+	presentSrc int64
+}
+
+type liveRef struct {
+	dst, index int64
 }
 
 func (e fixedPlanEntry) String() string { return e.render(0, 0) }
@@ -49,13 +63,20 @@ func (e fixedPlanEntry) String() string { return e.render(0, 0) }
 // render spells the entry at a column, breaking the tuple where the formatter
 // would — a 128-bit range is the one bound that outgrows a line.
 func (e fixedPlanEntry) render(col, tail int) string {
-	inner := tupleNode{items: e.items}
-	if e.guard == "" {
-		return inner.render(col, col, tail)
+	s := tupleNode{items: e.items}.render(col, col, tail)
+	if e.guard != "" {
+		// AN ENTRY BELONGING TO AN ARM is wrapped in its guard.
+		s = tupleNode{items: []string{":guard", e.guardSrc, e.guardTag, s}}.render(col, col, tail)
 	}
-	// AN ENTRY BELONGING TO AN ARM is wrapped in its guard.
-	outer := tupleNode{items: []string{":guard", e.guardSrc, e.guardTag, inner.render(col+1, col+1, 1)}}
-	return outer.render(col, col, tail)
+	if e.hasPresent {
+		s = tupleNode{items: []string{":present", itoa(e.presentSrc), s}}.render(col, col, tail)
+	}
+	// OUTERMOST LIVE IS THE PARENT ARRAY, so a slack slot never inspects a
+	// nested count, a present flag or a union tag that nobody wrote.
+	for i := len(e.lives) - 1; i >= 0; i-- {
+		s = tupleNode{items: []string{":live", itoa(e.lives[i].dst), itoa(e.lives[i].index), s}}.render(col, col, tail)
+	}
+	return s
 }
 
 // fixedCopy is the one entry the coalescer merges.
@@ -172,63 +193,94 @@ type fixedLeafWalk struct {
 
 func (w *fixedLeafWalk) push(e fixedPlanEntry) { w.out = append(w.out, e) }
 
+type leafCtx struct {
+	guard      string
+	lives      []liveRef
+	hasPresent bool
+	presentSrc int64
+}
+
+// applyCtx hangs LIVE / present / arm guards on a counter-moving op. A copy
+// is unspecified on read (§3.4) and is not wrapped, so slack bytes that
+// nobody wrote do not become a clamp.
+func applyCtx(e fixedPlanEntry, ctx leafCtx) fixedPlanEntry {
+	e = e.under(ctx.guard)
+	if e.op == "copy" {
+		return e
+	}
+	if n := len(ctx.lives); n > 0 {
+		e.lives = append([]liveRef(nil), ctx.lives...)
+	}
+	e.hasPresent = ctx.hasPresent
+	e.presentSrc = ctx.presentSrc
+	return e
+}
+
 // fixedTypeLeaves walks one TYPE's leaves at a base the caller gives.
-func fixedTypeLeaves(w *fixedLeafWalk, st *ir.Struct, base int64, guard string) {
+func fixedTypeLeaves(w *fixedLeafWalk, st *ir.Struct, base int64, ctx leafCtx) {
 	at := base
 	for _, f := range st.Fields {
-		fixedFieldLeaves(w, f, at, guard)
+		fixedFieldLeaves(w, f, at, ctx)
 		at += fixedFieldBytes(f)
 	}
 }
 
-func fixedFieldLeaves(w *fixedLeafWalk, f *ir.Field, at int64, guard string) {
+func fixedFieldLeaves(w *fixedLeafWalk, f *ir.Field, at int64, ctx leafCtx) {
 	base := at
 	if f.Type.Optional {
-		w.push(fixedCopy(base, base, fixedPresentBytes, guard))
+		// THE PRESENT BYTE IS COPIED. Payload ops wrap :present so an absent
+		// optional's payload is ignored on read and moves no counter (§3.4).
+		w.push(applyCtx(fixedCopy(base, base, fixedPresentBytes, ""), ctx))
+		ctx.hasPresent = true
+		ctx.presentSrc = base
 		base += fixedPresentBytes
 	}
 	switch {
 	case f.KeyEnum != "":
-		fixedElementLoop(w, f, base, f.KeyEnumRef.Max, guard)
+		fixedElementLoop(w, f, base, f.KeyEnumRef.Max, ctx, -1)
 	case f.Array == ir.ArrayFixed:
-		fixedElementLoop(w, f, base, f.ArrayBound, guard)
+		fixedElementLoop(w, f, base, f.ArrayBound, ctx, -1)
 	case f.Array == ir.ArrayCounted:
-		w.push(fixedOther([]string{":count", itoa(base), itoa(base), itoa(f.ArrayBound)}, "count", guard))
-		fixedElementLoop(w, f, base+fixedCountBytes, f.ArrayBound, guard)
+		w.push(applyCtx(fixedOther([]string{":count", itoa(base), itoa(base), itoa(f.ArrayBound)}, "count", ""), ctx))
+		fixedElementLoop(w, f, base+fixedCountBytes, f.ArrayBound, ctx, base)
 	case f.Type.Kind == ir.TString:
-		fixedTextLeaf(w, base, f.Type.Size, fixedTextUtf8, guard)
+		fixedTextLeaf(w, base, f.Type.Size, fixedTextUtf8, ctx)
 	case f.Type.Kind == ir.TWString:
-		fixedTextLeaf(w, base, 2*f.Type.Size, fixedTextWide, guard)
+		fixedTextLeaf(w, base, 2*f.Type.Size, fixedTextWide, ctx)
 	case f.Type.Kind == ir.TBytes:
-		fixedTextLeaf(w, base, f.Type.Size, fixedTextBytes, guard)
+		fixedTextLeaf(w, base, f.Type.Size, fixedTextBytes, ctx)
 	default:
-		fixedElementLeaves(w, f, base, guard)
+		fixedElementLeaves(w, f, base, ctx)
 	}
 }
 
-func fixedTextLeaf(w *fixedLeafWalk, base, size int64, flavour int, guard string) {
-	w.push(fixedOther([]string{":text", itoa(base), itoa(base), itoa(base + fixedCountBytes), itoa(size), strconv.Itoa(flavour)}, "text", guard))
+func fixedTextLeaf(w *fixedLeafWalk, base, size int64, flavour int, ctx leafCtx) {
+	w.push(applyCtx(fixedOther([]string{":text", itoa(base), itoa(base), itoa(base + fixedCountBytes), itoa(size), strconv.Itoa(flavour)}, "text", ""), ctx))
 }
 
 // fixedOrdinalLeaf emits the op that holds an ORDINAL — an enum variant's, or
 // a union tag's — to the variants the writer declared. THE IDENTITY PLAN NEEDS
 // NO REMAP, so where a compiled plan carries the writer's table this carries
 // the plain VARIANT COUNT, which is the same check written in one number.
-func fixedOrdinalLeaf(w *fixedLeafWalk, at, size int64, variants int, guard string) {
-	w.push(fixedOther([]string{":ordinal", itoa(at), itoa(at), itoa(size), itoa(size), strconv.Itoa(variants)}, "ordinal", guard))
+func fixedOrdinalLeaf(w *fixedLeafWalk, at, size int64, variants int, ctx leafCtx) {
+	w.push(applyCtx(fixedOther([]string{":ordinal", itoa(at), itoa(at), itoa(size), itoa(size), strconv.Itoa(variants)}, "ordinal", ""), ctx))
 }
 
-func fixedElementLoop(w *fixedLeafWalk, f *ir.Field, base, count int64, guard string) {
+func fixedElementLoop(w *fixedLeafWalk, f *ir.Field, base, count int64, ctx leafCtx, liveDst int64) {
 	elem := fixedElementBytes(f)
 	if fixedFlatElem(f) {
 		// THE WHOLE ARRAY IS ONE RUN: its image is a run of plain bytes, so the
 		// elements need no walk at all and the plan carries ONE entry however
-		// many of them there are.
-		w.push(fixedCopy(base, base, count*elem, guard))
+		// many of them there are. A copy moves no counter.
+		w.push(applyCtx(fixedCopy(base, base, count*elem, ""), ctx))
 		return
 	}
 	for i := range count {
-		fixedElementLeaves(w, f, base+i*elem, guard)
+		c := ctx
+		if liveDst >= 0 {
+			c.lives = append(append([]liveRef(nil), ctx.lives...), liveRef{dst: liveDst, index: i})
+		}
+		fixedElementLeaves(w, f, base+i*elem, c)
 	}
 }
 
@@ -254,20 +306,21 @@ func fixedFlatElem(f *ir.Field) bool {
 }
 
 // fixedElementLeaves emits ONE element's leaves at an absolute offset.
-func fixedElementLeaves(w *fixedLeafWalk, f *ir.Field, at int64, guard string) {
+func fixedElementLeaves(w *fixedLeafWalk, f *ir.Field, at int64, ctx leafCtx) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			fixedTypeLeaves(w, r, at, guard)
+			fixedTypeLeaves(w, r, at, ctx)
 			return
 		case *ir.Union:
 			// THE TAG, then each arm under its own guard: an entry belonging to
 			// an arm runs only when the tag it was compiled for is the tag the
 			// record carries.
 			tag := fixedUnionTagBytes(r)
-			fixedOrdinalLeaf(w, at, tag, len(r.Variants), guard)
+			fixedOrdinalLeaf(w, at, tag, len(r.Variants), ctx)
 			for i, v := range r.Variants {
-				arm := fmt.Sprintf("%d:%d", at, i+1)
+				arm := ctx
+				arm.guard = fmt.Sprintf("%d:%d", at, i+1)
 				fixedElementLeaves(w, v.F, at+tag, arm)
 			}
 			return
@@ -276,14 +329,14 @@ func fixedElementLeaves(w *fixedLeafWalk, f *ir.Field, at int64, guard string) {
 			// and counts one `clamped`, which is the same answer §3 gives a
 			// value outside its range. Nothing but a plan op can say so, so on
 			// this path the ordinal is an op and not a byte of a run.
-			fixedOrdinalLeaf(w, at, fixedElementBytes(f), len(r.Variants), guard)
+			fixedOrdinalLeaf(w, at, fixedElementBytes(f), len(r.Variants), ctx)
 			return
 		}
 	}
 	size := fixedElementBytes(f)
 	lo, hi := fixedRangeOf(f)
 	if lo == "nil" {
-		w.push(fixedCopy(at, at, size, guard))
+		w.push(applyCtx(fixedCopy(at, at, size, ""), ctx))
 		return
 	}
 	// A RANGED INTEGER CLAMPS ON LOAD, counting one `clamped` (§3.4). The
@@ -293,7 +346,7 @@ func fixedElementLeaves(w *fixedLeafWalk, f *ir.Field, at int64, guard string) {
 	if fixedSignedLeaf(f) {
 		signed = "true"
 	}
-	w.push(fixedOther([]string{":clamp", itoa(at), itoa(at), itoa(size), signed, lo, hi}, "clamp", guard))
+	w.push(applyCtx(fixedOther([]string{":clamp", itoa(at), itoa(at), itoa(size), signed, lo, hi}, "clamp", ""), ctx))
 }
 
 // fixedSignedLeaf reports whether a leaf's image is TWO'S COMPLEMENT, which is
@@ -309,6 +362,6 @@ func fixedSignedLeaf(f *ir.Field) bool {
 // fixedIdentityPlan is the whole of a root's identity plan, as Elixir.
 func fixedIdentityPlan(st *ir.Struct) []fixedPlanEntry {
 	w := &fixedLeafWalk{}
-	fixedTypeLeaves(w, st, 0, "")
+	fixedTypeLeaves(w, st, 0, leafCtx{})
 	return fixedCoalesce(w.out)
 }

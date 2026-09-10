@@ -759,6 +759,95 @@ Leg.eq("a present byte of 7 LANDS PRESENT — the test is `!= 0`", seven.link_pr
 {:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0))
 Leg.eq("and only 0 is absent", zero.link_present, false)
 
+# LIVE-count: an absent optional's payload is ignored and moves no counter,
+# both paths. C++ skips the payload when the present byte is 0.
+value0 = %{present | link_present: true, link: %{present.link | value: 0}}
+value1 = %{present | link_present: true, link: %{present.link | value: 1}}
+
+value_at =
+  only_diff.(
+    Tblp3.P3Fixed.chain_fixed_save([value0]),
+    Tblp3.P3Fixed.chain_fixed_save([value1])
+  )
+
+hostile_opt =
+  Enum.reduce(0..3//1, absent_bytes, fn i, data -> plant.(data, value_at + i, 0xFF) end)
+
+{:ok, [_], opt_ident} = Tblp3.P3Fixed.chain_fixed_load(hostile_opt)
+Leg.eq("identity: absent optional payload 0xFF moves no counter", opt_ident.clamped, 0)
+
+opt_body =
+  bodies_of.(hostile_opt, Tblp3.P3Fixed.chain_fixed_body_bytes())
+  |> hd()
+
+{:ok, opt_mine} = Tblp3.FixedRuntime.parse_layout(Tblp3.P3Fixed.chain_fixed_layout())
+
+{:ok, opt_compiled, _, _} =
+  Tblp3.FixedRuntime.compile(
+    opt_mine,
+    opt_mine,
+    Tblp3.P3Fixed.chain_fixed_dst(),
+    4096,
+    Tblp3.FixedRuntime.report()
+  )
+
+{_, opt_comp} =
+  Tblp3.FixedRuntime.run(
+    opt_compiled,
+    opt_body,
+    Tblp3.P3Fixed.chain_fixed_prefill(),
+    Tblp3.FixedRuntime.report()
+  )
+
+Leg.eq("compiled: absent optional payload 0xFF moves no counter", opt_comp.clamped, 0)
+
+# Sibling: counted [..4]int32 live=1, slack 0xFF. Pack.ships[0].hardpoints is
+# that shape (| min = 0, max = 8). A live 1 is in range; slack -1 is not.
+# LIVE-only counts nothing; walking ArrayBound would count three clamps.
+fighter = Enum.at(p0.ships, 0)
+
+hp1 =
+  Tabledemo.PackFixed.pack_config_fixed_save([
+    %{p0 | ships: List.replace_at(p0.ships, 0, %{fighter | hardpoints: [1]})}
+  ])
+
+hp2 =
+  Tabledemo.PackFixed.pack_config_fixed_save([
+    %{p0 | ships: List.replace_at(p0.ships, 0, %{fighter | hardpoints: [2]})}
+  ])
+
+hp_at = only_diff.(hp1, hp2)
+
+hostile_hp =
+  Enum.reduce(0..11//1, hp1, fn i, data -> plant.(data, hp_at + 4 + i, 0xFF) end)
+
+{:ok, [_], hp_ident} = Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp)
+Leg.eq("identity: counted-array slack 0xFF moves no counter", hp_ident.clamped, 0)
+
+hp_body = bodies_of.(hostile_hp, Tabledemo.PackFixed.pack_config_fixed_body_bytes()) |> hd()
+
+{:ok, hp_mine} =
+  Tabledemo.FixedRuntime.parse_layout(Tabledemo.PackFixed.pack_config_fixed_layout())
+
+{:ok, hp_compiled, _, _} =
+  Tabledemo.FixedRuntime.compile(
+    hp_mine,
+    hp_mine,
+    Tabledemo.PackFixed.pack_config_fixed_dst(),
+    4096,
+    Tabledemo.FixedRuntime.report()
+  )
+
+{_, hp_comp} =
+  Tabledemo.FixedRuntime.run(
+    hp_compiled,
+    hp_body,
+    Tabledemo.PackFixed.pack_config_fixed_prefill(),
+    Tabledemo.FixedRuntime.report()
+  )
+
+Leg.eq("compiled: counted-array slack 0xFF moves no counter", hp_comp.clamped, 0)
+
 track = fn v, on ->
   ships =
     List.update_at(v.ships, 0, fn ship -> %{ship | gunner: %{ship.gunner | tracking: on}} end)
