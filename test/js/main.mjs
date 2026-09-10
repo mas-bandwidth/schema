@@ -97,6 +97,7 @@ function makeBenchMixedPin() {
   mixed.CrcHint = 0xabcdef;
   mixed.HasExtra = true;
   mixed.Extra = 200;
+  mixed.IdleTicks = 9; // rides now: the branch that gated it is gone
   return mixed;
 }
 

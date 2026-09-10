@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 
 #pragma once
 
@@ -507,16 +507,10 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     write_align( stream );
     write_bits( stream, value.crc_hint, 24 );
     write_bool( stream, value.has_extra );
-    if ( value.has_extra )
-    {
-        serialize_assert( int32_t( value.extra ) >= int32_t( 0 ) && int32_t( value.extra ) <= int32_t( 255 ) );
-        write_bits( stream, uint32_t( value.extra ), 8 );
-    }
-    else
-    {
-        serialize_assert( int32_t( value.idle_ticks ) >= int32_t( 0 ) && int32_t( value.idle_ticks ) <= int32_t( 15 ) );
-        write_bits( stream, uint32_t( value.idle_ticks ), 4 );
-    }
+    serialize_assert( int32_t( value.extra ) >= int32_t( 0 ) && int32_t( value.extra ) <= int32_t( 255 ) );
+    write_bits( stream, uint32_t( value.extra ), 8 );
+    serialize_assert( int32_t( value.idle_ticks ) >= int32_t( 0 ) && int32_t( value.idle_ticks ) <= int32_t( 15 ) );
+    write_bits( stream, uint32_t( value.idle_ticks ), 4 );
     return true;
 }
 
@@ -603,16 +597,8 @@ SCHEMA_READ_INLINE bool ReadBenchMixed( serialize::ReadStream & stream, BenchMix
     read_align( stream ); // rejects nonzero padding (SPEC §4.3)
     read_bits( stream, value.crc_hint, 24 );
     read_bool( stream, value.has_extra );
-    if ( value.has_extra )
-    {
-        read_int( stream, value.extra, 0, 255 );
-        value.idle_ticks = 0;
-    }
-    else
-    {
-        read_int( stream, value.idle_ticks, 0, 15 );
-        value.extra = 0;
-    }
+    read_int( stream, value.extra, 0, 255 );
+    read_int( stream, value.idle_ticks, 0, 15 );
     return true;
 }
 

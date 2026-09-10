@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 //
 // Wire functions return bool — the C++-style early-out. A schema validation
 // failure (a wrong wire constant, nonzero reserved bits, an out-of-contract
@@ -22,7 +22,7 @@ const BOOL_SCRATCH = { value: false };
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-export const ProtocolId = 0x8d12c3149393f40fn;
+export const ProtocolId = 0xc93127c82f083edfn;
 
 // type BenchPacket
 export class BenchPacket {
@@ -1173,20 +1173,14 @@ export class BenchMixed {
     this.Ping = 0; // wire [0, 250]
     this.CrcHint = 0;
     this.HasExtra = true; // specified default at construction; Zero* gives the §5 zero form
-
-    // has_extra — wire branch; storage holds both sides, a read zeroes the
-    // untaken side (SPEC §5)
     this.Extra = 0; // wire [0, 255]
-
-    // !has_extra — wire branch; storage holds both sides, a read zeroes the
-    // untaken side (SPEC §5)
     this.IdleTicks = 0; // wire [0, 15]
   }
 }
 
 // BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
 // BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-export const BenchMixedMaxBits = 3626;
+export const BenchMixedMaxBits = 3630;
 export const BenchMixedMaxBytes = 456;
 
 // InitBenchMixed restores fresh construction values in place, preserving storage.
@@ -1416,22 +1410,19 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
-  if (value.HasExtra) {
-    if (!Number.isInteger(value.Extra) || value.Extra < 0 || value.Extra > 255) {
-      return false;
-    }
-    NUMBER_SCRATCH.value = value.Extra;
-    if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
-      return false;
-    }
-  } else {
-    if (!Number.isInteger(value.IdleTicks) || value.IdleTicks < 0 || value.IdleTicks > 15) {
-      return false;
-    }
-    NUMBER_SCRATCH.value = value.IdleTicks;
-    if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
-      return false;
-    }
+  if (!Number.isInteger(value.Extra) || value.Extra < 0 || value.Extra > 255) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.Extra;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
+    return false;
+  }
+  if (!Number.isInteger(value.IdleTicks) || value.IdleTicks < 0 || value.IdleTicks > 15) {
+    return false;
+  }
+  NUMBER_SCRATCH.value = value.IdleTicks;
+  if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
+    return false;
   }
   return true;
 }
@@ -1594,19 +1585,14 @@ export function ReadBenchMixed(stream, value) {
     return false;
   }
   value.HasExtra = BOOL_SCRATCH.value;
-  if (value.HasExtra) {
-    if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) {
-      return false;
-    }
-    value.Extra = NUMBER_SCRATCH.value;
-    value.IdleTicks = 0;
-  } else {
-    if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
-      return false;
-    }
-    value.IdleTicks = NUMBER_SCRATCH.value;
-    value.Extra = 0;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 255)) {
+    return false;
   }
+  value.Extra = NUMBER_SCRATCH.value;
+  if (!stream.serializeInt(NUMBER_SCRATCH, 0, 15)) {
+    return false;
+  }
+  value.IdleTicks = NUMBER_SCRATCH.value;
   return true;
 }
 

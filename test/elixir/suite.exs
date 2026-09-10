@@ -798,7 +798,9 @@ defmodule SchemaTestElixir do
       ping: 12345,
       crc_hint: 0xABCDEF,
       has_extra: true,
-      extra: 200
+      extra: 200,
+      # rides now: the branch that gated it is gone
+      idle_ticks: 9
     }
 
     pin(
