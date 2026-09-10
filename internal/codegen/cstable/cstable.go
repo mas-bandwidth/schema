@@ -223,6 +223,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.owner = st
 				g.emitJsonSurface(st)
 			}
+			g.emitFixedForm(members)
 		}
 		out[f.Base+"Table.cs"] = g.assemble()
 	}
@@ -238,7 +239,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
 	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
 	common := &tableGen{unit: u}
-	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle }\n")
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }
@@ -287,6 +288,12 @@ func (g *tableGen) emitRuntime() {
 	g.pf("%s", tableBitHelpers())
 	g.pf("%s", tableJsonWalkSource)
 	g.pf("%s", tableWireSource)
+	g.emitFixedRuntime()
+}
+
+func (g *tableGen) emitFixedRuntime() {
+	g.tf("%s", tableFixedRuntimeTypes)
+	g.pf("%s", tableFixedWireSource)
 }
 
 // closureEnums is every enum whose values ride in the unit's table closure.
@@ -362,6 +369,8 @@ func (g *tableGen) assemble() []byte {
 	}
 	h.WriteString("\n")
 	h.WriteString("using System;\n")
+	h.WriteString("using System.Buffers.Binary;\n")
+	h.WriteString("using System.Runtime.InteropServices;\n")
 	if g.home {
 		h.WriteString("using System.Runtime.CompilerServices;\n")
 	}

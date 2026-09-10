@@ -80,8 +80,25 @@ const (
 	TableFixedRecordMaxBytes  = 65536
 )
 
-// TableFixedLeafCap bounds a compile-time plan array. Past it the walk is a
-// build-time cost nobody asked for; see the backends' root selection.
+// TableFixedLeafCap bounds a compile-time plan array: every backend lays the
+// identity plan down as STATIC DATA, so the plan's length is source a compiler
+// has to parse on every build of every consumer, and past this it is a
+// build-time cost nobody asked for.
+//
+// THE COUNT IS NOT THE FIELD COUNT, AND THE DIFFERENCE IS THE FLAT-ELEMENT
+// FOLD. An array whose element's storage image IS its wire image — a scalar, or
+// a struct of them ([TableFixedFlatElem]) — is ONE leaf however many elements
+// it has, because the whole array is one run: `[..1024]int32` costs two leaves,
+// the count and the run, and not 1025. What spends leaves is an array of a type
+// this form must walk element by element — one carrying text, a count, a union
+// or an optional — where every element costs the element's own leaves. So a
+// table reaches this cap by declaring a big array OF A WALKED TYPE, and the cap
+// is a bound on the plan the compiler writes rather than on the record.
+//
+// Past it the fixed form is not emitted, and [TableFixedLeafCapRefusals] is
+// what makes that audible: a table that DECLARED itself fixed is a REFUSAL BY
+// NAME and the compile fails, exactly as the record ceiling's own branch does,
+// because a `fixed table` never silently falls back to form 1.
 const TableFixedLeafCap = 4096
 
 const (
@@ -166,21 +183,33 @@ func TableFixedElementBytes(f *Field) int64 {
 		case *Struct:
 			return TableFixedTypeBytes(r)
 		case *Union:
-			// the tag, then the WIDEST ARM: the slack behind a narrower one is
-			// zero on write and ignored on read (§3.4)
-			widest := int64(0)
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue // a void arm has no storage; TableFixedSupported refuses one anyway
-				}
-				if n := TableFixedFieldBytes(v.F); n > widest {
-					widest = n
-				}
-			}
-			return int64(StorageBitsFor(r.Max)/8) + widest
+			return TableFixedUnionBytes(r)
 		}
 	}
 	return TableFixedStorageBytes(f.Type)
+}
+
+// TableFixedUnionBytes is C(union): the TAG at the width its variant count
+// derives, then the WIDEST ARM. The slack behind a narrower arm is zero on
+// write and ignored on read (§3.4).
+func TableFixedUnionBytes(un *Union) int64 {
+	widest := int64(0)
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue // a void arm has no storage; TableFixedSupported refuses one anyway
+		}
+		if n := TableFixedFieldBytes(v.F); n > widest {
+			widest = n
+		}
+	}
+	return TableFixedUnionTagBytes(un) + widest
+}
+
+// TableFixedUnionTagBytes is the union tag's storage width on this wire, which
+// is what a reader recovers from a layout entry: the entry's size less its
+// widest arm.
+func TableFixedUnionTagBytes(un *Union) int64 {
+	return int64(StorageBitsFor(un.Max)) / 8
 }
 
 // TableFixedSupported reports whether a type's whole closure is one this form
@@ -323,6 +352,11 @@ func TableFixedElementLeafCount(u *Unit, f *Field) int {
 		case *Union:
 			n := 1 // the tag
 			for _, v := range r.Variants {
+				// A PAYLOAD-FREE ARM HAS NO STORAGE (SPEC §4.8), so it spends
+				// no leaf: the tag is the whole of it.
+				if v.F == nil {
+					continue
+				}
 				n += TableFixedFieldLeafCount(u, v.F)
 			}
 			return n
@@ -658,10 +692,15 @@ type TableFixedLeaf struct {
 	Src, Dst, Size, Aux int64
 	Guard               int64 // TableFixedNoGuard when the entry belongs to no arm
 	Op                  int
-	// Arg is THE GUARD'S TAG and nothing else: the ordinal the byte at Guard
+	// Arg is THE GUARD'S TAG and nothing else: the ordinal the tag at Guard
 	// must hold for this entry to run. It is meaningless on an unguarded entry
-	// and it belongs to no op.
+	// and it belongs to no op. Compared at ArgW bytes, never as a prefix.
 	Arg int
+	// ArgW is THE GUARD'S WIDTH IN BYTES: a union tag is one, two, four or
+	// eight, and comparing only the first of them fires arm 1 on a foreign
+	// tag of 0x0101. Zero is read as one. It is stamped with the OUTER tag's
+	// width when an arm nested inside an arm is rewritten onto that tag.
+	ArgW int
 	// Meta is THE OP'S OWN ARGUMENT, on the ops that have one: a text entry's
 	// flavour today. It has its own lane because Arg's is the guard's, and the
 	// two used to share one — which put a text field under a union arm on a
@@ -753,6 +792,7 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 				for q := at; q < len(*out); q++ {
 					(*out)[q].Guard = src
 					(*out)[q].Arg = i + 1
+					(*out)[q].ArgW = int(tag)
 				}
 			}
 			return
@@ -782,7 +822,7 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 			if len(plan) > guarded {
 				last := &plan[len(plan)-1]
 				if last.Op == TableFixedOpCopy && e.Op == TableFixedOpCopy &&
-					last.Guard == e.Guard && last.Arg == e.Arg && last.Meta == e.Meta &&
+					last.Guard == e.Guard && last.Arg == e.Arg && last.ArgW == e.ArgW && last.Meta == e.Meta &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
 					last.Size += e.Size
 					continue
@@ -932,6 +972,41 @@ func TableFixedRecordBounds(u *Unit, limit int64) (warnings []string, errs []err
 	return warnings, errs
 }
 
+// TableFixedLeafCapRefusals holds every fixed table of the unit to the PLAN's
+// leaf cap, and it is the leaf cap's half of what [TableFixedRecordBounds] does
+// for the two size bounds: NOTHING HERE IS SILENT.
+//
+// The split is the same one, and for the owner's reason: *"If something they do
+// stops it from being fixed, it is a compile error … we don't want to surprise
+// the user."* A table that DECLARED itself fixed and whose plan does not fit is
+// a refusal BY NAME and the compile fails; a table merely DERIVED into the
+// fixed mode (§2.2) asked for nothing, keeps form 1, and the compiler warns.
+func TableFixedLeafCapRefusals(u *Unit) (warnings []string, errs []error) {
+	for _, st := range TableFixedRoots(u) {
+		// ONLY A TABLE THIS FORM WOULD OTHERWISE LAY OUT. A closure the form
+		// does not support, or a record past the wire's own ceiling, is already
+		// answered elsewhere and under its own name; naming it here too would
+		// be a second sentence about the same table.
+		if !TableFixedSupported(st, 0) || TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
+			continue
+		}
+		n := TableFixedLeafCount(u, st)
+		if n <= TableFixedLeafCap {
+			continue
+		}
+		if st.FixedDeclared {
+			errs = append(errs, fmt.Errorf(
+				"table %s: a DECLARED fixed table's identity plan is %d leaves, past the %d-leaf cap (docs/SPEC-TABLES.md §3.4) — every backend lays that plan down as static data, so the cap is a bound on the source a consumer's compiler parses on every build; a fixed table never silently falls back to form 1. An array of a scalar or of a struct of scalars is ONE leaf however long it is, so what reaches this cap is a big array of a type this form must walk element by element — one carrying text, a count, a union or an optional. Shrink that array's bound, flatten its element, or drop the `fixed` keyword and let it be a variable table (§2.2)",
+				st.Name, n, TableFixedLeafCap))
+			continue
+		}
+		warnings = append(warnings, fmt.Sprintf(
+			"table %s: a fixed table's identity plan is %d leaves, past the %d-leaf cap (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT; it keeps form 1",
+			st.Name, n, TableFixedLeafCap))
+	}
+	return warnings, errs
+}
+
 // TableFixedEmitted answers whether a BACKEND emits the fixed form for one
 // type, and it is the ONE place that answer is computed: a port that asked the
 // question for itself would be a port that could disagree about which types
@@ -961,6 +1036,18 @@ func TableFixedEmitted(u *Unit, st *Struct) bool {
 		return false
 	}
 	return TableFixedLeafCount(u, st) <= TableFixedLeafCap
+}
+
+// TableFixedAnyEmitted answers whether the unit has ANY table this form is
+// emitted for — the question [WideTableKinds] asks a backend, answered for a
+// port whose form-3 coverage is the reference's.
+func TableFixedAnyEmitted(u *Unit) bool {
+	for _, st := range TableFixedRoots(u) {
+		if TableFixedEmitted(u, st) {
+			return true
+		}
+	}
+	return false
 }
 
 // TableFixedHasWriteBound answers whether any fixed table of the unit has a
@@ -1019,17 +1106,19 @@ func TableFixedHasWriteBound(u *Unit) bool {
 //
 // A fixed record is a positional image, so the reader's ONE loop moves bytes
 // and asks nothing about what they mean. Two things a declaration bounds are
-// therefore not held by the loop at all on the identity path: a RANGED SCALAR's
+// therefore not held by the loop at all, on either path: a RANGED SCALAR's
 // declared min and max, and an ORDINAL's set — a union tag past the arm count,
 // an enum ordinal past the enum's top value.
 //
-// They are held by STRAIGHT-LINE CODE in the generated decode, after the copy,
-// and never by plan entries. A plan entry per bounded field is an entry on
+// NEITHER PLAN CLAMPS. They are held by STRAIGHT-LINE CODE in the generated
+// decode, after the copy, and never by plan entries — not the identity plan's
+// and not a compiled plan's. A plan entry per bounded field is an entry on
 // EVERY read of every record, which is the cost the identity plan exists to
-// avoid; the Elixir port measured what that does. A COMPILED plan is a
-// different matter — it is built once per peer — but it lands values into the
-// same storage, so the same straight-line pass covers it and it needs no op of
-// its own either.
+// avoid; the Elixir port measured what that does. A COMPILED plan is built
+// once per peer, but it lands values into the same storage the identity plan
+// does, so the same pass covers it and it needs no op of its own either. That
+// is the one path: one prefill, one loop over the plan the layout hash chose,
+// then one bounds pass — the same pass, whichever plan ran.
 //
 // THE PASS RUNS OVER STORAGE, NOT OVER THE WIRE, which is what makes it one
 // pass for both plans. It walks only what a read can have written: a counted
@@ -1038,8 +1127,8 @@ func TableFixedHasWriteBound(u *Unit) bool {
 // ---------------------------------------------------------------------------
 
 // TableFixedClampNeeded answers whether a type's closure declares anything the
-// read side bounds — the question that keeps a unit of unbounded scalars from
-// carrying one line of this (§2.2's zero-cost rule).
+// read side bounds or holds to a content rule — the question that keeps a unit
+// of unbounded scalars from carrying one line of this (§2.2's zero-cost rule).
 func TableFixedClampNeeded(st *Struct) bool {
 	return tableFixedClampNeeded(st, map[string]bool{})
 }
@@ -1064,6 +1153,19 @@ func TableFixedClampNeededField(f *Field) bool {
 	return tableFixedClampNeededField(f, map[string]bool{})
 }
 
+// TableFixedClampNeededUnionArm is whether ANY arm's payload is bounded. The
+// tag is a bound of its own (TableFixedClampNeededField is true of every
+// union); a switch over arms that none of them need is not emitted, rather
+// than emitted with nothing to switch on.
+func TableFixedClampNeededUnionArm(r *Union) bool {
+	for _, v := range r.Variants {
+		if v.F != nil && TableFixedClampNeededField(v.F) {
+			return true
+		}
+	}
+	return false
+}
+
 func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
@@ -1085,6 +1187,13 @@ func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
 		return true
 	}
 	if f.HasFloatRange {
+		return true
+	}
+	// TEXT CARRIES THE ONE CONTENT RULE THE WIRE HAS (§3, §4): a `string(N)`'s
+	// used bytes are well-formed UTF-8 with no zero among them, and a
+	// `wstring(N)`'s used units are paired UTF-16 with no zero unit. `bytes(N)`
+	// has no content rule — it is bytes.
+	if f.Type.Kind == TString || f.Type.Kind == TWString {
 		return true
 	}
 	return f.Type.Kind == TBits && int64(f.Type.Width) < 8*TableFixedStorageBytes(f.Type)

@@ -44,10 +44,65 @@ void fixed_v1_bounds( void )
     fixed_check( n == cfg_fixed_measure( 1 ), "C bounds: V1 save" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( cfg_fixed_load( &back, 1, file, n, plan, 8192, &r ) == 1,
+    fixed_check( cfg_fixed_load( &back, 1, file, n, plan, 8192, NULL, &r ) == 1,
                  "C bounds: the enum record reads" );
     fixed_check( back.grade == GRADE_NONE, "C ORDINAL: an ordinal past the enum's top value lands None" );
     fixed_check( r.clamped == 1, "C ORDINAL: and counts as a clamp" );
+
+    /* LIVE COUNT, NEVER SLACK, ON BOTH PATHS. A counted array of ranged
+       integers, read twice: once through the identity plan and once through a
+       plan compiled from this build's own layout. Neither plan clamps, so the
+       loop alone leaves both live values standing on both paths, and the ONE
+       pass over storage holds both and counts two — the same two, because the
+       pass walks the LIVE count and never the slack behind it. */
+    {
+        static uint8_t file2[16384];
+        static TableFixedEntry compiled[8192];
+        Cfg poison, ident, held;
+        TableFixedLayoutView parsed;
+        TableReport ident_r, compile_r, run_r;
+        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
+        int32_t guarded = 0, made, i, past_the_set = 0;
+        const uint8_t * body;
+        int64_t n2;
+
+        cfg_reset( &poison );
+        poison.a = 5000;
+        poison.items_count = 1;
+        poison.items[0] = 300;
+        n2 = cfg_fixed_save( &poison, 1, file2, (int64_t) sizeof( file2 ) );
+        fixed_check( n2 == cfg_fixed_measure( 1 ), "C live-count: V1 save" );
+
+        memset( &ident_r, 0, sizeof( ident_r ) );
+        fixed_check( cfg_fixed_load( &ident, 1, file2, n2, plan, 8192, NULL, &ident_r ) == 1,
+                     "C live-count: identity reads" );
+        fixed_check( ident.a == 1000 && ident.items[0] == 255, "C live-count, identity: both live values clamp" );
+        fixed_check( ident_r.clamped == 2, "C live-count, identity: two clamps, slack never" );
+
+        fixed_check( table_fixed_parse_layout( cfg_fixed_layout, (int64_t) sizeof( cfg_fixed_layout ), &parsed, &why ) != 0,
+                     "C live-count: this build's layout parses" );
+        memset( &compile_r, 0, sizeof( compile_r ) );
+        made = table_fixed_compile( &parsed, cfg_fixed_layout, (int32_t) sizeof( cfg_fixed_layout ),
+                                    cfg_fixed_dst, compiled, 8192, &guarded, &compile_r );
+        fixed_check( made > 0, "C live-count: the plan compiles" );
+        for ( i = 0; i < made; ++i )
+        {
+            if ( compiled[i].op > (uint8_t) kTableFixedWidenF ) { past_the_set++; }
+        }
+        fixed_check( past_the_set == 0, "C live-count: a compiled plan carries no clamp op either" );
+
+        cfg_reset( &held );
+        memset( &run_r, 0, sizeof( run_r ) );
+        body = file2 + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( cfg_fixed_layout ) + 8;
+        table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &run_r );
+        fixed_check( held.a == 5000 && held.items[0] == 300,
+                     "C live-count, compiled loop: nothing in the plan held either value" );
+        fixed_check( run_r.clamped == 0, "C live-count, compiled loop: and it counted nothing" );
+
+        schema_tblv1_cfg_fixed_clamp_( &held, &run_r );
+        fixed_check( held.a == 1000 && held.items[0] == 255, "C live-count, compiled pass: both live values clamp" );
+        fixed_check( run_r.clamped == 2, "C live-count: identity and compiled count the same two" );
+    }
 }
 
 /* AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS (docs/SPEC-TABLES.md

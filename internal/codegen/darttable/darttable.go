@@ -104,22 +104,60 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "Dart"); err != nil {
-		return nil, err
-	}
 	if err := checkNames(u); err != nil {
 		return nil, err
 	}
-	blocks := ir.Blocks(u)
-	out, err := generateBlockFiles(u, blocks)
+	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
+	// ACCELERATORS, NOT OF THE FIXED FORM. A block row and a cooked node are
+	// laid out in the ID-TABLE's kind vocabulary, which has no fixed-point and
+	// no 128-bit kind in this backend yet (schema#366) — but §3.4's fixed form
+	// carries both by its own constant-size table, a `fixed(I, F)` riding as
+	// the raw scaled integer at its storage width and an `int128`/`uint128` as
+	// sixteen bytes, the low half then the high. So the refusal is SCOPED to
+	// the two accelerators and stated by name in every library this unit gets,
+	// rather than taken out on a form that carries the kinds fine.
+	wide := ir.TableWideFields(u)
+	// AND WIDE TEXT IS THE SAME SHAPE OF REFUSAL. `wstring(N)` rides a table
+	// under kind 33 (docs/SPEC-TABLES.md §3), which the block row and the
+	// cooked node have not been taught here either — but §3.4's fixed form
+	// lays it out at its bound, a length in CODE UNITS and 2N bytes behind
+	// it, so the same scoping applies: the accelerators go, the form stays.
+	text := ir.TableWideTextFields(u)
+	out := map[string][]byte{}
+	if len(wide) == 0 && len(text) == 0 {
+		blocks := ir.Blocks(u)
+		var err error
+		out, err = generateBlockFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		cooks, err := generateCookFiles(u, blocks)
+		if err != nil {
+			return nil, err
+		}
+		maps.Copy(out, cooks)
+	}
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
+	// FIRST table wire. Form 1 is still deferred to schema#514 and nothing
+	// here reads or writes one.
+	fixed, err := generateFixedFiles(u, wide)
 	if err != nil {
 		return nil, err
 	}
-	cooks, err := generateCookFiles(u, blocks)
-	if err != nil {
-		return nil, err
+	maps.Copy(out, fixed)
+	// A unit whose wide kinds cost it the accelerators AND that has no fixed
+	// form to put in their place has nothing to emit, so it is refused whole
+	// and by name, exactly as it was before the form arrived.
+	if len(fixed) == 0 {
+		if len(wide) > 0 {
+			return nil, ir.RefuseWideTableKinds(u, "Dart")
+		}
+		if len(text) > 0 {
+			return nil, fmt.Errorf("the Dart table backend carries wstring(N) on the FIXED form and on no other — %s "+
+				"(docs/SPEC-TABLES.md §3, §3.4): this unit's tables take no fixed form, so there is nothing here to lay it out in",
+				strings.Join(text, ", "))
+		}
 	}
-	maps.Copy(out, cooks)
 	return out, nil
 }
 

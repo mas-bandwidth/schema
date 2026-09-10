@@ -3701,6 +3701,23 @@ func (c *checker) checkClaimedNames() {
 				addRust(ir.RustConstName(name+"Type")+"_"+ir.RustConstName(v.Name), whyCTag, v.Pos, name+"Type"+ir.GoExportName(v.Name))
 			}
 			addRust("enum_name_"+ir.RustSnake(name+"Type"), fmt.Sprintf("union %s's generated tag debug-name function (C form)", name), d.Pos)
+			// THE UNION TWIN (docs/SPEC-TABLES.md §7.2, §15): the blittable
+			// `<Name>Row` a union takes in the Rust table surface, and the
+			// `#[repr(C)]` overlay of its arms beside it. C++ spells the
+			// overlay as an ANONYMOUS union inside the struct and claims
+			// nothing for it; Rust has no anonymous union, so the overlay is a
+			// real type with a real name and the name is claimed like any
+			// other. Both are claimed for EVERY union of a unit that declares
+			// a table, on this list's standing rule: a name free today must
+			// not become a collision the day a table gains a field of this
+			// type. `<Name>Row`'s pair for a `type` and a `table` is claimed
+			// through tableGeneratedVerbs; a union is not a closure member
+			// there, so its two are claimed here.
+			if len(c.tables) > 0 {
+				whyRow := fmt.Sprintf("union %s's generated blittable twin (docs/SPEC-TABLES.md §7.2, §15)", name)
+				add(name+"Row", whyRow, d.Pos)
+				add(name+"RowArms", whyRow, d.Pos)
+			}
 		case *ast.FlagsDecl:
 			add(name+"Count", fmt.Sprintf("flags %s's generated Count constant", name), d.Pos)
 			addRust(ir.RustConstName(name+"Count"), fmt.Sprintf("flags %s's generated Count constant (Rust/C form)", name), d.Pos, name+"Count")
@@ -3739,6 +3756,17 @@ func (c *checker) checkClaimedNames() {
 			// a table generates its storage struct plus the Table codec and
 			// descriptor family — no packet-wire symbols (docs/SPEC-TABLES.md)
 			c.addTableSymbols(add, name, d.DeclPos())
+			// Init IS NOT A SUFFIX, and it is the one generated spelling on
+			// this surface that goes in FRONT of the name. addStructSymbols
+			// has claimed it for a `type` since there were types —
+			// construction defaults applied to existing managed storage — and
+			// a TABLE in a managed language needs the same helper for the same
+			// reason: a fixed-form read resets a value in place rather than
+			// allocating one per record (internal/codegen/jstable). It is
+			// claimed HERE and not in addTableSymbols because a `type` inside
+			// a table's closure goes through both that function and
+			// addStructSymbols, and a name claimed twice collides with itself.
+			add("Init"+name, fmt.Sprintf("table %s's generated in-place reset (docs/SPEC-TABLES.md §11)", name), d.DeclPos())
 			// A BLOCK-FORM table claims two more per out-of-line array,
 			// because its row accessors are named after its fields: <Table>
 			// followed by the PascalCase of the field's name hands back that
@@ -3881,6 +3909,24 @@ var tableGeneratedVerbs = []string{
 	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
 	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
 	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded",
+	// and §3.4's READ-SIDE BOUNDS: the straight-line pass a read makes after
+	// the copy, and the per-type body it calls. Claimed for EVERY closure
+	// member and not only the ones that declare a bound today — a field gains
+	// a `min` or a `max`, or a union or an enum, as an ordinary edit, and the
+	// name has to already be taken when it does.
+	"FixedClamp", "FixedClampBody",
+	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
+	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
+	// it in a canonical body image and then PROJECTS that image into the
+	// language's own objects — which is a per-declaration decode function C++
+	// gets for free, because there a struct IS its bytes. The prefill, the
+	// identity plan and the plan constructor are the same story: storage the
+	// reference holds in the type system, a reading tier holds in named module
+	// data. The two hash halves are one more: a sixty-four-bit constant is two
+	// uint32 lanes wherever a BigInt on a per-record compare would be an
+	// allocation per record, and the pair is claimed beside FixedHash rather
+	// than instead of it, because both spellings are emitted somewhere.
+	"FixedDecode", "FixedPrefill", "FixedIdentity", "FixedNewPlan", "FixedHashLo", "FixedHashHi",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a
 	// block type's Type — and a member function claims nothing. C has no

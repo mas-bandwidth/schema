@@ -190,39 +190,74 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "Java"); err != nil {
-		return nil, err
+	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
+	// ACCELERATORS, NOT OF THE FIXED FORM (ir.WideTableKinds). A block row and
+	// a cooked node are laid out in the ID-TABLE's kind vocabulary, which has
+	// no fixed-point and no 128-bit kind in this backend yet (schema#366) —
+	// but §3.4's fixed form carries both by its own constant-size table, a
+	// `fixed(I, F)` riding as the raw scaled integer at its storage width and
+	// an `int128`/`uint128` as sixteen bytes, the low half then the high.
+	//
+	// THE DAY THAT RULE NAMED IS THIS ONE. The `false` the other ports still
+	// pass is now this backend's OWN answer — `fixedRoots` is the set of roots
+	// this emitter lays out, its coverage and not the reference's — so a
+	// wide-kind unit keeps its form-3 codec and only the two accelerators stand
+	// down. A unit that loses them AND has no fixed form to put in their place
+	// is still refused whole and by name, exactly as it was before the form
+	// arrived.
+	//
+	// The scope question is asked BEFORE checkNames, which is the order the tip
+	// and darttable both use: a unit §15 refuses whole is refused for that,
+	// not for a reserved spelling inside it.
+	scope := ir.WideTableKinds(u, "Java", len(fixedRoots(u)) > 0)
+	if scope.Unit {
+		return nil, scope.Refusal
 	}
 	if err := checkNames(u); err != nil {
 		return nil, err
 	}
-	// The two ACCELERATORS need no wire codec: the BLOCK form (§19) reads
-	// bytes a producer wrote and the COOK (§7) reads a region the tooling
-	// wrote. Both are pure readers over a byte[] the consumer owns, so both
-	// reach every table of the unit — a pointered unit's cooks open in full.
-	blocks := ir.Blocks(u)
-	ck := cookUnitOf(u)
-	set := collectRecords(u, blocks, ck)
-	out := map[string][]byte{
-		"TableBytes.java":   tableBytesFile(u),
-		"BuildVersion.java": buildVersionFile(u),
-	}
-	maps.Copy(out, emitRowFiles(u, set, blocks, ck))
-	withBlock := anyBlockForm(u, blocks)
-	if withBlock {
-		blockFiles, err := generateBlockFiles(u, blocks)
+	out := map[string][]byte{}
+	if !scope.Accelerators {
+		// The two ACCELERATORS need no wire codec: the BLOCK form (§19) reads
+		// bytes a producer wrote and the COOK (§7) reads a region the tooling
+		// wrote. Both are pure readers over a byte[] the consumer owns, so both
+		// reach every table of the unit — a pointered unit's cooks open in full.
+		blocks := ir.Blocks(u)
+		ck := cookUnitOf(u)
+		set := collectRecords(u, blocks, ck)
+		// TableBytes and BuildVersion BELONG TO THE TWO ACCELERATORS and to
+		// nothing else: block.go and cook.go are their only callers, the fixed
+		// form reads its bytes through TableFixed's own accessors and carries
+		// its own layout hash rather than the build version. So they ride in
+		// this branch, where the accelerators are, and a wide-kind unit that
+		// gets only a fixed form is not handed two classes nobody names.
+		out["TableBytes.java"] = tableBytesFile(u)
+		out["BuildVersion.java"] = buildVersionFile(u)
+		maps.Copy(out, emitRowFiles(u, set, blocks, ck))
+		withBlock := anyBlockForm(u, blocks)
+		if withBlock {
+			blockFiles, err := generateBlockFiles(u, blocks)
+			if err != nil {
+				return nil, err
+			}
+			maps.Copy(out, blockFiles)
+			out["TableBlockLayout.java"] = emitBlockLayoutFile(u, blocks, set)
+		}
+		cooks, err := generateCookFiles(u, ck)
 		if err != nil {
 			return nil, err
 		}
-		maps.Copy(out, blockFiles)
-		out["TableBlockLayout.java"] = emitBlockLayoutFile(u, blocks, set)
+		maps.Copy(out, cooks)
+		out["TableCookLayout.java"] = emitCookLayoutFile(u, ck, set, withBlock)
 	}
-	cooks, err := generateCookFiles(u, ck)
+	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
+	// FIRST table wire. It rides unconditionally — a wire a consumer can be
+	// handed is not something they opt into — and nothing about form 1 moves.
+	fixed, err := generateFixedFiles(u)
 	if err != nil {
 		return nil, err
 	}
-	maps.Copy(out, cooks)
-	out["TableCookLayout.java"] = emitCookLayoutFile(u, ck, set, withBlock)
+	maps.Copy(out, fixed)
 	return out, nil
 }
 
@@ -292,6 +327,13 @@ func runtimeFileNames() []string {
 func checkNames(u *ir.Unit) error {
 	runtime := map[string]bool{}
 	for _, name := range runtimeFileNames() {
+		runtime[name] = true
+	}
+	// and every class the FIXED FORM claims for this unit (docs/SPEC-TABLES.md
+	// §3.4): TableFixed, and `<Type>Fixed` per type of a fixed root's closure.
+	// Java allows one public class per file, so a schema file that spells one
+	// of them is a collision and is refused by name rather than overwritten.
+	for _, name := range fixedNames(u) {
 		runtime[name] = true
 	}
 	for _, f := range u.Files {

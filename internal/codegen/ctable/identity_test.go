@@ -64,6 +64,15 @@ func between(t *testing.T, s, start, end string) string {
 	return s[i:j]
 }
 
+// identityArm is the generated `if ( identity ) { ... } else { ... }` pair.
+// The load also has an earlier cache-compile else, so the search starts at
+// the identity test, not at the top of the function.
+func identityArm(t *testing.T, load string) (id, compiled string) {
+	t.Helper()
+	rest := fromNeedle(t, load, "if ( identity )")
+	return between(t, rest, "if ( identity )", "else"), fromNeedle(t, rest, "else")
+}
+
 func TestIdentityPlanIsCopiesOnly(t *testing.T) {
 	u := unitFrom(t, identityHeldSchema)
 	st := u.Tables["Held"]
@@ -99,11 +108,11 @@ func TestIdentityLoadSkipsPrefill(t *testing.T) {
 	if !strings.Contains(load, "if ( identity )") {
 		t.Fatal("identity path not branched")
 	}
-	id := between(t, load, "if ( identity )", "else")
+	id, compiled := identityArm(t, load)
 	if strings.Contains(id, "held_reset") {
 		t.Fatal("identity path still prefills defaults")
 	}
-	if !strings.Contains(fromNeedle(t, load, "else"), "held_reset") {
+	if !strings.Contains(compiled, "held_reset") {
 		t.Fatal("compiled path dropped the prefill")
 	}
 	if strings.Contains(id, "kTableFixedCount") || strings.Contains(id, "kTableFixedText") {
@@ -124,7 +133,7 @@ func TestIdentityFlatIsMemcpyEmptyScatter(t *testing.T) {
 		t.Fatal("flat identity read is not memcpy")
 	}
 	load := fromNeedle(t, h, "flat_fixed_load")
-	id := between(t, load, "if ( identity )", "else")
+	id, _ := identityArm(t, load)
 	if strings.Contains(id, "table_fixed_run") {
 		t.Fatal("flat identity still scatters")
 	}
@@ -199,7 +208,7 @@ func TestIdentityPaddedDoesNotMemcpyTheStruct(t *testing.T) {
 	}
 	h := tableH(t, identityPadSchema)
 	load := fromNeedle(t, h, "pad_fixed_load")
-	id := between(t, load, "if ( identity )", "else")
+	id, _ := identityArm(t, load)
 	if strings.Contains(id, "memcpy( values + k, at + 8, sizeof( values[k] ) )") {
 		t.Fatal("padded identity memcpy'd the struct; that is a wire-byte move")
 	}
@@ -225,27 +234,29 @@ int main(void)
     memset(&value, 0xAA, sizeof(value));
     value.marks[0] = 7;
     value.marks_count = 1;
-    value.label[0] = 'h';
-    value.label[1] = 'i';
-    value.label_length = 2;
+    /* Eight used bytes, all well-formed UTF-8: forging the length to 99 then
+       clamping it to 8 must not trip the tip's content rule (zeros in the
+       used range are damage, not a count clamp). */
+    memset(value.label, 'x', 8);
+    value.label_length = 8;
     need = held_fixed_measure(1);
     CHECK(need > 0 && need <= (int64_t)sizeof(file));
     CHECK(held_fixed_save(&value, 1, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = held_fixed_load(&loaded, 1, file, need, plan, 64, &report);
+    n = held_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
     CHECK(n == 1);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded.marks_count == 1 && loaded.marks[0] == 7);
     CHECK(loaded.marks[1] == 0 && loaded.marks[2] == 0 && loaded.marks[3] == 0);
-    CHECK(loaded.label_length == 2 && loaded.label[0] == 'h' && loaded.label[1] == 'i' && loaded.label[2] == 0);
+    CHECK(loaded.label_length == 8 && loaded.label[0] == 'x' && loaded.label[7] == 'x' && loaded.label[8] == 0);
     layout_bytes = table_fixed_get32(file + kTableFixedHeaderBytes);
     body = file + kTableFixedHeaderBytes + 4 + layout_bytes + 8;
     table_fixed_put32(body, 99);
     table_fixed_put32(body + 4 + 16, 99);
     memset(&loaded, 0, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = held_fixed_load(&loaded, 1, file, need, plan, 64, &report);
+    n = held_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
     CHECK(n == 1);
     CHECK(report.clamped == 2);
     CHECK(loaded.marks_count == 4);
@@ -269,7 +280,7 @@ __attribute__((noinline))
 #endif
 static int64_t load_flat(Flat *loaded, const uint8_t *file, int64_t need, TableFixedEntry *plan, TableReport *report)
 {
-    return flat_fixed_load(loaded, 1, file, need, plan, 8, report);
+    return flat_fixed_load(loaded, 1, file, need, plan, 8, NULL, report);
 }
 int main(void)
 {
