@@ -1095,6 +1095,83 @@ fn the_enum_extent() {
 }
 
 // ---------------------------------------------------------------------------
+// THE GUARD IS THE TAG, AT THE TAG'S OWN WIDTH.
+//
+// A plan entry that belongs to a union arm runs only when the writer's tag holds
+// the writer's ordinal for that arm. The tag is one, two, four or eight bytes
+// wide — the width its variant count derives (§3.4) — and the loop used to
+// compare only the FIRST of them. On a two-byte tag that made 0x0101 read as
+// arm 1: an ordinal NO ARM of the writer's build names, running the arm's
+// entries over a stranger's record and landing a value nobody wrote.
+//
+// Every union in this corpus has a ONE-byte tag, so nothing here reaches the
+// wide case by schema. The plan is data, so the case is reached by BUILDING THE
+// ENTRY — which is what the plan compiler builds for a wide tag — and running
+// the loop over it. The control is the stain: the same entry at width one DOES
+// fire on the same bytes, which is the wrong behaviour, watched working.
+// ---------------------------------------------------------------------------
+
+fn the_guard_is_the_whole_tag() {
+    // a record body whose first two bytes are a TWO-BYTE tag of 0x0101 = 257,
+    // and four bytes of payload behind it
+    let body: [u8; 6] = [0x01, 0x01, 0xAA, 0xBB, 0xCC, 0xDD];
+
+    let arm_one = |argw: u8| tblfu1::TableFixedEntry {
+        src: 2,
+        dst: 0,
+        size: 4,
+        guard: 0,
+        arg: 1, // arm 1, in the writer's declared order
+        argw,
+        op: tblfu1::TableFixedOp::Copy,
+        ..tblfu1::TableFixedEntry::default()
+    };
+
+    let mut image = [0u8; 4];
+    let mut report = tblfu1::TableFixedReport::default();
+    tblfu1::table_fixed_run(&[arm_one(2)], &[], &body, &mut image, &mut report);
+    check(
+        image == [0u8; 4] && !report.malformed,
+        "the guard: a two-byte tag of 0x0101 is NOT arm 1, so the arm's entry does not fire",
+    );
+
+    // and the arm the tag DOES name still fires: 0x0001 at two bytes is 1
+    let named: [u8; 6] = [0x01, 0x00, 0xAA, 0xBB, 0xCC, 0xDD];
+    let mut image = [0u8; 4];
+    let mut report = tblfu1::TableFixedReport::default();
+    tblfu1::table_fixed_run(&[arm_one(2)], &[], &named, &mut image, &mut report);
+    check(
+        image == [0xAA, 0xBB, 0xCC, 0xDD] && !report.malformed,
+        "the guard: 0x0001 at two bytes IS arm 1, and the entry fires",
+    );
+
+    // NEGATIVE CONTROL: the same entry comparing ONE byte fires on 0x0101 —
+    // the behaviour the fix removed, watched doing the wrong thing.
+    let mut image = [0u8; 4];
+    let mut report = tblfu1::TableFixedReport::default();
+    tblfu1::table_fixed_run(&[arm_one(1)], &[], &body, &mut image, &mut report);
+    check(
+        image == [0xAA, 0xBB, 0xCC, 0xDD],
+        "NEGATIVE CONTROL: comparing one byte of a two-byte tag DOES fire arm 1 on 0x0101",
+    );
+
+    // and a guard past the end of the record is framing damage, not a panic
+    let mut image = [0u8; 4];
+    let mut report = tblfu1::TableFixedReport::default();
+    let past = tblfu1::TableFixedEntry {
+        guard: 5,
+        argw: 4,
+        arg: 1,
+        ..arm_one(4)
+    };
+    tblfu1::table_fixed_run(&[past], &[], &body, &mut image, &mut report);
+    check(
+        report.malformed && image == [0u8; 4],
+        "the guard: a tag whose width runs past the record is malformed and lands nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -1123,6 +1200,7 @@ fn main() {
     the_enum_extent();
     the_negative_controls(&dir);
     the_union_controls(&bench);
+    the_guard_is_the_whole_tag();
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
         println!("rust fixed form: {failures} FAILED");

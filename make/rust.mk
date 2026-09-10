@@ -143,6 +143,16 @@ tables-rust-clippy: build/tables-generated-rust/.stamp
 # the two accelerators carry cfg!(target_endian) order words that refuse a
 # foreign file), so what the runtime leg would add is proof rather than
 # suspicion.
+#
+# AND THE 128-BIT CRATE RIDES HERE BECAUSE s390x IS WHERE IT BREAKS. ir's model
+# puts a 128-bit integer at SIXTEEN BYTES ALIGNED SIXTEEN — the `alignas( 16 )`
+# the C++ reference spells — while Rust's own u128 takes the TARGET's C
+# alignment, which is SIXTEEN on x86-64 and aarch64 and EIGHT on s390x. A bare
+# u128 in a Row therefore lands at a different offset on this target only, and
+# nothing on the developer's machine would ever say so. The paired bench unit
+# (bench/corpus/Bench.schema's wide_key and flux) is the crate that carries the
+# family, so it is the one checked: its Row's layout const asserts are what fail
+# if the aligned wrapper ever goes away.
 RUST_BE_TARGET ?= s390x-unknown-linux-gnu
 
 .PHONY: tables-rust-big-endian
@@ -152,9 +162,11 @@ tables-rust-big-endian: build/tables-generated-rust/.stamp
 		echo "  rustup target add $(RUST_BE_TARGET)"; \
 		exit 0; \
 	fi; \
-	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" \
-		cargo check --quiet --target $(RUST_BE_TARGET) && \
-		echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), every layout const assert with it"
+	( cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" \
+		cargo check --quiet --target $(RUST_BE_TARGET) ) || exit 1; \
+	( cd build/tables-generated-rust/benchfixed && PATH="$(RUSTUP_BIN):$$PATH" \
+		cargo check --quiet --target $(RUST_BE_TARGET) ) || exit 1; \
+	echo "big-endian: the generated Rust table surface checks for $(RUST_BE_TARGET), the 128-bit family with it, every layout const assert evaluated"
 
 
 .PHONY: tables-rust-fuzz

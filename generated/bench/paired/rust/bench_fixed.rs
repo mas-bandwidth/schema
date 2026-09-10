@@ -212,7 +212,12 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
     {
         let at = 40;
         let raw = u8::from_le_bytes(b[at..at + 1].try_into().expect("the declared width"));
-        value.weapon = raw;
+        if raw > 15 {
+            report.clamped += 1;
+            value.weapon = 0;
+        } else {
+            value.weapon = raw;
+        }
     }
     {
         let at = 41;
@@ -380,13 +385,21 @@ pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
     b[at..at + 8].copy_from_slice(&value.frame_tick.to_le_bytes());
     let at = 48;
     b[at..at + 4].copy_from_slice(&(value.server_time as u32).to_le_bytes());
+    debug_assert!(
+        value.entities_count >= 0 && value.entities_count <= 8,
+        "the declared count is the bound (docs/SPEC-TABLES.md §3.4)"
+    );
     b[52..56].copy_from_slice(&(value.entities_count as u32).to_le_bytes());
-    for i in 0..8 {
+    for i in 0..value.entities_count.clamp(0, 8) as usize {
         let at = 56 + i * 51;
         mixed_entity_fixed_write_body(&mut b[at..at + 51], &value.entities[i]);
     }
+    debug_assert!(
+        value.stats_count >= 0 && value.stats_count <= 80,
+        "the declared count is the bound (docs/SPEC-TABLES.md §3.4)"
+    );
     b[464..468].copy_from_slice(&(value.stats_count as u32).to_le_bytes());
-    for i in 0..80 {
+    for i in 0..value.stats_count.clamp(0, 80) as usize {
         let at = 468 + i * 8;
         mixed_stat_fixed_write_body(&mut b[at..at + 8], &value.stats[i]);
     }
@@ -396,10 +409,24 @@ pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
         let at = 1122 + i;
         b[at..at + 1].copy_from_slice(&value.loadout[i].to_le_bytes());
     }
+    debug_assert!(
+        value.player_name_length >= 0 && value.player_name_length <= 15,
+        "the declared length is the bound (docs/SPEC-TABLES.md §3.4)"
+    );
     b[1126..1130].copy_from_slice(&(value.player_name_length as u32).to_le_bytes());
-    b[1130..1145].copy_from_slice(&value.player_name[..15]);
+    {
+        let n = value.player_name_length.clamp(0, 15) as usize;
+        b[1130..1130 + n].copy_from_slice(&value.player_name[..n]);
+    }
+    debug_assert!(
+        value.payload_length >= 0 && value.payload_length <= 16,
+        "the declared length is the bound (docs/SPEC-TABLES.md §3.4)"
+    );
     b[1145..1149].copy_from_slice(&(value.payload_length as u32).to_le_bytes());
-    b[1149..1165].copy_from_slice(&value.payload[..16]);
+    {
+        let n = value.payload_length.clamp(0, 16) as usize;
+        b[1149..1149 + n].copy_from_slice(&value.payload[..n]);
+    }
     let at = 1165;
     b[at..at + 4].copy_from_slice(&value.aim_x.to_le_bytes());
     let at = 1169;
@@ -411,9 +438,9 @@ pub fn bench_mixed_fixed_write_body(b: &mut [u8], value: &BenchMixedRow) {
     let at = 1181;
     b[at..at + 8].copy_from_slice(&value.drift.to_le_bytes());
     let at = 1189;
-    b[at..at + 16].copy_from_slice(&value.wide_key.to_le_bytes());
+    b[at..at + 16].copy_from_slice(&value.wide_key.0.to_le_bytes());
     let at = 1205;
-    b[at..at + 16].copy_from_slice(&(value.flux as u128).to_le_bytes());
+    b[at..at + 16].copy_from_slice(&value.flux.0.to_le_bytes());
     let at = 1221;
     b[at..at + 2].copy_from_slice(&value.ping.to_le_bytes());
     let at = 1223;
@@ -560,12 +587,12 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
     {
         let at = 1189;
         let raw = u128::from_le_bytes(b[at..at + 16].try_into().expect("the declared width"));
-        value.wide_key = raw;
+        value.wide_key = TableU128(raw);
     }
     {
         let at = 1205;
         let raw = u128::from_le_bytes(b[at..at + 16].try_into().expect("the declared width"));
-        value.flux = raw as i128;
+        value.flux = TableI128(raw as i128);
     }
     {
         let at = 1221;

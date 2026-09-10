@@ -534,3 +534,73 @@ func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
 		}
 	}
 }
+
+// wideTextFixed is a `wstring(8)` inside a fixed root, with a scalar either
+// side of it so the field's own span is pinned by its neighbours.
+//
+// THE COMPILER STILL REFUSES THIS UNIT for --lang rust (compiler/widetext.go:
+// table wide text is a named follow-on for this port, because the two
+// ACCELERATORS have no kind-33 column). This test reaches the emitter directly,
+// which is the only way to hold the fixed form to the shape before the
+// follow-on lands — and the shape is what was wrong: with no TWString case the
+// field fell to the scalar default, got a `u8` row slot and a store of ZERO
+// BYTES, `b[at..at + 0]`, which does not compile and would have silently
+// skipped the field if it had.
+const wideTextFixed = `package probe
+
+table Caption
+{
+    lead  int32
+    wide  wstring(8)
+    trail int32
+}
+`
+
+func TestFixedFormCarriesWideText(t *testing.T) {
+	out := generate(t, wideTextFixed)
+
+	// THE ROW is ir's own model (ir/blocklayout.go): char16_t[N + 1] at two,
+	// then the int32 used length in CODE UNITS.
+	rows := string(out["probe_records.rs"])
+	for _, want := range []string{
+		"pub wide: [u16; 9], // wstring(8): UTF-16 code units, used length beside it",
+		"pub wide_length: i32,",
+		"const _: () = assert!(core::mem::offset_of!(CaptionRow, wide_length) == 24,",
+	} {
+		if !strings.Contains(rows, want) {
+			t.Errorf("the row does not carry %q", want)
+		}
+	}
+
+	fixed := string(out["probe_fixed.rs"])
+	if strings.Contains(fixed, "at + 0]") {
+		t.Error("a zero-width store survived: the wstring fell to the scalar default again")
+	}
+	for _, want := range []string{
+		// the WRITE: the used length, then that many TWO-BYTE units onto the
+		// template's zeros — never the whole declared span
+		"value.wide_length >= 0 && value.wide_length <= 8,",
+		"b[4..8].copy_from_slice(&(value.wide_length as u32).to_le_bytes());",
+		"let n = value.wide_length.clamp(0, 8) as usize;",
+		"b[at..at + 2].copy_from_slice(&value.wide[i].to_le_bytes());",
+		// and the SCATTER, unit by unit back into the buffer
+		"value.wide = [0u16; 9];",
+		"value.wide[i] = u16::from_le_bytes(b[at..at + 2].try_into().expect(\"two bytes\"));",
+		"value.wide[value.wide_length as usize] = 0;",
+	} {
+		if !strings.Contains(fixed, want) {
+			t.Errorf("the fixed form's wide text is missing %q", want)
+		}
+	}
+
+	// AND THE SPAN IS ir's: 4 for the lead, then 4 + 2 * 8 for the text, so the
+	// trailing scalar sits at 24 and the body is 28. A `wstring(N)` that had
+	// been measured as a scalar would put `trail` somewhere else entirely.
+	if !strings.Contains(fixed, "pub const CAPTION_FIXED_BODY_BYTES: usize = 28;") {
+		t.Error("the body is not 4 + (4 + 2 * 8) + 4 — the wstring's constant size is not ir's")
+	}
+	if !strings.Contains(fixed, "b[24..24 + 4].copy_from_slice(&(value.trail as u32).to_le_bytes());") &&
+		!strings.Contains(fixed, "let at = 24;") {
+		t.Error("the field after the wstring does not start at 24")
+	}
+}
