@@ -246,6 +246,13 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/fc2 test/tables/FC2.schema
 	# THE FIXED FORM'S bits(N) SECOND GENERATION (GAP-2)
 	$(1) generate --lang cpp --out $(2)/rw2 test/tables/RW2.schema
+	# THE FIXED FORM'S KIND-MISMATCH PAIR OFF RED-3'S WINDOW (RED-8)
+	$(1) generate --lang cpp --out $(2)/km1 test/tables/KM1.schema
+	$(1) generate --lang cpp --out $(2)/km2 test/tables/KM2.schema
+	# THE FIXED FORM'S `was =` CHAIN: first name kept across two renames
+	$(1) generate --lang cpp --out $(2)/wc1 test/tables/WC1.schema
+	$(1) generate --lang cpp --out $(2)/wc2 test/tables/WC2.schema
+	$(1) generate --lang cpp --out $(2)/wc3 test/tables/WC3.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -268,7 +275,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/NK1.schema test/tables/NK2.schema test/tables/FC1.schema test/tables/FC2.schema test/tables/RW2.schema test/tables/UT1.schema test/tables/UT2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/NK1.schema test/tables/NK2.schema test/tables/FC1.schema test/tables/FC2.schema test/tables/RW2.schema test/tables/KM1.schema test/tables/KM2.schema test/tables/WC1.schema test/tables/WC2.schema test/tables/WC3.schema test/tables/UT1.schema test/tables/UT2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -5671,6 +5678,8 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 	    -Ibuild/tables-generated/nk1 -Ibuild/tables-generated/nk2 \
 	    -Ibuild/tables-generated/fc1 -Ibuild/tables-generated/fc2 \
 	    -Ibuild/tables-generated/rw2 \
+	    -Ibuild/tables-generated/km1 -Ibuild/tables-generated/km2 \
+	    -Ibuild/tables-generated/wc1 -Ibuild/tables-generated/wc2 -Ibuild/tables-generated/wc3 \
 	    -Ibuild/tables-generated/wide -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 \
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
@@ -5694,6 +5703,8 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/nk1 -Ibuild/tables-generated/nk2 \
 	    -Ibuild/tables-generated/fc1 -Ibuild/tables-generated/fc2 \
 	    -Ibuild/tables-generated/rw2 \
+	    -Ibuild/tables-generated/km1 -Ibuild/tables-generated/km2 \
+	    -Ibuild/tables-generated/wc1 -Ibuild/tables-generated/wc2 -Ibuild/tables-generated/wc3 \
 	    -Ibuild/tables-generated/wide -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 \
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
@@ -5764,6 +5775,8 @@ build/schema_test_fixedform_pin: build/tables-generated/.stamp test/tables/fixed
 	    -Ibuild/tables-generated/nk1 -Ibuild/tables-generated/nk2 \
 	    -Ibuild/tables-generated/fc1 -Ibuild/tables-generated/fc2 \
 	    -Ibuild/tables-generated/rw2 \
+	    -Ibuild/tables-generated/km1 -Ibuild/tables-generated/km2 \
+	    -Ibuild/tables-generated/wc1 -Ibuild/tables-generated/wc2 -Ibuild/tables-generated/wc3 \
 	    -Ibuild/tables-generated/wide -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 \
 	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/p1 \

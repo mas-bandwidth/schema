@@ -291,6 +291,51 @@ case fc2/probe
   0000  00 00 88 C0 0A D7 23 3C E7 FB 1F 41 00 00 C0 BF
   0010  06 00 00 00 08 00 00 00
 
+case km1/probe
+  unit tblkm1 root Probe
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 72 bytes hash A4B791F313BC5C89
+  layout length field 72
+  file 112 bytes, record 20 = hash 8 + body 12
+  hash 895CBC13F391B7A4
+  0000  92 10 00 00 00 00 2D 00 63 00 00 00
+
+case km2/probe
+  unit tblkm2 root Probe
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 89 bytes hash 11E0765FEE0D3A13
+  layout length field 89
+  file 130 bytes, record 21 = hash 8 + body 13
+  hash 133A0DEE5F76E011
+  0000  1E 14 00 00 4D 00 00 00 58 00 00 00 2A
+
+case wc1/root
+  unit tblwc1 root Root
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 72 bytes hash 6F90AB9240852714
+  layout length field 72
+  file 112 bytes, record 20 = hash 8 + body 12
+  hash 1427854092AB906F
+  0000  92 10 00 00 41 01 00 00 07 00 00 00
+
+case wc2/root
+  unit tblwc2 root Root
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 89 bytes hash B9CF5C2934DA2872
+  layout length field 89
+  file 130 bytes, record 21 = hash 8 + body 13
+  hash 7228DA34295CCFB9
+  0000  1E 14 00 00 28 03 00 00 06 00 00 00 2A
+
+case wc3/root
+  unit tblwc3 root Root
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 106 bytes hash 86DC9815E83DFD6D
+  layout length field 106
+  file 148 bytes, record 22 = hash 8 + body 14
+  hash 6DFD3DE81598DC86
+  0000  5E 02 00 00 8D 03 00 00 05 00 00 00 63 0D
+
 case w2/ship
   unit tblw2 root Ship
   form 3 reserved 00 00 00 00 00 00 00

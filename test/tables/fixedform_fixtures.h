@@ -39,6 +39,11 @@
 #include "FC1Table.h"
 #include "FC2Table.h"
 #include "RW2Table.h"
+#include "KM1Table.h"
+#include "KM2Table.h"
+#include "WC1Table.h"
+#include "WC2Table.h"
+#include "WC3Table.h"
 #include "floatnan.h"
 
 // ---------------------------------------------------------------------------
@@ -503,6 +508,66 @@ inline void FillFc2( tblfc2::Probe & v )
     v.extra = -1.5f;
     v.after = 6;
     v.tail = 8;
+}
+
+// ---------------------------------------------------------------------------
+// KM1/KM2: a kind that moved, off RED-3's 17..31-byte window (RED-8).
+//
+// `angle` is the same respelling Scalars2 makes (fixed(16, 16) -> int32). The
+// body is three four-byte fields, 12 bytes, so the identity plan's coalesced
+// copy is outside the broken run-copy branch. A compiled plan that skips the
+// moved kind is visible here without that branch writing the raw scale back.
+
+inline void FillKm1( tblkm1::Probe & v )
+{
+    tblkm1::ProbeReset( v );
+    v.keep = 4242;
+    v.angle = 45 * 65536;             // 45 whole units, raw Q16.16
+    v.tail = 99;
+}
+
+inline void FillKm2( tblkm2::Probe & v )
+{
+    tblkm2::ProbeReset( v );
+    v.keep = 5150;
+    v.angle = 77;
+    v.tail = 88;
+    v.extra = (int8_t) 42;
+}
+
+// ---------------------------------------------------------------------------
+// WC1/WC2/WC3: a `was =` CHAIN that keeps the FIRST wire name.
+//
+// WasName is a single name. USAGE: it names the first wire name, forever.
+// WC2's `caption` and WC3's `title` both say `was = "label"`, so a WC1 record
+// resolves at WC3. Aiming the third spelling at `caption` would hash a name
+// no file ever carried.
+
+inline void FillWc1( tblwc1::Root & v )
+{
+    tblwc1::RootReset( v );
+    v.keep = 4242u;
+    v.label = 321;
+    v.after = 7u;
+}
+
+inline void FillWc2( tblwc2::Root & v )
+{
+    tblwc2::RootReset( v );
+    v.keep = 5150u;
+    v.caption = 808;
+    v.after = 6u;
+    v.extra = (int8_t) 42;
+}
+
+inline void FillWc3( tblwc3::Root & v )
+{
+    tblwc3::RootReset( v );
+    v.keep = 606u;
+    v.title = 909;
+    v.after = 5u;
+    v.extra = (int8_t) 99;
+    v.more = (int8_t) 13;
 }
 
 #endif // SCHEMA_TEST_FIXEDFORM_FIXTURES_H

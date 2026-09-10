@@ -1,0 +1,19 @@
+// WC1.schema — THE FIRST NAME OF A `was =` CHAIN
+// (docs/SPEC-TABLES.md §5, docs/USAGE.md, docs/FIXED-FORM-COVERAGE.md).
+//
+// `was` names the FIRST wire name, forever. A field renamed twice —
+// `label` → `caption` → `title` — keeps `was = "label"` on every later
+// spelling, because that is the name every stored byte was written under.
+// ir.Field.WasName is a SINGLE name; that is the machinery, not a missing
+// list. WC2 and WC3 both point at `label`. A WC1 record must resolve at WC3.
+//
+// Bodies stay at 12, 13, 14 bytes so no identity plan coalesces a 17..31-byte
+// run (RED-3).
+package tblwc1
+
+table Root
+{
+    keep  uint32 = 1
+    label int32 = 5 | min = 0, max = 1000
+    after uint32 = 3
+}

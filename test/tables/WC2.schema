@@ -1,0 +1,12 @@
+// WC2.schema — the MIDDLE spelling of the `was =` chain (WC1 `label`).
+// `caption | was = "label"` keeps the first wire name. `extra` is appended
+// so the layout hash moves. See WC1.schema.
+package tblwc2
+
+table Root
+{
+    keep    uint32 = 1
+    caption int32 = 5 | min = 0, max = 1000, was = "label"
+    after   uint32 = 3
+    extra   int8 = 11
+}

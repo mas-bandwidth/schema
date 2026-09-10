@@ -179,6 +179,15 @@ int main()
     { tblfc1::Probe v; FillFc1( v ); DUMP( "fc1/probe", tblfc1, Probe, v ); }
     { tblfc2::Probe v; FillFc2( v ); DUMP( "fc2/probe", tblfc2, Probe, v ); }
 
+    // ---- a kind that moved, off RED-3's window (RED-8) -------------------
+    { tblkm1::Probe v; FillKm1( v ); DUMP( "km1/probe", tblkm1, Probe, v ); }
+    { tblkm2::Probe v; FillKm2( v ); DUMP( "km2/probe", tblkm2, Probe, v ); }
+
+    // ---- a `was =` chain that keeps the first wire name ------------------
+    { tblwc1::Root v; FillWc1( v ); DUMP( "wc1/root", tblwc1, Root, v ); }
+    { tblwc2::Root v; FillWc2( v ); DUMP( "wc2/root", tblwc2, Root, v ); }
+    { tblwc3::Root v; FillWc3( v ); DUMP( "wc3/root", tblwc3, Root, v ); }
+
     // ---- flags, compiled-newer (GAP-4) -----------------------------------
     { tblw2::Ship v; FillW2( v ); DUMP( "w2/ship", tblw2, Ship, v ); }
 

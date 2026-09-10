@@ -42,6 +42,10 @@
 //  15. bits(N) ACROSS        a second generation of RangedWidths (RW2)
 //      GENERATIONS
 //  16. THE PLAN'S SHAPE      partitioned, adjacent copies coalesced
+//  17. A KIND THAT MOVED     fixed(16, 16) -> int32 on a 12-byte body, so
+//                            RED-8 is visible without RED-3's clobber (KM1/KM2)
+//  18. A `was =` CHAIN       label -> caption -> title, each keeping the
+//                            FIRST wire name (WC1/WC2/WC3)
 //
 // The whole matrix these cases fill, cell by cell, is docs/FIXED-FORM-COVERAGE.md.
 //
@@ -72,6 +76,9 @@
 #include "NK2Table.h"
 #include "FC2Table.h"
 #include "RW2Table.h"
+#include "KM2Table.h"
+#include "WC2Table.h"
+#include "WC3Table.h"
 
 static int failures = 0;
 
@@ -188,7 +195,7 @@ static KnownRed known_red[] = {
     // window that branch clobbers, so a spill from a neighbouring run could
     // deposit exactly these bytes. The fix for the run copy may close this row
     // too, and until one of them lands neither can be blamed alone.
-    { "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway", "the run copy's branch first, then a re-read: `angle` is inside the window that branch clobbers and the two cannot be told apart until it is fixed", 0, 0 },
+    { "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway", "the run copy's branch first, then a re-read: `angle` is inside the window that branch clobbers; KM1/KM2 is the same respelling off that window", 0, 0 },
     { "ordinal-bound/paths-disagree/union-tag-past-the-last-arm", "a ruling: §3.4 does not say what a tag naming no arm means, and the identity and compiled plans answer differently", 0, 0 },
     // bytes(N) UNDER A COMPILED PLAN. The identity plan emits a `text` op with
     // flavour 3. A compiled plan sees layout kind 14 (array) and walks case 14,
@@ -2358,6 +2365,162 @@ static void plan_case()
                       "PLAN/compiled/older writer: partitioned and coalesced" );
 }
 
+// A KIND THAT MOVED, OFF RED-3'S WINDOW (RED-8). The compile path already
+// reports kind_mismatch and pushes no copy when kinds differ
+// (TableFixedCompileEntry). Scalars2's `angle` still comes back holding the
+// writer's raw Q16.16 because it sits inside a 17..31-byte run the copy
+// clobbers. This body is 12 bytes, so that branch is not in the plan.
+
+static void km_case()
+{
+    check( tblkm1::ProbeFixedBodyBytes == 4 + 4 + 4,
+           "KIND MOVED: KM1 is 12 bytes, outside the 17..31-byte run-copy window" );
+    check( tblkm2::ProbeFixedBodyBytes == 4 + 4 + 4 + 1,
+           "KIND MOVED: KM2 is 13 bytes, still outside that window" );
+
+    tblkm1::Probe one;
+    FillKm1( one );
+    std::vector<uint8_t> f( (size_t) tblkm1::ProbeFixedMeasure( 1 ) );
+    check( tblkm1::ProbeFixedSave( &one, 1, f.data(), (int64_t) f.size() ) == (int64_t) f.size(), "KM1 save" );
+
+    {
+        tblkm1::Probe back;
+        tblkm1::TableReport r;
+        std::vector<tblkm1::TableFixedEntry> plan( 1024 );
+        check( tblkm1::ProbeFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, &r ) == 1,
+               "KIND MOVED/identity: one record" );
+        check( back.keep == 4242 && back.angle == 45 * 65536 && back.tail == 99,
+               "KIND MOVED/identity: keep, the Q16.16 angle, and tail" );
+        check( r.kind_mismatch == 0 && !r.malformed && !r.refused,
+               "KIND MOVED/identity: a clean read moves no counter" );
+    }
+    {
+        tblkm2::Probe back;
+        tblkm2::TableReport r;
+        std::vector<tblkm2::TableFixedEntry> plan( 1024 );
+        check( tblkm2::ProbeFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, &r ) == 1,
+               "KIND MOVED/compiled/older writer: one record" );
+        check( back.keep == 4242 && back.tail == 99,
+               "KIND MOVED/compiled/older writer: the unmoved fields land" );
+        check( back.extra == (int8_t) 11,
+               "KIND MOVED/compiled/older writer: the appended field takes its declared default" );
+        check( r.kind_mismatch == 1,
+               "KIND MOVED/compiled/older writer: `angle` respelled is one kind that moved" );
+        // §4: skipped, NEVER MISDECODED, counted. The declared default is 0.
+        // If this comes back as 45 * 65536, the misdecode is independent of
+        // RED-3 and belongs on this row as well as on Scalars.
+        check( back.angle == 0,
+               "KIND MOVED/compiled/older writer: a kind that moved leaves the declared default, never the raw scale" );
+        check( !r.malformed && !r.refused, "KIND MOVED/compiled/older writer: no damage" );
+    }
+    {
+        tblkm2::Probe two;
+        FillKm2( two );
+        std::vector<uint8_t> f2( (size_t) tblkm2::ProbeFixedMeasure( 1 ) );
+        check( tblkm2::ProbeFixedSave( &two, 1, f2.data(), (int64_t) f2.size() ) == (int64_t) f2.size(), "KM2 save" );
+        tblkm1::Probe back;
+        tblkm1::TableReport r;
+        std::vector<tblkm1::TableFixedEntry> plan( 1024 );
+        check( tblkm1::ProbeFixedLoad( &back, 1, f2.data(), (int64_t) f2.size(), plan.data(), 1024, &r ) == 1,
+               "KIND MOVED/compiled/newer writer: one record" );
+        check( back.keep == 5150 && back.tail == 88,
+               "KIND MOVED/compiled/newer writer: the unmoved fields land" );
+        check( r.kind_mismatch == 1 && r.unknown == 1,
+               "KIND MOVED/compiled/newer writer: `angle` moved and `extra` is a name this reader has not got" );
+        check( back.angle == 0,
+               "KIND MOVED/compiled/newer writer: a kind that moved leaves the declared default" );
+        check( !r.malformed && !r.refused, "KIND MOVED/compiled/newer writer: no damage" );
+    }
+}
+
+// A `was =` CHAIN THAT KEEPS THE FIRST WIRE NAME (docs/SPEC-TABLES.md §5,
+// docs/USAGE.md). WasName is a single name; that is how a chain is spelled,
+// not a missing list. WC1 `label` -> WC2 `caption | was = "label"` -> WC3
+// `title | was = "label"`. A first-generation record resolves at the third.
+
+static void wc_case()
+{
+    check( tblwc1::RootFixedBodyBytes == 4 + 4 + 4,
+           "WAS CHAIN: WC1 is 12 bytes" );
+    check( tblwc2::RootFixedBodyBytes == 4 + 4 + 4 + 1,
+           "WAS CHAIN: WC2 is 13 bytes" );
+    check( tblwc3::RootFixedBodyBytes == 4 + 4 + 4 + 1 + 1,
+           "WAS CHAIN: WC3 is 14 bytes, still outside the 17..31-byte run-copy window" );
+
+    tblwc1::Root one;
+    FillWc1( one );
+    std::vector<uint8_t> f1( (size_t) tblwc1::RootFixedMeasure( 1 ) );
+    check( tblwc1::RootFixedSave( &one, 1, f1.data(), (int64_t) f1.size() ) == (int64_t) f1.size(), "WC1 save" );
+
+    {
+        tblwc1::Root back;
+        tblwc1::TableReport r;
+        std::vector<tblwc1::TableFixedEntry> plan( 1024 );
+        check( tblwc1::RootFixedLoad( &back, 1, f1.data(), (int64_t) f1.size(), plan.data(), 1024, &r ) == 1,
+               "WAS CHAIN/identity: one record" );
+        check( back.keep == 4242u && back.label == 321 && back.after == 7u,
+               "WAS CHAIN/identity: keep, label, after" );
+        check( r.unknown == 0 && !r.malformed && !r.refused, "WAS CHAIN/identity: a clean read" );
+    }
+    {
+        tblwc2::Root back;
+        tblwc2::TableReport r;
+        std::vector<tblwc2::TableFixedEntry> plan( 1024 );
+        check( tblwc2::RootFixedLoad( &back, 1, f1.data(), (int64_t) f1.size(), plan.data(), 1024, &r ) == 1,
+               "WAS CHAIN/one hop: one record" );
+        check( back.caption == 321 && back.keep == 4242u && back.after == 7u,
+               "WAS CHAIN/one hop: WC2 `caption | was = \"label\"` reads WC1" );
+        check( back.extra == (int8_t) 11 && r.unknown == 0 && !r.malformed && !r.refused,
+               "WAS CHAIN/one hop: extra defaults, no damage" );
+    }
+    {
+        // THE CHAIN. WC3's `title` still says `was = "label"`, the first name.
+        tblwc3::Root back;
+        tblwc3::TableReport r;
+        std::vector<tblwc3::TableFixedEntry> plan( 1024 );
+        check( tblwc3::RootFixedLoad( &back, 1, f1.data(), (int64_t) f1.size(), plan.data(), 1024, &r ) == 1,
+               "WAS CHAIN/two hops: one record" );
+        check( back.title == 321 && back.keep == 4242u && back.after == 7u,
+               "WAS CHAIN/two hops: WC3 `title | was = \"label\"` reads a WC1 record" );
+        check( back.extra == (int8_t) 11 && back.more == (int8_t) 13,
+               "WAS CHAIN/two hops: fields WC1 does not carry take their declared defaults" );
+        check( r.unknown == 0 && !r.malformed && !r.refused,
+               "WAS CHAIN/two hops: the first name still resolves, no damage" );
+    }
+
+    tblwc2::Root two;
+    FillWc2( two );
+    std::vector<uint8_t> f2( (size_t) tblwc2::RootFixedMeasure( 1 ) );
+    check( tblwc2::RootFixedSave( &two, 1, f2.data(), (int64_t) f2.size() ) == (int64_t) f2.size(), "WC2 save" );
+    {
+        tblwc3::Root back;
+        tblwc3::TableReport r;
+        std::vector<tblwc3::TableFixedEntry> plan( 1024 );
+        check( tblwc3::RootFixedLoad( &back, 1, f2.data(), (int64_t) f2.size(), plan.data(), 1024, &r ) == 1,
+               "WAS CHAIN/middle to last: one record" );
+        check( back.title == 808 && back.extra == (int8_t) 42 && back.keep == 5150u,
+               "WAS CHAIN/middle to last: WC2 writes the first name's hash, WC3 reads it" );
+        check( back.more == (int8_t) 13 && r.unknown == 0 && !r.malformed && !r.refused,
+               "WAS CHAIN/middle to last: more defaults, no damage" );
+    }
+
+    tblwc3::Root three;
+    FillWc3( three );
+    std::vector<uint8_t> f3( (size_t) tblwc3::RootFixedMeasure( 1 ) );
+    check( tblwc3::RootFixedSave( &three, 1, f3.data(), (int64_t) f3.size() ) == (int64_t) f3.size(), "WC3 save" );
+    {
+        tblwc1::Root back;
+        tblwc1::TableReport r;
+        std::vector<tblwc1::TableFixedEntry> plan( 1024 );
+        check( tblwc1::RootFixedLoad( &back, 1, f3.data(), (int64_t) f3.size(), plan.data(), 1024, &r ) == 1,
+               "WAS CHAIN/newer writer: one record" );
+        check( back.label == 909 && back.keep == 606u && back.after == 5u,
+               "WAS CHAIN/newer writer: the first name reads the other way too" );
+        check( r.unknown == 2 && !r.malformed && !r.refused,
+               "WAS CHAIN/newer writer: `extra` and `more` are the two names this reader has not got" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -2372,6 +2535,8 @@ int main()
     nk_case();
     cf_case();
     plan_case();
+    km_case();
+    wc_case();
     v_case();
     s_case();
     fl_case();
