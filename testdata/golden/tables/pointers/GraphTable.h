@@ -10645,6 +10645,35 @@ inline void SettingsFixedWriteBody( uint8_t * b, const Settings & value )
     memcpy( b + 8, value.label, (size_t) ( value.label_length ) );
 }
 
+// Meta's read-side bounds.
+inline void MetaFixedClampBody( Meta & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.build < 0 ) { value.build = 0; clamped++; }
+    else if ( value.build > 1000 ) { value.build = 1000; clamped++; }
+}
+
+// Settings's read-side bounds.
+inline void SettingsFixedClampBody( Settings & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.quality < 0 ) { value.quality = 0; clamped++; }
+    else if ( value.quality > 4 ) { value.quality = 4; clamped++; }
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void MetaFixedClamp( Meta & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    MetaFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- Meta, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -10773,9 +10802,25 @@ inline int64_t MetaFixedLoad( Meta * values, int64_t capacity, const uint8_t * d
         MetaReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        MetaFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void SettingsFixedClamp( Settings & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    SettingsFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- Settings, the fixed form ----
@@ -10906,6 +10951,9 @@ inline int64_t SettingsFixedLoad( Settings * values, int64_t capacity, const uin
         SettingsReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        SettingsFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

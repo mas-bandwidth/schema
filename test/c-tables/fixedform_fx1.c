@@ -152,3 +152,54 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
     fixed_check( back.narrow == 3, "newer writer: a narrowing leaves the declared default" );
     fixed_check( !r.malformed && !r.refused, "newer writer: no damage and no refusal" );
 }
+
+/* THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4). A fixed
+   record is a positional image and the one read loop moves bytes: it asks
+   nothing about what they mean. A RANGED SCALAR's declared min and max are held
+   by STRAIGHT-LINE CODE in the generated decode, after the copy, and never by
+   plan entries — an entry per bounded field is a test on every read of every
+   record, which is the cost the identity plan exists to avoid.
+
+   THE POISON IS WRITTEN THROUGH THE WRITER and not poked into the bytes: the
+   write side's own bounds are debug-only by rule and a range is not one of
+   them, so a caller CAN put an out-of-range value on the wire and the reader is
+   what has to answer for it. */
+int64_t fixed_fx1_write_out_of_range( uint8_t * buffer, int64_t capacity )
+{
+    FxRoot v;
+    fx_root_reset( &v );
+    v.keep = 1u;
+    v.renamed = 5000;  /* declared | min = 0, max = 1000 */
+    v.gone = -7;       /* and the low end of the same declaration */
+    v.nested.a = 111;
+    v.nested.b = 222;
+    return fx_root_fixed_save( &v, 1, buffer, capacity );
+}
+
+void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
+{
+    FxRoot back, loose;
+    TableReport r;
+    const uint8_t * body;
+
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r ) == 1,
+                 "C bounds: the record reads" );
+    fixed_check( back.renamed == 1000, "C RANGE: a value past max lands at max" );
+    fixed_check( back.gone == 0, "C RANGE: a value under min lands at min" );
+    fixed_check( r.clamped == 2, "C RANGE: two clamps, counted" );
+    fixed_check( back.nested.a == 111 && back.nested.b == 222, "C RANGE: an in-range neighbour is untouched" );
+
+    /* THE NEGATIVE CONTROL: the read loop ALONE, with no straight-line pass
+       after it. The same record, the same plan, and the out-of-range value
+       survives — which is what says the bound is held by the pass and not by
+       something else that would have caught it anyway. */
+    fx_root_reset( &loose );
+    memset( &r, 0, sizeof( r ) );
+    body = data + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
+    table_fixed_run( fx_root_fixed_plan, fx_root_fixed_plan_count, fx_root_fixed_plan_guarded,
+                     body, (uint8_t *) &loose, &r );
+    fixed_check( loose.renamed == 5000 && loose.gone == -7,
+                 "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
+    fixed_check( r.clamped == 0, "C NEGATIVE CONTROL: and counts nothing" );
+}

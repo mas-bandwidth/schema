@@ -140,3 +140,17 @@ void fixed_fx2_probe( const uint8_t * data, int64_t bytes )
     fx_root_reset( &back );
     (void) fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
 }
+
+/* THE SAME NUMBERS THROUGH A COMPILED PLAN: the pass runs over STORAGE, so one
+   pass covers the identity plan and a plan compiled from a stranger's layout
+   alike (docs/SPEC-TABLES.md §3.4). */
+void fixed_fx2_bounds( const uint8_t * data, int64_t bytes )
+{
+    FxRoot back;
+    TableReport r;
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r ) == 1,
+                 "C bounds, compiled: the record reads" );
+    fixed_check( back.renamed_to == 1000, "C RANGE, compiled: the same clamp through a compiled plan" );
+    fixed_check( r.clamped == 1, "C RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
+}

@@ -14341,6 +14341,69 @@ inline void RenderExplosionFixedWriteBody( uint8_t * b, const RenderExplosion & 
     TableFixedPut8( b + 73, (uint8_t) value.team );
 }
 
+// RenderShip's read-side bounds.
+inline void RenderShipFixedClampBody( RenderShip & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.ship_type > 3u ) { value.ship_type = ShipType::None; clamped++; }
+    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderTurret's read-side bounds.
+inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderMissile's read-side bounds.
+inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.missile_type > 2u ) { value.missile_type = MissileType::None; clamped++; }
+    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderDynamicProp's read-side bounds.
+inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
+    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderStaticProp's read-side bounds.
+inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
+    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderCosmeticProp's read-side bounds.
+inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
+    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderLaser's read-side bounds.
+inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.laser_type > 2u ) { value.laser_type = LaserType::None; clamped++; }
+    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
+// RenderExplosion's read-side bounds.
+inline void RenderExplosionFixedClampBody( RenderExplosion & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.explosion_type > 2u ) { value.explosion_type = ExplosionType::None; clamped++; }
+    if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
+}
+
 // ---- RenderCamera, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -14494,6 +14557,19 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RenderShipFixedClamp( RenderShip & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RenderShipFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RenderShip, the fixed form ----
@@ -14670,9 +14746,25 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
         RenderShipReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RenderShipFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RenderTurretFixedClamp( RenderTurret & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RenderTurretFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RenderTurret, the fixed form ----
@@ -14833,9 +14925,25 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
         RenderTurretReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RenderTurretFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RenderMissileFixedClamp( RenderMissile & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RenderMissileFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RenderMissile, the fixed form ----
@@ -15002,9 +15110,25 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
         RenderMissileReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RenderMissileFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RenderDynamicPropFixedClamp( RenderDynamicProp & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RenderDynamicPropFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RenderDynamicProp, the fixed form ----
@@ -15173,9 +15297,25 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
         RenderDynamicPropReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RenderDynamicPropFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RenderStaticPropFixedClamp( RenderStaticProp & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RenderStaticPropFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RenderStaticProp, the fixed form ----
@@ -15344,9 +15484,25 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
         RenderStaticPropReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RenderStaticPropFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RenderCosmeticPropFixedClamp( RenderCosmeticProp & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RenderCosmeticPropFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RenderCosmeticProp, the fixed form ----
@@ -15517,9 +15673,25 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
         RenderCosmeticPropReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RenderCosmeticPropFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RenderLaserFixedClamp( RenderLaser & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RenderLaserFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RenderLaser, the fixed form ----
@@ -15682,9 +15854,25 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
         RenderLaserReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RenderLaserFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RenderExplosionFixedClamp( RenderExplosion & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RenderExplosionFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RenderExplosion, the fixed form ----
@@ -15851,6 +16039,9 @@ inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capac
         RenderExplosionReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RenderExplosionFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

@@ -4111,7 +4111,10 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
         }
     }
     table_fixed_put8( b + 45, value->counter_present ? 1 : 0 );
-    table_fixed_put32( b + 46, (uint32_t) value->counter );
+    if ( value->counter_present )
+    {
+        table_fixed_put32( b + 46, (uint32_t) value->counter );
+    }
 }
 
 /* PaddedFrame's stores. The template — the hash, then zeros — is memcpy'd first,
