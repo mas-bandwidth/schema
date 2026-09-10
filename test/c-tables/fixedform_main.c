@@ -41,6 +41,16 @@ int main( void )
     fixed_check( n == fixed_v1_bytes(), "V1 save" );
     fixed_v2_read_v1( g_buffer, n );
 
+    n = fixed_ut1_write( g_buffer, BufferBytes );
+    fixed_check( n == fixed_ut1_bytes(), "UT1 save" );
+    fixed_ut1_read_own( g_buffer, n );
+    fixed_ut1_shared_lane_control( g_buffer, n );
+    fixed_ut2_read_ut1( g_buffer, n );
+
+    n = fixed_ut2_write( g_buffer, BufferBytes );
+    fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
+    fixed_ut1_read_ut2( g_buffer, n );
+
     /* THE BYTE-FLIP FUZZ, and §3.4 says it is not optional. Every byte of a
        form-3 file, one bit at a time, handed to a reader of the other
        generation: three answers are allowed and a fourth — a step outside the

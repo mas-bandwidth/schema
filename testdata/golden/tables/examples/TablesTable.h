@@ -2351,7 +2351,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2405,7 +2405,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2527,14 +2533,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2957,7 +2963,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -3213,7 +3219,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -8862,10 +8868,10 @@ constexpr TableFixedDst WeaponConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry WeaponConfigFixedPlan[] = {
-    { 0u, 0u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 17u, 20u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // effect tag
-    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 1, 0, 0 }, // multiplier
-    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 2, 0, 0 }, // amount
+    { 0u, 0u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 17u, 20u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // effect tag
+    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 1, 0, 0, 0 }, // multiplier
+    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 2, 0, 0, 0 }, // amount
 };
 constexpr int32_t WeaponConfigFixedPlanCount = 4;
 constexpr int32_t WeaponConfigFixedPlanGuarded = 2;
@@ -9079,24 +9085,24 @@ constexpr TableFixedDst LoadoutConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry LoadoutConfigFixedPlan[] = {
-    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // grade
-    { 1u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // grades count
-    { 5u, 1u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // grades, whole
-    { 9u, 12u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // podium, whole
-    { 12u, 16u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // perks
-    { 37u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // effect tag
-    { 42u, 52u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 59u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // effect tag
-    { 64u, 80u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 81u, 100u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // effect tag
-    { 86u, 172u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // attachments count
-    { 90u, 108u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // attachments, whole
-    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 1, 0, 0 }, // multiplier
-    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 2, 0, 0 }, // amount
-    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 1, 0, 0 }, // multiplier
-    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 2, 0, 0 }, // amount
-    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 1, 0, 0 }, // multiplier
-    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 2, 0, 0 }, // amount
+    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // grade
+    { 1u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // grades count
+    { 5u, 1u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // grades, whole
+    { 9u, 12u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // podium, whole
+    { 12u, 16u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // perks
+    { 37u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // effect tag
+    { 42u, 52u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 59u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // effect tag
+    { 64u, 80u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 81u, 100u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // effect tag
+    { 86u, 172u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // attachments count
+    { 90u, 108u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // attachments, whole
+    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 1, 0, 0, 0 }, // multiplier
+    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 2, 0, 0, 0 }, // amount
+    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 1, 0, 0, 0 }, // multiplier
+    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 2, 0, 0, 0 }, // amount
+    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 1, 0, 0, 0 }, // multiplier
+    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 2, 0, 0, 0 }, // amount
 };
 constexpr int32_t LoadoutConfigFixedPlanCount = 18;
 constexpr int32_t LoadoutConfigFixedPlanGuarded = 12;

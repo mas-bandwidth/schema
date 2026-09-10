@@ -42,6 +42,8 @@
 #include "V2Table.h"
 #include "P1Table.h"
 #include "P3Table.h"
+#include "UT1Table.h"
+#include "UT2Table.h"
 
 static int failures = 0;
 
@@ -628,6 +630,113 @@ static void slack_case()
     }
 }
 
+// ---------------------------------------------------------------------------
+
+// TWO LANES, BECAUSE THEY ARE TWO FACTS (docs/SPEC-TABLES.md §3.4). A plan
+// entry carries the ordinal the GUARD byte must hold for the entry to run, and
+// the argument the entry's OWN OP takes — for a text entry, its flavour. They
+// had one lane between them, and a `string(N)` under a union's arm could be
+// guarded correctly or read with the right flavour and could not be both.
+//
+// UT1's string sits under the SECOND arm on purpose: a `string(N)`'s flavour is
+// 1 and the second arm's ordinal is 2, so the collision does not merely lose a
+// fact — it turns a byte string into a WIDE one, halving the bound and
+// terminating two bytes at a time.
+static void union_text_case()
+{
+    tblut1::UtRoot one;
+    tblut1::UtRootReset( one );
+    one.head = 42;
+    one.tail = 99;
+    one.pick.type = tblut1::PickType::B;   // the SECOND arm
+    std::strcpy( one.pick.b.label, "seven77" ); // seven characters, so the slack is real
+    one.pick.b.label_length = 7;
+    one.pick.b.m = 1234;
+
+    std::vector<uint8_t> w( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+    check( tblut1::UtRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "UT1 save" );
+
+    // THE IDENTITY PLAN: the guard holds the arm ordinal, the flavour is the
+    // text op's own, and the two are read out of different lanes.
+    {
+        check( tblut1::UtRootFixedPlan[3].op == tblut1::kTableFixedText, "two lanes: the plan's fourth entry is the text" );
+        check( tblut1::UtRootFixedPlan[3].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
+        check( tblut1::UtRootFixedPlan[3].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes: the record reads" );
+        check( back.pick.type == tblut1::PickType::B, "two lanes: the arm" );
+        check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
+               "two lanes: the arm's string(8), whole" );
+        check( back.pick.b.m == 1234 && back.head == 42 && back.tail == 99, "two lanes: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes: a clean read moves no counter" );
+    }
+
+    // THE NEGATIVE CONTROL — the bug itself, watched failing. The flavour is
+    // put back into the guard's lane, which is exactly what the one shared lane
+    // did, and the SAME record read by the SAME loop comes out wrong: the arm's
+    // ordinal 2 reads as kTableFixedTextWide, so the length is halved and the
+    // terminator lands two bytes early.
+    {
+        std::vector<tblut1::TableFixedEntry> shared( tblut1::UtRootFixedPlan,
+                                                     tblut1::UtRootFixedPlan + tblut1::UtRootFixedPlanCount );
+        shared[3].meta = shared[3].arg; // ONE LANE, as it was
+        tblut1::UtRoot wrong;
+        tblut1::UtRootReset( wrong );
+        tblut1::TableReport r;
+        const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
+        tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
+                               body, (uint8_t *) &wrong, &r );
+        check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
+               "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
+    }
+
+    // A COMPILED PLAN: UT2 inserted an arm IN THE MIDDLE, so the same string is
+    // arm 3 here and arm 2 in the record. The guard must hold THEIR ordinal
+    // while the tag this reader stores is MY ordinal, and the flavour is
+    // neither number.
+    {
+        tblut2::UtRoot back;
+        tblut2::TableReport r;
+        std::vector<tblut2::TableFixedEntry> plan( 1024 );
+        check( tblut2::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes, compiled: the record reads" );
+        check( back.pick.type == tblut2::PickType::B, "two lanes, compiled: the arm is remapped by NAME, not by ordinal" );
+        check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
+               "two lanes, compiled: the arm's string(8), whole" );
+        check( back.pick.b.m == 1234 && back.head == 42 && back.tail == 99, "two lanes, compiled: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes, compiled: a clean read moves no counter" );
+    }
+
+    // and the other direction: UT1 reads a UT2 record whose arm is `b`, which
+    // in that record is ordinal 3.
+    {
+        tblut2::UtRoot two;
+        tblut2::UtRootReset( two );
+        two.head = 7;
+        two.tail = 8;
+        two.pick.type = tblut2::PickType::B;
+        std::strcpy( two.pick.b.label, "third" );
+        two.pick.b.label_length = 5;
+        two.pick.b.m = 555;
+        std::vector<uint8_t> w2( (size_t) tblut2::UtRootFixedMeasure( 1 ) );
+        check( tblut2::UtRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "UT2 save" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes, back: the record reads" );
+        check( back.pick.type == tblut1::PickType::B, "two lanes, back: arm 3 lands as arm 2, by name" );
+        check( back.pick.b.label_length == 5 && std::strcmp( back.pick.b.label, "third" ) == 0,
+               "two lanes, back: the arm's string(8), whole" );
+        check( back.pick.b.m == 555, "two lanes, back: the arm's other field" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -638,6 +747,7 @@ int main()
     p_case();
     negative_control();
     slack_case();
+    union_text_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }

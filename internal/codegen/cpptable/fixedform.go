@@ -72,7 +72,7 @@ func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 		// so the aux is that destination and then the tag's own offset
 		aux = dstTerms(d.Dst) + " + " + offOf(d.Aux[0].Type, d.Aux[0].Member)
 	}
-	return fmt.Sprintf("{ %s, %s, %s, %d, %d }", dstTerms(d.Dst), stride, aux, d.Counted, d.Arg)
+	return fmt.Sprintf("{ %s, %s, %s, %d, %d }", dstTerms(d.Dst), stride, aux, d.Counted, d.Meta)
 }
 
 // ---------------------------------------------------------------------------
@@ -346,8 +346,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if e.Guard != ir.TableFixedNoGuard {
 			guard = fmt.Sprintf("%du", e.Guard)
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, 0, 0 }, // %s\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Note)
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0 }, // %s\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(plan))

@@ -882,18 +882,22 @@ test-c tables-c: tables-c-view
 # test/c-tables/fixedform.h is the whole surface between them and names no
 # generated type at all, and the main links them — the shape the conformance
 # driver already uses for two generations of one schema.
-build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/tables/FX2.schema test/tables/V1.schema test/tables/V2.schema
+build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/tables/FX2.schema test/tables/V1.schema test/tables/V2.schema test/tables/UT1.schema test/tables/UT2.schema
 	@mkdir -p build/tables-generated-c-fixed
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fx1 test/tables/FX1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fx2 test/tables/FX2.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/v1 test/tables/V1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/v2 test/tables/V2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/ut1 test/tables/UT1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/ut2 test/tables/UT2.schema
 	@touch $@
 
 C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
-	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c
+	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
+	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c
 C_FIXEDFORM_INCLUDES := -Itest/c-tables -Ibuild/tables-generated-c-fixed/fx1 -Ibuild/tables-generated-c-fixed/fx2 \
-	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 -I$(SERIALIZE_C)
+	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 \
+	-Ibuild/tables-generated-c-fixed/ut1 -Ibuild/tables-generated-c-fixed/ut2 -I$(SERIALIZE_C)
 
 build/schema_test_c_fixedform: build/tables-generated-c-fixed/.stamp $(C_FIXEDFORM_SOURCES) test/c-tables/fixedform.h
 	@mkdir -p build
