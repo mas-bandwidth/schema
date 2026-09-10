@@ -27,4 +27,7 @@ table FxRoot
     renamed int32 = 5 | min = 0, max = 1000
     gone    int32 = 9 | min = 0, max = 1000
     nested  FxNested
+    label   string(8) = "fx"
+    marks   [..4]int32
+    blob    bytes(6)
 }

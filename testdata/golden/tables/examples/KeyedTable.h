@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -2334,7 +2339,9 @@ constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other two are what a plan compiled from another writer's layout adds.
+// the rest are what a plan compiled from another writer's layout adds. clamp
+// is compiled-only: a ranged integer is a copy on the identity path and the
+// generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2344,9 +2351,10 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedClamp   = 7, // a ranged integer, in place on the destination the copy landed
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2400,7 +2408,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2522,14 +2536,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2582,6 +2596,39 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
+            break;
+        }
+        case kTableFixedClamp:
+        {
+            // IN PLACE ON THE DESTINATION the copy or widen just landed. src is
+            // unused: this op does not read the record. meta bit 0 is the low
+            // end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
+            // OF THE TWO ENDS, the same select-and-add the identity pass emits.
+            uint64_t lo = 0, hi = 0, raw = 0;
+            memcpy( &lo, base + p.aux, 8 );
+            memcpy( &hi, base + p.aux + 8, 8 );
+            memcpy( &raw, dst + p.dst, p.size );
+            if ( p.sign != 0 && p.size < 8 )
+            {
+                const unsigned bits = p.size * 8u;
+                const uint64_t top = 1ull << ( bits - 1 );
+                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            }
+            int32_t under = 0, over = 0;
+            if ( p.sign != 0 )
+            {
+                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
+                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            else
+            {
+                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
+                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            clamped += under | over;
+            memcpy( dst + p.dst, &raw, p.size );
             break;
         }
         default: break;
@@ -2952,7 +2999,11 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
+    uint64_t lo = 0;     // a compiled clamp's low end, bit pattern of the slot
+    uint64_t hi = 0;     // a compiled clamp's high end
+    uint8_t clamp = 0;   // bit 0 = low, bit 1 = high, bit 2 = signed
+    uint8_t width = 0;   // the slot's bytes; 0 = this row is not a compiled clamp
 };
 
 struct TableFixedCompiler
@@ -2966,6 +3017,7 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    bool skip_clamp = false; // counted-array elements: the live count, never slack
     TableReport * report = NULL;
 };
 
@@ -2980,9 +3032,19 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
     {
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c.record ||
-             ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+        // A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
+        // already landed. src+size is not a wire reach.
+        if ( e.op != kTableFixedClamp )
+        {
+            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+            if ( reach > (uint64_t) c.record ||
+                 ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+            {
+                c.hostile = true;
+                return;
+            }
+        }
+        else if ( e.guard != kTableFixedNoGuard && e.guard >= c.record )
         {
             c.hostile = true;
             return;
@@ -3007,6 +3069,39 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
     dst[0] = (uint16_t) n;
     for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
     return at;
+}
+
+// TableFixedLayBounds lays a compiled clamp's two ends above the entries, the
+// same pool the ordinal remap tables use, and answers the byte offset from the
+// plan's base. memcpy, not a typed store: the pool is not 8-aligned.
+inline uint32_t TableFixedLayBounds( TableFixedCompiler & c, uint64_t lo, uint64_t hi )
+{
+    const int32_t bytes = 16;
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    c.pool += bytes;
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    const uint32_t at = (uint32_t) ( total - c.pool );
+    uint8_t * dst = (uint8_t *) (void *) ( (uint8_t *) c.plan + at );
+    memcpy( dst, &lo, 8 );
+    memcpy( dst + 8, &hi, 8 );
+    return at;
+}
+
+// TableFixedPushClamp is ONE ranged scalar after the copy or widen that landed
+// it. Counted-array elements skip: the live count is a value the plan cannot
+// name, and clamping slack would count a clamp on a byte nobody wrote.
+inline void TableFixedPushClamp( TableFixedCompiler & c, const TableFixedDst & d,
+                                 uint32_t at, uint32_t guard, uint8_t arg )
+{
+    if ( c.skip_clamp || d.width == 0 ) { return; }
+    TableFixedEntry e;
+    e.src = 0; e.dst = at; e.size = d.width;
+    e.aux = TableFixedLayBounds( c, d.lo, d.hi );
+    e.guard = guard; e.op = kTableFixedClamp; e.arg = arg;
+    e.meta = (uint8_t) ( d.clamp & 3u );
+    e.dstsize = 0;
+    e.sign = ( d.clamp & 4u ) ? 1u : 0u;
+    TableFixedPush( c, e );
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
@@ -3089,6 +3184,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
             e.sign = TableFixedSignedKind( te.kind ) ? 1u : 0u;
             TableFixedPush( c, e );
+            TableFixedPushClamp( c, d, at, guard, arg );
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
@@ -3125,11 +3221,14 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;
+            const bool prev_skip = c.skip_clamp;
+            if ( d.counted ) { c.skip_clamp = true; }
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
                                         mine, mi + 1, dst, at + i * d.stride, guard, arg );
             }
+            c.skip_clamp = prev_skip;
             break;
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
@@ -3208,7 +3307,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -3220,11 +3319,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size; e.op = kTableFixedCopy;
                 TableFixedPush( c, e );
+                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( te.size < me.size && me.size <= 8 )
             {
                 e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
+                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( c.report != NULL )
             {
@@ -3279,6 +3380,54 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     if ( plain == c.count ) { split = out; }
     if ( guarded != NULL ) { *guarded = split; }
     return out;
+}
+
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].made = 0;
+    }
 }
 
 } // namespace tabledemo
@@ -6881,8 +7030,9 @@ inline void TeamConfigFixedWriteBody( uint8_t * b, const TeamConfig & value )
 {
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.spawn_count );
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.banner_length );
-    memcpy( b + 8, value.banner, 16 );
+    memcpy( b + 8, value.banner, (size_t) ( value.banner_length ) );
 }
 
 // GunnerConfig's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -6902,7 +7052,10 @@ inline void TurretConfigFixedWriteBody( uint8_t * b, const TurretConfig & value 
     TableFixedPutF32( b + 0, value.damage );
     TableFixedPutF32( b + 4, value.cooldown );
     TableFixedPut8( b + 8, value.gunner_present ? 1 : 0 );
-    GunnerConfigFixedWriteBody( b + 9, value.gunner );
+    if ( value.gunner_present )
+    {
+        GunnerConfigFixedWriteBody( b + 9, value.gunner );
+    }
 }
 
 // HullConfig's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -6912,7 +7065,7 @@ inline void HullConfigFixedWriteBody( uint8_t * b, const HullConfig & value )
     (void) b; (void) value;
     TableFixedPutF32( b + 0, value.health );
     TableFixedPutF32( b + 4, value.mass );
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TurretConfigFixedWriteBody( b + 8 + i * 14 + 0, value.turrets.slots[i] );
     }
@@ -6923,7 +7076,7 @@ inline void HullConfigFixedWriteBody( uint8_t * b, const HullConfig & value )
 inline void ScoreBoardFixedWriteBody( uint8_t * b, const ScoreBoard & value )
 {
     (void) b; (void) value;
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut32( b + 0 + i * 4 + 0, (uint32_t) value.per_team[i] );
     }
@@ -6934,15 +7087,69 @@ inline void ScoreBoardFixedWriteBody( uint8_t * b, const ScoreBoard & value )
 inline void KeyedConfigFixedWriteBody( uint8_t * b, const KeyedConfig & value )
 {
     (void) b; (void) value;
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TeamConfigFixedWriteBody( b + 0 + i * 24 + 0, value.teams.slots[i] );
     }
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         HullConfigFixedWriteBody( b + 72 + i * 50 + 0, value.hulls.slots[i] );
     }
     ScoreBoardFixedWriteBody( b + 222, value.scores );
+}
+
+// TeamConfig's read-side bounds.
+inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
+    value.spawn_count = ( value.spawn_count < 0 ) ? 0 : ( ( value.spawn_count > 64 ) ? 64 : value.spawn_count );
+    if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) )
+    {
+        memset( value.banner, 0, sizeof( value.banner ) );
+        value.banner_length = 0;
+        damaged++;
+    }
+}
+
+// ScoreBoard's read-side bounds.
+inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        clamped += (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
+        value.per_team[i] = ( value.per_team[i] < 0 ) ? 0 : ( ( value.per_team[i] > 100000 ) ? 100000 : value.per_team[i] );
+    }
+}
+
+// KeyedConfig's read-side bounds.
+inline void KeyedConfigFixedClampBody( KeyedConfig & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        TeamConfigFixedClampBody( value.teams.slots[i], clamped, damaged );
+    }
+    ScoreBoardFixedClampBody( value.scores, clamped, damaged );
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void TeamConfigFixedClamp( TeamConfig & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    TeamConfigFixedClampBody( value, clamped, damaged );
+    report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- TeamConfig, the fixed form ----
@@ -6968,9 +7175,9 @@ constexpr int64_t TeamConfigFixedLayoutBytes = (int64_t) sizeof( TeamConfigFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TeamConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // TeamConfig
-    { (uint32_t) __builtin_offsetof( TeamConfig, spawn_count ), 0, 0, 0, 0 }, // spawn_count
-    { (uint32_t) __builtin_offsetof( TeamConfig, banner_length ), 0, (uint32_t) __builtin_offsetof( TeamConfig, banner ), 0, 1 }, // banner
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // TeamConfig
+    { (uint32_t) __builtin_offsetof( TeamConfig, spawn_count ), 0, 0, 0, 0, 0ull, 64ull, 7, 4 }, // spawn_count
+    { (uint32_t) __builtin_offsetof( TeamConfig, banner_length ), 0, (uint32_t) __builtin_offsetof( TeamConfig, banner ), 0, 1, 0ull, 0ull, 0, 0 }, // banner
 };
 
 // THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
@@ -6980,8 +7187,8 @@ constexpr TableFixedDst TeamConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry TeamConfigFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // spawn_count
-    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // banner
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // spawn_count
+    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // banner
 };
 constexpr int32_t TeamConfigFixedPlanCount = 2;
 constexpr int32_t TeamConfigFixedPlanGuarded = 2;
@@ -7016,9 +7223,9 @@ inline int64_t TeamConfigFixedSave( const TeamConfig * values, int64_t count, ui
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t TeamConfigFixedLoad( TeamConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -7046,19 +7253,58 @@ inline int64_t TeamConfigFixedLoad( TeamConfig * values, int64_t capacity, const
     int64_t record_bytes = TeamConfigFixedRecordBytes;
     if ( hash != TeamConfigFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, TeamConfigFixedLayout, (int32_t) TeamConfigFixedLayoutBytes, TeamConfigFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, TeamConfigFixedLayout, (int32_t) TeamConfigFixedLayoutBytes, TeamConfigFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -7073,6 +7319,9 @@ inline int64_t TeamConfigFixedLoad( TeamConfig * values, int64_t capacity, const
         TeamConfigReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        TeamConfigFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
@@ -7101,9 +7350,9 @@ constexpr int64_t GunnerConfigFixedLayoutBytes = (int64_t) sizeof( GunnerConfigF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst GunnerConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // GunnerConfig
-    { (uint32_t) __builtin_offsetof( GunnerConfig, reaction ), 0, 0, 0, 0 }, // reaction
-    { (uint32_t) __builtin_offsetof( GunnerConfig, tracking ), 0, 0, 0, 0 }, // tracking
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // GunnerConfig
+    { (uint32_t) __builtin_offsetof( GunnerConfig, reaction ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // reaction
+    { (uint32_t) __builtin_offsetof( GunnerConfig, tracking ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // tracking
 };
 
 // THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
@@ -7113,7 +7362,7 @@ constexpr TableFixedDst GunnerConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry GunnerConfigFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
+    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
 };
 constexpr int32_t GunnerConfigFixedPlanCount = 1;
 constexpr int32_t GunnerConfigFixedPlanGuarded = 1;
@@ -7148,9 +7397,9 @@ inline int64_t GunnerConfigFixedSave( const GunnerConfig * values, int64_t count
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t GunnerConfigFixedLoad( GunnerConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -7178,19 +7427,58 @@ inline int64_t GunnerConfigFixedLoad( GunnerConfig * values, int64_t capacity, c
     int64_t record_bytes = GunnerConfigFixedRecordBytes;
     if ( hash != GunnerConfigFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, GunnerConfigFixedLayout, (int32_t) GunnerConfigFixedLayoutBytes, GunnerConfigFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, GunnerConfigFixedLayout, (int32_t) GunnerConfigFixedLayoutBytes, GunnerConfigFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -7237,13 +7525,13 @@ constexpr int64_t TurretConfigFixedLayoutBytes = (int64_t) sizeof( TurretConfigF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TurretConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // TurretConfig
-    { (uint32_t) __builtin_offsetof( TurretConfig, damage ), 0, 0, 0, 0 }, // damage
-    { (uint32_t) __builtin_offsetof( TurretConfig, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { 0, 0, (uint32_t) __builtin_offsetof( TurretConfig, gunner_present ), 0, 0 }, // gunner ?
-    { (uint32_t) __builtin_offsetof( TurretConfig, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerConfig, reaction ), 0, 0, 0, 0 }, // reaction
-    { (uint32_t) __builtin_offsetof( GunnerConfig, tracking ), 0, 0, 0, 0 }, // tracking
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // TurretConfig
+    { (uint32_t) __builtin_offsetof( TurretConfig, damage ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // damage
+    { (uint32_t) __builtin_offsetof( TurretConfig, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
+    { 0, 0, (uint32_t) __builtin_offsetof( TurretConfig, gunner_present ), 0, 0, 0ull, 0ull, 0, 0 }, // gunner ?
+    { (uint32_t) __builtin_offsetof( TurretConfig, gunner ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner
+    { (uint32_t) __builtin_offsetof( GunnerConfig, reaction ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // reaction
+    { (uint32_t) __builtin_offsetof( GunnerConfig, tracking ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // tracking
 };
 
 // THE IDENTITY PLAN, coalesced out of 5 leaves by the schema compiler —
@@ -7253,9 +7541,9 @@ constexpr TableFixedDst TurretConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry TurretConfigFixedPlan[] = {
-    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 8u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 9u, 8u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 8u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 9u, 8u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
 };
 constexpr int32_t TurretConfigFixedPlanCount = 3;
 constexpr int32_t TurretConfigFixedPlanGuarded = 3;
@@ -7290,9 +7578,9 @@ inline int64_t TurretConfigFixedSave( const TurretConfig * values, int64_t count
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t TurretConfigFixedLoad( TurretConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -7320,19 +7608,58 @@ inline int64_t TurretConfigFixedLoad( TurretConfig * values, int64_t capacity, c
     int64_t record_bytes = TurretConfigFixedRecordBytes;
     if ( hash != TurretConfigFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, TurretConfigFixedLayout, (int32_t) TurretConfigFixedLayoutBytes, TurretConfigFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, TurretConfigFixedLayout, (int32_t) TurretConfigFixedLayoutBytes, TurretConfigFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -7388,21 +7715,21 @@ constexpr int64_t HullConfigFixedLayoutBytes = (int64_t) sizeof( HullConfigFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst HullConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // HullConfig
-    { (uint32_t) __builtin_offsetof( HullConfig, health ), 0, 0, 0, 0 }, // health
-    { (uint32_t) __builtin_offsetof( HullConfig, mass ), 0, 0, 0, 0 }, // mass
-    { (uint32_t) __builtin_offsetof( HullConfig, turrets ), (uint32_t) sizeof( TurretConfig ), 0, 0, 0 }, // turrets
-    { 0, 0, 0, 0, 0 }, // Weapon
-    { 0, 0, 0, 0, 0 }, // Cannon
-    { 0, 0, 0, 0, 0 }, // Missile
-    { 0, 0, 0, 0, 0 }, // Mine
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( TurretConfig, damage ), 0, 0, 0, 0 }, // damage
-    { (uint32_t) __builtin_offsetof( TurretConfig, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { 0, 0, (uint32_t) __builtin_offsetof( TurretConfig, gunner_present ), 0, 0 }, // gunner ?
-    { (uint32_t) __builtin_offsetof( TurretConfig, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerConfig, reaction ), 0, 0, 0, 0 }, // reaction
-    { (uint32_t) __builtin_offsetof( GunnerConfig, tracking ), 0, 0, 0, 0 }, // tracking
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // HullConfig
+    { (uint32_t) __builtin_offsetof( HullConfig, health ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // health
+    { (uint32_t) __builtin_offsetof( HullConfig, mass ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // mass
+    { (uint32_t) __builtin_offsetof( HullConfig, turrets ), (uint32_t) sizeof( TurretConfig ), 0, 0, 0, 0ull, 0ull, 0, 0 }, // turrets
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Weapon
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Cannon
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Missile
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Mine
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( TurretConfig, damage ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // damage
+    { (uint32_t) __builtin_offsetof( TurretConfig, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
+    { 0, 0, (uint32_t) __builtin_offsetof( TurretConfig, gunner_present ), 0, 0, 0ull, 0ull, 0, 0 }, // gunner ?
+    { (uint32_t) __builtin_offsetof( TurretConfig, gunner ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner
+    { (uint32_t) __builtin_offsetof( GunnerConfig, reaction ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // reaction
+    { (uint32_t) __builtin_offsetof( GunnerConfig, tracking ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // tracking
 };
 
 // THE IDENTITY PLAN, coalesced out of 17 leaves by the schema compiler —
@@ -7412,15 +7739,15 @@ constexpr TableFixedDst HullConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry HullConfigFixedPlan[] = {
-    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 16u, 24u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 17u, 16u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 22u, 28u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 30u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 31u, 36u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 36u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 44u, 64u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 45u, 56u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
+    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 16u, 24u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 17u, 16u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 22u, 28u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 30u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 31u, 36u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 36u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 44u, 64u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 45u, 56u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
 };
 constexpr int32_t HullConfigFixedPlanCount = 9;
 constexpr int32_t HullConfigFixedPlanGuarded = 9;
@@ -7455,9 +7782,9 @@ inline int64_t HullConfigFixedSave( const HullConfig * values, int64_t count, ui
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t HullConfigFixedLoad( HullConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -7485,19 +7812,58 @@ inline int64_t HullConfigFixedLoad( HullConfig * values, int64_t capacity, const
     int64_t record_bytes = HullConfigFixedRecordBytes;
     if ( hash != HullConfigFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, HullConfigFixedLayout, (int32_t) HullConfigFixedLayoutBytes, HullConfigFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, HullConfigFixedLayout, (int32_t) HullConfigFixedLayoutBytes, HullConfigFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -7515,6 +7881,24 @@ inline int64_t HullConfigFixedLoad( HullConfig * values, int64_t capacity, const
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void KeyedConfigFixedClamp( KeyedConfig & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    KeyedConfigFixedClampBody( value, clamped, damaged );
+    report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- KeyedConfig, the fixed form ----
@@ -7575,42 +7959,42 @@ constexpr int64_t KeyedConfigFixedLayoutBytes = (int64_t) sizeof( KeyedConfigFix
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst KeyedConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // KeyedConfig
-    { (uint32_t) __builtin_offsetof( KeyedConfig, teams ), (uint32_t) sizeof( TeamConfig ), 0, 0, 0 }, // teams
-    { 0, 0, 0, 0, 0 }, // Team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( TeamConfig, spawn_count ), 0, 0, 0, 0 }, // spawn_count
-    { (uint32_t) __builtin_offsetof( TeamConfig, banner_length ), 0, (uint32_t) __builtin_offsetof( TeamConfig, banner ), 0, 1 }, // banner
-    { (uint32_t) __builtin_offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( HullConfig ), 0, 0, 0 }, // hulls
-    { 0, 0, 0, 0, 0 }, // Hull
-    { 0, 0, 0, 0, 0 }, // Interceptor
-    { 0, 0, 0, 0, 0 }, // Gunship
-    { 0, 0, 0, 0, 0 }, // Freighter
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( HullConfig, health ), 0, 0, 0, 0 }, // health
-    { (uint32_t) __builtin_offsetof( HullConfig, mass ), 0, 0, 0, 0 }, // mass
-    { (uint32_t) __builtin_offsetof( HullConfig, turrets ), (uint32_t) sizeof( TurretConfig ), 0, 0, 0 }, // turrets
-    { 0, 0, 0, 0, 0 }, // Weapon
-    { 0, 0, 0, 0, 0 }, // Cannon
-    { 0, 0, 0, 0, 0 }, // Missile
-    { 0, 0, 0, 0, 0 }, // Mine
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( TurretConfig, damage ), 0, 0, 0, 0 }, // damage
-    { (uint32_t) __builtin_offsetof( TurretConfig, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { 0, 0, (uint32_t) __builtin_offsetof( TurretConfig, gunner_present ), 0, 0 }, // gunner ?
-    { (uint32_t) __builtin_offsetof( TurretConfig, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerConfig, reaction ), 0, 0, 0, 0 }, // reaction
-    { (uint32_t) __builtin_offsetof( GunnerConfig, tracking ), 0, 0, 0, 0 }, // tracking
-    { (uint32_t) __builtin_offsetof( KeyedConfig, scores ), 0, 0, 0, 0 }, // scores
-    { (uint32_t) __builtin_offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( int32_t ), 0, 0, 0 }, // per_team
-    { 0, 0, 0, 0, 0 }, // Team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // element
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // KeyedConfig
+    { (uint32_t) __builtin_offsetof( KeyedConfig, teams ), (uint32_t) sizeof( TeamConfig ), 0, 0, 0, 0ull, 0ull, 0, 0 }, // teams
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( TeamConfig, spawn_count ), 0, 0, 0, 0, 0ull, 64ull, 7, 4 }, // spawn_count
+    { (uint32_t) __builtin_offsetof( TeamConfig, banner_length ), 0, (uint32_t) __builtin_offsetof( TeamConfig, banner ), 0, 1, 0ull, 0ull, 0, 0 }, // banner
+    { (uint32_t) __builtin_offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( HullConfig ), 0, 0, 0, 0ull, 0ull, 0, 0 }, // hulls
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Hull
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Interceptor
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gunship
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Freighter
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( HullConfig, health ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // health
+    { (uint32_t) __builtin_offsetof( HullConfig, mass ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // mass
+    { (uint32_t) __builtin_offsetof( HullConfig, turrets ), (uint32_t) sizeof( TurretConfig ), 0, 0, 0, 0ull, 0ull, 0, 0 }, // turrets
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Weapon
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Cannon
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Missile
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Mine
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( TurretConfig, damage ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // damage
+    { (uint32_t) __builtin_offsetof( TurretConfig, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
+    { 0, 0, (uint32_t) __builtin_offsetof( TurretConfig, gunner_present ), 0, 0, 0ull, 0ull, 0, 0 }, // gunner ?
+    { (uint32_t) __builtin_offsetof( TurretConfig, gunner ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner
+    { (uint32_t) __builtin_offsetof( GunnerConfig, reaction ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // reaction
+    { (uint32_t) __builtin_offsetof( GunnerConfig, tracking ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // tracking
+    { (uint32_t) __builtin_offsetof( KeyedConfig, scores ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // scores
+    { (uint32_t) __builtin_offsetof( ScoreBoard, per_team ), (uint32_t) sizeof( int32_t ), 0, 0, 0, 0ull, 0ull, 0, 0 }, // per_team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 100000ull, 7, 4 }, // element
 };
 
 // THE IDENTITY PLAN, coalesced out of 58 leaves by the schema compiler —
@@ -7620,40 +8004,40 @@ constexpr TableFixedDst KeyedConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry KeyedConfigFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // spawn_count
-    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // banner
-    { 24u, 28u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // spawn_count
-    { 28u, 52u, 16u, 32u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // banner
-    { 48u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // spawn_count
-    { 52u, 80u, 16u, 60u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // banner
-    { 72u, 84u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 88u, 108u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 89u, 100u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 94u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 102u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 103u, 120u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 108u, 132u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 116u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 117u, 140u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 122u, 152u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 138u, 176u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 139u, 168u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 144u, 180u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 152u, 196u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 153u, 188u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 158u, 200u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 166u, 216u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 167u, 208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 172u, 220u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // health
-    { 188u, 244u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 189u, 236u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 194u, 248u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 202u, 264u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 203u, 256u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 208u, 268u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 216u, 284u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // gunner present
-    { 217u, 276u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reaction
-    { 222u, 288u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // per_team, whole
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // spawn_count
+    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // banner
+    { 24u, 28u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // spawn_count
+    { 28u, 52u, 16u, 32u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // banner
+    { 48u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // spawn_count
+    { 52u, 80u, 16u, 60u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // banner
+    { 72u, 84u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 88u, 108u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 89u, 100u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 94u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 102u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 103u, 120u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 108u, 132u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 116u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 117u, 140u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 122u, 152u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 138u, 176u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 139u, 168u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 144u, 180u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 152u, 196u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 153u, 188u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 158u, 200u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 166u, 216u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 167u, 208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 172u, 220u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // health
+    { 188u, 244u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 189u, 236u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 194u, 248u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 202u, 264u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 203u, 256u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 208u, 268u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 216u, 284u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // gunner present
+    { 217u, 276u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reaction
+    { 222u, 288u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // per_team, whole
 };
 constexpr int32_t KeyedConfigFixedPlanCount = 34;
 constexpr int32_t KeyedConfigFixedPlanGuarded = 34;
@@ -7688,9 +8072,9 @@ inline int64_t KeyedConfigFixedSave( const KeyedConfig * values, int64_t count, 
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
 // the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
 inline int64_t KeyedConfigFixedLoad( KeyedConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -7718,19 +8102,58 @@ inline int64_t KeyedConfigFixedLoad( KeyedConfig * values, int64_t capacity, con
     int64_t record_bytes = KeyedConfigFixedRecordBytes;
     if ( hash != KeyedConfigFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, KeyedConfigFixedLayout, (int32_t) KeyedConfigFixedLayoutBytes, KeyedConfigFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            const int32_t made = TableFixedCompile( parsed, KeyedConfigFixedLayout, (int32_t) KeyedConfigFixedLayoutBytes, KeyedConfigFixedDst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -7745,6 +8168,9 @@ inline int64_t KeyedConfigFixedLoad( KeyedConfig * values, int64_t capacity, con
         KeyedConfigReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        KeyedConfigFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

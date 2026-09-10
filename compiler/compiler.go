@@ -168,6 +168,18 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	if len(ferrs) > 0 {
 		return nil, Diagnostics(ferrs)
 	}
+	// AND THE PLAN'S OWN CAP, on the same terms: a DECLARED fixed table whose
+	// identity plan does not fit is a refusal by name, a derived one is a
+	// warning and keeps form 1 (ir.TableFixedLeafCapRefusals).
+	lwarns, lerrs := ir.TableFixedLeafCapRefusals(u)
+	for _, w := range lwarns {
+		if c.OnWarn != nil {
+			c.OnWarn(w)
+		}
+	}
+	if len(lerrs) > 0 {
+		return nil, Diagnostics(lerrs)
+	}
 	if c.TablesBaseline {
 		warns, berrs := baseline.Check(u, paths)
 		for _, w := range warns {

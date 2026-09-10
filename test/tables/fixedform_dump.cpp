@@ -63,6 +63,19 @@ static bool fx1_file( const char * dir )
     v[0].gone = 654;
     v[0].nested.a = 111;
     v[0].nested.b = 222;
+    // A SHORT STRING AND A PARTLY-USED ARRAY, which is where §3.4's "the slack
+    // is zero" is worth pinning: the bytes past the used length and past the
+    // live count are the template's zeros in every port or they are not the
+    // same bytes.
+    std::strcpy( v[0].label, "fx1" );
+    v[0].label_length = 3;
+    v[0].marks[0] = 101;
+    v[0].marks[1] = 202;
+    v[0].marks_count = 2;
+    // a `bytes(N)` PARTLY USED: an array of u8 on this wire, so the slack past
+    // the live length is the template's zeros here too
+    v[0].blob[0] = 0xDE; v[0].blob[1] = 0xAD; v[0].blob[2] = 0xBE; v[0].blob[3] = 0xEF;
+    v[0].blob_length = 4;
     tblfx1::FxRootReset( v[1] );
     v[1].keep = 1u;
     v[1].narrow = 2u;
@@ -70,6 +83,9 @@ static bool fx1_file( const char * dir )
     v[1].gone = 4;
     v[1].nested.a = 5;
     v[1].nested.b = 6;
+    v[1].label_length = 0; // nothing used at all: the WHOLE span is slack
+    v[1].marks_count = 0;
+    v[1].blob_length = 0;
     return emit( dir, "fx1.bin", v, tblfx1::FxRootFixedMeasure, tblfx1::FxRootFixedSave );
 }
 
@@ -85,6 +101,12 @@ static bool fx2_file( const char * dir )
     v[0].nested.b = 44;
     v[0].extra.x = 55;
     v[0].extra.y = 66;
+    std::strcpy( v[0].label, "fx2" );
+    v[0].label_length = 3;
+    v[0].marks[0] = 303;
+    v[0].marks_count = 1;
+    v[0].blob[0] = 0x01; v[0].blob[1] = 0x02; v[0].blob[2] = 0x03;
+    v[0].blob_length = 3;
     return emit( dir, "fx2.bin", v, tblfx2::FxRootFixedMeasure, tblfx2::FxRootFixedSave );
 }
 
@@ -116,7 +138,10 @@ static bool p3_file( const char * dir )
     std::strcpy( v[1].name, "absent" );
     v[1].name_length = 6;
     v[1].link_present = false;
-    // the payload rides WHOLE whether or not it is present (§3.4)
+    // THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT (§3.4), and when the
+    // flag is 0 what rides is ZERO. These stores are here to prove it: the
+    // storage carries values, the flag says absent, and the file's bytes for
+    // this payload are the template's zeros all the same.
     v[1].link.value = 99;
     std::strcpy( v[1].link.tag, "still" );
     v[1].link.tag_length = 5;
