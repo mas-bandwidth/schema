@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const arithMeasureSchema = `package probe
+const scalarLeafMeasureSchema = `package probe
 flags Caps { Jump, Fly }
 enum Grade { Gold, Silver }
 table Leaf {
@@ -70,7 +70,7 @@ func generatedFunc(src, name string) string {
 // encodes as form 3. The wire the walk produces is unchanged, which is what
 // the generated test below measures against its own reference writer.
 func TestMeasureBodyIsTheDryRunWalk(t *testing.T) {
-	body := tableGoSource(t, arithMeasureSchema)
+	body := tableGoSource(t, scalarLeafMeasureSchema)
 	for _, name := range []string{"LeafMeasureBody", "ChildMeasureBody", "RootMeasureBody", "ArrMeasureBody", "FixedishMeasureBody"} {
 		fn := generatedFunc(body, name)
 		if fn == "" {
@@ -91,10 +91,10 @@ func TestMeasureBodyIsTheDryRunWalk(t *testing.T) {
 	if !strings.Contains(rootSave, "ChildMeasureBody") || !strings.Contains(rootSave, "n > 1") {
 		t.Fatal("RootSaveBody lost the 793 child-table reuse")
 	}
-	runGenerated(t, arithMeasureSchema, arithMeasureWireTest)
+	runGenerated(t, scalarLeafMeasureSchema, scalarLeafMeasureWireTest)
 }
 
-const arithMeasureWireTest = `package probe
+const scalarLeafMeasureWireTest = `package probe
 import (
 	"encoding/binary"
 	"testing"
