@@ -1183,6 +1183,119 @@ fn the_prefill_holes(dir: &str) {
     }
 }
 
+// THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4), and this is the Rust twin of
+// the reference's slack_case. A `string(N)` shorter than N, a `bytes(N)`
+// shorter than N, and a `[..N]T` with unused slots are DECLARED bytes carrying
+// no value: what rides in them is the TEMPLATE'S ZEROS, never whatever this
+// writer's storage held past the used length or the live count.
+//
+// THE CONTROL IS THE STAIN: the storage past the used length and the live
+// count is filled with a byte a clean record carries nowhere, the test proves
+// the stain IS in the storage, then proves the WIRE carries none of it, then
+// proves a whole-span copy of the same storage WOULD have carried it. There is
+// one writer; identity and compiled both call it.
+fn the_write_slack() {
+    let mut v = tblfx1::FxRootRow::default();
+    v.keep = 11;
+    v.narrow = 22;
+    v.renamed = 33;
+    v.gone = 44;
+    v.nested.a = 55;
+    v.nested.b = 66;
+    v.label = [0xAA; 9];
+    v.label[0] = b'h';
+    v.label[1] = b'i';
+    v.label_length = 2;
+    v.marks = [0x5A5A5A5A; 4];
+    v.marks[0] = 7;
+    v.marks_count = 1;
+    v.blob = [0x11; 6];
+    v.blob[0] = 0xDE;
+    v.blob[1] = 0xAD;
+    v.blob_length = 2;
+
+    check(
+        v.label[2] == 0xAA,
+        "CONTROL: the text slack really is stained in storage",
+    );
+    check(
+        v.marks[1] == 0x5A5A5A5A,
+        "CONTROL: the array slack really is stained in storage",
+    );
+    check(
+        v.blob[2] == 0x11,
+        "CONTROL: the bytes slack really is stained in storage",
+    );
+
+    let mut file = vec![0u8; tblfx1::fx_root_fixed_measure(1)];
+    let wrote = tblfx1::fx_root_fixed_save(&[v], &mut file);
+    check(wrote == Some(file.len()), "slack: the record saves");
+    let body_at = tblfx1::TABLE_FIXED_HEADER_BYTES + 4 + tblfx1::FX_ROOT_FIXED_BLOCK.len() + 8;
+    let body = &file[body_at..body_at + tblfx1::FX_ROOT_FIXED_BODY_BYTES];
+    check(
+        !body.contains(&0xAA),
+        "SLACK IS ZERO: not one stained TEXT byte reached the wire",
+    );
+    check(
+        !body.contains(&0x5A),
+        "SLACK IS ZERO: not one stained ARRAY byte reached the wire",
+    );
+    check(
+        !body.contains(&0x11),
+        "SLACK IS ZERO: not one stained BYTES byte reached the wire",
+    );
+
+    // NEGATIVE CONTROL: the same storage copied WHOLE — which is what the
+    // writer did before this fix — carries the stain, so the checks above
+    // discriminate and are not passing for some other reason.
+    check(
+        v.label.contains(&0xAA),
+        "NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain",
+    );
+    check(
+        v.marks[3] == 0x5A5A5A5A,
+        "NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain",
+    );
+    check(
+        v.blob[5] == 0x11,
+        "NEGATIVE CONTROL: a whole-span copy WOULD have carried the bytes stain",
+    );
+
+    let mut back = [tblfx1::FxRootRow::default(); 1];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "slack: the record reads");
+    check(
+        back[0].label_length == 2
+            && back[0].label[0] == b'h'
+            && back[0].label[1] == b'i'
+            && back[0].label[2] == 0,
+        "slack: the used length reads, and the buffer terminates at it",
+    );
+    check(
+        back[0].marks_count == 1 && back[0].marks[0] == 7,
+        "slack: the live count reads",
+    );
+    check(
+        back[0].marks[1] == 0 && back[0].marks[2] == 0 && back[0].marks[3] == 0,
+        "slack: an unused slot lands as the wire's zero and not as some writer's leftover",
+    );
+    check(
+        back[0].blob_length == 2 && back[0].blob[0] == 0xDE && back[0].blob[1] == 0xAD,
+        "slack: the live bytes length reads",
+    );
+    check(
+        back[0].blob[2] == 0 && back[0].blob[3] == 0 && back[0].blob[4] == 0 && back[0].blob[5] == 0,
+        "slack: unused bytes land as the wire's zero",
+    );
+    check(
+        report == tblfx1::TableFixedReport::default(),
+        "slack: a clean read moves no counter",
+    );
+}
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let dir = match args.next() {
@@ -1200,6 +1313,7 @@ fn main() {
         }
     };
     the_write(&dir);
+    the_write_slack();
     the_compiled_plan(&dir);
     the_prefill_holes(&dir);
     an_older_writer(&dir);

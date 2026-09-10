@@ -586,3 +586,63 @@ func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
 		}
 	}
 }
+
+// liveWriteSrc is FX1's leftover in miniature: a counted array, a bytes(N)
+// and a string(N). The writer used to dump the whole bound after body.fill(0),
+// so slack of a short count/length rode. There is ONE writer; identity and
+// compiled both call it.
+const liveWriteSrc = `package probe
+
+table Probe
+{
+    marks [..4]int32
+    blob  bytes(6)
+    label string(8)
+}
+`
+
+// TestFixedFormWriteIsLiveCountAndLength holds the leftover: write LIVE
+// count/length only, and the slack stays the template's zeros. Copying
+// `0..4` / `blob[..6]` / `label[..8]` put storage past the used count and
+// length on the wire.
+func TestFixedFormWriteIsLiveCountAndLength(t *testing.T) {
+	out := generate(t, liveWriteSrc)
+	body := string(out["probe_fixed.rs"])
+	write := rustFn(body, "probe_fixed_write_body")
+	if write == "" {
+		t.Fatal("probe_fixed_write_body was not emitted")
+	}
+	for _, want := range []string{
+		"for i in 0..(value.marks_count as usize)",
+		"let n = value.blob_length as usize;",
+		"copy_from_slice(&value.blob[..n]);",
+		"let n = value.label_length as usize;",
+		"copy_from_slice(&value.label[..n]);",
+		"debug_assert!(value.marks_count >= 0 && value.marks_count <= 4)",
+		"debug_assert!(value.blob_length >= 0 && value.blob_length <= 6)",
+		"debug_assert!(value.label_length >= 0 && value.label_length <= 8)",
+	} {
+		if !strings.Contains(write, want) {
+			t.Errorf("the writer is missing live count/length %q", want)
+		}
+	}
+	for _, stale := range []string{
+		"for i in 0..4",
+		"value.blob[..6]",
+		"value.label[..8]",
+	} {
+		if strings.Contains(write, stale) {
+			t.Errorf("the writer still dumps the bound: %q", stale)
+		}
+	}
+	save := rustFn(body, "probe_fixed_save")
+	if save == "" {
+		t.Fatal("probe_fixed_save was not emitted")
+	}
+	if !strings.Contains(save, "probe_fixed_write_body") {
+		t.Error("the save does not call the one writer; identity and compiled share it")
+	}
+	if strings.Contains(save, "if identity") || strings.Contains(save, "if !identity") {
+		t.Error("the save still branches on identity; there is one writer for both paths")
+	}
+}

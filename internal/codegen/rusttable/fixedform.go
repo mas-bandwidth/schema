@@ -53,6 +53,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -674,31 +675,67 @@ func (g *gen) emitFixedWriteField(f *ir.Field, off int64) {
 func (g *gen) emitFixedWritePayload(f *ir.Field, base int64) {
 	switch {
 	case f.KeyEnum != "":
-		g.emitFixedWriteSlots(f, base, f.KeyEnumRef.Max)
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
+		// slack, so the bound is the loop.
+		g.emitFixedWriteSlots(f, base, strconv.FormatInt(f.KeyEnumRef.Max, 10))
 	case f.Array == ir.ArrayFixed:
-		g.emitFixedWriteSlots(f, base, f.ArrayBound)
+		// AND EVERY ELEMENT OF `[N]T` IS LIVE: min equals max, so no count rides.
+		g.emitFixedWriteSlots(f, base, strconv.FormatInt(f.ArrayBound, 10))
 	case f.Array == ir.ArrayCounted:
+		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
+		// slots' STORAGE on the wire, which for an array of a type with
+		// declared defaults is the element's default image and not zero — a
+		// value nobody wrote, riding as if somebody had.
+		g.fixedWriteBound(fmt.Sprintf("value.%s_count", f.Name), f.ArrayBound, "count")
 		g.pf("    b[%d..%d].copy_from_slice(&(value.%s_count as u32).to_le_bytes());\n", base, base+4, f.Name)
-		g.emitFixedWriteSlots(f, base+fixedCountBytes, f.ArrayBound)
+		g.emitFixedWriteSlots(f, base+fixedCountBytes, fmt.Sprintf("(value.%s_count as usize)", f.Name))
 	case f.Type.Kind == ir.TString:
-		g.pf("    b[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", base, base+4, f.Name)
-		g.pf("    b[%d..%d].copy_from_slice(&value.%s[..%d]);\n", base+4, base+4+f.Type.Size, f.Name, f.Type.Size)
+		g.emitFixedWriteText(f, base, 1)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("    b[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", base, base+4, f.Name)
-		g.pf("    b[%d..%d].copy_from_slice(&value.%s[..%d]);\n", base+4, base+4+f.Type.Size, f.Name, f.Type.Size)
+		g.emitFixedWriteText(f, base, 1)
 	default:
 		g.emitFixedWriteElement(f, base, "value."+f.Name)
 	}
 }
 
-func (g *gen) emitFixedWriteSlots(f *ir.Field, base, count int64) {
+func (g *gen) emitFixedWriteSlots(f *ir.Field, base int64, count string) {
 	elem := fixedElementBytes(f)
-	if count == 0 {
+	if count == "0" {
 		return
 	}
-	g.pf("    for i in 0..%d {\n", count)
+	g.pf("    for i in 0..%s {\n", count)
 	g.emitFixedWriteElementAt(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), 8)
 	g.pf("    }\n")
+}
+
+// emitFixedWriteText is a text field's store: the used LENGTH, then that many
+// UNITS onto the template's zeros (docs/SPEC-TABLES.md §3.4, "the slack is
+// zero"). Copying the whole span instead put whatever the storage held past
+// the used length on the wire — stale bytes, and a `string(N)` written twice
+// with two different values would not compare equal on the second write.
+func (g *gen) emitFixedWriteText(f *ir.Field, base int64, unit int64) {
+	g.fixedWriteBound(fmt.Sprintf("value.%s_length", f.Name), f.Type.Size, "length")
+	g.pf("    b[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", base, base+4, f.Name)
+	scale := ""
+	if unit != 1 {
+		scale = fmt.Sprintf("%d * ", unit)
+	}
+	g.pf("    {\n")
+	g.pf("        let n = %svalue.%s_length as usize;\n", scale, f.Name)
+	g.pf("        b[%d..%d + n].copy_from_slice(&value.%s[..n]);\n", base+4, base+4, f.Name)
+	g.pf("    }\n")
+}
+
+// fixedWriteBound is the WRITE-SIDE CHECK, and it is DEBUG-ONLY BY RULE:
+// `debug_assert!` is gone from a release build exactly as NDEBUG removes
+// schema_assert, so a release build pays nothing for it. The read side checks
+// the same number unconditionally and counts the clamp — a write-side check
+// catches the caller's own bug at the call site, and it is never the thing
+// that keeps the wire safe.
+func (g *gen) fixedWriteBound(expr string, bound int64, what string) {
+	g.pf("    debug_assert!(%s >= 0 && %s <= %d); // the declared %s is the bound (§3.4)\n",
+		expr, expr, bound, what)
 }
 
 func (g *gen) emitFixedWriteElement(f *ir.Field, off int64, expr string) {
