@@ -463,7 +463,7 @@
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families: ten controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, and one off an optional's present byte \u2014 for twelve controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
@@ -472,9 +472,13 @@
         "packet-wide-js-negative-control",
         "tables-js-accessor-negative-control",
         "tables-js-alloc-negative-control",
+        "tables-js-fixed-form-negative-control",
+        "tables-js-fixed-optional-negative-control",
         "tables-js-fuzz-negative-control",
         "tables-js-runtime-home-negative-control",
-        "tables-js-slot-negative-control"
+        "tables-js-slot-negative-control",
+        "tables-js-fixed-slack-negative-control",
+        "tables-js-union-arm-text-negative-control"
       ],
       "node": "26"
     },

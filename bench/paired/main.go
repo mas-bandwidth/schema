@@ -66,9 +66,20 @@ var unpublishedLanguages = []string{"elixir"}
 // so java too rides the table wire alone and appears in no ratio, no
 // confirmation pass and no board; its packet number is the type board's,
 // measured by its own runner over the same sixty-four records.
-var tableOnlyLanguages = []string{"rust", "java"}
+//
+// js is here because its packet leg does not exist to be run rather than
+// because somebody chose to skip it: bench/js/main.mjs imports the serialize.js
+// sibling runtime, has neither `--gate` nor `--iterations` — the two flags this
+// driver passes on every invocation — and appends the §5.1 `codec` column, so
+// its rows are eighteen columns where parseRows requires seventeen. The table
+// codec has none of those problems: the generated JS table modules import no
+// runtime at all. A packet leg is separate work with its own ruling, and
+// filling this driver's second wire with a fabricated row would be inventing a
+// measurement, so js rides the table wire alone and appears in no ratio, no
+// confirmation pass and no board.
+var tableOnlyLanguages = []string{"rust", "java", "js"}
 
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java"}
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java", "js": "JavaScript"}
 
 // allLanguages IS EVERY NAME -langs ACCEPTS: the published four, the paired
 // legs that are measurable but not published yet, and the table-only legs.
@@ -283,6 +294,13 @@ func abs(p string) string {
 	return s
 }
 func binary(wire, lang string) string {
+	// AN INTERPRETED LEG HAS NO BUILD PRODUCT, so the thing this driver pins,
+	// hashes and runs is the runner source itself. Its generated modules are
+	// hashed beside it (generateAndBuild), so the recorded identity covers the
+	// whole unit that runs and not only the entry point.
+	if lang == "js" {
+		return filepath.Join("bench", "tables", "js", "table_main.mjs")
+	}
 	// THE JAVA LEG'S BUILD PRODUCT is a directory of classfiles, so the thing
 	// this driver pins and hashes is the runner's own class in it; the
 	// generated sources it was compiled beside are hashed too
@@ -366,14 +384,14 @@ func rustupTool(env, name string) string {
 }
 
 // generatedModules names the generated sources a leg COMPILES rather than
-// links, so readBuild verifies them the way it verifies a compiled leg's
-// binary. It is a GLOB and not a list: the emitter decides how many modules a
-// unit has, and a list here would be one more place to keep in step with it —
-// and one more place naming a corpus type, which this driver has no business
-// doing. Only java answers it: rust's unit is inside its binary, and the
-// binary's own hash already covers it.
+// links (java) or LOADS (js), so readBuild verifies them the way it verifies a
+// compiled leg's binary. It is a GLOB and not a list: the emitter decides how
+// many modules a unit has, and a list here would be one more place to keep in
+// step with it — and one more place naming a corpus type, which this driver
+// has no business doing. rust's unit is inside its binary, and the binary's
+// own hash already covers it.
 func generatedModules(lang string) ([]string, error) {
-	if lang != "java" {
+	if lang != "java" && lang != "js" {
 		return nil, nil
 	}
 	found, err := filepath.Glob(filepath.Join("generated", "bench", "paired", lang, "*."+lang))
@@ -405,12 +423,15 @@ func jdkTool(name, tool string) string {
 	}
 	return tool
 }
+func nodeExecutable() string { return setting("NODE", "node") }
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
 	var env []string
 	switch lang {
 	case "cs":
 		a = append([]string{"dotnet"}, a...)
+	case "js":
+		a = append([]string{nodeExecutable()}, a...)
 	case "java":
 		// The class, by name, on the classpath the build filled.
 		a = []string{javaExecutable(), "-cp", javaClassDir, "TableMain"}
@@ -718,6 +739,17 @@ func generateAndBuild(langs []string) error {
 			if e := execute(runner("table", lang, "--gate")); e != nil {
 				return e
 			}
+		case "js":
+			// Nothing compiles. The build step's whole job is to prove the
+			// interpreter is here and that the leg loads and gates, which is
+			// the same evidence a compile gives the other legs: a leg that
+			// cannot start is a build failure and not a skipped row.
+			if e := run(nodeExecutable(), "--version"); e != nil {
+				return fmt.Errorf("node is required for the js leg (set NODE): %w", e)
+			}
+			if e := execute(runner("table", lang, "--gate")); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -728,7 +760,7 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}, "node": {nodeExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
@@ -813,6 +845,11 @@ func generateAndBuild(langs []string) error {
 		// The Java leg's compile is the JDK's own, and what decides its code is
 		// the JIT, which the tools map above carries by version.
 		info.Tools["java_table_flags"] = "javac --release 17 -Xlint:all -Werror; java default (JIT, no -ea)"
+	}
+	if contains(langs, "js") {
+		// An interpreted leg has no flags to record; what decides its code is the
+		// interpreter, which the tools map above already carries by version.
+		info.Tools["js_table_flags"] = "none: node runs the generated ES modules as written"
 	}
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {

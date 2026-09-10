@@ -125,6 +125,16 @@ over. Java's packet number is the type board's, from its own runner over the
 same sixty-four records. `JAVA` and `JAVAC` name the JDK (the repository-local
 pin under `dist/` when it is there, as in make/java.mk).
 
+`js` is the third. It is table-only because its packet leg does not exist to be
+run, not because anybody chose to skip it: `bench/js/main.mjs` imports the
+serialize.js sibling runtime, has neither `--gate` nor `--iterations` — the two
+flags this driver passes on every invocation — and appends the §5.1 `codec`
+column, so its rows are eighteen columns where the parser requires seventeen.
+The table codec has none of those problems: the generated JS table modules
+import no runtime at all. Filling the driver's second wire with a fabricated
+packet row would be inventing a measurement, so the driver accepts a table-only
+row instead. `NODE` names the interpreter.
+
     go run ./bench/paired -mode build -langs rust   generate, build, gate the leg
     go run ./bench/paired -mode gate  -langs rust   the no-clock gate alone
     go run ./bench/paired -mode fast  -langs rust -fast-rounds 3 -noise-note "..."
@@ -133,13 +143,17 @@ pin under `dist/` when it is there, as in make/java.mk).
     go run ./bench/paired -mode gate  -langs java   the no-clock gate alone
     go run ./bench/paired -mode fast  -langs java -fast-rounds 3 -noise-note "..."
 
+    go run ./bench/paired -mode build -langs js     generate, then gate the leg
+    go run ./bench/paired -mode gate  -langs js     the no-clock gate alone
+    go run ./bench/paired -mode fast  -langs js -fast-rounds 3 -noise-note "..."
+
 A request is one shape or the other and never a mixture: `-langs rust` (or
-`-langs java`) is asked for alone, `-mode run` refuses it, and its fast summary
-prints the table wire's own cost with **NO RATIO** written where the
-percentages would be. Because neither port has a form-1 table wire — the fixed
-form is the first for both — each leg measures the FIXED form and names its
-rows `bench_fixed` — the same corpus, the same corpus id and the same `table`
-family as every other table row (docs/SPEC-TABLES.md §3.4).
+`-langs java`, or `-langs js`) is asked for alone, `-mode run` refuses it, and
+its fast summary prints the table wire's own cost with **NO RATIO** written
+where the percentages would be. Because none of these ports has a form-1 table
+wire — the fixed form is the first for each — each leg measures the FIXED form
+and names its rows `bench_fixed` — the same corpus, the same corpus id and the
+same `table` family as every other table row (docs/SPEC-TABLES.md §3.4).
 
 The standard packet runners keep their existing generated storage, release
 flags and timed loops. Table runners use a separately generated closure so a

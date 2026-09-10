@@ -93,6 +93,29 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "js" {
+			// THE READING TIER CARRIES THEM TOO. A table's storage class is
+			// internal/codegen/jstable's own (a `type`'s is the packet
+			// emitter's), so the default has to be laid into BOTH — and into
+			// the fixed form's prefill beside them, which is the absent-field
+			// read. Setting only the used LENGTH from the default was a value
+			// claiming N used bytes of an empty buffer, so the bytes are what
+			// this asserts and not the length alone.
+			if err != nil {
+				t.Fatalf("js refused supported table defaults: %v", err)
+			}
+			home := string(out["VdefTable.js"])
+			for _, want := range []string{
+				"this.Name.set([117, 110, 116, 105, 116, 108, 101, 100]);", "this.NameLength = 8;",
+				"this.Tag.set([97, 98]);", "this.TagLength = 2;", "this.Caps = 3n;",
+				"value.Name.set([117, 110, 116, 105, 116, 108, 101, 100]);", "value.Caps = 3n;",
+			} {
+				if !strings.Contains(home, want) {
+					t.Errorf("js default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if target == "elixir" {
 			// THE PREFILL IS WHERE A TABLE DEFAULT LIVES IN THIS PORT
 			// (internal/codegen/elixirtable/fixeddefaults.go): the fixed form's
