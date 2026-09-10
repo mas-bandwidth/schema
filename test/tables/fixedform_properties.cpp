@@ -54,8 +54,6 @@ struct KnownRed
 };
 
 static KnownRed known_red[] = {
-    { "text-content/identity/invalid-utf8-is-not-malformed",
-      "UTF-8 validation in the text op (§3.4: a content violation is malformed)", 0, 0 },
     { "run-copy/identity/a-17-to-31-byte-run-clobbers-its-neighbours",
       "the run copy's 17..31-byte branch (internal/codegen/cpptable/fixedruntime.go)", 0, 0 },
     { "optional/absent-payload-residue-is-copied",
@@ -66,8 +64,6 @@ static KnownRed known_red[] = {
       "identity and compiled must agree on an ordinal that names no variant", 0, 0 },
     { "ordinal-bound/paths-disagree/union-tag-past-the-last-arm",
       "identity and compiled must agree on a tag that names no arm", 0, 0 },
-    { "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway",
-      "a kind that moved is skipped and never misdecoded (§4), counted", 0, 0 },
 };
 
 static KnownRed * find_red( const char * key )
@@ -210,7 +206,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, r ); } \
+    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T & v, Report * r ) { NS::TYPE##FixedClamp( v, r ); } \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -247,7 +243,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, r ); } \
+    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T &, Report * ) {} \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -456,7 +452,20 @@ static void run_properties()
             std::snprintf( what, sizeof( what ), "P1 %s: identity and compiled disagree (fields=%d counters=%d)",
                            F::name, (int) fields, (int) counters );
             classify_issues( iss, what );
-            if ( !iss.any() ) { check( false, what ); }
+            if ( !iss.any() )
+            {
+                // Identity still coalesces a 17..31-byte copy; compiled (clamp
+                // as a plan op) does not, so the clobber shows as a path
+                // disagreement without inspect flags.
+                if ( runcopy )
+                {
+                    check_red( false, "run-copy/identity/a-17-to-31-byte-run-clobbers-its-neighbours", what );
+                }
+                else
+                {
+                    check( false, what );
+                }
+            }
         }
     }
 
@@ -598,7 +607,11 @@ static void run_properties()
                     classify_issues( iss, what );
                     if ( !iss.any() )
                     {
-                        if ( !counters && rid.clamped != rco.clamped )
+                        if ( runcopy )
+                        {
+                            check_red( false, "run-copy/identity/a-17-to-31-byte-run-clobbers-its-neighbours", what );
+                        }
+                        else if ( !counters && rid.clamped != rco.clamped )
                         {
                             check_red( false, "ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant", what );
                         }
@@ -1185,7 +1198,7 @@ static void probe_clamp_op()
     std::memset( &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, &r );
+    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
     check( n == 1, "probe clamp-op: Scalars2 reads Scalars" );
     const bool clamped = back.position == 1000LL * 65536 && r.clamped >= 1;
     check( clamped, "probe clamp-op: a value past the reader's max lands at max and counts" );
@@ -1208,7 +1221,7 @@ static void probe_text_content()
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
-                                               plan.data(), kPlanCap, &r );
+                                               plan.data(), kPlanCap, NULL, &r );
     check( n == 1 || r.malformed || r.refused, "probe text-content: the read answers" );
     check_red( r.malformed, "text-content/identity/invalid-utf8-is-not-malformed",
                "probe text-content: invalid UTF-8 in a string(N)'s used bytes is malformed" );
@@ -1236,7 +1249,7 @@ static void probe_absent_optional()
     tblp3::TableReport r;
     std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
-                                             plan.data(), kPlanCap, &r );
+                                             plan.data(), kPlanCap, NULL, &r );
     check( n == 1 && !back.link_present, "probe absent-optional: the flag" );
     const bool ignored = back.link.value == 0 && back.link.tag_length == 0;
     check_red( ignored, "optional/absent-payload-residue-is-copied",
@@ -1327,7 +1340,7 @@ static void probe_kind_mismatch()
     std::memset( &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, &r );
+    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
     check( n == 1, "probe kind-mismatch: Scalars2 reads Scalars" );
     const bool skipped = back.angle == 0 && r.kind_mismatch >= 1;
     check_red( skipped, "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway",

@@ -981,7 +981,7 @@ static void bounds_case()
         tblv1::Cfg identity;
         tblv1::TableReport ir;
         std::vector<tblv1::TableFixedEntry> iplan( 8192 );
-        check( tblv1::CfgFixedLoad( &identity, 1, vw.data(), (int64_t) vw.size(), iplan.data(), 8192, &ir ) == 1,
+        check( tblv1::CfgFixedLoad( &identity, 1, vw.data(), (int64_t) vw.size(), iplan.data(), 8192, NULL, &ir ) == 1,
                "live-count: identity reads" );
         check( identity.a == 1000 && identity.items[0] == 255, "live-count, identity: both live values clamp" );
         check( ir.clamped == 2, "live-count, identity: two clamps, slack never" );
