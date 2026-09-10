@@ -680,10 +680,15 @@ type TableFixedLeaf struct {
 	Src, Dst, Size, Aux int64
 	Guard               int64 // TableFixedNoGuard when the entry belongs to no arm
 	Op                  int
-	// Arg is THE GUARD'S TAG and nothing else: the ordinal the byte at Guard
+	// Arg is THE GUARD'S TAG and nothing else: the ordinal the tag at Guard
 	// must hold for this entry to run. It is meaningless on an unguarded entry
-	// and it belongs to no op.
+	// and it belongs to no op. Compared at ArgW bytes, never as a prefix.
 	Arg int
+	// ArgW is THE GUARD'S WIDTH IN BYTES: a union tag is one, two, four or
+	// eight, and comparing only the first of them fires arm 1 on a foreign
+	// tag of 0x0101. Zero is read as one. It is stamped with the OUTER tag's
+	// width when an arm nested inside an arm is rewritten onto that tag.
+	ArgW int
 	// Meta is THE OP'S OWN ARGUMENT, on the ops that have one: a text entry's
 	// flavour today. It has its own lane because Arg's is the guard's, and the
 	// two used to share one — which put a text field under a union arm on a
@@ -775,6 +780,7 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 				for q := at; q < len(*out); q++ {
 					(*out)[q].Guard = src
 					(*out)[q].Arg = i + 1
+					(*out)[q].ArgW = int(tag)
 				}
 			}
 			return
@@ -804,7 +810,7 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 			if len(plan) > guarded {
 				last := &plan[len(plan)-1]
 				if last.Op == TableFixedOpCopy && e.Op == TableFixedOpCopy &&
-					last.Guard == e.Guard && last.Arg == e.Arg && last.Meta == e.Meta &&
+					last.Guard == e.Guard && last.Arg == e.Arg && last.ArgW == e.ArgW && last.Meta == e.Meta &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
 					last.Size += e.Size
 					continue

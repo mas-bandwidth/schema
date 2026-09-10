@@ -1085,6 +1085,52 @@ static void text_content_case()
     }
 }
 
+// THE GUARD IS COMPARED AT THE TAG'S WIDTH (docs/SPEC-TABLES.md §3.4). A
+// union tag can be two bytes, and comparing only the first of them fires
+// arm 1 on a foreign tag of 0x0101 — an ordinal no arm names. This case is
+// a hand-built plan so the one-byte compare and the whole-width compare
+// meet the same record; no schema has to declare two hundred and fifty six
+// arms for the width to exist.
+static void guard_width_case()
+{
+    uint8_t src[4] = { 0x01, 0x01, 0xAA, 0x00 };
+    uint8_t dst[4];
+    tblfx1::TableFixedEntry plan[2] = {};
+    tblfx1::TableReport r = {};
+
+    plan[0].src = 0; plan[0].dst = 0; plan[0].size = 2; plan[0].aux = 0;
+    plan[0].guard = tblfx1::kTableFixedNoGuard;
+    plan[0].op = tblfx1::kTableFixedCopy;
+    plan[0].arg = 0; plan[0].meta = 0; plan[0].dstsize = 0; plan[0].sign = 0;
+    plan[0].argw = 1;
+
+    plan[1].src = 2; plan[1].dst = 2; plan[1].size = 1; plan[1].aux = 0;
+    plan[1].guard = 0;
+    plan[1].op = tblfx1::kTableFixedCopy;
+    plan[1].arg = 1; plan[1].meta = 0; plan[1].dstsize = 0; plan[1].sign = 0;
+    plan[1].argw = 2;
+
+    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( &r, 0, sizeof( r ) );
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0, "GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
+
+    src[1] = 0x00;
+    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( &r, 0, sizeof( r ) );
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0xAA, "GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
+
+    // NEGATIVE CONTROL — the bug itself, watched failing. argw planted at 1
+    // is the old one-byte compare, and the SAME 0x0101 record then fires arm 1.
+    src[1] = 0x01;
+    plan[1].argw = 1;
+    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( &r, 0, sizeof( r ) );
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -1100,6 +1146,7 @@ int main()
     bounds_case();
     absent_optional_case();
     text_content_case();
+    guard_width_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }

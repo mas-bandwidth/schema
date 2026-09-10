@@ -61,6 +61,7 @@ void fixed_ut1_bounds( void );
 void fixed_v1_bounds( void );
 void fixed_v1_absent_optional( void );
 void fixed_fx1_text_content( void );
+void fixed_guard_width( void );
 
 /* THE BYTE-FLIP FUZZ's reader (docs/SPEC-TABLES.md §3.4, "held by test"): it
    makes no claim about the values, only that the read answers one of the three

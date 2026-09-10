@@ -56,6 +56,7 @@ int main( void )
     fixed_v1_bounds();
     fixed_v1_absent_optional();
     fixed_fx1_text_content();
+    fixed_guard_width();
 
     n = fixed_ut2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
