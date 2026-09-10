@@ -5701,6 +5701,11 @@ test: tables-fixedform
 # The sabotage plants that anchor back in BOTH emitters through a Go overlay,
 # never in the tree, and the control requires the sanitized run copy test to
 # name a heap-buffer-overflow in each leg.
+#
+# The C compile uses TABLES_CFLAGS, which carries -O2: gcc at -O0 emits the
+# generated header's unused JSON wrappers, they call symbols in ScalarsTable.c,
+# and the link fails before ASan can name the overflow. The optimiser drops
+# them; the control's red is still the sanitizer's.
 .PHONY: tables-fixedform-run-copy-negative-control
 tables-fixedform-run-copy-negative-control:
 	@mkdir -p build/runcopy-negative
@@ -5712,7 +5717,7 @@ tables-fixedform-run-copy-negative-control:
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 	    -fno-omit-frame-pointer -g -Ibuild/runcopy-negative/cpp \
 	    -I$(SERIALIZE) test/tables/fixedform_runcopy.cpp -o build/runcopy-negative/cpp_driver
-	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -fsanitize=address,undefined \
+	$(CC) $(TABLES_CFLAGS) -fsanitize=address,undefined \
 	    -fno-sanitize-recover=all -fno-omit-frame-pointer -g -Ibuild/runcopy-negative/c \
 	    -I$(SERIALIZE_C) test/tables/fixedform_runcopy.c -o build/runcopy-negative/c_driver -lm
 	@if ./build/runcopy-negative/cpp_driver > build/runcopy-negative/cpp.log 2>&1; then \
