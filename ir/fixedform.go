@@ -1005,12 +1005,34 @@ func TableFixedHasWriteBound(u *Unit) bool {
 }
 
 // ---------------------------------------------------------------------------
-// THE PREFILL'S DOMAIN
+// THE IDENTITY READ'S SHAPE, AND THE PREFILL'S DOMAIN
 //
-// What a field the record does not carry holds is §3.4's question, and the
-// answer is decided HERE rather than per port for the same reason the plan is:
-// two ports that prefill different bytes read the same record differently.
+// What a record whose hash is this build's own costs to read, and what a field
+// the record does not carry holds, are both decided HERE rather than per port,
+// for the same reason the plan is: two ports that answer them differently read
+// the same record differently.
 // ---------------------------------------------------------------------------
+
+// TableFixedIdentityFlat reports whether THIS BUILD'S STORAGE IMAGE IS THE WIRE
+// IMAGE for a type — every leaf at the same offset in both, in the same order,
+// with nothing between them that the wire does not carry.
+//
+// It is not a separate proof: the COALESCER already answers it. Adjacent leaves
+// whose source and destination advance together become one entry, so a type
+// whose storage is its wire image coalesces to exactly ONE unguarded COPY over
+// the whole body from offset zero — and a type that has one byte of padding, or
+// one count that rides ahead of its array on the wire and behind it in storage,
+// or one text length, does not. A backend that sees that plan may read a record
+// with ONE memcpy into the caller's own struct and emit no scatter at all.
+func TableFixedIdentityFlat(u *Unit, st *Struct) bool {
+	plan, guarded := TableFixedBuildPlan(u, st)
+	if len(plan) != 1 || guarded != 1 {
+		return false
+	}
+	e := plan[0]
+	return e.Op == TableFixedOpCopy && e.Guard == TableFixedNoGuard &&
+		e.Src == 0 && e.Dst == 0 && e.Size == TableFixedTypeBytes(st)
+}
 
 // TableFixedRange is a half-open run of THE READER'S OWN STORAGE, in bytes.
 type TableFixedRange struct {

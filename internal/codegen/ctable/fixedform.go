@@ -307,6 +307,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
+	flat := ir.TableFixedIdentityFlat(g.unit, st)
 	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
 	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
@@ -342,6 +343,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_cover_count = %d;\n\n", n, len(cover))
+	g.emitFixedScatter(st)
 
 	g.pf("/* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)\n")
 	g.pf("   — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
@@ -366,9 +368,14 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        %s( at + 8, values + k );\n", g.sym(st.Name, "fixed_write_body"))
 	g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
 
-	g.pf("/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
-	g.pf("   the layout's hash is this build's own, and a plan compiled once from the\n")
-	g.pf("   writer's layout otherwise. Same loop either way (§3.4).\n\n")
+	g.pf("/* THE READ. ONE PLAN, and which one is the only thing a peer's shipping\n")
+	g.pf("   changes: the IDENTITY PLAN for a record stamped with this build's own\n")
+	g.pf("   layout hash, a plan compiled once from the writer's layout for anybody\n")
+	g.pf("   else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it\n")
+	g.pf("   says: the identity plan is a constant the schema compiler holds whole, so\n")
+	g.pf("   it is spent HERE — one copy of the body and a straight-line scatter, or one\n")
+	g.pf("   memcpy where the storage image is the wire image — and a stranger's plan\n")
+	g.pf("   arrives at run time and is spent by the interpreter it was always spent by.\n\n")
 	g.pf("   THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of\n")
 	g.pf("   ranges the plan compiler works out once, and on the identity plan that list\n")
 	g.pf("   is EMPTY — so this read writes no byte twice, and it is one rule for both\n")
@@ -378,7 +385,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n")
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
-	g.pf("    uint64_t hash;\n    int64_t rest, record_bytes, count, k;\n")
+	g.pf("    uint64_t hash;\n    int64_t rest, record_bytes, count, k;\n    int identity;\n")
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
 	g.pf("    int32_t entry_guarded = %s_fixed_plan_guarded;\n", n)
@@ -407,7 +414,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    at = layout + layout_bytes;\n")
 	g.pf("    rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
 	g.pf("    record_bytes = 8 + %d;\n", body)
-	g.pf("    if ( hash != %s_fixed_hash )\n    {\n", n)
+	g.pf("    identity = ( hash == %s_fixed_hash );\n", n)
+	g.pf("    if ( !identity )\n    {\n")
 	g.pf("        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.\n")
 	g.pf("           THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
 	g.pf("           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */\n")
@@ -429,7 +437,33 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = 1; return -1; }\n")
 	g.pf("    count = rest / record_bytes;\n")
 	g.pf("    if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }\n")
-	g.pf("    /* THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only\n")
+	g.pf("    if ( identity )\n    {\n")
+	if flat {
+		g.pf("        /* THE STORAGE IMAGE IS THE WIRE IMAGE for this type, and that is not a\n")
+		g.pf("           claim beside the plan — it IS the plan: the coalescer folded every\n")
+		g.pf("           leaf into ONE copy of the whole body from offset zero, which it can\n")
+		g.pf("           only do when source and destination advance together the whole way.\n")
+		g.pf("           So the read is that memcpy, the scatter is empty and none is emitted,\n")
+		g.pf("           and the prefill's list is empty for the reason above. */\n")
+		g.pf("        for ( k = 0; k < count; ++k )\n        {\n")
+		g.pf("            if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
+		g.pf("            memcpy( (void *) ( values + k ), at + 8, (size_t) %d );\n", body)
+		g.pf("            at += 8 + %d;\n        }\n", body)
+	} else {
+		g.pf("        /* ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,\n")
+		g.pf("           same census, same bytes — every offset in the scatter above came out\n")
+		g.pf("           of the plan above it — and no per-entry dispatch, no runtime length\n")
+		g.pf("           and no plan array competing with the record for cache. */\n")
+		g.pf("        uint8_t image[%d];\n", body)
+		g.pf("        for ( k = 0; k < count; ++k )\n        {\n")
+		g.pf("            if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
+		g.pf("            memcpy( image, at + 8, (size_t) %d );\n", body)
+		g.pf("            %s( image, values + k, report );\n", g.sym(st.Name, "fixed_scatter"))
+		g.pf("            at += 8 + %d;\n        }\n", body)
+	}
+	g.pf("        return count;\n    }\n")
+	g.pf("    /* A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.\n")
+	g.pf("       THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only\n")
 	g.pf("       where there is a range to prefill at all. It is the caller's own stack\n")
 	g.pf("       and this codec allocates nothing. */\n")
 	g.pf("    if ( fill_count > 0 )\n    {\n")
@@ -518,5 +552,98 @@ func (g *tableGen) emitFixedByteArray(b []byte) {
 			fmt.Fprintf(&sb, " 0x%02x,", v)
 		}
 		g.pf("%s\n", sb.String())
+	}
+}
+
+// ---- THE IDENTITY READ -----------------------------------------------------
+//
+// A RECORD WHOSE HASH IS THIS BUILD'S OWN IS ONE COPY AND A STRAIGHT LINE, and
+// this leg says it the same way the C++ reference does because it is the same
+// claim: the identity plan is a CONSTANT this generator holds whole, so every
+// offset, every length and every clamp bound in it is a literal that can be
+// written into the source instead of loaded out of an array and switched on.
+//
+// So the identity read is ONE COPY of the body into a record image and then a
+// STRAIGHT-LINE SCATTER out of it, with the count and text clamps inline where
+// the plan makes them entries that break a run — and where the storage image IS
+// the wire image (ir.TableFixedIdentityFlat), ONE MEMCPY and no scatter at all.
+// The plan interpreter is untouched and is what a STRANGER's layout still runs.
+//
+// NOTHING ABOUT THE CLAMPS IS RELAXED. A count and a text length are checked on
+// the read side unconditionally, here exactly as in the interpreter, and the
+// clamp census lands in the same report field: the identity hash says the
+// writer's LAYOUT was this build's, not that its BYTES are honest.
+
+// fixedScatterUnit is a text entry's code-unit width, and its terminator's.
+func fixedScatterUnit(meta int) int64 {
+	if meta == 2 {
+		return 2
+	}
+	return 1
+}
+
+// emitFixedScatter lays down <name>_fixed_scatter: the identity plan, unrolled.
+func (g *tableGen) emitFixedScatter(st *ir.Struct) {
+	if ir.TableFixedIdentityFlat(g.unit, st) {
+		return
+	}
+	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
+	g.pf("/* %s's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by the\n", st.Name)
+	g.pf("   schema compiler into constant-offset moves. Every number in it is a number\n")
+	g.pf("   from that plan, and the SCHEMA_TABLE_STATIC_ASSERTs at the top of this form\n")
+	g.pf("   tie each one to this compiler's own offsetof and sizeof. */\n")
+	g.pf("static SCHEMA_UNUSED %s void %s( const uint8_t * SCHEMA_TABLE_RESTRICT image, %s * value, TableReport * report )\n{\n",
+		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_scatter"), st.Name)
+	g.pf("    uint8_t * SCHEMA_TABLE_RESTRICT dst = (uint8_t *) value;\n")
+	g.pf("    int32_t clamped = 0;\n")
+	g.pf("    (void) dst; (void) clamped;\n")
+	for _, e := range plan[:guarded] {
+		g.emitFixedScatterEntry(e, 4)
+	}
+	// THE ARMS, GROUPED BY THEIR GUARD: consecutive entries of one arm share
+	// one test, which is what the interpreter's partition buys per entry.
+	for i := guarded; i < len(plan); {
+		j := i
+		for j < len(plan) && plan[j].Guard == plan[i].Guard && plan[j].Arg == plan[i].Arg {
+			j++
+		}
+		g.pf("    if ( image[%d] == %d )\n    {\n", plan[i].Guard, plan[i].Arg)
+		for _, e := range plan[i:j] {
+			g.emitFixedScatterEntry(e, 8)
+		}
+		g.pf("    }\n")
+		i = j
+	}
+	g.pf("    report->clamped += clamped;\n")
+	g.pf("}\n\n")
+}
+
+func (g *tableGen) emitFixedScatterEntry(e ir.TableFixedLeaf, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch e.Op {
+	case ir.TableFixedOpCopy:
+		g.pf("%smemcpy( dst + %d, image + %d, %d ); /* %s */\n", ind, e.Dst, e.Src, e.Size, e.Note)
+	case ir.TableFixedOpCount:
+		g.pf("%s{ /* %s */\n", ind, e.Note)
+		g.pf("%s    int32_t v = (int32_t) table_fixed_get32( image + %d );\n", ind, e.Src)
+		g.pf("%s    if ( v < 0 ) { v = 0; clamped++; } else if ( v > %d ) { v = %d; clamped++; }\n", ind, e.Size, e.Size)
+		g.pf("%s    memcpy( dst + %d, &v, 4 );\n", ind, e.Dst)
+		g.pf("%s}\n", ind)
+	case ir.TableFixedOpText:
+		unit := fixedScatterUnit(e.Meta)
+		g.pf("%s{ /* %s */\n", ind, e.Note)
+		g.pf("%s    int32_t v = (int32_t) table_fixed_get32( image + %d );\n", ind, e.Src)
+		g.pf("%s    if ( v < 0 ) { v = 0; clamped++; } else if ( v > %d ) { v = %d; clamped++; }\n", ind, e.Size/unit, e.Size/unit)
+		g.pf("%s    memcpy( dst + %d, &v, 4 );\n", ind, e.Dst)
+		g.pf("%s    memcpy( dst + %d, image + %d, %d );\n", ind, e.Aux, e.Src+4, e.Size)
+		if e.Meta != 3 {
+			g.pf("%s    /* the used length terminates the buffer, whose storage is one unit\n", ind)
+			g.pf("%s       longer than the bound for exactly this. */\n", ind)
+			g.pf("%s    dst[%d + (uint32_t) v * %d] = 0;\n", ind, e.Aux, unit)
+			if unit == 2 {
+				g.pf("%s    dst[%d + (uint32_t) v * %d + 1] = 0;\n", ind, e.Aux, unit)
+			}
+		}
+		g.pf("%s}\n", ind)
 	}
 }

@@ -3507,6 +3507,80 @@ static SCHEMA_UNUSED const TableFixedFill fixed_table_fixed_cover[] = {
 };
 static SCHEMA_UNUSED const int32_t fixed_table_fixed_cover_count = 24;
 
+/* FixedTable's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by the
+   schema compiler into constant-offset moves. Every number in it is a number
+   from that plan, and the SCHEMA_TABLE_STATIC_ASSERTs at the top of this form
+   tie each one to this compiler's own offsetof and sizeof. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_scatter_( const uint8_t * SCHEMA_TABLE_RESTRICT image, FixedTable * value, TableReport * report )
+{
+    uint8_t * SCHEMA_TABLE_RESTRICT dst = (uint8_t *) value;
+    int32_t clamped = 0;
+    (void) dst; (void) clamped;
+    memcpy( dst + 0, image + 0, 12 ); /* sequence */
+    memcpy( dst + 16, image + 12, 12 ); /* session_id */
+    memcpy( dst + 32, image + 24, 28 ); /* nonce */
+    { /* entities count */
+        int32_t v = (int32_t) table_fixed_get32( image + 52 );
+        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 8 ) { v = 8; clamped++; }
+        memcpy( dst + 576, &v, 4 );
+    }
+    memcpy( dst + 64, image + 56, 41 ); /* entity_id */
+    memcpy( dst + 112, image + 97, 10 ); /* damage */
+    memcpy( dst + 128, image + 107, 41 ); /* entity_id */
+    memcpy( dst + 176, image + 148, 10 ); /* damage */
+    memcpy( dst + 192, image + 158, 41 ); /* entity_id */
+    memcpy( dst + 240, image + 199, 10 ); /* damage */
+    memcpy( dst + 256, image + 209, 41 ); /* entity_id */
+    memcpy( dst + 304, image + 250, 10 ); /* damage */
+    memcpy( dst + 320, image + 260, 41 ); /* entity_id */
+    memcpy( dst + 368, image + 301, 10 ); /* damage */
+    memcpy( dst + 384, image + 311, 41 ); /* entity_id */
+    memcpy( dst + 432, image + 352, 10 ); /* damage */
+    memcpy( dst + 448, image + 362, 41 ); /* entity_id */
+    memcpy( dst + 496, image + 403, 10 ); /* damage */
+    memcpy( dst + 512, image + 413, 41 ); /* entity_id */
+    memcpy( dst + 560, image + 454, 10 ); /* damage */
+    { /* stats count */
+        int32_t v = (int32_t) table_fixed_get32( image + 464 );
+        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 80 ) { v = 80; clamped++; }
+        memcpy( dst + 1220, &v, 4 );
+    }
+    memcpy( dst + 580, image + 468, 640 ); /* stats, whole */
+    memcpy( dst + 1224, image + 1108, 1 ); /* game_event tag */
+    memcpy( dst + 1244, image + 1122, 4 ); /* loadout, whole */
+    { /* player_name */
+        int32_t v = (int32_t) table_fixed_get32( image + 1126 );
+        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
+        memcpy( dst + 1264, &v, 4 );
+        memcpy( dst + 1248, image + 1130, 15 );
+        /* the used length terminates the buffer, whose storage is one unit
+           longer than the bound for exactly this. */
+        dst[1248 + (uint32_t) v * 1] = 0;
+    }
+    { /* payload */
+        int32_t v = (int32_t) table_fixed_get32( image + 1145 );
+        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 16 ) { v = 16; clamped++; }
+        memcpy( dst + 1284, &v, 4 );
+        memcpy( dst + 1268, image + 1149, 16 );
+    }
+    memcpy( dst + 1288, image + 1165, 58 ); /* aim_x */
+    memcpy( dst + 1348, image + 1223, 5 ); /* crc_hint */
+    memcpy( dst + 1356, image + 1228, 8 ); /* extra */
+    if ( image[1108] == 1 )
+    {
+        memcpy( dst + 1228, image + 1109, 13 ); /* target_id */
+    }
+    if ( image[1108] == 2 )
+    {
+        memcpy( dst + 1228, image + 1109, 8 ); /* channel */
+    }
+    if ( image[1108] == 3 )
+    {
+        memcpy( dst + 1228, image + 1109, 8 ); /* item_id */
+    }
+    report->clamped += clamped;
+}
+
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
    then the layout behind its u32 length, then the records to the end of it. */
@@ -3537,9 +3611,14 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_save( const FixedTable * values, 
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4).
+/* THE READ. ONE PLAN, and which one is the only thing a peer's shipping
+   changes: the IDENTITY PLAN for a record stamped with this build's own
+   layout hash, a plan compiled once from the writer's layout for anybody
+   else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
+   says: the identity plan is a constant the schema compiler holds whole, so
+   it is spent HERE — one copy of the body and a straight-line scatter, or one
+   memcpy where the storage image is the wire image — and a stranger's plan
+   arrives at run time and is spent by the interpreter it was always spent by.
 
    THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
    ranges the plan compiler works out once, and on the identity plan that list
@@ -3554,6 +3633,7 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = fixed_table_fixed_plan;
     int32_t entry_count = fixed_table_fixed_plan_count;
     int32_t entry_guarded = fixed_table_fixed_plan_guarded;
@@ -3584,7 +3664,8 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 1236;
-    if ( hash != fixed_table_fixed_hash )
+    identity = ( hash == fixed_table_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -3613,7 +3694,24 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    /* THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    if ( identity )
+    {
+        /* ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,
+           same census, same bytes — every offset in the scatter above came out
+           of the plan above it — and no per-entry dispatch, no runtime length
+           and no plan array competing with the record for cache. */
+        uint8_t image[1236];
+        for ( k = 0; k < count; ++k )
+        {
+            if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
+            memcpy( image, at + 8, (size_t) 1236 );
+            schema_bench_fixed_table_fixed_scatter_( image, values + k, report );
+            at += 8 + 1236;
+        }
+        return count;
+    }
+    /* A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+       THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
        where there is a range to prefill at all. It is the caller's own stack
        and this codec allocates nothing. */
     if ( fill_count > 0 )

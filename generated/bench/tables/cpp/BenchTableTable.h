@@ -10136,6 +10136,20 @@ constexpr TableFixedFill TableEntityFixedCover[] = {
 };
 constexpr int32_t TableEntityFixedCoverCount = 2;
 
+// TableEntity's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by this
+// compiler into constant-offset moves. Every number in it is a number from
+// that plan, and the static_asserts at the top of this form tie each one to
+// this compiler's own offsetof and sizeof.
+inline void TableEntityFixedScatter( const uint8_t * TABLE_RESTRICT image, TableEntity & value, TableReport * report )
+{
+    uint8_t * TABLE_RESTRICT dst = (uint8_t *) &value;
+    int32_t clamped = 0;
+    (void) dst; (void) clamped;
+    memcpy( dst + 0, image + 0, 41 ); // entity_id
+    memcpy( dst + 48, image + 41, 10 ); // damage
+    report->clamped += clamped;
+}
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -10164,9 +10178,14 @@ inline int64_t TableEntityFixedSave( const TableEntity * values, int64_t count, 
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// THE READ. ONE PLAN, and which one is the only thing a peer's shipping
+// changes: the IDENTITY PLAN for a record stamped with this build's own
+// layout hash, a plan compiled once from the writer's layout for anybody
+// else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
+// says: the identity plan is a compile-time constant, so this compiler
+// spends it HERE — one copy of the body and a straight-line scatter, or one
+// memcpy where the storage image is the wire image — and a stranger's plan
+// arrives at run time and is spent by the interpreter it was always spent by.
 //
 // THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
 // ranges the plan compiler works out once, and on the identity plan that list
@@ -10199,12 +10218,13 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
     int32_t entry_count = TableEntityFixedPlanCount;
     int32_t entry_guarded = TableEntityFixedPlanGuarded;
     int64_t record_bytes = TableEntityFixedRecordBytes;
+    const bool identity = ( hash == TableEntityFixedHash );
     // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:
     // the rule is the type's value bytes minus what the plan lands, and the
     // identity plan lands all of them.
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
-    if ( hash != TableEntityFixedHash )
+    if ( !identity )
     {
         // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -10232,6 +10252,26 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. It is the caller's own stack
+    // and this codec allocates nothing.
+    if ( identity )
+    {
+        // ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,
+        // same census, same bytes — every offset in the scatter above came out
+        // of the plan above it — and no per-entry dispatch, no runtime length
+        // and no plan array competing with the record for cache.
+        uint8_t image[TableEntityFixedBodyBytes];
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            memcpy( image, at + 8, (size_t) TableEntityFixedBodyBytes );
+            TableEntityFixedScatter( image, values[k], report );
+            at += TableEntityFixedRecordBytes;
+        }
+        return n;
+    }
+    // A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
     // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
     // where there is a range to prefill at all. It is the caller's own stack
     // and this codec allocates nothing.
@@ -10332,9 +10372,14 @@ inline int64_t TableStatFixedSave( const TableStat * values, int64_t count, uint
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. Same loop either way (§3.4).
+// THE READ. ONE PLAN, and which one is the only thing a peer's shipping
+// changes: the IDENTITY PLAN for a record stamped with this build's own
+// layout hash, a plan compiled once from the writer's layout for anybody
+// else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
+// says: the identity plan is a compile-time constant, so this compiler
+// spends it HERE — one copy of the body and a straight-line scatter, or one
+// memcpy where the storage image is the wire image — and a stranger's plan
+// arrives at run time and is spent by the interpreter it was always spent by.
 //
 // THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
 // ranges the plan compiler works out once, and on the identity plan that list
@@ -10367,12 +10412,13 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
     int32_t entry_count = TableStatFixedPlanCount;
     int32_t entry_guarded = TableStatFixedPlanGuarded;
     int64_t record_bytes = TableStatFixedRecordBytes;
+    const bool identity = ( hash == TableStatFixedHash );
     // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:
     // the rule is the type's value bytes minus what the plan lands, and the
     // identity plan lands all of them.
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
-    if ( hash != TableStatFixedHash )
+    if ( !identity )
     {
         // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -10400,6 +10446,27 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    // where there is a range to prefill at all. It is the caller's own stack
+    // and this codec allocates nothing.
+    if ( identity )
+    {
+        // THE STORAGE IMAGE IS THE WIRE IMAGE for this type, and that is not a
+        // claim beside the plan — it IS the plan: the coalescer folded every
+        // leaf into ONE copy of the whole body from offset zero, which it can
+        // only do when source and destination advance together the whole way.
+        // So the read is that memcpy, the scatter is empty and none is emitted,
+        // and the prefill's list is empty for the reason above.
+        static_assert( sizeof( TableStat ) >= (size_t) TableStatFixedBodyBytes, "TableStat: the body lands inside the storage" );
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            memcpy( (void *) &values[k], at + 8, (size_t) TableStatFixedBodyBytes );
+            at += TableStatFixedRecordBytes;
+        }
+        return n;
+    }
+    // A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
     // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
     // where there is a range to prefill at all. It is the caller's own stack
     // and this codec allocates nothing.

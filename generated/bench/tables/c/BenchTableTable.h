@@ -8369,6 +8369,20 @@ static SCHEMA_UNUSED const TableFixedFill table_entity_fixed_cover[] = {
 };
 static SCHEMA_UNUSED const int32_t table_entity_fixed_cover_count = 2;
 
+/* TableEntity's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by the
+   schema compiler into constant-offset moves. Every number in it is a number
+   from that plan, and the SCHEMA_TABLE_STATIC_ASSERTs at the top of this form
+   tie each one to this compiler's own offsetof and sizeof. */
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_entity_fixed_scatter_( const uint8_t * SCHEMA_TABLE_RESTRICT image, TableEntity * value, TableReport * report )
+{
+    uint8_t * SCHEMA_TABLE_RESTRICT dst = (uint8_t *) value;
+    int32_t clamped = 0;
+    (void) dst; (void) clamped;
+    memcpy( dst + 0, image + 0, 41 ); /* entity_id */
+    memcpy( dst + 48, image + 41, 10 ); /* damage */
+    report->clamped += clamped;
+}
+
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
    then the layout behind its u32 length, then the records to the end of it. */
@@ -8399,9 +8413,14 @@ static SCHEMA_UNUSED int64_t table_entity_fixed_save( const TableEntity * values
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4).
+/* THE READ. ONE PLAN, and which one is the only thing a peer's shipping
+   changes: the IDENTITY PLAN for a record stamped with this build's own
+   layout hash, a plan compiled once from the writer's layout for anybody
+   else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
+   says: the identity plan is a constant the schema compiler holds whole, so
+   it is spent HERE — one copy of the body and a straight-line scatter, or one
+   memcpy where the storage image is the wire image — and a stranger's plan
+   arrives at run time and is spent by the interpreter it was always spent by.
 
    THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
    ranges the plan compiler works out once, and on the identity plan that list
@@ -8416,6 +8435,7 @@ static SCHEMA_UNUSED int64_t table_entity_fixed_load( TableEntity * values, int6
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = table_entity_fixed_plan;
     int32_t entry_count = table_entity_fixed_plan_count;
     int32_t entry_guarded = table_entity_fixed_plan_guarded;
@@ -8446,7 +8466,8 @@ static SCHEMA_UNUSED int64_t table_entity_fixed_load( TableEntity * values, int6
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 51;
-    if ( hash != table_entity_fixed_hash )
+    identity = ( hash == table_entity_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -8475,7 +8496,24 @@ static SCHEMA_UNUSED int64_t table_entity_fixed_load( TableEntity * values, int6
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    /* THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    if ( identity )
+    {
+        /* ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,
+           same census, same bytes — every offset in the scatter above came out
+           of the plan above it — and no per-entry dispatch, no runtime length
+           and no plan array competing with the record for cache. */
+        uint8_t image[51];
+        for ( k = 0; k < count; ++k )
+        {
+            if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
+            memcpy( image, at + 8, (size_t) 51 );
+            schema_benchtable_table_entity_fixed_scatter_( image, values + k, report );
+            at += 8 + 51;
+        }
+        return count;
+    }
+    /* A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+       THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
        where there is a range to prefill at all. It is the caller's own stack
        and this codec allocates nothing. */
     if ( fill_count > 0 )
@@ -8576,9 +8614,14 @@ static SCHEMA_UNUSED int64_t table_stat_fixed_save( const TableStat * values, in
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4).
+/* THE READ. ONE PLAN, and which one is the only thing a peer's shipping
+   changes: the IDENTITY PLAN for a record stamped with this build's own
+   layout hash, a plan compiled once from the writer's layout for anybody
+   else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
+   says: the identity plan is a constant the schema compiler holds whole, so
+   it is spent HERE — one copy of the body and a straight-line scatter, or one
+   memcpy where the storage image is the wire image — and a stranger's plan
+   arrives at run time and is spent by the interpreter it was always spent by.
 
    THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
    ranges the plan compiler works out once, and on the identity plan that list
@@ -8593,6 +8636,7 @@ static SCHEMA_UNUSED int64_t table_stat_fixed_load( TableStat * values, int64_t 
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = table_stat_fixed_plan;
     int32_t entry_count = table_stat_fixed_plan_count;
     int32_t entry_guarded = table_stat_fixed_plan_guarded;
@@ -8623,7 +8667,8 @@ static SCHEMA_UNUSED int64_t table_stat_fixed_load( TableStat * values, int64_t 
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 8;
-    if ( hash != table_stat_fixed_hash )
+    identity = ( hash == table_stat_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -8652,7 +8697,24 @@ static SCHEMA_UNUSED int64_t table_stat_fixed_load( TableStat * values, int64_t 
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    /* THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
+    if ( identity )
+    {
+        /* THE STORAGE IMAGE IS THE WIRE IMAGE for this type, and that is not a
+           claim beside the plan — it IS the plan: the coalescer folded every
+           leaf into ONE copy of the whole body from offset zero, which it can
+           only do when source and destination advance together the whole way.
+           So the read is that memcpy, the scatter is empty and none is emitted,
+           and the prefill's list is empty for the reason above. */
+        for ( k = 0; k < count; ++k )
+        {
+            if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
+            memcpy( (void *) ( values + k ), at + 8, (size_t) 8 );
+            at += 8 + 8;
+        }
+        return count;
+    }
+    /* A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+       THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
        where there is a range to prefill at all. It is the caller's own stack
        and this codec allocates nothing. */
     if ( fill_count > 0 )
