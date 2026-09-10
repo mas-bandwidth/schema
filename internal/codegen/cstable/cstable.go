@@ -239,7 +239,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
 	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
 	common := &tableGen{unit: u}
-	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large }\n")
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }

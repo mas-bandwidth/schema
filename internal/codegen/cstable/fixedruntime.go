@@ -126,6 +126,8 @@ const tableFixedWireSource = `
         public const int HeaderBytes = 16;
         public const int HashAt = 8;
         public const uint NoGuard = 0xFFFFFFFFu;
+        public const int MaxDepth = 32;
+        public const uint RecordMaxBytes = 65536;
 
         // The opcodes for plan entries
         public const byte Copy = 0;    // move Size bytes
@@ -213,34 +215,186 @@ const tableFixedWireSource = `
             return EntryAt(b, i).Size - UnionArmBytes(b, i);
         }
 
-        private static bool IsValidKind(byte k)
+        private static bool LeafSize(byte kind, uint size, out bool isLeaf)
         {
-            return (k >= 1 && k <= 19) || (k >= 20 && k <= 29) || k == 30 || k == 32 || k == 33 || k == 35;
+            isLeaf = true;
+            switch (kind)
+            {
+                case 1:  return size == 1;                 // bool
+                case 2:  return size == 1;                 // i8
+                case 3:  return size == 2;                 // i16
+                case 4:  return size == 4;                 // i32
+                case 5:  return size == 8;                 // i64
+                case 6:  return size == 1 || size == 4;    // u8, and bits(1..8)
+                case 7:  return size == 2 || size == 4;    // u16, and bits(9..16)
+                case 8:  return size == 4;                 // u32, and bits(17..32)
+                case 9:  return size == 8;                 // u64, flags, and bits(33..64)
+                case 10: return size == 4;                 // f32
+                case 11: return size == 8;                 // f64
+                case 17: return size == 4;                 // pointer index
+                case 18: case 19: return size == 16;       // i128, u128
+                case 20: case 25: return size == 1;        // fixed8, ufixed8
+                case 21: case 26: return size == 2;
+                case 22: case 27: return size == 4;
+                case 23: case 28: return size == 8;
+                case 24: case 29: return size == 16;
+                case 32: return size == 0;                 // variant arm that holds nothing
+            }
+            isLeaf = false;
+            return true;
         }
 
-        public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view)
+        private static bool OrdinalWidth(uint n) => n == 1 || n == 2 || n == 4 || n == 8;
+
+        private static bool KnownKind(byte kind)
+        {
+            if (kind >= 1 && kind <= 30) return true;
+            return kind == 32 || kind == 33 || kind == 35;
+        }
+
+        private ref struct Checker
+        {
+            public TableFixedLayoutView Layout;
+            public string Why;
+            public bool Bad;
+
+            public void Fail(string why)
+            {
+                if (!Bad)
+                {
+                    Bad = true;
+                    Why = why;
+                }
+            }
+        }
+
+        private static int CheckEntry(ref Checker c, int i, int depth)
+        {
+            if (c.Bad) return 0;
+            if (i < 0 || i >= c.Layout.Count) { c.Fail("layout_tree_unclosed"); return 0; }
+            if (depth > MaxDepth) { c.Fail("layout_too_deep"); return 0; }
+            TableFixedLayoutEntry e = EntryAt(c.Layout, i);
+            if (!KnownKind(e.Kind)) { c.Fail("layout_kind_unknown"); return 0; }
+            if (e.Size > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+
+            int at = i + 1;
+            ulong sum = 0;
+            uint widest = 0;
+            uint firstSize = 0, secondSize = 0;
+            byte firstKind = 0;
+            uint firstChildren = 0;
+            bool kidsAreVariants = true;
+            for (uint k = 0; k < e.Children; ++k)
+            {
+                int child = at;
+                int used = CheckEntry(ref c, child, depth + 1);
+                if (c.Bad) return 0;
+                TableFixedLayoutEntry ce = EntryAt(c.Layout, child);
+                if (k == 0) { firstSize = ce.Size; firstKind = ce.Kind; firstChildren = ce.Children; }
+                if (k == 1) { secondSize = ce.Size; }
+                if (ce.Kind != 32) { kidsAreVariants = false; }
+                sum += ce.Size;
+                if (ce.Size > widest) { widest = ce.Size; }
+                if (sum > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+                at += used;
+            }
+
+            if (!LeafSize(e.Kind, e.Size, out bool isLeaf)) { c.Fail("layout_size_mismatch"); return 0; }
+            if (isLeaf)
+            {
+                if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                return at - i;
+            }
+            switch (e.Kind)
+            {
+                case 13: // table
+                    if ((ulong)e.Size != sum) { c.Fail("layout_size_mismatch"); return 0; }
+                    break;
+                case 35: // optional
+                    if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
+                    if ((ulong)e.Size != sum + 1) { c.Fail("layout_size_mismatch"); return 0; }
+                    break;
+                case 14: // array
+                    if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
+                    if (firstSize == 0) { c.Fail("layout_size_mismatch"); return 0; }
+                    bool bare = (e.Size % firstSize) == 0;
+                    bool counted = e.Size >= 4 && ((e.Size - 4) % firstSize) == 0;
+                    if (!bare && !counted) { c.Fail("layout_size_mismatch"); return 0; }
+                    break;
+                case 16: // enum-keyed array
+                    if (e.Children != 2) { c.Fail("layout_kind_invalid"); return 0; }
+                    if (firstKind != 30) { c.Fail("layout_kind_invalid"); return 0; }
+                    if (secondSize == 0 || (e.Size % secondSize) != 0) { c.Fail("layout_size_mismatch"); return 0; }
+                    if (e.Size / secondSize < firstChildren) { c.Fail("layout_size_mismatch"); return 0; }
+                    break;
+                case 15: // union
+                    if (e.Children == 0) { c.Fail("layout_kind_invalid"); return 0; }
+                    if (e.Size <= widest) { c.Fail("layout_size_mismatch"); return 0; }
+                    if (!OrdinalWidth(e.Size - widest)) { c.Fail("layout_size_mismatch"); return 0; }
+                    break;
+                case 30: // enum
+                    if (!OrdinalWidth(e.Size)) { c.Fail("layout_size_mismatch"); return 0; }
+                    if (e.Children != 0 && !kidsAreVariants) { c.Fail("layout_kind_invalid"); return 0; }
+                    break;
+                case 12: // string
+                    if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                    if (e.Size < 4) { c.Fail("layout_size_mismatch"); return 0; }
+                    break;
+                case 33: // wstring
+                    if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                    if (e.Size < 4 || ((e.Size - 4) % 2) != 0) { c.Fail("layout_size_mismatch"); return 0; }
+                    break;
+                default:
+                    c.Fail("layout_kind_unknown");
+                    return 0;
+            }
+            return at - i;
+        }
+
+        public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view, out string why)
         {
             view = default;
-            if (bytes.Length < 4) { return false; }
+            why = null;
+            if (bytes.Length < 4) { why = "layout_malformed"; return false; }
             uint count = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
-            if (count == 0 || (long)count * EntryBytes + 4 != bytes.Length) { return false; }
+            if (count == 0 || (long)count * EntryBytes + 4 != bytes.Length)
+            {
+                why = "layout_count_mismatch";
+                return false;
+            }
             view.Bytes = bytes;
             view.Count = (int)count;
-            if (Subtree(view, 0) != view.Count)
+            TableFixedLayoutEntry root = EntryAt(view, 0);
+            if (root.Kind != 13)
             {
+                why = "layout_kind_invalid";
                 view = default;
                 return false;
             }
-            for (int i = 0; i < (int)count; ++i)
+            if (root.Size == 0 || root.Size > RecordMaxBytes)
             {
-                if (!IsValidKind(EntryAt(view, i).Kind))
-                {
-                    view = default;
-                    return false;
-                }
+                why = "layout_record_too_large";
+                view = default;
+                return false;
+            }
+            Checker c = new Checker { Layout = view, Why = "layout_malformed", Bad = false };
+            int used = CheckEntry(ref c, 0, 0);
+            if (c.Bad)
+            {
+                why = c.Why;
+                view = default;
+                return false;
+            }
+            if (used != view.Count)
+            {
+                why = "layout_tree_unclosed";
+                view = default;
+                return false;
             }
             return true;
         }
+
+        public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view, out _);
 
         public static bool ParseBlock(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view);
 
