@@ -274,10 +274,10 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 	if g.rootReachesStringBlob(st) {
 		// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS as a kind 12
 		// payload (docs/SPEC-TABLES.md §3.1), through the runtime's own
-		// TableUtf8Valid, which is what the FILE form reads one with in
+		// TableUtf8Valid, which is what the VARIABLE form reads one with in
 		// pointers.go. The align above already left the bytes on a byte
 		// boundary, so the span goes to the check as it goes to the memcpy
-		// below. What differs from the file form is only the RECOVERY, which
+		// below. What differs from the variable form is only the RECOVERY, which
 		// a bit stream does not have: the damage is TERMINAL for the batch,
 		// one malformed counts, and the bodies before it stand (§3.3).
 		g.pf("            if ( type_id == kTableStringTypeId && !TableUtf8Valid( r.buffer + r.offset / 8, length ) ) { out->malformed = true; return false; }\n")
@@ -317,7 +317,7 @@ func (g *tableGen) emitVariableMessageLoadSurface(st *ir.Struct) {
 		g.pf("// `retains` is an array parallel to `roots`, each entry reset by this call\n")
 		g.pf("// and each holding the records of the body it belongs to, which is what keeps\n")
 		g.pf("// a record's first step an index into that body's own node directory. A\n")
-		g.pf("// SaveRetain from `roots[k]` takes `retains[k]` and is the file form's own\n")
+		g.pf("// SaveRetain from `roots[k]` takes `retains[k]` and is the VARIABLE form's own\n")
 		g.pf("// pair unchanged: retention writing FORM 2 refuses by name (§3.3).\n")
 	}
 	g.pf("inline bool %s( const %s ** roots, int64_t * count, uint8_t * region, int64_t region_bytes, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes,%s TableReport * report )\n{\n",

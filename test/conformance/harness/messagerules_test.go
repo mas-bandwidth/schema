@@ -1335,7 +1335,7 @@ func TestTheSixFindings(t *testing.T) {
 // §3.3 holds to the file's word for word: an integer kind read into a wider
 // one of the same signedness, and `f32` into `f64`, decodes EXACTLY at the
 // SENDER's announced width, the value lands, and one `widened` counts. The row
-// runs at the four sites the file form counts it: a field, a union arm, a
+// runs at the four sites the variable form counts it: a field, a union arm, a
 // positional array's element and a map's key.
 //
 // Red where a reader treats the announced kind as a mismatch and skips the
@@ -1515,7 +1515,7 @@ func TestTheMessageFormsTextContentRuleAndClamp(t *testing.T) {
 
 // TestAStringBlobRecordOnAMessageBodyCarriesTheContentRule: kinds `12` and
 // `33`'s content rule MET AT A NODE (docs/SPEC-TABLES.md §3.1) over a form-`2`
-// body (§3.3). §3.1 refuses a text blob's CONTENT on the file form's own
+// body (§3.3). §3.1 refuses a text blob's CONTENT on the variable form's own
 // terms, and §3.3 says a form-`2` body's content rules are §3's, unchanged in
 // what they reject: a `*string` blob whose bytes are not well-formed UTF-8, or
 // which carries a zero byte, is DAMAGE and not data. What differs is only the

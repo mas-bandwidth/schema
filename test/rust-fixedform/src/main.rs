@@ -188,9 +188,8 @@ macro_rules! compiled_self_plan {
         let n = $krate::$load(&mut want, &golden, &mut plan, &mut remap, &mut report).unwrap_or(0);
 
         // and what a plan COMPILED from the same block lands
-        let block_bytes =
-            u32::from_le_bytes(golden[1..5].try_into().expect("four bytes")) as usize;
-        let theirs = $krate::TableFixedBlock::parse(&golden[5..5 + block_bytes]);
+        let block_bytes = layout_bytes(&golden);
+        let theirs = $krate::TableFixedBlock::parse(&golden[LAYOUT_AT..LAYOUT_AT + block_bytes]);
         let mine = $krate::TableFixedBlock::parse(&$krate::$block);
         check(
             theirs.is_some() && mine.is_some(),
@@ -215,7 +214,7 @@ macro_rules! compiled_self_plan {
             compiled > 1,
             concat!($file, ": the compiled plan is a REAL plan — text, count, ordinal and the keyed walk break the runs"),
         );
-        let rest = &golden[5 + block_bytes..];
+        let rest = &golden[LAYOUT_AT + block_bytes..];
         let record = $krate::$body + 8;
         let mut got = [$krate::$row::default(); $cap];
         for k in 0..n {
@@ -341,9 +340,7 @@ fn the_negative_controls(dir: &str) {
     //    must.
     {
         let fx2 = slurp(dir, "fx2.bin");
-        let block_bytes =
-            u32::from_le_bytes(fx2[1..5].try_into().expect("four bytes")) as usize;
-        let body = &fx2[5 + block_bytes + 8..];
+        let body = &fx2[records_at(&fx2) + 8..];
         let mut wrong = [0u8; tblfx1::FX_ROOT_FIXED_BODY_BYTES];
         wrong.copy_from_slice(&tblfx1::FX_ROOT_FIXED_DEFAULTS);
         let mut report = tblfx1::TableFixedReport::default();
@@ -360,7 +357,7 @@ fn the_negative_controls(dir: &str) {
     //    by name: nothing decoded, no counter moved.
     {
         let mut damaged = slurp(dir, "fx1.bin");
-        damaged[5] ^= 0xFF; // the entry count, so the tree cannot close
+        damaged[LAYOUT_AT] ^= 0xFF; // the entry count, so the tree cannot close
         let mut values = [tblfx1::FxRootRow::default(); 8];
         let mut plan = [tblfx1::TableFixedEntry::default(); 512];
         let mut remap = [0u16; 512];
@@ -374,6 +371,34 @@ fn the_negative_controls(dir: &str) {
         check(
             !report.malformed && report.unknown == 0 && report.kind_mismatch == 0,
             "block_malformed: a refusal moves no counter",
+        );
+    }
+
+    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT. The pinned header
+    //     names the layout ONCE (docs/SPEC-TABLES.md §3) and a record names the
+    //     layout it was stamped by; a header whose hash is not the hash of the
+    //     layout it carries is refused, and it is checked LAST so a broken
+    //     layout refuses under its own name first.
+    {
+        let mut lying = slurp(dir, "fx1.bin");
+        lying[HASH_AT] ^= 0xFF;
+        let mut values = [tblfx1::FxRootRow::default(); 8];
+        let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+        let mut remap = [0u16; 512];
+        let mut report = tblfx1::TableFixedReport::default();
+        let n = tblfx1::fx_root_fixed_load(&mut values, &lying, &mut plan, &mut remap, &mut report);
+        check(n.is_none(), "the header's hash: a lying header is refused");
+        check(
+            report.refused && report.reason == tblfx1::TableFixedReason::BlockMalformed,
+            "the header's hash: refused BY NAME",
+        );
+        // AND THE NEGATIVE CONTROL FOR IT: the same file untouched loads.
+        let clean = slurp(dir, "fx1.bin");
+        let mut report = tblfx1::TableFixedReport::default();
+        check(
+            tblfx1::fx_root_fixed_load(&mut values, &clean, &mut plan, &mut remap, &mut report)
+                == Some(2),
+            "NEGATIVE CONTROL: the untouched file loads, so the refusal above is the forgery",
         );
     }
 
@@ -466,21 +491,37 @@ const BENCH_RECORDS: usize = 64;
 const EVENT_TAG: usize = 1108;
 const EVENT_ARM: usize = 1109;
 
+// THE PINNED FILE HEADER (docs/SPEC-TABLES.md §3, "THE FIRST BYTE"): the FORM
+// BYTE at 0, seven RESERVED ZERO bytes, the LAYOUT's own eight-byte hash at 8,
+// and the body at 16 — one rule for all five forms. The layout rides behind its
+// u32 length at 16, and the records back to back behind that.
+const HEADER_BYTES: usize = 16;
+const HASH_AT: usize = 8;
+const LAYOUT_AT: usize = HEADER_BYTES + 4;
+
+fn layout_bytes(f: &[u8]) -> usize {
+    u32_at(f, HEADER_BYTES) as usize
+}
+
+fn records_at(f: &[u8]) -> usize {
+    LAYOUT_AT + layout_bytes(f)
+}
+
 fn u32_at(b: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(b[at..at + 4].try_into().expect("four bytes"))
 }
 
 fn the_bench_corpus(dir: &str) {
     let golden = slurp(dir, "bench_fixed.bin");
-    let vocab = slurp(dir, "bench_fixed.vocab");
+    let layout = slurp(dir, "bench_fixed.layout");
 
     // THE BLOCK IS THE CORPUS'S BLOCK, and that one comparison is what says
     // this leg speaks the form and not a near miss: the positions, the ids, the
     // kinds, the record's size and the hash every record carries are all
     // settled by these bytes.
     check(
-        vocab == benchfixed::FIXED_TABLE_FIXED_BLOCK,
-        "bench_fixed: this build's vocabulary block IS the corpus's, byte for byte",
+        layout == benchfixed::FIXED_TABLE_FIXED_BLOCK,
+        "bench_fixed: this build's LAYOUT IS the corpus's, byte for byte",
     );
     check(
         benchfixed::FIXED_TABLE_FIXED_HASH == 0x32f1_c4a3_02a2_24eb,
@@ -531,25 +572,24 @@ fn the_bench_corpus(dir: &str) {
     // AND THE VALUES. The straight-line decode below reads the golden's own
     // bytes at the reference's offsets; the loop compares every record's union
     // against it.
-    let block_bytes = u32_at(&golden, 1) as usize;
-    let rest = &golden[5 + block_bytes..];
+    let rest = &golden[records_at(&golden)..];
     let record = benchfixed::FIXED_TABLE_FIXED_RECORD_BYTES;
     let mut hits = 0;
     for k in 0..n {
         let body = &rest[k * record + 8..(k + 1) * record];
         let event = values[k].value.game_event;
         check(
-            event.tag == body[EVENT_TAG],
+            event.tag() == body[EVENT_TAG],
             "bench_fixed: the tag landed as the record carries it",
         );
-        if event.tag != 1 {
+        if event.tag() != 1 {
             continue; // `game_event` is STRUCTURE, pinned to `hit` in every record
         }
         hits += 1;
         // SAFETY: the tag is 1, which names `hit`; the twin's contract is that
         // the tag names the live arm, and the scatter that landed this value is
         // what set both.
-        let hit = unsafe { event.arms.hit };
+        let hit = event.hit().expect("the tag names `hit`");
         check(
             hit.target_id == u32_at(body, EVENT_ARM)
                 && hit.damage == u32_at(body, EVENT_ARM + 4) as i32
@@ -592,28 +632,24 @@ fn the_bench_corpus(dir: &str) {
 
 fn the_ordinal_slide() {
     // FE1 writes: Gold with a `ward`, and Bronze with a `boost`.
-    let older = [
-        tblfe1::FeRootRow {
+    // THE ARM AND THE TAG MOVE TOGETHER, which is the only way they move at
+    // all: `set_ward` is the whole of "tag 2, ward 41" and the two cannot be
+    // set apart.
+    let older = {
+        let mut gold = tblfe1::FeRootRow {
             grade: 3, // Gold
-            effect: tblfe1::EffectRow {
-                tag: 2, // ward
-                arms: tblfe1::EffectRowArms {
-                    ward: tblfe1::WardRow { charge: 41 },
-                },
-            },
             tail: 99,
-        },
-        tblfe1::FeRootRow {
+            ..Default::default()
+        };
+        gold.effect.set_ward(tblfe1::WardRow { charge: 41 });
+        let mut bronze = tblfe1::FeRootRow {
             grade: 1, // Bronze
-            effect: tblfe1::EffectRow {
-                tag: 1, // boost
-                arms: tblfe1::EffectRowArms {
-                    boost: tblfe1::BoostRow { power: 17 },
-                },
-            },
             tail: 100,
-        },
-    ];
+            ..Default::default()
+        };
+        bronze.effect.set_boost(tblfe1::BoostRow { power: 17 });
+        [gold, bronze]
+    };
     let mut slide = vec![0u8; tblfe1::fe_root_fixed_measure(older.len())];
     check(
         tblfe1::fe_root_fixed_save(&older, &mut slide) == Some(slide.len()),
@@ -627,19 +663,19 @@ fn the_ordinal_slide() {
     let n = tblfe2::fe_root_fixed_load(&mut values, &slide, &mut plan, &mut remap, &mut report);
     check(n == Some(2), "the slide: FE2 reads both of FE1's records");
     check(values[0].grade == 4, "the slide: the enum's Gold slid 3 -> 4 and was REMAPPED");
-    check(values[0].effect.tag == 3, "the slide: the union's `ward` tag slid 2 -> 3");
+    check(values[0].effect.tag() == 3, "the slide: the union's `ward` tag slid 2 -> 3");
     // SAFETY: the tag is 3, which is FE2's `ward`; the scatter set both.
     check(
-        unsafe { values[0].effect.arms.ward }.charge == 41,
+        values[0].effect.ward().expect("the tag names `ward`").charge == 41,
         "the slide: and the ARM BEHIND the slid tag landed",
     );
     check(
-        values[1].grade == 1 && values[1].effect.tag == 1,
+        values[1].grade == 1 && values[1].effect.tag() == 1,
         "the slide: Bronze did not slide, and neither did the `boost` arm",
     );
     // SAFETY: the tag is 1, which is FE2's `boost`.
     check(
-        unsafe { values[1].effect.arms.boost }.power == 17,
+        values[1].effect.boost().expect("the tag names `boost`").power == 17,
         "the slide: the unslid arm's payload",
     );
     check(
@@ -659,16 +695,15 @@ fn the_ordinal_slide() {
     // AND BACK: FE1 reading FE2. `Electrum` and `shield` are variants this
     // reader has no name for, so the ordinal resolves to NONE and the arm is
     // simply never a source.
-    let newer = [tblfe2::FeRootRow {
-        grade: 2, // Electrum, which FE1 cannot name
-        effect: tblfe2::EffectRow {
-            tag: 2, // shield, which FE1 cannot name
-            arms: tblfe2::EffectRowArms {
-                shield: tblfe2::ShieldRow { plating: 5 },
-            },
-        },
-        tail: 8,
-    }];
+    let newer = {
+        let mut one = tblfe2::FeRootRow {
+            grade: 2, // Electrum, which FE1 cannot name
+            tail: 8,
+            ..Default::default()
+        };
+        one.effect.set_shield(tblfe2::ShieldRow { plating: 5 }); // which FE1 cannot name either
+        [one]
+    };
     let mut back = vec![0u8; tblfe2::fe_root_fixed_measure(newer.len())];
     tblfe2::fe_root_fixed_save(&newer, &mut back);
 
@@ -680,7 +715,7 @@ fn the_ordinal_slide() {
     check(n == Some(1), "coming back: FE1 reads FE2's record");
     check(values[0].grade == 0, "coming back: a variant this reader cannot name resolves to None");
     check(
-        values[0].effect.tag == 0,
+        values[0].effect.tag() == 0,
         "coming back: an ARM this reader cannot name leaves the tag at None",
     );
     check(values[0].tail == 8, "coming back: and the field past it still lands");
@@ -698,8 +733,7 @@ fn the_union_controls(dir: &str) {
     // the tag verbatim out of a stranger's record, so the scatter is where the
     // range is closed — the same place a count's bound is closed.
     let golden = slurp(dir, "bench_fixed.bin");
-    let block_bytes = u32_at(&golden, 1) as usize;
-    let head = 5 + block_bytes;
+    let head = records_at(&golden);
     let record = benchfixed::FIXED_TABLE_FIXED_RECORD_BYTES;
     let mut forged = golden[..head + record].to_vec();
     forged[head + 8 + EVENT_TAG] = 250; // no arm of this build is the 250th
@@ -717,7 +751,7 @@ fn the_union_controls(dir: &str) {
     );
     check(n == Some(1), "a forged tag: the record still reads");
     check(
-        values[0].value.game_event.tag == 0,
+        values[0].value.game_event.tag() == 0,
         "a forged tag: a tag past the arm count lands as None",
     );
     check(report.clamped == 1, "a forged tag: and it counts ONE clamped");
@@ -739,22 +773,20 @@ fn the_union_controls(dir: &str) {
     // this case lands None and counts NOTHING, where the identity path above
     // counts one clamped.
     {
-        let older = [tblfe1::FeRootRow {
-            grade: 1,
-            effect: tblfe1::EffectRow {
-                tag: 2, // ward
-                arms: tblfe1::EffectRowArms {
-                    ward: tblfe1::WardRow { charge: 41 },
-                },
-            },
-            tail: 77,
-        }];
+        let older = {
+            let mut one = tblfe1::FeRootRow {
+                grade: 1,
+                tail: 77,
+                ..Default::default()
+            };
+            one.effect.set_ward(tblfe1::WardRow { charge: 41 });
+            [one]
+        };
         let mut file = vec![0u8; tblfe1::fe_root_fixed_measure(1)];
         tblfe1::fe_root_fixed_save(&older, &mut file);
         // FE1's body is `grade`, then the union, then `tail`: the tag leads the
         // union storage, so it is the byte after `grade`.
-        let block_bytes = u32_at(&file, 1) as usize;
-        let tag_at = 5 + block_bytes + 8 + 1;
+        let tag_at = records_at(&file) + 8 + 1;
         file[tag_at] = 250; // no arm of FE1's is the 250th either
 
         let mut values = [tblfe2::FeRootRow::default(); 4];
@@ -765,7 +797,7 @@ fn the_union_controls(dir: &str) {
             tblfe2::fe_root_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report);
         check(n == Some(1), "a forged tag, compiled plan: the record still reads");
         check(
-            values[0].effect.tag == 0,
+            values[0].effect.tag() == 0,
             "a forged tag, compiled plan: a tag no arm of the WRITER's names lands as None",
         );
         check(
@@ -789,7 +821,7 @@ fn the_union_controls(dir: &str) {
         &mut clean,
     );
     check(
-        values[0].value.game_event.tag == 1 && clean.clamped == 0,
+        values[0].value.game_event.tag() == 1 && clean.clamped == 0,
         "NEGATIVE CONTROL: the same record unforged lands `hit` and clamps nothing",
     );
 }
@@ -817,37 +849,30 @@ fn the_union_controls(dir: &str) {
 fn the_text_under_an_arm() {
     // FU1 writes: the LABELLED arm — the union's SECOND — with a scalar either
     // side of the text, and the `plain` arm beside it so both are exercised.
-    let older = [
-        tblfu1::FuRootRow {
+    let older = {
+        let mut labelled = tblfu1::FuRootRow {
             flag: true,
             note: 44,
             note_present: true,
-            pick: tblfu1::PickRow {
-                tag: 2, // labelled
-                arms: tblfu1::PickRowArms {
-                    labelled: tblfu1::LabelledRow {
-                        lead: 101,
-                        label: *b"hello\0\0\0\0",
-                        label_length: 5,
-                        trail: 202,
-                    },
-                },
-            },
             tail: 11,
-        },
-        tblfu1::FuRootRow {
+            ..Default::default()
+        };
+        labelled.pick.set_labelled(tblfu1::LabelledRow {
+            lead: 101,
+            label: *b"hello\0\0\0\0",
+            label_length: 5,
+            trail: 202,
+        });
+        let mut plain = tblfu1::FuRootRow {
             flag: false,
             note: 0,
             note_present: false,
-            pick: tblfu1::PickRow {
-                tag: 1, // plain
-                arms: tblfu1::PickRowArms {
-                    plain: tblfu1::PlainRow { n: 303 },
-                },
-            },
             tail: 12,
-        },
-    ];
+            ..Default::default()
+        };
+        plain.pick.set_plain(tblfu1::PlainRow { n: 303 });
+        [labelled, plain]
+    };
     let mut file = vec![0u8; tblfu1::fu_root_fixed_measure(older.len())];
     check(
         tblfu1::fu_root_fixed_save(&older, &mut file) == Some(file.len()),
@@ -866,9 +891,9 @@ fn the_text_under_an_arm() {
         "text under an arm: its own layout is the identity plan, and it moves no counter",
     );
     // SAFETY: the tag is 2, which names `labelled`; the scatter set both.
-    let id_arm = unsafe { mine[0].pick.arms.labelled };
+    let id_arm = mine[0].pick.labelled().expect("the tag names `labelled`");
     check(
-        mine[0].pick.tag == 2 && id_arm.label_length == 5 && &id_arm.label[..5] == b"hello",
+        mine[0].pick.tag() == 2 && id_arm.label_length == 5 && &id_arm.label[..5] == b"hello",
         "text under an arm: the IDENTITY read lands the text",
     );
     check(
@@ -894,8 +919,8 @@ fn the_text_under_an_arm() {
     // read that landed '' while the identity read landed 'hello' passed every
     // other assertion in this file.
     // SAFETY: both tags are 2, which names `labelled` in both builds.
-    let arm = unsafe { theirs[0].pick.arms.labelled };
-    check(theirs[0].pick.tag == 2, "text under an arm: the tag agrees");
+    let arm = theirs[0].pick.labelled().expect("the tag names `labelled`");
+    check(theirs[0].pick.tag() == 2, "text under an arm: the tag agrees");
     check(arm.lead == id_arm.lead && arm.lead == 101, "text under an arm: the scalar BEFORE the text agrees");
     check(
         arm.label_length == id_arm.label_length && arm.label_length == 5,
@@ -919,9 +944,9 @@ fn the_text_under_an_arm() {
     // accident for ordinal 1 and wrong from 2 up.
     // SAFETY: both tags are 1, which names `plain`.
     check(
-        theirs[1].pick.tag == 1
-            && unsafe { theirs[1].pick.arms.plain }.n == unsafe { mine[1].pick.arms.plain }.n
-            && unsafe { theirs[1].pick.arms.plain }.n == 303,
+        theirs[1].pick.tag() == 1
+            && theirs[1].pick.plain().expect("the tag names `plain`").n == mine[1].pick.plain().expect("the tag names `plain`").n
+            && theirs[1].pick.plain().expect("the tag names `plain`").n == 303,
         "text under an arm: the FIRST arm agrees as well",
     );
     check(theirs[1].tail == 12, "text under an arm: and its tail");
@@ -938,7 +963,7 @@ fn the_text_under_an_arm() {
     // of a stranger's record, and the compiled plan copies it verbatim too,
     // so the scatter is the one place the ruling can live.
     // ---------------------------------------------------------------------
-    let body0 = 5 + u32_at(&file, 1) as usize + 8;
+    let body0 = records_at(&file) + 8;
     let mut forged = file.clone();
     forged[body0] = 2; // `flag`, spelled true the way a stranger spelled it
     forged[body0 + 1] = 7; // `note`'s present byte, likewise
@@ -999,20 +1024,18 @@ fn the_text_under_an_arm() {
 // ---------------------------------------------------------------------------
 
 fn the_enum_extent() {
-    let older = [tblfe1::FeRootRow {
-        grade: 3, // Gold
-        effect: tblfe1::EffectRow {
-            tag: 1, // boost
-            arms: tblfe1::EffectRowArms {
-                boost: tblfe1::BoostRow { power: 17 },
-            },
-        },
-        tail: 55,
-    }];
+    let older = {
+        let mut one = tblfe1::FeRootRow {
+            grade: 3, // Gold
+            tail: 55,
+            ..Default::default()
+        };
+        one.effect.set_boost(tblfe1::BoostRow { power: 17 });
+        [one]
+    };
     let mut file = vec![0u8; tblfe1::fe_root_fixed_measure(1)];
     tblfe1::fe_root_fixed_save(&older, &mut file);
-    let block_bytes = u32_at(&file, 1) as usize;
-    let grade_at = 5 + block_bytes + 8; // FE1's body leads with `grade`
+    let grade_at = records_at(&file) + 8; // FE1's body leads with `grade`
     let mut forged = file.clone();
     forged[grade_at] = 99; // FE1 declares three variants; nothing is the 99th
 
@@ -1033,7 +1056,7 @@ fn the_enum_extent() {
         "a forged ordinal: nothing else fired — an out-of-range ordinal is not damage",
     );
     check(
-        values[0].tail == 55 && values[0].effect.tag == 1,
+        values[0].tail == 55 && values[0].effect.tag() == 1,
         "a forged ordinal: every field beside it still landed",
     );
 

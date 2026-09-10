@@ -369,9 +369,19 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 	urecords := string(union["probe_records.rs"])
 	for _, want := range []string{
 		"pub struct EffectRow {",
-		"pub tag: u8,",
-		"pub arms: EffectRowArms,",
+		// THE TAG AND THE OVERLAY ARE THE CRATE'S. A public tag beside a public
+		// overlay, with safe functions reading the arm the tag names, is unsound
+		// as an API: nothing stops a caller moving one without the other, and
+		// the next safe read builds a `bool` out of a byte that is neither 0 nor
+		// 1. The public surface is the CHECKED ACCESSOR PAIR below.
+		"pub(crate) tag: u8,",
+		"pub(crate) arms: EffectRowArms,",
 		"pub union EffectRowArms {",
+		"pub fn tag(&self) -> u8 {",
+		"pub fn boost(&self) -> Option<BoostRow> {",
+		"        if self.tag == 1 {",
+		"pub fn set_boost(&mut self, value: BoostRow) {",
+		"pub fn set_none(&mut self) {",
 		"const _: () = assert!(core::mem::offset_of!(EffectRow, tag) == 0,",
 		"const _: () = assert!(core::mem::offset_of!(EffectRowArms, boost) == 0,",
 		"pub effect: EffectRow,",
@@ -500,8 +510,12 @@ func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
 	for _, want := range []string{
 		"pub server_time: i32,",
 		"pub ping: u16,",
-		"pub wide_key: u128,",
-		"pub flux: i128,",
+		// AND THE 128-BIT SLOTS ARE THE ALIGNED WRAPPERS: ir's model puts a
+		// 128-bit integer at sixteen ALIGNED SIXTEEN, and Rust's own u128 takes
+		// the target's C alignment — eight on s390x — so the bare type would
+		// move the field there and the layout asserts say so.
+		"pub wide_key: TableU128,",
+		"pub flux: TableI128,",
 	} {
 		if !strings.Contains(rows, want) {
 			t.Errorf("the row does not carry %q", want)

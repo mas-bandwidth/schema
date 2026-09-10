@@ -51,7 +51,7 @@ void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes )
 }
 
 /* A READ THAT CLAIMS NOTHING ABOUT THE VALUES. A form-3 file with one bit
-   flipped is a block whose child sizes may not sum to its parent's, a tree that
+   flipped is a layout whose child sizes may not sum to its parent's, a tree that
    may not close, a chain a thousand deep, or a record count that divides
    wrongly. Every one of those must come out as a refusal by name, a malformed
    read, or a read that lands values — and never as a step outside the buffer,

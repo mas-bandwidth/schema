@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -66,6 +71,14 @@ namespace blockdemo {
 enum TableMessageReason
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
+    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
+    // registry is ordered, so a reader meeting a byte it does not carry can
+    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
+    // form, which is older, and calling that newer_form would send a caller
+    // looking for a build that does not exist. The bytes are the same refusal
+    // either way — nothing decoded, no counter moved — and only the name of it
+    // differs.
+    previous_form,
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
@@ -73,10 +86,22 @@ enum TableMessageReason
     batch_too_large,      // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
     // THE FIXED FORM'S THREE (docs/SPEC-TABLES.md §3.4). Each is a refusal by
     // name with nothing decoded and no counter moved, on the form byte's own
-    // precedent.
-    no_block,             // a fixed-form record whose hash names no vocabulary block this reader holds
-    block_malformed,      // bytes handed to the fixed form as a block that are not one: the count overruns, or the tree does not close
-    plan_too_large        // a block whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
+    // precedent. THE LAYOUT is what form 1 called the vocabulary block.
+    no_layout,        // a fixed-form record whose hash names no LAYOUT this reader holds
+    layout_malformed, // bytes handed to the fixed form as a layout that are not one: fewer than a header's worth of them
+    plan_too_large,   // a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
+    // THE LAYOUT VALIDATION'S OWN NAMES (docs/SPEC-TABLES.md §3.4). A layout is
+    // the one structure a reader must parse before it knows anything at all,
+    // and it arrives from an UNTRUSTED PEER, so each rule it is held to
+    // refuses under its own name rather than under one word for all of them.
+    // Every one of them runs BEFORE a single record byte is touched.
+    layout_count_mismatch,  // the entry count does not fit the layout's length exactly: the count, and then that many seventeen-byte entries
+    layout_kind_unknown,    // a kind OUTSIDE §3's closed set: a fixed form's kind set is closed, so an unknown kind means a newer FORM BYTE, which is a different form and not a newer layout of this one
+    layout_kind_invalid,    // a kind this build KNOWS, used in a way its own definition does not allow: a root that is not a table, an optional wrapper without exactly one child, a keyed array without exactly two, an enum whose children are not variants
+    layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
+    layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
+    layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
+    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
 };
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -2227,18 +2252,26 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 // ---------------------------------------------------------------------------
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
-//
-// THE SYMBOLS SAY "VOCAB" WHERE §3.4 SAYS "VOCABULARY BLOCK", and the reason is
-// that this codebase already spent the word BLOCK on §19's block form, whose
-// zero-cost gate holds that not one Block symbol appears in a Table source. The
-// spec keeps the owner's own name for the structure; the symbols get out of the
-// way of a gate that was there first.
 // ---------------------------------------------------------------------------
 
 constexpr uint8_t kTableFixedForm = 3;
 
+// THE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3, "THE FIRST
+// BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the form's own
+// EIGHT-BYTE HASH at offset 8, and the body at 16 — the alignment a
+// memory-mapped body needs. The fixed form does not need the alignment today;
+// it pads anyway, so the bytes do not move again the day the cook and the block
+// form join the registry under the same header.
+//
+// The hash here is the LAYOUT's. Each record still carries its own eight-byte
+// hash, which §3.4 has always said and which the header does not replace: the
+// header names the layout ONCE for the file, and a record names the layout it
+// was stamped by.
+constexpr int64_t kTableFixedHeaderBytes = 16;
+constexpr int64_t kTableFixedHashAt     = 8;
+
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other two are what a plan compiled from another writer's block adds.
+// the other two are what a plan compiled from another writer's layout adds.
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2250,7 +2283,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2304,7 +2337,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2324,7 +2363,7 @@ struct TableFixedEntry
 // instead of one per language, and it is what let the C leg carry this form at
 // all: C has no constexpr to run a walk with. The coalescer still exists at run
 // time, in TableFixedCompile below, because a plan compiled from a STRANGER's
-// block can only be built when that block arrives.
+// layout can only be built when that layout arrives.
 
 // ---- the little-endian moves -----------------------------------------------
 
@@ -2347,13 +2386,13 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     return v;
 }
 
-// THE HASH is fnv1a64 over the block's bytes exactly as written (§3.4).
-inline uint64_t TableFixedHashOf( const uint8_t * block, int64_t bytes )
+// THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4).
+inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
 {
     uint64_t h = 0xcbf29ce484222325ull;
     for ( int64_t i = 0; i < bytes; ++i )
     {
-        h ^= (uint64_t) block[i];
+        h ^= (uint64_t) layout[i];
         h *= 0x100000001b3ull;
     }
     return h;
@@ -2426,14 +2465,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2446,7 +2485,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedOrdinal:
         {
-            // A VARIANT ORDINAL IS ITS POSITION IN THE BLOCK, so a writer whose
+            // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
             // enum gained a variant IN THE MIDDLE is remapped here and never
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
@@ -2518,16 +2557,27 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     report->widened += widened;
 }
 
-// ---- THE BLOCK -------------------------------------------------------------
+// ---- THE LAYOUT ------------------------------------------------------------
 //
-// An entry is SEVENTEEN BYTES and the block is a count and a run of them. THE
-// FORMAT NEVER MOVES, which is what lets a reader of this major parse a later
-// major's block and step over a kind it does not know by the size the entry
-// states.
+// An entry is SEVENTEEN BYTES and the layout is a COUNT and a run of them.
+// THERE IS NO VERSION BYTE INSIDE IT (docs/SPEC-TABLES.md §3.4): the FORM BYTE
+// versions everything behind it, the layout's own format included, so a layout
+// format change is a NEW FORM BYTE and never a wider entry.
 
 constexpr int32_t kTableFixedEntryBytes = 17;
+constexpr int32_t kTableFixedLayoutHeaderBytes = 4; // the u32 entry count, and nothing else
 
-struct TableFixedVocabEntry
+// §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
+// the same reason the compiler holds a declaration to it: a record past it is
+// one this build will not decode.
+constexpr uint32_t kTableFixedRecordMaxBytes = 65536u;
+
+// A BOUND ON THE WALK, not on the wire: the validation below is recursive, so
+// a hostile layout of three thousand entries each claiming one child would
+// otherwise spend a reader's stack before any rule fired.
+constexpr int32_t kTableFixedMaxDepth = 64;
+
+struct TableFixedLayoutEntry
 {
     uint64_t id = 0;
     uint32_t size = 0;
@@ -2535,22 +2585,22 @@ struct TableFixedVocabEntry
     uint8_t kind = 0;
 };
 
-struct TableFixedVocab
+struct TableFixedLayoutView
 {
     const uint8_t * bytes = NULL;
     int32_t count = 0;
 };
 
-// AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a block
+// AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a layout
 // is arithmetic over child counts a STRANGER wrote, so the one place that can
 // hold the whole walk inside the buffer is the one place that touches it. An
 // out-of-range index answers kind 0xFF, which is a kind no declaration has and
 // nothing matches, so the walk that asked for it finds nothing and moves on.
-inline TableFixedVocabEntry TableFixedEntryAt( const TableFixedVocab & b, int32_t i )
+inline TableFixedLayoutEntry TableFixedEntryAt( const TableFixedLayoutView & b, int32_t i )
 {
-    TableFixedVocabEntry out;
+    TableFixedLayoutEntry out;
     if ( b.bytes == NULL || i < 0 || i >= b.count ) { out.kind = 0xFFu; return out; }
-    const uint8_t * e = b.bytes + 4 + (int64_t) i * kTableFixedEntryBytes;
+    const uint8_t * e = b.bytes + kTableFixedLayoutHeaderBytes + (int64_t) i * kTableFixedEntryBytes;
     out.id = TableFixedGet64( e );
     out.kind = e[8];
     out.size = TableFixedGet32( e + 9 );
@@ -2560,9 +2610,9 @@ inline TableFixedVocabEntry TableFixedEntryAt( const TableFixedVocab & b, int32_
 
 // TableFixedSubtree is how many entries the subtree rooted at i occupies, so a
 // walk steps over a child it does not want without knowing what is in it.
-inline int32_t TableFixedSubtree( const TableFixedVocab & b, int32_t i )
+inline int32_t TableFixedSubtree( const TableFixedLayoutView & b, int32_t i )
 {
-    // ITERATIVE ON PURPOSE. A block is a stranger's bytes, so a chain of
+    // ITERATIVE ON PURPOSE. A layout is a stranger's bytes, so a chain of
     // single-child entries is a stack depth the wire gets to choose; this walk
     // gives it none.
     if ( i < 0 || i >= b.count ) { return 1; }
@@ -2580,36 +2630,252 @@ inline int32_t TableFixedSubtree( const TableFixedVocab & b, int32_t i )
     return n;
 }
 
-inline uint32_t TableFixedUnionArmBytes( const TableFixedVocab & b, int32_t i )
+inline uint32_t TableFixedUnionArmBytes( const TableFixedLayoutView & b, int32_t i )
 {
-    const TableFixedVocabEntry e = TableFixedEntryAt( b, i );
+    const TableFixedLayoutEntry e = TableFixedEntryAt( b, i );
     uint32_t widest = 0;
     int32_t at = i + 1;
     for ( uint32_t k = 0; k < e.children && at < b.count; ++k )
     {
-        const TableFixedVocabEntry a = TableFixedEntryAt( b, at );
+        const TableFixedLayoutEntry a = TableFixedEntryAt( b, at );
         if ( a.size > widest ) { widest = a.size; }
         at += TableFixedSubtree( b, at );
     }
     return widest;
 }
 
-inline uint32_t TableFixedTagBytes( const TableFixedVocab & b, int32_t i )
+inline uint32_t TableFixedTagBytes( const TableFixedLayoutView & b, int32_t i )
 {
     return TableFixedEntryAt( b, i ).size - TableFixedUnionArmBytes( b, i );
 }
 
-inline bool TableFixedVocabRead( const uint8_t * bytes, int64_t length, TableFixedVocab & out )
+// ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
+//
+// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// must parse before it knows anything at all, so every rule below runs BEFORE
+// a single record byte is touched and each refuses under its OWN NAME rather
+// than under one word for all of them (docs/SPEC-TABLES.md §3.4).
+//
+// A KIND THIS BUILD DOES NOT KNOW IS A REFUSAL, and that is a ruling rather
+// than an oversight. A FIXED FORM HAS A CLOSED KIND SET: the form byte versions
+// everything behind it, kinds included, so a layout carrying a kind outside the
+// set is not a newer layout of THIS form — it is a layout of a form whose byte
+// this reader never saw, and there is no version of "step over it" that is
+// honest about that. layout_kind_unknown says exactly what happened, and the
+// peer is told to speak this form or a form this reader carries.
+//
+// NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle:
+// an entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is
+// always higher than its parent's, the layout is finite, and there is no back
+// reference for a cycle to be made of. The tree-closure rule is what bounds
+// the walk, and the depth rule is what bounds the reader's stack.
+
+struct TableFixedCheck
 {
-    if ( bytes == NULL || length < 4 ) { return false; }
-    const uint32_t count = TableFixedGet32( bytes );
-    if ( count == 0 || (int64_t) count * kTableFixedEntryBytes + 4 != length ) { return false; }
-    out.bytes = bytes;
-    out.count = (int32_t) count;
-    // THE TREE HAS TO CLOSE: the root's subtree is the whole block
-    if ( TableFixedSubtree( out, 0 ) != out.count ) { out.bytes = NULL; out.count = 0; return false; }
+    const TableFixedLayoutView * layout = NULL;
+    TableMessageReason why = layout_malformed;
+    bool bad = false;
+};
+
+inline void TableFixedFail( TableFixedCheck & c, TableMessageReason why )
+{
+    if ( !c.bad ) { c.bad = true; c.why = why; }
+}
+
+// A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
+// ONE exception, and it is stated here rather than left to be found: a
+// bits(N) field rides at its DECLARED STORAGE WIDTH — four bytes for N <= 32 and
+// eight above (§3.4) — under the unsigned integer kind its BIT COUNT picks
+// (§3), so kinds 6 and 7 admit four as well as their own width.
+inline bool TableFixedLeafSize( uint8_t kind, uint32_t size, bool & is_leaf )
+{
+    is_leaf = true;
+    switch ( kind )
+    {
+        case 1:  return size == 1u;                  // bool
+        case 2:  return size == 1u;                  // i8
+        case 3:  return size == 2u;                  // i16
+        case 4:  return size == 4u;                  // i32
+        case 5:  return size == 8u;                  // i64
+        case 6:  return size == 1u || size == 4u;    // u8,  and bits( 1 .. 8 )
+        case 7:  return size == 2u || size == 4u;    // u16, and bits( 9 .. 16 )
+        case 8:  return size == 4u;                  // u32, and bits( 17 .. 32 )
+        case 9:  return size == 8u;                  // u64, flags, and bits( 33 .. 64 )
+        case 10: return size == 4u;                  // f32
+        case 11: return size == 8u;                  // f64
+        case 17: return size == 4u;                  // a pointer index, which no fixed table carries
+        case 18: case 19: return size == 16u;        // i128, u128
+        case 20: case 25: return size == 1u;         // fixed8, ufixed8
+        case 21: case 26: return size == 2u;
+        case 22: case 27: return size == 4u;
+        case 23: case 28: return size == 8u;
+        case 24: case 29: return size == 16u;
+        case 32: return size == 0u;                  // a variant, and an arm that holds nothing
+    }
+    is_leaf = false;
     return true;
 }
+
+inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
+
+// THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
+// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
+// adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
+// reserved: neither is a kind a declaration spells, so neither is ever an
+// entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
+// — see the note above TableFixedCheck.
+inline bool TableFixedKnownKind( uint8_t kind )
+{
+    if ( kind >= 1u && kind <= 30u ) { return true; }
+    return kind == 32u || kind == 33u || kind == 35u;
+}
+
+// TableFixedCheckEntry validates the subtree rooted at i and answers how many
+// entries it occupies, which is the same arithmetic TableFixedSubtree does and
+// is why that walk is safe to run afterwards and only afterwards.
+inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t depth )
+{
+    if ( c.bad ) { return 0; }
+    if ( i < 0 || i >= c.layout->count ) { TableFixedFail( c, layout_tree_unclosed ); return 0; }
+    if ( depth > kTableFixedMaxDepth ) { TableFixedFail( c, layout_too_deep ); return 0; }
+    const TableFixedLayoutEntry e = TableFixedEntryAt( *c.layout, i );
+    // THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
+    // and is refused whole, never walked and never stepped over.
+    if ( !TableFixedKnownKind( e.kind ) ) { TableFixedFail( c, layout_kind_unknown ); return 0; }
+    if ( e.size > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }
+
+    // THE CHILDREN FIRST, in the pre-order the layout is written in.
+    int32_t at = i + 1;
+    uint64_t sum = 0;
+    uint32_t widest = 0;
+    uint32_t first_size = 0, second_size = 0;
+    uint8_t first_kind = 0;
+    uint32_t first_children = 0;
+    bool kids_are_variants = true;
+    for ( uint32_t k = 0; k < e.children; ++k )
+    {
+        const int32_t child = at;
+        const int32_t used = TableFixedCheckEntry( c, child, depth + 1 );
+        if ( c.bad ) { return 0; }
+        const TableFixedLayoutEntry ce = TableFixedEntryAt( *c.layout, child );
+        if ( k == 0 ) { first_size = ce.size; first_kind = ce.kind; first_children = ce.children; }
+        if ( k == 1 ) { second_size = ce.size; }
+        if ( ce.kind != 32 ) { kids_are_variants = false; }
+        sum += ce.size;
+        if ( ce.size > widest ) { widest = ce.size; }
+        if ( sum > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }
+        at += used;
+    }
+
+    bool is_leaf = false;
+    if ( !TableFixedLeafSize( e.kind, e.size, is_leaf ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+    if ( is_leaf )
+    {
+        if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+        return at - i;
+    }
+    switch ( e.kind )
+    {
+        case 13: // a TABLE: its size is the SUM of its fields'
+        {
+            if ( (uint64_t) e.size != sum ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 35: // the OPTIONAL WRAPPER: one child, one present byte in front of it
+        {
+            if ( e.children != 1u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( (uint64_t) e.size != sum + 1u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 14: // an ARRAY: a whole number of elements, behind a count or not
+        {
+            if ( e.children != 1u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( first_size == 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            const bool bare = ( e.size % first_size ) == 0u;
+            const bool counted = e.size >= 4u && ( ( e.size - 4u ) % first_size ) == 0u;
+            if ( !bare && !counted ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 16: // an ENUM-KEYED array: the KEY ENUM then the ELEMENT, every slot written
+        {
+            if ( e.children != 2u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( first_kind != 30 ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( second_size == 0u || ( e.size % second_size ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            // AT LEAST one slot per variant. Not exactly one: an enum widened
+            // by an explicit max has more slots than it has names, and the
+            // layout carries only the names.
+            if ( e.size / second_size < first_children ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 15: // a UNION: the TAG at its own width, then the WIDEST ARM
+        {
+            if ( e.children == 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( e.size <= widest ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( !TableFixedOrdinalWidth( e.size - widest ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 30: // an ENUM: the ordinal's storage width, and its children are VARIANTS
+        {
+            if ( !TableFixedOrdinalWidth( e.size ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.children != 0u && !kids_are_variants ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            break;
+        }
+        case 12: // string(N): the length, then N bytes
+        {
+            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( e.size < 4u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
+        {
+            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        // Every kind of the closed set is either a leaf above or a case here,
+        // so this is unreachable — and it refuses rather than admits, because
+        // a kind that reached it is a kind the two lists disagree about.
+        default: TableFixedFail( c, layout_kind_unknown ); return 0;
+    }
+    return at - i;
+}
+
+// TableFixedParseLayout is the WHOLE of what a reader trusts a layout on. It
+// answers false and a REASON BY NAME, and the caller reports that reason.
+inline bool TableFixedParseLayout( const uint8_t * bytes, int64_t length, TableFixedLayoutView & out, TableMessageReason & why )
+{
+    out.bytes = NULL;
+    out.count = 0;
+    if ( bytes == NULL || length < kTableFixedLayoutHeaderBytes ) { why = layout_malformed; return false; }
+    // 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
+    const uint32_t count = TableFixedGet32( bytes );
+    if ( count == 0u || (int64_t) count * kTableFixedEntryBytes + kTableFixedLayoutHeaderBytes != length )
+    {
+        why = layout_count_mismatch;
+        return false;
+    }
+    TableFixedLayoutView view;
+    view.bytes = bytes;
+    view.count = (int32_t) count;
+    // 2. THE ROOT IS A TABLE, and its size is the record's body
+    const TableFixedLayoutEntry root = TableFixedEntryAt( view, 0 );
+    if ( root.kind != 13 ) { why = layout_kind_invalid; return false; }
+    if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes ) { why = layout_record_too_large; return false; }
+    // 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
+    //    SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND
+    TableFixedCheck c;
+    c.layout = &view;
+    const int32_t used = TableFixedCheckEntry( c, 0, 0 );
+    if ( c.bad ) { why = c.why; return false; }
+    // 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
+    //    the layout has nothing left over
+    if ( used != view.count ) { why = layout_tree_unclosed; return false; }
+    out = view;
+    return true;
+}
+
+
+
 
 // ---- THE PLAN COMPILER -----------------------------------------------------
 //
@@ -2621,15 +2887,15 @@ inline bool TableFixedVocabRead( const uint8_t * bytes, int64_t length, TableFix
 // out too, which is what defaults it, because the prefill already put the
 // declared default there.
 
-// TableFixedDst is MY side of the walk: one row per entry of my own block,
-// carrying the storage facts a block entry cannot.
+// TableFixedDst is MY side of the walk: one row per entry of my own layout,
+// carrying the storage facts a layout entry cannot.
 struct TableFixedDst
 {
     uint32_t dst = 0;    // this entry's storage offset inside its parent
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -2653,8 +2919,8 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
-    // a STRANGER wrote, so a block whose child sizes do not sum to its parent's
-    // could otherwise name a byte past the record. A block that does is refused
+    // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
+    // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
     {
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
@@ -2687,27 +2953,27 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
-                                    const TableFixedVocab & theirs, int32_t ti, uint32_t their_at,
-                                    const TableFixedVocab & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+                                    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                     uint32_t guard, uint8_t arg );
 
 // TableFixedMatchChildren walks a TABLE's children on both sides.
 inline void TableFixedMatchChildren( TableFixedCompiler & c,
-                                     const TableFixedVocab & theirs, int32_t ti, uint32_t their_at,
-                                     const TableFixedVocab & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                      uint32_t guard, uint8_t arg )
 {
-    const TableFixedVocabEntry te = TableFixedEntryAt( theirs, ti );
-    const TableFixedVocabEntry me = TableFixedEntryAt( mine, mi );
+    const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
+    const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
     int32_t my_child = mi + 1;
     for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
     {
-        const TableFixedVocabEntry mc = TableFixedEntryAt( mine, my_child );
+        const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
         int32_t their_child = ti + 1;
         uint32_t their_off = their_at;
         for ( uint32_t j = 0; j < te.children && their_child < theirs.count; ++j )
         {
-            const TableFixedVocabEntry tc = TableFixedEntryAt( theirs, their_child );
+            const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
             if ( tc.id == mc.id )
             {
                 TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
@@ -2722,7 +2988,7 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
     int32_t tc_at = ti + 1;
     for ( uint32_t j = 0; j < te.children && tc_at < theirs.count; ++j )
     {
-        const TableFixedVocabEntry tc = TableFixedEntryAt( theirs, tc_at );
+        const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, tc_at );
         bool named = false;
         int32_t mc_at = mi + 1;
         for ( uint32_t k = 0; k < me.children && mc_at < mine.count; ++k )
@@ -2736,15 +3002,15 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
-                                    const TableFixedVocab & theirs, int32_t ti, uint32_t their_at,
-                                    const TableFixedVocab & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+                                    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                     uint32_t guard, uint8_t arg )
 {
-    const TableFixedVocabEntry te = TableFixedEntryAt( theirs, ti );
-    const TableFixedVocabEntry me = TableFixedEntryAt( mine, mi );
+    const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
+    const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
     const TableFixedDst & d = dst[mi];
     const uint32_t at = my_at + d.dst;
-    // THE NESTING A STRANGER'S BLOCK CAN ASK FOR IS CAPPED. The language's own
+    // THE NESTING A STRANGER'S LAYOUT CAN ASK FOR IS CAPPED. The language's own
     // closure is nowhere near this deep, and a wire does not get to pick a
     // recursion depth.
     if ( c.depth > 64 ) { c.hostile = true; return; }
@@ -2789,8 +3055,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 14: // an array: the count, then min( their bound, my bound ) elements
         {
-            const TableFixedVocabEntry tel = TableFixedEntryAt( theirs, ti + 1 );
-            const TableFixedVocabEntry mel = TableFixedEntryAt( mine, mi + 1 );
+            const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
+            const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
             const uint32_t their_n = tel.size ? ( te.size - head ) / tel.size : 0u;
             const uint32_t my_n = mel.size ? ( me.size - head ) / mel.size : 0u;
@@ -2811,11 +3077,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
         {
-            const TableFixedVocabEntry tkey = TableFixedEntryAt( theirs, ti + 1 );
-            const TableFixedVocabEntry mkey = TableFixedEntryAt( mine, mi + 1 );
+            const TableFixedLayoutEntry tkey = TableFixedEntryAt( theirs, ti + 1 );
+            const TableFixedLayoutEntry mkey = TableFixedEntryAt( mine, mi + 1 );
             const int32_t tel = ti + 1 + TableFixedSubtree( theirs, ti + 1 );
             const int32_t mel = mi + 1 + TableFixedSubtree( mine, mi + 1 );
-            const TableFixedVocabEntry tee = TableFixedEntryAt( theirs, tel );
+            const TableFixedLayoutEntry tee = TableFixedEntryAt( theirs, tel );
             for ( uint32_t k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine.count; ++k )
             {
                 const uint64_t key_id = TableFixedEntryAt( mine, mi + 2 + (int32_t) k ).id;
@@ -2836,11 +3102,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             int32_t my_arm = mi + 1;
             for ( uint32_t k = 0; k < me.children && my_arm < mine.count; ++k )
             {
-                const TableFixedVocabEntry ma = TableFixedEntryAt( mine, my_arm );
+                const TableFixedLayoutEntry ma = TableFixedEntryAt( mine, my_arm );
                 int32_t their_arm = ti + 1;
                 for ( uint32_t j = 0; j < te.children && their_arm < theirs.count; ++j )
                 {
-                    const TableFixedVocabEntry ta = TableFixedEntryAt( theirs, their_arm );
+                    const TableFixedLayoutEntry ta = TableFixedEntryAt( theirs, their_arm );
                     if ( ta.id == ma.id )
                     {
                         // MY tag value, written under THEIR tag's guard
@@ -2858,7 +3124,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             break;
         }
-        case 30: // an enum: the ordinal is the block's position, so it remaps
+        case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
             if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
             uint16_t map[256];
@@ -2885,7 +3151,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -2912,15 +3178,19 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     }
 }
 
-inline int32_t TableFixedCompile( const TableFixedVocab & theirs,
-                                  const uint8_t * my_block, int32_t my_block_bytes,
+inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
+                                  const uint8_t * my_layout, int32_t my_layout_bytes,
                                   const TableFixedDst * dst,
                                   TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
                                   TableReport * report )
 {
-    TableFixedVocab mine;
+    TableFixedLayoutView mine;
+    TableMessageReason why = layout_malformed;
     if ( plan == NULL || plan_capacity <= 0 ) { return -1; }
-    if ( !TableFixedVocabRead( my_block, my_block_bytes, mine ) ) { return -1; }
+    // MY OWN layout goes through the same rules a stranger's does. It is this
+    // build's own bytes, so it cannot fail — and saying so in the one place
+    // both sides go through is what keeps that true.
+    if ( !TableFixedParseLayout( my_layout, my_layout_bytes, mine, why ) ) { return -1; }
     TableFixedCompiler c;
     c.plan = plan;
     c.capacity = plan_capacity;
@@ -4264,7 +4534,7 @@ inline TableOpenVerdict RenderCameraLoadVerdict( RenderCamera & value, const uin
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -4349,7 +4619,7 @@ inline int64_t RenderCameraMeasureMessageBody( int64_t at, const RenderCamera & 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderCameraSaveMessageBody( TableBitWriter & w, const RenderCamera & value )
 {
     {
@@ -5090,7 +5360,7 @@ inline TableOpenVerdict RenderShipLoadVerdict( RenderShip & value, const uint8_t
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -5202,7 +5472,7 @@ inline int64_t RenderShipMeasureMessageBody( int64_t at, const RenderShip & valu
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderShipSaveMessageBody( TableBitWriter & w, const RenderShip & value )
 {
     {
@@ -6012,7 +6282,7 @@ inline TableOpenVerdict RenderTurretLoadVerdict( RenderTurret & value, const uin
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -6109,7 +6379,7 @@ inline int64_t RenderTurretMeasureMessageBody( int64_t at, const RenderTurret & 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderTurretSaveMessageBody( TableBitWriter & w, const RenderTurret & value )
 {
     {
@@ -6862,7 +7132,7 @@ inline TableOpenVerdict RenderMissileLoadVerdict( RenderMissile & value, const u
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -6954,7 +7224,7 @@ inline int64_t RenderMissileMeasureMessageBody( int64_t at, const RenderMissile 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderMissileSaveMessageBody( TableBitWriter & w, const RenderMissile & value )
 {
     {
@@ -7613,7 +7883,7 @@ inline TableOpenVerdict RenderDynamicPropLoadVerdict( RenderDynamicProp & value,
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -7705,7 +7975,7 @@ inline int64_t RenderDynamicPropMeasureMessageBody( int64_t at, const RenderDyna
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderDynamicPropSaveMessageBody( TableBitWriter & w, const RenderDynamicProp & value )
 {
     {
@@ -8372,7 +8642,7 @@ inline TableOpenVerdict RenderStaticPropLoadVerdict( RenderStaticProp & value, c
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -8464,7 +8734,7 @@ inline int64_t RenderStaticPropMeasureMessageBody( int64_t at, const RenderStati
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderStaticPropSaveMessageBody( TableBitWriter & w, const RenderStaticProp & value )
 {
     {
@@ -9163,7 +9433,7 @@ inline TableOpenVerdict RenderCosmeticPropLoadVerdict( RenderCosmeticProp & valu
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -9260,7 +9530,7 @@ inline int64_t RenderCosmeticPropMeasureMessageBody( int64_t at, const RenderCos
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderCosmeticPropSaveMessageBody( TableBitWriter & w, const RenderCosmeticProp & value )
 {
     {
@@ -9934,7 +10204,7 @@ inline TableOpenVerdict RenderLaserLoadVerdict( RenderLaser & value, const uint8
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -10021,7 +10291,7 @@ inline int64_t RenderLaserMeasureMessageBody( int64_t at, const RenderLaser & va
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderLaserSaveMessageBody( TableBitWriter & w, const RenderLaser & value )
 {
     {
@@ -10658,7 +10928,7 @@ inline TableOpenVerdict RenderExplosionLoadVerdict( RenderExplosion & value, con
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -10750,7 +11020,7 @@ inline int64_t RenderExplosionMeasureMessageBody( int64_t at, const RenderExplos
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderExplosionSaveMessageBody( TableBitWriter & w, const RenderExplosion & value )
 {
     {
@@ -12116,7 +12386,7 @@ inline TableOpenVerdict RenderFrameLoadVerdict( RenderFrame & value, const uint8
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -12276,7 +12546,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & value )
 {
     if ( value.version != 0 )
@@ -13001,7 +13271,7 @@ inline TableOpenVerdict RenderVector3LoadVerdict( RenderVector3 & value, const u
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -13063,7 +13333,7 @@ inline int64_t RenderVector3MeasureMessageBody( int64_t at, const RenderVector3 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderVector3SaveMessageBody( TableBitWriter & w, const RenderVector3 & value )
 {
     if ( value.x != 0.0 )
@@ -13488,7 +13758,7 @@ inline TableOpenVerdict RenderQuaternionLoadVerdict( RenderQuaternion & value, c
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -13555,7 +13825,7 @@ inline int64_t RenderQuaternionMeasureMessageBody( int64_t at, const RenderQuate
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool RenderQuaternionSaveMessageBody( TableBitWriter & w, const RenderQuaternion & value )
 {
     if ( value.x != 0.0 )
@@ -13822,11 +14092,11 @@ inline bool RenderQuaternionLoadMessages( RenderQuaternion * values, int64_t * c
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 //
-// A record is an eight-byte hash of the writer's vocabulary block and then
+// A record is an eight-byte hash of the writer's LAYOUT and then
 // the values in declared order, every field at its declared storage width.
 // The writer is the constant bytes memcpy'd and then stores; the reader is
 // ONE loop over ONE plan, the identity plan here and a plan compiled from
-// the writer's own block for anybody else.
+// the writer's own layout for anybody else.
 
 // THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
 // schema compiler rather than folded by this one, because they are the same
@@ -14077,11 +14347,12 @@ inline void RenderExplosionFixedWriteBody( uint8_t * b, const RenderExplosion & 
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderCameraFixedBodyBytes = 72;
 constexpr int64_t RenderCameraFixedRecordBytes = 8 + RenderCameraFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderCameraFixedHash = 0x74ade5c3866f68d1ull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderCameraFixedHash = 0x74ade5c3866f68d1ull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 14 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderCameraFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 14 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderCameraFixedLayout[] = {
     0x0e, 0x00, 0x00, 0x00, 0x06, 0x03, 0xf3, 0x15, 0x9d, 0xb2, 0xc6, 0x11, 0x0d, 0x48, 0x00, 0x00,
     0x00, 0x06, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
     0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -14099,11 +14370,11 @@ constexpr uint8_t RenderCameraFixedVocab[] = {
     0x00, 0x5c, 0xe1, 0xd9, 0xfe, 0x18, 0x7c, 0xb2, 0xdc, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00,
 };
-constexpr int64_t RenderCameraFixedVocabBytes = (int64_t) sizeof( RenderCameraFixedVocab );
+constexpr int64_t RenderCameraFixedLayoutBytes = (int64_t) sizeof( RenderCameraFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderCameraFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderCamera
     { (uint32_t) __builtin_offsetof( RenderCamera, position ), 0, 0, 0, 0 }, // position
@@ -14128,25 +14399,29 @@ constexpr TableFixedDst RenderCameraFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderCameraFixedPlan[] = {
-    { 0u, 0u, 72u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 72u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderCameraFixedPlanCount = 1;
 constexpr int32_t RenderCameraFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderCameraFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderCameraFixedVocabBytes + count * RenderCameraFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderCameraFixedLayoutBytes + count * RenderCameraFixedRecordBytes;
 }
 
 inline int64_t RenderCameraFixedSave( const RenderCamera * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderCameraFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderCameraFixedVocabBytes );
-    memcpy( buffer + 5, RenderCameraFixedVocab, (size_t) RenderCameraFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderCameraFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderCameraFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderCameraFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderCameraFixedLayout, (size_t) RenderCameraFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderCameraFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderCameraFixedHash );
@@ -14158,45 +14433,63 @@ inline int64_t RenderCameraFixedSave( const RenderCamera * values, int64_t count
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderCameraFixedPlan;
     int32_t entry_count = RenderCameraFixedPlanCount;
     int32_t entry_guarded = RenderCameraFixedPlanGuarded;
     int64_t record_bytes = RenderCameraFixedRecordBytes;
     if ( hash != RenderCameraFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderCameraFixedVocab, (int32_t) RenderCameraFixedVocabBytes, RenderCameraFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderCameraFixedLayout, (int32_t) RenderCameraFixedLayoutBytes, RenderCameraFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderCameraReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -14209,11 +14502,12 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderShipFixedBodyBytes = 81;
 constexpr int64_t RenderShipFixedRecordBytes = 8 + RenderShipFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderShipFixedHash = 0x890e08a270d96102ull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderShipFixedHash = 0x890e08a270d96102ull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 26 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderShipFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 26 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderShipFixedLayout[] = {
     0x1a, 0x00, 0x00, 0x00, 0x07, 0x60, 0xad, 0x3f, 0xd9, 0xed, 0x00, 0x5b, 0x0d, 0x51, 0x00, 0x00,
     0x00, 0x0b, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
     0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -14243,11 +14537,11 @@ constexpr uint8_t RenderShipFixedVocab[] = {
     0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x81, 0xcb, 0xb9,
     0xa1, 0x7b, 0xe9, 0x5b, 0x4d, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t RenderShipFixedVocabBytes = (int64_t) sizeof( RenderShipFixedVocab );
+constexpr int64_t RenderShipFixedLayoutBytes = (int64_t) sizeof( RenderShipFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderShipFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderShip
     { (uint32_t) __builtin_offsetof( RenderShip, position ), 0, 0, 0, 0 }, // position
@@ -14284,25 +14578,29 @@ constexpr TableFixedDst RenderShipFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderShipFixedPlan[] = {
-    { 0u, 0u, 81u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 81u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderShipFixedPlanCount = 1;
 constexpr int32_t RenderShipFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderShipFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderShipFixedVocabBytes + count * RenderShipFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderShipFixedLayoutBytes + count * RenderShipFixedRecordBytes;
 }
 
 inline int64_t RenderShipFixedSave( const RenderShip * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderShipFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderShipFixedVocabBytes );
-    memcpy( buffer + 5, RenderShipFixedVocab, (size_t) RenderShipFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderShipFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderShipFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderShipFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderShipFixedLayout, (size_t) RenderShipFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderShipFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderShipFixedHash );
@@ -14314,45 +14612,63 @@ inline int64_t RenderShipFixedSave( const RenderShip * values, int64_t count, ui
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderShipFixedPlan;
     int32_t entry_count = RenderShipFixedPlanCount;
     int32_t entry_guarded = RenderShipFixedPlanGuarded;
     int64_t record_bytes = RenderShipFixedRecordBytes;
     if ( hash != RenderShipFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderShipFixedVocab, (int32_t) RenderShipFixedVocabBytes, RenderShipFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderShipFixedLayout, (int32_t) RenderShipFixedLayoutBytes, RenderShipFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderShipReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -14365,11 +14681,12 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderTurretFixedBodyBytes = 59;
 constexpr int64_t RenderTurretFixedRecordBytes = 8 + RenderTurretFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderTurretFixedHash = 0x9e443be2f7294b72ull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderTurretFixedHash = 0x9e443be2f7294b72ull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 18 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderTurretFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 18 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderTurretFixedLayout[] = {
     0x12, 0x00, 0x00, 0x00, 0x9f, 0xc2, 0x08, 0xa4, 0x1f, 0x18, 0x34, 0x40, 0x0d, 0x3b, 0x00, 0x00,
     0x00, 0x09, 0x00, 0x00, 0x00, 0x9f, 0x70, 0x34, 0xcd, 0x05, 0xfb, 0x1a, 0xb5, 0x0d, 0x20, 0x00,
     0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -14391,11 +14708,11 @@ constexpr uint8_t RenderTurretFixedVocab[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x71, 0x01, 0x22, 0xa1, 0x45, 0xfa, 0x54, 0x15, 0x01, 0x01, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t RenderTurretFixedVocabBytes = (int64_t) sizeof( RenderTurretFixedVocab );
+constexpr int64_t RenderTurretFixedLayoutBytes = (int64_t) sizeof( RenderTurretFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderTurretFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderTurret
     { (uint32_t) __builtin_offsetof( RenderTurret, rotation ), 0, 0, 0, 0 }, // rotation
@@ -14424,25 +14741,29 @@ constexpr TableFixedDst RenderTurretFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderTurretFixedPlan[] = {
-    { 0u, 0u, 59u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 59u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderTurretFixedPlanCount = 1;
 constexpr int32_t RenderTurretFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderTurretFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderTurretFixedVocabBytes + count * RenderTurretFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderTurretFixedLayoutBytes + count * RenderTurretFixedRecordBytes;
 }
 
 inline int64_t RenderTurretFixedSave( const RenderTurret * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderTurretFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderTurretFixedVocabBytes );
-    memcpy( buffer + 5, RenderTurretFixedVocab, (size_t) RenderTurretFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderTurretFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderTurretFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderTurretFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderTurretFixedLayout, (size_t) RenderTurretFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderTurretFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderTurretFixedHash );
@@ -14454,45 +14775,63 @@ inline int64_t RenderTurretFixedSave( const RenderTurret * values, int64_t count
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderTurretFixedPlan;
     int32_t entry_count = RenderTurretFixedPlanCount;
     int32_t entry_guarded = RenderTurretFixedPlanGuarded;
     int64_t record_bytes = RenderTurretFixedRecordBytes;
     if ( hash != RenderTurretFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderTurretFixedVocab, (int32_t) RenderTurretFixedVocabBytes, RenderTurretFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderTurretFixedLayout, (int32_t) RenderTurretFixedLayoutBytes, RenderTurretFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderTurretReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -14505,11 +14844,12 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderMissileFixedBodyBytes = 71;
 constexpr int64_t RenderMissileFixedRecordBytes = 8 + RenderMissileFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderMissileFixedHash = 0xf7ec4593b531c59aull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderMissileFixedHash = 0xf7ec4593b531c59aull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 21 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderMissileFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 21 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderMissileFixedLayout[] = {
     0x15, 0x00, 0x00, 0x00, 0x5b, 0x13, 0xda, 0x14, 0x11, 0xb3, 0xda, 0x93, 0x0d, 0x47, 0x00, 0x00,
     0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
     0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -14534,11 +14874,11 @@ constexpr uint8_t RenderMissileFixedVocab[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t RenderMissileFixedVocabBytes = (int64_t) sizeof( RenderMissileFixedVocab );
+constexpr int64_t RenderMissileFixedLayoutBytes = (int64_t) sizeof( RenderMissileFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderMissileFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderMissile
     { (uint32_t) __builtin_offsetof( RenderMissile, position ), 0, 0, 0, 0 }, // position
@@ -14570,25 +14910,29 @@ constexpr TableFixedDst RenderMissileFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderMissileFixedPlan[] = {
-    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderMissileFixedPlanCount = 1;
 constexpr int32_t RenderMissileFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderMissileFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderMissileFixedVocabBytes + count * RenderMissileFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderMissileFixedLayoutBytes + count * RenderMissileFixedRecordBytes;
 }
 
 inline int64_t RenderMissileFixedSave( const RenderMissile * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderMissileFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderMissileFixedVocabBytes );
-    memcpy( buffer + 5, RenderMissileFixedVocab, (size_t) RenderMissileFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderMissileFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderMissileFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderMissileFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderMissileFixedLayout, (size_t) RenderMissileFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderMissileFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderMissileFixedHash );
@@ -14600,45 +14944,63 @@ inline int64_t RenderMissileFixedSave( const RenderMissile * values, int64_t cou
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderMissileFixedPlan;
     int32_t entry_count = RenderMissileFixedPlanCount;
     int32_t entry_guarded = RenderMissileFixedPlanGuarded;
     int64_t record_bytes = RenderMissileFixedRecordBytes;
     if ( hash != RenderMissileFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderMissileFixedVocab, (int32_t) RenderMissileFixedVocabBytes, RenderMissileFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderMissileFixedLayout, (int32_t) RenderMissileFixedLayoutBytes, RenderMissileFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderMissileReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -14651,11 +15013,12 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderDynamicPropFixedBodyBytes = 71;
 constexpr int64_t RenderDynamicPropFixedRecordBytes = 8 + RenderDynamicPropFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderDynamicPropFixedHash = 0x79301f61e3f56e22ull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderDynamicPropFixedHash = 0x79301f61e3f56e22ull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 22 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderDynamicPropFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 22 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderDynamicPropFixedLayout[] = {
     0x16, 0x00, 0x00, 0x00, 0x47, 0x01, 0xb4, 0x1b, 0x0e, 0xd0, 0xa6, 0xcc, 0x0d, 0x47, 0x00, 0x00,
     0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
     0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -14681,11 +15044,11 @@ constexpr uint8_t RenderDynamicPropFixedVocab[] = {
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
     0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t RenderDynamicPropFixedVocabBytes = (int64_t) sizeof( RenderDynamicPropFixedVocab );
+constexpr int64_t RenderDynamicPropFixedLayoutBytes = (int64_t) sizeof( RenderDynamicPropFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderDynamicProp
     { (uint32_t) __builtin_offsetof( RenderDynamicProp, position ), 0, 0, 0, 0 }, // position
@@ -14718,25 +15081,29 @@ constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderDynamicPropFixedPlan[] = {
-    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 71u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderDynamicPropFixedPlanCount = 1;
 constexpr int32_t RenderDynamicPropFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderDynamicPropFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderDynamicPropFixedVocabBytes + count * RenderDynamicPropFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderDynamicPropFixedLayoutBytes + count * RenderDynamicPropFixedRecordBytes;
 }
 
 inline int64_t RenderDynamicPropFixedSave( const RenderDynamicProp * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderDynamicPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderDynamicPropFixedVocabBytes );
-    memcpy( buffer + 5, RenderDynamicPropFixedVocab, (size_t) RenderDynamicPropFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderDynamicPropFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderDynamicPropFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderDynamicPropFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderDynamicPropFixedLayout, (size_t) RenderDynamicPropFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderDynamicPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderDynamicPropFixedHash );
@@ -14748,45 +15115,63 @@ inline int64_t RenderDynamicPropFixedSave( const RenderDynamicProp * values, int
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderDynamicPropFixedPlan;
     int32_t entry_count = RenderDynamicPropFixedPlanCount;
     int32_t entry_guarded = RenderDynamicPropFixedPlanGuarded;
     int64_t record_bytes = RenderDynamicPropFixedRecordBytes;
     if ( hash != RenderDynamicPropFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderDynamicPropFixedVocab, (int32_t) RenderDynamicPropFixedVocabBytes, RenderDynamicPropFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderDynamicPropFixedLayout, (int32_t) RenderDynamicPropFixedLayoutBytes, RenderDynamicPropFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderDynamicPropReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -14799,11 +15184,12 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderStaticPropFixedBodyBytes = 78;
 constexpr int64_t RenderStaticPropFixedRecordBytes = 8 + RenderStaticPropFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderStaticPropFixedHash = 0xa63b40147f0f5066ull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderStaticPropFixedHash = 0xa63b40147f0f5066ull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 22 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderStaticPropFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 22 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderStaticPropFixedLayout[] = {
     0x16, 0x00, 0x00, 0x00, 0xfe, 0x76, 0x52, 0x86, 0x2b, 0xd6, 0x9a, 0xc1, 0x0d, 0x4e, 0x00, 0x00,
     0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
     0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -14829,11 +15215,11 @@ constexpr uint8_t RenderStaticPropFixedVocab[] = {
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16,
     0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t RenderStaticPropFixedVocabBytes = (int64_t) sizeof( RenderStaticPropFixedVocab );
+constexpr int64_t RenderStaticPropFixedLayoutBytes = (int64_t) sizeof( RenderStaticPropFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderStaticPropFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderStaticProp
     { (uint32_t) __builtin_offsetof( RenderStaticProp, position ), 0, 0, 0, 0 }, // position
@@ -14866,25 +15252,29 @@ constexpr TableFixedDst RenderStaticPropFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderStaticPropFixedPlan[] = {
-    { 0u, 0u, 78u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 78u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderStaticPropFixedPlanCount = 1;
 constexpr int32_t RenderStaticPropFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderStaticPropFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderStaticPropFixedVocabBytes + count * RenderStaticPropFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderStaticPropFixedLayoutBytes + count * RenderStaticPropFixedRecordBytes;
 }
 
 inline int64_t RenderStaticPropFixedSave( const RenderStaticProp * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderStaticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderStaticPropFixedVocabBytes );
-    memcpy( buffer + 5, RenderStaticPropFixedVocab, (size_t) RenderStaticPropFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderStaticPropFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderStaticPropFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderStaticPropFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderStaticPropFixedLayout, (size_t) RenderStaticPropFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderStaticPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderStaticPropFixedHash );
@@ -14896,45 +15286,63 @@ inline int64_t RenderStaticPropFixedSave( const RenderStaticProp * values, int64
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderStaticPropFixedPlan;
     int32_t entry_count = RenderStaticPropFixedPlanCount;
     int32_t entry_guarded = RenderStaticPropFixedPlanGuarded;
     int64_t record_bytes = RenderStaticPropFixedRecordBytes;
     if ( hash != RenderStaticPropFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderStaticPropFixedVocab, (int32_t) RenderStaticPropFixedVocabBytes, RenderStaticPropFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderStaticPropFixedLayout, (int32_t) RenderStaticPropFixedLayoutBytes, RenderStaticPropFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderStaticPropReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -14947,11 +15355,12 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderCosmeticPropFixedBodyBytes = 79;
 constexpr int64_t RenderCosmeticPropFixedRecordBytes = 8 + RenderCosmeticPropFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderCosmeticPropFixedHash = 0x72a2fa1985def98eull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderCosmeticPropFixedHash = 0x72a2fa1985def98eull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 23 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderCosmeticPropFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 23 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderCosmeticPropFixedLayout[] = {
     0x17, 0x00, 0x00, 0x00, 0x6f, 0x63, 0x76, 0xe7, 0xba, 0xbd, 0xf5, 0x5f, 0x0d, 0x4f, 0x00, 0x00,
     0x00, 0x08, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
     0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -14978,11 +15387,11 @@ constexpr uint8_t RenderCosmeticPropFixedVocab[] = {
     0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9,
     0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t RenderCosmeticPropFixedVocabBytes = (int64_t) sizeof( RenderCosmeticPropFixedVocab );
+constexpr int64_t RenderCosmeticPropFixedLayoutBytes = (int64_t) sizeof( RenderCosmeticPropFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderCosmeticProp
     { (uint32_t) __builtin_offsetof( RenderCosmeticProp, position ), 0, 0, 0, 0 }, // position
@@ -15016,25 +15425,29 @@ constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderCosmeticPropFixedPlan[] = {
-    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 79u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderCosmeticPropFixedPlanCount = 1;
 constexpr int32_t RenderCosmeticPropFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderCosmeticPropFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderCosmeticPropFixedVocabBytes + count * RenderCosmeticPropFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderCosmeticPropFixedLayoutBytes + count * RenderCosmeticPropFixedRecordBytes;
 }
 
 inline int64_t RenderCosmeticPropFixedSave( const RenderCosmeticProp * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderCosmeticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderCosmeticPropFixedVocabBytes );
-    memcpy( buffer + 5, RenderCosmeticPropFixedVocab, (size_t) RenderCosmeticPropFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderCosmeticPropFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderCosmeticPropFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderCosmeticPropFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderCosmeticPropFixedLayout, (size_t) RenderCosmeticPropFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderCosmeticPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderCosmeticPropFixedHash );
@@ -15046,45 +15459,63 @@ inline int64_t RenderCosmeticPropFixedSave( const RenderCosmeticProp * values, i
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderCosmeticPropFixedPlan;
     int32_t entry_count = RenderCosmeticPropFixedPlanCount;
     int32_t entry_guarded = RenderCosmeticPropFixedPlanGuarded;
     int64_t record_bytes = RenderCosmeticPropFixedRecordBytes;
     if ( hash != RenderCosmeticPropFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderCosmeticPropFixedVocab, (int32_t) RenderCosmeticPropFixedVocabBytes, RenderCosmeticPropFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderCosmeticPropFixedLayout, (int32_t) RenderCosmeticPropFixedLayoutBytes, RenderCosmeticPropFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderCosmeticPropReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -15097,11 +15528,12 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderLaserFixedBodyBytes = 62;
 constexpr int64_t RenderLaserFixedRecordBytes = 8 + RenderLaserFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderLaserFixedHash = 0x99df0a3db4b1eebdull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderLaserFixedHash = 0x99df0a3db4b1eebdull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 19 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderLaserFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 19 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderLaserFixedLayout[] = {
     0x13, 0x00, 0x00, 0x00, 0x94, 0xd9, 0x23, 0x6c, 0xbe, 0x7d, 0x94, 0xb0, 0x0d, 0x3e, 0x00, 0x00,
     0x00, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x25, 0xad, 0x45, 0xad, 0x97, 0x5d, 0xee, 0x0d, 0x18, 0x00,
     0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -15124,11 +15556,11 @@ constexpr uint8_t RenderLaserFixedVocab[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t RenderLaserFixedVocabBytes = (int64_t) sizeof( RenderLaserFixedVocab );
+constexpr int64_t RenderLaserFixedLayoutBytes = (int64_t) sizeof( RenderLaserFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderLaserFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderLaser
     { (uint32_t) __builtin_offsetof( RenderLaser, start ), 0, 0, 0, 0 }, // start
@@ -15158,25 +15590,29 @@ constexpr TableFixedDst RenderLaserFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderLaserFixedPlan[] = {
-    { 0u, 0u, 62u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 62u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderLaserFixedPlanCount = 1;
 constexpr int32_t RenderLaserFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderLaserFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderLaserFixedVocabBytes + count * RenderLaserFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderLaserFixedLayoutBytes + count * RenderLaserFixedRecordBytes;
 }
 
 inline int64_t RenderLaserFixedSave( const RenderLaser * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderLaserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderLaserFixedVocabBytes );
-    memcpy( buffer + 5, RenderLaserFixedVocab, (size_t) RenderLaserFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderLaserFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderLaserFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderLaserFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderLaserFixedLayout, (size_t) RenderLaserFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderLaserFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderLaserFixedHash );
@@ -15188,45 +15624,63 @@ inline int64_t RenderLaserFixedSave( const RenderLaser * values, int64_t count, 
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderLaserFixedPlan;
     int32_t entry_count = RenderLaserFixedPlanCount;
     int32_t entry_guarded = RenderLaserFixedPlanGuarded;
     int64_t record_bytes = RenderLaserFixedRecordBytes;
     if ( hash != RenderLaserFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderLaserFixedVocab, (int32_t) RenderLaserFixedVocabBytes, RenderLaserFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderLaserFixedLayout, (int32_t) RenderLaserFixedLayoutBytes, RenderLaserFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderLaserReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -15239,11 +15693,12 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t RenderExplosionFixedBodyBytes = 74;
 constexpr int64_t RenderExplosionFixedRecordBytes = 8 + RenderExplosionFixedBodyBytes; // the hash and the body
-constexpr uint64_t RenderExplosionFixedHash = 0xf71917b507eff722ull; // fnv1a64 over the block's bytes
+constexpr uint64_t RenderExplosionFixedHash = 0xf71917b507eff722ull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 21 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t RenderExplosionFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 21 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t RenderExplosionFixedLayout[] = {
     0x15, 0x00, 0x00, 0x00, 0xf8, 0xe5, 0xc9, 0x85, 0xb5, 0x38, 0xc7, 0x0c, 0x0d, 0x4a, 0x00, 0x00,
     0x00, 0x07, 0x00, 0x00, 0x00, 0x4a, 0xd7, 0xa1, 0xfc, 0x26, 0x3a, 0xbf, 0x4c, 0x0d, 0x18, 0x00,
     0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x07, 0x17, 0x02, 0x86, 0x4c, 0xf5, 0x63, 0xaf, 0x0b, 0x08,
@@ -15268,11 +15723,11 @@ constexpr uint8_t RenderExplosionFixedVocab[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
     0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t RenderExplosionFixedVocabBytes = (int64_t) sizeof( RenderExplosionFixedVocab );
+constexpr int64_t RenderExplosionFixedLayoutBytes = (int64_t) sizeof( RenderExplosionFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst RenderExplosionFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // RenderExplosion
     { (uint32_t) __builtin_offsetof( RenderExplosion, position ), 0, 0, 0, 0 }, // position
@@ -15304,25 +15759,29 @@ constexpr TableFixedDst RenderExplosionFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RenderExplosionFixedPlan[] = {
-    { 0u, 0u, 74u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 74u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t RenderExplosionFixedPlanCount = 1;
 constexpr int32_t RenderExplosionFixedPlanGuarded = 1;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t RenderExplosionFixedMeasure( int64_t count )
 {
-    return 1 + 4 + RenderExplosionFixedVocabBytes + count * RenderExplosionFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + RenderExplosionFixedLayoutBytes + count * RenderExplosionFixedRecordBytes;
 }
 
 inline int64_t RenderExplosionFixedSave( const RenderExplosion * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = RenderExplosionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) RenderExplosionFixedVocabBytes );
-    memcpy( buffer + 5, RenderExplosionFixedVocab, (size_t) RenderExplosionFixedVocabBytes );
-    uint8_t * at = buffer + 5 + RenderExplosionFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, RenderExplosionFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderExplosionFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, RenderExplosionFixedLayout, (size_t) RenderExplosionFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderExplosionFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, RenderExplosionFixedHash );
@@ -15334,45 +15793,63 @@ inline int64_t RenderExplosionFixedSave( const RenderExplosion * values, int64_t
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = RenderExplosionFixedPlan;
     int32_t entry_count = RenderExplosionFixedPlanCount;
     int32_t entry_guarded = RenderExplosionFixedPlanGuarded;
     int64_t record_bytes = RenderExplosionFixedRecordBytes;
     if ( hash != RenderExplosionFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, RenderExplosionFixedVocab, (int32_t) RenderExplosionFixedVocabBytes, RenderExplosionFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, RenderExplosionFixedLayout, (int32_t) RenderExplosionFixedLayoutBytes, RenderExplosionFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         RenderExplosionReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -15382,7 +15859,7 @@ inline int64_t RenderExplosionFixedLoad( RenderExplosion * values, int64_t capac
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
 //
 // A fixed-class root is a VALUE: no region, no node directory, and so no
-// anchor for a retained record's path. The five names, the file form's three
+// anchor for a retained record's path. The five names, the VARIABLE form's three
 // and the message form's two (§3.3), are declared here so that naming one is
 // a refusal that says why, rather than a symbol a linker could not find. The
 // suffixes stay claimed on every closure member all the same (§11): a table

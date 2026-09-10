@@ -65,5 +65,13 @@ func (rustTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 func init() {
 	registerWideTextCarrier("rust")
 	registerPacketValueDefaultCarrier("rust")
+	// AND THE TABLE WIRE'S DEFAULTS TOO, because the FIXED FORM needs them:
+	// §3.4's answer to a field a record does not carry is a PREFILL of the
+	// declared defaults, and rusttable lays that prefill down as a record image
+	// (internal/codegen/rusttable/fixedform.go's fixedDefaultImage) — a string,
+	// a bytes buffer and a flags mask included. The refusal was written for
+	// form 1's ELISION, which this port does not emit at all; leaving it up
+	// refused a schema the reference writes bytes for and this port reads.
+	valueDefaultTargets = append(valueDefaultTargets, "rust")
 	registerBuiltin(rustTarget{}, true, false, false, false)
 }

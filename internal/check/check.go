@@ -3859,7 +3859,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveInto", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
 	// the MESSAGE FORM's three suffixes (docs/SPEC-TABLES.md §3.3), beside the
-	// file form's own. They are PLURAL because the form's primitive is a BATCH
+	// variable form's own. They are PLURAL because the form's primitive is a BATCH
 	// of bodies of one root and a single message is the batch of one, and the
 	// singular verbs are not claimed beside them: a surface with both would let
 	// a caller write one message a call and never learn where the bandwidth is
@@ -3896,7 +3896,7 @@ var tableGeneratedVerbs = []string{
 	// changes — which is this list's own rule. The C backend spells the same
 	// set in snake_case (<name>_fixed_save) and the two are one claim.
 	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
-	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedVocab", "FixedVocabBytes",
+	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
 	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a

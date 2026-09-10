@@ -2796,8 +2796,8 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 	return true
 }
 
-const TableEntityLoadRetainBuilder = "TableEntity: retention requires a region round trip through file form"
-const TableEntitySaveRetainMessages = "TableEntity: retention requires a region round trip through file form"
+const TableEntityLoadRetainBuilder = "TableEntity: retention requires a region round trip through the VARIABLE form"
+const TableEntitySaveRetainMessages = "TableEntity: retention requires a region round trip through the VARIABLE form"
 const TableEntityLoadRetain = "TableEntity: retention requires a variable root and its region directory"
 const TableEntityMeasureRetain = "TableEntity: retention requires a variable root and its region directory"
 const TableEntitySaveRetain = "TableEntity: retention requires a variable root and its region directory"
@@ -3781,8 +3781,8 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	return true
 }
 
-const TableStatLoadRetainBuilder = "TableStat: retention requires a region round trip through file form"
-const TableStatSaveRetainMessages = "TableStat: retention requires a region round trip through file form"
+const TableStatLoadRetainBuilder = "TableStat: retention requires a region round trip through the VARIABLE form"
+const TableStatSaveRetainMessages = "TableStat: retention requires a region round trip through the VARIABLE form"
 const TableStatLoadRetain = "TableStat: retention requires a variable root and its region directory"
 const TableStatMeasureRetain = "TableStat: retention requires a variable root and its region directory"
 const TableStatSaveRetain = "TableStat: retention requires a variable root and its region directory"
@@ -5649,8 +5649,8 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 	return true
 }
 
-const TableMixedLoadRetainBuilder = "TableMixed: retention requires a region round trip through file form"
-const TableMixedSaveRetainMessages = "TableMixed: retention requires a region round trip through file form"
+const TableMixedLoadRetainBuilder = "TableMixed: retention requires a region round trip through the VARIABLE form"
+const TableMixedSaveRetainMessages = "TableMixed: retention requires a region round trip through the VARIABLE form"
 const TableMixedLoadRetain = "TableMixed: retention requires a variable root and its region directory"
 const TableMixedMeasureRetain = "TableMixed: retention requires a variable root and its region directory"
 const TableMixedSaveRetain = "TableMixed: retention requires a variable root and its region directory"

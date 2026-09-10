@@ -110,7 +110,7 @@ func TestTheOracleAnswersEveryRetainRow(t *testing.T) {
 				t.Fatalf("retention moved a read counter: %+v", report)
 			}
 
-			// AND THE SAVE, which is the FILE form on every row: retention
+			// AND THE SAVE, which is the VARIABLE form on every row: retention
 			// writing form 2 refuses by name (§3.3).
 			var save tabletext.Report
 			var saved []byte

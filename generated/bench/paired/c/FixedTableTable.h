@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
+#include <assert.h> /* the fixed form's write-side bounds, in a debug build */
 
 #include "FixedTable.h"
 
@@ -123,7 +124,7 @@ typedef struct TableReport
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported file form, not framing damage */
+    int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
 
@@ -643,14 +644,12 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
 }
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
-
-   THE SYMBOLS SAY "VOCAB" WHERE §3.4 SAYS "VOCABULARY BLOCK", and the reason is
-   that this codebase already spent the word BLOCK on §19's block form, whose
-   zero-cost gate holds that not one Block symbol appears in a Table source. The
-   spec keeps the owner's own name for the structure; the symbols get out of the
-   way of a gate that was there first.
 
    THE TYPES KEEP THE REFERENCE'S SPELLING AND THE FUNCTIONS DO NOT.
    TableFixedEntry is TableFixedEntry in both legs, because a type a generated
@@ -662,8 +661,21 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
 
 enum { kTableFixedForm = 3 };
 
+/* THE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3, "THE FIRST
+   BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the form's own
+   EIGHT-BYTE HASH at offset 8, and the body at 16 — the alignment a
+   memory-mapped body needs. The fixed form does not need the alignment today;
+   it pads anyway, so the bytes do not move again the day the cook and the block
+   form join the registry under the same header.
+
+   The hash here is the LAYOUT's. Each record still carries its own eight-byte
+   hash, which §3.4 has always said and which the header does not replace: the
+   header names the layout ONCE for the file, and a record names the layout it
+   was stamped by. */
+enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
+
 /* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-   the other two are what a plan compiled from another writer's block adds.
+   the other two are what a plan compiled from another writer's layout adds.
 
    C HAS NO ENUM BASE TYPE, so where C++ writes enum : uint8_t these are plain
    anonymous enumerators — ints, stored into the uint8_t op and arg columns at
@@ -679,7 +691,7 @@ enum
     kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
 };
 
-/* arg on a kTableFixedText entry */
+/* meta on a kTableFixedText entry */
 enum
 {
     kTableFixedTextUtf8  = 1,
@@ -724,13 +736,29 @@ enum
 #define SCHEMA_TABLE_MESSAGE_REASONS
 enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6 };
 #endif
-/* THE FIXED FORM'S THREE. Each is a refusal by name with nothing decoded and no
-   counter moved, on the form byte's own precedent (§3.4). */
+/* THE FIXED FORM'S THREE, AND THE LAYOUT VALIDATION'S SIX. Each is a refusal by
+   name with nothing decoded and no counter moved, on the form byte's own
+   precedent (§3.4). THE LAYOUT is what form 1 calls the vocabulary block.
+
+   The six validation names exist because a layout is the one structure a reader
+   must parse before it knows anything at all, and it arrives from an UNTRUSTED
+   PEER: each rule it is held to refuses under its own name rather than under
+   one word for all of them, and every one runs BEFORE a record byte is touched.
+   The VALUES are this leg's own; the NAMES are the reference's, so a peer is
+   refused by the same name whichever leg reads it. */
 enum
 {
-    SCHEMA_TABLE_NO_BLOCK = 7,        /* a record whose hash names no vocabulary block this reader holds */
-    SCHEMA_TABLE_BLOCK_MALFORMED = 8, /* bytes handed to the form as a block that are not one: the count overruns, or the tree does not close */
-    SCHEMA_TABLE_PLAN_TOO_LARGE = 9   /* a block whose compiled plan does not fit the plan storage the caller declared: this codec never allocates */
+    SCHEMA_TABLE_NO_LAYOUT = 7,        /* a record whose hash names no LAYOUT this reader holds */
+    SCHEMA_TABLE_LAYOUT_MALFORMED = 8, /* bytes handed to the form as a layout that are not one: fewer than a header's worth of them */
+    SCHEMA_TABLE_PLAN_TOO_LARGE = 9,   /* a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates */
+    SCHEMA_TABLE_LAYOUT_COUNT_MISMATCH = 10,  /* the entry count does not fit the layout's length exactly */
+    SCHEMA_TABLE_LAYOUT_KIND_UNKNOWN = 11,    /* a kind OUTSIDE §3's closed set: a newer FORM BYTE, not a newer layout of this one */
+    SCHEMA_TABLE_LAYOUT_KIND_INVALID = 12,    /* a kind this build KNOWS, used in a way its own definition does not allow */
+    SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH = 13,   /* a stated constant size that is not the one its kind fixes, or not the one its children account for */
+    SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED = 14,   /* the pre-order child walk does not consume exactly the entries */
+    SCHEMA_TABLE_LAYOUT_TOO_DEEP = 15,        /* a nesting depth past what this reader walks: a bound on the WALK, not on the wire */
+    SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE = 16, /* a record size past §3.4's 65536-byte bound: a size this build will not decode */
+    SCHEMA_TABLE_PREVIOUS_FORM = 17            /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -765,7 +793,13 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+       must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+       entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+       shared one, and a string(N) under a union's arm then had to be either
+       guarded correctly or read with the right flavour and could not be both. */
     uint8_t arg;
+    uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
 } TableFixedEntry;
@@ -856,14 +890,14 @@ static SCHEMA_UNUSED uint64_t table_fixed_get64( const uint8_t * b )
     return v;
 }
 
-/* THE HASH is fnv1a64 over the block's bytes exactly as written (§3.4). */
-static SCHEMA_UNUSED uint64_t table_fixed_hash_of( const uint8_t * block, int64_t bytes )
+/* THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4). */
+static SCHEMA_UNUSED uint64_t table_fixed_hash_of( const uint8_t * layout, int64_t bytes )
 {
     uint64_t h = 0xcbf29ce484222325ull;
     int64_t i;
     for ( i = 0; i < bytes; ++i )
     {
-        h ^= (uint64_t) block[i];
+        h ^= (uint64_t) layout[i];
         h *= 0x100000001b3ull;
     }
     return h;
@@ -942,14 +976,14 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const Tab
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p->arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
-            if ( p->arg != kTableFixedTextBytes )
+            if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
                    unit longer than the bound for exactly this. A store, not a
@@ -962,7 +996,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const Tab
         }
         case kTableFixedOrdinal:
         {
-            /* A VARIANT ORDINAL IS ITS POSITION IN THE BLOCK, so a writer whose
+            /* A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
                enum gained a variant IN THE MIDDLE is remapped here and never
                reinterpreted. The table is the plan's own, laid down by the
                compiler above the entries. */
@@ -1041,58 +1075,69 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     report->widened += widened;
 }
 
-/* ---- THE BLOCK -------------------------------------------------------------
+/* ---- THE LAYOUT ------------------------------------------------------------
 
-   An entry is SEVENTEEN BYTES and the block is a count and a run of them. THE
-   FORMAT NEVER MOVES, which is what lets a reader of this major parse a later
-   major's block and step over a kind it does not know by the size the entry
-   states. */
+   An entry is SEVENTEEN BYTES and the layout is a COUNT and a run of them.
+   THERE IS NO VERSION BYTE INSIDE IT (docs/SPEC-TABLES.md §3.4): the FORM BYTE
+   versions everything behind it, the layout's own format included, so a layout
+   format change is a NEW FORM BYTE and never a wider entry. */
 
 enum { kTableFixedEntryBytes = 17 };
+enum { kTableFixedLayoutHeaderBytes = 4 }; /* the u32 entry count, and nothing else */
 
-typedef struct TableFixedVocabEntry
+/* §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
+   the same reason the compiler holds a declaration to it: a record past it is
+   one this build will not decode.
+
+   A BOUND ON THE WALK follows it, not on the wire: the validation below is
+   recursive, so a hostile layout of three thousand entries each claiming one
+   child would otherwise spend a reader's stack before any rule fired. */
+enum { kTableFixedRecordMaxBytes = 65536 };
+enum { kTableFixedMaxDepth = 64 };
+
+typedef struct TableFixedLayoutEntry
 {
     uint64_t id;
     uint32_t size;
     uint32_t children;
     uint8_t kind;
-} TableFixedVocabEntry;
+} TableFixedLayoutEntry;
 
 /* The C++ struct's own defaults, again as a function: C has none of its own. */
-static SCHEMA_UNUSED TableFixedVocabEntry table_fixed_vocab_entry_zero( void )
+static SCHEMA_UNUSED TableFixedLayoutEntry table_fixed_layout_entry_zero( void )
 {
-    TableFixedVocabEntry out;
+    TableFixedLayoutEntry out;
     memset( &out, 0, sizeof( out ) );
     return out;
 }
 
-typedef struct TableFixedVocab
+typedef struct TableFixedLayoutView
 {
     const uint8_t * bytes;
     int32_t count;
-} TableFixedVocab;
+} TableFixedLayoutView;
 
 /* bytes IS SET TO NULL AND NOT LEFT TO THE memset, because a null pointer is
-   not required to be all-zero bits and the whole block reader tests it by name. */
-static SCHEMA_UNUSED TableFixedVocab table_fixed_vocab_zero( void )
+   not required to be all-zero bits and the whole layout reader tests it by name. */
+static SCHEMA_UNUSED TableFixedLayoutView table_fixed_layout_view_zero( void )
 {
-    TableFixedVocab out;
+    TableFixedLayoutView out;
     memset( &out, 0, sizeof( out ) );
     out.bytes = NULL;
     out.count = 0;
     return out;
 }
 
-/* AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a block
+/* AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a layout
    is arithmetic over child counts a STRANGER wrote, so the one place that can
    hold the whole walk inside the buffer is the one place that touches it. An
    out-of-range index answers kind 0xFF, which is a kind no declaration has and
    nothing matches, so the walk that asked for it finds nothing and moves on. */
-static SCHEMA_UNUSED TableFixedVocabEntry table_fixed_entry_at( const TableFixedVocab * b, int32_t i )
+static SCHEMA_UNUSED TableFixedLayoutEntry table_fixed_entry_at( const TableFixedLayoutView * b, int32_t i )
 {
-    TableFixedVocabEntry out = table_fixed_vocab_entry_zero();
+    TableFixedLayoutEntry out = table_fixed_layout_entry_zero();
     if ( b->bytes == NULL || i < 0 || i >= b->count ) { out.kind = 0xFFu; return out; }
-    const uint8_t * e = b->bytes + 4 + (int64_t) i * kTableFixedEntryBytes;
+    const uint8_t * e = b->bytes + kTableFixedLayoutHeaderBytes + (int64_t) i * kTableFixedEntryBytes;
     out.id = table_fixed_get64( e );
     out.kind = e[8];
     out.size = table_fixed_get32( e + 9 );
@@ -1102,9 +1147,9 @@ static SCHEMA_UNUSED TableFixedVocabEntry table_fixed_entry_at( const TableFixed
 
 /* table_fixed_subtree is how many entries the subtree rooted at i occupies, so
    a walk steps over a child it does not want without knowing what is in it. */
-static SCHEMA_UNUSED int32_t table_fixed_subtree( const TableFixedVocab * b, int32_t i )
+static SCHEMA_UNUSED int32_t table_fixed_subtree( const TableFixedLayoutView * b, int32_t i )
 {
-    /* ITERATIVE ON PURPOSE. A block is a stranger's bytes, so a chain of
+    /* ITERATIVE ON PURPOSE. A layout is a stranger's bytes, so a chain of
        single-child entries is a stack depth the wire gets to choose; this walk
        gives it none. */
     if ( i < 0 || i >= b->count ) { return 1; }
@@ -1122,38 +1167,262 @@ static SCHEMA_UNUSED int32_t table_fixed_subtree( const TableFixedVocab * b, int
     return n;
 }
 
-static SCHEMA_UNUSED uint32_t table_fixed_union_arm_bytes( const TableFixedVocab * b, int32_t i )
+static SCHEMA_UNUSED uint32_t table_fixed_union_arm_bytes( const TableFixedLayoutView * b, int32_t i )
 {
-    const TableFixedVocabEntry e = table_fixed_entry_at( b, i );
+    const TableFixedLayoutEntry e = table_fixed_entry_at( b, i );
     uint32_t widest = 0;
     int32_t at = i + 1;
     uint32_t k;
     for ( k = 0; k < e.children && at < b->count; ++k )
     {
-        const TableFixedVocabEntry a = table_fixed_entry_at( b, at );
+        const TableFixedLayoutEntry a = table_fixed_entry_at( b, at );
         if ( a.size > widest ) { widest = a.size; }
         at += table_fixed_subtree( b, at );
     }
     return widest;
 }
 
-static SCHEMA_UNUSED uint32_t table_fixed_tag_bytes( const TableFixedVocab * b, int32_t i )
+static SCHEMA_UNUSED uint32_t table_fixed_tag_bytes( const TableFixedLayoutView * b, int32_t i )
 {
     return table_fixed_entry_at( b, i ).size - table_fixed_union_arm_bytes( b, i );
 }
 
-/* C++ FILLS AN out REFERENCE AND ANSWERS bool; C fills an out POINTER and
+/* ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
+
+   A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+   must parse before it knows anything at all, so every rule below runs BEFORE
+   a single record byte is touched and each refuses under its OWN NAME rather
+   than under one word for all of them (docs/SPEC-TABLES.md §3.4). Rule for
+   rule and name for name, this is the C++ reference's own: a peer must be
+   refused by the same name whichever leg reads it.
+
+   A KIND THIS BUILD DOES NOT KNOW IS A REFUSAL, and that is a ruling rather
+   than an oversight. A FIXED FORM HAS A CLOSED KIND SET: the form byte versions
+   everything behind it, kinds included, so a layout carrying a kind outside the
+   set is not a newer layout of THIS form — it is a layout of a form whose byte
+   this reader never saw.
+
+   NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle:
+   an entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is
+   always higher than its parent's, the layout is finite, and there is no back
+   reference for a cycle to be made of. */
+
+typedef struct TableFixedCheck
+{
+    const TableFixedLayoutView * layout;
+    int reason;
+    int bad;
+} TableFixedCheck;
+
+static SCHEMA_UNUSED void table_fixed_fail( TableFixedCheck * c, int why )
+{
+    if ( !c->bad ) { c->bad = 1; c->reason = why; }
+}
+
+/* A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
+   ONE exception, and it is stated here rather than left to be found: a
+   bits(N) field rides at its DECLARED STORAGE WIDTH — four bytes for N <= 32 and
+   eight above (§3.4) — under the unsigned integer kind its BIT COUNT picks
+   (§3), so kinds 6 and 7 admit four as well as their own width. */
+static SCHEMA_UNUSED int table_fixed_leaf_size( uint8_t kind, uint32_t size, int * is_leaf )
+{
+    *is_leaf = 1;
+    switch ( kind )
+    {
+        case 1:  return size == 1u;                  /* bool */
+        case 2:  return size == 1u;                  /* i8 */
+        case 3:  return size == 2u;                  /* i16 */
+        case 4:  return size == 4u;                  /* i32 */
+        case 5:  return size == 8u;                  /* i64 */
+        case 6:  return size == 1u || size == 4u;    /* u8,  and bits( 1 .. 8 ) */
+        case 7:  return size == 2u || size == 4u;    /* u16, and bits( 9 .. 16 ) */
+        case 8:  return size == 4u;                  /* u32, and bits( 17 .. 32 ) */
+        case 9:  return size == 8u;                  /* u64, flags, and bits( 33 .. 64 ) */
+        case 10: return size == 4u;                  /* f32 */
+        case 11: return size == 8u;                  /* f64 */
+        case 17: return size == 4u;                  /* a pointer index, which no fixed table carries */
+        case 18: case 19: return size == 16u;        /* i128, u128 */
+        case 20: case 25: return size == 1u;         /* fixed8, ufixed8 */
+        case 21: case 26: return size == 2u;
+        case 22: case 27: return size == 4u;
+        case 23: case 28: return size == 8u;
+        case 24: case 29: return size == 16u;
+        case 32: return size == 0u;                  /* a variant, and an arm that holds nothing */
+        default: break;
+    }
+    *is_leaf = 0;
+    return 1;
+}
+
+static SCHEMA_UNUSED int table_fixed_ordinal_width( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
+
+/* THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
+   the no-payload variant 32, wstring 33, and the ONE kind this form's layout
+   adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
+   reserved: neither is a kind a declaration spells, so neither is ever an
+   entry's kind. */
+static SCHEMA_UNUSED int table_fixed_known_kind( uint8_t kind )
+{
+    if ( kind >= 1u && kind <= 30u ) { return 1; }
+    return kind == 32u || kind == 33u || kind == 35u;
+}
+
+/* table_fixed_check_entry validates the subtree rooted at i and answers how
+   many entries it occupies, which is the same arithmetic table_fixed_subtree
+   does and is why that walk is safe to run afterwards and only afterwards. */
+static SCHEMA_UNUSED int32_t table_fixed_check_entry( TableFixedCheck * c, int32_t i, int32_t depth )
+{
+    TableFixedLayoutEntry e;
+    int32_t at;
+    uint64_t sum = 0;
+    uint32_t widest = 0;
+    uint32_t first_size = 0, second_size = 0;
+    uint8_t first_kind = 0;
+    uint32_t first_children = 0;
+    int kids_are_variants = 1;
+    uint32_t k;
+    int is_leaf = 0;
+    if ( c->bad ) { return 0; }
+    if ( i < 0 || i >= c->layout->count ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED ); return 0; }
+    if ( depth > kTableFixedMaxDepth ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_TOO_DEEP ); return 0; }
+    e = table_fixed_entry_at( c->layout, i );
+    /* THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
+       and is refused whole, never walked and never stepped over. */
+    if ( !table_fixed_known_kind( e.kind ) ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_UNKNOWN ); return 0; }
+    if ( e.size > kTableFixedRecordMaxBytes ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE ); return 0; }
+
+    /* THE CHILDREN FIRST, in the pre-order the layout is written in. */
+    at = i + 1;
+    for ( k = 0; k < e.children; ++k )
+    {
+        const int32_t child = at;
+        const int32_t used = table_fixed_check_entry( c, child, depth + 1 );
+        TableFixedLayoutEntry ce;
+        if ( c->bad ) { return 0; }
+        ce = table_fixed_entry_at( c->layout, child );
+        if ( k == 0 ) { first_size = ce.size; first_kind = ce.kind; first_children = ce.children; }
+        if ( k == 1 ) { second_size = ce.size; }
+        if ( ce.kind != 32 ) { kids_are_variants = 0; }
+        sum += ce.size;
+        if ( ce.size > widest ) { widest = ce.size; }
+        if ( sum > (uint64_t) kTableFixedRecordMaxBytes ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE ); return 0; }
+        at += used;
+    }
+
+    if ( !table_fixed_leaf_size( e.kind, e.size, &is_leaf ) ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+    if ( is_leaf )
+    {
+        if ( e.children != 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+        return at - i;
+    }
+    switch ( e.kind )
+    {
+        case 13: /* a TABLE: its size is the SUM of its fields' */
+        {
+            if ( (uint64_t) e.size != sum ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            break;
+        }
+        case 35: /* the OPTIONAL WRAPPER: one child, one present byte in front of it */
+        {
+            if ( e.children != 1u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            if ( (uint64_t) e.size != sum + 1u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            break;
+        }
+        case 14: /* an ARRAY: a whole number of elements, behind a count or not */
+        {
+            int bare, counted;
+            if ( e.children != 1u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            if ( first_size == 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            bare = ( e.size % first_size ) == 0u;
+            counted = e.size >= 4u && ( ( e.size - 4u ) % first_size ) == 0u;
+            if ( !bare && !counted ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            break;
+        }
+        case 16: /* an ENUM-KEYED array: the KEY ENUM then the ELEMENT, every slot written */
+        {
+            if ( e.children != 2u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            if ( first_kind != 30 ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            if ( second_size == 0u || ( e.size % second_size ) != 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            /* AT LEAST one slot per variant. Not exactly one: an enum widened
+               by an explicit max has more slots than it has names, and the
+               layout carries only the names. */
+            if ( e.size / second_size < first_children ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            break;
+        }
+        case 15: /* a UNION: the TAG at its own width, then the WIDEST ARM */
+        {
+            if ( e.children == 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            if ( e.size <= widest ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            if ( !table_fixed_ordinal_width( e.size - widest ) ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            break;
+        }
+        case 30: /* an ENUM: the ordinal's storage width, and its children are VARIANTS */
+        {
+            if ( !table_fixed_ordinal_width( e.size ) ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            if ( e.children != 0u && !kids_are_variants ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            break;
+        }
+        case 12: /* string(N): the length, then N bytes */
+        {
+            if ( e.children != 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            if ( e.size < 4u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            break;
+        }
+        case 33: /* wstring(N): the length in CODE UNITS, then 2N bytes */
+        {
+            if ( e.children != 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_INVALID ); return 0; }
+            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH ); return 0; }
+            break;
+        }
+        /* Every kind of the closed set is either a leaf above or a case here,
+           so this is unreachable — and it refuses rather than admits, because
+           a kind that reached it is a kind the two lists disagree about. */
+        default: table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_UNKNOWN ); return 0;
+    }
+    return at - i;
+}
+
+/* table_fixed_parse_layout is the WHOLE of what a reader trusts a layout on. It
+   answers 0 and a REASON BY NAME, and the caller reports that reason.
+
+   C++ FILLS AN out REFERENCE AND ANSWERS bool; C fills an out POINTER and
    answers 0 or 1. Everything else, including the refusal that leaves out empty,
    is the same. */
-static SCHEMA_UNUSED int table_fixed_vocab_read( const uint8_t * bytes, int64_t length, TableFixedVocab * out )
+static SCHEMA_UNUSED int table_fixed_parse_layout( const uint8_t * bytes, int64_t length, TableFixedLayoutView * out, int * why )
 {
-    if ( bytes == NULL || length < 4 ) { return 0; }
-    const uint32_t count = table_fixed_get32( bytes );
-    if ( count == 0 || (int64_t) count * kTableFixedEntryBytes + 4 != length ) { return 0; }
-    out->bytes = bytes;
-    out->count = (int32_t) count;
-    /* THE TREE HAS TO CLOSE: the root's subtree is the whole block */
-    if ( table_fixed_subtree( out, 0 ) != out->count ) { out->bytes = NULL; out->count = 0; return 0; }
+    uint32_t count;
+    TableFixedLayoutView view;
+    TableFixedLayoutEntry root;
+    TableFixedCheck c;
+    int32_t used;
+    out->bytes = NULL;
+    out->count = 0;
+    if ( bytes == NULL || length < kTableFixedLayoutHeaderBytes ) { *why = SCHEMA_TABLE_LAYOUT_MALFORMED; return 0; }
+    /* 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY */
+    count = table_fixed_get32( bytes );
+    if ( count == 0u || (int64_t) count * kTableFixedEntryBytes + kTableFixedLayoutHeaderBytes != length )
+    {
+        *why = SCHEMA_TABLE_LAYOUT_COUNT_MISMATCH;
+        return 0;
+    }
+    view = table_fixed_layout_view_zero();
+    view.bytes = bytes;
+    view.count = (int32_t) count;
+    /* 2. THE ROOT IS A TABLE, and its size is the record's body */
+    root = table_fixed_entry_at( &view, 0 );
+    if ( root.kind != 13 ) { *why = SCHEMA_TABLE_LAYOUT_KIND_INVALID; return 0; }
+    if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes ) { *why = SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE; return 0; }
+    /* 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
+          SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND */
+    c.layout = &view;
+    c.reason = SCHEMA_TABLE_LAYOUT_MALFORMED;
+    c.bad = 0;
+    used = table_fixed_check_entry( &c, 0, 0 );
+    if ( c.bad ) { *why = c.reason; return 0; }
+    /* 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
+          the layout has nothing left over */
+    if ( used != view.count ) { *why = SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED; return 0; }
+    *out = view;
     return 1;
 }
 
@@ -1167,9 +1436,9 @@ static SCHEMA_UNUSED int table_fixed_vocab_read( const uint8_t * bytes, int64_t 
    out too, which is what defaults it, because the prefill already put the
    declared default there. */
 
-/* TableFixedDst is MY side of the walk: one row per entry of my own block,
-   carrying the storage facts a block entry cannot. The generator emits it as a
-   static const array beside the block, so it needs no zeroing helper of its
+/* TableFixedDst is MY side of the walk: one row per entry of my own layout,
+   carrying the storage facts a layout entry cannot. The generator emits it as a
+   static const array beside the layout, so it needs no zeroing helper of its
    own — nothing in this runtime ever declares one. */
 typedef struct TableFixedDst
 {
@@ -1177,7 +1446,7 @@ typedef struct TableFixedDst
     uint32_t stride; /* an array entry's storage stride */
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
-    uint8_t arg;     /* a text field's flavour */
+    uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1199,7 +1468,7 @@ typedef struct TableFixedCompiler
 } TableFixedCompiler;
 
 /* The C++ struct's defaults once more, and here they are a whole-struct zero
-   plus the two pointers named, for the reason table_fixed_vocab_zero gives. */
+   plus the two pointers named, for the reason table_fixed_layout_view_zero gives. */
 static SCHEMA_UNUSED void table_fixed_compiler_init( TableFixedCompiler * c )
 {
     memset( c, 0, sizeof( *c ) );
@@ -1214,8 +1483,8 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
     if ( ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
-       a STRANGER wrote, so a block whose child sizes do not sum to its parent's
-       could otherwise name a byte past the record. A block that does is refused
+       a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
+       could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
     {
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
@@ -1249,18 +1518,18 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_table( TableFixedCompiler * c, con
 }
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
-                                                     const TableFixedVocab * theirs, int32_t ti, uint32_t their_at,
-                                                     const TableFixedVocab * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                                     const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
+                                                     const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                                      uint32_t guard, uint8_t arg );
 
 /* table_fixed_match_children walks a TABLE's children on both sides. */
 static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
-                                                      const TableFixedVocab * theirs, int32_t ti, uint32_t their_at,
-                                                      const TableFixedVocab * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                                      const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
+                                                      const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                                       uint32_t guard, uint8_t arg )
 {
-    const TableFixedVocabEntry te = table_fixed_entry_at( theirs, ti );
-    const TableFixedVocabEntry me = table_fixed_entry_at( mine, mi );
+    const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
+    const TableFixedLayoutEntry me = table_fixed_entry_at( mine, mi );
     int32_t my_child = mi + 1;
     /* THE LOOP INDICES ARE DECLARED AHEAD OF THEIR LOOPS, which is this
        backend's shape everywhere and not a C99 limitation: j and k are reused
@@ -1269,12 +1538,12 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
     uint32_t j, k;
     for ( k = 0; k < me.children && my_child < mine->count; ++k )
     {
-        const TableFixedVocabEntry mc = table_fixed_entry_at( mine, my_child );
+        const TableFixedLayoutEntry mc = table_fixed_entry_at( mine, my_child );
         int32_t their_child = ti + 1;
         uint32_t their_off = their_at;
         for ( j = 0; j < te.children && their_child < theirs->count; ++j )
         {
-            const TableFixedVocabEntry tc = table_fixed_entry_at( theirs, their_child );
+            const TableFixedLayoutEntry tc = table_fixed_entry_at( theirs, their_child );
             if ( tc.id == mc.id )
             {
                 table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
@@ -1289,7 +1558,7 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
     int32_t tc_at = ti + 1;
     for ( j = 0; j < te.children && tc_at < theirs->count; ++j )
     {
-        const TableFixedVocabEntry tc = table_fixed_entry_at( theirs, tc_at );
+        const TableFixedLayoutEntry tc = table_fixed_entry_at( theirs, tc_at );
         int named = 0;
         int32_t mc_at = mi + 1;
         for ( k = 0; k < me.children && mc_at < mine->count; ++k )
@@ -1303,16 +1572,16 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
 }
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
-                                                     const TableFixedVocab * theirs, int32_t ti, uint32_t their_at,
-                                                     const TableFixedVocab * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                                     const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
+                                                     const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                                      uint32_t guard, uint8_t arg )
 {
-    const TableFixedVocabEntry te = table_fixed_entry_at( theirs, ti );
-    const TableFixedVocabEntry me = table_fixed_entry_at( mine, mi );
+    const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
+    const TableFixedLayoutEntry me = table_fixed_entry_at( mine, mi );
     const TableFixedDst * d = &dst[mi];
     const uint32_t at = my_at + d->dst;
     const uint32_t aux_at = my_at + d->aux;
-    /* THE NESTING A STRANGER'S BLOCK CAN ASK FOR IS CAPPED. The language's own
+    /* THE NESTING A STRANGER'S LAYOUT CAN ASK FOR IS CAPPED. The language's own
        closure is nowhere near this deep, and a wire does not get to pick a
        recursion depth. */
     if ( c->depth > 64 ) { c->hostile = 1; return; }
@@ -1359,8 +1628,8 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
             {
-                const TableFixedVocabEntry tel = table_fixed_entry_at( theirs, ti + 1 );
-                const TableFixedVocabEntry mel = table_fixed_entry_at( mine, mi + 1 );
+                const TableFixedLayoutEntry tel = table_fixed_entry_at( theirs, ti + 1 );
+                const TableFixedLayoutEntry mel = table_fixed_entry_at( mine, mi + 1 );
                 const uint32_t head = d->counted ? 4u : 0u;
                 const uint32_t their_n = tel.size ? ( te.size - head ) / tel.size : 0u;
                 const uint32_t my_n = mel.size ? ( me.size - head ) / mel.size : 0u;
@@ -1383,11 +1652,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             }
             case 16: /* an enum-keyed array: every slot, matched by the KEY's id */
             {
-                const TableFixedVocabEntry tkey = table_fixed_entry_at( theirs, ti + 1 );
-                const TableFixedVocabEntry mkey = table_fixed_entry_at( mine, mi + 1 );
+                const TableFixedLayoutEntry tkey = table_fixed_entry_at( theirs, ti + 1 );
+                const TableFixedLayoutEntry mkey = table_fixed_entry_at( mine, mi + 1 );
                 const int32_t tel = ti + 1 + table_fixed_subtree( theirs, ti + 1 );
                 const int32_t mel = mi + 1 + table_fixed_subtree( mine, mi + 1 );
-                const TableFixedVocabEntry tee = table_fixed_entry_at( theirs, tel );
+                const TableFixedLayoutEntry tee = table_fixed_entry_at( theirs, tel );
                 uint32_t k;
                 for ( k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine->count; ++k )
                 {
@@ -1411,12 +1680,12 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 uint32_t k;
                 for ( k = 0; k < me.children && my_arm < mine->count; ++k )
                 {
-                    const TableFixedVocabEntry ma = table_fixed_entry_at( mine, my_arm );
+                    const TableFixedLayoutEntry ma = table_fixed_entry_at( mine, my_arm );
                     int32_t their_arm = ti + 1;
                     uint32_t j;
                     for ( j = 0; j < te.children && their_arm < theirs->count; ++j )
                     {
-                        const TableFixedVocabEntry ta = table_fixed_entry_at( theirs, their_arm );
+                        const TableFixedLayoutEntry ta = table_fixed_entry_at( theirs, their_arm );
                         if ( ta.id == ma.id )
                         {
                             /* MY tag value, written under THEIR tag's guard */
@@ -1434,7 +1703,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 }
                 break;
             }
-            case 30: /* an enum: the ordinal is the block's position, so it remaps */
+            case 30: /* an enum: the ordinal is the layout's position, so it remaps */
             {
                 if ( ( guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { break; }
                 uint16_t remap[256];
@@ -1464,7 +1733,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-                e.op = kTableFixedText; e.arg = d->arg;
+                e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
                 table_fixed_push( c, e );
                 break;
             }
@@ -1493,20 +1762,24 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
     c->depth--;
 }
 
-static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedVocab * theirs,
-                                                  const uint8_t * my_block, int32_t my_block_bytes,
+static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * theirs,
+                                                  const uint8_t * my_layout, int32_t my_layout_bytes,
                                                   const TableFixedDst * dst,
                                                   TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
                                                   TableReport * report )
 {
-    TableFixedVocab mine = table_fixed_vocab_zero();
+    TableFixedLayoutView mine = table_fixed_layout_view_zero();
     TableFixedCompiler c;
     int32_t plain;
     int32_t out;
     int32_t split;
     int32_t i;
+    int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
     if ( plan == NULL || plan_capacity <= 0 ) { return -1; }
-    if ( !table_fixed_vocab_read( my_block, my_block_bytes, &mine ) ) { return -1; }
+    /* MY OWN layout goes through the same rules a stranger's does. It is this
+       build's own bytes, so it cannot fail — and saying so in the one place
+       both sides go through is what keeps that true. */
+    if ( !table_fixed_parse_layout( my_layout, (int64_t) my_layout_bytes, &mine, &why ) ) { return -1; }
     table_fixed_compiler_init( &c );
     c.plan = plan;
     c.capacity = plan_capacity;
@@ -2589,11 +2862,11 @@ static SCHEMA_UNUSED int schema_bench_fixed_table_message_extent_(TableMessageRe
 }
 /* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 
-   A record is an eight-byte hash of the writer's vocabulary block and then
+   A record is an eight-byte hash of the writer's LAYOUT and then
    the values in declared order, every field at its declared storage width.
    The writer is the constant bytes memcpy'd and then stores; the reader is
    ONE loop over ONE plan, the identity plan here and a plan compiled from
-   the writer's own block for anybody else. */
+   the writer's own layout for anybody else. */
 
 /* THE C ABI AGREES WITH THE PLAN. C has no constexpr, so the offsets in the
    plans below were computed by the schema compiler rather than folded by
@@ -2747,18 +3020,20 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     table_fixed_put64( b + 32, (uint64_t) value->world_time );
     table_fixed_put64( b + 40, (uint64_t) value->frame_tick );
     table_fixed_put32( b + 48, (uint32_t) value->server_time );
+    schema_assert( value->entities_count >= 0 && value->entities_count <= 8 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 52, (uint32_t) value->entities_count );
     {
         int64_t i;
-        for ( i = 0; i < 8; ++i )
+        for ( i = 0; i < (int64_t) value->entities_count; ++i )
         {
             schema_bench_mixed_entity_fixed_write_body_( b + 56 + i * 51 + 0, &value->entities[i] );
         }
     }
+    schema_assert( value->stats_count >= 0 && value->stats_count <= 80 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 464, (uint32_t) value->stats_count );
     {
         int64_t i;
-        for ( i = 0; i < 80; ++i )
+        for ( i = 0; i < (int64_t) value->stats_count; ++i )
         {
             schema_bench_mixed_stat_fixed_write_body_( b + 468 + i * 8 + 0, &value->stats[i] );
         }
@@ -2785,15 +3060,17 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     }
     {
         int64_t i;
-        for ( i = 0; i < 4; ++i )
+        for ( i = 0; i < (int64_t) 4; ++i )
         {
             table_fixed_put8( b + 1122 + i * 1 + 0, (uint8_t) value->loadout[i] );
         }
     }
+    schema_assert( value->player_name_length >= 0 && value->player_name_length <= 15 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 1126, (uint32_t) value->player_name_length );
-    memcpy( b + 1130, value->player_name, 15 );
+    memcpy( b + 1130, value->player_name, (size_t) ( value->player_name_length ) );
+    schema_assert( value->payload_length >= 0 && value->payload_length <= 16 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 1145, (uint32_t) value->payload_length );
-    memcpy( b + 1149, value->payload, 16 );
+    memcpy( b + 1149, value->payload, (size_t) ( value->payload_length ) );
     table_fixed_putf32( b + 1165, value->aim_x );
     table_fixed_putf32( b + 1169, value->aim_y );
     table_fixed_putf32( b + 1173, value->aim_z );
@@ -2822,11 +3099,12 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t fixed_table_fixed_body_bytes = 1236;
 static SCHEMA_UNUSED const int64_t fixed_table_fixed_record_bytes = 8 + 1236; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t fixed_table_fixed_hash = 0x32f1c4a302a224ebull; /* fnv1a64 over the block's bytes */
+static SCHEMA_UNUSED const uint64_t fixed_table_fixed_hash = 0x32f1c4a302a224ebull; /* fnv1a64 over the layout's bytes */
 
-/* THE VOCABULARY BLOCK: 75 entries, a PRE-ORDER walk of the closure in the
-   writer's declared order. Every byte is settled by the schema compiler. */
-static SCHEMA_UNUSED const uint8_t fixed_table_fixed_vocab[] = {
+/* THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
+   PRE-ORDER walk of the closure in the writer's declared order.
+   Every byte is settled by the schema compiler. */
+static SCHEMA_UNUSED const uint8_t fixed_table_fixed_layout[] = {
     0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
     0x00, 0x01, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xd4, 0x04,
     0x00, 0x00, 0x1b, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
@@ -2908,11 +3186,11 @@ static SCHEMA_UNUSED const uint8_t fixed_table_fixed_vocab[] = {
     0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
     0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-static SCHEMA_UNUSED const int64_t fixed_table_fixed_vocab_bytes = (int64_t) sizeof( fixed_table_fixed_vocab );
+static SCHEMA_UNUSED const int64_t fixed_table_fixed_layout_bytes = (int64_t) sizeof( fixed_table_fixed_layout );
 
-/* MY SIDE of the block, one row per entry: the storage facts a block entry
-   cannot carry, which is what a plan compiled from another writer's block
-   lands values through. */
+/* MY SIDE of the layout, one row per entry: the storage facts a layout
+   entry cannot carry, which is what a plan compiled from another writer's
+   layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst fixed_table_fixed_dst[] = {
     { 0, 0, 0, 0, 0 }, /* FixedTable */
     { 0, 0, 0, 0, 0 }, /* value */
@@ -2998,46 +3276,48 @@ static SCHEMA_UNUSED const TableFixedDst fixed_table_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry fixed_table_fixed_plan[] = {
-    { 0u, 0u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* sequence */
-    { 12u, 16u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* session_id */
-    { 24u, 32u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* nonce */
-    { 52u, 576u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0 }, /* entities count */
-    { 56u, 64u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 97u, 112u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 107u, 128u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 148u, 176u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 158u, 192u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 199u, 240u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 209u, 256u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 250u, 304u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 260u, 320u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 301u, 368u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 311u, 384u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 352u, 432u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 362u, 448u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 403u, 496u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 413u, 512u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 454u, 560u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 464u, 1220u, 80u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0 }, /* stats count */
-    { 468u, 580u, 640u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* stats, whole */
-    { 1108u, 1224u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* game_event tag */
-    { 1122u, 1244u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* loadout, whole */
-    { 1126u, 1264u, 15u, 1248u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* player_name */
-    { 1145u, 1284u, 16u, 1268u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 3, 0, 0 }, /* payload */
-    { 1165u, 1288u, 58u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* aim_x */
-    { 1223u, 1348u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* crc_hint */
-    { 1228u, 1356u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* extra */
-    { 1109u, 1228u, 13u, 0u, 1108u, kTableFixedCopy, 1, 0, 0 }, /* target_id */
-    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 2, 0, 0 }, /* channel */
-    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 3, 0, 0 }, /* item_id */
+    { 0u, 0u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* sequence */
+    { 12u, 16u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* session_id */
+    { 24u, 32u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* nonce */
+    { 52u, 576u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* entities count */
+    { 56u, 64u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 97u, 112u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 107u, 128u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 148u, 176u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 158u, 192u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 199u, 240u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 209u, 256u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 250u, 304u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 260u, 320u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 301u, 368u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 311u, 384u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 352u, 432u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 362u, 448u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 403u, 496u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 413u, 512u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 454u, 560u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 464u, 1220u, 80u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* stats count */
+    { 468u, 580u, 640u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* stats, whole */
+    { 1108u, 1224u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* game_event tag */
+    { 1122u, 1244u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* loadout, whole */
+    { 1126u, 1264u, 15u, 1248u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* player_name */
+    { 1145u, 1284u, 16u, 1268u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0 }, /* payload */
+    { 1165u, 1288u, 58u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* aim_x */
+    { 1223u, 1348u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* crc_hint */
+    { 1228u, 1356u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* extra */
+    { 1109u, 1228u, 13u, 0u, 1108u, kTableFixedCopy, 1, 0, 0, 0 }, /* target_id */
+    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 2, 0, 0, 0 }, /* channel */
+    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 3, 0, 0, 0 }, /* item_id */
 };
 static SCHEMA_UNUSED const int32_t fixed_table_fixed_plan_count = 32;
 static SCHEMA_UNUSED const int32_t fixed_table_fixed_plan_guarded = 29;
 
-/* A FILE: the form byte, the block, then the records to the end of it. */
+/* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+   — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+   then the layout behind its u32 length, then the records to the end of it. */
 static SCHEMA_UNUSED int64_t fixed_table_fixed_measure( int64_t count )
 {
-    return 1 + 4 + (int64_t) sizeof( fixed_table_fixed_vocab ) + count * ( 8 + 1236 );
+    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fixed_table_fixed_layout ) + count * ( 8 + 1236 );
 }
 
 static SCHEMA_UNUSED int64_t fixed_table_fixed_save( const FixedTable * values, int64_t count, uint8_t * buffer, int64_t capacity )
@@ -3046,10 +3326,12 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_save( const FixedTable * values, 
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = kTableFixedForm;
-    table_fixed_put32( buffer + 1, (uint32_t) sizeof( fixed_table_fixed_vocab ) );
-    memcpy( buffer + 5, fixed_table_fixed_vocab, sizeof( fixed_table_fixed_vocab ) );
-    at = buffer + 5 + (int64_t) sizeof( fixed_table_fixed_vocab );
+    table_fixed_put64( buffer + kTableFixedHashAt, fixed_table_fixed_hash );
+    table_fixed_put32( buffer + kTableFixedHeaderBytes, (uint32_t) sizeof( fixed_table_fixed_layout ) );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, fixed_table_fixed_layout, sizeof( fixed_table_fixed_layout ) );
+    at = buffer + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fixed_table_fixed_layout );
     for ( k = 0; k < count; ++k )
     {
         table_fixed_put64( at, fixed_table_fixed_hash );
@@ -3061,14 +3343,14 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_save( const FixedTable * values, 
 }
 
 /* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the block's hash is this build's own, and a plan compiled once from the
-   writer's block otherwise. Same loop either way (§3.4). */
+   the layout's hash is this build's own, and a plan compiled once from the
+   writer's layout otherwise. Same loop either way (§3.4). */
 static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
-    uint32_t block_bytes;
-    const uint8_t * block;
+    uint32_t layout_bytes;
+    const uint8_t * layout;
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
@@ -3077,36 +3359,54 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
     int32_t entry_guarded = fixed_table_fixed_plan_guarded;
     memset( &local, 0, sizeof( local ) );
     if ( report == NULL ) { report = &local; }
-    if ( values == NULL || data == NULL || bytes < 5 ) { report->malformed = 1; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = 1; report->reason = SCHEMA_TABLE_NEWER_FORM; return -1; }
-    block_bytes = table_fixed_get32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_BLOCK_MALFORMED; return -1; }
-    block = data + 5;
-    hash = table_fixed_hash_of( block, (int64_t) block_bytes );
-    at = block + block_bytes;
-    rest = bytes - 5 - (int64_t) block_bytes;
+    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
+    /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+       the registry is ordered, so a byte this reader does not carry is named
+       by where it sits relative to this form and never by one word for both. */
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = 1;
+        report->reason = data[0] == 1 ? SCHEMA_TABLE_PREVIOUS_FORM
+                       : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE
+                       : SCHEMA_TABLE_NEWER_FORM;
+        return -1;
+    }
+    layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    layout = data + kTableFixedHeaderBytes + 4;
+    hash = table_fixed_hash_of( layout, (int64_t) layout_bytes );
+    at = layout + layout_bytes;
+    rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 1236;
     if ( hash != fixed_table_fixed_hash )
     {
-        /* ANOTHER WRITER: the same loop, over a plan compiled from its block. */
-        TableFixedVocab parsed;
+        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+           THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
+        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
-        if ( !table_fixed_vocab_read( block, (int64_t) block_bytes, &parsed ) ) { report->refused = 1; report->reason = SCHEMA_TABLE_BLOCK_MALFORMED; return -1; }
-        made = table_fixed_compile( &parsed, fixed_table_fixed_vocab, (int32_t) sizeof( fixed_table_fixed_vocab ), fixed_table_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_BLOCK_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
+        made = table_fixed_compile( &parsed, fixed_table_fixed_layout, (int32_t) sizeof( fixed_table_fixed_layout ), fixed_table_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
     }
+    /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+       the layout's own rules each refuse under their own name first, so a
+       broken layout is never reported as a lying header. A header whose hash
+       is not the hash of the layout behind it is refused (§3). */
+    if ( table_fixed_get64( data + kTableFixedHashAt ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
     for ( k = 0; k < count; ++k )
     {
         fixed_table_reset( values + k ); /* the declared defaults, one prefill */
-        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_BLOCK; return -1; }
+        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         at += record_bytes;
     }
@@ -3121,7 +3421,7 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
 #define fixed_table_save_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define fixed_table_load_retain_messages(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
-/* Retained fields have no announced slots: save the FILE form or relay the original message. */
+/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */
 #define fixed_table_save_retain_messages(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))
 /* ---- the cooked form: point at a cook (docs/SPEC-TABLES.md §7) ---- */
 

@@ -2,7 +2,7 @@
    The C++ reference is test/tables/fixedform_main.cpp; this holds the same
    invariant on this leg, and holds it through the SAME plan-driven path: the
    identity plan when the record's hash is this build's own, and a plan
-   compiled once from the writer's own block for anybody else.
+   compiled once from the writer's own layout for anybody else.
    
    THIS FILE NAMES NO GENERATED TYPE AT ALL. Each generation's checks live in
    its own translation unit (fixedform.h says why); main sequences them and
@@ -31,6 +31,7 @@ int main( void )
     fixed_check( n == fixed_fx1_bytes(), "FX1 save" );
     fixed_fx1_read_own( g_buffer, n );
     fixed_fx2_read_fx1( g_buffer, n );
+    fixed_fx1_slack();
 
     n = fixed_fx2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_fx2_bytes(), "FX2 save" );
@@ -39,6 +40,16 @@ int main( void )
     n = fixed_v1_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_v1_bytes(), "V1 save" );
     fixed_v2_read_v1( g_buffer, n );
+
+    n = fixed_ut1_write( g_buffer, BufferBytes );
+    fixed_check( n == fixed_ut1_bytes(), "UT1 save" );
+    fixed_ut1_read_own( g_buffer, n );
+    fixed_ut1_shared_lane_control( g_buffer, n );
+    fixed_ut2_read_ut1( g_buffer, n );
+
+    n = fixed_ut2_write( g_buffer, BufferBytes );
+    fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
+    fixed_ut1_read_ut2( g_buffer, n );
 
     /* THE BYTE-FLIP FUZZ, and §3.4 says it is not optional. Every byte of a
        form-3 file, one bit at a time, handed to a reader of the other
@@ -66,6 +77,6 @@ int main( void )
         printf( "the fixed form's versioning conformance FAILED: %d\n", failures );
         return 1;
     }
-    printf( "the fixed form versions, on the C leg: the identity plan, a plan compiled from a stranger's block, and %lld byte flips answered inside the buffer\n", (long long) ( n * 8 ) );
+    printf( "the fixed form versions, on the C leg: the identity plan, a plan compiled from a stranger's layout, and %lld byte flips answered inside the buffer\n", (long long) ( n * 8 ) );
     return 0;
 }

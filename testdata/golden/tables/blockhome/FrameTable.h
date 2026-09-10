@@ -12,6 +12,22 @@
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 #include "Frame.h"
 #include "DataTable.h"
 
@@ -49,6 +65,14 @@ namespace blockhome {
 enum TableMessageReason
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
+    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
+    // registry is ordered, so a reader meeting a byte it does not carry can
+    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
+    // form, which is older, and calling that newer_form would send a caller
+    // looking for a build that does not exist. The bytes are the same refusal
+    // either way — nothing decoded, no counter moved — and only the name of it
+    // differs.
+    previous_form,
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
@@ -56,10 +80,22 @@ enum TableMessageReason
     batch_too_large,      // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
     // THE FIXED FORM'S THREE (docs/SPEC-TABLES.md §3.4). Each is a refusal by
     // name with nothing decoded and no counter moved, on the form byte's own
-    // precedent.
-    no_block,             // a fixed-form record whose hash names no vocabulary block this reader holds
-    block_malformed,      // bytes handed to the fixed form as a block that are not one: the count overruns, or the tree does not close
-    plan_too_large        // a block whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
+    // precedent. THE LAYOUT is what form 1 called the vocabulary block.
+    no_layout,        // a fixed-form record whose hash names no LAYOUT this reader holds
+    layout_malformed, // bytes handed to the fixed form as a layout that are not one: fewer than a header's worth of them
+    plan_too_large,   // a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
+    // THE LAYOUT VALIDATION'S OWN NAMES (docs/SPEC-TABLES.md §3.4). A layout is
+    // the one structure a reader must parse before it knows anything at all,
+    // and it arrives from an UNTRUSTED PEER, so each rule it is held to
+    // refuses under its own name rather than under one word for all of them.
+    // Every one of them runs BEFORE a single record byte is touched.
+    layout_count_mismatch,  // the entry count does not fit the layout's length exactly: the count, and then that many seventeen-byte entries
+    layout_kind_unknown,    // a kind OUTSIDE §3's closed set: a fixed form's kind set is closed, so an unknown kind means a newer FORM BYTE, which is a different form and not a newer layout of this one
+    layout_kind_invalid,    // a kind this build KNOWS, used in a way its own definition does not allow: a root that is not a table, an optional wrapper without exactly one child, a keyed array without exactly two, an enum whose children are not variants
+    layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
+    layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
+    layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
+    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
 };
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -2041,18 +2077,26 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 
 // ---------------------------------------------------------------------------
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
-//
-// THE SYMBOLS SAY "VOCAB" WHERE §3.4 SAYS "VOCABULARY BLOCK", and the reason is
-// that this codebase already spent the word BLOCK on §19's block form, whose
-// zero-cost gate holds that not one Block symbol appears in a Table source. The
-// spec keeps the owner's own name for the structure; the symbols get out of the
-// way of a gate that was there first.
 // ---------------------------------------------------------------------------
 
 constexpr uint8_t kTableFixedForm = 3;
 
+// THE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3, "THE FIRST
+// BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the form's own
+// EIGHT-BYTE HASH at offset 8, and the body at 16 — the alignment a
+// memory-mapped body needs. The fixed form does not need the alignment today;
+// it pads anyway, so the bytes do not move again the day the cook and the block
+// form join the registry under the same header.
+//
+// The hash here is the LAYOUT's. Each record still carries its own eight-byte
+// hash, which §3.4 has always said and which the header does not replace: the
+// header names the layout ONCE for the file, and a record names the layout it
+// was stamped by.
+constexpr int64_t kTableFixedHeaderBytes = 16;
+constexpr int64_t kTableFixedHashAt     = 8;
+
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other two are what a plan compiled from another writer's block adds.
+// the other two are what a plan compiled from another writer's layout adds.
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2064,7 +2108,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2118,7 +2162,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2138,7 +2188,7 @@ struct TableFixedEntry
 // instead of one per language, and it is what let the C leg carry this form at
 // all: C has no constexpr to run a walk with. The coalescer still exists at run
 // time, in TableFixedCompile below, because a plan compiled from a STRANGER's
-// block can only be built when that block arrives.
+// layout can only be built when that layout arrives.
 
 // ---- the little-endian moves -----------------------------------------------
 
@@ -2161,13 +2211,13 @@ inline uint64_t TableFixedGet64( const uint8_t * b )
     return v;
 }
 
-// THE HASH is fnv1a64 over the block's bytes exactly as written (§3.4).
-inline uint64_t TableFixedHashOf( const uint8_t * block, int64_t bytes )
+// THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4).
+inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
 {
     uint64_t h = 0xcbf29ce484222325ull;
     for ( int64_t i = 0; i < bytes; ++i )
     {
-        h ^= (uint64_t) block[i];
+        h ^= (uint64_t) layout[i];
         h *= 0x100000001b3ull;
     }
     return h;
@@ -2240,14 +2290,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2260,7 +2310,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedOrdinal:
         {
-            // A VARIANT ORDINAL IS ITS POSITION IN THE BLOCK, so a writer whose
+            // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
             // enum gained a variant IN THE MIDDLE is remapped here and never
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
@@ -2332,16 +2382,27 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     report->widened += widened;
 }
 
-// ---- THE BLOCK -------------------------------------------------------------
+// ---- THE LAYOUT ------------------------------------------------------------
 //
-// An entry is SEVENTEEN BYTES and the block is a count and a run of them. THE
-// FORMAT NEVER MOVES, which is what lets a reader of this major parse a later
-// major's block and step over a kind it does not know by the size the entry
-// states.
+// An entry is SEVENTEEN BYTES and the layout is a COUNT and a run of them.
+// THERE IS NO VERSION BYTE INSIDE IT (docs/SPEC-TABLES.md §3.4): the FORM BYTE
+// versions everything behind it, the layout's own format included, so a layout
+// format change is a NEW FORM BYTE and never a wider entry.
 
 constexpr int32_t kTableFixedEntryBytes = 17;
+constexpr int32_t kTableFixedLayoutHeaderBytes = 4; // the u32 entry count, and nothing else
 
-struct TableFixedVocabEntry
+// §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
+// the same reason the compiler holds a declaration to it: a record past it is
+// one this build will not decode.
+constexpr uint32_t kTableFixedRecordMaxBytes = 65536u;
+
+// A BOUND ON THE WALK, not on the wire: the validation below is recursive, so
+// a hostile layout of three thousand entries each claiming one child would
+// otherwise spend a reader's stack before any rule fired.
+constexpr int32_t kTableFixedMaxDepth = 64;
+
+struct TableFixedLayoutEntry
 {
     uint64_t id = 0;
     uint32_t size = 0;
@@ -2349,22 +2410,22 @@ struct TableFixedVocabEntry
     uint8_t kind = 0;
 };
 
-struct TableFixedVocab
+struct TableFixedLayoutView
 {
     const uint8_t * bytes = NULL;
     int32_t count = 0;
 };
 
-// AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a block
+// AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a layout
 // is arithmetic over child counts a STRANGER wrote, so the one place that can
 // hold the whole walk inside the buffer is the one place that touches it. An
 // out-of-range index answers kind 0xFF, which is a kind no declaration has and
 // nothing matches, so the walk that asked for it finds nothing and moves on.
-inline TableFixedVocabEntry TableFixedEntryAt( const TableFixedVocab & b, int32_t i )
+inline TableFixedLayoutEntry TableFixedEntryAt( const TableFixedLayoutView & b, int32_t i )
 {
-    TableFixedVocabEntry out;
+    TableFixedLayoutEntry out;
     if ( b.bytes == NULL || i < 0 || i >= b.count ) { out.kind = 0xFFu; return out; }
-    const uint8_t * e = b.bytes + 4 + (int64_t) i * kTableFixedEntryBytes;
+    const uint8_t * e = b.bytes + kTableFixedLayoutHeaderBytes + (int64_t) i * kTableFixedEntryBytes;
     out.id = TableFixedGet64( e );
     out.kind = e[8];
     out.size = TableFixedGet32( e + 9 );
@@ -2374,9 +2435,9 @@ inline TableFixedVocabEntry TableFixedEntryAt( const TableFixedVocab & b, int32_
 
 // TableFixedSubtree is how many entries the subtree rooted at i occupies, so a
 // walk steps over a child it does not want without knowing what is in it.
-inline int32_t TableFixedSubtree( const TableFixedVocab & b, int32_t i )
+inline int32_t TableFixedSubtree( const TableFixedLayoutView & b, int32_t i )
 {
-    // ITERATIVE ON PURPOSE. A block is a stranger's bytes, so a chain of
+    // ITERATIVE ON PURPOSE. A layout is a stranger's bytes, so a chain of
     // single-child entries is a stack depth the wire gets to choose; this walk
     // gives it none.
     if ( i < 0 || i >= b.count ) { return 1; }
@@ -2394,36 +2455,252 @@ inline int32_t TableFixedSubtree( const TableFixedVocab & b, int32_t i )
     return n;
 }
 
-inline uint32_t TableFixedUnionArmBytes( const TableFixedVocab & b, int32_t i )
+inline uint32_t TableFixedUnionArmBytes( const TableFixedLayoutView & b, int32_t i )
 {
-    const TableFixedVocabEntry e = TableFixedEntryAt( b, i );
+    const TableFixedLayoutEntry e = TableFixedEntryAt( b, i );
     uint32_t widest = 0;
     int32_t at = i + 1;
     for ( uint32_t k = 0; k < e.children && at < b.count; ++k )
     {
-        const TableFixedVocabEntry a = TableFixedEntryAt( b, at );
+        const TableFixedLayoutEntry a = TableFixedEntryAt( b, at );
         if ( a.size > widest ) { widest = a.size; }
         at += TableFixedSubtree( b, at );
     }
     return widest;
 }
 
-inline uint32_t TableFixedTagBytes( const TableFixedVocab & b, int32_t i )
+inline uint32_t TableFixedTagBytes( const TableFixedLayoutView & b, int32_t i )
 {
     return TableFixedEntryAt( b, i ).size - TableFixedUnionArmBytes( b, i );
 }
 
-inline bool TableFixedVocabRead( const uint8_t * bytes, int64_t length, TableFixedVocab & out )
+// ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
+//
+// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// must parse before it knows anything at all, so every rule below runs BEFORE
+// a single record byte is touched and each refuses under its OWN NAME rather
+// than under one word for all of them (docs/SPEC-TABLES.md §3.4).
+//
+// A KIND THIS BUILD DOES NOT KNOW IS A REFUSAL, and that is a ruling rather
+// than an oversight. A FIXED FORM HAS A CLOSED KIND SET: the form byte versions
+// everything behind it, kinds included, so a layout carrying a kind outside the
+// set is not a newer layout of THIS form — it is a layout of a form whose byte
+// this reader never saw, and there is no version of "step over it" that is
+// honest about that. layout_kind_unknown says exactly what happened, and the
+// peer is told to speak this form or a form this reader carries.
+//
+// NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle:
+// an entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is
+// always higher than its parent's, the layout is finite, and there is no back
+// reference for a cycle to be made of. The tree-closure rule is what bounds
+// the walk, and the depth rule is what bounds the reader's stack.
+
+struct TableFixedCheck
 {
-    if ( bytes == NULL || length < 4 ) { return false; }
-    const uint32_t count = TableFixedGet32( bytes );
-    if ( count == 0 || (int64_t) count * kTableFixedEntryBytes + 4 != length ) { return false; }
-    out.bytes = bytes;
-    out.count = (int32_t) count;
-    // THE TREE HAS TO CLOSE: the root's subtree is the whole block
-    if ( TableFixedSubtree( out, 0 ) != out.count ) { out.bytes = NULL; out.count = 0; return false; }
+    const TableFixedLayoutView * layout = NULL;
+    TableMessageReason why = layout_malformed;
+    bool bad = false;
+};
+
+inline void TableFixedFail( TableFixedCheck & c, TableMessageReason why )
+{
+    if ( !c.bad ) { c.bad = true; c.why = why; }
+}
+
+// A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
+// ONE exception, and it is stated here rather than left to be found: a
+// bits(N) field rides at its DECLARED STORAGE WIDTH — four bytes for N <= 32 and
+// eight above (§3.4) — under the unsigned integer kind its BIT COUNT picks
+// (§3), so kinds 6 and 7 admit four as well as their own width.
+inline bool TableFixedLeafSize( uint8_t kind, uint32_t size, bool & is_leaf )
+{
+    is_leaf = true;
+    switch ( kind )
+    {
+        case 1:  return size == 1u;                  // bool
+        case 2:  return size == 1u;                  // i8
+        case 3:  return size == 2u;                  // i16
+        case 4:  return size == 4u;                  // i32
+        case 5:  return size == 8u;                  // i64
+        case 6:  return size == 1u || size == 4u;    // u8,  and bits( 1 .. 8 )
+        case 7:  return size == 2u || size == 4u;    // u16, and bits( 9 .. 16 )
+        case 8:  return size == 4u;                  // u32, and bits( 17 .. 32 )
+        case 9:  return size == 8u;                  // u64, flags, and bits( 33 .. 64 )
+        case 10: return size == 4u;                  // f32
+        case 11: return size == 8u;                  // f64
+        case 17: return size == 4u;                  // a pointer index, which no fixed table carries
+        case 18: case 19: return size == 16u;        // i128, u128
+        case 20: case 25: return size == 1u;         // fixed8, ufixed8
+        case 21: case 26: return size == 2u;
+        case 22: case 27: return size == 4u;
+        case 23: case 28: return size == 8u;
+        case 24: case 29: return size == 16u;
+        case 32: return size == 0u;                  // a variant, and an arm that holds nothing
+    }
+    is_leaf = false;
     return true;
 }
+
+inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || n == 4u || n == 8u; }
+
+// THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
+// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
+// adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
+// reserved: neither is a kind a declaration spells, so neither is ever an
+// entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
+// — see the note above TableFixedCheck.
+inline bool TableFixedKnownKind( uint8_t kind )
+{
+    if ( kind >= 1u && kind <= 30u ) { return true; }
+    return kind == 32u || kind == 33u || kind == 35u;
+}
+
+// TableFixedCheckEntry validates the subtree rooted at i and answers how many
+// entries it occupies, which is the same arithmetic TableFixedSubtree does and
+// is why that walk is safe to run afterwards and only afterwards.
+inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t depth )
+{
+    if ( c.bad ) { return 0; }
+    if ( i < 0 || i >= c.layout->count ) { TableFixedFail( c, layout_tree_unclosed ); return 0; }
+    if ( depth > kTableFixedMaxDepth ) { TableFixedFail( c, layout_too_deep ); return 0; }
+    const TableFixedLayoutEntry e = TableFixedEntryAt( *c.layout, i );
+    // THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
+    // and is refused whole, never walked and never stepped over.
+    if ( !TableFixedKnownKind( e.kind ) ) { TableFixedFail( c, layout_kind_unknown ); return 0; }
+    if ( e.size > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }
+
+    // THE CHILDREN FIRST, in the pre-order the layout is written in.
+    int32_t at = i + 1;
+    uint64_t sum = 0;
+    uint32_t widest = 0;
+    uint32_t first_size = 0, second_size = 0;
+    uint8_t first_kind = 0;
+    uint32_t first_children = 0;
+    bool kids_are_variants = true;
+    for ( uint32_t k = 0; k < e.children; ++k )
+    {
+        const int32_t child = at;
+        const int32_t used = TableFixedCheckEntry( c, child, depth + 1 );
+        if ( c.bad ) { return 0; }
+        const TableFixedLayoutEntry ce = TableFixedEntryAt( *c.layout, child );
+        if ( k == 0 ) { first_size = ce.size; first_kind = ce.kind; first_children = ce.children; }
+        if ( k == 1 ) { second_size = ce.size; }
+        if ( ce.kind != 32 ) { kids_are_variants = false; }
+        sum += ce.size;
+        if ( ce.size > widest ) { widest = ce.size; }
+        if ( sum > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }
+        at += used;
+    }
+
+    bool is_leaf = false;
+    if ( !TableFixedLeafSize( e.kind, e.size, is_leaf ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+    if ( is_leaf )
+    {
+        if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+        return at - i;
+    }
+    switch ( e.kind )
+    {
+        case 13: // a TABLE: its size is the SUM of its fields'
+        {
+            if ( (uint64_t) e.size != sum ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 35: // the OPTIONAL WRAPPER: one child, one present byte in front of it
+        {
+            if ( e.children != 1u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( (uint64_t) e.size != sum + 1u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 14: // an ARRAY: a whole number of elements, behind a count or not
+        {
+            if ( e.children != 1u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( first_size == 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            const bool bare = ( e.size % first_size ) == 0u;
+            const bool counted = e.size >= 4u && ( ( e.size - 4u ) % first_size ) == 0u;
+            if ( !bare && !counted ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 16: // an ENUM-KEYED array: the KEY ENUM then the ELEMENT, every slot written
+        {
+            if ( e.children != 2u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( first_kind != 30 ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( second_size == 0u || ( e.size % second_size ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            // AT LEAST one slot per variant. Not exactly one: an enum widened
+            // by an explicit max has more slots than it has names, and the
+            // layout carries only the names.
+            if ( e.size / second_size < first_children ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 15: // a UNION: the TAG at its own width, then the WIDEST ARM
+        {
+            if ( e.children == 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( e.size <= widest ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( !TableFixedOrdinalWidth( e.size - widest ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 30: // an ENUM: the ordinal's storage width, and its children are VARIANTS
+        {
+            if ( !TableFixedOrdinalWidth( e.size ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.children != 0u && !kids_are_variants ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            break;
+        }
+        case 12: // string(N): the length, then N bytes
+        {
+            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( e.size < 4u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
+        {
+            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            break;
+        }
+        // Every kind of the closed set is either a leaf above or a case here,
+        // so this is unreachable — and it refuses rather than admits, because
+        // a kind that reached it is a kind the two lists disagree about.
+        default: TableFixedFail( c, layout_kind_unknown ); return 0;
+    }
+    return at - i;
+}
+
+// TableFixedParseLayout is the WHOLE of what a reader trusts a layout on. It
+// answers false and a REASON BY NAME, and the caller reports that reason.
+inline bool TableFixedParseLayout( const uint8_t * bytes, int64_t length, TableFixedLayoutView & out, TableMessageReason & why )
+{
+    out.bytes = NULL;
+    out.count = 0;
+    if ( bytes == NULL || length < kTableFixedLayoutHeaderBytes ) { why = layout_malformed; return false; }
+    // 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
+    const uint32_t count = TableFixedGet32( bytes );
+    if ( count == 0u || (int64_t) count * kTableFixedEntryBytes + kTableFixedLayoutHeaderBytes != length )
+    {
+        why = layout_count_mismatch;
+        return false;
+    }
+    TableFixedLayoutView view;
+    view.bytes = bytes;
+    view.count = (int32_t) count;
+    // 2. THE ROOT IS A TABLE, and its size is the record's body
+    const TableFixedLayoutEntry root = TableFixedEntryAt( view, 0 );
+    if ( root.kind != 13 ) { why = layout_kind_invalid; return false; }
+    if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes ) { why = layout_record_too_large; return false; }
+    // 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
+    //    SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND
+    TableFixedCheck c;
+    c.layout = &view;
+    const int32_t used = TableFixedCheckEntry( c, 0, 0 );
+    if ( c.bad ) { why = c.why; return false; }
+    // 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
+    //    the layout has nothing left over
+    if ( used != view.count ) { why = layout_tree_unclosed; return false; }
+    out = view;
+    return true;
+}
+
+
+
 
 // ---- THE PLAN COMPILER -----------------------------------------------------
 //
@@ -2435,15 +2712,15 @@ inline bool TableFixedVocabRead( const uint8_t * bytes, int64_t length, TableFix
 // out too, which is what defaults it, because the prefill already put the
 // declared default there.
 
-// TableFixedDst is MY side of the walk: one row per entry of my own block,
-// carrying the storage facts a block entry cannot.
+// TableFixedDst is MY side of the walk: one row per entry of my own layout,
+// carrying the storage facts a layout entry cannot.
 struct TableFixedDst
 {
     uint32_t dst = 0;    // this entry's storage offset inside its parent
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -2467,8 +2744,8 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
     // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
     // side's whole defence: the plan's source offsets are arithmetic over sizes
-    // a STRANGER wrote, so a block whose child sizes do not sum to its parent's
-    // could otherwise name a byte past the record. A block that does is refused
+    // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
+    // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
     {
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
@@ -2501,27 +2778,27 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
-                                    const TableFixedVocab & theirs, int32_t ti, uint32_t their_at,
-                                    const TableFixedVocab & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+                                    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                     uint32_t guard, uint8_t arg );
 
 // TableFixedMatchChildren walks a TABLE's children on both sides.
 inline void TableFixedMatchChildren( TableFixedCompiler & c,
-                                     const TableFixedVocab & theirs, int32_t ti, uint32_t their_at,
-                                     const TableFixedVocab & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                      uint32_t guard, uint8_t arg )
 {
-    const TableFixedVocabEntry te = TableFixedEntryAt( theirs, ti );
-    const TableFixedVocabEntry me = TableFixedEntryAt( mine, mi );
+    const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
+    const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
     int32_t my_child = mi + 1;
     for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
     {
-        const TableFixedVocabEntry mc = TableFixedEntryAt( mine, my_child );
+        const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
         int32_t their_child = ti + 1;
         uint32_t their_off = their_at;
         for ( uint32_t j = 0; j < te.children && their_child < theirs.count; ++j )
         {
-            const TableFixedVocabEntry tc = TableFixedEntryAt( theirs, their_child );
+            const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
             if ( tc.id == mc.id )
             {
                 TableFixedCompileEntry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
@@ -2536,7 +2813,7 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
     int32_t tc_at = ti + 1;
     for ( uint32_t j = 0; j < te.children && tc_at < theirs.count; ++j )
     {
-        const TableFixedVocabEntry tc = TableFixedEntryAt( theirs, tc_at );
+        const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, tc_at );
         bool named = false;
         int32_t mc_at = mi + 1;
         for ( uint32_t k = 0; k < me.children && mc_at < mine.count; ++k )
@@ -2550,15 +2827,15 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
-                                    const TableFixedVocab & theirs, int32_t ti, uint32_t their_at,
-                                    const TableFixedVocab & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+                                    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                     uint32_t guard, uint8_t arg )
 {
-    const TableFixedVocabEntry te = TableFixedEntryAt( theirs, ti );
-    const TableFixedVocabEntry me = TableFixedEntryAt( mine, mi );
+    const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
+    const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
     const TableFixedDst & d = dst[mi];
     const uint32_t at = my_at + d.dst;
-    // THE NESTING A STRANGER'S BLOCK CAN ASK FOR IS CAPPED. The language's own
+    // THE NESTING A STRANGER'S LAYOUT CAN ASK FOR IS CAPPED. The language's own
     // closure is nowhere near this deep, and a wire does not get to pick a
     // recursion depth.
     if ( c.depth > 64 ) { c.hostile = true; return; }
@@ -2603,8 +2880,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 14: // an array: the count, then min( their bound, my bound ) elements
         {
-            const TableFixedVocabEntry tel = TableFixedEntryAt( theirs, ti + 1 );
-            const TableFixedVocabEntry mel = TableFixedEntryAt( mine, mi + 1 );
+            const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
+            const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
             const uint32_t their_n = tel.size ? ( te.size - head ) / tel.size : 0u;
             const uint32_t my_n = mel.size ? ( me.size - head ) / mel.size : 0u;
@@ -2625,11 +2902,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
         {
-            const TableFixedVocabEntry tkey = TableFixedEntryAt( theirs, ti + 1 );
-            const TableFixedVocabEntry mkey = TableFixedEntryAt( mine, mi + 1 );
+            const TableFixedLayoutEntry tkey = TableFixedEntryAt( theirs, ti + 1 );
+            const TableFixedLayoutEntry mkey = TableFixedEntryAt( mine, mi + 1 );
             const int32_t tel = ti + 1 + TableFixedSubtree( theirs, ti + 1 );
             const int32_t mel = mi + 1 + TableFixedSubtree( mine, mi + 1 );
-            const TableFixedVocabEntry tee = TableFixedEntryAt( theirs, tel );
+            const TableFixedLayoutEntry tee = TableFixedEntryAt( theirs, tel );
             for ( uint32_t k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine.count; ++k )
             {
                 const uint64_t key_id = TableFixedEntryAt( mine, mi + 2 + (int32_t) k ).id;
@@ -2650,11 +2927,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             int32_t my_arm = mi + 1;
             for ( uint32_t k = 0; k < me.children && my_arm < mine.count; ++k )
             {
-                const TableFixedVocabEntry ma = TableFixedEntryAt( mine, my_arm );
+                const TableFixedLayoutEntry ma = TableFixedEntryAt( mine, my_arm );
                 int32_t their_arm = ti + 1;
                 for ( uint32_t j = 0; j < te.children && their_arm < theirs.count; ++j )
                 {
-                    const TableFixedVocabEntry ta = TableFixedEntryAt( theirs, their_arm );
+                    const TableFixedLayoutEntry ta = TableFixedEntryAt( theirs, their_arm );
                     if ( ta.id == ma.id )
                     {
                         // MY tag value, written under THEIR tag's guard
@@ -2672,7 +2949,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             break;
         }
-        case 30: // an enum: the ordinal is the block's position, so it remaps
+        case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
             if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
             uint16_t map[256];
@@ -2699,7 +2976,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -2726,15 +3003,19 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     }
 }
 
-inline int32_t TableFixedCompile( const TableFixedVocab & theirs,
-                                  const uint8_t * my_block, int32_t my_block_bytes,
+inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
+                                  const uint8_t * my_layout, int32_t my_layout_bytes,
                                   const TableFixedDst * dst,
                                   TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
                                   TableReport * report )
 {
-    TableFixedVocab mine;
+    TableFixedLayoutView mine;
+    TableMessageReason why = layout_malformed;
     if ( plan == NULL || plan_capacity <= 0 ) { return -1; }
-    if ( !TableFixedVocabRead( my_block, my_block_bytes, mine ) ) { return -1; }
+    // MY OWN layout goes through the same rules a stranger's does. It is this
+    // build's own bytes, so it cannot fail — and saying so in the one place
+    // both sides go through is what keeps that true.
+    if ( !TableFixedParseLayout( my_layout, my_layout_bytes, mine, why ) ) { return -1; }
     TableFixedCompiler c;
     c.plan = plan;
     c.capacity = plan_capacity;
@@ -3323,7 +3604,7 @@ inline TableOpenVerdict PartRowLoadVerdict( PartRow & value, const uint8_t * buf
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -3398,7 +3679,7 @@ inline int64_t PartRowMeasureMessageBody( int64_t at, const PartRow & value )
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool PartRowSaveMessageBody( TableBitWriter & w, const PartRow & value )
 {
     {
@@ -3840,7 +4121,7 @@ inline TableOpenVerdict PartFrameLoadVerdict( PartFrame & value, const uint8_t *
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
         else
         {
-            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message
+            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message
             // stored on its own is not readable, because its table is
             // somewhere else, and the refusal says so BY NAME rather than
             // merely by form byte (docs/SPEC-TABLES.md §3.3).
@@ -3904,7 +4185,7 @@ inline int64_t PartFrameMeasureMessageBody( int64_t at, const PartFrame & value 
 
 // The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No
 // kind byte rides at all, and no length frames a nested body, because a
-// body is self-delimiting: it is written where the file form put an L.
+// body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool PartFrameSaveMessageBody( TableBitWriter & w, const PartFrame & value )
 {
     if ( value.version != 0 )
@@ -4101,11 +4382,11 @@ inline bool PartFrameLoadMessages( PartFrame * values, int64_t * count, const Ta
 
 // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 //
-// A record is an eight-byte hash of the writer's vocabulary block and then
+// A record is an eight-byte hash of the writer's LAYOUT and then
 // the values in declared order, every field at its declared storage width.
 // The writer is the constant bytes memcpy'd and then stores; the reader is
 // ONE loop over ONE plan, the identity plan here and a plan compiled from
-// the writer's own block for anybody else.
+// the writer's own layout for anybody else.
 
 // THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
 // schema compiler rather than folded by this one, because they are the same
@@ -4175,13 +4456,15 @@ inline void FiringGroupFixedWriteBody( uint8_t * b, const FiringGroup & value )
 inline void GunnerSettingsFixedWriteBody( uint8_t * b, const GunnerSettings & value )
 {
     (void) b; (void) value;
+    schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.firing_groups_count );
-    for ( int64_t i = 0; i < 32; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.firing_groups_count; ++i )
     {
         FiringGroupFixedWriteBody( b + 4 + i * 8 + 0, value.firing_groups[i] );
     }
+    schema_assert( value.missile_groups_count >= 0 && value.missile_groups_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 260, (uint32_t) value.missile_groups_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.missile_groups_count; ++i )
     {
         FiringGroupFixedWriteBody( b + 264 + i * 8 + 0, value.missile_groups[i] );
     }
@@ -4206,8 +4489,9 @@ inline void PartFrameFixedWriteBody( uint8_t * b, const PartFrame & value )
 {
     (void) b; (void) value;
     TableFixedPut64( b + 0, (uint64_t) value.version );
+    schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 8, (uint32_t) value.parts_count );
-    for ( int64_t i = 0; i < 32; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.parts_count; ++i )
     {
         PartRowFixedWriteBody( b + 12 + i * 340 + 0, value.parts[i] );
     }
@@ -4219,11 +4503,12 @@ inline void PartFrameFixedWriteBody( uint8_t * b, const PartFrame & value )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PartRowFixedBodyBytes = 340;
 constexpr int64_t PartRowFixedRecordBytes = 8 + PartRowFixedBodyBytes; // the hash and the body
-constexpr uint64_t PartRowFixedHash = 0x77235ae96f13007cull; // fnv1a64 over the block's bytes
+constexpr uint64_t PartRowFixedHash = 0x77235ae96f13007cull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 25 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t PartRowFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 25 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t PartRowFixedLayout[] = {
     0x19, 0x00, 0x00, 0x00, 0xf0, 0xb1, 0x40, 0x26, 0x28, 0x61, 0xc4, 0x27, 0x0d, 0x54, 0x01, 0x00,
     0x00, 0x04, 0x00, 0x00, 0x00, 0x94, 0x91, 0x69, 0x7e, 0xb6, 0x88, 0x99, 0xd1, 0x0d, 0x1f, 0x00,
     0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x38, 0x4b, 0x9e, 0x6e, 0x56, 0x8c, 0x8b, 0x53, 0x0d, 0x0d,
@@ -4252,11 +4537,11 @@ constexpr uint8_t PartRowFixedVocab[] = {
     0x20, 0xd6, 0x04, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe, 0xf6,
     0x18, 0x16, 0x77, 0x6a, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t PartRowFixedVocabBytes = (int64_t) sizeof( PartRowFixedVocab );
+constexpr int64_t PartRowFixedLayoutBytes = (int64_t) sizeof( PartRowFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst PartRowFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // PartRow
     { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0 }, // armor
@@ -4292,32 +4577,36 @@ constexpr TableFixedDst PartRowFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry PartRowFixedPlan[] = {
-    { 0u, 0u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 13u, 16u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 26u, 32u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 31u, 296u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 35u, 40u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 291u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 295u, 300u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 327u, 336u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
+    { 0u, 0u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 13u, 16u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 26u, 32u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 31u, 296u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 35u, 40u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 291u, 332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 295u, 300u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 327u, 336u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
 };
 constexpr int32_t PartRowFixedPlanCount = 8;
 constexpr int32_t PartRowFixedPlanGuarded = 8;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t PartRowFixedMeasure( int64_t count )
 {
-    return 1 + 4 + PartRowFixedVocabBytes + count * PartRowFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + PartRowFixedLayoutBytes + count * PartRowFixedRecordBytes;
 }
 
 inline int64_t PartRowFixedSave( const PartRow * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = PartRowFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) PartRowFixedVocabBytes );
-    memcpy( buffer + 5, PartRowFixedVocab, (size_t) PartRowFixedVocabBytes );
-    uint8_t * at = buffer + 5 + PartRowFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, PartRowFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) PartRowFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, PartRowFixedLayout, (size_t) PartRowFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + PartRowFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, PartRowFixedHash );
@@ -4329,45 +4618,63 @@ inline int64_t PartRowFixedSave( const PartRow * values, int64_t count, uint8_t 
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = PartRowFixedPlan;
     int32_t entry_count = PartRowFixedPlanCount;
     int32_t entry_guarded = PartRowFixedPlanGuarded;
     int64_t record_bytes = PartRowFixedRecordBytes;
     if ( hash != PartRowFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, PartRowFixedVocab, (int32_t) PartRowFixedVocabBytes, PartRowFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, PartRowFixedLayout, (int32_t) PartRowFixedLayoutBytes, PartRowFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         PartRowReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -4380,11 +4687,12 @@ inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PartFrameFixedBodyBytes = 10892;
 constexpr int64_t PartFrameFixedRecordBytes = 8 + PartFrameFixedBodyBytes; // the hash and the body
-constexpr uint64_t PartFrameFixedHash = 0xa6bf965bfbe5ce4eull; // fnv1a64 over the block's bytes
+constexpr uint64_t PartFrameFixedHash = 0xa6bf965bfbe5ce4eull; // fnv1a64 over the layout's bytes
 
-// THE VOCABULARY BLOCK: 28 entries, a PRE-ORDER walk of the closure in the
-// writer's declared order. Every byte is settled by the compiler.
-constexpr uint8_t PartFrameFixedVocab[] = {
+// THE LAYOUT (form 1 calls this the vocabulary block): 28 entries, a
+// PRE-ORDER walk of the closure in the writer's declared order.
+// Every byte is settled by the compiler.
+constexpr uint8_t PartFrameFixedLayout[] = {
     0x1c, 0x00, 0x00, 0x00, 0xb1, 0x2f, 0x3a, 0x9e, 0xfd, 0xb7, 0xa1, 0x7c, 0x0d, 0x8c, 0x2a, 0x00,
     0x00, 0x02, 0x00, 0x00, 0x00, 0x37, 0xea, 0x08, 0x98, 0x2c, 0xc6, 0x62, 0xbb, 0x09, 0x08, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x58, 0xf9, 0xa1, 0xa7, 0x9d, 0x51, 0x0c, 0x0e, 0x84,
@@ -4416,11 +4724,11 @@ constexpr uint8_t PartFrameFixedVocab[] = {
     0x41, 0x33, 0x6b, 0x20, 0xd6, 0x04, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd1,
     0x31, 0xfe, 0xf6, 0x18, 0x16, 0x77, 0x6a, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-constexpr int64_t PartFrameFixedVocabBytes = (int64_t) sizeof( PartFrameFixedVocab );
+constexpr int64_t PartFrameFixedLayoutBytes = (int64_t) sizeof( PartFrameFixedLayout );
 
-// MY SIDE of the block, one row per entry: the storage facts a block entry
-// cannot carry, which is what a plan compiled from another writer's block
-// lands values through.
+// MY SIDE of the layout, one row per entry: the storage facts a layout
+// entry cannot carry, which is what a plan compiled from another writer's
+// layout lands values through.
 constexpr TableFixedDst PartFrameFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // PartFrame
     { (uint32_t) __builtin_offsetof( PartFrame, version ), 0, 0, 0, 0 }, // version
@@ -4459,282 +4767,286 @@ constexpr TableFixedDst PartFrameFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry PartFrameFixedPlan[] = {
-    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // version
-    { 8u, 11272u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // parts count
-    { 12u, 8u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 25u, 24u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 38u, 40u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 43u, 304u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 47u, 48u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 303u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 307u, 308u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 339u, 344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 352u, 360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 365u, 376u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 378u, 392u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 383u, 656u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 387u, 400u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 643u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 647u, 660u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 679u, 696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 692u, 712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 705u, 728u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 718u, 744u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 723u, 1008u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 727u, 752u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 983u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 987u, 1012u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 1019u, 1048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 1032u, 1064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1045u, 1080u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1058u, 1096u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 1063u, 1360u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 1067u, 1104u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 1323u, 1396u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 1327u, 1364u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 1359u, 1400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 1372u, 1416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1385u, 1432u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1398u, 1448u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 1403u, 1712u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 1407u, 1456u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 1663u, 1748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 1667u, 1716u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 1699u, 1752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 1712u, 1768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1725u, 1784u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 1738u, 1800u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 1743u, 2064u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 1747u, 1808u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 2003u, 2100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 2007u, 2068u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 2039u, 2104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 2052u, 2120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2065u, 2136u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2078u, 2152u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 2083u, 2416u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 2087u, 2160u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 2343u, 2452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 2347u, 2420u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 2379u, 2456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 2392u, 2472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2405u, 2488u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2418u, 2504u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 2423u, 2768u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 2427u, 2512u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 2683u, 2804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 2687u, 2772u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 2719u, 2808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 2732u, 2824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2745u, 2840u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 2758u, 2856u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 2763u, 3120u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 2767u, 2864u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 3023u, 3156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 3027u, 3124u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 3059u, 3160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 3072u, 3176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3085u, 3192u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3098u, 3208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 3103u, 3472u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 3107u, 3216u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 3363u, 3508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 3367u, 3476u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 3399u, 3512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 3412u, 3528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3425u, 3544u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3438u, 3560u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 3443u, 3824u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 3447u, 3568u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 3703u, 3860u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 3707u, 3828u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 3739u, 3864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 3752u, 3880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3765u, 3896u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 3778u, 3912u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 3783u, 4176u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 3787u, 3920u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 4043u, 4212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 4047u, 4180u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 4079u, 4216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 4092u, 4232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4105u, 4248u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4118u, 4264u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 4123u, 4528u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 4127u, 4272u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 4383u, 4564u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 4387u, 4532u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 4419u, 4568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 4432u, 4584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4445u, 4600u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4458u, 4616u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 4463u, 4880u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 4467u, 4624u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 4723u, 4916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 4727u, 4884u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 4759u, 4920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 4772u, 4936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4785u, 4952u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 4798u, 4968u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 4803u, 5232u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 4807u, 4976u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 5063u, 5268u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 5067u, 5236u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 5099u, 5272u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 5112u, 5288u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5125u, 5304u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5138u, 5320u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 5143u, 5584u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 5147u, 5328u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 5403u, 5620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 5407u, 5588u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 5439u, 5624u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 5452u, 5640u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5465u, 5656u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5478u, 5672u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 5483u, 5936u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 5487u, 5680u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 5743u, 5972u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 5747u, 5940u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 5779u, 5976u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 5792u, 5992u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5805u, 6008u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 5818u, 6024u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 5823u, 6288u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 5827u, 6032u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 6083u, 6324u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 6087u, 6292u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 6119u, 6328u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 6132u, 6344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6145u, 6360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6158u, 6376u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 6163u, 6640u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 6167u, 6384u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 6423u, 6676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 6427u, 6644u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 6459u, 6680u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 6472u, 6696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6485u, 6712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6498u, 6728u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 6503u, 6992u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 6507u, 6736u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 6763u, 7028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 6767u, 6996u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 6799u, 7032u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 6812u, 7048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6825u, 7064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 6838u, 7080u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 6843u, 7344u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 6847u, 7088u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 7103u, 7380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 7107u, 7348u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 7139u, 7384u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 7152u, 7400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7165u, 7416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7178u, 7432u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 7183u, 7696u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 7187u, 7440u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 7443u, 7732u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 7447u, 7700u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 7479u, 7736u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 7492u, 7752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7505u, 7768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7518u, 7784u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 7523u, 8048u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 7527u, 7792u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 7783u, 8084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 7787u, 8052u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 7819u, 8088u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 7832u, 8104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7845u, 8120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 7858u, 8136u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 7863u, 8400u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 7867u, 8144u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 8123u, 8436u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 8127u, 8404u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 8159u, 8440u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 8172u, 8456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8185u, 8472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8198u, 8488u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 8203u, 8752u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 8207u, 8496u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 8463u, 8788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 8467u, 8756u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 8499u, 8792u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 8512u, 8808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8525u, 8824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8538u, 8840u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 8543u, 9104u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 8547u, 8848u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 8803u, 9140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 8807u, 9108u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 8839u, 9144u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 8852u, 9160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8865u, 9176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 8878u, 9192u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 8883u, 9456u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 8887u, 9200u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 9143u, 9492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 9147u, 9460u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 9179u, 9496u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 9192u, 9512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9205u, 9528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9218u, 9544u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 9223u, 9808u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 9227u, 9552u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 9483u, 9844u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 9487u, 9812u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 9519u, 9848u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 9532u, 9864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9545u, 9880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9558u, 9896u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 9563u, 10160u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 9567u, 9904u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 9823u, 10196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 9827u, 10164u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 9859u, 10200u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 9872u, 10216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9885u, 10232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 9898u, 10248u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 9903u, 10512u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 9907u, 10256u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 10163u, 10548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 10167u, 10516u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 10199u, 10552u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 10212u, 10568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 10225u, 10584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 10238u, 10600u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 10243u, 10864u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 10247u, 10608u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 10503u, 10900u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 10507u, 10868u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 10539u, 10904u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
-    { 10552u, 10920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 10565u, 10936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // thickness
-    { 10578u, 10952u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // rating
-    { 10583u, 11216u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // firing_groups count
-    { 10587u, 10960u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // firing_groups, whole
-    { 10843u, 11252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // missile_groups count
-    { 10847u, 11220u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // missile_groups, whole
-    { 10879u, 11256u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // reload_seconds
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // version
+    { 8u, 11272u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // parts count
+    { 12u, 8u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 25u, 24u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 38u, 40u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 43u, 304u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 47u, 48u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 303u, 340u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 307u, 308u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 339u, 344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 352u, 360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 365u, 376u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 378u, 392u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 383u, 656u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 387u, 400u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 643u, 692u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 647u, 660u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 679u, 696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 692u, 712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 705u, 728u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 718u, 744u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 723u, 1008u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 727u, 752u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 983u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 987u, 1012u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 1019u, 1048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 1032u, 1064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 1045u, 1080u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 1058u, 1096u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 1063u, 1360u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 1067u, 1104u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 1323u, 1396u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 1327u, 1364u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 1359u, 1400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 1372u, 1416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 1385u, 1432u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 1398u, 1448u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 1403u, 1712u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 1407u, 1456u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 1663u, 1748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 1667u, 1716u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 1699u, 1752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 1712u, 1768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 1725u, 1784u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 1738u, 1800u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 1743u, 2064u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 1747u, 1808u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 2003u, 2100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 2007u, 2068u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 2039u, 2104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 2052u, 2120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 2065u, 2136u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 2078u, 2152u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 2083u, 2416u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 2087u, 2160u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 2343u, 2452u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 2347u, 2420u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 2379u, 2456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 2392u, 2472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 2405u, 2488u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 2418u, 2504u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 2423u, 2768u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 2427u, 2512u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 2683u, 2804u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 2687u, 2772u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 2719u, 2808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 2732u, 2824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 2745u, 2840u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 2758u, 2856u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 2763u, 3120u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 2767u, 2864u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 3023u, 3156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 3027u, 3124u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 3059u, 3160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 3072u, 3176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 3085u, 3192u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 3098u, 3208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 3103u, 3472u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 3107u, 3216u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 3363u, 3508u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 3367u, 3476u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 3399u, 3512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 3412u, 3528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 3425u, 3544u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 3438u, 3560u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 3443u, 3824u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 3447u, 3568u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 3703u, 3860u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 3707u, 3828u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 3739u, 3864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 3752u, 3880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 3765u, 3896u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 3778u, 3912u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 3783u, 4176u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 3787u, 3920u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 4043u, 4212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 4047u, 4180u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 4079u, 4216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 4092u, 4232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 4105u, 4248u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 4118u, 4264u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 4123u, 4528u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 4127u, 4272u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 4383u, 4564u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 4387u, 4532u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 4419u, 4568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 4432u, 4584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 4445u, 4600u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 4458u, 4616u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 4463u, 4880u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 4467u, 4624u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 4723u, 4916u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 4727u, 4884u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 4759u, 4920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 4772u, 4936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 4785u, 4952u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 4798u, 4968u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 4803u, 5232u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 4807u, 4976u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 5063u, 5268u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 5067u, 5236u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 5099u, 5272u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 5112u, 5288u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 5125u, 5304u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 5138u, 5320u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 5143u, 5584u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 5147u, 5328u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 5403u, 5620u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 5407u, 5588u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 5439u, 5624u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 5452u, 5640u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 5465u, 5656u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 5478u, 5672u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 5483u, 5936u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 5487u, 5680u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 5743u, 5972u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 5747u, 5940u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 5779u, 5976u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 5792u, 5992u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 5805u, 6008u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 5818u, 6024u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 5823u, 6288u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 5827u, 6032u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 6083u, 6324u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 6087u, 6292u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 6119u, 6328u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 6132u, 6344u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 6145u, 6360u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 6158u, 6376u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 6163u, 6640u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 6167u, 6384u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 6423u, 6676u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 6427u, 6644u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 6459u, 6680u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 6472u, 6696u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 6485u, 6712u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 6498u, 6728u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 6503u, 6992u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 6507u, 6736u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 6763u, 7028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 6767u, 6996u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 6799u, 7032u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 6812u, 7048u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 6825u, 7064u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 6838u, 7080u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 6843u, 7344u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 6847u, 7088u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 7103u, 7380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 7107u, 7348u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 7139u, 7384u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 7152u, 7400u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 7165u, 7416u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 7178u, 7432u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 7183u, 7696u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 7187u, 7440u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 7443u, 7732u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 7447u, 7700u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 7479u, 7736u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 7492u, 7752u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 7505u, 7768u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 7518u, 7784u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 7523u, 8048u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 7527u, 7792u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 7783u, 8084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 7787u, 8052u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 7819u, 8088u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 7832u, 8104u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 7845u, 8120u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 7858u, 8136u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 7863u, 8400u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 7867u, 8144u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 8123u, 8436u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 8127u, 8404u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 8159u, 8440u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 8172u, 8456u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 8185u, 8472u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 8198u, 8488u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 8203u, 8752u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 8207u, 8496u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 8463u, 8788u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 8467u, 8756u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 8499u, 8792u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 8512u, 8808u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 8525u, 8824u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 8538u, 8840u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 8543u, 9104u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 8547u, 8848u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 8803u, 9140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 8807u, 9108u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 8839u, 9144u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 8852u, 9160u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 8865u, 9176u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 8878u, 9192u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 8883u, 9456u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 8887u, 9200u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 9143u, 9492u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 9147u, 9460u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 9179u, 9496u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 9192u, 9512u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 9205u, 9528u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 9218u, 9544u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 9223u, 9808u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 9227u, 9552u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 9483u, 9844u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 9487u, 9812u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 9519u, 9848u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 9532u, 9864u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 9545u, 9880u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 9558u, 9896u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 9563u, 10160u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 9567u, 9904u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 9823u, 10196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 9827u, 10164u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 9859u, 10200u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 9872u, 10216u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 9885u, 10232u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 9898u, 10248u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 9903u, 10512u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 9907u, 10256u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 10163u, 10548u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 10167u, 10516u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 10199u, 10552u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 10212u, 10568u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 10225u, 10584u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 10238u, 10600u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 10243u, 10864u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 10247u, 10608u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 10503u, 10900u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 10507u, 10868u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 10539u, 10904u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
+    { 10552u, 10920u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 10565u, 10936u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // thickness
+    { 10578u, 10952u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // rating
+    { 10583u, 11216u, 32u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // firing_groups count
+    { 10587u, 10960u, 256u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // firing_groups, whole
+    { 10843u, 11252u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // missile_groups count
+    { 10847u, 11220u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // missile_groups, whole
+    { 10879u, 11256u, 13u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // reload_seconds
 };
 constexpr int32_t PartFrameFixedPlanCount = 258;
 constexpr int32_t PartFrameFixedPlanGuarded = 258;
 
-// A FILE: the form byte, the block, then the records to the end of it.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
 constexpr int64_t PartFrameFixedMeasure( int64_t count )
 {
-    return 1 + 4 + PartFrameFixedVocabBytes + count * PartFrameFixedRecordBytes;
+    return kTableFixedHeaderBytes + 4 + PartFrameFixedLayoutBytes + count * PartFrameFixedRecordBytes;
 }
 
 inline int64_t PartFrameFixedSave( const PartFrame * values, int64_t count, uint8_t * buffer, int64_t capacity )
 {
     const int64_t need = PartFrameFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
-    TableFixedPut32( buffer + 1, (uint32_t) PartFrameFixedVocabBytes );
-    memcpy( buffer + 5, PartFrameFixedVocab, (size_t) PartFrameFixedVocabBytes );
-    uint8_t * at = buffer + 5 + PartFrameFixedVocabBytes;
+    TableFixedPut64( buffer + kTableFixedHashAt, PartFrameFixedHash );
+    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) PartFrameFixedLayoutBytes );
+    memcpy( buffer + kTableFixedHeaderBytes + 4, PartFrameFixedLayout, (size_t) PartFrameFixedLayoutBytes );
+    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + PartFrameFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, PartFrameFixedHash );
@@ -4746,45 +5058,63 @@ inline int64_t PartFrameFixedSave( const PartFrame * values, int64_t count, uint
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. Same loop either way (§3.4).
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. Same loop either way (§3.4).
 inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }
-    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }
-    const uint32_t block_bytes = TableFixedGet32( data + 1 );
-    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }
-    const uint8_t * block = data + 5;
-    const uint64_t hash = TableFixedHashOf( block, block_bytes );
-    const uint8_t * at = block + block_bytes;
-    const int64_t rest = bytes - 5 - (int64_t) block_bytes;
+    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
+    if ( data[0] != kTableFixedForm )
+    {
+        report->refused = true;
+        report->reason = data[0] == kTableWireForm ? previous_form
+                       : data[0] == kTableWireMessageForm ? message_form_as_file
+                       : newer_form;
+        return -1;
+    }
+    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
+    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
+    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
+    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint8_t * at = layout + layout_bytes;
+    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     const TableFixedEntry * entries = PartFrameFixedPlan;
     int32_t entry_count = PartFrameFixedPlanCount;
     int32_t entry_guarded = PartFrameFixedPlanGuarded;
     int64_t record_bytes = PartFrameFixedRecordBytes;
     if ( hash != PartFrameFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its block.
-        TableFixedVocab parsed;
-        if ( !TableFixedVocabRead( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        TableFixedLayoutView parsed;
+        TableMessageReason why = layout_malformed;
+        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
         int32_t compiled_guarded = 0;
-        const int32_t made = TableFixedCompile( parsed, PartFrameFixedVocab, (int32_t) PartFrameFixedVocabBytes, PartFrameFixedDst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? block_malformed : plan_too_large; return -1; }
+        const int32_t made = TableFixedCompile( parsed, PartFrameFixedLayout, (int32_t) PartFrameFixedLayoutBytes, PartFrameFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header. A header whose hash
+    // is not the hash of the layout behind it is refused (§3).
+    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
     for ( int64_t k = 0; k < n; ++k )
     {
         PartFrameReset( values[k] ); // the declared defaults, one prefill
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }
+        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
@@ -4794,7 +5124,7 @@ inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const u
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
 //
 // A fixed-class root is a VALUE: no region, no node directory, and so no
-// anchor for a retained record's path. The five names, the file form's three
+// anchor for a retained record's path. The five names, the VARIABLE form's three
 // and the message form's two (§3.3), are declared here so that naming one is
 // a refusal that says why, rather than a symbol a linker could not find. The
 // suffixes stay claimed on every closure member all the same (§11): a table

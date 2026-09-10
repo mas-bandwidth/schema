@@ -261,12 +261,12 @@ func corpusID(wire string) (string, error) {
 		paths["bench_mixed.bin"] = "testdata/wire/bench_mixed.bin"
 		paths["bench_mixed.variants.bin"] = "bench/corpus/variants/bench_mixed.variants.bin"
 	} else {
-		// bench_fixed.bin and bench_fixed.vocab are the FIXED FORM's half of
+		// bench_fixed.bin and bench_fixed.layout are the FIXED FORM's half of
 		// the same 64 logical records (docs/SPEC-TABLES.md §3.4). They ride the
 		// table corpus id because they are the same corpus: a row measured
 		// against one of these files is not divisible against a row measured
 		// before they existed.
-		for _, name := range []string{"bench_table.bin", "bench_table.lengths", "bench_table.variants.bin", "bench_fixed.bin", "bench_fixed.vocab"} {
+		for _, name := range []string{"bench_table.bin", "bench_table.lengths", "bench_table.variants.bin", "bench_fixed.bin", "bench_fixed.layout"} {
 			paths[name] = "bench/paired/corpus/" + name
 		}
 	}
@@ -513,7 +513,7 @@ func generateAndBuild(langs []string) error {
 		return err
 	}
 	info.Binaries["build/paired/corpus"] = hash
-	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.vocab"} {
+	for _, p := range []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema", "testdata/wire/bench_mixed.bin", "bench/corpus/variants/bench_mixed.variants.bin", "bench/paired/corpus/bench_table.bin", "bench/paired/corpus/bench_table.variants.bin", "bench/paired/corpus/bench_table.lengths", "bench/paired/corpus/bench_fixed.bin", "bench/paired/corpus/bench_fixed.layout"} {
 		h, e := hashFile(p)
 		if e != nil {
 			return e
