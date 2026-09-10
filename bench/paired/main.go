@@ -34,10 +34,55 @@ var languages = []string{"cpp", "c", "go", "cs"}
 
 // knownLanguages IS EVERY NAME -langs ACCEPTS: the published four plus the legs
 // that exist and are measurable but are not part of a published pass yet.
-// `-mode fast` is the DIAGNOSTIC mode and takes any non-empty subset of these;
-// `-mode run` still takes the published four and nothing else.
-var knownLanguages = []string{"cpp", "c", "go", "cs", "elixir"}
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir"}
+// `-mode fast` is the DIAGNOSTIC mode and takes any non-empty subset of these
+// that share a shape; `-mode run` still takes the published four and nothing
+// else. rust is table-only (see tableOnlyLanguages). elixir measures both wires.
+var knownLanguages = []string{"cpp", "c", "go", "cs", "elixir", "rust"}
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust"}
+
+// A TABLE-ONLY LANGUAGE measures the table wire and NEVER a ratio.
+//
+// rust is here because its packet leg does not meet this driver's contract
+// rather than because somebody chose to skip it. bench/rust/src/main.rs is a
+// real, maintained packet runner — its CSV is already the seventeen columns —
+// and it still cannot be invoked here: it has neither `--gate` nor
+// `--iterations`, the two flags this driver passes on every invocation
+// (`--iterations` is how one uniform count is held across every language and
+// round, §2.1, and `--gate` is the no-clock correctness pass), it reports the
+// median of seven runs of its own choosing where this driver requires one
+// measured run per round and aggregates across rounds itself, and it measures
+// the packet corpus's own variant set rather than this pairing's. Those are
+// three changes to a leg whose numbers are already published, so they are
+// separate work with their own ruling; filling this driver's second wire with
+// a fabricated row would be inventing a measurement. So rust rides the table
+// wire alone and appears in no ratio, no confirmation pass and no board.
+var tableOnlyLanguages = []string{"rust"}
+
+func allLanguages() []string {
+	return append([]string{}, knownLanguages...)
+}
+
+// wiresFor names the wires a language actually has a runner for. Every loop
+// that walks a language's legs walks this and not the literal pair, so a
+// table-only language is never asked for a packet row it cannot produce.
+func wiresFor(lang string) []string {
+	if contains(tableOnlyLanguages, lang) {
+		return []string{"table"}
+	}
+	return []string{"packet", "table"}
+}
+
+// onlyTableLanguages reports whether every requested language is table-only.
+// A request is one shape or the other and never a mixture: a diagnostic that
+// paired some languages and not others would print a ratio table with holes.
+func onlyTableLanguages(langs []string) bool {
+	for _, lang := range langs {
+		if !contains(tableOnlyLanguages, lang) {
+			return false
+		}
+	}
+	return len(langs) > 0
+}
 
 // THE BEAM TOOLCHAIN, pinned exactly as make/elixir.mk pins it: the repo-local
 // unpacked dist/ by default, and whatever is on PATH when BEAM_PATH names a
@@ -145,8 +190,9 @@ type command struct {
 	args []string
 	dir  string
 	// env is added to this process's environment, never replacing it: an
-	// interpreted leg needs its pinned toolchain on PATH and nothing else
-	// about the measured environment may move (see measuredEnvironment).
+	// interpreted leg needs its pinned toolchain on PATH, the Rust leg needs
+	// cargo settings, and nothing else about the measured environment may move
+	// (see measuredEnvironment).
 	env []string
 }
 
@@ -230,6 +276,61 @@ func binary(wire, lang string) string {
 		p += ".exe"
 	}
 	return p
+}
+
+// cargoExecutable names the cargo the Rust leg builds with. make/rust.mk finds
+// it in the rustup keg, which is not on PATH by default, and PREFERS it —
+// prepending RUSTUP_BIN — so the paired leg is built by the same cargo the rest
+// of the Rust leg's gates use rather than by whatever a shell happens to
+// expose. build.json records its version either way.
+// The cargo target directory: under build/, which is not tracked, so a paired
+// build never leaves artefacts beside a runner's source.
+const rustTargetDir = "build/paired/rust"
+
+// The Rust unit's manifest is tracked and hand-written (generated/bench/paired/
+// rust/Cargo.toml says why). pointRustManifest requires it and, when
+// SERIALIZE_RS names a checkout other than the sibling the manifest carries,
+// rewrites THAT ONE LINE — which dirties a tracked file on purpose: the
+// operator changed the build, and build.json's `dirty` should say so.
+func pointRustManifest() error {
+	const manifest = "generated/bench/paired/rust/Cargo.toml"
+	b, e := os.ReadFile(manifest)
+	if e != nil {
+		return fmt.Errorf("the paired rust unit's manifest is missing (%s); it is tracked build wiring, not generator output: %w", manifest, e)
+	}
+	override := os.Getenv("SERIALIZE_RS")
+	if strings.TrimSpace(override) == "" {
+		return nil
+	}
+	lines := strings.Split(string(b), "\n")
+	found := false
+	for i, line := range lines {
+		if strings.HasPrefix(line, "serialize = ") {
+			lines[i] = "serialize = { package = \"serialize-official\", path = \"" + abs(override) + "\" }"
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("%s carries no serialize dependency line to point at SERIALIZE_RS", manifest)
+	}
+	return os.WriteFile(manifest, []byte(strings.Join(lines, "\n")), 0644)
+}
+func cargoExecutable() string { return rustupTool("CARGO", "cargo") }
+
+// rustcExecutable names the compiler behind that cargo. It is recorded for the
+// same reason `cc --version` is: the codegen is the compiler's, not the build
+// tool's.
+func rustcExecutable() string { return rustupTool("RUSTC", "rustc") }
+
+func rustupTool(env, name string) string {
+	if s := os.Getenv(env); s != "" {
+		return s
+	}
+	keg := filepath.Join(setting("RUSTUP_BIN", "/opt/homebrew/opt/rustup/bin"), name)
+	if _, e := os.Stat(keg); e == nil {
+		return keg
+	}
+	return name
 }
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
@@ -345,6 +446,12 @@ func generateAndBuild(langs []string) error {
 		}
 		if e := run(append([]string{schema, "generate", "--lang", lang, "--out", "generated/bench/paired/" + lang}, paired...)...); e != nil {
 			return e
+		}
+		// The standalone packet unit is the packet leg's, so a table-only
+		// language does not generate it: nothing here would compile it and
+		// emitting it would imply a leg that does not exist.
+		if contains(tableOnlyLanguages, lang) {
+			continue
 		}
 		if e := run(schema, "generate", "--lang", lang, "--out", "generated/bench/"+lang, "bench/corpus/Bench.schema"); e != nil {
 			return e
@@ -478,6 +585,39 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+		case "rust":
+			// THE MANIFEST IS BUILD WIRING AND IS TRACKED (the Rust emitter
+			// writes only .rs files; make/rust.mk says the same of every other
+			// Rust unit's Cargo.toml), so this step does not write it — it
+			// requires it, and repairs only the ONE line an operator can move:
+			// the serialize.rs sibling path, when SERIALIZE_RS names another
+			// checkout. Left alone, nothing under generated/ is touched.
+			if e := pointRustManifest(); e != nil {
+				return e
+			}
+			// The optimization level is a CARGO SETTING, not a flag on a
+			// command line, so it is set on the build and stamped into the
+			// binary through the same option_env! seam the packet Rust leg
+			// opened: a row's `opt` column then says what the build actually
+			// was instead of repeating a constant nobody checked.
+			cargoEnv := []string{"BENCH_OPT=" + opt, "CARGO_PROFILE_RELEASE_OPT_LEVEL=" + strings.TrimPrefix(opt, "O")}
+			if e := execute(command{args: []string{cargoExecutable(), "build", "--release", "--quiet", "--manifest-path", "bench/tables/rust/Cargo.toml", "--target-dir", rustTargetDir}, env: cargoEnv}); e != nil {
+				return e
+			}
+			// Replace the inode rather than writing over it: a copy onto a
+			// binary another process is running corrupts it in place, and a
+			// long sitting runs this one (make/rust.mk's conformance target
+			// carries the same note for the same reason).
+			built, e := os.ReadFile(filepath.Join(rustTargetDir, "release", "table-rust"))
+			if e != nil {
+				return e
+			}
+			if e = os.Remove(binary("table", lang)); e != nil && !os.IsNotExist(e) {
+				return e
+			}
+			if e = os.WriteFile(binary("table", lang), built, 0755); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -488,7 +628,7 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
@@ -497,7 +637,7 @@ func generateAndBuild(langs []string) error {
 		info.Tools["elixir"] = strings.TrimSpace(string(b))
 	}
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		for _, wire := range wiresFor(lang) {
 			p := binary(wire, lang)
 			h, e := hashFile(p)
 			if e != nil {
@@ -548,6 +688,16 @@ func generateAndBuild(langs []string) error {
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
 	info.Tools["c_packet_flags"] = strings.Join(cFlags, " ")
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
+	if contains(langs, "rust") {
+		// The Rust leg's "flags" are cargo settings; the level is also stamped
+		// into the binary, so a row's `opt` column and this line agree or the
+		// build is not the one that ran.
+		info.Tools["rust_table_flags"] = "cargo build --release; BENCH_OPT=" + opt + " CARGO_PROFILE_RELEASE_OPT_LEVEL=" + strings.TrimPrefix(opt, "O")
+		info.Runtimes["serialize.rs"] = gitValue(abs(setting("SERIALIZE_RS", "../serialize.rs")), "rev-parse", "HEAD")
+		if gitValue(abs(setting("SERIALIZE_RS", "../serialize.rs")), "diff", "--name-only", "HEAD", "--") != "" {
+			info.Runtimes["serialize.rs"] += "-dirty"
+		}
+	}
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {
 		return err
@@ -620,7 +770,7 @@ func gate(langs []string) error {
 		return e
 	}
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		for _, wire := range wiresFor(lang) {
 			out, e := capture(runner(wire, lang, "--gate"))
 			if e != nil {
 				return fmt.Errorf("%s/%s gate: %w", lang, wire, e)
@@ -1043,6 +1193,16 @@ func main() {
 		}
 		seen[lang] = true
 	}
+	// A TABLE-ONLY LANGUAGE IS NEVER IN A MIXED REQUEST. Build and gate could
+	// take one, but every other mode reads the request as a set to compare, so
+	// keeping the shapes apart everywhere is one rule instead of four.
+	if !onlyTableLanguages(langs) {
+		for _, lang := range langs {
+			if contains(tableOnlyLanguages, lang) {
+				fail(errors.New("a table-only language is requested alone: -langs " + lang))
+			}
+		}
+	}
 	if *mode == "render" {
 		if e := render(*out); e != nil {
 			fail(e)
@@ -1057,10 +1217,12 @@ func main() {
 	}
 	fast := fastConfig{Rounds: *fastRounds, PacketIterations: *packetIters, TableIterations: *tableIters, Timeout: *fastTimeout, Noise: *noise}
 	if *mode == "fast" {
-		// FAST IS THE DIAGNOSTIC MODE and it takes any non-empty subset: it
-		// publishes nothing, seals nothing, and is where a leg that is not in a
-		// published pass yet is measured at all. Confirmation is unchanged
-		// below — the published four and nothing else.
+		// FAST IS THE DIAGNOSTIC MODE and it takes any non-empty subset that
+		// shares a shape: it publishes nothing, seals nothing, and is where a
+		// leg that is not in a published pass yet is measured at all.
+		// Confirmation is unchanged below — the published four and nothing else.
+		// A table-only language is requested alone (the mixed-request guard
+		// above); elixir may ride with the published four or on its own.
 		if len(langs) == 0 || len(langs) > len(knownLanguages) {
 			fail(errors.New("fast mode requires at least one known language"))
 		}
@@ -1094,8 +1256,8 @@ func main() {
 	}
 	// A CONFIRMATION PASS IS THE PUBLISHED SET, EXACTLY: provenance.go seals a
 	// pass over `languages`, so a pass measuring anything else would render as
-	// a pass it is not.
-	if len(langs) != len(languages) || !slices.Equal(slices.Sorted(slices.Values(langs)), slices.Sorted(slices.Values(languages))) {
+	// a pass it is not. A table-only language has no packet row to divide.
+	if onlyTableLanguages(langs) || len(langs) != len(languages) || !slices.Equal(slices.Sorted(slices.Values(langs)), slices.Sorted(slices.Values(languages))) {
 		fail(fmt.Errorf("published pass requires exactly the published languages: %s", strings.Join(languages, ",")))
 	}
 	if e := measure(langs, *out, *rounds, info, *receipt); e != nil {

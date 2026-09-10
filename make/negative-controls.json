@@ -3,7 +3,7 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
@@ -16,6 +16,7 @@
         "tables-c-ref-ordinal-negative-control",
         "tables-clamp-limits-negative-control",
         "tables-doctags-negative-controls",
+        "tables-fixedform-run-copy-negative-control",
         "tables-float-nan-negative-control",
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
