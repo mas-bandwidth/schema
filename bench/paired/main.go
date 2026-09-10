@@ -58,10 +58,6 @@ var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "e
 // wire alone and appears in no ratio, no confirmation pass and no board.
 var tableOnlyLanguages = []string{"rust"}
 
-func allLanguages() []string {
-	return append([]string{}, knownLanguages...)
-}
-
 // wiresFor names the wires a language actually has a runner for. Every loop
 // that walks a language's legs walks this and not the literal pair, so a
 // table-only language is never asked for a packet row it cannot produce.

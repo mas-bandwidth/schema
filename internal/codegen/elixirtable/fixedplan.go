@@ -3,6 +3,7 @@ package elixirtable
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -73,8 +74,8 @@ func (e fixedPlanEntry) render(col, tail int) string {
 	}
 	// OUTERMOST LIVE IS THE PARENT ARRAY, so a slack slot never inspects a
 	// nested count, a present flag or a union tag that nobody wrote.
-	for i := len(e.lives) - 1; i >= 0; i-- {
-		s = tupleNode{items: []string{":live", itoa(e.lives[i].dst), itoa(e.lives[i].index), s}}.render(col, col, tail)
+	for _, live := range slices.Backward(e.lives) {
+		s = tupleNode{items: []string{":live", itoa(live.dst), itoa(live.index), s}}.render(col, col, tail)
 	}
 	return s
 }
