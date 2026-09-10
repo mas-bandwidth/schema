@@ -45,6 +45,7 @@ behaviour.
 | `ptr->field` | `ref.field` | `.` |
 | `int32_t * clamped` / `(*clamped)++` | `int32_t & clamped` / `clamped++` | reference spelling |
 | `const T * p` in the runtime | `const T & p` | `T REF` |
+| `TableFixedEntryLands( &plan[i] )` | `TableFixedEntryLands( plan[i] )` | `TableFixedEntryLands( plan[i] )` — same pointer/ref as Apply, for the prefill's cover-minus-plan |
 | `int i; for ( i =` | `for ( int i =` | C++ for-init |
 | `remap` (ordinal table) | `table` | `table` |
 | `wide` (f32→f64 local) | `d` | `d` |
