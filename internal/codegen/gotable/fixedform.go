@@ -365,7 +365,13 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 		g.emitFixedLeafWalk(st)
 		g.emitFixedWriteBody(st)
 	}
+	// THE READ-SIDE BOUNDS, in the same closure order the write bodies take —
+	// post-order, so a nested type's body stands before the call to it.
+	for _, st := range order {
+		g.emitFixedClampBodyFn(st)
+	}
 	for _, st := range roots {
+		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -527,12 +533,12 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			return
 		case *ir.Union:
 			tag := int64(ir.StorageBitsFor(r.Max) / 8)
-			// THE TAG IS NOT A COPY: a tag naming no arm of this reader lands
-			// as None and counts `unknown`, the way form 1 answers an arm id
-			// it does not know (docs/SPEC-TABLES.md §4). Aux carries this
-			// reader's own arm count.
-			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedTag} // the tag\n",
-				ind, src, dst, offGo(f.Type.Name, "Type"), tag, len(r.Variants))
+			// THE TAG IS A COPY. A tag past the arm count is a bound the
+			// storage pass holds after the run, over live elements only —
+			// never a plan entry, which would cover slack slots of a counted
+			// array of unions and count them (docs/SPEC-TABLES.md §3.4).
+			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag\n",
+				ind, src, dst, offGo(f.Type.Name, "Type"), tag)
 			g.pf("%sn++\n", ind)
 			for i, v := range r.Variants {
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
@@ -775,8 +781,162 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t}\n")
 	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
 	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:], dst, report)\n")
+	if ir.TableFixedClampNeeded(st) {
+		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
+		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4).\n")
+		g.pf("\t\t%sFixedClamp(&values[k], report)\n", st.Name)
+	}
 	g.pf("\t\tat = at[recordBytes:]\n")
 	g.pf("\t}\n\treturn n\n}\n\n")
+}
+
+/* ---- the read-side bounds --------------------------------------------------
+
+A fixed record is a positional image, so the ONE read loop moves bytes and asks
+nothing about what they mean. What a declaration bounds is held HERE, as
+straight-line code in the generated decode, after the copy — never as plan
+entries, which would be a test per bounded field on every read of every record
+and is the cost the identity plan exists to avoid.
+
+THE PASS RUNS OVER STORAGE, so ONE pass covers both plans. It walks only what a
+read can have written: a counted array's LIVE elements and never its slack, an
+optional's payload only when the present byte says so. */
+
+func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
+	if !ir.TableFixedClampNeeded(st) {
+		return
+	}
+	g.pf("// %s's read-side bounds.\n", st.Name)
+	g.pf("func %sFixedClampBody(value *%s, clamped *int32) {\n", st.Name, st.Name)
+	g.pf("\t_, _ = value, clamped\n")
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value", 1)
+	}
+	g.pf("}\n\n")
+}
+
+func (g *tableGen) emitFixedClamp(st *ir.Struct) {
+	if !ir.TableFixedClampNeeded(st) {
+		return
+	}
+	g.pf("// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's\n")
+	g.pf("// declared min and max, and an ORDINAL's set — a union tag past the arm\n")
+	g.pf("// count, an enum ordinal past the enum's top value. Straight-line, after\n")
+	g.pf("// the copy, over STORAGE, so the identity plan and a plan compiled from a\n")
+	g.pf("// stranger's layout are held to the same numbers by the same pass. Every\n")
+	g.pf("// clamp COUNTS. The pass walks LIVE elements only: a counted array's live\n")
+	g.pf("// count, not its slack; an optional's payload only when present; a union's\n")
+	g.pf("// set arm, not the others.\n")
+	g.pf("func %sFixedClamp(value *%s, report *TableReport) {\n", st.Name, st.Name)
+	g.pf("\tclamped := int32(0)\n")
+	g.pf("\t%sFixedClampBody(value, &clamped)\n", st.Name)
+	g.pf("\treport.Clamped += clamped\n}\n\n")
+}
+
+func (g *tableGen) emitFixedClampField(f *ir.Field, val string, tabs int) {
+	if !ir.TableFixedClampNeededField(f) {
+		return
+	}
+	ind := strings.Repeat("\t", tabs)
+	if f.Type.Optional {
+		g.pf("%sif %s.%sPresent {\n", ind, val, member(f))
+		g.emitFixedClampPayload(f, val, tabs+1)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedClampPayload(f, val, tabs)
+}
+
+func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	switch {
+	case f.KeyEnum != "":
+		g.pf("%sfor i := int64(0); i < %d; i++ {\n", ind, f.KeyEnumRef.Max)
+		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		g.pf("%sfor i := int64(0); i < %d; i++ {\n", ind, f.ArrayBound)
+		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		g.pf("%sfor i := int64(0); i < int64(%s.%sCount); i++ {\n", ind, val, member(f))
+		g.emitFixedClampElement(f, fmt.Sprintf("%s.%s[i]", val, member(f)), tabs+1)
+		g.pf("%s}\n", ind)
+	default:
+		g.emitFixedClampElement(f, val+"."+member(f), tabs)
+	}
+}
+
+func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ir.TableFixedClampNeeded(r) {
+				g.pf("%s%sFixedClampBody(&%s, clamped)\n", ind, r.Name, expr)
+			}
+			return
+		case *ir.Union:
+			g.pf("%sif uint32(%s.Type) > %d { %s.Type = %sTypeNone; (*clamped)++ }\n",
+				ind, expr, r.Max, expr, f.Type.Name)
+			if !ir.TableFixedClampNeededUnionArm(r) {
+				return
+			}
+			g.pf("%sswitch %s.Type {\n", ind, expr)
+			for _, v := range r.Variants {
+				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
+					continue
+				}
+				g.pf("%scase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
+				g.emitFixedClampElement(v.F, expr+"."+ir.GoExportName(v.Name), tabs+1)
+			}
+			g.pf("%s}\n", ind)
+			return
+		case *ir.Enum:
+			g.pf("%sif uint64(%s) > %d { %s = %sNone; (*clamped)++ }\n",
+				ind, expr, r.Max, expr, f.Type.Name)
+			return
+		}
+		return
+	}
+	width := int(ir.TableFixedStorageBytes(f.Type))
+	switch {
+	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
+		lo, hi := formatFloat32(f.FMin), formatFloat32(f.FMax)
+		g.pf("%sif %s < %s { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
+			ind, expr, lo, expr, lo, expr, hi, expr, hi)
+	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
+		lo, hi := formatFloat64(f.FMin), formatFloat64(f.FMax)
+		g.pf("%sif %s < %s { %s = %s; (*clamped)++ } else if %s > %s { %s = %s; (*clamped)++ }\n",
+			ind, expr, lo, expr, lo, expr, hi, expr, hi)
+	default:
+		signed := ir.TableKindSigned(ir.TableScalarKind(f))
+		if rlo, rhi, ok := ir.TableRawRange(f); ok {
+			low, high := tableClampEnds(f, width)
+			wide := width == 16
+			var lo, hi, lt, gt string
+			if wide {
+				lo, hi = wideLiteral(rlo, signed), wideLiteral(rhi, signed)
+				lt, gt = expr+".Cmp("+lo+") < 0", expr+".Cmp("+hi+") > 0"
+			} else {
+				lo, hi = goIntLit(rlo, signed, width), goIntLit(rhi, signed, width)
+				lt, gt = expr+" < "+lo, expr+" > "+hi
+			}
+			switch {
+			case low && high:
+				g.pf("%sif %s { %s = %s; (*clamped)++ } else if %s { %s = %s; (*clamped)++ }\n",
+					ind, lt, expr, lo, gt, expr, hi)
+			case low:
+				g.pf("%sif %s { %s = %s; (*clamped)++ }\n", ind, lt, expr, lo)
+			case high:
+				g.pf("%sif %s { %s = %s; (*clamped)++ }\n", ind, gt, expr, hi)
+			}
+		}
+		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
+			maxv := (uint64(1) << f.Type.Width) - 1
+			g.pf("%sif %s > %d { %s = %d; (*clamped)++ }\n", ind, expr, maxv, expr, maxv)
+		}
+	}
 }
 
 // emitFixedForm1Load is the form-1 file reader for a DECLARED fixed table
