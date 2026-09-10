@@ -66,10 +66,7 @@ func TableWideTextFields(u *Unit) []string {
 	closure, vocabulary := TableClosure(u), TableClosureVocabulary(u)
 	var out []string
 	for _, field := range fields {
-		owner := field
-		if i := strings.IndexByte(field, '.'); i >= 0 {
-			owner = field[:i]
-		}
+		owner, _, _ := strings.Cut(field, ".")
 		if closure[owner] || vocabulary[owner] || u.TableUnions[owner] != nil {
 			out = append(out, field)
 		}
