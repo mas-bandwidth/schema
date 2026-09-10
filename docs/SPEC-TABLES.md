@@ -6332,8 +6332,11 @@ body is not a table with two wires to choose between; it is a diagnostic.
 #### SELECTION IS BY THE KEYWORD
 
 **A `fixed table` ENCODES AS FORM `3`. A `table` ENCODES AS FORM `1`. NOTHING
-IS DERIVED IN EITHER DIRECTION, AND NO VALUE OF A DECLARED FIXED TABLE IS EVER
-WRITTEN AS FORM `1`.** The keyword (#823) is the whole of the selection, and the
+IS DERIVED IN EITHER DIRECTION, AND NO VALUE OF A FIXED TABLE THIS FORM IS
+EMITTED FOR IS EVER WRITTEN AS FORM `1`.** (The qualifier is the RECORD CEILING
+below and nothing else: a declaration past it carries the class without this
+form, which is a fact of the DECLARATION, settled at compile time and the same
+for every value.) The keyword (#823) is the whole of the selection, and the
 owner's reason for it is the one that decides everything below: *"if we add any
 feature that stops it from being fixed, it is a compile error … we don't want to
 surprise the user"*, and *"now that we have the fixed form (new) of 3, we select

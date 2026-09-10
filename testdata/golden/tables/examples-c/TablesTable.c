@@ -2875,10 +2875,10 @@ static const TableFieldInfo schema_tabledemo_profile_config_fields_[] = {
     { "precision", "precision", "float64", 0x288427f5babd05f7ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, precision ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->precision ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
     { "ratings", "ratings", "float32", 0xb921eb8a3d0cb0f9ull, 10, 1, 0, 0, 0, 4, (uint32_t) offsetof( ProfileConfig, ratings ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
     { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->has_loadout ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->loadout ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_loadout_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "has_loadout", TableDocNone, 0, NULL, 0, NULL },
+    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ( (ProfileConfig *) 0 )->loadout ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_loadout_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_profile_config_info_ = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, schema_tabledemo_profile_config_fields_, schema_tabledemo_profile_config_reset_raw_, 1, TableDocNone, 0, NULL };
+const TableTypeInfo schema_tabledemo_profile_config_info_ = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, schema_tabledemo_profile_config_fields_, schema_tabledemo_profile_config_reset_raw_, 0, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_root_config_fields_[] = {
     { "version_note", "version_note", "string", 0x8a67c9728746d394ull, 12, 0, 0, 1, 0, 16, (uint32_t) offsetof( RootConfig, version_note ), (uint32_t) sizeof( ( (RootConfig *) 0 )->version_note ), (uint32_t) offsetof( RootConfig, version_note_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
@@ -2886,7 +2886,7 @@ static const TableFieldInfo schema_tabledemo_root_config_fields_[] = {
     { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, 1, 0, 1, 0, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( ( (RootConfig *) 0 )->profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, &schema_tabledemo_profile_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_root_config_info_ = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, schema_tabledemo_root_config_fields_, schema_tabledemo_root_config_reset_raw_, 1, TableDocNone, 0, NULL };
+const TableTypeInfo schema_tabledemo_root_config_info_ = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, schema_tabledemo_root_config_fields_, schema_tabledemo_root_config_reset_raw_, 0, TableDocNone, 0, NULL };
 
 static const TableFieldInfo schema_tabledemo_attachment_fields_[] = {
     { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( ( (Attachment *) 0 )->slot ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
@@ -2927,24 +2927,24 @@ int64_t schema_tabledemo_loadout_config_to_json_( const LoadoutConfig * value, c
     return table_json_write( value, &schema_tabledemo_loadout_config_info_, buffer, capacity );
 }
 
-int schema_tabledemo_profile_config_from_json_( ProfileConfigBuilder * builder, const char * text, int64_t bytes, TableReport * report )
+int schema_tabledemo_profile_config_from_json_( ProfileConfig * value, const char * text, int64_t bytes, TableReport * report )
 {
-    return table_json_read_graph(&builder->main,profile_config_builder_root(builder),&schema_tabledemo_profile_config_info_,text,bytes,report);
+    return table_json_read( value, &schema_tabledemo_profile_config_info_, text, bytes, report );
 }
 
-int64_t schema_tabledemo_profile_config_to_json_( const ProfileConfig * value, char * buffer, int64_t capacity, TableAllocator allocator )
+int64_t schema_tabledemo_profile_config_to_json_( const ProfileConfig * value, char * buffer, int64_t capacity )
 {
-    return table_json_write_graph(value,&schema_tabledemo_profile_config_info_,buffer,capacity,allocator);
+    return table_json_write( value, &schema_tabledemo_profile_config_info_, buffer, capacity );
 }
 
-int schema_tabledemo_root_config_from_json_( RootConfigBuilder * builder, const char * text, int64_t bytes, TableReport * report )
+int schema_tabledemo_root_config_from_json_( RootConfig * value, const char * text, int64_t bytes, TableReport * report )
 {
-    return table_json_read_graph(&builder->main,root_config_builder_root(builder),&schema_tabledemo_root_config_info_,text,bytes,report);
+    return table_json_read( value, &schema_tabledemo_root_config_info_, text, bytes, report );
 }
 
-int64_t schema_tabledemo_root_config_to_json_( const RootConfig * value, char * buffer, int64_t capacity, TableAllocator allocator )
+int64_t schema_tabledemo_root_config_to_json_( const RootConfig * value, char * buffer, int64_t capacity )
 {
-    return table_json_write_graph(value,&schema_tabledemo_root_config_info_,buffer,capacity,allocator);
+    return table_json_write( value, &schema_tabledemo_root_config_info_, buffer, capacity );
 }
 
 int schema_tabledemo_attachment_from_json_( Attachment * value, const char * text, int64_t bytes, TableReport * report )

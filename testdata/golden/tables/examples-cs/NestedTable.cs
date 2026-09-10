@@ -32,19 +32,76 @@ namespace Tabledemo
             value.Count = 1;
         }
 
-        public static long ArchiveConfigLoadMeasure(ReadOnlySpan<byte> bytes) { return TableWire.LoadMeasure(ArchiveConfigTableType(), bytes, out _); }
+        public static bool ArchiveConfigCollectTyped(ArchiveConfig v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = ArchiveConfigTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (v.Count != 1 && !ids.Add(0xb1e5e28e4479a274ul)) return false;
+            return true;
+        }
 
-        public static long ArchiveConfigLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(ArchiveConfigTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }
+        public static long ArchiveConfigBodySizeTyped(ArchiveConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = ArchiveConfigTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            if (v.Count != 1) { n += TableWire.VarSize(ids.RefAt(97, 0xb1e5e28e4479a274ul)) + 5; }
+            return n;
+        }
+
+        public static void ArchiveConfigWriteBodyTyped(ref TableWire.Writer w, ArchiveConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = ArchiveConfigTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            if (v.Count != 1)
+            {
+                w.HeaderAt(97, 0xb1e5e28e4479a274ul, 4, ref ids);
+                w.Fixed((ulong)(long)v.Count, 4);
+            }
+            w.Var(0);
+        }
+
+        public static long ArchiveConfigSaveTyped(ArchiveConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = ArchiveConfigTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
+            if (!ArchiveConfigCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + ArchiveConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            ArchiveConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long ArchiveConfigMeasure(ArchiveConfig value)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, ArchiveConfigTableType(), Span<byte>.Empty, ids, true);
+            return ArchiveConfigSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long ArchiveConfigSave(ArchiveConfig value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, ArchiveConfigTableType(), buffer, ids, false);
+            return ArchiveConfigSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict ArchiveConfigLoadVerdict(ArchiveConfig value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -57,7 +114,6 @@ namespace Tabledemo
             return ArchiveConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long ArchiveConfigLoadMeasure(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes) { return TableWire.MessageLoadMeasure(ArchiveConfigTableType(), bytes, vocabulary); }
         public static long ArchiveConfigMeasureMessages(ArchiveConfig[] values) { return TableWire.MessageSave(values, ArchiveConfigTableType(), Span<byte>.Empty, true); }
         public static long ArchiveConfigSaveMessages(ArchiveConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ArchiveConfigTableType(), bytes, false); }
         public static TableWire.Verdict ArchiveConfigLoadMessages(ArchiveConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ArchiveConfigTableType(), bytes, vocabulary, report, out count); }
@@ -79,7 +135,7 @@ namespace Tabledemo
                 info.NumFields = 2;
                 info.Create = delegate { return new global::Tabledemo.ArchiveConfig(); };
                 info.StorageSize = 1488; info.StorageAlign = 8; info.RegionAlign = 8;
-                info.Variable = true;
+                info.Variable = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };

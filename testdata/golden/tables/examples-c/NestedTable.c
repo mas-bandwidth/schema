@@ -2808,15 +2808,15 @@ static const TableFieldInfo schema_tabledemo_archive_config_fields_[] = {
     { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ( (ArchiveConfig *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, 1, TableDocNone, 0, NULL };
+const TableTypeInfo schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, 0, TableDocNone, 0, NULL };
 
-int schema_tabledemo_archive_config_from_json_( ArchiveConfigBuilder * builder, const char * text, int64_t bytes, TableReport * report )
+int schema_tabledemo_archive_config_from_json_( ArchiveConfig * value, const char * text, int64_t bytes, TableReport * report )
 {
-    return table_json_read_graph(&builder->main,archive_config_builder_root(builder),&schema_tabledemo_archive_config_info_,text,bytes,report);
+    return table_json_read( value, &schema_tabledemo_archive_config_info_, text, bytes, report );
 }
 
-int64_t schema_tabledemo_archive_config_to_json_( const ArchiveConfig * value, char * buffer, int64_t capacity, TableAllocator allocator )
+int64_t schema_tabledemo_archive_config_to_json_( const ArchiveConfig * value, char * buffer, int64_t capacity )
 {
-    return table_json_write_graph(value,&schema_tabledemo_archive_config_info_,buffer,capacity,allocator);
+    return table_json_write( value, &schema_tabledemo_archive_config_info_, buffer, capacity );
 }
 

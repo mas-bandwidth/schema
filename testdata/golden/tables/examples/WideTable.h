@@ -5573,12 +5573,12 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
 // replacing every reference with the id it names AGAINST THE CONNECTION'S
 // VOCABULARY instead of a trailer, and SaveRetain writing form 2 refuses by
 // name. So retention crosses the forms in ONE DIRECTION, and the record a
-// message body produces is the FILE FORM'S OWN, to the byte: a retained record
+// message body produces is the VARIABLE FORM'S OWN, to the byte: a retained record
 // carries the field's bytes with every reference resolved so that re-emitting
 // it into any id table is correct, and the table it is re-emitted into is a
 // file's. The capture below is therefore a TRANSCODE as well as a resolve, a
 // bitpacked value is read at the width its announced shape states and written
-// at the width the file form spells, and from there it is the same record,
+// at the width the variable form spells, and from there it is the same record,
 // laid down in the same slots and read back by the same emit walk.
 //
 // THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits. The plain
@@ -5884,7 +5884,7 @@ inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableM
     switch ( entry.kind )
     {
         case 17: return -1; // THE NODE-INDEX CLASS, met inside a payload (§6.6)
-        case 0: return -1;  // a KIND-0 ENTRY names no payload the file form has a kind for
+        case 0: return -1;  // a KIND-0 ENTRY names no payload the variable form has a kind for
         case 32: TableRetainInLeb( s.out, 0 ); break;
         case 30:
         {

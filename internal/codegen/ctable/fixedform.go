@@ -78,9 +78,72 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 // THE EMISSION
 // ---------------------------------------------------------------------------
 
+// THE DECLARING FILE OWNS A TYPE'S FIXED-FORM MATERIAL, and that is what
+// unitFixedOrder is for. A unit is MANY FILES (SPEC §3.2) and the fixed form's
+// walk is the ROOT'S CLOSURE, so a root in one file reaches types declared in
+// another — and the two headers land in one translation unit, because the first
+// includes the second to see the struct at all. Emitting a type's asserts and
+// write body in both is a redefinition: in C++ the `static_assert`s are
+// harmless but the `inline` body is not, and in C the assert itself is a
+// `typedef char name[1]`, whose repetition is a C11 feature this generated code
+// does not require. So the closure is taken over the WHOLE UNIT, once, and each
+// file emits the members it DECLARES — which is a rule with no ordering hazard,
+// since the file that declares a type is the file every user of it includes.
+func (g *tableGen) unitFixedOrder() []*ir.Struct {
+	closure := ir.TableClosure(g.unit)
+	seen := map[string]bool{}
+	var order []*ir.Struct
+	add := func(st *ir.Struct) {
+		if g.isVar(st.Name) || !ir.TableFixedEmitted(g.unit, st) {
+			return
+		}
+		fixedCollectTypes(st, seen, &order)
+	}
+	for _, f := range g.unit.Files {
+		for _, st := range f.Tables {
+			add(st)
+		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
+				add(st)
+			}
+		}
+	}
+	return order
+}
+
+// fixedDeclaredHere is every type name THIS FILE declares — structs, tables and
+// unions alike, because all three carry a layout assert.
+func (g *tableGen) fixedDeclaredHere() map[string]bool {
+	here := map[string]bool{}
+	for _, st := range g.file.Tables {
+		here[st.Name] = true
+	}
+	for _, un := range g.file.TableUnions {
+		here[un.Name] = true
+	}
+	for _, d := range g.file.Decls {
+		switch t := d.(type) {
+		case *ir.Struct:
+			here[t.Name] = true
+		case *ir.Union:
+			here[t.Name] = true
+		}
+	}
+	return here
+}
+
 func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	roots := g.fixedRoots(members)
-	if len(roots) == 0 {
+	all := g.unitFixedOrder()
+	here := g.fixedDeclaredHere()
+	own := make([]*ir.Struct, 0, len(all))
+	for _, st := range all {
+		if here[st.Name] {
+			own = append(own, st)
+		}
+	}
+	if len(roots) == 0 && len(own) == 0 {
 		return
 	}
 	g.pf("/* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----\n\n")
@@ -89,31 +152,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	g.pf("   The writer is the constant bytes memcpy'd and then stores; the reader is\n")
 	g.pf("   ONE loop over ONE plan, the identity plan here and a plan compiled from\n")
 	g.pf("   the writer's own layout for anybody else. */\n\n")
-	seen := map[string]bool{}
-	var order []*ir.Struct
-	for _, st := range roots {
-		fixedCollectTypes(st, seen, &order)
-	}
-	// THE DECLARING FILE OWNS A TYPE'S FIXED-FORM MATERIAL. The walk above is
-	// the ROOT'S CLOSURE, and a unit is many files (SPEC §3.2): a root here can
-	// nest a fixed table declared in another file of the same package, whose
-	// own header already carries that type's asserts and write body — a header
-	// this one includes. Emitting them again is a redefinition, and in C it is
-	// a hard one, because the assert is a `typedef char name[1]` and repeating
-	// a typedef is a C11 feature this generated code does not require. Every
-	// closure member declared elsewhere is itself a fixed root of its own file,
-	// so nothing is lost by leaving it there.
-	own := make([]*ir.Struct, 0, len(order))
-	here := map[string]bool{}
-	for _, st := range members {
-		here[st.Name] = true
-	}
-	for _, st := range order {
-		if here[st.Name] {
-			own = append(own, st)
-		}
-	}
-	g.emitFixedLayoutAsserts(own)
+	g.emitFixedLayoutAsserts(own, all, here)
 	for _, st := range own {
 		g.pf("static SCHEMA_UNUSED %s void %s( uint8_t * b, const %s * value );\n",
 			tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_write_body"), st.Name)
@@ -130,12 +169,14 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 // emitFixedLayoutAsserts is what makes a generator-computed offset safe: every
 // number the plan and the destination rows below are built from, checked
 // against the compiler's own offsetof and sizeof.
-func (g *tableGen) emitFixedLayoutAsserts(order []*ir.Struct) {
+// order is what THIS FILE owns; all is the unit's whole fixed closure and here
+// is what this file declares, which together place a UNION's asserts in the file
+// that declares the union rather than in every file that holds one by value.
+func (g *tableGen) emitFixedLayoutAsserts(order, all []*ir.Struct, here map[string]bool) {
 	g.pf("/* THE C ABI AGREES WITH THE PLAN. C has no constexpr, so the offsets in the\n")
 	g.pf("   plans below were computed by the schema compiler rather than folded by\n")
 	g.pf("   this one; these are that arithmetic checked against the compiler's own,\n")
 	g.pf("   at build time, one line per fact the plans rest on. */\n")
-	unions := map[string]bool{}
 	for _, st := range order {
 		for _, m := range ir.TableFixedMembers(g.unit, st) {
 			if m.Member == "" {
@@ -146,9 +187,12 @@ func (g *tableGen) emitFixedLayoutAsserts(order []*ir.Struct) {
 			g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_%s, offsetof( %s, %s ) == %d, \"%s.%s: the fixed form's plan lands here\" );\n",
 				ir.RustSnake(m.Owner), ir.RustSnake(m.Member), m.Owner, m.Member, m.Value, m.Owner, m.Member)
 		}
+	}
+	unions := map[string]bool{}
+	for _, st := range all {
 		for _, f := range st.Fields {
 			un, ok := f.Type.Ref.(*ir.Union)
-			if !ok || f.Type.Kind != ir.TNamed || unions[f.Type.Name] {
+			if !ok || f.Type.Kind != ir.TNamed || unions[f.Type.Name] || !here[f.Type.Name] {
 				continue
 			}
 			unions[f.Type.Name] = true

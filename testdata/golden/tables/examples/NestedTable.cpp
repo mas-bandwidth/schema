@@ -3159,21 +3159,19 @@ inline bool TableJsonReadList( TableJsonIn & in, void *, const TableFieldInfo *,
 
 namespace tabledemo {
 
-bool ArchiveConfigFromJson( ArchiveConfigBuilder & builder, const char * text, int64_t bytes, TableReport * report )
+bool ArchiveConfigFromJson( ArchiveConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    ArchiveConfig * root = builder.GetRoot();
-    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, ArchiveConfigTableType(), text, bytes, report );
+    return TableJsonRead( &value, ArchiveConfigTableType(), text, bytes, report );
 }
 
-int64_t ArchiveConfigToJsonMeasure( const ArchiveConfig * root, TableAllocator allocator )
+int64_t ArchiveConfigToJsonMeasure( const ArchiveConfig & value )
 {
-    return TableJsonWriteGraph( root, ArchiveConfigTableType(), NULL, 0, allocator );
+    return TableJsonWrite( &value, ArchiveConfigTableType(), NULL, 0 );
 }
 
-int64_t ArchiveConfigToJson( const ArchiveConfig * root, char * buffer, int64_t capacity, TableAllocator allocator )
+int64_t ArchiveConfigToJson( const ArchiveConfig & value, char * buffer, int64_t capacity )
 {
-    return TableJsonWriteGraph( root, ArchiveConfigTableType(), buffer, capacity, allocator );
+    return TableJsonWrite( &value, ArchiveConfigTableType(), buffer, capacity );
 }
 
 } // namespace tabledemo

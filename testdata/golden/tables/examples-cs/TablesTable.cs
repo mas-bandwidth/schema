@@ -97,9 +97,6 @@ namespace Tabledemo
         public double Precision;
         public float[] Ratings = new float[4];
         public bool HasLoadout;
-
-        // has_loadout — guarded fields stay off the wire when the guard says so;
-        // a read's restored defaults stand in for the untaken side
         public LoadoutConfig Loadout = new LoadoutConfig();
     }
 
@@ -152,19 +149,113 @@ namespace Tabledemo
             value.ProfilesCount = 0;
         }
 
-        public static long RootConfigLoadMeasure(ReadOnlySpan<byte> bytes) { return TableWire.LoadMeasure(RootConfigTableType(), bytes, out _); }
+        public static bool RootConfigCollectTyped(RootConfig v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = RootConfigTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[2], ref ids)) return false;
+            return true;
+        }
 
-        public static long RootConfigLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(RootConfigTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }
+        public static long RootConfigBodySizeTyped(RootConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = RootConfigTableType().Fields;
+            int elemOffset = 0;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            scoped Span<long> elemCache_1 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[1]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_1 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[1], ref ids, elemCache_1, out long payload_1);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
+            scoped Span<long> elemCache_2 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[2]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_2 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[2], ref ids, elemCache_2, out long payload_2);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
+            return n;
+        }
+
+        public static void RootConfigWriteBodyTyped(ref TableWire.Writer w, RootConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = RootConfigTableType().Fields;
+            int elemOffset = 0;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            scoped ReadOnlySpan<long> elemCache_1 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[1]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_1 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids, elemCache_1, payload_1);
+            scoped ReadOnlySpan<long> elemCache_2 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[2]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_2 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_2 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[2] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[2], ref ids, elemCache_2, payload_2);
+            w.Var(0);
+        }
+
+        public static long RootConfigSaveTyped(RootConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = RootConfigTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
+            if (!RootConfigCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + RootConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            RootConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long RootConfigMeasure(RootConfig value)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, RootConfigTableType(), Span<byte>.Empty, ids, true);
+            return RootConfigSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RootConfigSave(RootConfig value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, RootConfigTableType(), buffer, ids, false);
+            return RootConfigSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict RootConfigLoadVerdict(RootConfig value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -177,7 +268,6 @@ namespace Tabledemo
             return RootConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long RootConfigLoadMeasure(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes) { return TableWire.MessageLoadMeasure(RootConfigTableType(), bytes, vocabulary); }
         public static long RootConfigMeasureMessages(RootConfig[] values) { return TableWire.MessageSave(values, RootConfigTableType(), Span<byte>.Empty, true); }
         public static long RootConfigSaveMessages(RootConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RootConfigTableType(), bytes, false); }
         public static TableWire.Verdict RootConfigLoadMessages(RootConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RootConfigTableType(), bytes, vocabulary, report, out count); }
@@ -538,19 +628,145 @@ namespace Tabledemo
             TableReset(value.Loadout);
         }
 
-        public static long ProfileConfigLoadMeasure(ReadOnlySpan<byte> bytes) { return TableWire.LoadMeasure(ProfileConfigTableType(), bytes, out _); }
+        public static bool ProfileConfigCollectTyped(ProfileConfig v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = ProfileConfigTableType().Fields;
+            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
+            if (v.Experience != 0 && !ids.Add(0xab8b6d521f80b969ul)) return false;
+            if (v.Tilt != 0 && !ids.Add(0x1e5088ef2e9bafc6ul)) return false;
+            if (v.Heading != 0 && !ids.Add(0xb128829190ca0f75ul)) return false;
+            if (v.Timestamp != 0 && !ids.Add(0x5ddc92338ef53403ul)) return false;
+            if (v.Badge != 0 && !ids.Add(0x10bda981fe095518ul)) return false;
+            if (v.Port != 0 && !ids.Add(0x8c2cdb0da8933fa6ul)) return false;
+            if (v.Epoch != 0 && !ids.Add(0xfc9697d1196e6ba6ul)) return false;
+            if (v.Precision != 0.0 && !ids.Add(0x288427f5babd05f7ul)) return false;
+            if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
+            if (v.HasLoadout != false && !ids.Add(0xa06f5e0a148e253cul)) return false;
+            if (!TableWire.CollectField(v, fields[12], ref ids)) return false;
+            return true;
+        }
 
-        public static long ProfileConfigLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(ProfileConfigTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }
+        public static long ProfileConfigBodySizeTyped(ProfileConfig v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = ProfileConfigTableType().Fields;
+            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
+            n += TableWire.BodySizeField(v, fields[1], ref ids);
+            if (v.Experience != 0) { n += TableWire.VarSize(ids.RefAt(93, 0xab8b6d521f80b969ul)) + 5; }
+            if (v.Tilt != 0) { n += TableWire.VarSize(ids.RefAt(19, 0x1e5088ef2e9bafc6ul)) + 2; }
+            if (v.Heading != 0) { n += TableWire.VarSize(ids.RefAt(96, 0xb128829190ca0f75ul)) + 3; }
+            if (v.Timestamp != 0) { n += TableWire.VarSize(ids.RefAt(54, 0x5ddc92338ef53403ul)) + 9; }
+            if (v.Badge != 0) { n += TableWire.VarSize(ids.RefAt(9, 0x10bda981fe095518ul)) + 2; }
+            if (v.Port != 0) { n += TableWire.VarSize(ids.RefAt(73, 0x8c2cdb0da8933fa6ul)) + 3; }
+            if (v.Epoch != 0) { n += TableWire.VarSize(ids.RefAt(146, 0xfc9697d1196e6ba6ul)) + 9; }
+            if (v.Precision != 0.0) { n += TableWire.VarSize(ids.RefAt(24, 0x288427f5babd05f7ul)) + 9; }
+            n += TableWire.BodySizeField(v, fields[10], ref ids, default, out long payload_10);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[10] = payload_10; }
+            if (v.HasLoadout != false) { n += TableWire.VarSize(ids.RefAt(83, 0xa06f5e0a148e253cul)) + 2; }
+            n += TableWire.BodySizeField(v, fields[12], ref ids, default, out long payload_12);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[12] = payload_12; }
+            return n;
+        }
+
+        public static void ProfileConfigWriteBodyTyped(ref TableWire.Writer w, ProfileConfig v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = ProfileConfigTableType().Fields;
+            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
+            TableWire.WriteBodyField(ref w, v, fields[1], ref ids);
+            if (v.Experience != 0)
+            {
+                w.HeaderAt(93, 0xab8b6d521f80b969ul, 8, ref ids);
+                w.Fixed((ulong)v.Experience, 4);
+            }
+            if (v.Tilt != 0)
+            {
+                w.HeaderAt(19, 0x1e5088ef2e9bafc6ul, 2, ref ids);
+                w.Fixed((ulong)(long)v.Tilt, 1);
+            }
+            if (v.Heading != 0)
+            {
+                w.HeaderAt(96, 0xb128829190ca0f75ul, 3, ref ids);
+                w.Fixed((ulong)(long)v.Heading, 2);
+            }
+            if (v.Timestamp != 0)
+            {
+                w.HeaderAt(54, 0x5ddc92338ef53403ul, 5, ref ids);
+                w.Fixed((ulong)(long)v.Timestamp, 8);
+            }
+            if (v.Badge != 0)
+            {
+                w.HeaderAt(9, 0x10bda981fe095518ul, 6, ref ids);
+                w.Fixed((ulong)v.Badge, 1);
+            }
+            if (v.Port != 0)
+            {
+                w.HeaderAt(73, 0x8c2cdb0da8933fa6ul, 7, ref ids);
+                w.Fixed((ulong)v.Port, 2);
+            }
+            if (v.Epoch != 0)
+            {
+                w.HeaderAt(146, 0xfc9697d1196e6ba6ul, 9, ref ids);
+                w.Fixed((ulong)v.Epoch, 8);
+            }
+            if (v.Precision != 0.0)
+            {
+                w.HeaderAt(24, 0x288427f5babd05f7ul, 11, ref ids);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Precision)), 8);
+            }
+            long payload_10 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[10] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[10], ref ids, default, payload_10);
+            if (v.HasLoadout != false)
+            {
+                w.HeaderAt(83, 0xa06f5e0a148e253cul, 1, ref ids);
+                w.Fixed(v.HasLoadout ? 1ul : 0ul, 1);
+            }
+            long payload_12 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[12] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[12], ref ids, default, payload_12);
+            w.Var(0);
+        }
+
+        public static long ProfileConfigSaveTyped(ProfileConfig value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = ProfileConfigTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
+            if (!ProfileConfigCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + ProfileConfigBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            ProfileConfigWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long ProfileConfigMeasure(ProfileConfig value)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, ProfileConfigTableType(), Span<byte>.Empty, ids, true);
+            return ProfileConfigSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long ProfileConfigSave(ProfileConfig value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[155];
-            return TableWire.Save(value, ProfileConfigTableType(), buffer, ids, false);
+            return ProfileConfigSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict ProfileConfigLoadVerdict(ProfileConfig value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -563,7 +779,6 @@ namespace Tabledemo
             return ProfileConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long ProfileConfigLoadMeasure(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes) { return TableWire.MessageLoadMeasure(ProfileConfigTableType(), bytes, vocabulary); }
         public static long ProfileConfigMeasureMessages(ProfileConfig[] values) { return TableWire.MessageSave(values, ProfileConfigTableType(), Span<byte>.Empty, true); }
         public static long ProfileConfigSaveMessages(ProfileConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ProfileConfigTableType(), bytes, false); }
         public static TableWire.Verdict ProfileConfigLoadMessages(ProfileConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ProfileConfigTableType(), bytes, vocabulary, report, out count); }
@@ -857,7 +1072,7 @@ namespace Tabledemo
                 info.NumFields = 3;
                 info.Create = delegate { return new global::Tabledemo.RootConfig(); };
                 info.StorageSize = 1480; info.StorageAlign = 8; info.RegionAlign = 8;
-                info.Variable = true;
+                info.Variable = false;
                 info.RootElemSlots = 12;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -978,7 +1193,7 @@ namespace Tabledemo
                 info.NumFields = 13;
                 info.Create = delegate { return new global::Tabledemo.ProfileConfig(); };
                 info.StorageSize = 304; info.StorageAlign = 8; info.RegionAlign = 8;
-                info.Variable = true;
+                info.Variable = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -997,7 +1212,7 @@ namespace Tabledemo
                     new TableFieldInfo { Name = "precision", Json = "precision", TypeName = "float64", Id = 0x288427f5babd05f7, Kind = 11, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 8, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return unchecked((ulong)BitConverter.DoubleToInt64Bits(((global::Tabledemo.ProfileConfig)o).Precision)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.ProfileConfig)o).Precision = BitConverter.Int64BitsToDouble(unchecked((long)r)); }, MessageSlot = 47, Ordinal = 9, NativeOffset = 96, NativeElementSize = 8, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.ProfileConfig)o; value.Precision = 0.0; }, DefaultRaw = unchecked((ulong)BitConverter.DoubleToInt64Bits(0.0)), ClampRaw = delegate(ulong raw, TableReport r) { double v = BitConverter.Int64BitsToDouble(unchecked((long)raw)); return unchecked((ulong)BitConverter.DoubleToInt64Bits(v)); } },
                     new TableFieldInfo { Name = "ratings", Json = "ratings", TypeName = "float32", Id = 0xb921eb8a3d0cb0f9, Kind = 10, IsArray = true, Counted = false, Optional = false, ArrayBound = 4, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.ProfileConfig)o).Ratings[i])); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.ProfileConfig)o).Ratings[i] = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 48, Ordinal = 10, NativeOffset = 104, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.ProfileConfig)o; Array.Clear(value.Ratings, 0, value.Ratings.Length); }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "has_loadout", Json = "has_loadout", TypeName = "bool", Id = 0xa06f5e0a148e253c, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((global::Tabledemo.ProfileConfig)o).HasLoadout ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Tabledemo.ProfileConfig)o).HasLoadout = r != 0; }, MessageSlot = 49, Ordinal = 11, NativeOffset = 120, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.ProfileConfig)o; value.HasLoadout = false; }, DefaultRaw = false ? 1ul : 0ul },
-                    new TableFieldInfo { Name = "loadout", Json = "loadout", TypeName = "LoadoutConfig", Id = 0x5759ce7586bbb5a3, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "has_loadout", TableRef = delegate { return LoadoutConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Tabledemo.ProfileConfig)o).Loadout; }, MessageSlot = 50, Ordinal = 12, NativeOffset = 128, NativeElementSize = 176, NativeCountOffset = -1, NativePresentOffset = -1, NativeGuardOffsets = new int[] {120}, NativeGuardValues = new bool[] {true}, WireGuard = delegate(object o) { var value = (global::Tabledemo.ProfileConfig)o; return value.HasLoadout; }, ResetField = delegate(object o) { var value = (global::Tabledemo.ProfileConfig)o; TableReset(value.Loadout); } },
+                    new TableFieldInfo { Name = "loadout", Json = "loadout", TypeName = "LoadoutConfig", Id = 0x5759ce7586bbb5a3, Kind = 13, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = delegate { return LoadoutConfigTableType(); }, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetChild = delegate(object o, int i) { return ((global::Tabledemo.ProfileConfig)o).Loadout; }, MessageSlot = 50, Ordinal = 12, NativeOffset = 128, NativeElementSize = 176, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Tabledemo.ProfileConfig)o; TableReset(value.Loadout); } },
                 };
                 info.Reset = delegate(object o) { TableReset((global::Tabledemo.ProfileConfig)o); };
                 info.Doc = TableDocNone;

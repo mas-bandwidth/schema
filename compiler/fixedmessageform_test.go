@@ -50,16 +50,18 @@ func TestMessageFormRefusesAPlainTable(t *testing.T) {
 
 // TestTheCorpusCompilesWithTheKeyword: every corpus this branch marked up
 // still loads, and the tables that took `fixed` are on the fixed wire while
-// the ones left plain are on the variable one. bench/corpus/FixedTable.schema
-// is the DELIBERATE exception and is checked by
-// TestTheBenchWrapperIsRefusedUntilTheCorpusDropsItsGuard below.
+// the ones left plain are on the variable one. The guard-carrying corpus
+// tables dropped their guards to take the keyword (#823), so `RootConfig`,
+// `ProfileConfig` and `ArchiveConfig` are pinned here beside the rest;
+// `tables/examples/Guarded.schema`'s `Patrol` is what stays plain, and it is
+// the one this suite does NOT name.
 func TestTheCorpusCompilesWithTheKeyword(t *testing.T) {
 	c := New()
 	for _, tc := range []struct {
 		dir   string
 		fixed []string
 	}{
-		{"../tables/examples", []string{"GunnerConfig", "KeyedConfig", "WeaponConfig", "LoadoutConfig"}},
+		{"../tables/examples", []string{"GunnerConfig", "KeyedConfig", "WeaponConfig", "LoadoutConfig", "RootConfig", "ProfileConfig", "ArchiveConfig"}},
 		{"../tables/backend", []string{"LoginRequest", "MatchResult", "StorePurchase", "PlayerRow", "Envelope"}},
 		{"../tables/messages", []string{"ToolMessage", "OpenDocument", "InsertText", "Transaction"}},
 		{"../tables/block", []string{"RenderFrame", "RenderShip", "PaddedFrame"}},
@@ -85,30 +87,5 @@ func TestTheCorpusCompilesWithTheKeyword(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestTheBenchWrapperIsRefusedUntilTheCorpusDropsItsGuard pins the ONE
-// deliberate refusal this branch ships: bench/corpus/FixedTable.schema wraps
-// Bench.schema's BenchMixed, whose `if has_extra` guard is in the wrapper's
-// by-value closure, so the wrapper cannot be `fixed table` while the guard
-// stands. The corpus fix is the WIRE branch's (it drops the guard, keeping the
-// three fields plain); this test says exactly what the compiler says today, so
-// the day the guard goes the test goes with it.
-func TestTheBenchWrapperIsRefusedUntilTheCorpusDropsItsGuard(t *testing.T) {
-	_, err := New().Load([]string{"../bench/corpus/Bench.schema", "../bench/corpus/FixedTable.schema"})
-	if err == nil {
-		t.Skip("the corpus dropped BenchMixed's guard — delete this test with it")
-	}
-	for _, want := range []string{
-		"fixed table FixedTable",
-		"BenchMixed.extra",
-		"BenchMixed.idle_ticks",
-		"sits in an `if` branch",
-		"docs/SPEC-TABLES.md §2.2, SPEC §4.5",
-	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("the refusal does not carry %q:\n%v", want, err)
-		}
 	}
 }

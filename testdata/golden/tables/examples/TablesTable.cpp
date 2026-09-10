@@ -3189,38 +3189,34 @@ int64_t LoadoutConfigToJson( const LoadoutConfig & value, char * buffer, int64_t
     return TableJsonWrite( &value, LoadoutConfigTableType(), buffer, capacity );
 }
 
-bool ProfileConfigFromJson( ProfileConfigBuilder & builder, const char * text, int64_t bytes, TableReport * report )
+bool ProfileConfigFromJson( ProfileConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    ProfileConfig * root = builder.GetRoot();
-    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, ProfileConfigTableType(), text, bytes, report );
+    return TableJsonRead( &value, ProfileConfigTableType(), text, bytes, report );
 }
 
-int64_t ProfileConfigToJsonMeasure( const ProfileConfig * root, TableAllocator allocator )
+int64_t ProfileConfigToJsonMeasure( const ProfileConfig & value )
 {
-    return TableJsonWriteGraph( root, ProfileConfigTableType(), NULL, 0, allocator );
+    return TableJsonWrite( &value, ProfileConfigTableType(), NULL, 0 );
 }
 
-int64_t ProfileConfigToJson( const ProfileConfig * root, char * buffer, int64_t capacity, TableAllocator allocator )
+int64_t ProfileConfigToJson( const ProfileConfig & value, char * buffer, int64_t capacity )
 {
-    return TableJsonWriteGraph( root, ProfileConfigTableType(), buffer, capacity, allocator );
+    return TableJsonWrite( &value, ProfileConfigTableType(), buffer, capacity );
 }
 
-bool RootConfigFromJson( RootConfigBuilder & builder, const char * text, int64_t bytes, TableReport * report )
+bool RootConfigFromJson( RootConfig & value, const char * text, int64_t bytes, TableReport * report )
 {
-    RootConfig * root = builder.GetRoot();
-    if ( root == NULL ) { if ( report != NULL ) { report->malformed = true; } return false; } // locked, or the root allocation failed
-    return TableJsonReadGraph( builder.main, root, RootConfigTableType(), text, bytes, report );
+    return TableJsonRead( &value, RootConfigTableType(), text, bytes, report );
 }
 
-int64_t RootConfigToJsonMeasure( const RootConfig * root, TableAllocator allocator )
+int64_t RootConfigToJsonMeasure( const RootConfig & value )
 {
-    return TableJsonWriteGraph( root, RootConfigTableType(), NULL, 0, allocator );
+    return TableJsonWrite( &value, RootConfigTableType(), NULL, 0 );
 }
 
-int64_t RootConfigToJson( const RootConfig * root, char * buffer, int64_t capacity, TableAllocator allocator )
+int64_t RootConfigToJson( const RootConfig & value, char * buffer, int64_t capacity )
 {
-    return TableJsonWriteGraph( root, RootConfigTableType(), buffer, capacity, allocator );
+    return TableJsonWrite( &value, RootConfigTableType(), buffer, capacity );
 }
 
 bool AttachmentFromJson( Attachment & value, const char * text, int64_t bytes, TableReport * report )
