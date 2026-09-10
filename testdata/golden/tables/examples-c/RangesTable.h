@@ -6470,9 +6470,9 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
 }
 
 /* RangedSigned's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_signed_fixed_clamp_body_( RangedSigned * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_signed_fixed_clamp_body_( RangedSigned * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     (*clamped) += ( value->i8_low > 126 );
     value->i8_low = ( value->i8_low > 126 ) ? 126 : value->i8_low;
     (*clamped) += ( value->i8_high < -127 );
@@ -6506,9 +6506,9 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
 }
 
 /* RangedUnsigned's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_unsigned_fixed_clamp_body_( RangedUnsigned * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_unsigned_fixed_clamp_body_( RangedUnsigned * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     (*clamped) += ( value->u8_low > 254 );
     value->u8_low = ( value->u8_low > 254 ) ? 254 : value->u8_low;
     (*clamped) += ( value->u8_high < 1 );
@@ -6542,9 +6542,9 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
 }
 
 /* RangedWidths's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_widths_fixed_clamp_body_( RangedWidths * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_widths_fixed_clamp_body_( RangedWidths * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     /* bits(8) width clamp */
     (*clamped) += ( value->b8 > 255ull );
     value->b8 = ( value->b8 > 255ull ) ? 255ull : value->b8;
@@ -6568,8 +6568,13 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
 static SCHEMA_UNUSED void schema_tabledemo_ranged_signed_fixed_clamp_( RangedSigned * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_ranged_signed_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_signed_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RangedSigned, the fixed form ---- */
@@ -6761,8 +6766,13 @@ static SCHEMA_UNUSED int64_t ranged_signed_fixed_load( RangedSigned * values, in
 static SCHEMA_UNUSED void schema_tabledemo_ranged_unsigned_fixed_clamp_( RangedUnsigned * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_ranged_unsigned_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_unsigned_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RangedUnsigned, the fixed form ---- */
@@ -6954,8 +6964,13 @@ static SCHEMA_UNUSED int64_t ranged_unsigned_fixed_load( RangedUnsigned * values
 static SCHEMA_UNUSED void schema_tabledemo_ranged_widths_fixed_clamp_( RangedWidths * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_ranged_widths_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_widths_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RangedWidths, the fixed form ---- */

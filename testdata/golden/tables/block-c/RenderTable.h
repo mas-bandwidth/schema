@@ -11411,64 +11411,64 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
 }
 
 /* RenderShip's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( RenderShip * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( RenderShip * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->ship_type > 3u ) { value->ship_type = SHIP_TYPE_NONE; (*clamped)++; }
     if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
 }
 
 /* RenderTurret's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_clamp_body_( RenderTurret * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_clamp_body_( RenderTurret * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
 }
 
 /* RenderMissile's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_clamp_body_( RenderMissile * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_clamp_body_( RenderMissile * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->missile_type > 2u ) { value->missile_type = MISSILE_TYPE_NONE; (*clamped)++; }
     if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
 }
 
 /* RenderDynamicProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( RenderDynamicProp * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( RenderDynamicProp * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
     if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
 }
 
 /* RenderStaticProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_clamp_body_( RenderStaticProp * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_clamp_body_( RenderStaticProp * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
     if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
 }
 
 /* RenderCosmeticProp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( RenderCosmeticProp * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( RenderCosmeticProp * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
     if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
 }
 
 /* RenderLaser's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_clamp_body_( RenderLaser * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_clamp_body_( RenderLaser * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->laser_type > 2u ) { value->laser_type = LASER_TYPE_NONE; (*clamped)++; }
     if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
 }
 
 /* RenderExplosion's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_clamp_body_( RenderExplosion * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_clamp_body_( RenderExplosion * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->explosion_type > 2u ) { value->explosion_type = EXPLOSION_TYPE_NONE; (*clamped)++; }
     if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
 }
@@ -11646,8 +11646,13 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
 static SCHEMA_UNUSED void schema_blockdemo_render_ship_fixed_clamp_( RenderShip * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_blockdemo_render_ship_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_blockdemo_render_ship_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RenderShip, the fixed form ---- */
@@ -11850,8 +11855,13 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
 static SCHEMA_UNUSED void schema_blockdemo_render_turret_fixed_clamp_( RenderTurret * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_blockdemo_render_turret_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_blockdemo_render_turret_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RenderTurret, the fixed form ---- */
@@ -12038,8 +12048,13 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
 static SCHEMA_UNUSED void schema_blockdemo_render_missile_fixed_clamp_( RenderMissile * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_blockdemo_render_missile_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_blockdemo_render_missile_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RenderMissile, the fixed form ---- */
@@ -12232,8 +12247,13 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
 static SCHEMA_UNUSED void schema_blockdemo_render_dynamic_prop_fixed_clamp_( RenderDynamicProp * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RenderDynamicProp, the fixed form ---- */
@@ -12428,8 +12448,13 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
 static SCHEMA_UNUSED void schema_blockdemo_render_static_prop_fixed_clamp_( RenderStaticProp * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_blockdemo_render_static_prop_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_blockdemo_render_static_prop_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RenderStaticProp, the fixed form ---- */
@@ -12624,8 +12649,13 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
 static SCHEMA_UNUSED void schema_blockdemo_render_cosmetic_prop_fixed_clamp_( RenderCosmeticProp * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RenderCosmeticProp, the fixed form ---- */
@@ -12822,8 +12852,13 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
 static SCHEMA_UNUSED void schema_blockdemo_render_laser_fixed_clamp_( RenderLaser * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_blockdemo_render_laser_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_blockdemo_render_laser_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RenderLaser, the fixed form ---- */
@@ -13012,8 +13047,13 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
 static SCHEMA_UNUSED void schema_blockdemo_render_explosion_fixed_clamp_( RenderExplosion * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_blockdemo_render_explosion_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_blockdemo_render_explosion_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RenderExplosion, the fixed form ---- */

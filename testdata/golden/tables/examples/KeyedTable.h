@@ -6961,17 +6961,23 @@ inline void KeyedConfigFixedWriteBody( uint8_t * b, const KeyedConfig & value )
 }
 
 // TeamConfig's read-side bounds.
-inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & clamped )
+inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
     value.spawn_count = ( value.spawn_count < 0 ) ? 0 : ( ( value.spawn_count > 64 ) ? 64 : value.spawn_count );
+    if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) )
+    {
+        memset( value.banner, 0, sizeof( value.banner ) );
+        value.banner_length = 0;
+        damaged++;
+    }
 }
 
 // ScoreBoard's read-side bounds.
-inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & clamped )
+inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     for ( int64_t i = 0; i < 3; ++i )
     {
         clamped += (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
@@ -6980,14 +6986,14 @@ inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & clamped )
 }
 
 // KeyedConfig's read-side bounds.
-inline void KeyedConfigFixedClampBody( KeyedConfig & value, int32_t & clamped )
+inline void KeyedConfigFixedClampBody( KeyedConfig & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     for ( int64_t i = 0; i < 3; ++i )
     {
-        TeamConfigFixedClampBody( value.teams.slots[i], clamped );
+        TeamConfigFixedClampBody( value.teams.slots[i], clamped, damaged );
     }
-    ScoreBoardFixedClampBody( value.scores, clamped );
+    ScoreBoardFixedClampBody( value.scores, clamped, damaged );
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -6999,8 +7005,13 @@ inline void KeyedConfigFixedClampBody( KeyedConfig & value, int32_t & clamped )
 inline void TeamConfigFixedClamp( TeamConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
-    TeamConfigFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    TeamConfigFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- TeamConfig, the fixed form ----
@@ -7587,8 +7598,13 @@ inline int64_t HullConfigFixedLoad( HullConfig * values, int64_t capacity, const
 inline void KeyedConfigFixedClamp( KeyedConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
-    KeyedConfigFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    KeyedConfigFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- KeyedConfig, the fixed form ----
