@@ -536,6 +536,61 @@ It is a separate pass rather than a leg of `run.sh` for one mechanical reason:
 would change every `bench_mixed` row's id and make today's type numbers
 un-ratioable against every earlier board.
 
+## The nine-language table
+
+One table, one command, per host. Per language: the fixed form's **save** and
+**round trip** in nanoseconds per record and its **bytes** per record, against
+that language's OWN packet wire and against C++'s fixed form.
+
+    bench/paired/nine.sh                    # the Studio (macOS, unpinned by construction)
+    bench/paired/nine.sh --lane 7           # Space, on that line's own isolated core
+
+Both lines run `bench/paired -mode fast -fast-rounds 3` and render
+`NINE.md` (and `nine.json`) into the output directory, and print the table.
+`--lane N` is the Space form: it builds through `~/bin/pin-spread` so the
+compilers spread over the isolated cores, then runs the WHOLE sitting through
+`~/bin/bench-lane N`, which holds that core's lock once and `taskset`s every
+runner the driver forks onto it. Space's lanes are 1..15 and each line owns
+one; there is no coordinator in the loop.
+
+**The tree decides the rows, not the script.** `-mode table` asks the
+filesystem which `bench/tables/<lang>/` runners this checkout carries,
+measures exactly those, and NAMES the ones it has none for under the table —
+never estimates them, never carries a row in from another sitting. So the same
+unedited line runs on a leg branch, on the integration branch and on main, and
+each prints the truth about the tree it ran on. The driver measures the four
+paired languages together (the only shape that yields a packet ratio) and each
+table-only language alone; a table refuses to combine passes that disagree
+about build, host, corpus id, round count or iteration count.
+
+### The reading rule
+
+- **Never mix hosts or modes in one row, or in one table.** A Studio number
+  and a Space number are two sittings and two tables. So are `-mode fast` and
+  `-mode run`. The header names the host, the CPU, the revision, the lane, the
+  round and pass counts, the corpus ids and the iteration counts precisely so
+  that a pasted table cannot lose which sitting it came from.
+- **A loaded Studio row says so.** The table's header carries the observed
+  load1 range, and a sitting with any process-monitor warning carries a bold
+  line saying the host was not quiet. Read those rows accordingly — do not
+  quietly drop the warning when pasting.
+- **The `Wire` column is load-bearing.** A leg whose fixed-form port has not
+  landed still measures the tolerant form, and its row says `form 2
+  (tolerant)`. Both forms carry the same 64 logical records under the same
+  corpus id, so both are divisible against one packet row — but they are not
+  the same wire and the table never implies they are.
+- **`% of own packet` is that language's own packet wire = 100%**, so below
+  100% means the table wire beats it. A language with no packet leg reads
+  `—`; no other language's packet may stand in for it.
+- **`% of C++ form 3` is C++'s fixed form = 100%.** A sitting with no C++
+  fixed-form row renders that whole column unavailable rather than promoting
+  some other language to the reference.
+- **Nothing here is certified.** `-mode fast` has reduced iteration counts, no
+  bracketing drift controls and no quiet-window seal. **The certified sitting
+  is `-mode run` on Space inside the quiet window**, seven rounds, with the
+  operator's READY/START receipt — `bench/paired/README.md`. A fast table is
+  for iteration and for a PR's "after" record; it is not a performance claim.
+
 ## The shape gate
 
 `make shape-gate` (CI job `shape-gate`, `bench/tools/shapegate`) enforces the
