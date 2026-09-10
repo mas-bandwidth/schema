@@ -3966,9 +3966,9 @@ inline void FixedTableFixedWriteBody( uint8_t * b, const FixedTable & value )
 }
 
 // MixedEntity's read-side bounds.
-inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped )
+inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
     clamped += ( value.entity_id > 4095ull );
     value.entity_id = ( value.entity_id > 4095ull ) ? 4095ull : value.entity_id;
@@ -3996,9 +3996,9 @@ inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped )
 }
 
 // MixedStat's read-side bounds.
-inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped )
+inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     // bits(8) width clamp
     clamped += ( value.stat_id > 255ull );
     value.stat_id = ( value.stat_id > 255ull ) ? 255ull : value.stat_id;
@@ -4007,9 +4007,9 @@ inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped )
 }
 
 // MixedHitEvent's read-side bounds.
-inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clamped )
+inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
     clamped += ( value.target_id > 4095ull );
     value.target_id = ( value.target_id > 4095ull ) ? 4095ull : value.target_id;
@@ -4020,9 +4020,9 @@ inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clampe
 }
 
 // MixedChatEvent's read-side bounds.
-inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clamped )
+inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
     value.channel = ( value.channel < 0 ) ? 0 : ( ( value.channel > 3 ) ? 3 : value.channel );
     // bits(12) width clamp
@@ -4031,9 +4031,9 @@ inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clam
 }
 
 // MixedPickupEvent's read-side bounds.
-inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & clamped )
+inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     // bits(10) width clamp
     clamped += ( value.item_id > 1023ull );
     value.item_id = ( value.item_id > 1023ull ) ? 1023ull : value.item_id;
@@ -4042,9 +4042,9 @@ inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & 
 }
 
 // BenchMixed's read-side bounds.
-inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped )
+inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     // bits(16) width clamp
     clamped += ( value.sequence > 65535ull );
     value.sequence = ( value.sequence > 65535ull ) ? 65535ull : value.sequence;
@@ -4059,31 +4059,37 @@ inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped )
     value.server_time = ( value.server_time < 0 ) ? 0 : ( ( value.server_time > 16776960 ) ? 16776960 : value.server_time );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
-        MixedEntityFixedClampBody( value.entities[i], clamped );
+        MixedEntityFixedClampBody( value.entities[i], clamped, damaged );
     }
     for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
     {
-        MixedStatFixedClampBody( value.stats[i], clamped );
+        MixedStatFixedClampBody( value.stats[i], clamped, damaged );
     }
     if ( (uint32_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; clamped++; }
     switch ( value.game_event.type )
     {
         case MixedEventType::Hit:
         {
-            MixedHitEventFixedClampBody( value.game_event.hit, clamped );
+            MixedHitEventFixedClampBody( value.game_event.hit, clamped, damaged );
             break;
         }
         case MixedEventType::Chat:
         {
-            MixedChatEventFixedClampBody( value.game_event.chat, clamped );
+            MixedChatEventFixedClampBody( value.game_event.chat, clamped, damaged );
             break;
         }
         case MixedEventType::Pickup:
         {
-            MixedPickupEventFixedClampBody( value.game_event.pickup, clamped );
+            MixedPickupEventFixedClampBody( value.game_event.pickup, clamped, damaged );
             break;
         }
         default: break;
+    }
+    if ( !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) )
+    {
+        memset( value.player_name, 0, sizeof( value.player_name ) );
+        value.player_name_length = 0;
+        damaged++;
     }
     clamped += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
     value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
@@ -4105,10 +4111,10 @@ inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped )
 }
 
 // FixedTable's read-side bounds.
-inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped )
+inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    BenchMixedFixedClampBody( value.value, clamped );
+    (void) value; (void) clamped; (void) damaged;
+    BenchMixedFixedClampBody( value.value, clamped, damaged );
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -4120,8 +4126,13 @@ inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped )
 inline void FixedTableFixedClamp( FixedTable & value, TableReport * report )
 {
     int32_t clamped = 0;
-    FixedTableFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    FixedTableFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- FixedTable, the fixed form ----

@@ -6129,9 +6129,9 @@ inline void SimStateFixedWriteBody( uint8_t * b, const SimState & value )
 }
 
 // Pose's read-side bounds.
-inline void PoseFixedClampBody( Pose & value, int32_t & clamped )
+inline void PoseFixedClampBody( Pose & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.x < -1966080000ll ) | (int) ( value.x > 1966080000ll );
     value.x = ( value.x < -1966080000ll ) ? -1966080000ll : ( ( value.x > 1966080000ll ) ? 1966080000ll : value.x );
     clamped += (int) ( value.y < -1966080000ll ) | (int) ( value.y > 1966080000ll );
@@ -6141,9 +6141,9 @@ inline void PoseFixedClampBody( Pose & value, int32_t & clamped )
 }
 
 // SimState's read-side bounds.
-inline void SimStateFixedClampBody( SimState & value, int32_t & clamped )
+inline void SimStateFixedClampBody( SimState & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += ( value.tilt > 112 );
     value.tilt = ( value.tilt > 112 ) ? 112 : value.tilt;
     clamped += (int) ( value.angle < -11796480 ) | (int) ( value.angle > 11796480 );
@@ -6183,10 +6183,10 @@ inline void SimStateFixedClampBody( SimState & value, int32_t & clamped )
         clamped += (int) ( value.axes.slots[i] < -429496729600ll ) | (int) ( value.axes.slots[i] > 429496729600ll );
         value.axes.slots[i] = ( value.axes.slots[i] < -429496729600ll ) ? -429496729600ll : ( ( value.axes.slots[i] > 429496729600ll ) ? 429496729600ll : value.axes.slots[i] );
     }
-    PoseFixedClampBody( value.pose, clamped );
+    PoseFixedClampBody( value.pose, clamped, damaged );
     if ( value.spawn_present )
     {
-        PoseFixedClampBody( value.spawn, clamped );
+        PoseFixedClampBody( value.spawn, clamped, damaged );
     }
 }
 
@@ -6199,8 +6199,13 @@ inline void SimStateFixedClampBody( SimState & value, int32_t & clamped )
 inline void SimStateFixedClamp( SimState & value, TableReport * report )
 {
     int32_t clamped = 0;
-    SimStateFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    SimStateFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- SimState, the fixed form ----

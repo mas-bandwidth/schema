@@ -14241,11 +14241,71 @@ inline void SaveDocumentFixedWriteBody( uint8_t * b, const SaveDocument & value 
     TableFixedPut8( b + 68, value.force ? 1 : 0 );
 }
 
-// OpenDocument's read-side bounds.
-inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & clamped )
+// User's read-side bounds.
+inline void UserFixedClampBody( User & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) )
+    {
+        memset( value.name, 0, sizeof( value.name ) );
+        value.name_length = 0;
+        damaged++;
+    }
+}
+
+// Script's read-side bounds.
+inline void ScriptFixedClampBody( Script & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
+    {
+        memset( value.path, 0, sizeof( value.path ) );
+        value.path_length = 0;
+        damaged++;
+    }
+}
+
+// OpenDocument's read-side bounds.
+inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
+    {
+        memset( value.path, 0, sizeof( value.path ) );
+        value.path_length = 0;
+        damaged++;
+    }
     if ( (uint64_t) value.mode > 2u ) { value.mode = Mode::None; clamped++; }
+}
+
+// SaveDocument's read-side bounds.
+inline void SaveDocumentFixedClampBody( SaveDocument & value, int32_t & clamped, int32_t & damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.path, (uint64_t) value.path_length ) )
+    {
+        memset( value.path, 0, sizeof( value.path ) );
+        value.path_length = 0;
+        damaged++;
+    }
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void UserFixedClamp( User & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    UserFixedClampBody( value, clamped, damaged );
+    report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- User, the fixed form ----
@@ -14373,9 +14433,30 @@ inline int64_t UserFixedLoad( User * values, int64_t capacity, const uint8_t * d
         UserReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        UserFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void ScriptFixedClamp( Script & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    ScriptFixedClampBody( value, clamped, damaged );
+    report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- Script, the fixed form ----
@@ -14506,6 +14587,9 @@ inline int64_t ScriptFixedLoad( Script * values, int64_t capacity, const uint8_t
         ScriptReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        ScriptFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
@@ -14802,8 +14886,13 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
 inline void OpenDocumentFixedClamp( OpenDocument & value, TableReport * report )
 {
     int32_t clamped = 0;
-    OpenDocumentFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    OpenDocumentFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- OpenDocument, the fixed form ----
@@ -14953,6 +15042,24 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
     return n;
 }
 
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void SaveDocumentFixedClamp( SaveDocument & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    SaveDocumentFixedClampBody( value, clamped, damaged );
+    report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
+}
+
 // ---- SaveDocument, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -15081,6 +15188,9 @@ inline int64_t SaveDocumentFixedLoad( SaveDocument * values, int64_t capacity, c
         SaveDocumentReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        SaveDocumentFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
