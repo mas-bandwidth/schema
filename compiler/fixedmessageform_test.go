@@ -80,7 +80,7 @@ func TestTheCorpusCompilesWithTheKeyword(t *testing.T) {
 				if st == nil {
 					t.Fatalf("%s declares no %s", tc.dir, name)
 				}
-				if !st.Fixed {
+				if !st.FixedDeclared {
 					t.Errorf("%s.%s lost its `fixed` keyword", tc.dir, name)
 				}
 			}

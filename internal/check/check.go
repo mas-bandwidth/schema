@@ -1045,7 +1045,7 @@ func (c *checker) resolveBodies() {
 				// §2.2): `fixed table` is the fixed wire and a plain `table`
 				// is the variable one, and checkFixedTableClosures below
 				// refuses a fixed table whose closure cannot hold the class.
-				st := &ir.Struct{Name: d.Name, IsTable: true, Fixed: d.Fixed, Doc: d.Doc}
+				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
 				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
 				for _, a := range tvalued {

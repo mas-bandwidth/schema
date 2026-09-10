@@ -164,8 +164,8 @@ func TestTheDeclaredClassReachesTheIr(t *testing.T) {
 		}
 	}
 	u := buildUnit(t, "package t\nfixed table A { x int32 }\ntable B { y int32 }\n")
-	if !u.Tables["A"].Fixed || u.Tables["B"].Fixed {
-		t.Errorf("the declared class did not reach the IR: A.Fixed=%v B.Fixed=%v", u.Tables["A"].Fixed, u.Tables["B"].Fixed)
+	if !u.Tables["A"].FixedDeclared || u.Tables["B"].FixedDeclared {
+		t.Errorf("the declared class did not reach the IR: A.FixedDeclared=%v B.FixedDeclared=%v", u.Tables["A"].FixedDeclared, u.Tables["B"].FixedDeclared)
 	}
 	if v := ir.VariableTables(u); v["A"] || !v["B"] {
 		t.Errorf("VariableTables is not the flag's complement: %v", v)

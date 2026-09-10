@@ -36,7 +36,7 @@ func (c *checker) checkFixedTableClosures(names []string) {
 			entries = append(entries, name)
 			continue
 		}
-		if !st.Fixed {
+		if !st.FixedDeclared {
 			continue
 		}
 		pos := ast.Pos{}
@@ -52,6 +52,6 @@ func (c *checker) checkFixedTableClosures(names []string) {
 	// and every declared class is known by now.
 	sort.Strings(entries)
 	for _, name := range entries {
-		c.tables[name].Fixed = len(ir.FixedClosureBreaks(c.closureMember, name)) == 0
+		c.tables[name].FixedDeclared = len(ir.FixedClosureBreaks(c.closureMember, name)) == 0
 	}
 }

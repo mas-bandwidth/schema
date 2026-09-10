@@ -6172,23 +6172,31 @@ three and not one.
   the whole body and zero-fills every byte of declared slack, whatever the value
   actually holds. **Nothing about the wire changes at 4096.** It is where a
   fixed table stops being a small thing.
-- **65536 BYTES OF RECORD BODY: A COMPILE REFUSAL FOR A DECLARED FIXED TABLE.**
+- **65536 BYTES OF RECORD BODY: THE FORM IS NOT EMITTED, AND THE TABLE IS NAMED.**
   This one IS a wire fact: a reader holds an untrusted peer's layout to the same
   65536 (`layout_record_too_large`, above), so a record past it is one no
   conforming reader decodes, and emitting a writer for it would be emitting
-  bytes nobody can read. A `fixed table` past it therefore **DOES NOT COMPILE**,
-  by name, naming the table and the size — because selection is by the keyword
-  and a declared fixed table never falls back to form `1`, so the alternative
-  would be exactly the silent demotion the keyword exists to prevent. The two
-  sides agree by construction: the writer never produces a record the reader's
-  own bound refuses.
+  bytes nobody can read. A fixed table past it therefore **KEEPS FORM `1`,
+  WHICH IT NEVER LOST**, and the compiler names it and its size rather than
+  dropping the form in silence. The two sides agree by construction: the writer
+  never produces a record the reader's own bound refuses.
 
-  **AND FOR A TABLE MERELY DERIVED INTO THE FORM, THE FORM IS DROPPED AND THE
-  COMPILER WARNS**, because that table asked for nothing: it keeps form `1`,
-  which it never lost, and the compiler names it rather than dropping the form
-  in silence. **THIS SECOND HALF IS WHAT #823 REMOVES** — an undeclared `table`
-  will not select form `3` at all, so nothing will be derived into it and there
-  will be one bound with one verdict.
+  **THIS IS NOT A COMPILE REFUSAL, AND THE `fixed` KEYWORD DOES NOT MAKE IT ONE
+  — because the keyword declares the CLASS and this bound is the FORM's.** The
+  MODE and the FORM are two different words (below), and 65536 is the FORM's
+  number. §12.1's render frame at 7.5 MB and §2.8's `WideBlob` at 280 KB are
+  **declared `fixed table`** — they have to be, because the class is what gives
+  them a by-value storage, a cook and a block form (§19) — and they were never
+  form-`3` tables at all, form `3` being younger than both. **Refusing to
+  compile them would be refusing the CLASS over a bound belonging to one of its
+  wires**, and it would make two of this specification's own worked examples
+  things the compiler rejects. What the keyword refuses is a construct that
+  makes the body VARY IN SIZE (§2.2) — a feature that stops the table being
+  fixed — and a large constant record is not one of those; it is a fixed record
+  larger than this one wire carries. **The owner's rule is met because nothing
+  here is silent**: *"we don't want to surprise the user"*, and the table and
+  its size are in the message, at compile time, always on. A project that wants
+  the bound to be a gate has the flag below.
 - **`--fixed-record-limit N` MAKES THE ADVICE A GATE, AND ONLY EVER LOWERS.** It
   is off by default and it is a project's own policy, never a wire fact: set it
   and a fixed table whose record body exceeds `N` bytes DOES NOT COMPILE. A team
@@ -6299,29 +6307,37 @@ disqualifying thing for a fixed table. not supported. only variable."*
 
 #### SELECTION IS BY THE KEYWORD
 
-**A `fixed table` ENCODES AS FORM `3`, ALWAYS. A `table` ENCODES AS FORM `1`.
-THERE IS NO PATH BY WHICH A DECLARED FIXED TABLE REACHES FORM `1`.** The
-keyword (#823) is the whole of the selection, and the owner's reason for it is
-the one that decides everything below: *"if we add any feature that stops it
-from being fixed, it is a compile error … we don't want to surprise the user"*,
-and *"now that we have the fixed form (new) of 3, we select this, and do not
-want fixed tables to ever encode as the old way."*
+**A `fixed table` ENCODES AS FORM `3`. A `table` ENCODES AS FORM `1`. NOTHING
+IS DERIVED IN EITHER DIRECTION, AND NO VALUE OF A DECLARED FIXED TABLE IS EVER
+WRITTEN AS FORM `1`.** The keyword (#823) is the whole of the selection, and the
+owner's reason for it is the one that decides everything below: *"if we add any
+feature that stops it from being fixed, it is a compile error … we don't want to
+surprise the user"*, and *"now that we have the fixed form (new) of 3, we select
+this, and do not want fixed tables to ever encode as the old way."*
+
+The one thing that takes a declared fixed table out of form `3` is the RECORD
+CEILING above, and it is a property of the DECLARATION and not of a value: it is
+decided once, at compile time, with the table's name and its size in the
+message, and it decides the same way for every value of that table for the life
+of the build. **It is not a per-value fallback and there is no run-time path
+between the two forms** — which is the surprise the keyword exists to prevent.
 
 - **THE READ SIDE STILL ACCEPTS BOTH.** A generated reader for a fixed-table
   type reads form `1` and form `3`, by the form byte, because form `1` is what
   an OLD FILE ON A DISK is and nothing about form `1` moves, for fixed tables or
   for anything else. Selection is a WRITER's question; tolerance is a reader's.
-- **AN UNDECLARED `table` IS A VARIABLE TABLE FOR THIS FORM'S PURPOSES,
-  WHATEVER ITS SIZE.** §12.1's render frame at 7.5 MB and §2.8's `WideBlob` are
-  exactly that: legitimate tables of megabytes, fixed in MODE (§2.2) and so
-  carrying a by-value storage, a cook and a block form, and never form-`3`
-  tables at all. **The MODE and the FORM are two different words**, and this
-  section's bounds are the FORM's.
-- **UNTIL #823 MERGES, THE COMPILER SELECTS BY THE DERIVED MODE.** The keyword
-  is on branch `fixed-table-keyword`. This tree has no other marker for "the
-  author asked for the fixed form", so `ir.TableFixedRoots` reads the derived
-  mode and `ir.Struct.FixedDeclared` — the field the keyword sets — carries the
-  one pointer to #823. What that costs is stated below and nowhere else.
+- **AN UNDECLARED `table` IS A VARIABLE TABLE, WHATEVER ITS FIELDS.** Nothing
+  is inferred: a plain `table` whose every field is bounded is still the
+  variable wire (§2.2), and it never reaches form `3`.
+- **A DECLARED `fixed table` PAST THE RECORD CEILING IS A FIXED TABLE THAT DOES
+  NOT CARRY THIS FORM.** §12.1's render frame at 7.5 MB and §2.8's `WideBlob`
+  are exactly that: legitimate `fixed table` declarations of megabytes, carrying
+  a by-value storage, a cook and a block form, and never form-`3` tables at all.
+  **The CLASS and the FORM are two different words**, and this section's bounds
+  are the FORM's. The compiler names them; it does not refuse them.
+- **THE SELECTION IS `ir.Struct.FixedDeclared`, WHICH THE PARSER SETS FROM THE
+  KEYWORD.** `ir.VariableTables` is its complement and `ir.TableFixedRoots` is
+  the declared set, so every emitter switches on one flag with one origin.
 
 ---
 

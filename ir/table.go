@@ -159,7 +159,7 @@ func VariableTables(u *Unit) map[string]bool {
 		// was derived: a caller asks `variable[name]` and reads false for
 		// everything else, and `len(variable) == 0` is still "this unit is
 		// fixed throughout", which is the question the zero-cost gate asks.
-		if st := u.Tables[name]; st != nil && !st.Fixed {
+		if st := u.Tables[name]; st != nil && !st.FixedDeclared {
 			variable[name] = true
 		}
 	}
@@ -228,7 +228,7 @@ func FixedClosureBreaks(member func(string) *Struct, name string) []FixedBreak {
 			switch ref := f.Type.Ref.(type) {
 			case *Struct:
 				switch {
-				case ref.IsTable && !ref.Fixed:
+				case ref.IsTable && !ref.FixedDeclared:
 					held := "holds the plain table " + ref.Name + " by value"
 					if arm {
 						held = "is an arm holding the plain table " + ref.Name

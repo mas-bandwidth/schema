@@ -120,7 +120,7 @@ func UnpackMessages(m *tabletext.Model, trees []MessageTree, announcement, messa
 		// §3.3), and the class is declared: a plain `table` is the
 		// VARIABLE wire, and a message-form request naming one is refused
 		// naming the table rather than quietly writing another form.
-		if !st.Fixed {
+		if !st.FixedDeclared {
 			return report, fmt.Errorf("--root %s names a plain `table`, and the MESSAGE FORM is a fixed table's: a message is a bitpacked body under one announced vocabulary, so the shape has to be one the declaration fixes. Declare it `fixed table %s`, or use the FILE form, which every table has (docs/SPEC-TABLES.md §2.2, §3.3)", tree.Root, tree.Root)
 		}
 		insts = append(insts, m.New(st))
