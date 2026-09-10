@@ -1182,6 +1182,88 @@ fn the_guard_is_the_whole_tag() {
 }
 
 // ---------------------------------------------------------------------------
+// THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4).
+//
+// A fixed record is a positional image and the one read loop moves bytes: it
+// asks nothing about what they mean. An ENUM ORDINAL past the enum's top value
+// and a UNION TAG past the arm count are held in the SCATTER, above. What is
+// left is the RANGED SCALAR, and it cannot ride there for the reason the other
+// two can: an `| min = -127` field's SLACK is zero and zero is in range, but a
+// field whose range excludes zero would count a clamp on every clean read if
+// the pass walked storage nobody wrote. So the range pass walks only what a
+// read can have written, and this is what pins it.
+// ---------------------------------------------------------------------------
+
+fn the_declared_range() {
+    let mut one = tabledemo::RangedSignedRow::default();
+    one.i8_inside = 5; // well inside [-127, 126]
+    one.i8_low = 5;
+    let values = [one];
+    let mut file = vec![0u8; tabledemo::ranged_signed_fixed_measure(1)];
+    check(
+        tabledemo::ranged_signed_fixed_save(&values, &mut file) == Some(file.len()),
+        "the range: the record writes",
+    );
+
+    // THE CLEAN READ FIRST, so the clamp below is the forgery and not the pass.
+    let mut back = [tabledemo::RangedSignedRow::default(); 2];
+    let mut plan = [tabledemo::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tabledemo::TableFixedReport::default();
+    let n =
+        tabledemo::ranged_signed_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "the range: the clean record reads");
+    check(
+        back[0].i8_inside == 5 && report.clamped == 0,
+        "NEGATIVE CONTROL: a value inside the range lands untouched and clamps NOTHING",
+    );
+
+    // AND NOW THE FORGERY: `i8_inside` declares [-127, 126] and sits at offset
+    // 3 of the body, so -128 is a value the declaration says cannot exist.
+    let body = records_at(&file) + 8;
+    let mut forged = file.clone();
+    forged[body + 3] = 0x80; // -128
+    let mut report = tabledemo::TableFixedReport::default();
+    let n = tabledemo::ranged_signed_fixed_load(
+        &mut back,
+        &forged,
+        &mut plan,
+        &mut remap,
+        &mut report,
+    );
+    check(n == Some(1), "the range: the forged record still reads");
+    check(
+        back[0].i8_inside == -127,
+        "the range: a value under the declared min lands AT the min",
+    );
+    check(
+        report.clamped == 1 && !report.malformed && !report.refused,
+        "the range: and counts ONE clamped — not damage, and not a refusal",
+    );
+
+    // the other end, on the field whose range excludes only the top
+    let mut forged = file.clone();
+    forged[body + 1] = 0x7F; // 127, past i8_low's max of 126
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_signed_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].i8_low == 126 && report.clamped == 1,
+        "the range: a value over the declared max lands AT the max, and counts one",
+    );
+
+    // A SPAN THAT IS THE STORAGE'S OWN IS NOT A BOUND, and no comparison is
+    // emitted for it: `i8_span` declares [-128, 127], which every int8 holds.
+    let mut forged = file.clone();
+    forged[body] = 0x80; // -128, and legal
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_signed_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].i8_span == -128 && report.clamped == 0,
+        "the range: a bound ON the storage width's own limit clamps nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -1211,6 +1293,7 @@ fn main() {
     the_negative_controls(&dir);
     the_union_controls(&bench);
     the_guard_is_the_whole_tag();
+    the_declared_range();
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
         println!("rust fixed form: {failures} FAILED");

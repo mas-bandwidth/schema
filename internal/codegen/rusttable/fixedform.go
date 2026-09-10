@@ -45,6 +45,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -313,10 +314,12 @@ use crate::*;
 	for _, un := range unions {
 		g.emitFixedWriteUnion(un)
 		g.emitFixedScatterUnion(un)
+		g.emitFixedClampUnion(un)
 	}
 	for _, st := range members {
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
+		g.emitFixedClampBody(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
@@ -974,6 +977,16 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        image.copy_from_slice(&%s_FIXED_DEFAULTS); // the declared defaults, one prefill\n", up)
 	g.pf("        table_fixed_run(entries, remap, &record[8..], &mut image, report);\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
+	if fixedRangeClampNeeded(st) {
+		g.pf("        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the\n")
+		g.pf("        // storage the scatter just wrote: the same pass for either plan,\n")
+		g.pf("        // and only over what a read can have written (§3.4).\n")
+		g.pf("        {\n")
+		g.pf("            let mut clamped = 0i32;\n")
+		g.pf("            %s(&mut values[k], &mut clamped);\n", fn(st.Name, "fixed_clamp_body"))
+		g.pf("            report.clamped += clamped as u32;\n")
+		g.pf("        }\n")
+	}
 	g.pf("    }\n    Some(n)\n}\n\n")
 }
 
@@ -987,4 +1000,296 @@ func (g *gen) emitFixedByteArray(b []byte) {
 		}
 		g.pf("%s\n", sb.String())
 	}
+}
+
+// ---------------------------------------------------------------------------
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4)
+//
+// A fixed record is a positional image, so the ONE read loop moves bytes and
+// asks nothing about what they mean. What a DECLARATION bounds is held here, as
+// straight-line code after the copy — never as plan entries, which would be a
+// test per bounded field on every read of every record and is the cost the
+// identity plan exists to avoid.
+//
+// TWO OF THE THREE ARE ALREADY HELD, and they are held in the SCATTER, because
+// this port's scatter is the straight-line decode: an ENUM ORDINAL past the
+// enum's top value and a UNION TAG past the arm count both land None and count
+// one clamped there (see emitFixedScatterElement and emitFixedScatterUnion).
+// They cost nothing spurious over slack or over an absent optional's payload
+// either, because the value those carry is ZERO and zero is in range for both.
+//
+// WHAT IS LEFT IS THE RANGED SCALAR, and it cannot ride in the scatter for
+// exactly the reason the other two can: an `| min = 1` field's slack is ZERO
+// and zero is OUT of range, so clamping every slot would count a clamp on every
+// clean read. So this pass WALKS ONLY WHAT A READ CAN HAVE WRITTEN — a counted
+// array's LIVE elements and never its slack, an optional's payload only when
+// the present byte says so, a union's arm only when the tag names it — which is
+// the same walk the C++ reference's FixedClamp makes, for the same reason.
+//
+// THE PASS RUNS OVER STORAGE, so ONE pass covers both plans: the identity plan
+// and a plan compiled from a stranger's layout land values in the same places.
+// ---------------------------------------------------------------------------
+
+// fixedRangeClampNeeded answers whether a type's closure declares a RANGED
+// SCALAR anywhere — the question that keeps a unit of unbounded scalars from
+// carrying one line of this (§2.2's zero-cost rule). It is NOT ir's
+// TableFixedClampNeeded: that one counts an enum ordinal and a union tag too,
+// and this port holds both in the scatter already, so gating on it would count
+// every out-of-range ordinal TWICE.
+func fixedRangeClampNeeded(st *ir.Struct) bool {
+	return fixedRangeClampType(st, map[string]bool{})
+}
+
+func fixedRangeClampType(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if fixedRangeClampField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixedRangeClampField(f *ir.Field, seen map[string]bool) bool {
+	if f == nil {
+		return false
+	}
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return fixedRangeClampType(r, seen)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if fixedRangeClampField(v.F, seen) {
+					return true
+				}
+			}
+		}
+		return false // an enum's ordinal and a union's tag are the scatter's
+	}
+	if f.HasFloatRange {
+		return true
+	}
+	if low, high := fixedClampEnds(f); low || high {
+		return true
+	}
+	return f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*ir.TableFixedStorageBytes(f.Type)
+}
+
+// fixedClampEnds answers which ends of a declared min/max a read can actually
+// clamp at. A bound sitting ON the storage width's own limit is a comparison no
+// stored value can fail, which rustc says out loud (`unused_comparisons`).
+func fixedClampEnds(f *ir.Field) (low, high bool) {
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return false, false
+	}
+	bits := uint(8 * ir.TableFixedStorageBytes(f.Type))
+	if bits == 0 {
+		return false, false
+	}
+	one := big.NewInt(1)
+	var lo, hi *big.Int
+	if ir.TableKindSigned(ir.TableScalarKind(f)) {
+		top := new(big.Int).Lsh(one, bits-1)
+		lo, hi = new(big.Int).Neg(top), new(big.Int).Sub(top, one)
+	} else {
+		lo, hi = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, bits), one)
+	}
+	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
+}
+
+// emitFixedClampBody is ONE type's bounds, the twin of its write body: a nested
+// type is a CALL and not an inlining, so a type that appears twice in a closure
+// is spelled once.
+func (g *gen) emitFixedClampBody(st *ir.Struct) {
+	if !fixedRangeClampNeeded(st) {
+		return
+	}
+	g.pf("/// %s's read-side bounds: every RANGED SCALAR held to its declared min\n", st.Name)
+	g.pf("/// and max, over the storage a read can have written.\n")
+	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value."+f.Name, 4)
+	}
+	g.pf("}\n\n")
+}
+
+// emitFixedClampUnion is a union's share: the ARM THE TAG NAMES and no other.
+func (g *gen) emitFixedClampUnion(un *ir.Union) {
+	if !fixedRangeClampUnion(un) {
+		return
+	}
+	g.pf("/// %s's read-side bounds: the arm THE TAG NAMES, and no other — the\n", un.Name)
+	g.pf("/// overlay behind a narrower arm is bytes nobody wrote.\n")
+	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
+	var bounded []int
+	for i, v := range un.Variants {
+		if fixedRangeClampField(v.F, map[string]bool{}) {
+			bounded = append(bounded, i)
+		}
+	}
+	if len(bounded) == 1 {
+		// ONE BOUNDED ARM IS AN `if` AND NOT A `match`, which is what clippy's
+		// single_match says out loud and what a reader would write by hand.
+		i := bounded[0]
+		v := un.Variants[i]
+		g.pf("    if value.tag == %d {\n", i+1)
+		g.pf("        // SAFETY: the tag was just matched against `%s`.\n", v.Name)
+		g.pf("        let mut arm = unsafe { value.arms.%s };\n", v.Name)
+		g.emitFixedClampElement(v.F, "arm", 8)
+		g.pf("        value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
+		g.pf("    }\n}\n\n")
+		return
+	}
+	g.pf("    match value.tag {\n")
+	for _, i := range bounded {
+		v := un.Variants[i]
+		g.pf("        %d => {\n", i+1)
+		g.pf("            // SAFETY: the tag was just matched against `%s`.\n", v.Name)
+		g.pf("            let mut arm = unsafe { value.arms.%s };\n", v.Name)
+		g.emitFixedClampElement(v.F, "arm", 12)
+		g.pf("            value.arms.%s = arm; // a WRITE of a union field, which is safe\n", v.Name)
+		g.pf("        }\n")
+	}
+	g.pf("        _ => {} // None, and any arm with no bound of its own\n")
+	g.pf("    }\n}\n\n")
+}
+
+func fixedRangeClampUnion(un *ir.Union) bool {
+	for _, v := range un.Variants {
+		if fixedRangeClampField(v.F, map[string]bool{}) {
+			return true
+		}
+	}
+	return false
+}
+
+// emitFixedClampField walks ONE field's live storage.
+func (g *gen) emitFixedClampField(f *ir.Field, expr string, indent int) {
+	if !fixedRangeClampField(f, map[string]bool{}) {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
+		// held to a bound either: what rides there is the template's zeros and
+		// nobody wrote it.
+		g.pf("%sif value.%s_present {\n", ind, f.Name)
+		g.emitFixedClampPayload(f, expr, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedClampPayload(f, expr, indent)
+}
+
+func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.KeyEnum != "":
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4).
+		g.pf("%sfor i in 0..%d {\n", ind, f.KeyEnumRef.Max)
+		g.emitFixedClampElement(f, expr+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+		g.emitFixedClampElement(f, expr+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		// THE LIVE COUNT AND NEVER THE SLACK: the slack is zeros nobody wrote,
+		// and zero is out of range for an `| min = 1` field.
+		g.pf("%sfor i in 0..value.%s_count.clamp(0, %d) as usize {\n", ind, f.Name, f.ArrayBound)
+		g.emitFixedClampElement(f, expr+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+		// a text field's used length is held by the scatter's `count`
+	default:
+		g.emitFixedClampElement(f, expr, indent)
+	}
+}
+
+// emitFixedClampElement is ONE element: a call for a declaration, a comparison
+// for a bounded scalar, and nothing at all for anything the scatter holds.
+func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if fixedRangeClampNeeded(r) {
+				g.pf("%s%s(&mut %s, clamped);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
+			}
+		case *ir.Union:
+			if fixedRangeClampUnion(r) {
+				g.pf("%s%s(&mut %s, clamped);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
+			}
+		}
+		return
+	}
+	slot := cookElemType(f)
+	lhs := expr
+	wrap := ""
+	if w, wide := fixedWide128(f); wide {
+		lhs, wrap = expr+".0", w
+	}
+	if f.HasFloatRange {
+		// A FLOAT RANGE IS ALWAYS BOTH ENDS: there is no storage limit to fold
+		// either of them into the way an integer's has.
+		suffix := "_f64"
+		if f.Type.Kind == ir.TFloat32 {
+			suffix = "_f32"
+		}
+		lo, hi := fixedFloatLit(f.FMin)+suffix, fixedFloatLit(f.FMax)+suffix
+		g.pf("%sif %s < %s {\n%s    %s = %s;\n%s    *clamped += 1;\n%s} else if %s > %s {\n%s    %s = %s;\n%s    *clamped += 1;\n%s}\n",
+			ind, lhs, lo, ind, lhs, lo, ind, ind, lhs, hi, ind, lhs, hi, ind, ind)
+		return
+	}
+	if low, high := fixedClampEnds(f); low || high {
+		rlo, rhi, _ := ir.TableRawRange(f)
+		// ONE CHAIN, because a value cannot be under the low bound and over the
+		// high one: the second end is an `else if` when both are spelled.
+		lead := "if"
+		if low {
+			lo := fixedClampLit(rlo, slot, wrap)
+			g.pf("%sif %s < %s {\n%s    %s = %s;\n%s    *clamped += 1;\n%s}", ind, lhs, lo, ind, lhs, lo, ind, ind)
+			lead = " else if"
+		}
+		if high {
+			hi := fixedClampLit(rhi, slot, wrap)
+			head := ind + "if"
+			if lead == " else if" {
+				head = " else if"
+			}
+			g.pf("%s %s > %s {\n%s    %s = %s;\n%s    *clamped += 1;\n%s}", head, lhs, hi, ind, lhs, hi, ind, ind)
+		}
+		g.pf("\n")
+	}
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*ir.TableFixedStorageBytes(f.Type) {
+		maxv := (uint64(1) << f.Type.Width) - 1
+		g.pf("%sif %s > %d {\n%s    %s = %d;\n%s    *clamped += 1;\n%s} // bits(%d)'s own width\n",
+			ind, lhs, maxv, ind, lhs, maxv, ind, ind, f.Type.Width)
+	}
+}
+
+// fixedClampLit renders one end of a declared range at the SLOT's own type. The
+// two's-complement minimum never reaches here: fixedClampEnds drops a bound
+// sitting on the storage width's own limit.
+func fixedClampLit(v *big.Int, slot, wrap string) string {
+	if wrap != "" {
+		if wrap == "TableI128" {
+			return v.String() + "_i128"
+		}
+		return v.String() + "_u128"
+	}
+	return v.String() + "_" + slot
+}
+
+func fixedFloatLit(v float64) string {
+	s := strconv.FormatFloat(v, 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s
 }

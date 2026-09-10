@@ -52,6 +52,12 @@ pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &m
     }
 }
 
+/// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
+/// and max, over the storage a read can have written.
+pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, clamped: &mut i32) {
+    bench_mixed_fixed_clamp_body(&mut value.value, clamped);
+}
+
 // ---- FixedTable, the fixed form ----
 
 /// The body is the SAME SIZE for every value the type can hold, so a measure
@@ -373,6 +379,14 @@ pub fn fixed_table_fixed_load(
         image.copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS); // the declared defaults, one prefill
         table_fixed_run(entries, remap, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);
+        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the
+        // storage the scatter just wrote: the same pass for either plan,
+        // and only over what a read can have written (§3.4).
+        {
+            let mut clamped = 0i32;
+            fixed_table_fixed_clamp_body(&mut values[k], &mut clamped);
+            report.clamped += clamped as u32;
+        }
     }
     Some(n)
 }
