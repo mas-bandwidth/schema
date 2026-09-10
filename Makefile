@@ -4327,6 +4327,42 @@ build/schema_test_bench_paired_table_cpp: generated/bench/paired/cpp/.stamp benc
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -DBENCH_MATCHED -Igenerated/bench/paired/cpp bench/tables/cpp/table_main.cpp -o $@
 
+# THE THREE WIRES, SIDE BY SIDE (docs/SPEC-TABLES.md §3.4). The paired bench
+# above times the PACKET wire and FORM 1 over identical logical records and does
+# NOT time form 3 — its C++ runner calls BenchMixedSave/Load and nothing but a
+# conformance test calls the fixed codec. This adds the third row, in ONE
+# process, over the SAME 64 committed variants, with the same loop structure,
+# the same escape barriers and the same warmup-then-median shape, and it times
+# form 3 BOTH WAYS a fixed record travels: batched into one file, where the
+# layout is paid once, and sent one record at a time, where it rides with every
+# one.
+#
+# IT IS A DIFFERENT MEASUREMENT FROM bench-fixedform-measure BELOW, which is the
+# form's RULING measurement — the plan-driven reader against straight-line
+# constant-offset loads, the ratio the one-reader-path decision was bought with.
+# That one asks whether the plan costs too much; this one asks what the wire is
+# worth against the other two. Neither answers the other's question.
+#
+# IT IS A MEASUREMENT AND NOT A GATE, so it is not in `make test`: it starts a
+# clock, and a clock in a test suite is a flaky test. What makes its numbers
+# worth reading is that EVERY PATH IS GATED BEFORE ANY CLOCK STARTS — each must
+# reproduce its own bytes, and every form-3 record must re-encode to the packet
+# bytes it came from, so a path that decoded wrongly does not get to be fast.
+#
+#   make bench-fixedform-wires                     five runs
+#   make bench-fixedform-wires MEASURE_RUNS=7      seven
+build/schema_bench_fixedform_wires: generated/bench/paired/cpp/.stamp test/bench/fixedform_wires.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -Igenerated/bench/paired/cpp -I$(SERIALIZE) \
+	    test/bench/fixedform_wires.cpp -o $@
+
+MEASURE_RUNS ?= 5
+
+bench-fixedform-wires: build/schema_bench_fixedform_wires
+	./build/schema_bench_fixedform_wires $(MEASURE_RUNS)
+
+.PHONY: bench-fixedform-wires
+
 tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test_bench_paired_c
 	./build/schema_test_bench_paired_table_cpp --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
 	./build/schema_test_bench_paired_c --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus

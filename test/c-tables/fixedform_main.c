@@ -31,6 +31,7 @@ int main( void )
     fixed_check( n == fixed_fx1_bytes(), "FX1 save" );
     fixed_fx1_read_own( g_buffer, n );
     fixed_fx2_read_fx1( g_buffer, n );
+    fixed_fx2_plan_cache( g_buffer, n );
     fixed_fx2_bytes_row_control( g_buffer, n );
     fixed_fx1_slack();
 
@@ -55,6 +56,7 @@ int main( void )
     fixed_ut1_bounds();
     fixed_v1_bounds();
     fixed_v1_absent_optional();
+    fixed_fx1_text_content();
 
     n = fixed_ut2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
