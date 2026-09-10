@@ -656,6 +656,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -673,17 +677,13 @@ enum { kTableFixedForm = 3 };
    BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the form's own
    EIGHT-BYTE HASH at offset 8, and the body at 16 — the alignment a
    memory-mapped body needs. The fixed form does not need the alignment today;
-   it pads anyway, so the bytes do not move again the day the cook and the
-   block form join the registry under the same header.
+   it pads anyway, so the bytes do not move again the day the cook and the block
+   form join the registry under the same header.
 
    The hash here is the LAYOUT's. Each record still carries its own eight-byte
    hash, which §3.4 has always said and which the header does not replace: the
    header names the layout ONCE for the file, and a record names the layout it
-   was stamped by.
-
-   C++ SPELLS THESE TWO AS constexpr int64_t; C SPELLS THEM AS ENUMERATORS, and
-   the offset arithmetic the generated reader does with them is int64_t either
-   way because every term it is added to already is. */
+   was stamped by. */
 enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 
 /* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
@@ -703,7 +703,7 @@ enum
     kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
 };
 
-/* arg on a kTableFixedText entry */
+/* meta on a kTableFixedText entry */
 enum
 {
     kTableFixedTextUtf8  = 1,
@@ -748,45 +748,29 @@ enum
 #define SCHEMA_TABLE_MESSAGE_REASONS
 enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6 };
 #endif
-/* THE FIXED FORM'S THREE. Each is a refusal by name with nothing decoded and no
-   counter moved, on the form byte's own precedent (§3.4). THE LAYOUT is what
-   form 1 called the vocabulary block. */
+/* THE FIXED FORM'S THREE, AND THE LAYOUT VALIDATION'S SIX. Each is a refusal by
+   name with nothing decoded and no counter moved, on the form byte's own
+   precedent (§3.4). THE LAYOUT is what form 1 calls the vocabulary block.
+
+   The six validation names exist because a layout is the one structure a reader
+   must parse before it knows anything at all, and it arrives from an UNTRUSTED
+   PEER: each rule it is held to refuses under its own name rather than under
+   one word for all of them, and every one runs BEFORE a record byte is touched.
+   The VALUES are this leg's own; the NAMES are the reference's, so a peer is
+   refused by the same name whichever leg reads it. */
 enum
 {
-    SCHEMA_TABLE_NO_LAYOUT = 7,        /* a fixed-form record whose hash names no LAYOUT this reader holds */
-    SCHEMA_TABLE_LAYOUT_MALFORMED = 8, /* bytes handed to the fixed form as a layout that are not one: fewer than a header's worth of them */
-    SCHEMA_TABLE_PLAN_TOO_LARGE = 9    /* a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates */
-};
-
-/* A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The registry
-   is ORDERED, so a reader meeting a byte it does not carry can say WHICH
-   DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE form, which
-   is older, and calling that SCHEMA_TABLE_NEWER_FORM would send a caller looking
-   for a build that does not exist. The bytes are the same refusal either way —
-   nothing decoded, no counter moved — and only the name of it differs. It is
-   guarded because the message surface, which refuses on the same registry, may
-   have declared it first in this translation unit. */
-#ifndef SCHEMA_TABLE_DIRECTIONAL_FORMS
-#define SCHEMA_TABLE_DIRECTIONAL_FORMS
-enum { SCHEMA_TABLE_PREVIOUS_FORM = 10 };
-#endif
-
-/* THE LAYOUT VALIDATION'S OWN NAMES (docs/SPEC-TABLES.md §3.4). A layout is the
-   one structure a reader must parse before it knows anything at all, and it
-   arrives from an UNTRUSTED PEER, so each rule it is held to refuses under its
-   own name rather than under one word for all of them. Every one of them runs
-   BEFORE a single record byte is touched. The values and the order are the C++
-   reference's own, so a C reader and a C++ reader refuse the same layout for the
-   same named reason. */
-enum
-{
-    SCHEMA_TABLE_LAYOUT_COUNT_MISMATCH = 11,  /* the entry count does not fit the layout's length exactly: the count, and then that many seventeen-byte entries */
-    SCHEMA_TABLE_LAYOUT_KIND_UNKNOWN = 12,    /* a kind OUTSIDE §3's closed set: a fixed form's kind set is closed, so an unknown kind means a newer FORM BYTE, which is a different form and not a newer layout of this one */
-    SCHEMA_TABLE_LAYOUT_KIND_INVALID = 13,    /* a kind this build KNOWS, used in a way its own definition does not allow: a root that is not a table, an optional wrapper without exactly one child, a keyed array without exactly two, an enum whose children are not variants */
-    SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH = 14,   /* an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for */
-    SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED = 15,   /* the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree */
-    SCHEMA_TABLE_LAYOUT_TOO_DEEP = 16,        /* a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack */
-    SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE = 17 /* a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode */
+    SCHEMA_TABLE_NO_LAYOUT = 7,        /* a record whose hash names no LAYOUT this reader holds */
+    SCHEMA_TABLE_LAYOUT_MALFORMED = 8, /* bytes handed to the form as a layout that are not one: fewer than a header's worth of them */
+    SCHEMA_TABLE_PLAN_TOO_LARGE = 9,   /* a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates */
+    SCHEMA_TABLE_LAYOUT_COUNT_MISMATCH = 10,  /* the entry count does not fit the layout's length exactly */
+    SCHEMA_TABLE_LAYOUT_KIND_UNKNOWN = 11,    /* a kind OUTSIDE §3's closed set: a newer FORM BYTE, not a newer layout of this one */
+    SCHEMA_TABLE_LAYOUT_KIND_INVALID = 12,    /* a kind this build KNOWS, used in a way its own definition does not allow */
+    SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH = 13,   /* a stated constant size that is not the one its kind fixes, or not the one its children account for */
+    SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED = 14,   /* the pre-order child walk does not consume exactly the entries */
+    SCHEMA_TABLE_LAYOUT_TOO_DEEP = 15,        /* a nesting depth past what this reader walks: a bound on the WALK, not on the wire */
+    SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE = 16, /* a record size past §3.4's 65536-byte bound: a size this build will not decode */
+    SCHEMA_TABLE_PREVIOUS_FORM = 17            /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -821,7 +805,13 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+       must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+       entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+       shared one, and a string(N) under a union's arm then had to be either
+       guarded correctly or read with the right flavour and could not be both. */
     uint8_t arg;
+    uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
 } TableFixedEntry;
@@ -865,7 +855,7 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
    note. The pass at the tail of table_fixed_compile is the same coalescer, rule
    for rule — two neighbouring COPY entries whose source and destination both
    advance together are one entry, inside each half and never across the split —
-   and it is what runs for A STRANGER'S LAYOUT, which no generator can run ahead
+   and it is what runs for A STRANGER'S BLOCK, which no generator can run ahead
    of time. So the two arrivals differ and the rule does not.
 
    THE OFFSETS ARE THIS COMPILER'S TOO, EVENTUALLY. A plan the schema compiler
@@ -998,14 +988,14 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_apply( const
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p->arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
-            if ( p->arg != kTableFixedTextBytes )
+            if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
                    unit longer than the bound for exactly this. A store, not a
@@ -1109,16 +1099,12 @@ enum { kTableFixedLayoutHeaderBytes = 4 }; /* the u32 entry count, and nothing e
 
 /* §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
    the same reason the compiler holds a declaration to it: a record past it is
-   one this build will not decode. It is a MACRO and not an enumerator for
-   nothing but arithmetic: it is compared against uint32_t sizes, and an
-   enumerator in C is an int. */
-#ifndef SCHEMA_TABLE_FIXED_RECORD_MAX_BYTES
-#define SCHEMA_TABLE_FIXED_RECORD_MAX_BYTES 65536u
-#endif
+   one this build will not decode.
 
-/* A BOUND ON THE WALK, not on the wire: the validation below is recursive, so
-   a hostile layout of three thousand entries each claiming one child would
-   otherwise spend a reader's stack before any rule fired. */
+   A BOUND ON THE WALK follows it, not on the wire: the validation below is
+   recursive, so a hostile layout of three thousand entries each claiming one
+   child would otherwise spend a reader's stack before any rule fired. */
+enum { kTableFixedRecordMaxBytes = 65536 };
 enum { kTableFixedMaxDepth = 64 };
 
 typedef struct TableFixedLayoutEntry
@@ -1137,18 +1123,17 @@ static SCHEMA_UNUSED TableFixedLayoutEntry table_fixed_layout_entry_zero( void )
     return out;
 }
 
-typedef struct TableFixedLayout
+typedef struct TableFixedLayoutView
 {
     const uint8_t * bytes;
     int32_t count;
-} TableFixedLayout;
+} TableFixedLayoutView;
 
 /* bytes IS SET TO NULL AND NOT LEFT TO THE memset, because a null pointer is
-   not required to be all-zero bits and the whole layout reader tests it by
-   name. */
-static SCHEMA_UNUSED TableFixedLayout table_fixed_layout_zero( void )
+   not required to be all-zero bits and the whole layout reader tests it by name. */
+static SCHEMA_UNUSED TableFixedLayoutView table_fixed_layout_view_zero( void )
 {
-    TableFixedLayout out;
+    TableFixedLayoutView out;
     memset( &out, 0, sizeof( out ) );
     out.bytes = NULL;
     out.count = 0;
@@ -1160,7 +1145,7 @@ static SCHEMA_UNUSED TableFixedLayout table_fixed_layout_zero( void )
    hold the whole walk inside the buffer is the one place that touches it. An
    out-of-range index answers kind 0xFF, which is a kind no declaration has and
    nothing matches, so the walk that asked for it finds nothing and moves on. */
-static SCHEMA_UNUSED TableFixedLayoutEntry table_fixed_entry_at( const TableFixedLayout * b, int32_t i )
+static SCHEMA_UNUSED TableFixedLayoutEntry table_fixed_entry_at( const TableFixedLayoutView * b, int32_t i )
 {
     TableFixedLayoutEntry out = table_fixed_layout_entry_zero();
     if ( b->bytes == NULL || i < 0 || i >= b->count ) { out.kind = 0xFFu; return out; }
@@ -1174,7 +1159,7 @@ static SCHEMA_UNUSED TableFixedLayoutEntry table_fixed_entry_at( const TableFixe
 
 /* table_fixed_subtree is how many entries the subtree rooted at i occupies, so
    a walk steps over a child it does not want without knowing what is in it. */
-static SCHEMA_UNUSED int32_t table_fixed_subtree( const TableFixedLayout * b, int32_t i )
+static SCHEMA_UNUSED int32_t table_fixed_subtree( const TableFixedLayoutView * b, int32_t i )
 {
     /* ITERATIVE ON PURPOSE. A layout is a stranger's bytes, so a chain of
        single-child entries is a stack depth the wire gets to choose; this walk
@@ -1194,7 +1179,7 @@ static SCHEMA_UNUSED int32_t table_fixed_subtree( const TableFixedLayout * b, in
     return n;
 }
 
-static SCHEMA_UNUSED uint32_t table_fixed_union_arm_bytes( const TableFixedLayout * b, int32_t i )
+static SCHEMA_UNUSED uint32_t table_fixed_union_arm_bytes( const TableFixedLayoutView * b, int32_t i )
 {
     const TableFixedLayoutEntry e = table_fixed_entry_at( b, i );
     uint32_t widest = 0;
@@ -1209,7 +1194,7 @@ static SCHEMA_UNUSED uint32_t table_fixed_union_arm_bytes( const TableFixedLayou
     return widest;
 }
 
-static SCHEMA_UNUSED uint32_t table_fixed_tag_bytes( const TableFixedLayout * b, int32_t i )
+static SCHEMA_UNUSED uint32_t table_fixed_tag_bytes( const TableFixedLayoutView * b, int32_t i )
 {
     return table_fixed_entry_at( b, i ).size - table_fixed_union_arm_bytes( b, i );
 }
@@ -1219,55 +1204,38 @@ static SCHEMA_UNUSED uint32_t table_fixed_tag_bytes( const TableFixedLayout * b,
    A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
    must parse before it knows anything at all, so every rule below runs BEFORE
    a single record byte is touched and each refuses under its OWN NAME rather
-   than under one word for all of them (docs/SPEC-TABLES.md §3.4).
+   than under one word for all of them (docs/SPEC-TABLES.md §3.4). Rule for
+   rule and name for name, this is the C++ reference's own: a peer must be
+   refused by the same name whichever leg reads it.
 
    A KIND THIS BUILD DOES NOT KNOW IS A REFUSAL, and that is a ruling rather
    than an oversight. A FIXED FORM HAS A CLOSED KIND SET: the form byte versions
    everything behind it, kinds included, so a layout carrying a kind outside the
    set is not a newer layout of THIS form — it is a layout of a form whose byte
-   this reader never saw, and there is no version of "step over it" that is
-   honest about that. SCHEMA_TABLE_LAYOUT_KIND_UNKNOWN says exactly what
-   happened, and the peer is told to speak this form or a form this reader
-   carries.
+   this reader never saw.
 
    NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle:
    an entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is
    always higher than its parent's, the layout is finite, and there is no back
-   reference for a cycle to be made of. The tree-closure rule is what bounds
-   the walk, and the depth rule is what bounds the reader's stack.
-
-   THIS IS THE C TWIN OF THE REFERENCE'S OWN VALIDATION, rule for rule and name
-   for name, so the two legs refuse the same layout for the same named reason.
-   C++ carries the verdict in a TableMessageReason and this leg in an int, which
-   is what TableReport::reason already is here. */
+   reference for a cycle to be made of. */
 
 typedef struct TableFixedCheck
 {
-    const TableFixedLayout * layout;
-    int why;
+    const TableFixedLayoutView * layout;
+    int reason;
     int bad;
 } TableFixedCheck;
 
-static SCHEMA_UNUSED void table_fixed_check_init( TableFixedCheck * c, const TableFixedLayout * layout )
-{
-    c->layout = layout;
-    c->why = SCHEMA_TABLE_LAYOUT_MALFORMED;
-    c->bad = 0;
-}
-
 static SCHEMA_UNUSED void table_fixed_fail( TableFixedCheck * c, int why )
 {
-    if ( !c->bad ) { c->bad = 1; c->why = why; }
+    if ( !c->bad ) { c->bad = 1; c->reason = why; }
 }
 
 /* A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
    ONE exception, and it is stated here rather than left to be found: a
    bits(N) field rides at its DECLARED STORAGE WIDTH — four bytes for N <= 32 and
    eight above (§3.4) — under the unsigned integer kind its BIT COUNT picks
-   (§3), so kinds 6 and 7 admit four as well as their own width.
-
-   C++ TAKES is_leaf BY REFERENCE; C TAKES IT BY POINTER, and both answer the
-   predicate as the return value. */
+   (§3), so kinds 6 and 7 admit four as well as their own width. */
 static SCHEMA_UNUSED int table_fixed_leaf_size( uint8_t kind, uint32_t size, int * is_leaf )
 {
     *is_leaf = 1;
@@ -1304,8 +1272,7 @@ static SCHEMA_UNUSED int table_fixed_ordinal_width( uint32_t n ) { return n == 1
    the no-payload variant 32, wstring 33, and the ONE kind this form's layout
    adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
    reserved: neither is a kind a declaration spells, so neither is ever an
-   entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
-   — see the note above TableFixedCheck. */
+   entry's kind. */
 static SCHEMA_UNUSED int table_fixed_known_kind( uint8_t kind )
 {
     if ( kind >= 1u && kind <= 30u ) { return 1; }
@@ -1325,8 +1292,8 @@ static SCHEMA_UNUSED int32_t table_fixed_check_entry( TableFixedCheck * c, int32
     uint8_t first_kind = 0;
     uint32_t first_children = 0;
     int kids_are_variants = 1;
-    int is_leaf = 0;
     uint32_t k;
+    int is_leaf = 0;
     if ( c->bad ) { return 0; }
     if ( i < 0 || i >= c->layout->count ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED ); return 0; }
     if ( depth > kTableFixedMaxDepth ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_TOO_DEEP ); return 0; }
@@ -1334,7 +1301,7 @@ static SCHEMA_UNUSED int32_t table_fixed_check_entry( TableFixedCheck * c, int32
     /* THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
        and is refused whole, never walked and never stepped over. */
     if ( !table_fixed_known_kind( e.kind ) ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_KIND_UNKNOWN ); return 0; }
-    if ( e.size > SCHEMA_TABLE_FIXED_RECORD_MAX_BYTES ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE ); return 0; }
+    if ( e.size > kTableFixedRecordMaxBytes ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE ); return 0; }
 
     /* THE CHILDREN FIRST, in the pre-order the layout is written in. */
     at = i + 1;
@@ -1350,7 +1317,7 @@ static SCHEMA_UNUSED int32_t table_fixed_check_entry( TableFixedCheck * c, int32
         if ( ce.kind != 32 ) { kids_are_variants = 0; }
         sum += ce.size;
         if ( ce.size > widest ) { widest = ce.size; }
-        if ( sum > SCHEMA_TABLE_FIXED_RECORD_MAX_BYTES ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE ); return 0; }
+        if ( sum > (uint64_t) kTableFixedRecordMaxBytes ) { table_fixed_fail( c, SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE ); return 0; }
         at += used;
     }
 
@@ -1428,13 +1395,15 @@ static SCHEMA_UNUSED int32_t table_fixed_check_entry( TableFixedCheck * c, int32
 }
 
 /* table_fixed_parse_layout is the WHOLE of what a reader trusts a layout on. It
-   answers 0 and a REASON BY NAME through why, and the caller reports that
-   reason. C++ FILLS AN out REFERENCE AND ANSWERS bool; C fills an out POINTER
-   and answers 0 or 1, and the reason travels the same way. */
-static SCHEMA_UNUSED int table_fixed_parse_layout( const uint8_t * bytes, int64_t length, TableFixedLayout * out, int * why )
+   answers 0 and a REASON BY NAME, and the caller reports that reason.
+
+   C++ FILLS AN out REFERENCE AND ANSWERS bool; C fills an out POINTER and
+   answers 0 or 1. Everything else, including the refusal that leaves out empty,
+   is the same. */
+static SCHEMA_UNUSED int table_fixed_parse_layout( const uint8_t * bytes, int64_t length, TableFixedLayoutView * out, int * why )
 {
     uint32_t count;
-    TableFixedLayout view;
+    TableFixedLayoutView view;
     TableFixedLayoutEntry root;
     TableFixedCheck c;
     int32_t used;
@@ -1448,18 +1417,20 @@ static SCHEMA_UNUSED int table_fixed_parse_layout( const uint8_t * bytes, int64_
         *why = SCHEMA_TABLE_LAYOUT_COUNT_MISMATCH;
         return 0;
     }
-    view = table_fixed_layout_zero();
+    view = table_fixed_layout_view_zero();
     view.bytes = bytes;
     view.count = (int32_t) count;
     /* 2. THE ROOT IS A TABLE, and its size is the record's body */
     root = table_fixed_entry_at( &view, 0 );
     if ( root.kind != 13 ) { *why = SCHEMA_TABLE_LAYOUT_KIND_INVALID; return 0; }
-    if ( root.size == 0u || root.size > SCHEMA_TABLE_FIXED_RECORD_MAX_BYTES ) { *why = SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE; return 0; }
+    if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes ) { *why = SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE; return 0; }
     /* 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
           SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND */
-    table_fixed_check_init( &c, &view );
+    c.layout = &view;
+    c.reason = SCHEMA_TABLE_LAYOUT_MALFORMED;
+    c.bad = 0;
     used = table_fixed_check_entry( &c, 0, 0 );
-    if ( c.bad ) { *why = c.why; return 0; }
+    if ( c.bad ) { *why = c.reason; return 0; }
     /* 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
           the layout has nothing left over */
     if ( used != view.count ) { *why = SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED; return 0; }
@@ -1487,7 +1458,7 @@ typedef struct TableFixedDst
     uint32_t stride; /* an array entry's storage stride */
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
-    uint8_t arg;     /* a text field's flavour */
+    uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1509,7 +1480,7 @@ typedef struct TableFixedCompiler
 } TableFixedCompiler;
 
 /* The C++ struct's defaults once more, and here they are a whole-struct zero
-   plus the two pointers named, for the reason table_fixed_layout_zero gives. */
+   plus the two pointers named, for the reason table_fixed_layout_view_zero gives. */
 static SCHEMA_UNUSED void table_fixed_compiler_init( TableFixedCompiler * c )
 {
     memset( c, 0, sizeof( *c ) );
@@ -1559,14 +1530,14 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_table( TableFixedCompiler * c, con
 }
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
-                                                     const TableFixedLayout * theirs, int32_t ti, uint32_t their_at,
-                                                     const TableFixedLayout * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                                     const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
+                                                     const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                                      uint32_t guard, uint8_t arg );
 
 /* table_fixed_match_children walks a TABLE's children on both sides. */
 static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
-                                                      const TableFixedLayout * theirs, int32_t ti, uint32_t their_at,
-                                                      const TableFixedLayout * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                                      const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
+                                                      const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                                       uint32_t guard, uint8_t arg )
 {
     const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
@@ -1613,8 +1584,8 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
 }
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
-                                                     const TableFixedLayout * theirs, int32_t ti, uint32_t their_at,
-                                                     const TableFixedLayout * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+                                                     const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
+                                                     const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
                                                      uint32_t guard, uint8_t arg )
 {
     const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
@@ -1625,7 +1596,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
     /* THE NESTING A STRANGER'S LAYOUT CAN ASK FOR IS CAPPED. The language's own
        closure is nowhere near this deep, and a wire does not get to pick a
        recursion depth. */
-    if ( c->depth > kTableFixedMaxDepth ) { c->hostile = 1; return; }
+    if ( c->depth > 64 ) { c->hostile = 1; return; }
     /* C++ SPENDS AN RAII GUARD ON THE DECREMENT; C HAS NO DESTRUCTOR, so the
        body is a do/while( 0 ) and the decrement is the single statement after
        it. THE DECREMENT IS ON EVERY PATH — every early exit inside the body is
@@ -1774,7 +1745,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-                e.op = kTableFixedText; e.arg = d->arg;
+                e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
                 table_fixed_push( c, e );
                 break;
             }
@@ -1803,24 +1774,24 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
     c->depth--;
 }
 
-static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayout * theirs,
+static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * theirs,
                                                   const uint8_t * my_layout, int32_t my_layout_bytes,
                                                   const TableFixedDst * dst,
                                                   TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
                                                   TableReport * report )
 {
-    TableFixedLayout mine = table_fixed_layout_zero();
+    TableFixedLayoutView mine = table_fixed_layout_view_zero();
     TableFixedCompiler c;
-    int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
     int32_t plain;
     int32_t out;
     int32_t split;
     int32_t i;
+    int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
     if ( plan == NULL || plan_capacity <= 0 ) { return -1; }
-    /* MY OWN LAYOUT IS THIS BUILD'S OWN BYTES and passes every rule above by
-       construction; the named reason is the peer's, answered at the call site
-       that parsed THEIRS. */
-    if ( !table_fixed_parse_layout( my_layout, my_layout_bytes, &mine, &why ) ) { return -1; }
+    /* MY OWN layout goes through the same rules a stranger's does. It is this
+       build's own bytes, so it cannot fail — and saying so in the one place
+       both sides go through is what keeps that true. */
+    if ( !table_fixed_parse_layout( my_layout, (int64_t) my_layout_bytes, &mine, &why ) ) { return -1; }
     table_fixed_compiler_init( &c );
     c.plan = plan;
     c.capacity = plan_capacity;
@@ -1834,9 +1805,9 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayout * their
     table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLE_FIXED_NO_GUARD, 0 );
     if ( c.overflow || c.hostile ) { return c.hostile ? -2 : -1; }
     /* COALESCE inside each half, never across the split. THIS IS THE SAME PASS
-       THE SCHEMA COMPILER RUNS on the identity plan, and running it here is what
-       keeps a stranger's plan and this build's own plan the same array read by
-       the same loop. */
+       THE C++ REFERENCE RUNS AT COMPILE TIME on its identity plan, and running
+       it here is what keeps a stranger's plan and this build's own plan the
+       same array read by the same loop. */
     out = 0;
     split = 0;
     for ( i = 0; i < c.count; ++i )
@@ -11178,7 +11149,7 @@ static SCHEMA_UNUSED int schema_blockdemo_render_quaternion_message_extent_(Tabl
 }
 /* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 
-   A record is an eight-byte hash of the writer's layout and then
+   A record is an eight-byte hash of the writer's LAYOUT and then
    the values in declared order, every field at its declared storage width.
    The writer is the constant bytes memcpy'd and then stores; the reader is
    ONE loop over ONE plan, the identity plan here and a plan compiled from
@@ -11439,6 +11410,69 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     table_fixed_put8( b + 73, (uint8_t) value->team );
 }
 
+/* RenderShip's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( RenderShip * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->ship_type > 3u ) { value->ship_type = SHIP_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderTurret's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_clamp_body_( RenderTurret * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderMissile's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_clamp_body_( RenderMissile * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->missile_type > 2u ) { value->missile_type = MISSILE_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderDynamicProp's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( RenderDynamicProp * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderStaticProp's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_clamp_body_( RenderStaticProp * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderCosmeticProp's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( RenderCosmeticProp * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderLaser's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_clamp_body_( RenderLaser * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->laser_type > 2u ) { value->laser_type = LASER_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderExplosion's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_clamp_body_( RenderExplosion * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->explosion_type > 2u ) { value->explosion_type = EXPLOSION_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
 /* ---- RenderCamera, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -11447,7 +11481,7 @@ static SCHEMA_UNUSED const int64_t render_camera_fixed_body_bytes = 72;
 static SCHEMA_UNUSED const int64_t render_camera_fixed_record_bytes = 8 + 72; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_camera_fixed_hash = 0x74ade5c3866f68d1ull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 14 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 14 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_camera_fixed_layout[] = {
@@ -11497,7 +11531,7 @@ static SCHEMA_UNUSED const TableFixedDst render_camera_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_camera_fixed_plan[] = {
-    { 0u, 0u, 72u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 72u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_guarded = 1;
@@ -11552,11 +11586,7 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -11576,19 +11606,14 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_camera_fixed_layout, (int32_t) sizeof( render_camera_fixed_layout ), render_camera_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -11612,6 +11637,19 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
     return count;
 }
 
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_ship_fixed_clamp_( RenderShip * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_ship_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
+}
+
 /* ---- RenderShip, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -11620,7 +11658,7 @@ static SCHEMA_UNUSED const int64_t render_ship_fixed_body_bytes = 81;
 static SCHEMA_UNUSED const int64_t render_ship_fixed_record_bytes = 8 + 81; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_ship_fixed_hash = 0x890e08a270d96102ull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 26 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 26 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_ship_fixed_layout[] = {
@@ -11694,7 +11732,7 @@ static SCHEMA_UNUSED const TableFixedDst render_ship_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_ship_fixed_plan[] = {
-    { 0u, 0u, 81u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 81u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_guarded = 1;
@@ -11749,11 +11787,7 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -11773,19 +11807,14 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_ship_fixed_layout, (int32_t) sizeof( render_ship_fixed_layout ), render_ship_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -11804,9 +11833,25 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
         render_ship_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_ship_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_turret_fixed_clamp_( RenderTurret * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_turret_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderTurret, the fixed form ---- */
@@ -11817,7 +11862,7 @@ static SCHEMA_UNUSED const int64_t render_turret_fixed_body_bytes = 59;
 static SCHEMA_UNUSED const int64_t render_turret_fixed_record_bytes = 8 + 59; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_turret_fixed_hash = 0x9e443be2f7294b72ull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 18 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 18 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_turret_fixed_layout[] = {
@@ -11875,7 +11920,7 @@ static SCHEMA_UNUSED const TableFixedDst render_turret_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_turret_fixed_plan[] = {
-    { 0u, 0u, 59u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 59u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_guarded = 1;
@@ -11930,11 +11975,7 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -11954,19 +11995,14 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_turret_fixed_layout, (int32_t) sizeof( render_turret_fixed_layout ), render_turret_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -11985,9 +12021,25 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
         render_turret_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_turret_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_missile_fixed_clamp_( RenderMissile * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_missile_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderMissile, the fixed form ---- */
@@ -11998,7 +12050,7 @@ static SCHEMA_UNUSED const int64_t render_missile_fixed_body_bytes = 71;
 static SCHEMA_UNUSED const int64_t render_missile_fixed_record_bytes = 8 + 71; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_missile_fixed_hash = 0xf7ec4593b531c59aull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 21 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 21 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_missile_fixed_layout[] = {
@@ -12062,7 +12114,7 @@ static SCHEMA_UNUSED const TableFixedDst render_missile_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_missile_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_guarded = 1;
@@ -12117,11 +12169,7 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12141,19 +12189,14 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_missile_fixed_layout, (int32_t) sizeof( render_missile_fixed_layout ), render_missile_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -12172,9 +12215,25 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
         render_missile_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_missile_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_dynamic_prop_fixed_clamp_( RenderDynamicProp * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderDynamicProp, the fixed form ---- */
@@ -12185,7 +12244,7 @@ static SCHEMA_UNUSED const int64_t render_dynamic_prop_fixed_body_bytes = 71;
 static SCHEMA_UNUSED const int64_t render_dynamic_prop_fixed_record_bytes = 8 + 71; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_dynamic_prop_fixed_hash = 0x79301f61e3f56e22ull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 22 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 22 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_dynamic_prop_fixed_layout[] = {
@@ -12251,7 +12310,7 @@ static SCHEMA_UNUSED const TableFixedDst render_dynamic_prop_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_dynamic_prop_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_guarded = 1;
@@ -12306,11 +12365,7 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12330,19 +12385,14 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_dynamic_prop_fixed_layout, (int32_t) sizeof( render_dynamic_prop_fixed_layout ), render_dynamic_prop_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -12361,9 +12411,25 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
         render_dynamic_prop_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_dynamic_prop_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_static_prop_fixed_clamp_( RenderStaticProp * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_static_prop_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderStaticProp, the fixed form ---- */
@@ -12374,7 +12440,7 @@ static SCHEMA_UNUSED const int64_t render_static_prop_fixed_body_bytes = 78;
 static SCHEMA_UNUSED const int64_t render_static_prop_fixed_record_bytes = 8 + 78; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_static_prop_fixed_hash = 0xa63b40147f0f5066ull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 22 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 22 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_static_prop_fixed_layout[] = {
@@ -12440,7 +12506,7 @@ static SCHEMA_UNUSED const TableFixedDst render_static_prop_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_static_prop_fixed_plan[] = {
-    { 0u, 0u, 78u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 78u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_guarded = 1;
@@ -12495,11 +12561,7 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12519,19 +12581,14 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_static_prop_fixed_layout, (int32_t) sizeof( render_static_prop_fixed_layout ), render_static_prop_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -12550,9 +12607,25 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
         render_static_prop_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_static_prop_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_cosmetic_prop_fixed_clamp_( RenderCosmeticProp * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderCosmeticProp, the fixed form ---- */
@@ -12563,7 +12636,7 @@ static SCHEMA_UNUSED const int64_t render_cosmetic_prop_fixed_body_bytes = 79;
 static SCHEMA_UNUSED const int64_t render_cosmetic_prop_fixed_record_bytes = 8 + 79; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_cosmetic_prop_fixed_hash = 0x72a2fa1985def98eull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 23 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 23 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_cosmetic_prop_fixed_layout[] = {
@@ -12631,7 +12704,7 @@ static SCHEMA_UNUSED const TableFixedDst render_cosmetic_prop_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_cosmetic_prop_fixed_plan[] = {
-    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_guarded = 1;
@@ -12686,11 +12759,7 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12710,19 +12779,14 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_cosmetic_prop_fixed_layout, (int32_t) sizeof( render_cosmetic_prop_fixed_layout ), render_cosmetic_prop_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -12741,9 +12805,25 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
         render_cosmetic_prop_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_cosmetic_prop_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_laser_fixed_clamp_( RenderLaser * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_laser_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderLaser, the fixed form ---- */
@@ -12754,7 +12834,7 @@ static SCHEMA_UNUSED const int64_t render_laser_fixed_body_bytes = 62;
 static SCHEMA_UNUSED const int64_t render_laser_fixed_record_bytes = 8 + 62; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_laser_fixed_hash = 0x99df0a3db4b1eebdull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 19 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 19 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_laser_fixed_layout[] = {
@@ -12814,7 +12894,7 @@ static SCHEMA_UNUSED const TableFixedDst render_laser_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_laser_fixed_plan[] = {
-    { 0u, 0u, 62u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 62u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_guarded = 1;
@@ -12869,11 +12949,7 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -12893,19 +12969,14 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_laser_fixed_layout, (int32_t) sizeof( render_laser_fixed_layout ), render_laser_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -12924,9 +12995,25 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
         render_laser_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_laser_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_explosion_fixed_clamp_( RenderExplosion * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_explosion_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderExplosion, the fixed form ---- */
@@ -12937,7 +13024,7 @@ static SCHEMA_UNUSED const int64_t render_explosion_fixed_body_bytes = 74;
 static SCHEMA_UNUSED const int64_t render_explosion_fixed_record_bytes = 8 + 74; /* the hash and the body */
 static SCHEMA_UNUSED const uint64_t render_explosion_fixed_hash = 0xf71917b507eff722ull; /* fnv1a64 over the layout's bytes */
 
-/* THE LAYOUT (form 1 called this the vocabulary block): 21 entries, a
+/* THE LAYOUT (form 1 calls this the vocabulary block): 21 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
    Every byte is settled by the schema compiler. */
 static SCHEMA_UNUSED const uint8_t render_explosion_fixed_layout[] = {
@@ -13001,7 +13088,7 @@ static SCHEMA_UNUSED const TableFixedDst render_explosion_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_explosion_fixed_plan[] = {
-    { 0u, 0u, 74u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 74u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_guarded = 1;
@@ -13056,11 +13143,7 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
     if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }
     /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
        the registry is ordered, so a byte this reader does not carry is named
-       by where it sits relative to this form and never by one word for both.
-       Form 1 is the VARIABLE form and form 2 the MESSAGE form — the registry
-       is ir/formbyte.go, and this leg spells the two bytes the way the file
-       wire's own reader beside it does. Each moves no counter and reports no
-       damage. */
+       by where it sits relative to this form and never by one word for both. */
     if ( data[0] != kTableFixedForm )
     {
         report->refused = 1;
@@ -13080,19 +13163,14 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-           every rule it fails refuses under ITS OWN NAME (§3.4). */
-        TableFixedLayout parsed;
+           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
         made = table_fixed_compile( &parsed, render_explosion_fixed_layout, (int32_t) sizeof( render_explosion_fixed_layout ), render_explosion_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        /* THE COMPILER'S OWN TWO ANSWERS, and each keeps the name its cause
-           earned: -2 is an entry the walk placed past the writer's declared
-           record, which is a layout whose sizes do not account for their
-           children by an arithmetic the tree walk above cannot reach, and -1
-           is a plan larger than the storage the caller declared. */
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_SIZE_MISMATCH : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
         entries = plan;
         entry_count = made;
         entry_guarded = compiled_guarded;
@@ -13111,6 +13189,9 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
         render_explosion_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_explosion_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;

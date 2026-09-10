@@ -117,13 +117,13 @@ func fixedRangeOf(f *ir.Field) (string, string) {
 	return fixedIntLiteral(lo), fixedIntLiteral(hi)
 }
 
-// fixedFlatType reports a type whose IMAGE IS A RUN OF PLAIN BYTES WITH NOTHING
-// TO CHECK IN IT: no count to clamp, no text length, no union tag to dispatch
-// on, no present flag and no ranged integer anywhere in it. It is not the
-// PLAN's question any more — every field is a run on the identity path — it is
-// the DECODE's: a type this answers for is projected INSIDE its holder's own
-// binary pattern match rather than through a call, and it can never move the
-// `clamped` counter.
+// fixedFlatType reports a type whose IMAGE IS A RUN OF LEAVES: no count, no
+// text length, no union tag to dispatch on, no present flag and no array
+// anywhere in it. It is the DECODE's and the WRITE's question: a type this
+// answers for is projected INSIDE its holder's own binary pattern match and
+// appended inside its holder's own construction rather than through a call. A
+// ranged leaf or an enum ordinal is still a leaf — the bound it is held to and
+// the count it moves ride inline with it.
 func fixedFlatType(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if !fixedFlatField(f) {
@@ -134,7 +134,7 @@ func fixedFlatType(st *ir.Struct) bool {
 }
 
 func fixedFlatField(f *ir.Field) bool {
-	if f.Type.Optional || f.Array == ir.ArrayCounted || f.HasIntRange {
+	if f.Type.Optional || f.Array != ir.ArrayNone || f.KeyEnum != "" {
 		return false
 	}
 	switch f.Type.Kind {

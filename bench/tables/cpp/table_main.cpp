@@ -419,12 +419,12 @@ static void bench_table( const char * name, const char * golden, long base_iters
 //
 // The same 64 logical records, on the same table wire, in the form that spends
 // no byte on ids, kinds, lengths or terminators. A FILE is the unit here and
-// not a record: the layout rides once, the records follow it to the
+// not a record: the LAYOUT rides once, the records follow it to the
 // end, and every one of them is the same size — so the write is one call for
 // all 64 and the read is one call back, and an OP is one RECORD of that call.
 //
 // The gates before the clock are the same three in a different spelling, plus
-// the one this form adds: THE BLOCK THIS BUILD EMITS IS THE CORPUS'S BLOCK,
+// the one this form adds: THE LAYOUT THIS BUILD EMITS IS THE CORPUS'S LAYOUT,
 // byte for byte. That is the whole claim a port makes on this form — the record
 // layout, the ids, the kinds and the hash are all in those bytes — so it is
 // checked first and by itself.
@@ -433,7 +433,7 @@ static const int32_t FixedPlanCapacity = 4096;
 static benchtable::FixedTable g_fixed_values[FixedCount];
 static benchtable::FixedTable g_fixed_out[FixedCount];
 // the plan storage the caller owns; the identity path never touches it, and a
-// stranger's block compiles into it (§3.4: this codec never allocates)
+// stranger's layout compiles into it (§3.4: this codec never allocates)
 static benchtable::TableFixedEntry g_fixed_plan[FixedPlanCapacity];
 
 static int64_t fixed_load_all( benchtable::FixedTable * values, const uint8_t * bytes, int64_t size )
@@ -446,7 +446,7 @@ static void bench_fixed( const char * name, long base_iters )
 {
     const long iters = g_iterations ? g_iterations : base_iters / IterScale;
     char path[512];
-    std::vector<uint8_t> file, vocab;
+    std::vector<uint8_t> file, layout;
     snprintf( path, sizeof( path ), "%s/bench_fixed.bin", g_variant_dir );
     if ( !read_file( path, file ) || file.empty() )
     {
@@ -454,26 +454,26 @@ static void bench_fixed( const char * name, long base_iters )
         failed = true;
         return;
     }
-    snprintf( path, sizeof( path ), "%s/bench_fixed.vocab", g_variant_dir );
-    if ( !read_file( path, vocab ) )
+    snprintf( path, sizeof( path ), "%s/bench_fixed.layout", g_variant_dir );
+    if ( !read_file( path, layout ) )
     {
         fprintf( stderr, "missing fixed corpus %s — run from the schema repo root (or pass --variant-dir)\n", path );
         failed = true;
         return;
     }
     g_goldens_loaded["bench_fixed.bin"] = file;
-    g_goldens_loaded["bench_fixed.vocab"] = vocab;
+    g_goldens_loaded["bench_fixed.layout"] = layout;
     const double bytes_per_op = double( file.size() ) / FixedCount;
     std::vector<uint8_t> twin( file.size() );
 
-    // gate 1: THE BLOCK IS THE CORPUS'S BLOCK. Every other fact about the form
+    // gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT. Every other fact about the form
     // — the positions, the ids, the kinds, the record's size, the hash every
     // record carries — is settled by these bytes, so this one comparison is
     // what says this leg speaks the form and not a near miss.
-    if ( (int64_t) vocab.size() != benchtable::FixedTableFixedLayoutBytes ||
-         memcmp( vocab.data(), benchtable::FixedTableFixedLayout, vocab.size() ) != 0 )
+    if ( (int64_t) layout.size() != benchtable::FixedTableFixedLayoutBytes ||
+         memcmp( layout.data(), benchtable::FixedTableFixedLayout, layout.size() ) != 0 )
     {
-        fail( name, "this build's layout is not the corpus's, byte for byte" );
+        fail( name, "this build's LAYOUT is not the corpus's, byte for byte" );
         return;
     }
 

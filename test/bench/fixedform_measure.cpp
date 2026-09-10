@@ -36,7 +36,7 @@ using namespace bench;
 
 // ---------------------------------------------------------------------------
 // THE FORM-3 RECORD, by hand, exactly as the spec section states it: an
-// 8-byte block hash, then every field at its declared storage width in
+// 8-byte layout hash, then every field at its declared storage width in
 // declared order, nothing padded between fields.
 // ---------------------------------------------------------------------------
 
@@ -383,7 +383,7 @@ static TableReport g_report;
 static std::vector<TableFixedEntry> g_runtime_plan;
 static inline void f3_read_shipped( const uint8_t * rec, FixedTable & value )
 {
-    TableFixedRun( FixedTableFixedPlan.entries, FixedTableFixedPlan.count, FixedTableFixedPlan.guarded, rec + 8, (uint8_t *) &value, &g_report );
+    TableFixedRun( FixedTableFixedPlan, FixedTableFixedPlanCount, FixedTableFixedPlanGuarded, rec + 8, (uint8_t *) &value, &g_report );
 }
 
 // --- building the identity plan, once, exactly as the generator would bake it
@@ -557,7 +557,7 @@ int main( int argc, char ** argv )
         g_hash = FixedTableFixedHash;
         std::memset( g_template, 0, sizeof( g_template ) );
         std::memcpy( g_template, &g_hash, 8 );
-        const uint8_t * first = file.data() + 5 + FixedTableFixedLayoutBytes;
+        const uint8_t * first = file.data() + kTableFixedHeaderBytes + 4 + FixedTableFixedLayoutBytes;
         for ( size_t k = 0; k < count; ++k )
         {
             alignas( 8 ) uint8_t mine[RecordBytes];
@@ -597,7 +597,7 @@ int main( int argc, char ** argv )
     // ---- the timings ----
     volatile uint64_t sink = 0;
     double read_plan = 1e30, read_straight = 1e30, write_template = 1e30, write_form1 = 1e30, read_form1 = 1e30, read_interp = 1e30, read_runtime = 1e30;
-    g_runtime_plan.assign( FixedTableFixedPlan.entries, FixedTableFixedPlan.entries + FixedTableFixedPlan.count );
+    g_runtime_plan.assign( FixedTableFixedPlan, FixedTableFixedPlan + FixedTableFixedPlanCount );
     // today's form-1 wire for the same records, for the reference row
     std::vector<uint8_t> f1( count * 4096 );
     std::vector<int64_t> f1len( count );
@@ -622,7 +622,7 @@ int main( int argc, char ** argv )
             auto t0 = clk::now();
             for ( int r = 0; r < reps; ++r )
                 for ( size_t k = 0; k < count; ++k )
-                    TableFixedRun( g_runtime_plan.data(), (int32_t) g_runtime_plan.size(), FixedTableFixedPlan.guarded,
+                    TableFixedRun( g_runtime_plan.data(), (int32_t) g_runtime_plan.size(), FixedTableFixedPlanGuarded,
                                    wire.data() + k * RecordBytes + 8, (uint8_t *) &out[k], &g_report );
             auto t1 = clk::now();
             sink += out[0].session_id;

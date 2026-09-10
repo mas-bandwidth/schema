@@ -169,36 +169,6 @@ func (n binNode) render(at, ind, tail int) string {
 	return b.String()
 }
 
-// listNode is `[a, b]`, which the formatter breaks ONE ITEM PER LINE with the
-// closing bracket back at the list's own column.
-type listNode struct{ items []node }
-
-func (l listNode) flat() string {
-	parts := make([]string, 0, len(l.items))
-	for _, it := range l.items {
-		parts = append(parts, it.flat())
-	}
-	return "[" + strings.Join(parts, ", ") + "]"
-}
-
-func (l listNode) render(at, ind, tail int) string {
-	if one := l.flat(); fits(at, tail, one) {
-		return one
-	}
-	pad := indentOf(ind + 2)
-	var b strings.Builder
-	b.WriteString("[\n")
-	for i, it := range l.items {
-		sep := ","
-		if i == len(l.items)-1 {
-			sep = ""
-		}
-		b.WriteString(pad + it.render(ind+2, ind+2, len(sep)) + sep + "\n")
-	}
-	b.WriteString(indentOf(ind) + "]")
-	return b.String()
-}
-
 func rawf(format string, args ...any) node { return raw(fmt.Sprintf(format, args...)) }
 
 // tupleNode is `{a, b, c}`, which the formatter FILLS GREEDILY to the width

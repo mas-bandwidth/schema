@@ -68,6 +68,29 @@ const fixedRuntimeBody = `  @moduledoc """
   way this runtime can honour it: a compiled plan is a TERM, a caller may hold
   one and hand it back through ` + "`" + `plan:` + "`" + `, and the entry capacity is a bound this
   runtime refuses past by name (` + "`" + `:plan_too_large` + "`" + `).
+
+  A COMPILED PLAN IS CACHED BY LAYOUT HASH, AND THE CACHE IS BOUNDED. A layout
+  arrives from a PEER, so an unbounded cache is a peer's lever on this node's
+  memory and on every process in the VM — see ` + "`" + `cache/3` + "`" + ` and
+  ` + "`" + `plan_cache_max/0` + "`" + `. A service reading files from untrusted peers should hand
+  its own plan in through ` + "`" + `plan:` + "`" + ` and never mint one from a peer's layout.
+
+  ## What a loaded value HOLDS
+
+  A read is a REFERENCE and not a copy wherever it can be, which is where this
+  form's speed comes from — and on the BEAM a reference into a binary keeps the
+  WHOLE binary alive. A text field lifted out of a big file is a small term
+  holding a big one, so a caller that keeps a handful of fields and drops the
+  file has not dropped the file. Pass ` + "`" + `copy: true` + "`" + ` to ` + "`" + `<root>_fixed_load/2` + "`" + `
+  to detach each record from the file as it is read; ` + "`" + `detach/2` + "`" + ` says exactly
+  what that buys and what it does not.
+
+  ## The options ` + "`" + `<root>_fixed_load/2` + "`" + ` takes
+
+    * ` + "`" + `:plan` + "`" + ` — a plan this caller owns, used instead of the cache.
+    * ` + "`" + `:plan_capacity` + "`" + ` — this caller's entry bound; past it,
+      ` + "`" + `:plan_too_large` + "`" + `.
+    * ` + "`" + `:copy` + "`" + ` — detach each record body from the file (above). Default false.
   """
 
   import Bitwise
@@ -204,41 +227,30 @@ const fixedRuntimeBody = `  @moduledoc """
   def clamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
-  A RUN OF ELEMENTS, ` + "`" + `size` + "`" + ` bytes each: ` + "`" + `fun` + "`" + ` applied to every one of them and the
-  counts added up. EVERY SLOT IS COUNTED, including the slots behind a counted
-  array's count, because the identity plan's ` + "`" + `clamp` + "`" + ` entries covered every slot
-  too and no counter may move differently than it did.
+  The count moved by an ORDINAL past the last variant the reader declares: an
+  enum value, or a union tag, that names nothing lands None and counts one.
   """
-  def clamps_each(acc, bin, size, fun) do
-    case bin do
-      <<e::binary-size(^size), rest::binary>> -> clamps_each(acc + fun.(e), rest, size, fun)
-      _ -> acc
-    end
-  end
+  def past(acc, v, variants) when v > variants, do: acc + 1
+  def past(acc, _v, _variants), do: acc
 
   @doc """
-  The same for a run of RANGED SCALARS, whose elements have no projection of
-  their own to call: each read at its storage width and signedness and counted
-  against the reader's own bounds.
+  ` + "`" + `fun.(element, acc)` + "`" + ` over every element in order, the binary threaded through:
+  the one loop a writer appends its arrays with, so every element lands on
+  the same binary in place and no list of small binaries is built to flatten.
   """
-  def clamps_run(acc, bin, size, true, lo, hi) do
-    case bin do
-      <<v::little-signed-size(^size)-unit(8), rest::binary>> ->
-        clamps_run(clamps(acc, v, lo, hi), rest, size, true, lo, hi)
+  def each([], acc, _fun), do: acc
+  def each([e | rest], acc, fun), do: each(rest, fun.(e, acc), fun)
 
-      _ ->
-        acc
-    end
-  end
+  @doc """
+  The bytes of slack behind a text value, out to its declared bound, or
+  ArgumentError when the value is past it — the writer's contract, which this
+  port raises on for the packet port's own reason.
+  """
+  def text_slack(bytes, n) when is_binary(bytes) and byte_size(bytes) <= n,
+    do: n - byte_size(bytes)
 
-  def clamps_run(acc, bin, size, false, lo, hi) do
-    case bin do
-      <<v::little-unsigned-size(^size)-unit(8), rest::binary>> ->
-        clamps_run(clamps(acc, v, lo, hi), rest, size, false, lo, hi)
-
-      _ ->
-        acc
-    end
+  def text_slack(bytes, n) when is_binary(bytes) do
+    raise ArgumentError, "value is #{byte_size(bytes)} bytes, past the declared bound of #{n}"
   end
 
   # ---------------------------------------------------------------------------
@@ -285,7 +297,20 @@ const fixedRuntimeBody = `  @moduledoc """
     bits
   end
 
-  def f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF, do: bits
+  # AND THE OTHER HALF OF THE PACKET CODEC'S CONTRACT: a ` + "`" + `{:nonfinite, bits}` + "`" + `
+  # carrying a FINITE pattern is a caller who tagged an ordinary number, and it
+  # raises rather than riding. The tag is not a spelling of "a float" — it is
+  # the ONLY way to spell a pattern no BEAM float term holds — so a finite
+  # pattern under it means the value surface and the wire disagree about what
+  # the field contains, and letting it ride would put a number on the wire that
+  # reads back as a float the writer never wrote.
+  def f32_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFF do
+    if (bits >>> 23 &&& 0xFF) != 0xFF do
+      raise ArgumentError, "{:nonfinite, bits} carries a finite float32 pattern; write the float"
+    end
+
+    bits
+  end
 
   def f64_value(bits) do
     if (bits >>> 52 &&& 0x7FF) != 0x7FF do
@@ -301,72 +326,106 @@ const fixedRuntimeBody = `  @moduledoc """
     bits
   end
 
-  def f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF, do: bits
+  def f64_bits({:nonfinite, bits}) when bits >= 0 and bits <= 0xFFFFFFFFFFFFFFFF do
+    if (bits >>> 52 &&& 0x7FF) != 0x7FF do
+      raise ArgumentError, "{:nonfinite, bits} carries a finite float64 pattern; write the float"
+    end
+
+    bits
+  end
 
   # ---------------------------------------------------------------------------
   # THE WRITE's ONE HELPER: a value's bytes onto the zeroed template
   # ---------------------------------------------------------------------------
 
   @doc """
-  ` + "`" + `bytes` + "`" + ` at the head of an ` + "`" + `n` + "`" + `-byte field, the slack behind it ZERO.
+  One record's body, DETACHED from the file it was read out of when ` + "`" + `copy` + "`" + `.
 
-  THE TEMPLATE'S ZEROS ARE THE CONSTRUCTION'S. Where the C++ reference memcpy's
-  a constant template and then stores into it, an Elixir writer builds the
-  record in ONE binary construction whose slack segments are literal zeros —
-  the same bytes, one pass, and nothing to memset.
+  THE FAST PATH HANDS BACK SUB-BINARIES, AND A SUB-BINARY KEEPS ITS WHOLE
+  PARENT ALIVE. A record whose plan is the identity plan needs no image built —
+  the body IS the image, which is a reference and not a copy, and that is where
+  this form's read speed comes from. The projection then binds each text field
+  as a sub-binary of THAT, so an eight-byte name lifted out of an eighty-kilobyte
+  file is an eight-byte term that holds eighty kilobytes off the collector for
+  as long as anything keeps it. Hold a few strings out of a big file and the
+  file never leaves memory.
 
-  THE CHECK IS O(1) AND ALWAYS ON, which is the packet port's own stance: the
-  BEAM has no compile-out assert, so a writer's caller contract raises
-  ArgumentError here rather than being compiled away in release.
+  IT IS THE RIGHT DEFAULT ANYWAY: a caller that reads a file, uses the values
+  and drops them all pays nothing for the sharing and saves the whole copy.
+  ` + "`" + `copy: true` + "`" + ` is for the other shape — values kept while the file is not —
+  and it copies ONE RECORD BODY per record, so what a field can retain falls
+  from the whole file to that record. A caller keeping ONE small field out of a
+  large record can go further itself with ` + "`" + `:binary.copy/1` + "`" + ` on the field; this
+  runtime will not do that for it, because a copy per field is a cost every
+  caller would pay for a problem few of them have.
   """
-  def fill(bytes, n) when is_binary(bytes) do
-    used = byte_size(bytes)
+  def detach(body, false), do: body
+  def detach(body, true), do: :binary.copy(body)
 
-    if used > n do
-      raise ArgumentError, "value is #{used} bytes, past the declared bound of #{n}"
-    end
+  @doc """
+  ` + "`" + `value` + "`" + `, or ArgumentError when it is outside ` + "`" + `lo..hi` + "`" + `.
 
-    <<bytes::binary, 0::size(n - used)-unit(8)>>
+  THE WRITE-SIDE CONTRACT, AND WHY IT IS ALWAYS ON HERE. The C++ reference
+  spends ` + "`" + `schema_assert` + "`" + ` on the same question and NDEBUG compiles it out,
+  which is this project's rule for a write-side check: the caller's own bug is
+  caught at the call site in a debug build and the READ side is what keeps the
+  wire safe in every build. The BEAM has no compile-out assert, so this port
+  does what its packet codec already does — an O(1) check that raises — and
+  that is the debug-assert equivalent here rather than a second safety layer.
+
+  IT IS NOT A CLAMP. A reader CLAMPS a value outside ITS OWN declared range and
+  counts it (§3.4's op table), because the value came from a peer. A value
+  handed to a writer came from this program, and silently bending it would hide
+  the bug; worse, an unbounded integer past the field's STORAGE WIDTH is
+  TRUNCATED by a BEAM binary construction without a word, which is a wrong value
+  on the wire and no way to know.
+  """
+  def ranged(value, {lo, hi}) when is_integer(value) and value >= lo and value <= hi, do: value
+
+  def ranged(value, {lo, hi}) do
+    raise ArgumentError, "#{inspect(value)} is outside the declared range #{lo}..#{hi}"
   end
 
   @doc """
-  An iodata run of elements padded out to ` + "`" + `n` + "`" + ` bytes.
+  ` + "`" + `value` + "`" + `, or ArgumentError when it does not fit ` + "`" + `bits` + "`" + ` of storage.
 
-  THE FILLER IS THE REFERENCE'S AND NOT §3.4's, and the difference is worth
-  stating. The page says a counted array's slack is ZERO-FILLED; the C++
-  reference's writer writes ALL ` + "`" + `Max` + "`" + ` elements out of its storage, and storage
-  that has been ` + "`" + `Reset` + "`" + ` holds THE DECLARED DEFAULTS — so the reference's own
-  bytes behind a short array are the element's default image and not zeros.
-  This port writes that image, because the bytes follow the reference; and
-  where the reference's slack is whatever a reused value left behind, this
-  port's is the same image every time.
-
-  A UNION's slack behind a narrower arm IS zero, and there the reference
-  agrees: its writer stores only the arm the tag names, over the template's
-  zeros.
+  THE SAME CONTRACT AT THE FIELD'S OWN WIDTH, for a field that declares no
+  range: then the storage width IS the range. This is the half that cannot be
+  left to the reader, because a value past it never reaches a reader as itself
+  — a BEAM binary construction TRUNCATES it in silence, and the peer decodes a
+  different number with no counter and no refusal to say so.
   """
-  def pad(io, n), do: pad(io, n, <<0>>)
-
-  def pad(io, n, filler) do
-    used = IO.iodata_length(io)
-
-    if used > n do
-      raise ArgumentError, "value is #{used} bytes, past the declared bound of #{n}"
-    end
-
-    [io, filler_bytes(n - used, filler)]
+  def fits(value, bits, false) when is_integer(value) and value >= 0 and value < 1 <<< bits do
+    value
   end
 
-  defp filler_bytes(0, _filler), do: <<>>
+  def fits(value, bits, true)
+      when is_integer(value) and value >= -(1 <<< (bits - 1)) and value < 1 <<< (bits - 1) do
+    value
+  end
 
-  defp filler_bytes(n, filler) do
-    w = byte_size(filler)
+  def fits(value, bits, signed) do
+    what = if signed, do: "int", else: "uint"
+    raise ArgumentError, "#{inspect(value)} does not fit the field's #{what}#{bits} storage"
+  end
 
-    if w == 0 or rem(n, w) != 0 do
-      <<0::size(n)-unit(8)>>
-    else
-      :binary.copy(filler, div(n, w))
+  @doc """
+  The length of ` + "`" + `list` + "`" + `, or ArgumentError when it is outside ` + "`" + `min..max` + "`" + `.
+
+  A ` + "`" + `[Min..Max]T` + "`" + ` COUNT IS THE ONE NUMBER A COUNTED ARRAY PUTS ON THE WIRE,
+  and both ends of its declared range are the writer's contract — the same one
+  the packet codec raises on. ` + "`" + `pad/2` + "`" + ` would catch a run past the bound in
+  BYTES a moment later; it would say nothing about a count below ` + "`" + `Min` + "`" + `, and
+  its complaint would name a byte count rather than the array.
+  """
+  def count(list, min, max) do
+    n = length(list)
+
+    if n < min or n > max do
+      raise ArgumentError, "an array of #{n} elements is outside the declared #{min}..#{max}"
     end
+
+    n
   end
 
   # ---------------------------------------------------------------------------
@@ -719,8 +778,10 @@ const fixedRuntimeBody = `  @moduledoc """
   @doc """
   Compile a plan for ANOTHER writer's layout against my own.
 
-  ` + "`" + `{:ok, entries, report}` + "`" + ` or ` + "`" + `{:error, :plan_too_large, report}` + "`" + `. ` + "`" + `mine` + "`" + ` is
-  this build's own parsed layout and ` + "`" + `dst` + "`" + ` is MY SIDE of it, one row per entry.
+  ` + "`" + `{:ok, entries, made, report}` + "`" + ` or ` + "`" + `{:error, :plan_too_large, report}` + "`" + `.
+  ` + "`" + `mine` + "`" + ` is this build's own parsed layout and ` + "`" + `dst` + "`" + ` is MY SIDE of it, one
+  row per entry; ` + "`" + `made` + "`" + ` is the entry count the capacity was measured against,
+  BEFORE coalescing, which is the number a cache has to remember.
   """
   def compile(theirs, mine, dst, capacity, report) do
     {acc, report} = match_children(theirs, 0, 0, mine, 0, dst, 0, nil, 0, {[], 0}, report)
@@ -729,7 +790,12 @@ const fixedRuntimeBody = `  @moduledoc """
     if n > capacity do
       {:error, :plan_too_large, report}
     else
-      {:ok, coalesce(:lists.reverse(entries)), report}
+      # THE ENTRY COUNT THE CAPACITY WAS MEASURED AGAINST RIDES BACK, so the
+      # CACHE can be checked against a later caller's capacity by the SAME
+      # NUMBER. Coalescing runs after it and can only shrink the list, so the
+      # length of the returned plan is a SMALLER number — and a cached plan
+      # admitted under that is one a caller compiling fresh would be refused.
+      {:ok, coalesce(:lists.reverse(entries)), n, report}
     end
   end
 
@@ -1214,7 +1280,7 @@ const fixedRuntimeBody = `  @moduledoc """
     # gained a variant IN THE MIDDLE is remapped here and never reinterpreted.
     case body do
       <<_::binary-size(^src), raw::little-unsigned-size(^size)-unit(8), _::binary>> ->
-        v = if raw > 0 and raw <= tuple_size(remap), do: elem(remap, raw - 1), else: 0
+        {v, report} = ordinal(raw, remap, report)
         step(rest, body, [{dst, <<v::little-unsigned-size(width)-unit(8)>>} | writes], report)
 
       _ ->
@@ -1294,13 +1360,44 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   defp widen_float({:nonfinite, bits}) do
-    # the f32 pattern's sign, quiet bit and payload, carried into f64
+    # THE f32 PATTERN'S SIGN AND PAYLOAD, CARRIED INTO f64 — AND A SIGNALLING
+    # NaN IS QUIETED, because that is what the reference does. Its rung is the
+    # C++ ` + "`" + `(double) f` + "`" + `, and every hardware f32→f64 convert (cvtss2sd, fcvt)
+    # turns an sNaN into the corresponding qNaN: the payload is carried and the
+    # QUIET BIT — the destination mantissa's top bit — is set. Preserving the
+    # signalling state instead would put a pattern on this side of the rung
+    # that the reference cannot produce, and the byte oracle compares patterns.
+    #
+    # AN INFINITY IS NOT A NaN and keeps its zero payload: setting the quiet bit
+    # on ±inf would hand back a NaN nobody wrote.
     sign = bits >>> 31 &&& 1
     mantissa = bits &&& 0x7FFFFF
-    {:nonfinite, sign <<< 63 ||| 0x7FF0000000000000 ||| mantissa <<< 29}
+    wide = sign <<< 63 ||| 0x7FF0000000000000 ||| mantissa <<< 29
+    {:nonfinite, if(mantissa == 0, do: wide, else: wide ||| 0x8000000000000)}
   end
 
   defp widen_float(value), do: value
+
+  # AN ORDINAL PAST THE LAST VARIANT THE WRITER DECLARED IS NOT A VARIANT AT
+  # ALL: it lands None and counts one ` + "`" + `clamped` + "`" + `, which is the answer §3 gives
+  # every other value outside its range and the answer a union tag beyond the
+  # declared arm count gets too. TAG 0 IS None and is not a clamp.
+  #
+  # ` + "`" + `remap` + "`" + ` is the WRITER's table where the two sides can disagree about
+  # what a number means, and the plain VARIANT COUNT where they cannot — which
+  # is what the identity plan carries, because a plan compiled against my own
+  # layout remaps every ordinal to itself.
+  defp ordinal(0, _remap, report), do: {0, report}
+
+  defp ordinal(raw, variants, report) when is_integer(variants) do
+    if raw <= variants, do: {raw, report}, else: {0, bump(report, :clamped)}
+  end
+
+  defp ordinal(raw, remap, report) do
+    if raw <= tuple_size(remap),
+      do: {elem(remap, raw - 1), report},
+      else: {0, bump(report, :clamped)}
+  end
 
   defp clamp_count(raw, max, report) do
     cond do
@@ -1349,6 +1446,27 @@ const fixedRuntimeBody = `  @moduledoc """
   # THE PLAN CACHE: once per peer, and never once per record
   # ---------------------------------------------------------------------------
 
+  # THE CACHE IS BOUNDED, AND THE BOUND IS THE POINT. A plan is cached under the
+  # hash of the LAYOUT THAT MINTED IT, and a layout comes from a PEER: anyone
+  # who can hand this reader a file can hand it a layout it has never seen, and
+  # every one of those is a :persistent_term.put/2 — which makes EVERY PROCESS
+  # IN THE VM scan its heap for the old term. An unbounded cache turns "send me
+  # files with fresh layouts" into "stop this node", at no cost to the sender.
+  #
+  # SO THE CACHE FILLS ONCE AND THEN STOPS. Past the bound a new peer's plan is
+  # compiled per load and not cached: compiling is bounded work already held to
+  # the plan capacity and it writes NOTHING, so an attacker past the bound buys
+  # exactly one plan compile per file and no global scan at all.
+  #
+  # IT IS NOT AN LRU, deliberately. An LRU would go on writing :persistent_term
+  # forever — one put and one erase per eviction — which is the cost being
+  # defended against, dressed up as a policy. A service that faces untrusted
+  # peers should not be minting plans from their layouts in the first place: it
+  # hands its own plan in through the plan: option and never reaches this.
+  @plan_cache_max 64
+
+  def plan_cache_max, do: @plan_cache_max
+
   @doc """
   The cached plan for ` + "`" + `{module, hash}` + "`" + `, or nil.
 
@@ -1356,9 +1474,10 @@ const fixedRuntimeBody = `  @moduledoc """
   time lookup that COPIES NOTHING — the term is read where it lies, so a read
   pays one lookup and no allocation, which is the only per-record cost §3.4
   allows a plan to have. A ` + "`" + `put/2` + "`" + ` is the expensive half: it makes every
-  process scan for the old term, which is why it happens ONCE PER PEER and why
-  a caller that would rather own the plan itself hands one in through ` + "`" + `plan:` + "`" + `
-  and never touches this.
+  process scan for the old term, which is why it happens ONCE PER PEER, why it
+  happens at most ` + "`" + `plan_cache_max/0` + "`" + ` times per module, and why a caller that
+  would rather own the plan itself hands one in through ` + "`" + `plan:` + "`" + ` and never
+  touches this.
   """
   def cached(module, hash), do: :persistent_term.get({module, :fixed_plan, hash}, nil)
 
@@ -1370,11 +1489,21 @@ const fixedRuntimeBody = `  @moduledoc """
   is the same for every peer, so it happens once for the module rather than
   once per peer.
   """
+  # IT NEEDS NO BOUND: the only bytes ever handed to it are THIS BUILD's own
+  # layouts, one per fixed root of the unit, so the number of them is a fact
+  # about the schema and not about who is calling. The index beside them is
+  # what lets forget/1 name them again.
   def my_layout(module, bytes) do
     case :persistent_term.get({module, :fixed_mine, bytes}, nil) do
       nil ->
         {:ok, mine} = parse_layout(bytes)
         :persistent_term.put({module, :fixed_mine, bytes}, mine)
+
+        :persistent_term.put(
+          {module, :fixed_mines},
+          [bytes | :persistent_term.get({module, :fixed_mines}, [])]
+        )
+
         mine
 
       mine ->
@@ -1382,8 +1511,46 @@ const fixedRuntimeBody = `  @moduledoc """
     end
   end
 
-  def cache(module, hash, plan) do
-    :persistent_term.put({module, :fixed_plan, hash}, plan)
-    plan
+  @doc """
+  Hold ` + "`" + `entry` + "`" + ` for ` + "`" + `{module, hash}` + "`" + ` while the module is under its bound, and
+  hand it back either way.
+
+  THE CALLER GETS THE SAME PLAN WHETHER IT WAS CACHED OR NOT, so nothing above
+  has to know which happened: a full cache changes what the NEXT read costs and
+  never what THIS read returns.
+  """
+  def cache(module, hash, entry) do
+    held = :persistent_term.get({module, :fixed_plans}, [])
+
+    if length(held) < @plan_cache_max do
+      :persistent_term.put({module, :fixed_plan, hash}, entry)
+      :persistent_term.put({module, :fixed_plans}, [hash | held])
+    end
+
+    entry
+  end
+
+  @doc """
+  Erase every plan this module has cached, and its parsed own layout.
+
+  A CACHE THAT ONLY EVER FILLS NEEDS A WAY TO BE EMPTIED. It is not on the read
+  path and it is not automatic: erasing is a ` + "`" + `:persistent_term` + "`" + ` write like any
+  other, so a caller that does it per file has rebuilt the problem the bound
+  exists to prevent. It is for a node that has genuinely rolled its peers over
+  — a deploy, a long-lived service reconfigured — and for tests.
+  """
+  def forget(module) do
+    for hash <- :persistent_term.get({module, :fixed_plans}, []) do
+      :persistent_term.erase({module, :fixed_plan, hash})
+    end
+
+    :persistent_term.erase({module, :fixed_plans})
+
+    for bytes <- :persistent_term.get({module, :fixed_mines}, []) do
+      :persistent_term.erase({module, :fixed_mine, bytes})
+    end
+
+    :persistent_term.erase({module, :fixed_mines})
+    :ok
   end
 `

@@ -35,7 +35,7 @@ func fixedSizeUnit(t *testing.T, name string, payload int) (dir string, body int
 	if err := os.WriteFile(filepath.Join(dir, "Probe.schema"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return dir, int64(payload) + ir.FixedCountBytes
+	return dir, int64(payload) + ir.TableFixedCountBytes
 }
 
 func loadWithWarnings(t *testing.T, dir string, limit int64) (warns []string, err error) {
@@ -68,7 +68,7 @@ func TestFixedRecordUnderTheAdvisoryBoundIsSilent(t *testing.T) {
 // does not move. The table still carries the form — this bound is about the
 // declaration's shape and nothing on the wire changes at it.
 func TestFixedRecordPastTheAdvisoryBoundWarns(t *testing.T) {
-	dir, body := fixedSizeUnit(t, "Chunky", ir.FixedRecordWarnBytes)
+	dir, body := fixedSizeUnit(t, "Chunky", ir.TableFixedRecordWarnBytes)
 	warns, err := loadWithWarnings(t, dir, 0)
 	if err != nil {
 		t.Fatalf("the advisory bound must not fail a compile: %v", err)
@@ -76,7 +76,7 @@ func TestFixedRecordPastTheAdvisoryBoundWarns(t *testing.T) {
 	if len(warns) != 1 {
 		t.Fatalf("exactly one advisory, got %d: %v", len(warns), warns)
 	}
-	for _, want := range []string{"Chunky", fmt.Sprint(body), fmt.Sprint(ir.FixedRecordWarnBytes), "§3.4"} {
+	for _, want := range []string{"Chunky", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordWarnBytes), "§3.4"} {
 		if !strings.Contains(warns[0], want) {
 			t.Errorf("the advisory must carry %q — a warning that names neither the table nor the size is one nobody can act on: %s", want, warns[0])
 		}
@@ -91,7 +91,7 @@ func TestFixedRecordPastTheAdvisoryBoundWarns(t *testing.T) {
 // an untrusted peer's layout to the same number (layout_record_too_large), so a
 // writer past it would produce bytes no conforming reader decodes.
 func TestFixedRecordPastTheWireCeilingLosesTheForm(t *testing.T) {
-	dir, body := fixedSizeUnit(t, "Huge", ir.FixedRecordMaxBytes)
+	dir, body := fixedSizeUnit(t, "Huge", ir.TableFixedRecordMaxBytes)
 	warns, err := loadWithWarnings(t, dir, 0)
 	if err != nil {
 		t.Fatalf("the wire ceiling refuses the FORM and never the unit: %v", err)
@@ -99,7 +99,7 @@ func TestFixedRecordPastTheWireCeilingLosesTheForm(t *testing.T) {
 	if len(warns) != 1 {
 		t.Fatalf("exactly one report, got %d: %v", len(warns), warns)
 	}
-	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.FixedRecordMaxBytes), "form 1"} {
+	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "form 1"} {
 		if !strings.Contains(warns[0], want) {
 			t.Errorf("the ceiling report must carry %q: %s", want, warns[0])
 		}
@@ -113,11 +113,11 @@ func TestFixedRecordPastTheWireCeilingLosesTheForm(t *testing.T) {
 // --fixed-record-limit IS THE PROJECT'S OWN GATE, and it fails the compile. It
 // is off by default, which is why every test above passes 0.
 func TestFixedRecordLimitRefusesTheCompile(t *testing.T) {
-	dir, body := fixedSizeUnit(t, "Chunky", ir.FixedRecordWarnBytes)
+	dir, body := fixedSizeUnit(t, "Chunky", ir.TableFixedRecordWarnBytes)
 	if _, err := loadWithWarnings(t, dir, 0); err != nil {
 		t.Fatalf("the gate is OFF by default: %v", err)
 	}
-	_, err := loadWithWarnings(t, dir, ir.FixedRecordWarnBytes)
+	_, err := loadWithWarnings(t, dir, ir.TableFixedRecordWarnBytes)
 	if err == nil {
 		t.Fatal("--fixed-record-limit must FAIL the compile: a gate that only warns is the advisory again")
 	}
@@ -131,7 +131,7 @@ func TestFixedRecordLimitRefusesTheCompile(t *testing.T) {
 		}
 	}
 	// AND A LIMIT THE TABLE IS INSIDE CHANGES NOTHING.
-	if _, err := loadWithWarnings(t, dir, ir.FixedRecordMaxBytes); err != nil {
+	if _, err := loadWithWarnings(t, dir, ir.TableFixedRecordMaxBytes); err != nil {
 		t.Fatalf("a limit the table is inside must not refuse it: %v", err)
 	}
 }
@@ -172,7 +172,7 @@ func generatedFixedForm(t *testing.T, dir string) string {
 // merged, so this test sets the IR marker the keyword will set. That is the
 // whole difference: the refusal is real, the parser's half is #823's.
 func TestDeclaredFixedTablePastTheCeilingRefusesTheCompile(t *testing.T) {
-	dir, body := fixedSizeUnit(t, "Huge", ir.FixedRecordMaxBytes)
+	dir, body := fixedSizeUnit(t, "Huge", ir.TableFixedRecordMaxBytes)
 	paths, err := GatherPaths([]string{dir})
 	if err != nil {
 		t.Fatal(err)
@@ -186,20 +186,20 @@ func TestDeclaredFixedTablePastTheCeilingRefusesTheCompile(t *testing.T) {
 		t.Fatal("the probe declares Huge")
 	}
 	// UNDECLARED: a warning, the form dropped, and the unit still compiles.
-	warns, errs := ir.FixedRecordBounds(u, 0)
+	warns, errs := ir.TableFixedRecordBounds(u, 0)
 	if len(errs) != 0 || len(warns) != 1 {
 		t.Fatalf("a DERIVED fixed table past the ceiling warns and compiles: warns=%v errs=%v", warns, errs)
 	}
 	// DECLARED: a refusal by name, and no warning pretending the form was kept.
 	st.FixedDeclared = true
-	warns, errs = ir.FixedRecordBounds(u, 0)
+	warns, errs = ir.TableFixedRecordBounds(u, 0)
 	if len(errs) != 1 {
 		t.Fatalf("a DECLARED fixed table past the ceiling must not compile: warns=%v errs=%v", warns, errs)
 	}
 	if len(warns) != 0 {
 		t.Errorf("a refusal replaces the warning rather than joining it: %v", warns)
 	}
-	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.FixedRecordMaxBytes), "§3.4", "DECLARED"} {
+	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "§3.4", "DECLARED"} {
 		if !strings.Contains(errs[0].Error(), want) {
 			t.Errorf("the refusal must carry %q: %s", want, errs[0])
 		}
@@ -219,7 +219,7 @@ func TestDeclaredFixedTableInsideTheCeilingCompiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	u.Tables["Small"].FixedDeclared = true
-	warns, errs := ir.FixedRecordBounds(u, 0)
+	warns, errs := ir.TableFixedRecordBounds(u, 0)
 	if len(errs) != 0 || len(warns) != 0 {
 		t.Fatalf("a small declared fixed table says nothing: warns=%v errs=%v", warns, errs)
 	}

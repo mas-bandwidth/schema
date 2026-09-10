@@ -23,21 +23,31 @@ defmodule Bench.WrapFixed do
 
   # FixedTable's body: 1236 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
-  def fixed_table_fixed_write_body(value) do
-    Bench.BenchFixed.bench_mixed_fixed_write_body(value.value)
+  def fixed_table_fixed_write_body(value), do: fixed_table_fixed_write_into(value, <<>>)
+
+  # FixedTable's body APPENDED to `acc`: the value destructured once, then one append per
+  # run of scalars, one per element of every array, and the slack as zero segments.
+  def fixed_table_fixed_write_into(value, acc) do
+    %{value: v_value} = value
+    acc = Bench.BenchFixed.bench_mixed_fixed_write_into(v_value, acc)
+    acc
   end
 
   # FixedTable's projection: ONE binary pattern match over its 1236 bytes of record
-  # image, and the struct it makes.
-  def fixed_table_fixed_decode(<<b_value::binary-size(1236), _::binary>>) do
-    %Bench.FixedTable{value: Bench.BenchFixed.bench_mixed_fixed_decode(b_value)}
+  # image, the struct it makes, and the `clamped` it moved.
+  def fixed_table_fixed_decode(<<b_value::binary-size(1236), _::binary>>, c) do
+    {f_value, c} = Bench.BenchFixed.bench_mixed_fixed_decode(b_value, c)
+
+    {%Bench.FixedTable{value: f_value}, c}
   end
 
-  # FixedTable's `clamped`: how many of its values crossed a bound this reader
-  # declared. THE PROJECTION BESIDE THIS ONE ALREADY HELD THEM THERE; this
-  # says how many times it had to, which is §4's counter and nothing else.
-  def fixed_table_fixed_clamped(<<b_value::binary-size(1236), _::binary>>) do
-    Bench.BenchFixed.bench_mixed_fixed_clamped(b_value)
+  # A RUN OF FixedTable: the LIVE elements walked into a list, the count riding beside
+  # it, and not a byte of the slack behind them read.
+  def fixed_table_fixed_list(_bin, 0, acc, c), do: {:lists.reverse(acc), c}
+
+  def fixed_table_fixed_list(<<e::binary-size(1236), rest::binary>>, n, acc, c) do
+    {v, c} = fixed_table_fixed_decode(e, c)
+    fixed_table_fixed_list(rest, n - 1, [v | acc], c)
   end
 
   # ---- FixedTable, the fixed form ----
@@ -119,7 +129,7 @@ defmodule Bench.WrapFixed do
     {1122, 1, 0, 0, 0, nil, nil},
     {0, 0, 0, 0, 0, nil, nil},
     {1126, 0, 1130, 0, 1, nil, nil},
-    {1145, 1, 1149, 1, 3, nil, nil},
+    {1149, 1, 1145, 1, 3, nil, nil},
     {0, 0, 0, 0, 0, nil, nil},
     {1165, 0, 0, 0, 0, nil, nil},
     {1169, 0, 0, 0, 0, nil, nil},
@@ -144,7 +154,9 @@ defmodule Bench.WrapFixed do
   # THE IDENTITY PLAN, coalesced by the same rule the runtime's compiler uses:
   # two neighbouring copies whose source and destination both advance together
   # are one entry. In the image domain source and destination are the same
-  # number, so a record of plain scalars collapses to a SINGLE run.
+  # number, so a record of plain scalars collapses to a SINGLE run. THE IDENTITY
+  # READ DOES NOT RUN IT — a record whose hash is this build's own is projected
+  # straight out of the file — it is here for a caller who compiles plans.
   @fixed_table_plan [
     {:copy, 0, 0, 1236}
   ]
@@ -164,19 +176,21 @@ defmodule Bench.WrapFixed do
     R.file_header_bytes() + byte_size(@fixed_table_layout) + count * @fixed_table_record_bytes
   end
 
-  # THE WRITE: the hash, then ONE binary construction whose slack segments are
-  # literal zeros. There is no measuring pass, no id interning, no trailer and
-  # no second walk.
+  # THE WRITE: the hash, then the body APPENDED to it. There is no measuring
+  # pass, no id interning, no trailer, no second walk and no flatten: a file
+  # of records is one binary every record was appended to in place.
   def fixed_table_fixed_record(value) do
-    [<<@fixed_table_hash::little-unsigned-64>>, fixed_table_fixed_write_body(value)]
+    fixed_table_fixed_write_into(value, <<@fixed_table_hash::little-unsigned-64>>)
   end
 
   def fixed_table_fixed_save(values) when is_list(values) do
-    IO.iodata_to_binary([
-      R.file_header(@fixed_table_hash, byte_size(@fixed_table_layout)),
-      @fixed_table_layout,
-      Enum.map(values, &fixed_table_fixed_record/1)
-    ])
+    head =
+      <<R.file_header(@fixed_table_hash, byte_size(@fixed_table_layout))::binary,
+        @fixed_table_layout::binary>>
+
+    R.each(values, head, fn value, acc ->
+      fixed_table_fixed_write_into(value, <<acc::binary, @fixed_table_hash::little-unsigned-64>>)
+    end)
   end
 
   @doc """
@@ -186,8 +200,9 @@ defmodule Bench.WrapFixed do
   Hostile bytes never raise: this is the family read verdict, the same one
   the packet codec answers with.
 
-  THE SAME LOOP RUNS OVER THE SAME PLAN whether the writer is this build or
-  another, and the only thing that differs is which plan it was handed.
+  A record whose hash is this build's own is ONE binary pattern match; any
+  other hash runs a plan compiled once from the writer's layout, and the
+  same projection reads what the plan landed.
   """
   def fixed_table_fixed_load(data, opts \\ []) when is_binary(data) do
     report = R.report()
@@ -204,17 +219,71 @@ defmodule Bench.WrapFixed do
     end
   end
 
+  # THE LAYOUT IS THIS BUILD'S OWN OR IT IS NOT, and that is one comparison of
+  # bytes before any hash is computed; a stranger's layout is hashed.
   defp fixed_table_fixed_records(stated, layout, records, report, opts) do
-    hash = R.hash(layout)
+    hash = if(layout == @fixed_table_layout, do: @fixed_table_hash, else: R.hash(layout))
+    copy = Keyword.get(opts, :copy, false)
 
+    if hash == @fixed_table_hash do
+      fixed_table_fixed_identity(stated, records, copy, report)
+    else
+      fixed_table_fixed_foreign(hash, stated, layout, records, copy, report, opts)
+    end
+  end
+
+  # THE IDENTITY PATH: no plan, no prefill, no copy. Each record's hash is
+  # matched as a literal and its body projected in place.
+  defp fixed_table_fixed_identity(stated, records, copy, report) do
+    with :ok <- fixed_table_fixed_header_names_it(stated, @fixed_table_hash),
+         {:ok, values, c} <- fixed_table_fixed_identity_loop(records, copy, [], 0) do
+      {:ok, values, R.clamped(report, c)}
+    else
+      {:error, why} -> {:error, why, report}
+    end
+  end
+
+  # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows
+  # the record size from the layout, so the count is arithmetic. BYTES LEFT
+  # OVER ARE `malformed`, which is §3's rule for the same reason; a record
+  # whose hash names no layout this reader holds is a refusal by name.
+  defp fixed_table_fixed_identity_loop(<<>>, _copy, acc, c), do: {:ok, :lists.reverse(acc), c}
+
+  defp fixed_table_fixed_identity_loop(
+         <<@fixed_table_hash::little-unsigned-64, body::binary-size(@fixed_table_body_bytes),
+           rest::binary>>,
+         copy,
+         acc,
+         c
+       ) do
+    {value, c} = fixed_table_fixed_decode(R.detach(body, copy), c)
+    fixed_table_fixed_identity_loop(rest, copy, [value | acc], c)
+  end
+
+  defp fixed_table_fixed_identity_loop(
+         <<_::little-unsigned-64, _::binary-size(@fixed_table_body_bytes), _::binary>>,
+         _copy,
+         _acc,
+         _c
+       ) do
+    {:error, :no_layout}
+  end
+
+  defp fixed_table_fixed_identity_loop(_records, _copy, _acc, _c), do: {:error, :malformed}
+
+  # THE FOREIGN PATH: the plan compiled once from the writer's layout and cached
+  # by hash, run over each record onto the prefill, and the same projection
+  # over what it landed. The plan's own ops already held the writer's values
+  # to this reader's bounds and counted, so the projection counts nothing more.
+  defp fixed_table_fixed_foreign(hash, stated, layout, records, copy, report, opts) do
     with {:ok, plan, size, report} <- fixed_table_fixed_plan_for(hash, layout, report, opts),
          :ok <- fixed_table_fixed_header_names_it(stated, hash),
          {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
       {values, report} =
         Enum.map_reduce(bodies, report, fn body, report ->
-          {image, report} = R.run(plan, body, @fixed_table_prefill, report)
-          report = R.clamped(report, fixed_table_fixed_clamped(image))
-          {fixed_table_fixed_decode(image), report}
+          {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
+          {value, c} = fixed_table_fixed_decode(image, 0)
+          {value, R.clamped(report, c)}
         end)
 
       {:ok, values, report}
@@ -224,20 +293,18 @@ defmodule Bench.WrapFixed do
     end
   end
 
-  # THE PLAN: the identity plan for this build's own hash, and for any other
-  # hash the one compiled ONCE from the writer's layout and cached by hash.
-  # A caller may own the plan instead and hand it in through `plan:`.
-  defp fixed_table_fixed_plan_for(hash, _layout, report, _opts) when hash == @fixed_table_hash do
-    {:ok, @fixed_table_plan, @fixed_table_body_bytes, report}
-  end
-
+  # THE PLAN for any hash but this build's own: the one compiled ONCE from the
+  # writer's layout and cached by hash. A caller may own the plan instead and
+  # hand it in through `plan:`.
   defp fixed_table_fixed_plan_for(hash, layout, report, opts) do
     cap = Keyword.get(opts, :plan_capacity, R.plan_capacity())
 
     case Keyword.get(opts, :plan) || R.cached(__MODULE__, hash) do
       {_plan, _size, made} when made > cap ->
         # THE PLAN'S CAPACITY IS THE CALLER'S BOUND AND NOT THE CACHE'S, so a
-        # plan already held for this peer is refused by the same name.
+        # plan already held for this peer is refused by the same name — and by
+        # the SAME NUMBER the compiler measured, which is what keeps a caller
+        # with a small capacity from inheriting a plan minted under a large one.
         {:error, :plan_too_large, report}
 
       {plan, size, _made} ->
@@ -250,9 +317,9 @@ defmodule Bench.WrapFixed do
           mine = R.my_layout(__MODULE__, @fixed_table_layout)
 
           case R.compile(theirs, mine, @fixed_table_dst, cap, report) do
-            {:ok, plan, report} ->
+            {:ok, plan, made, report} ->
               size = R.size_at(theirs, 0)
-              R.cache(__MODULE__, hash, {plan, size, length(plan)})
+              R.cache(__MODULE__, hash, {plan, size, made})
               {:ok, plan, size, report}
 
             {:error, why, report} ->
@@ -268,9 +335,6 @@ defmodule Bench.WrapFixed do
   defp fixed_table_fixed_header_names_it(stated, hash) when stated == hash, do: :ok
   defp fixed_table_fixed_header_names_it(_stated, _hash), do: {:error, :layout_malformed}
 
-  # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows
-  # the record size from the layout, so the count is arithmetic. BYTES LEFT
-  # OVER ARE `malformed`, which is §3's rule for the same reason.
   defp fixed_table_fixed_split(<<>>, _hash, _size, acc), do: {:ok, :lists.reverse(acc)}
 
   defp fixed_table_fixed_split(records, hash, size, acc) do
@@ -279,8 +343,6 @@ defmodule Bench.WrapFixed do
         fixed_table_fixed_split(rest, hash, size, [body | acc])
 
       <<_::little-unsigned-64, _::binary-size(^size), _::binary>> ->
-        # A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
-        # NAME, never a guess and never damage.
         {:error, :no_layout}
 
       _ ->

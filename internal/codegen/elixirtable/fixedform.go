@@ -38,17 +38,17 @@ import (
 // behind it, the layout's own format included.
 const (
 	fixedFormByte     = 3
-	fixedEntryBytes   = ir.FixedEntryBytes
-	fixedHeaderBytes  = ir.FixedLayoutHeaderBytes
-	fixedCountBytes   = ir.FixedCountBytes
-	fixedPresentBytes = ir.FixedPresentBytes
+	fixedEntryBytes   = ir.TableFixedEntryBytes
+	fixedHeaderBytes  = ir.TableFixedLayoutHeaderBytes
+	fixedCountBytes   = ir.TableFixedCountBytes
+	fixedPresentBytes = ir.TableFixedPresentBytes
 	fixedHashBytes    = int64(8)
 )
 
 // fixedKindOptional is the ONE kind §3.4's layout adds to §3's closed set: the
 // OPTIONAL WRAPPER, one child, whose size is one present byte plus the child's.
 // It is a LAYOUT kind and not a WIRE kind — nothing rides under it in a record.
-const fixedKindOptional = ir.FixedKindOptional
+const fixedKindOptional = ir.TableKindOptional
 
 // the flavours a `text` plan entry lands its units under.
 const (
@@ -57,9 +57,9 @@ const (
 	fixedTextBytes = 3
 )
 
-func fixedTypeBytes(st *ir.Struct) int64  { return ir.FixedTypeBytes(st) }
-func fixedFieldBytes(f *ir.Field) int64   { return ir.FixedFieldBytes(f) }
-func fixedElementBytes(f *ir.Field) int64 { return ir.FixedElementBytes(f) }
+func fixedTypeBytes(st *ir.Struct) int64  { return ir.TableFixedTypeBytes(st) }
+func fixedFieldBytes(f *ir.Field) int64   { return ir.TableFixedFieldBytes(f) }
+func fixedElementBytes(f *ir.Field) int64 { return ir.TableFixedElementBytes(f) }
 
 // fixedUnionTagBytes is the storage width of a union's tag ordinal.
 func fixedUnionTagBytes(u *ir.Union) int64 { return int64(ir.StorageBitsFor(u.Max) / 8) }
@@ -218,10 +218,12 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 			fixedDst{dst: base, stride: fixedElementBytes(f), aux: aux, counted: counted})
 		fixedWalkElement(w, f, 0, "element", 0)
 	case f.Type.Kind == ir.TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, and the
-		// text flavour on the row is what lands it in one move
+		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3: THE LENGTH,
+		// THEN THE UNITS, so its row is a counted array's row — the count at the
+		// field's own offset (`aux`) and the units behind it (`dst`). A row that
+		// put the units first landed a stranger's blob under its own length.
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			fixedDst{dst: at, stride: 1, aux: at + fixedCountBytes, counted: 1, arg: fixedTextBytes})
+			fixedDst{dst: at + fixedCountBytes, stride: 1, aux: at, counted: 1, arg: fixedTextBytes})
 		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, fixedDst{})
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
@@ -328,11 +330,11 @@ func fixedLayoutHash(layout []byte) uint64 {
 // array the compiler sizes, and Elixir builds no plan at compile time — the
 // identity plan is a literal this emitter writes and any other plan is compiled
 // at load time, which is the follow-on §3.4 names for the reference's own
-// bound. The RECORD CEILING is the wire's, so it is kept: ir.FixedFormRoots
+// bound. The RECORD CEILING is the wire's, so it is kept: ir.TableFixedFormRoots
 // applies it and the compiler names every table it costs.
 func fixedRoots(u *ir.Unit) []*ir.Struct {
 	var out []*ir.Struct
-	for _, st := range ir.FixedFormRoots(u) {
+	for _, st := range ir.TableFixedFormRoots(u) {
 		if !fixedSupported(st, 0) {
 			continue
 		}

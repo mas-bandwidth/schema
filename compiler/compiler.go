@@ -159,7 +159,7 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	// §3.4'S SIZE BOUNDS on every FIXED table of the unit. The reporting is
 	// never gated on a policy field — a table nobody warned about is a table
 	// nobody fixed — and only the hard refusal is FixedRecordLimit's.
-	fwarns, ferrs := ir.FixedRecordBounds(u, c.FixedRecordLimit)
+	fwarns, ferrs := ir.TableFixedRecordBounds(u, c.FixedRecordLimit)
 	for _, w := range fwarns {
 		if c.OnWarn != nil {
 			c.OnWarn(w)
@@ -167,6 +167,18 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	}
 	if len(ferrs) > 0 {
 		return nil, Diagnostics(ferrs)
+	}
+	// AND THE PLAN'S OWN CAP, on the same terms: a DECLARED fixed table whose
+	// identity plan does not fit is a refusal by name, a derived one is a
+	// warning and keeps form 1 (ir.TableFixedLeafCapRefusals).
+	lwarns, lerrs := ir.TableFixedLeafCapRefusals(u)
+	for _, w := range lwarns {
+		if c.OnWarn != nil {
+			c.OnWarn(w)
+		}
+	}
+	if len(lerrs) > 0 {
+		return nil, Diagnostics(lerrs)
 	}
 	if c.TablesBaseline {
 		warns, berrs := baseline.Check(u, paths)

@@ -157,10 +157,16 @@ table Everything
 	if want := "{:copy, 0, 0, " + itoa(fixedTypeBytes(st)) + "}"; plan[0].String() != want {
 		t.Fatalf("the identity plan is %s, not %s", plan[0].String(), want)
 	}
-	// AND THE PROJECTION IS WHERE THE BOUNDS WENT: a type this shape must carry
-	// a counting pass, or the `clamped` the plan used to move stopped moving.
-	if !fixedClampsType(st) {
-		t.Fatalf("nothing in Everything can clamp, so the fold dropped a check")
+	// AND THE PROJECTION IS WHERE THE BOUNDS WENT: the generated decode must
+	// hold a ranged value and move the count, or the `clamped` the plan used
+	// to move stopped moving.
+	out, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out["ProbeFixed.ex"])
+	if !strings.Contains(body, "R.clamps(c, ") {
+		t.Fatalf("the projection of Everything counts no clamp, so the fold dropped a check")
 	}
 }
 
