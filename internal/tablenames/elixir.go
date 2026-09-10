@@ -2,9 +2,10 @@ package tablenames
 
 // Elixir is the Elixir table backend (internal/codegen/elixirtable).
 //
-// The Elixir backend emits the BLOCK and COOK read halves only (the table wire
-// it once wrote was the form that preceded the id-table wire and was removed;
-// schema#515 brings the current wire), so it claims no TableRuntime: that name
+// The Elixir backend emits the BLOCK and COOK read halves and the FIXED FORM
+// (docs/SPEC-TABLES.md §3.4, form byte 3), which is this backend's first table
+// WIRE; form 1 was the form that preceded the id-table wire and was removed,
+// and schema#515 brings the current one. It claims no TableRuntime: that name
 // is another backend's.
 const Elixir Backend = 1 << 6
 
@@ -20,6 +21,11 @@ func init() {
 		// prefix. The two accelerators carry their own runtimes because a VARIABLE
 		// unit gets no table runtime at all (§11) and still has both of them.
 		Name{Name: "BlockRuntime", What: "the BLOCK form's shared runtime module (docs/SPEC-TABLES.md §19)"},
+		// THE FIXED FORM's shared runtime (docs/SPEC-TABLES.md §3.4), form byte
+		// 3: emitted once for a unit that carries a fixed root, and claimed
+		// beside the other two on this list's own rule — a name free today is a
+		// collision the day a table in that unit becomes a fixed root.
+		Name{Name: "FixedRuntime", What: "the FIXED FORM's shared runtime module: the layout's validation, the plan compiler and the one read loop (docs/SPEC-TABLES.md §3.4)"},
 		Name{Name: "CookRuntime", What: "the COOKED form's shared runtime module (docs/SPEC-TABLES.md §7)"},
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
 	)

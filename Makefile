@@ -5773,13 +5773,13 @@ tables-fixedform-run-copy-negative-control:
 # THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
 #
 # The C++ backend is the REFERENCE for this form, so the reference is what
-# writes the bytes and every port matches them — the same shape the paired
-# bench already pins. This target writes one form-3 FILE per root into
-# build/fixedform-corpus, with values set by hand so nothing passes by
-# accident, and a port's leg proves itself against them two ways: reading a
-# file and saving it back has to reproduce it BYTE FOR BYTE, and reading a file
-# written under ANOTHER schema's layout is the plan path, which is the whole of
-# what §3.4's versioning invariant is worth.
+# writes the bytes and every port matches them — Glenn's rule for this class,
+# and the same shape the paired bench already pins. This target writes one
+# form-3 FILE per root into build/fixedform-corpus, with values set by hand so
+# nothing passes by accident, and a port's leg proves itself against them two
+# ways: reading a file and saving it back has to reproduce it BYTE FOR BYTE,
+# and reading a file written under ANOTHER schema's layout is the plan path,
+# which is the whole of what §3.4's versioning invariant is worth.
 #
 # It lives HERE rather than in a language's own make/<lang>.mk because it is
 # every port's oracle and none of theirs: a corpus one leg owns is a corpus the

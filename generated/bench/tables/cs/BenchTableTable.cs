@@ -16,6 +16,8 @@
 // Nothing here allocates: the caller owns the value, the span and the report.
 
 using System;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
 namespace Benchtable
@@ -276,6 +278,123 @@ namespace Benchtable
         public ulong Id;
         public byte Kind;
         public TableMessageShape Shape;
+    }
+
+    // ---------------------------------------------------------------------------
+    // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+    // ---------------------------------------------------------------------------
+
+    // A PLAN ENTRY. Src and Dst are byte offsets or slot indices. Guard is the
+    // byte offset of a union tag when the entry belongs to an arm, or NoGuard.
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct TableFixedEntry
+    {
+        public uint Src;
+        public uint Dst;
+        public uint Size;
+        public uint Aux;
+        public uint Guard;
+        public byte Op;
+        public byte Arg; // Arm ordinal compared by Guard
+        public byte DstSize;
+        public byte Sign;
+        public byte Meta; // Op metadata (e.g. text flavour: 1=utf8, 2=wide, 3=bytes)
+
+        public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0, byte meta = 0)
+        {
+            Src = src;
+            Dst = dst;
+            Size = size;
+            Aux = aux;
+            Guard = guard;
+            Op = op;
+            Arg = arg;
+            DstSize = dstSize;
+            Sign = sign;
+            Meta = meta;
+        }
+    }
+
+    // TableFixedDst is MY side of the layout walk: one row per entry of my own layout,
+    // carrying the storage facts a layout entry cannot: destination slot index, array
+    // stride in slots, auxiliary slot index, counted flag, and text flavour.
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct TableFixedDst
+    {
+        public uint Dst;
+        public uint Stride;
+        public uint Aux;
+        public byte Counted;
+        public byte Arg;
+
+        public TableFixedDst(uint dst, uint stride, uint aux, byte counted, byte arg)
+        {
+            Dst = dst;
+            Stride = stride;
+            Aux = aux;
+            Counted = counted;
+            Arg = arg;
+        }
+    }
+
+    // TableFixedLayoutEntry is one seventeen-byte entry: an id, a constant size,
+    // a child count, and a kind, in the writer's declared order.
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct TableFixedLayoutEntry
+    {
+        public ulong Id;
+        public uint Size;
+        public uint Children;
+        public byte Kind;
+    }
+
+    public ref struct TableFixedLayoutView
+    {
+        public ReadOnlySpan<byte> Bytes;
+        public int Count;
+    }
+
+    public readonly struct TableFixedPlan
+    {
+        public readonly TableFixedEntry[] Entries;
+        public readonly int Count;
+
+        public TableFixedPlan(TableFixedEntry[] entries)
+        {
+            Entries = entries;
+            Count = entries != null ? entries.Length : 0;
+        }
+
+        public static implicit operator ReadOnlySpan<TableFixedEntry>(TableFixedPlan p) => p.Entries != null ? p.Entries.AsSpan(0, p.Count) : ReadOnlySpan<TableFixedEntry>.Empty;
+        public static implicit operator TableFixedEntry[](TableFixedPlan p) => p.Entries;
+    }
+
+    public delegate void TableFixedSetBytes<T>(T target, ReadOnlySpan<byte> span, int len);
+
+    public readonly struct TableFixedSlot<T>
+    {
+        public readonly Action<T, ulong> SetRaw;
+        public readonly Action<T, double> SetDouble;
+        public readonly Action<T, UInt128> SetWide;
+        public readonly TableFixedSetBytes<T> SetBytes;
+        public readonly TableFixedSetBytes<T> SetChars;
+        public readonly Action<T, ulong, TableReport> SetRawReport;
+
+        public TableFixedSlot(
+            Action<T, ulong> setRaw = null,
+            Action<T, double> setDouble = null,
+            Action<T, UInt128> setWide = null,
+            TableFixedSetBytes<T> setBytes = null,
+            TableFixedSetBytes<T> setChars = null,
+            Action<T, ulong, TableReport> setRawReport = null)
+        {
+            SetRaw = setRaw;
+            SetDouble = setDouble;
+            SetWide = setWide;
+            SetBytes = setBytes;
+            SetChars = setChars;
+            SetRawReport = setRawReport;
+        }
     }
     // table TableEntity — TABLE-wire storage: public fields, every buffer allocated at
     // construction, declared defaults in the field initializers (docs/SPEC-TABLES.md)
@@ -5029,6 +5148,726 @@ namespace Benchtable
             }
         }
         // ---- form-1 table wire: end ----
+
+            public static class TableFixedWire
+            {
+                public const byte Form = 3;
+                public const int HeaderBytes = 16;
+                public const int HashAt = 8;
+                public const uint NoGuard = 0xFFFFFFFFu;
+                public const int MaxDepth = 32;
+                public const uint RecordMaxBytes = 65536;
+
+                // The opcodes for plan entries
+                public const byte Copy = 0;    // move Size bytes
+                public const byte Count = 1;   // a count: clamp to reader's bound
+                public const byte Text = 2;    // a length, then units, then copy
+                public const byte Ordinal = 3; // a variant ordinal, remapped through plan table
+                public const byte Widen = 4;   // narrower source into wider destination
+                public const byte Const = 5;   // constant value: e.g. remapped union tag
+                public const byte WidenF = 6;  // float32 into float64
+                public const byte Flat = 7;    // folded flat array copy
+
+                // Arg on a Text entry
+                public const byte TextUtf8 = 1;
+                public const byte TextWide = 2;
+                public const byte TextBytes = 3;
+
+                public const int EntryBytes = 17;
+
+                public static bool Widens(byte from, byte to)
+                {
+                    if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; }
+                    if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; }
+                    return from == 10 && to == 11;
+                }
+
+                public static bool SignedKind(byte kind)
+                {
+                    return kind >= 2 && kind <= 5;
+                }
+
+                public static ulong HashOf(ReadOnlySpan<byte> layout)
+                {
+                    ulong h = 0xcbf29ce484222325ul;
+                    for (int i = 0; i < layout.Length; ++i)
+                    {
+                        h ^= (ulong)layout[i];
+                        h *= 0x100000001b3ul;
+                    }
+                    return h;
+                }
+
+                public static TableFixedLayoutEntry EntryAt(TableFixedLayoutView b, int i)
+                {
+                    ReadOnlySpan<byte> e = b.Bytes.Slice(4 + i * EntryBytes, EntryBytes);
+                    TableFixedLayoutEntry outEntry = default;
+                    outEntry.Id = BinaryPrimitives.ReadUInt64LittleEndian(e);
+                    outEntry.Kind = e[8];
+                    outEntry.Size = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(9));
+                    outEntry.Children = BinaryPrimitives.ReadUInt32LittleEndian(e.Slice(13));
+                    return outEntry;
+                }
+
+                public static int Subtree(TableFixedLayoutView b, int i)
+                {
+                    if (i < 0 || i >= b.Count) { return 1; }
+                    TableFixedLayoutEntry e = EntryAt(b, i);
+                    int n = 1;
+                    int at = i + 1;
+                    for (uint c = 0; c < e.Children; ++c)
+                    {
+                        if (at >= b.Count) { break; }
+                        int sub = Subtree(b, at);
+                        at += sub;
+                        n += sub;
+                    }
+                    return n;
+                }
+
+                public static uint UnionArmBytes(TableFixedLayoutView b, int i)
+                {
+                    TableFixedLayoutEntry e = EntryAt(b, i);
+                    uint widest = 0;
+                    int at = i + 1;
+                    for (uint k = 0; k < e.Children; ++k)
+                    {
+                        TableFixedLayoutEntry a = EntryAt(b, at);
+                        if (a.Size > widest) { widest = a.Size; }
+                        at += Subtree(b, at);
+                    }
+                    return widest;
+                }
+
+                public static uint TagBytes(TableFixedLayoutView b, int i)
+                {
+                    return EntryAt(b, i).Size - UnionArmBytes(b, i);
+                }
+
+                private static bool LeafSize(byte kind, uint size, out bool isLeaf)
+                {
+                    isLeaf = true;
+                    switch (kind)
+                    {
+                        case 1:  return size == 1;                 // bool
+                        case 2:  return size == 1;                 // i8
+                        case 3:  return size == 2;                 // i16
+                        case 4:  return size == 4;                 // i32
+                        case 5:  return size == 8;                 // i64
+                        case 6:  return size == 1 || size == 4;    // u8, and bits(1..8)
+                        case 7:  return size == 2 || size == 4;    // u16, and bits(9..16)
+                        case 8:  return size == 4;                 // u32, and bits(17..32)
+                        case 9:  return size == 8;                 // u64, flags, and bits(33..64)
+                        case 10: return size == 4;                 // f32
+                        case 11: return size == 8;                 // f64
+                        case 17: return size == 4;                 // pointer index
+                        case 18: case 19: return size == 16;       // i128, u128
+                        case 20: case 25: return size == 1;        // fixed8, ufixed8
+                        case 21: case 26: return size == 2;
+                        case 22: case 27: return size == 4;
+                        case 23: case 28: return size == 8;
+                        case 24: case 29: return size == 16;
+                        case 32: return size == 0;                 // variant arm that holds nothing
+                    }
+                    isLeaf = false;
+                    return true;
+                }
+
+                private static bool OrdinalWidth(uint n) => n == 1 || n == 2 || n == 4 || n == 8;
+
+                private static bool KnownKind(byte kind)
+                {
+                    if (kind >= 1 && kind <= 30) return true;
+                    return kind == 32 || kind == 33 || kind == 35;
+                }
+
+                private ref struct Checker
+                {
+                    public TableFixedLayoutView Layout;
+                    public string Why;
+                    public bool Bad;
+
+                    public void Fail(string why)
+                    {
+                        if (!Bad)
+                        {
+                            Bad = true;
+                            Why = why;
+                        }
+                    }
+                }
+
+                private static int CheckEntry(ref Checker c, int i, int depth)
+                {
+                    if (c.Bad) return 0;
+                    if (i < 0 || i >= c.Layout.Count) { c.Fail("layout_tree_unclosed"); return 0; }
+                    if (depth > MaxDepth) { c.Fail("layout_too_deep"); return 0; }
+                    TableFixedLayoutEntry e = EntryAt(c.Layout, i);
+                    if (!KnownKind(e.Kind)) { c.Fail("layout_kind_unknown"); return 0; }
+                    if (e.Size > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+
+                    int at = i + 1;
+                    ulong sum = 0;
+                    uint widest = 0;
+                    uint firstSize = 0, secondSize = 0;
+                    byte firstKind = 0;
+                    uint firstChildren = 0;
+                    bool kidsAreVariants = true;
+                    for (uint k = 0; k < e.Children; ++k)
+                    {
+                        int child = at;
+                        int used = CheckEntry(ref c, child, depth + 1);
+                        if (c.Bad) return 0;
+                        TableFixedLayoutEntry ce = EntryAt(c.Layout, child);
+                        if (k == 0) { firstSize = ce.Size; firstKind = ce.Kind; firstChildren = ce.Children; }
+                        if (k == 1) { secondSize = ce.Size; }
+                        if (ce.Kind != 32) { kidsAreVariants = false; }
+                        sum += ce.Size;
+                        if (ce.Size > widest) { widest = ce.Size; }
+                        if (sum > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+                        at += used;
+                    }
+
+                    if (!LeafSize(e.Kind, e.Size, out bool isLeaf)) { c.Fail("layout_size_mismatch"); return 0; }
+                    if (isLeaf)
+                    {
+                        if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                        return at - i;
+                    }
+                    switch (e.Kind)
+                    {
+                        case 13: // table
+                            if ((ulong)e.Size != sum) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 35: // optional
+                            if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
+                            if ((ulong)e.Size != sum + 1) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 14: // array
+                            if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (firstSize == 0) { c.Fail("layout_size_mismatch"); return 0; }
+                            bool bare = (e.Size % firstSize) == 0;
+                            bool counted = e.Size >= 4 && ((e.Size - 4) % firstSize) == 0;
+                            if (!bare && !counted) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 16: // enum-keyed array
+                            if (e.Children != 2) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (firstKind != 30) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (secondSize == 0 || (e.Size % secondSize) != 0) { c.Fail("layout_size_mismatch"); return 0; }
+                            if (e.Size / secondSize < firstChildren) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 15: // union
+                            if (e.Children == 0) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (e.Size <= widest) { c.Fail("layout_size_mismatch"); return 0; }
+                            if (!OrdinalWidth(e.Size - widest)) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 30: // enum
+                            if (!OrdinalWidth(e.Size)) { c.Fail("layout_size_mismatch"); return 0; }
+                            if (e.Children != 0 && !kidsAreVariants) { c.Fail("layout_kind_invalid"); return 0; }
+                            break;
+                        case 12: // string
+                            if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (e.Size < 4) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 33: // wstring
+                            if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (e.Size < 4 || ((e.Size - 4) % 2) != 0) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        default:
+                            c.Fail("layout_kind_unknown");
+                            return 0;
+                    }
+                    return at - i;
+                }
+
+                public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view, out string why)
+                {
+                    view = default;
+                    why = null;
+                    if (bytes.Length < 4) { why = "layout_malformed"; return false; }
+                    uint count = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+                    if (count == 0 || (long)count * EntryBytes + 4 != bytes.Length)
+                    {
+                        why = "layout_count_mismatch";
+                        return false;
+                    }
+                    view.Bytes = bytes;
+                    view.Count = (int)count;
+                    TableFixedLayoutEntry root = EntryAt(view, 0);
+                    if (root.Kind != 13)
+                    {
+                        why = "layout_kind_invalid";
+                        view = default;
+                        return false;
+                    }
+                    if (root.Size == 0 || root.Size > RecordMaxBytes)
+                    {
+                        why = "layout_record_too_large";
+                        view = default;
+                        return false;
+                    }
+                    Checker c = new Checker { Layout = view, Why = "layout_malformed", Bad = false };
+                    int used = CheckEntry(ref c, 0, 0);
+                    if (c.Bad)
+                    {
+                        why = c.Why;
+                        view = default;
+                        return false;
+                    }
+                    if (used != view.Count)
+                    {
+                        why = "layout_tree_unclosed";
+                        view = default;
+                        return false;
+                    }
+                    return true;
+                }
+
+                public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view, out _);
+
+                private ref struct Compiler
+                {
+                    public Span<TableFixedEntry> Plan;
+                    public int Capacity;
+                    public int Count;
+                    public int Pool;
+                    public bool Overflow;
+                    public TableReport Report;
+
+                    public void Push(in TableFixedEntry e)
+                    {
+                        int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+                        int room = Capacity - (Pool + entrySize - 1) / entrySize;
+                        if (Count >= room) { Overflow = true; return; }
+                        Plan[Count++] = e;
+                    }
+
+                    public uint LayTable(ReadOnlySpan<ushort> values, int n)
+                    {
+                        int bytes = (n + 1) * 2;
+                        int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+                        int total = entrySize * Capacity;
+                        Pool += bytes;
+                        if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
+                        uint at = (uint)(total - Pool);
+                        Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
+                        BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at), (ushort)n);
+                        for (int i = 0; i < n; ++i)
+                        {
+                            BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at + 2 + 2 * i), values[i]);
+                        }
+                        return at;
+                    }
+                }
+
+                private static void MatchChildren(
+                    ref Compiler c,
+                    TableFixedLayoutView theirs, int ti, uint their_at,
+                    TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
+                    uint guard, byte arg)
+                {
+                    TableFixedLayoutEntry te = EntryAt(theirs, ti);
+                    TableFixedLayoutEntry me = EntryAt(mine, mi);
+                    int my_child = mi + 1;
+                    for (uint k = 0; k < me.Children; ++k)
+                    {
+                        TableFixedLayoutEntry mc = EntryAt(mine, my_child);
+                        int their_child = ti + 1;
+                        uint their_off = their_at;
+                        for (uint j = 0; j < te.Children; ++j)
+                        {
+                            TableFixedLayoutEntry tc = EntryAt(theirs, their_child);
+                            if (tc.Id == mc.Id)
+                            {
+                                CompileEntry(ref c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg);
+                                break;
+                            }
+                            their_off += tc.Size;
+                            their_child += Subtree(theirs, their_child);
+                        }
+                        my_child += Subtree(mine, my_child);
+                    }
+                    int tc_at = ti + 1;
+                    for (uint j = 0; j < te.Children; ++j)
+                    {
+                        TableFixedLayoutEntry tc = EntryAt(theirs, tc_at);
+                        bool named = false;
+                        int mc_at = mi + 1;
+                        for (uint k = 0; k < me.Children; ++k)
+                        {
+                            if (EntryAt(mine, mc_at).Id == tc.Id) { named = true; break; }
+                            mc_at += Subtree(mine, mc_at);
+                        }
+                        if (!named && c.Report != null) { c.Report.Unknown++; }
+                        tc_at += Subtree(theirs, tc_at);
+                    }
+                }
+
+                private static void CompileEntry(
+                    ref Compiler c,
+                    TableFixedLayoutView theirs, int ti, uint their_at,
+                    TableFixedLayoutView mine, int mi, ReadOnlySpan<TableFixedDst> dst, uint my_at,
+                    uint guard, byte arg)
+                {
+                    TableFixedLayoutEntry te = EntryAt(theirs, ti);
+                    TableFixedLayoutEntry me = EntryAt(mine, mi);
+                    TableFixedDst d = dst[mi];
+                    uint at = my_at + d.Dst;
+                    uint aux_at = my_at + d.Aux;
+                    if (te.Kind != me.Kind)
+                    {
+                        if (Widens(te.Kind, me.Kind))
+                        {
+                            TableFixedEntry e = new TableFixedEntry(
+                                their_at, at, te.Size, 0, guard,
+                                (byte)(te.Kind == 10 ? WidenF : Widen),
+                                arg, (byte)me.Size, (byte)(SignedKind(te.Kind) ? 1 : 0));
+                            c.Push(e);
+                            return;
+                        }
+                        if (c.Report != null) { c.Report.KindMismatch++; }
+                        return;
+                    }
+                    switch (me.Kind)
+                    {
+                        case 35: // Optional wrapper
+                        {
+                            TableFixedEntry e = new TableFixedEntry(their_at, aux_at, 1, 0, guard, Copy, arg, 0);
+                            c.Push(e);
+                            CompileEntry(ref c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg);
+                            break;
+                        }
+                        case 13: // Nested table
+                        {
+                            MatchChildren(ref c, theirs, ti, their_at, mine, mi, dst, at, guard, arg);
+                            break;
+                        }
+                        case 14: // Array
+                        {
+                            if (d.Arg == TextBytes)
+                            {
+                                uint units = Math.Min(me.Size - 4u, te.Size - 4u);
+                                TableFixedEntry e = new TableFixedEntry(
+                                    their_at, aux_at, units, at, guard, Text, arg, 0, 0, d.Arg);
+                                c.Push(e);
+                                break;
+                            }
+                            TableFixedLayoutEntry tel = EntryAt(theirs, ti + 1);
+                            TableFixedLayoutEntry mel = EntryAt(mine, mi + 1);
+                            uint head = d.Counted != 0 ? 4u : 0u;
+                            uint their_n = tel.Size != 0 ? (te.Size - head) / tel.Size : 0u;
+                            uint my_n = mel.Size != 0 ? (me.Size - head) / mel.Size : 0u;
+                            uint their_base = their_at + head;
+                            if (d.Counted != 0)
+                            {
+                                TableFixedEntry e = new TableFixedEntry(their_at, aux_at, my_n, 0, guard, Count, arg, 0);
+                                c.Push(e);
+                            }
+                            uint n = Math.Min(their_n, my_n);
+                            if (d.Stride == 0)
+                            {
+                                if (tel.Kind == mel.Kind && tel.Size == mel.Size)
+                                {
+                                    TableFixedEntry e = new TableFixedEntry(their_base, at, n * mel.Size, 0, guard, Flat, arg, 0);
+                                    c.Push(e);
+                                }
+                                break;
+                            }
+                            for (uint i = 0; i < n; ++i)
+                            {
+                                CompileEntry(ref c, theirs, ti + 1, their_base + i * tel.Size,
+                                             mine, mi + 1, dst, at + i * d.Stride, guard, arg);
+                            }
+                            break;
+                        }
+                        case 16: // Enum-keyed array
+                        {
+                            TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
+                            TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
+                            int tel = ti + 1 + Subtree(theirs, ti + 1);
+                            int mel = mi + 1 + Subtree(mine, mi + 1);
+                            TableFixedLayoutEntry tee = EntryAt(theirs, tel);
+                            for (uint k = 0; k < mkey.Children; ++k)
+                            {
+                                ulong key_id = EntryAt(mine, mi + 2 + (int)k).Id;
+                                for (uint j = 0; j < tkey.Children; ++j)
+                                {
+                                    if (EntryAt(theirs, ti + 2 + (int)j).Id != key_id) { continue; }
+                                    CompileEntry(ref c, theirs, tel, their_at + j * tee.Size,
+                                                 mine, mel, dst, at + k * d.Stride, guard, arg);
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                        case 15: // Union
+                        {
+                            uint their_tag = TagBytes(theirs, ti);
+                            uint my_tag = TagBytes(mine, mi);
+                            int my_arm = mi + 1;
+                            for (uint k = 0; k < me.Children; ++k)
+                            {
+                                TableFixedLayoutEntry ma = EntryAt(mine, my_arm);
+                                int their_arm = ti + 1;
+                                for (uint j = 0; j < te.Children; ++j)
+                                {
+                                    TableFixedLayoutEntry ta = EntryAt(theirs, their_arm);
+                                    if (ta.Id == ma.Id)
+                                    {
+                                        TableFixedEntry tag = new TableFixedEntry(
+                                            their_at, aux_at, my_tag, k + 1, their_at, Const, (byte)(j + 1), 0);
+                                        c.Push(tag);
+                                        CompileEntry(ref c, theirs, their_arm, their_at + their_tag,
+                                                     mine, my_arm, dst, at, their_at, (byte)(j + 1));
+                                        break;
+                                    }
+                                    their_arm += Subtree(theirs, their_arm);
+                                }
+                                my_arm += Subtree(mine, my_arm);
+                            }
+                            break;
+                        }
+                        case 30: // Enum
+                        {
+                            uint n = Math.Min(te.Children, 255u);
+                            ushort[] map = new ushort[n];
+                            for (uint j = 0; j < n; ++j)
+                            {
+                                ulong vid = EntryAt(theirs, ti + 1 + (int)j).Id;
+                                ushort landed = 0;
+                                for (uint k = 0; k < me.Children; ++k)
+                                {
+                                    if (EntryAt(mine, mi + 1 + (int)k).Id == vid) { landed = (ushort)(k + 1); break; }
+                                }
+                                map[(int)j] = landed;
+                            }
+                            uint aux = c.LayTable(map, (int)n);
+                            TableFixedEntry e = new TableFixedEntry(
+                                their_at, at, te.Size, aux, guard, Ordinal, arg, (byte)me.Size);
+                            c.Push(e);
+                            break;
+                        }
+                        case 12: case 33: // Text / WString
+                        {
+                            uint units = Math.Min(me.Size - 4u, te.Size - 4u);
+                            TableFixedEntry e = new TableFixedEntry(
+                                their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);
+                            c.Push(e);
+                            break;
+                        }
+                        default:
+                        {
+                            if (te.Size == me.Size)
+                            {
+                                TableFixedEntry e = new TableFixedEntry(their_at, at, me.Size, 0, guard, Copy, arg, 0);
+                                c.Push(e);
+                            }
+                            else if (te.Size < me.Size && me.Size <= 8)
+                            {
+                                TableFixedEntry e = new TableFixedEntry(their_at, at, te.Size, 0, guard, Widen, arg, (byte)me.Size);
+                                c.Push(e);
+                            }
+                            else if (c.Report != null)
+                            {
+                                c.Report.KindMismatch++;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                public static int Compile(
+                    TableFixedLayoutView theirs,
+                    ReadOnlySpan<byte> my_layout,
+                    ReadOnlySpan<TableFixedDst> dst,
+                    Span<TableFixedEntry> plan,
+                    TableReport report)
+                {
+                    if (plan.IsEmpty) { return -1; }
+                    if (!ParseLayout(my_layout, out TableFixedLayoutView mine)) { return -1; }
+                    Compiler c = new Compiler
+                    {
+                        Plan = plan,
+                        Capacity = plan.Length,
+                        Report = report
+                    };
+                    MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0);
+                    if (c.Overflow) { return -1; }
+                    return c.Count;
+                }
+
+                public static void Run<T>(
+                    ReadOnlySpan<TableFixedEntry> plan,
+                    ReadOnlySpan<TableFixedSlot<T>> slots,
+                    ReadOnlySpan<byte> src,
+                    T dst,
+                    TableReport report,
+                    ReadOnlySpan<byte> planBytes)
+                {
+                    for (int i = 0; i < plan.Length; ++i)
+                    {
+                        ref readonly TableFixedEntry p = ref plan[i];
+                        if (p.Guard != NoGuard && src[(int)p.Guard] != p.Arg) { continue; }
+                        switch (p.Op)
+                        {
+                            case Copy:
+                            {
+                                if (slots[(int)p.Dst].SetBytes != null)
+                                {
+                                    slots[(int)p.Dst].SetBytes(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                                }
+                                else if (slots[(int)p.Dst].SetRawReport != null)
+                                {
+                                    ulong raw = p.Size switch
+                                    {
+                                        1 => src[(int)p.Src],
+                                        2 => BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)),
+                                        4 => BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)),
+                                        8 => BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)),
+                                        _ => 0UL,
+                                    };
+                                    slots[(int)p.Dst].SetRawReport(dst, raw, report);
+                                }
+                                else if (p.Size == 1)
+                                {
+                                    slots[(int)p.Dst].SetRaw?.Invoke(dst, src[(int)p.Src]);
+                                }
+                                else if (p.Size == 2)
+                                {
+                                    slots[(int)p.Dst].SetRaw?.Invoke(dst, BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)));
+                                }
+                                else if (p.Size == 4)
+                                {
+                                    slots[(int)p.Dst].SetRaw?.Invoke(dst, BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)));
+                                }
+                                else if (p.Size == 8)
+                                {
+                                    slots[(int)p.Dst].SetRaw?.Invoke(dst, BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)));
+                                }
+                                else if (p.Size == 16)
+                                {
+                                    ulong lo = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                    ulong hi = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src + 8));
+                                    slots[(int)p.Dst].SetWide?.Invoke(dst, new UInt128(hi, lo));
+                                }
+                                else
+                                {
+                                    slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                                }
+                                break;
+                            }
+                            case Flat:
+                            {
+                                slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                                break;
+                            }
+                            case Count:
+                            {
+                                int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                                if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                                else if ((uint)v > p.Size) { v = (int)p.Size; if (report != null) report.Clamped++; }
+                                slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
+                                break;
+                            }
+                            case Text:
+                            {
+                                uint unit = (p.Meta == TextWide) ? 2u : 1u;
+                                uint cap = p.Size / unit;
+                                int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
+                                if (v < 0) { v = 0; if (report != null) report.Clamped++; }
+                                else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
+                                slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
+                                ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
+                                if (p.Meta == TextWide)
+                                {
+                                    slots[(int)p.Aux].SetChars?.Invoke(dst, textBytes, v);
+                                }
+                                else
+                                {
+                                    slots[(int)p.Aux].SetBytes?.Invoke(dst, textBytes, v);
+                                }
+                                break;
+                            }
+                            case Ordinal:
+                            {
+                                uint raw = 0;
+                                if (p.Size == 1) raw = src[(int)p.Src];
+                                else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                                else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                                uint v = 0;
+                                if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
+                                {
+                                    ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
+                                    ushort count = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes);
+                                    if (raw != 0 && raw <= count)
+                                    {
+                                        v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
+                                    }
+                                    if (raw > count && report != null) { report.Clamped++; }
+                                }
+                                if (slots[(int)p.Dst].SetRaw != null)
+                                {
+                                    slots[(int)p.Dst].SetRaw(dst, v);
+                                }
+                                else
+                                {
+                                    slots[(int)p.Dst].SetRawReport?.Invoke(dst, v, report);
+                                }
+                                break;
+                            }
+                            case Widen:
+                            {
+                                ulong raw = 0;
+                                if (p.Size == 1) raw = src[(int)p.Src];
+                                else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
+                                else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                                else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
+                                if (p.Sign != 0)
+                                {
+                                    int bits = (int)p.Size * 8;
+                                    ulong top = 1UL << (bits - 1);
+                                    if ((raw & top) != 0)
+                                    {
+                                        raw |= ~((top << 1) - 1UL);
+                                    }
+                                }
+                                if (p.DstSize == 16)
+                                {
+                                    UInt128 w = (p.Sign != 0 && (long)raw < 0) ? unchecked((UInt128)(Int128)(long)raw) : (UInt128)raw;
+                                    slots[(int)p.Dst].SetWide?.Invoke(dst, w);
+                                }
+                                else
+                                {
+                                    slots[(int)p.Dst].SetRaw?.Invoke(dst, raw);
+                                }
+                                if (report != null) { report.Widened++; }
+                                break;
+                            }
+                            case WidenF:
+                            {
+                                float f = BinaryPrimitives.ReadSingleLittleEndian(src.Slice((int)p.Src));
+                                double d = (double)f;
+                                slots[(int)p.Dst].SetDouble?.Invoke(dst, d);
+                                if (report != null) { report.Widened++; }
+                                break;
+                            }
+                            case Const:
+                            {
+                                if (slots[(int)p.Dst].SetRaw != null)
+                                {
+                                    slots[(int)p.Dst].SetRaw(dst, p.Aux);
+                                }
+                                else
+                                {
+                                    slots[(int)p.Dst].SetRawReport?.Invoke(dst, p.Aux, report);
+                                }
+                                break;
+                            }
+                            default: break;
+                        }
+                    }
+                }
+            }
         // TableReset(TableEvent) restores None and every arm in place, reusing buffers.
         public static void TableReset(TableEvent value)
         {
@@ -6404,6 +7243,468 @@ namespace Benchtable
         public static long TablePickupEventToJson(TablePickupEvent value, Span<byte> buffer)
         {
             return TableJson.Write(value, TablePickupEventTableType(), buffer, false);
+        }
+
+        // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+        //
+        // A record is an eight-byte hash of the writer's vocabulary block and then
+        // the values in declared order, every field at its declared storage width.
+        // The writer is the constant bytes memcpy'd and then stores; the reader is
+        // ONE loop over ONE plan, the identity plan here and a plan compiled from
+        // the writer's own block for anybody else.
+
+        // TableEntity's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void TableEntityFixedWriteBody(Span<byte> b, TableEntity value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.EntityId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.PosX);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.PosY);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), (int)value.PosZ);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(16), (uint)value.Yaw);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(20), (uint)value.Pitch);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(24), (int)value.VelX);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(28), (int)value.VelY);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(32), (int)value.VelZ);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(36), (int)value.Health);
+            b.Slice(40)[0] = (byte)value.Weapon;
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(41), (ulong)value.Damage);
+            b.Slice(49)[0] = (byte)(value.Moving ? 1 : 0);
+            b.Slice(50)[0] = (byte)(value.Firing ? 1 : 0);
+        }
+
+        // TableStat's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void TableStatFixedWriteBody(Span<byte> b, TableStat value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.StatId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Delta);
+        }
+
+        // ---- TableEntity, the fixed form ----
+
+        public const long TableEntityFixedBodyBytes = 51;
+        public const long TableEntityFixedRecordBytes = 8 + TableEntityFixedBodyBytes;
+        public const ulong TableEntityFixedHash = 0x46b300904afc1aa9ul;
+
+        public static readonly byte[] TableEntityFixedLayout = new byte[] {
+            0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
+            0x00, 0x0e, 0x00, 0x00, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb,
+            0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d,
+            0xb5, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6,
+            0xa9, 0x53, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6,
+            0xe6, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb,
+            0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60,
+            0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9,
+            0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00,
+            0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f,
+            0x8d, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d,
+            0xcd, 0xd9, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae,
+            0x16, 0xdc, 0x04, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41,
+            0xc3, 0x3b, 0xe5, 0x35, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde,
+            0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3,
+            0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0,
+            0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        };
+        public const long TableEntityFixedLayoutBytes = 514;
+
+        public static readonly TableFixedDst[] TableEntityFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // TableEntity
+            new TableFixedDst(0, 0, 0, 0, 0), // entity_id
+            new TableFixedDst(1, 0, 0, 0, 0), // pos_x
+            new TableFixedDst(2, 0, 0, 0, 0), // pos_y
+            new TableFixedDst(3, 0, 0, 0, 0), // pos_z
+            new TableFixedDst(4, 0, 0, 0, 0), // yaw
+            new TableFixedDst(5, 0, 0, 0, 0), // pitch
+            new TableFixedDst(6, 0, 0, 0, 0), // vel_x
+            new TableFixedDst(7, 0, 0, 0, 0), // vel_y
+            new TableFixedDst(8, 0, 0, 0, 0), // vel_z
+            new TableFixedDst(9, 0, 0, 0, 0), // health
+            new TableFixedDst(10, 0, 0, 0, 0), // weapon
+            new TableFixedDst(0, 0, 0, 0, 0), // Fists
+            new TableFixedDst(0, 0, 0, 0, 0), // Pistol
+            new TableFixedDst(0, 0, 0, 0, 0), // Shotgun
+            new TableFixedDst(0, 0, 0, 0, 0), // Rifle
+            new TableFixedDst(0, 0, 0, 0, 0), // Sniper
+            new TableFixedDst(0, 0, 0, 0, 0), // Smg
+            new TableFixedDst(0, 0, 0, 0, 0), // Rocket
+            new TableFixedDst(0, 0, 0, 0, 0), // Grenade
+            new TableFixedDst(0, 0, 0, 0, 0), // Plasma
+            new TableFixedDst(0, 0, 0, 0, 0), // Railgun
+            new TableFixedDst(0, 0, 0, 0, 0), // Flamer
+            new TableFixedDst(0, 0, 0, 0, 0), // Mine
+            new TableFixedDst(0, 0, 0, 0, 0), // Turret
+            new TableFixedDst(0, 0, 0, 0, 0), // Drone
+            new TableFixedDst(0, 0, 0, 0, 0), // Repair
+            new TableFixedDst(11, 0, 0, 0, 0), // damage
+            new TableFixedDst(12, 0, 0, 0, 0), // moving
+            new TableFixedDst(13, 0, 0, 0, 0), // firing
+        };
+
+        public static readonly TableFixedSlot<TableEntity>[] TableEntityFixedSlots = new TableFixedSlot<TableEntity>[] {
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.EntityId = (uint)v),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosX = unchecked((int)v)),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosY = unchecked((int)v)),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosZ = unchecked((int)v)),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Yaw = (uint)v),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Pitch = (uint)v),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelX = unchecked((int)v)),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelY = unchecked((int)v)),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelZ = unchecked((int)v)),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Health = unchecked((int)v)),
+            new TableFixedSlot<TableEntity>(setRawReport: (t, v, rep) => { if (v > 15) { t.Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Weapon = (TableWeapon)v; } }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Damage = v),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Moving = v != 0),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Firing = v != 0),
+        };
+
+        public static readonly TableFixedPlan TableEntityFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(12u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 4u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(20u, 5u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 6u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(28u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(36u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(41u, 11u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(49u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(50u, 13u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long TableEntityFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + TableEntityFixedLayoutBytes + count * TableEntityFixedRecordBytes;
+        }
+
+        public static long TableEntityFixedSave(ReadOnlySpan<TableEntity> values, Span<byte> buffer)
+        {
+            long need = TableEntityFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableEntityFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)TableEntityFixedLayoutBytes);
+            TableEntityFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)TableEntityFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, TableEntityFixedHash);
+                at.Slice(8, (int)TableEntityFixedBodyBytes).Clear();
+                TableEntityFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)TableEntityFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long TableEntityFixedSave(TableEntity[] values, Span<byte> buffer)
+        {
+            return TableEntityFixedSave((ReadOnlySpan<TableEntity>)values, buffer);
+        }
+
+        public static long TableEntityFixedSave(TableEntity value, Span<byte> buffer)
+        {
+            ReadOnlySpan<TableEntity> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return TableEntityFixedSave(span, buffer);
+        }
+
+        public static long TableEntityFixedLoad(
+            Span<TableEntity> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = TableEntityFixedPlan;
+            long record_bytes = TableEntityFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != TableEntityFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, TableEntityFixedLayout, TableEntityFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new TableEntity(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, TableEntityFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long TableEntityFixedLoad(TableEntity[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return TableEntityFixedLoad((Span<TableEntity>)values, data, plan, report);
+        }
+
+        public static long TableEntityFixedLoad(TableEntity value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<TableEntity> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return TableEntityFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            TableEntity dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, TableEntityFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- TableStat, the fixed form ----
+
+        public const long TableStatFixedBodyBytes = 8;
+        public const long TableStatFixedRecordBytes = 8 + TableStatFixedBodyBytes;
+        public const ulong TableStatFixedHash = 0x7a16907ec6b21eceul;
+
+        public static readonly byte[] TableStatFixedLayout = new byte[] {
+            0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long TableStatFixedLayoutBytes = 55;
+
+        public static readonly TableFixedDst[] TableStatFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // TableStat
+            new TableFixedDst(0, 0, 0, 0, 0), // stat_id
+            new TableFixedDst(1, 0, 0, 0, 0), // delta
+        };
+
+        public static readonly TableFixedSlot<TableStat>[] TableStatFixedSlots = new TableFixedSlot<TableStat>[] {
+            new TableFixedSlot<TableStat>(setRaw: (t, v) => t.StatId = (uint)v),
+            new TableFixedSlot<TableStat>(setRaw: (t, v) => t.Delta = unchecked((int)v)),
+        };
+
+        public static readonly TableFixedPlan TableStatFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long TableStatFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + TableStatFixedLayoutBytes + count * TableStatFixedRecordBytes;
+        }
+
+        public static long TableStatFixedSave(ReadOnlySpan<TableStat> values, Span<byte> buffer)
+        {
+            long need = TableStatFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableStatFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)TableStatFixedLayoutBytes);
+            TableStatFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)TableStatFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, TableStatFixedHash);
+                at.Slice(8, (int)TableStatFixedBodyBytes).Clear();
+                TableStatFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)TableStatFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long TableStatFixedSave(TableStat[] values, Span<byte> buffer)
+        {
+            return TableStatFixedSave((ReadOnlySpan<TableStat>)values, buffer);
+        }
+
+        public static long TableStatFixedSave(TableStat value, Span<byte> buffer)
+        {
+            ReadOnlySpan<TableStat> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return TableStatFixedSave(span, buffer);
+        }
+
+        public static long TableStatFixedLoad(
+            Span<TableStat> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = TableStatFixedPlan;
+            long record_bytes = TableStatFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != TableStatFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, TableStatFixedLayout, TableStatFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new TableStat(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, TableStatFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long TableStatFixedLoad(TableStat[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return TableStatFixedLoad((Span<TableStat>)values, data, plan, report);
+        }
+
+        public static long TableStatFixedLoad(TableStat value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<TableStat> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return TableStatFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            TableStat dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, TableStatFixedSlots, src, dst, report, planBytes);
         }
     }
 

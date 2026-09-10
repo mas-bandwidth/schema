@@ -1,0 +1,7 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
+# Paths are repository-relative.
+#
+# Nothing yet: bench/tables/java/TableMain.java names the generated ROOT type
+# (`bench.FixedTableFixed`) and its runtime, which are not corpus vocabulary,
+# and no field, pinned value or wire size.
