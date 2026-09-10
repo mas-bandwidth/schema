@@ -883,6 +883,39 @@ static void bounds_case()
         check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
     }
 
+    // 1b. A COMPILED PLAN FROM THIS BUILD'S OWN LAYOUT. The identity plan
+    // copies; a compiled plan clamps. The loop alone, without the storage
+    // pass, must already hold the range — which is what says the clamp is a
+    // plan entry on this path, and only on this path.
+    {
+        tblfx1::TableFixedLayoutView parsed;
+        tblfx1::TableMessageReason why = tblfx1::layout_malformed;
+        check( tblfx1::TableFixedParseLayout( tblfx1::FxRootFixedLayout, tblfx1::FxRootFixedLayoutBytes, parsed, why ),
+               "bounds, compiled-own: this build's layout parses" );
+        std::vector<tblfx1::TableFixedEntry> compiled( 1024 );
+        int32_t guarded = 0;
+        tblfx1::TableReport cr;
+        const int32_t made = tblfx1::TableFixedCompile( parsed, tblfx1::FxRootFixedLayout, (int32_t) tblfx1::FxRootFixedLayoutBytes,
+                                                        tblfx1::FxRootFixedDst, compiled.data(), 1024, &guarded, &cr );
+        check( made > 0, "bounds, compiled-own: the plan compiles" );
+        int32_t clamp_ops = 0;
+        for ( int32_t i = 0; i < made; ++i )
+        {
+            if ( compiled[(size_t) i].op == tblfx1::kTableFixedClamp ) { clamp_ops++; }
+        }
+        check( clamp_ops >= 2, "bounds, compiled-own: ranged scalars are clamp ops" );
+
+        tblfx1::FxRoot held;
+        tblfx1::FxRootReset( held );
+        tblfx1::TableReport r;
+        const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+        tblfx1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        check( held.renamed == 1000 && held.gone == 0,
+               "COMPILED CLAMP: the loop alone holds a ranged integer" );
+        check( r.clamped == 2, "COMPILED CLAMP: and counts the same two" );
+        check( held.nested.a == 111 && held.nested.b == 222, "COMPILED CLAMP: an in-range neighbour is untouched" );
+    }
+
     // 2. THE SAME NUMBERS THROUGH A COMPILED PLAN. FX2 reads the same record
     // through a plan compiled from FX1's layout, and the bound is the same one.
     {
@@ -930,6 +963,58 @@ static void bounds_case()
                "bounds: the enum record reads" );
         check( back.grade == tblv1::Grade::None, "ORDINAL: an ordinal past the enum's top value lands None" );
         check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
+    }
+
+    // 5. LIVE COUNT, NEVER SLACK. A counted array of ranged integers: the
+    // compiled plan must not emit one clamp per declared slot (Go #852), and
+    // the loop alone must leave a live out-of-range element standing so the
+    // storage pass can count it. Identity and compiled-own then match.
+    {
+        tblv1::Cfg v;
+        tblv1::CfgReset( v );
+        v.a = 5000;           // | min = 0, max = 1000
+        v.items_count = 1;
+        v.items[0] = 300;     // | min = 0, max = 255
+        std::vector<uint8_t> vw( (size_t) tblv1::CfgFixedMeasure( 1 ) );
+        check( tblv1::CfgFixedSave( &v, 1, vw.data(), (int64_t) vw.size() ) == (int64_t) vw.size(), "live-count: V1 save" );
+
+        tblv1::Cfg identity;
+        tblv1::TableReport ir;
+        std::vector<tblv1::TableFixedEntry> iplan( 8192 );
+        check( tblv1::CfgFixedLoad( &identity, 1, vw.data(), (int64_t) vw.size(), iplan.data(), 8192, &ir ) == 1,
+               "live-count: identity reads" );
+        check( identity.a == 1000 && identity.items[0] == 255, "live-count, identity: both live values clamp" );
+        check( ir.clamped == 2, "live-count, identity: two clamps, slack never" );
+
+        tblv1::TableFixedLayoutView parsed;
+        tblv1::TableMessageReason why = tblv1::layout_malformed;
+        check( tblv1::TableFixedParseLayout( tblv1::CfgFixedLayout, tblv1::CfgFixedLayoutBytes, parsed, why ),
+               "live-count: this build's layout parses" );
+        std::vector<tblv1::TableFixedEntry> compiled( 8192 );
+        int32_t guarded = 0;
+        tblv1::TableReport cr;
+        const int32_t made = tblv1::TableFixedCompile( parsed, tblv1::CfgFixedLayout, (int32_t) tblv1::CfgFixedLayoutBytes,
+                                                       tblv1::CfgFixedDst, compiled.data(), 8192, &guarded, &cr );
+        check( made > 0, "live-count: the plan compiles" );
+        int32_t clamp_ops = 0;
+        for ( int32_t i = 0; i < made; ++i )
+        {
+            if ( compiled[(size_t) i].op == tblv1::kTableFixedClamp ) { clamp_ops++; }
+        }
+        check( clamp_ops >= 1 && clamp_ops < 8,
+               "live-count: compiled plan does not emit one clamp per counted-array slot" );
+
+        tblv1::Cfg held;
+        tblv1::CfgReset( held );
+        tblv1::TableReport r;
+        const uint8_t * body = vw.data() + tblv1::kTableFixedHeaderBytes + 4 + tblv1::CfgFixedLayoutBytes + 8;
+        tblv1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        check( held.a == 1000, "live-count, compiled loop: the scalar clamp op fired" );
+        check( held.items[0] == 300, "live-count, compiled loop: the live array element is not a plan clamp" );
+        check( r.clamped == 1, "live-count, compiled loop: one clamp, the scalar's" );
+        tblv1::CfgFixedClamp( held, &r );
+        check( held.items[0] == 255, "live-count, compiled pass: the live element clamps after the copy" );
+        check( r.clamped == 2, "live-count: identity and compiled count the same two" );
     }
 }
 
