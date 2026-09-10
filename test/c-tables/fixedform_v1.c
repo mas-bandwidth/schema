@@ -72,7 +72,7 @@ void fixed_v1_bounds( void )
         fixed_check( n2 == cfg_fixed_measure( 1 ), "C live-count: V1 save" );
 
         memset( &ident_r, 0, sizeof( ident_r ) );
-        fixed_check( cfg_fixed_load( &ident, 1, file2, n2, plan, 8192, &ident_r ) == 1,
+        fixed_check( cfg_fixed_load( &ident, 1, file2, n2, plan, 8192, NULL, &ident_r ) == 1,
                      "C live-count: identity reads" );
         fixed_check( ident.a == 1000 && ident.items[0] == 255, "C live-count, identity: both live values clamp" );
         fixed_check( ident_r.clamped == 2, "C live-count, identity: two clamps, slack never" );

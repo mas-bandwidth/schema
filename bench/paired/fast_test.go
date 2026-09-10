@@ -178,25 +178,31 @@ func TestFastScheduleRefusesAPermanentlyShortLeg(t *testing.T) {
 // nothing to divide, and a summary that quietly showed 100% for the only leg
 // present would read as a comparison that was never made.
 func TestFastSummaryOfATableOnlyLanguagePrintsNoRatio(t *testing.T) {
-	lang := tableOnlyLanguages[0]
-	e := fastEvidence{Config: fastConfig{Rounds: 1, Noise: "background recorded"}, Qualification: "Non-certified diagnostic", FinalCounts: map[string]int64{"table": 6400}}
-	e.Attempts = append(e.Attempts, fastAttempt{Language: lang, Wire: "table", Iterations: 6400, Adequate: true, Metrics: []fastMetric{{Path: "write", Rate: 1795168}, {Path: "round_trip", Rate: 604972}}})
-	dir := t.TempDir()
-	if err := writeFastSummary(dir, []string{lang}, e); err != nil {
-		t.Fatal(err)
-	}
-	b, err := os.ReadFile(filepath.Join(dir, "README.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(b)
-	if !strings.Contains(text, "| "+names[lang]+" | table | round_trip |") {
-		t.Fatal(text)
-	}
-	if strings.Contains(text, "vs Packet Wire %") || strings.Contains(text, "Packet and") {
-		t.Fatal("a table-only diagnostic claimed a packet leg:", text)
-	}
-	if !strings.Contains(text, "NO RATIO.") || !strings.Contains(text, "no Packet leg and 6,400 Table") {
-		t.Fatal(text)
+	// EVERY table-only language, not the first one: rust and java each arrived
+	// with their own reason for having one wire, and the claim under test is
+	// the summary's, so it is made once per language that can reach it.
+	for _, lang := range tableOnlyLanguages {
+		t.Run(lang, func(t *testing.T) {
+			e := fastEvidence{Config: fastConfig{Rounds: 1, Noise: "background recorded"}, Qualification: "Non-certified diagnostic", FinalCounts: map[string]int64{"table": 6400}}
+			e.Attempts = append(e.Attempts, fastAttempt{Language: lang, Wire: "table", Iterations: 6400, Adequate: true, Metrics: []fastMetric{{Path: "write", Rate: 21333333}, {Path: "round_trip", Rate: 6411220}}})
+			dir := t.TempDir()
+			if err := writeFastSummary(dir, []string{lang}, e); err != nil {
+				t.Fatal(err)
+			}
+			b, err := os.ReadFile(filepath.Join(dir, "README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(b)
+			if !strings.Contains(text, "| "+names[lang]+" | table | round_trip |") {
+				t.Fatal(text)
+			}
+			if strings.Contains(text, "vs Packet Wire %") || strings.Contains(text, "Packet and") {
+				t.Fatal("a table-only diagnostic claimed a packet leg:", text)
+			}
+			if !strings.Contains(text, "NO RATIO.") || !strings.Contains(text, "no Packet leg and 6,400 Table") {
+				t.Fatal(text)
+			}
+		})
 	}
 }

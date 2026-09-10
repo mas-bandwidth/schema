@@ -32,19 +32,32 @@ var languages = []string{"cpp", "c", "go", "cs"}
 
 // A TABLE-ONLY LANGUAGE measures the table wire and NEVER a ratio.
 //
-// java is here because its packet leg is not this driver's to run rather than
-// because somebody chose to skip it: bench/java/Main.java is the type board's
-// runner, with neither `--gate` nor `--iterations` — the two flags this driver
-// passes on every invocation — and the paired set above is the four the board
-// is defined over. The table leg (bench/tables/java/TableMain.java) is this
+// rust is here because its packet leg does not meet this driver's contract
+// rather than because somebody chose to skip it. bench/rust/src/main.rs is a
+// real, maintained packet runner — its CSV is already the seventeen columns —
+// and it still cannot be invoked here: it has neither `--gate` nor
+// `--iterations`, the two flags this driver passes on every invocation
+// (`--iterations` is how one uniform count is held across every language and
+// round, §2.1, and `--gate` is the no-clock correctness pass), it reports the
+// median of seven runs of its own choosing where this driver requires one
+// measured run per round and aggregates across rounds itself, and it measures
+// the packet corpus's own variant set rather than this pairing's. Those are
+// three changes to a leg whose numbers are already published, so they are
+// separate work with their own ruling; filling this driver's second wire with
+// a fabricated row would be inventing a measurement. So rust rides the table
+// wire alone and appears in no ratio, no confirmation pass and no board.
+//
+// java is here for the same reason arrived at down a different road:
+// bench/java/Main.java is the TYPE BOARD's runner, with neither `--gate` nor
+// `--iterations` either, and the paired set above is the four the board is
+// defined over. The table leg (bench/tables/java/TableMain.java) is this
 // driver's own shape. A packet leg here is separate work with its own ruling,
-// and filling this driver's second wire with a fabricated row would be
-// inventing a measurement, so java rides the table wire alone and appears in
-// no ratio, no confirmation pass and no board; its packet number is the type
-// board's, measured by its own runner over the same sixty-four records.
-var tableOnlyLanguages = []string{"java"}
+// so java too rides the table wire alone and appears in no ratio, no
+// confirmation pass and no board; its packet number is the type board's,
+// measured by its own runner over the same sixty-four records.
+var tableOnlyLanguages = []string{"rust", "java"}
 
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "java": "Java"}
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "rust": "Rust", "java": "Java"}
 
 func allLanguages() []string {
 	return append(append([]string{}, languages...), tableOnlyLanguages...)
@@ -114,12 +127,21 @@ func cpuName() string {
 type command struct {
 	args []string
 	dir  string
+	// env carries ADDITIONAL settings for this one command, appended to the
+	// driver's own environment. It exists for the Rust leg, whose optimization
+	// level is a cargo setting rather than a compiler flag on a command line,
+	// and it is never the whole environment: nothing here drops what the
+	// operator already exported.
+	env []string
 }
 
 func execute(c command) error {
-	fmt.Fprintln(os.Stderr, "+", c.args[0], strings.Join(c.args[1:], " "))
+	fmt.Fprintln(os.Stderr, "+", strings.Join(append(c.env, c.args...), " "))
 	cmd := exec.Command(c.args[0], c.args[1:]...)
 	cmd.Dir = c.dir
+	if len(c.env) > 0 {
+		cmd.Env = append(os.Environ(), c.env...)
+	}
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
@@ -127,6 +149,9 @@ func execute(c command) error {
 func capture(c command) ([]byte, error) {
 	cmd := exec.Command(c.args[0], c.args[1:]...)
 	cmd.Dir = c.dir
+	if len(c.env) > 0 {
+		cmd.Env = append(os.Environ(), c.env...)
+	}
 	cmd.Stderr = os.Stderr
 	return cmd.Output()
 }
@@ -166,13 +191,70 @@ func binary(wire, lang string) string {
 	return p
 }
 
-// generatedModules names the generated sources an interpreted leg loads, so
-// readBuild verifies them the way it verifies a compiled leg's binary. It is a
-// GLOB and not a list: the emitter decides how many modules a unit has, and a
-// list here would be one more place to keep in step with it — and one more
-// place naming a corpus type, which this driver has no business doing.
+// cargoExecutable names the cargo the Rust leg builds with. make/rust.mk finds
+// it in the rustup keg, which is not on PATH by default, and PREFERS it —
+// prepending RUSTUP_BIN — so the paired leg is built by the same cargo the rest
+// of the Rust leg's gates use rather than by whatever a shell happens to
+// expose. build.json records its version either way.
+// The cargo target directory: under build/, which is not tracked, so a paired
+// build never leaves artefacts beside a runner's source.
+const rustTargetDir = "build/paired/rust"
+
+// The Rust unit's manifest is tracked and hand-written (generated/bench/paired/
+// rust/Cargo.toml says why). pointRustManifest requires it and, when
+// SERIALIZE_RS names a checkout other than the sibling the manifest carries,
+// rewrites THAT ONE LINE — which dirties a tracked file on purpose: the
+// operator changed the build, and build.json's `dirty` should say so.
+func pointRustManifest() error {
+	const manifest = "generated/bench/paired/rust/Cargo.toml"
+	b, e := os.ReadFile(manifest)
+	if e != nil {
+		return fmt.Errorf("the paired rust unit's manifest is missing (%s); it is tracked build wiring, not generator output: %w", manifest, e)
+	}
+	override := os.Getenv("SERIALIZE_RS")
+	if strings.TrimSpace(override) == "" {
+		return nil
+	}
+	lines := strings.Split(string(b), "\n")
+	found := false
+	for i, line := range lines {
+		if strings.HasPrefix(line, "serialize = ") {
+			lines[i] = "serialize = { package = \"serialize-official\", path = \"" + abs(override) + "\" }"
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("%s carries no serialize dependency line to point at SERIALIZE_RS", manifest)
+	}
+	return os.WriteFile(manifest, []byte(strings.Join(lines, "\n")), 0644)
+}
+func cargoExecutable() string { return rustupTool("CARGO", "cargo") }
+
+// rustcExecutable names the compiler behind that cargo. It is recorded for the
+// same reason `cc --version` is: the codegen is the compiler's, not the build
+// tool's.
+func rustcExecutable() string { return rustupTool("RUSTC", "rustc") }
+
+func rustupTool(env, name string) string {
+	if s := os.Getenv(env); s != "" {
+		return s
+	}
+	keg := filepath.Join(setting("RUSTUP_BIN", "/opt/homebrew/opt/rustup/bin"), name)
+	if _, e := os.Stat(keg); e == nil {
+		return keg
+	}
+	return name
+}
+
+// generatedModules names the generated sources a leg COMPILES rather than
+// links, so readBuild verifies them the way it verifies a compiled leg's
+// binary. It is a GLOB and not a list: the emitter decides how many modules a
+// unit has, and a list here would be one more place to keep in step with it —
+// and one more place naming a corpus type, which this driver has no business
+// doing. Only java answers it: rust's unit is inside its binary, and the
+// binary's own hash already covers it.
 func generatedModules(lang string) ([]string, error) {
-	if !contains(tableOnlyLanguages, lang) {
+	if lang != "java" {
 		return nil, nil
 	}
 	found, err := filepath.Glob(filepath.Join("generated", "bench", "paired", lang, "*."+lang))
@@ -395,6 +477,39 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+		case "rust":
+			// THE MANIFEST IS BUILD WIRING AND IS TRACKED (the Rust emitter
+			// writes only .rs files; make/rust.mk says the same of every other
+			// Rust unit's Cargo.toml), so this step does not write it — it
+			// requires it, and repairs only the ONE line an operator can move:
+			// the serialize.rs sibling path, when SERIALIZE_RS names another
+			// checkout. Left alone, nothing under generated/ is touched.
+			if e := pointRustManifest(); e != nil {
+				return e
+			}
+			// The optimization level is a CARGO SETTING, not a flag on a
+			// command line, so it is set on the build and stamped into the
+			// binary through the same option_env! seam the packet Rust leg
+			// opened: a row's `opt` column then says what the build actually
+			// was instead of repeating a constant nobody checked.
+			cargoEnv := []string{"BENCH_OPT=" + opt, "CARGO_PROFILE_RELEASE_OPT_LEVEL=" + strings.TrimPrefix(opt, "O")}
+			if e := execute(command{args: []string{cargoExecutable(), "build", "--release", "--quiet", "--manifest-path", "bench/tables/rust/Cargo.toml", "--target-dir", rustTargetDir}, env: cargoEnv}); e != nil {
+				return e
+			}
+			// Replace the inode rather than writing over it: a copy onto a
+			// binary another process is running corrupts it in place, and a
+			// long sitting runs this one (make/rust.mk's conformance target
+			// carries the same note for the same reason).
+			built, e := os.ReadFile(filepath.Join(rustTargetDir, "release", "table-rust"))
+			if e != nil {
+				return e
+			}
+			if e = os.Remove(binary("table", lang)); e != nil && !os.IsNotExist(e) {
+				return e
+			}
+			if e = os.WriteFile(binary("table", lang), built, 0755); e != nil {
+				return e
+			}
 		case "java":
 			// The generated unit and the runner, compiled beside each other
 			// into one classpath under the same javac flags the Java legs
@@ -429,7 +544,7 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "java": {javaExecutable(), "--version"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
@@ -480,9 +595,21 @@ func generateAndBuild(langs []string) error {
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
 	info.Tools["c_packet_flags"] = strings.Join(cFlags, " ")
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
-	// The Java leg's compile is the JDK's own, and what decides its code is
-	// the JIT, which the tools map above carries by version.
-	info.Tools["java_table_flags"] = "javac --release 17 -Xlint:all -Werror; java default (JIT, no -ea)"
+	if contains(langs, "rust") {
+		// The Rust leg's "flags" are cargo settings; the level is also stamped
+		// into the binary, so a row's `opt` column and this line agree or the
+		// build is not the one that ran.
+		info.Tools["rust_table_flags"] = "cargo build --release; BENCH_OPT=" + opt + " CARGO_PROFILE_RELEASE_OPT_LEVEL=" + strings.TrimPrefix(opt, "O")
+		info.Runtimes["serialize.rs"] = gitValue(abs(setting("SERIALIZE_RS", "../serialize.rs")), "rev-parse", "HEAD")
+		if gitValue(abs(setting("SERIALIZE_RS", "../serialize.rs")), "diff", "--name-only", "HEAD", "--") != "" {
+			info.Runtimes["serialize.rs"] += "-dirty"
+		}
+	}
+	if contains(langs, "java") {
+		// The Java leg's compile is the JDK's own, and what decides its code is
+		// the JIT, which the tools map above carries by version.
+		info.Tools["java_table_flags"] = "javac --release 17 -Xlint:all -Werror; java default (JIT, no -ea)"
+	}
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {
 		return err
