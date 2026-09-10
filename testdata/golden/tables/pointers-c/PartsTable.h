@@ -4903,8 +4903,8 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_fixed_clamp_body_( Stamp * value, int32_t * clamped )
 {
     (void) value; (void) clamped;
-    if ( value->seq < 0 ) { value->seq = 0; (*clamped)++; }
-    else if ( value->seq > 1000 ) { value->seq = 1000; (*clamped)++; }
+    (*clamped) += (int) ( value->seq < 0 ) | (int) ( value->seq > 1000 );
+    value->seq = ( value->seq < 0 ) ? 0 : ( ( value->seq > 1000 ) ? 1000 : value->seq );
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
