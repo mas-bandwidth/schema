@@ -1,7 +1,7 @@
 /* THE FIXED FORM'S VERSIONING CONFORMANCE, C leg (docs/SPEC-TABLES.md §3.4).
    The C++ reference is test/tables/fixedform_main.cpp and this holds the same
    invariant: a fixed record is positional BY PLAN, and the positions are the
-   WRITER's block and never the reader's own layout.
+   WRITER's LAYOUT and never the reader's own declaration.
 
    ONE UNIT PER TRANSLATION UNIT. C has no namespace, so the reference's
    tblfx1::FxRoot beside tblfx2::FxRoot has no C spelling: two generations of

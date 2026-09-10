@@ -2,9 +2,10 @@
 //
 // The reference is internal/codegen/cpptable and this port matches it BYTE FOR
 // BYTE, which is the only thing a fixed record's reader can rely on: the sizes,
-// the vocabulary block's pre-order walk, the block's bytes and its hash are all
-// ir's (ir/fixedform.go) and neither backend computes them a second time. What
-// this file spells for itself is C.
+// the LAYOUT's pre-order walk, the layout's bytes and its hash are all ir's
+// (ir/fixedform.go), the ROOT SELECTION is ir's too (ir.TableFixedEmitted), and
+// neither backend computes any of it a second time. What this file spells for
+// itself is C.
 //
 // TWO C-SHAPED DIFFERENCES, and each is the C form of one C++ mechanism rather
 // than a new idea:
@@ -36,17 +37,13 @@ import (
 // WHICH TABLES CARRY THE FORM
 // ---------------------------------------------------------------------------
 
-// fixedRoots is every table of this file the fixed form is emitted for, on the
-// reference's own terms (internal/codegen/cpptable): a table, not a map entry,
-// not variable, whose whole closure §3.4 lays out, and whose leaf count fits
-// one plan.
+// fixedRoots is every table of this file the fixed form is emitted for, and the
+// ANSWER IS ir's (ir.TableFixedEmitted) — the same call the C++ reference makes,
+// so the two legs cannot carry the form for different sets of types.
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range members {
-		if !st.IsTable || st.IsMapEntry() || g.isVar(st.Name) || !ir.FixedSupported(st, 0) {
-			continue
-		}
-		if ir.FixedLeafCount(g.unit, st) > ir.FixedLeafCap {
+		if g.isVar(st.Name) || !ir.TableFixedEmitted(g.unit, st) {
 			continue
 		}
 		out = append(out, st)
@@ -87,11 +84,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 		return
 	}
 	g.pf("/* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----\n\n")
-	g.pf("   A record is an eight-byte hash of the writer's vocabulary block and then\n")
+	g.pf("   A record is an eight-byte hash of the writer's LAYOUT and then\n")
 	g.pf("   the values in declared order, every field at its declared storage width.\n")
 	g.pf("   The writer is the constant bytes memcpy'd and then stores; the reader is\n")
 	g.pf("   ONE loop over ONE plan, the identity plan here and a plan compiled from\n")
-	g.pf("   the writer's own block for anybody else. */\n\n")
+	g.pf("   the writer's own layout for anybody else. */\n\n")
 	seen := map[string]bool{}
 	var order []*ir.Struct
 	for _, st := range roots {
@@ -121,7 +118,7 @@ func (g *tableGen) emitFixedLayoutAsserts(order []*ir.Struct) {
 	g.pf("   at build time, one line per fact the plans rest on. */\n")
 	unions := map[string]bool{}
 	for _, st := range order {
-		for _, m := range ir.FixedMembers(g.unit, st) {
+		for _, m := range ir.TableFixedMembers(g.unit, st) {
 			if m.Member == "" {
 				g.pf("SCHEMA_TABLE_STATIC_ASSERT( fixed_%s_size, sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n",
 					ir.RustSnake(m.Owner), m.Owner, m.Value, m.Owner)
@@ -159,7 +156,7 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitFixedWriteField(f, off, "b", "value->", 4)
-		off += ir.FixedFieldBytes(f)
+		off += ir.TableFixedFieldBytes(f)
 	}
 	g.pf("}\n\n")
 }
@@ -169,7 +166,7 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 	base := off
 	if f.Type.Optional {
 		g.pf("%stable_fixed_put8( %s + %d, %s%s_present ? 1 : 0 );\n", ind, buf, base, val, f.Name)
-		base += ir.FixedPresentBytes
+		base += ir.TableFixedPresentBytes
 	}
 	switch {
 	case f.KeyEnum != "":
@@ -178,7 +175,7 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 		g.emitFixedWriteLoop(f, base, f.ArrayBound, buf, val+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_count );\n", ind, buf, base, val, f.Name)
-		g.emitFixedWriteLoop(f, base+ir.FixedCountBytes, f.ArrayBound, buf, val+f.Name, indent)
+		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, f.ArrayBound, buf, val+f.Name, indent)
 	case f.Type.Kind == ir.TString:
 		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_length );\n", ind, buf, base, val, f.Name)
 		g.pf("%smemcpy( %s + %d, %s%s, %d );\n", ind, buf, base+4, val, f.Name, f.Type.Size)
@@ -195,7 +192,7 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, count int64, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
-	elem := ir.FixedElementBytes(f)
+	elem := ir.TableFixedElementBytes(f)
 	g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < %d; ++i )\n%s    {\n", ind, ind, ind, count, ind)
 	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
@@ -228,7 +225,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		}
 	}
-	w := ir.FixedStorageBytes(f.Type)
+	w := ir.TableFixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:
 		g.pf("%stable_fixed_put8( %s + %d, %s ? 1 : 0 );\n", ind, buf, off, expr)
@@ -252,10 +249,10 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 // ---- the root's surface ----------------------------------------------------
 
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
-	entries := ir.FixedWalkRoot(st)
-	block := ir.FixedBlockBytes(entries)
-	hash := ir.FixedBlockHash(block)
-	body := ir.FixedTypeBytes(st)
+	entries := ir.TableFixedWalkRoot(st)
+	layout := ir.TableFixedLayoutBytes(entries)
+	hash := ir.TableFixedLayoutHash(layout)
+	body := ir.TableFixedTypeBytes(st)
 	n := ir.RustSnake(st.Name)
 
 	g.pf("/* ---- %s, the fixed form ---- */\n\n", st.Name)
@@ -263,26 +260,27 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   value the type can hold (docs/SPEC-TABLES.md §3.4). */\n")
 	g.pf("static SCHEMA_UNUSED const int64_t %s_fixed_body_bytes = %d;\n", n, body)
 	g.pf("static SCHEMA_UNUSED const int64_t %s_fixed_record_bytes = 8 + %d; /* the hash and the body */\n", n, body)
-	g.pf("static SCHEMA_UNUSED const uint64_t %s_fixed_hash = 0x%016xull; /* fnv1a64 over the block's bytes */\n\n", n, hash)
+	g.pf("static SCHEMA_UNUSED const uint64_t %s_fixed_hash = 0x%016xull; /* fnv1a64 over the layout's bytes */\n\n", n, hash)
 
-	g.pf("/* THE VOCABULARY BLOCK: %d entries, a PRE-ORDER walk of the closure in the\n", len(entries))
-	g.pf("   writer's declared order. Every byte is settled by the schema compiler. */\n")
-	g.pf("static SCHEMA_UNUSED const uint8_t %s_fixed_vocab[] = {\n", n)
-	g.emitFixedByteArray(block)
+	g.pf("/* THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
+	g.pf("   PRE-ORDER walk of the closure in the writer's declared order.\n")
+	g.pf("   Every byte is settled by the schema compiler. */\n")
+	g.pf("static SCHEMA_UNUSED const uint8_t %s_fixed_layout[] = {\n", n)
+	g.emitFixedByteArray(layout)
 	g.pf("};\n")
-	g.pf("static SCHEMA_UNUSED const int64_t %s_fixed_vocab_bytes = (int64_t) sizeof( %s_fixed_vocab );\n\n", n, n)
+	g.pf("static SCHEMA_UNUSED const int64_t %s_fixed_layout_bytes = (int64_t) sizeof( %s_fixed_layout );\n\n", n, n)
 
-	g.pf("/* MY SIDE of the block, one row per entry: the storage facts a block entry\n")
-	g.pf("   cannot carry, which is what a plan compiled from another writer's block\n")
-	g.pf("   lands values through. */\n")
+	g.pf("/* MY SIDE of the layout, one row per entry: the storage facts a layout\n")
+	g.pf("   entry cannot carry, which is what a plan compiled from another writer's\n")
+	g.pf("   layout lands values through. */\n")
 	g.pf("static SCHEMA_UNUSED const TableFixedDst %s_fixed_dst[] = {\n", n)
 	for _, e := range entries {
 		g.pf("    %s, /* %s */\n", g.fixedDstRow(e), e.Note)
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.FixedBuildPlan(g.unit, st)
-	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.FixedLeafCount(g.unit, st))
+	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
+	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
 	g.pf("   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,\n")
@@ -291,7 +289,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for _, e := range plan {
 		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
-		if e.Guard != ir.FixedNoGuard {
+		if e.Guard != ir.TableFixedNoGuard {
 			guard = fmt.Sprintf("%du", e.Guard)
 		}
 		g.pf("    { %du, %du, %du, %du, %s, %s, %d, 0, 0 }, /* %s */\n",
@@ -301,19 +299,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_guarded = %d;\n\n", n, guarded)
 
-	g.pf("/* A FILE: the form byte, the block, then the records to the end of it. */\n")
+	g.pf("/* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)\n")
+	g.pf("   — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
+	g.pf("   then the layout behind its u32 length, then the records to the end of it. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( int64_t count )\n{\n", g.api(st.Name, "fixed_measure"))
-	g.pf("    return 1 + 4 + (int64_t) sizeof( %s_fixed_vocab ) + count * ( 8 + %d );\n}\n\n", n, body)
+	g.pf("    return kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout ) + count * ( 8 + %d );\n}\n\n", n, body)
 
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n",
 		g.api(st.Name, "fixed_save"), st.Name)
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); /* the seven reserved bytes, and the rest of the header */\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
-	g.pf("    table_fixed_put32( buffer + 1, (uint32_t) sizeof( %s_fixed_vocab ) );\n", n)
-	g.pf("    memcpy( buffer + 5, %s_fixed_vocab, sizeof( %s_fixed_vocab ) );\n", n, n)
-	g.pf("    at = buffer + 5 + (int64_t) sizeof( %s_fixed_vocab );\n", n)
+	g.pf("    table_fixed_put64( buffer + kTableFixedHashAt, %s_fixed_hash );\n", n)
+	g.pf("    table_fixed_put32( buffer + kTableFixedHeaderBytes, (uint32_t) sizeof( %s_fixed_layout ) );\n", n)
+	g.pf("    memcpy( buffer + kTableFixedHeaderBytes + 4, %s_fixed_layout, sizeof( %s_fixed_layout ) );\n", n, n)
+	g.pf("    at = buffer + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( %s_fixed_layout );\n", n)
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	g.pf("        table_fixed_put64( at, %s_fixed_hash );\n", n)
 	g.pf("        memset( at + 8, 0, (size_t) %d ); /* the prefill's zeros */\n", body)
@@ -321,67 +323,82 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
 
 	g.pf("/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
-	g.pf("   the block's hash is this build's own, and a plan compiled once from the\n")
-	g.pf("   writer's block otherwise. Same loop either way (§3.4). */\n")
+	g.pf("   the layout's hash is this build's own, and a plan compiled once from the\n")
+	g.pf("   writer's layout otherwise. Same loop either way (§3.4). */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
 		g.api(st.Name, "fixed_load"), st.Name)
 	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n")
-	g.pf("    uint32_t block_bytes;\n    const uint8_t * block;\n    const uint8_t * at;\n")
+	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
 	g.pf("    uint64_t hash;\n    int64_t rest, record_bytes, count, k;\n")
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
 	g.pf("    int32_t entry_guarded = %s_fixed_plan_guarded;\n", n)
 	g.pf("    memset( &local, 0, sizeof( local ) );\n")
 	g.pf("    if ( report == NULL ) { report = &local; }\n")
-	g.pf("    if ( values == NULL || data == NULL || bytes < 5 ) { report->malformed = 1; return -1; }\n")
-	g.pf("    if ( data[0] != kTableFixedForm ) { report->refused = 1; report->reason = SCHEMA_TABLE_NEWER_FORM; return -1; }\n")
-	g.pf("    block_bytes = table_fixed_get32( data + 1 );\n")
-	g.pf("    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_BLOCK_MALFORMED; return -1; }\n")
-	g.pf("    block = data + 5;\n")
-	g.pf("    hash = table_fixed_hash_of( block, (int64_t) block_bytes );\n")
-	g.pf("    at = block + block_bytes;\n")
-	g.pf("    rest = bytes - 5 - (int64_t) block_bytes;\n")
+	g.pf("    if ( values == NULL || data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = 1; return -1; }\n")
+	g.pf("    /* THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
+	g.pf("       the registry is ordered, so a byte this reader does not carry is named\n")
+	g.pf("       by where it sits relative to this form and never by one word for both. */\n")
+	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
+	g.pf("        report->refused = 1;\n")
+	g.pf("        report->reason = data[0] == 1 ? SCHEMA_TABLE_PREVIOUS_FORM\n")
+	g.pf("                       : data[0] == 2 ? SCHEMA_TABLE_MESSAGE_FORM_AS_FILE\n")
+	g.pf("                       : SCHEMA_TABLE_NEWER_FORM;\n")
+	g.pf("        return -1;\n    }\n")
+	g.pf("    layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );\n")
+	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }\n")
+	g.pf("    layout = data + kTableFixedHeaderBytes + 4;\n")
+	g.pf("    hash = table_fixed_hash_of( layout, (int64_t) layout_bytes );\n")
+	g.pf("    at = layout + layout_bytes;\n")
+	g.pf("    rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
 	g.pf("    record_bytes = 8 + %d;\n", body)
 	g.pf("    if ( hash != %s_fixed_hash )\n    {\n", n)
-	g.pf("        /* ANOTHER WRITER: the same loop, over a plan compiled from its block. */\n")
-	g.pf("        TableFixedVocab parsed;\n        int32_t compiled_guarded = 0;\n        int32_t made;\n")
-	g.pf("        if ( !table_fixed_vocab_read( block, (int64_t) block_bytes, &parsed ) ) { report->refused = 1; report->reason = SCHEMA_TABLE_BLOCK_MALFORMED; return -1; }\n")
-	g.pf("        made = table_fixed_compile( &parsed, %s_fixed_vocab, (int32_t) sizeof( %s_fixed_vocab ), %s_fixed_dst, plan, plan_capacity, &compiled_guarded, report );\n", n, n, n)
-	g.pf("        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_BLOCK_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n")
+	g.pf("        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.\n")
+	g.pf("           THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
+	g.pf("           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */\n")
+	g.pf("        TableFixedLayoutView parsed;\n        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;\n        int32_t compiled_guarded = 0;\n        int32_t made;\n")
+	g.pf("        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }\n")
+	g.pf("        made = table_fixed_compile( &parsed, %s_fixed_layout, (int32_t) sizeof( %s_fixed_layout ), %s_fixed_dst, plan, plan_capacity, &compiled_guarded, report );\n", n, n, n)
+	g.pf("        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n")
 	g.pf("        entries = plan;\n        entry_count = made;\n        entry_guarded = compiled_guarded;\n")
 	g.pf("        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;\n")
 	g.pf("    }\n")
+	g.pf("    /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:\n")
+	g.pf("       the layout's own rules each refuse under their own name first, so a\n")
+	g.pf("       broken layout is never reported as a lying header. A header whose hash\n")
+	g.pf("       is not the hash of the layout behind it is refused (§3). */\n")
+	g.pf("    if ( table_fixed_get64( data + kTableFixedHashAt ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }\n")
 	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = 1; return -1; }\n")
 	g.pf("    count = rest / record_bytes;\n")
 	g.pf("    if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }\n")
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 	g.pf("        %s( values + k ); /* the declared defaults, one prefill */\n", g.api(st.Name, "reset"))
-	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_BLOCK; return -1; }\n")
+	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
 	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
 	g.pf("        at += record_bytes;\n    }\n    return count;\n}\n\n")
 }
 
 func fixedOpName(op int) string {
 	switch op {
-	case ir.FixedOpCount:
+	case ir.TableFixedOpCount:
 		return "kTableFixedCount"
-	case ir.FixedOpText:
+	case ir.TableFixedOpText:
 		return "kTableFixedText"
 	}
 	return "kTableFixedCopy"
 }
 
-// fixedDstRow is one TableFixedDst: MY side of a block entry, in C. Every
+// fixedDstRow is one TableFixedDst: MY side of a layout entry, in C. Every
 // number in it is asserted against offsetof above.
-func (g *tableGen) fixedDstRow(e ir.FixedBlockEntry) string {
+func (g *tableGen) fixedDstRow(e ir.TableFixedLayoutEntry) string {
 	d := e.Dst
 	stride := int64(0)
 	switch {
 	case d.Stride1:
 		stride = 1
 	case d.Stride != nil:
-		stride = ir.FixedStrideBytes(g.unit, d.Stride)
+		stride = ir.TableFixedStrideBytes(g.unit, d.Stride)
 	}
 	dst := g.fixedTerms(d.Dst)
 	aux := g.fixedTerms(d.Aux)
@@ -394,7 +411,7 @@ func (g *tableGen) fixedDstRow(e ir.FixedBlockEntry) string {
 }
 
 // fixedTerms sums a destination's offsetof terms.
-func (g *tableGen) fixedTerms(terms []ir.FixedTerm) int64 {
+func (g *tableGen) fixedTerms(terms []ir.TableFixedTerm) int64 {
 	total := int64(0)
 	for _, t := range terms {
 		total += g.fixedTermOffset(t)
@@ -402,15 +419,15 @@ func (g *tableGen) fixedTerms(terms []ir.FixedTerm) int64 {
 	return total
 }
 
-func (g *tableGen) fixedTermOffset(t ir.FixedTerm) int64 {
+func (g *tableGen) fixedTermOffset(t ir.TableFixedTerm) int64 {
 	if un := g.unionNamed(t.Type); un != nil {
 		if t.Member == "type" {
 			return 0
 		}
-		return ir.FixedUnionArmOffset(g.unit, un)
+		return ir.TableFixedUnionArmOffset(g.unit, un)
 	}
 	if st := g.structNamed(t.Type); st != nil {
-		return ir.FixedMemberOffset(g.unit, st, t.Member)
+		return ir.TableFixedMemberOffset(g.unit, st, t.Member)
 	}
 	return 0
 }

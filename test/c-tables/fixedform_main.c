@@ -2,7 +2,7 @@
    The C++ reference is test/tables/fixedform_main.cpp; this holds the same
    invariant on this leg, and holds it through the SAME plan-driven path: the
    identity plan when the record's hash is this build's own, and a plan
-   compiled once from the writer's own block for anybody else.
+   compiled once from the writer's own layout for anybody else.
    
    THIS FILE NAMES NO GENERATED TYPE AT ALL. Each generation's checks live in
    its own translation unit (fixedform.h says why); main sequences them and
@@ -66,6 +66,6 @@ int main( void )
         printf( "the fixed form's versioning conformance FAILED: %d\n", failures );
         return 1;
     }
-    printf( "the fixed form versions, on the C leg: the identity plan, a plan compiled from a stranger's block, and %lld byte flips answered inside the buffer\n", (long long) ( n * 8 ) );
+    printf( "the fixed form versions, on the C leg: the identity plan, a plan compiled from a stranger's layout, and %lld byte flips answered inside the buffer\n", (long long) ( n * 8 ) );
     return 0;
 }

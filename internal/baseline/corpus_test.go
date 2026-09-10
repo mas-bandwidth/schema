@@ -7,6 +7,7 @@ package baseline_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -55,9 +56,21 @@ func TestCorpusBaselinesAreCurrent(t *testing.T) {
 	}
 }
 
+// THE FIXED-FORM SIZE ADVISORIES THE CORPUS IS EXPECTED TO CARRY
+// (docs/SPEC-TABLES.md §3.4), by table name. They are NOT baseline findings:
+// they say that a fixed table's record body is large, which is a design
+// remark about a declaration and not a lossy edit. The corpus carries two on
+// purpose — the wide-text table of §2.8 and the arms corpus's ToolMessage —
+// and pinning them BY NAME rather than tolerating a count is what keeps a
+// THIRD one, or a baseline warning, from arriving unnoticed.
+var expectedFixedSizeNotes = map[string]string{
+	"../../tables/examples": "WideBlob",
+	"../../tables/messages": "ToolMessage",
+}
+
 // TestCorpusPassesItsOwnCheck is the whole feature end to end over real
-// schemas: the driver's baseline policy on, the committed file diffed, and
-// silence.
+// schemas: the driver's baseline policy on, the committed file diffed, and no
+// warning the corpus is not expected to carry.
 func TestCorpusPassesItsOwnCheck(t *testing.T) {
 	for _, dir := range corpora {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
@@ -72,8 +85,16 @@ func TestCorpusPassesItsOwnCheck(t *testing.T) {
 			if _, err := c.Load(paths); err != nil {
 				t.Fatalf("the corpus must pass its own baseline: %v", err)
 			}
-			if len(warns) != 0 {
-				t.Errorf("the corpus must warn about nothing: %v", warns)
+			want, expected := expectedFixedSizeNotes[dir], 0
+			for _, w := range warns {
+				if want != "" && strings.Contains(w, "table "+want+":") && strings.Contains(w, "§3.4") {
+					expected++
+					continue
+				}
+				t.Errorf("the corpus must warn about nothing but its known §3.4 size notes: %s", w)
+			}
+			if want != "" && expected != 1 {
+				t.Errorf("the corpus's known §3.4 size note on %s is gone — if the declaration shrank, drop it from expectedFixedSizeNotes", want)
 			}
 		})
 	}

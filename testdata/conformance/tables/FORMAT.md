@@ -69,7 +69,7 @@ refusal      <forgery> <reason>
   form-`1` file whose trailer IS the table. The build version is a column
   rather than a fact read out of the file, so a build that moves is visible in
   the review of this file, exactly as a forgery's damaged word is.
-- **`message`** is one value in BOTH forms. The FILE form is an ordinary
+- **`message`** is one value in BOTH forms. The VARIABLE form is an ordinary
   `instance` and rides every surface an instance rides; the MESSAGE form rides
   the `wire` and `message` surfaces alone, because its text is the file-form
   vector's byte for byte and a second `json/` file would be one golden with two
@@ -102,7 +102,7 @@ refusal      <forgery> <reason>
 
   **`retain-message` IS THE FORM-2 ROW** (§3.3): the wire is a BATCH, the
   `<connection>` names the announcement its references resolve against, and the
-  SAVES are the FILE form, one a body, which is the one direction retention
+  SAVES are the VARIABLE form, one a body, which is the one direction retention
   crosses the forms, because `SaveRetain` writing form 2 refuses by name. A
   batch takes one region and one retention buffer a body, so the saves are as
   many files as the batch has bodies.
@@ -177,8 +177,9 @@ The six counters of docs/SPEC-TABLES.md §4, `<malformed>` spelled `true` or
 reader that meets a FORM BYTE it does not carry refuses the wire by name: it
 decodes nothing, moves none of the six counters and reports no damage — so a
 refusal and a clean read print the same six zeros and the same false flag, and
-only the verdict tells them apart. `form_zero`, `form_three` and `form_ff` are
-the three rows that say so, over the three forms no reader knows, and
+only the verdict tells them apart. `form_zero`, `form_six` and `form_ff` are
+the three rows that say so, over three bytes no form defines (§3.4's registry
+reserves `4` and `5`, so `6` is the first byte that is neither), and
 `message_as_file` is the fourth: form `2` is a form this build DOES carry
 (docs/SPEC-TABLES.md §3.3), and a message handed to a reader that expected a
 file refuses because its id table is somewhere else.
