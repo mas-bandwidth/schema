@@ -73,6 +73,9 @@ table Point {
 	if !strings.Contains(fixedLoad, "PointReset(&def)") {
 		t.Error("compiled holes have no default image")
 	}
+	if strings.Contains(body, "PointFixedClamp") {
+		t.Error("a type that declares nothing bounded must not emit a clamp pass")
+	}
 }
 
 // TestFixedFormForm1RefusalIsByTheKeyword is the other half of the surface
@@ -233,6 +236,38 @@ func TestPlanPath(t *testing.T) {
 		}
 		if back[0].Nested.A != 111 || back[0].Nested.B != 222 || r != (tblfx1.TableReport{}) {
 			t.Fatalf("same schema nesting/report: %+v %+v", back[0].Nested, r)
+		}
+	}
+
+	{
+		poison := tblfx1.FxRoot{}
+		tblfx1.FxRootReset(&poison)
+		poison.Keep = 1
+		poison.Renamed = 5000
+		poison.Gone = -7
+		poison.Nested.A = 111
+		poison.Nested.B = 222
+		wb := make([]byte, tblfx1.FxRootFixedMeasure(1))
+		if n := tblfx1.FxRootFixedSave([]tblfx1.FxRoot{poison}, wb); n != int64(len(wb)) {
+			t.Fatalf("bounds save %d", n)
+		}
+		back := make([]tblfx1.FxRoot, 1)
+		var r tblfx1.TableReport
+		plan := make([]tblfx1.TableFixedEntry, 1024)
+		if n := tblfx1.FxRootFixedLoad(back, wb, plan, &r); n != 1 {
+			t.Fatalf("RANGE identity n=%d %+v", n, r)
+		}
+		if back[0].Renamed != 1000 || back[0].Gone != 0 || r.Clamped != 2 {
+			t.Fatalf("RANGE identity: renamed=%d gone=%d clamped=%d", back[0].Renamed, back[0].Gone, r.Clamped)
+		}
+		back2 := make([]tblfx2.FxRoot, 1)
+		var r2 tblfx2.TableReport
+		plan2 := make([]tblfx2.TableFixedEntry, 2048)
+		if n := tblfx2.FxRootFixedLoad(back2, wb, plan2, &r2); n != 1 {
+			t.Fatalf("RANGE compiled n=%d %+v", n, r2)
+		}
+		if back2[0].RenamedTo != 1000 || r2.Clamped != 1 {
+			t.Fatalf("RANGE compiled: renamed_to=%d clamped=%d (gone is a field FX2 cannot name)", back2[0].RenamedTo, r2.Clamped)
 		}
 	}
 
@@ -627,10 +662,11 @@ func TestHostileBoolNegativeControl(t *testing.T) {
 }
 
 // TestFixedFormHostileUnionTag is the union tag's control. A tag beyond the
-// arms this reader has is form 1's UNKNOWN ARM ID (docs/SPEC-TABLES.md §4):
-// the union lands as None and `unknown` counts. Copied raw it would land as a
-// discriminant no variant spells, with every arm's guard declining to fill it
-// — a value that is neither None nor an arm, and nothing counted to say so.
+// arms this reader has is an ORDINAL past the set (docs/SPEC-TABLES.md §3.4):
+// the storage pass lands None and `clamped` counts. Copied raw it would land
+// as a discriminant no variant spells, with every arm's guard declining to
+// fill it — a value that is neither None nor an arm, and nothing counted to
+// say so.
 func TestFixedFormHostileUnionTag(t *testing.T) {
 	runGenerated(t, `package probe
 type Hit { damage int32 }
@@ -684,8 +720,8 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 		if got[0].Pick.Type != PickTypeNone {
 			t.Fatalf("tag %d landed as %d, not None", tag, got[0].Pick.Type)
 		}
-		if r.Unknown != 1 || r.KindMismatch != 0 || r.Malformed || r.Verdict != TableOpenOk {
-			t.Fatalf("tag %d: an unknown arm is one unknown and nothing else: %+v", tag, r)
+		if r.Clamped != 1 || r.Unknown != 0 || r.KindMismatch != 0 || r.Malformed || r.Verdict != TableOpenOk {
+			t.Fatalf("tag %d: an ordinal past the set is one clamp and nothing else: %+v", tag, r)
 		}
 		if got[0].Tail != 9 {
 			t.Fatalf("tag %d: the field past the union moved: %d", tag, got[0].Tail)
@@ -890,6 +926,184 @@ func TestOldArgLaneControl(t *testing.T) {
 	}
 	if got.Pick.Type != PickTypeB {
 		t.Fatalf("old-lane sabotage moved the arm: %d %+v", got.Pick.Type, r)
+	}
+}
+`)
+}
+
+func tableFile(files map[string][]byte) string {
+	body := ""
+	for name, data := range files {
+		if strings.HasSuffix(name, "Table.go") {
+			body += string(data)
+		}
+	}
+	return body
+}
+
+func TestFixedFormClampPassShape(t *testing.T) {
+	tagOnly := generate(t, `package probe
+type Boost { power int32 = 0 }
+type Ward { charge float32 = 0.0 }
+union Effect
+{
+    boost Boost
+    ward Ward
+}
+table Cfg {
+    a int32 = 5 | min = 0, max = 1000
+    effect Effect
+    marks [..4]int32 | min = 0, max = 10
+    note ?int32 | min = 0, max = 10
+}
+`)
+	body := tableFile(tagOnly)
+	clampBody := funcSource(body, "func CfgFixedClampBody(")
+	if clampBody == "" {
+		t.Fatal("CfgFixedClampBody was not emitted")
+	}
+	if !strings.Contains(clampBody, "if uint32(value.Effect.Type) > 2") {
+		t.Error("a union tag past the arm count must still remap to None")
+	}
+	if strings.Contains(clampBody, "switch value.Effect.Type") {
+		t.Error("a union whose arms declare nothing bounded must not emit a switch with nothing to switch on")
+	}
+	if !strings.Contains(clampBody, "for i := int64(0); i < int64(value.MarksCount); i++") {
+		t.Error("a counted array must clamp LIVE elements, not the declared bound")
+	}
+	if strings.Contains(clampBody, "i < 4") {
+		t.Error("a counted array's clamp loop must not walk the slack")
+	}
+	if !strings.Contains(clampBody, "if value.NotePresent") {
+		t.Error("an absent optional's payload must not be held to a bound")
+	}
+	load := funcSource(body, "func CfgFixedLoad(")
+	if !strings.Contains(load, "CfgFixedClamp(&values[k], report)") {
+		t.Error("FixedLoad must call the storage pass after the run, both paths")
+	}
+	if strings.Contains(body, "Op: tableFixedTag") {
+		t.Error("identity must copy the tag; the storage pass holds the bound")
+	}
+
+	rangedArm := generate(t, `package probe
+type Boost { power int32 = 0 | min = 0, max = 10 }
+type Ward { charge float32 = 0.0 }
+union Effect
+{
+    boost Boost
+    ward Ward
+}
+table Cfg {
+    a int32 = 5 | min = 0, max = 1000
+    effect Effect
+}
+`)
+	with := tableFile(rangedArm)
+	bodyFn := funcSource(with, "func CfgFixedClampBody(")
+	if !strings.Contains(bodyFn, "switch value.Effect.Type") {
+		t.Error("a union with a bounded arm must still switch over the set arm")
+	}
+	if !strings.Contains(bodyFn, "case EffectTypeBoost:") {
+		t.Error("the bounded arm must be a case")
+	}
+}
+
+func TestFixedFormClampLiveCount(t *testing.T) {
+	runGenerated(t, `package probe
+enum Grade { Bronze, Gold }
+type ArmA { n int32 = 0 | min = 0, max = 10 }
+type ArmB { m int32 = 0 }
+union Pick
+{
+    a ArmA
+    b ArmB
+}
+table Root {
+    n     int32 = 0 | min = 0, max = 10
+    marks [..4]int32 | min = 0, max = 10
+    note  ?int32 | min = 0, max = 10
+    pick  Pick
+    grade Grade
+}
+`, `package probe
+import ("testing")
+
+func TestLiveCount(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	one.N = 99
+	one.MarksCount = 1
+	one.Marks[0] = 99
+	one.Marks[1] = 99
+	one.Marks[2] = 99
+	one.Marks[3] = 99
+	one.NotePresent = false
+	one.Note = 99
+	need := RootFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := RootFixedSave([]Root{one}, buf); n != need {
+		t.Fatalf("save %d", n)
+	}
+	got := make([]Root, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := RootFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("load %d %+v", n, r)
+	}
+	if got[0].N != 10 || r.Clamped != 2 {
+		t.Fatalf("LIVE: n=%d marks0=%d clamped=%d (want n=10, two clamps: n and marks[0]; slack must not count)", got[0].N, got[0].Marks[0], r.Clamped)
+	}
+	if got[0].Marks[0] != 10 {
+		t.Fatalf("live element %d", got[0].Marks[0])
+	}
+
+	tag := Root{}
+	RootReset(&tag)
+	tag.Pick.Type = PickType(7)
+	tb := make([]byte, RootFixedMeasure(1))
+	if n := RootFixedSave([]Root{tag}, tb); n != int64(len(tb)) {
+		t.Fatalf("tag save %d", n)
+	}
+	got = make([]Root, 1)
+	r = TableReport{}
+	if n := RootFixedLoad(got, tb, plan, &r); n != 1 {
+		t.Fatalf("tag load %d %+v", n, r)
+	}
+	if got[0].Pick.Type != PickTypeNone || r.Clamped != 1 || r.Unknown != 0 {
+		t.Fatalf("ORDINAL tag: type=%d clamped=%d unknown=%d", got[0].Pick.Type, r.Clamped, r.Unknown)
+	}
+
+	en := Root{}
+	RootReset(&en)
+	en.Grade = Grade(9)
+	eb := make([]byte, RootFixedMeasure(1))
+	if n := RootFixedSave([]Root{en}, eb); n != int64(len(eb)) {
+		t.Fatalf("enum save %d", n)
+	}
+	got = make([]Root, 1)
+	r = TableReport{}
+	if n := RootFixedLoad(got, eb, plan, &r); n != 1 {
+		t.Fatalf("enum load %d %+v", n, r)
+	}
+	if got[0].Grade != GradeNone || r.Clamped != 1 {
+		t.Fatalf("ORDINAL enum: grade=%d clamped=%d", got[0].Grade, r.Clamped)
+	}
+
+	arm := Root{}
+	RootReset(&arm)
+	arm.Pick.Type = PickTypeB
+	arm.Pick.A.N = 99
+	ab := make([]byte, RootFixedMeasure(1))
+	if n := RootFixedSave([]Root{arm}, ab); n != int64(len(ab)) {
+		t.Fatalf("arm save %d", n)
+	}
+	got = make([]Root, 1)
+	r = TableReport{}
+	if n := RootFixedLoad(got, ab, plan, &r); n != 1 {
+		t.Fatalf("arm load %d %+v", n, r)
+	}
+	if r.Clamped != 0 {
+		t.Fatalf("unselected arm must not count: clamped=%d", r.Clamped)
 	}
 }
 `)
