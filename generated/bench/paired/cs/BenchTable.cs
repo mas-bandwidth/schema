@@ -5071,6 +5071,8 @@ namespace Bench
                 public const int HeaderBytes = 16;
                 public const int HashAt = 8;
                 public const uint NoGuard = 0xFFFFFFFFu;
+                public const int MaxDepth = 32;
+                public const uint RecordMaxBytes = 65536;
 
                 // The opcodes for plan entries
                 public const byte Copy = 0;    // move Size bytes
@@ -5158,36 +5160,186 @@ namespace Bench
                     return EntryAt(b, i).Size - UnionArmBytes(b, i);
                 }
 
-                private static bool IsValidKind(byte k)
+                private static bool LeafSize(byte kind, uint size, out bool isLeaf)
                 {
-                    return (k >= 1 && k <= 19) || (k >= 20 && k <= 29) || k == 30 || k == 32 || k == 33 || k == 35;
+                    isLeaf = true;
+                    switch (kind)
+                    {
+                        case 1:  return size == 1;                 // bool
+                        case 2:  return size == 1;                 // i8
+                        case 3:  return size == 2;                 // i16
+                        case 4:  return size == 4;                 // i32
+                        case 5:  return size == 8;                 // i64
+                        case 6:  return size == 1 || size == 4;    // u8, and bits(1..8)
+                        case 7:  return size == 2 || size == 4;    // u16, and bits(9..16)
+                        case 8:  return size == 4;                 // u32, and bits(17..32)
+                        case 9:  return size == 8;                 // u64, flags, and bits(33..64)
+                        case 10: return size == 4;                 // f32
+                        case 11: return size == 8;                 // f64
+                        case 17: return size == 4;                 // pointer index
+                        case 18: case 19: return size == 16;       // i128, u128
+                        case 20: case 25: return size == 1;        // fixed8, ufixed8
+                        case 21: case 26: return size == 2;
+                        case 22: case 27: return size == 4;
+                        case 23: case 28: return size == 8;
+                        case 24: case 29: return size == 16;
+                        case 32: return size == 0;                 // variant arm that holds nothing
+                    }
+                    isLeaf = false;
+                    return true;
                 }
 
-                public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view)
+                private static bool OrdinalWidth(uint n) => n == 1 || n == 2 || n == 4 || n == 8;
+
+                private static bool KnownKind(byte kind)
+                {
+                    if (kind >= 1 && kind <= 30) return true;
+                    return kind == 32 || kind == 33 || kind == 35;
+                }
+
+                private ref struct Checker
+                {
+                    public TableFixedLayoutView Layout;
+                    public string Why;
+                    public bool Bad;
+
+                    public void Fail(string why)
+                    {
+                        if (!Bad)
+                        {
+                            Bad = true;
+                            Why = why;
+                        }
+                    }
+                }
+
+                private static int CheckEntry(ref Checker c, int i, int depth)
+                {
+                    if (c.Bad) return 0;
+                    if (i < 0 || i >= c.Layout.Count) { c.Fail("layout_tree_unclosed"); return 0; }
+                    if (depth > MaxDepth) { c.Fail("layout_too_deep"); return 0; }
+                    TableFixedLayoutEntry e = EntryAt(c.Layout, i);
+                    if (!KnownKind(e.Kind)) { c.Fail("layout_kind_unknown"); return 0; }
+                    if (e.Size > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+
+                    int at = i + 1;
+                    ulong sum = 0;
+                    uint widest = 0;
+                    uint firstSize = 0, secondSize = 0;
+                    byte firstKind = 0;
+                    uint firstChildren = 0;
+                    bool kidsAreVariants = true;
+                    for (uint k = 0; k < e.Children; ++k)
+                    {
+                        int child = at;
+                        int used = CheckEntry(ref c, child, depth + 1);
+                        if (c.Bad) return 0;
+                        TableFixedLayoutEntry ce = EntryAt(c.Layout, child);
+                        if (k == 0) { firstSize = ce.Size; firstKind = ce.Kind; firstChildren = ce.Children; }
+                        if (k == 1) { secondSize = ce.Size; }
+                        if (ce.Kind != 32) { kidsAreVariants = false; }
+                        sum += ce.Size;
+                        if (ce.Size > widest) { widest = ce.Size; }
+                        if (sum > RecordMaxBytes) { c.Fail("layout_record_too_large"); return 0; }
+                        at += used;
+                    }
+
+                    if (!LeafSize(e.Kind, e.Size, out bool isLeaf)) { c.Fail("layout_size_mismatch"); return 0; }
+                    if (isLeaf)
+                    {
+                        if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                        return at - i;
+                    }
+                    switch (e.Kind)
+                    {
+                        case 13: // table
+                            if ((ulong)e.Size != sum) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 35: // optional
+                            if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
+                            if ((ulong)e.Size != sum + 1) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 14: // array
+                            if (e.Children != 1) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (firstSize == 0) { c.Fail("layout_size_mismatch"); return 0; }
+                            bool bare = (e.Size % firstSize) == 0;
+                            bool counted = e.Size >= 4 && ((e.Size - 4) % firstSize) == 0;
+                            if (!bare && !counted) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 16: // enum-keyed array
+                            if (e.Children != 2) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (firstKind != 30) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (secondSize == 0 || (e.Size % secondSize) != 0) { c.Fail("layout_size_mismatch"); return 0; }
+                            if (e.Size / secondSize < firstChildren) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 15: // union
+                            if (e.Children == 0) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (e.Size <= widest) { c.Fail("layout_size_mismatch"); return 0; }
+                            if (!OrdinalWidth(e.Size - widest)) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 30: // enum
+                            if (!OrdinalWidth(e.Size)) { c.Fail("layout_size_mismatch"); return 0; }
+                            if (e.Children != 0 && !kidsAreVariants) { c.Fail("layout_kind_invalid"); return 0; }
+                            break;
+                        case 12: // string
+                            if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (e.Size < 4) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        case 33: // wstring
+                            if (e.Children != 0) { c.Fail("layout_kind_invalid"); return 0; }
+                            if (e.Size < 4 || ((e.Size - 4) % 2) != 0) { c.Fail("layout_size_mismatch"); return 0; }
+                            break;
+                        default:
+                            c.Fail("layout_kind_unknown");
+                            return 0;
+                    }
+                    return at - i;
+                }
+
+                public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view, out string why)
                 {
                     view = default;
-                    if (bytes.Length < 4) { return false; }
+                    why = null;
+                    if (bytes.Length < 4) { why = "layout_malformed"; return false; }
                     uint count = BinaryPrimitives.ReadUInt32LittleEndian(bytes);
-                    if (count == 0 || (long)count * EntryBytes + 4 != bytes.Length) { return false; }
+                    if (count == 0 || (long)count * EntryBytes + 4 != bytes.Length)
+                    {
+                        why = "layout_count_mismatch";
+                        return false;
+                    }
                     view.Bytes = bytes;
                     view.Count = (int)count;
-                    if (Subtree(view, 0) != view.Count)
+                    TableFixedLayoutEntry root = EntryAt(view, 0);
+                    if (root.Kind != 13)
                     {
+                        why = "layout_kind_invalid";
                         view = default;
                         return false;
                     }
-                    for (int i = 0; i < (int)count; ++i)
+                    if (root.Size == 0 || root.Size > RecordMaxBytes)
                     {
-                        if (!IsValidKind(EntryAt(view, i).Kind))
-                        {
-                            view = default;
-                            return false;
-                        }
+                        why = "layout_record_too_large";
+                        view = default;
+                        return false;
+                    }
+                    Checker c = new Checker { Layout = view, Why = "layout_malformed", Bad = false };
+                    int used = CheckEntry(ref c, 0, 0);
+                    if (c.Bad)
+                    {
+                        why = c.Why;
+                        view = default;
+                        return false;
+                    }
+                    if (used != view.Count)
+                    {
+                        why = "layout_tree_unclosed";
+                        view = default;
+                        return false;
                     }
                     return true;
                 }
 
-                public static bool ParseBlock(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view);
+                public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view, out _);
 
                 private ref struct Compiler
                 {
@@ -6990,145 +7142,6 @@ namespace Bench
         public static long BenchMixedToJson(BenchMixed value, Span<byte> buffer)
         {
             return TableJson.Write(value, BenchMixedTableType(), buffer, false);
-        }
-
-        // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
-        //
-        // A record is an eight-byte hash of the writer's vocabulary block and then
-        // the values in declared order, every field at its declared storage width.
-        // The writer is the constant bytes memcpy'd and then stores; the reader is
-        // ONE loop over ONE plan, the identity plan here and a plan compiled from
-        // the writer's own block for anybody else.
-
-        // MixedEntity's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedEntityFixedWriteBody(Span<byte> b, MixedEntity value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.EntityId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.PosX);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.PosY);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), (int)value.PosZ);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(16), (uint)value.Yaw);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(20), (uint)value.Pitch);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(24), (int)value.VelX);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(28), (int)value.VelY);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(32), (int)value.VelZ);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(36), (int)value.Health);
-            b.Slice(40)[0] = (byte)value.Weapon;
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(41), (ulong)value.Damage);
-            b.Slice(49)[0] = (byte)(value.Moving ? 1 : 0);
-            b.Slice(50)[0] = (byte)(value.Firing ? 1 : 0);
-        }
-
-        // MixedStat's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedStatFixedWriteBody(Span<byte> b, MixedStat value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.StatId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Delta);
-        }
-
-        // MixedHitEvent's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedHitEventFixedWriteBody(Span<byte> b, MixedHitEvent value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.TargetId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Damage);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.HitKind);
-            b.Slice(12)[0] = (byte)(value.Crit ? 1 : 0);
-        }
-
-        // MixedChatEvent's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedChatEventFixedWriteBody(Span<byte> b, MixedChatEvent value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Channel);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(4), (uint)value.Speaker);
-        }
-
-        // MixedPickupEvent's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedPickupEventFixedWriteBody(Span<byte> b, MixedPickupEvent value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.ItemId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Amount);
-        }
-
-        // BenchMixed's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void BenchMixedFixedWriteBody(Span<byte> b, BenchMixed value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.Sequence);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.AckSequence);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(8), (uint)value.AckBits);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(12), (long)value.SessionId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), (int)value.ClientId);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(24), (long)value.Nonce);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), (long)value.WorldTime);
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(40), (ulong)value.FrameTick);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(48), (uint)value.ServerTime);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), value.EntitiesCount);
-            if (value.Entities != null)
-            {
-                for (int i = 0; i < 8 && i < value.Entities.Length; ++i)
-                {
-                    MixedEntityFixedWriteBody(b.Slice(56 + i * 51), value.Entities[i]);
-                }
-            }
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(464), value.StatsCount);
-            if (value.Stats != null)
-            {
-                for (int i = 0; i < 80 && i < value.Stats.Length; ++i)
-                {
-                    MixedStatFixedWriteBody(b.Slice(468 + i * 8), value.Stats[i]);
-                }
-            }
-            if (value.GameEvent != null)
-            {
-                b.Slice(1108)[0] = (byte)value.GameEvent.Type;
-                switch (value.GameEvent.Type)
-                {
-                    case MixedEventType.Hit:
-                        MixedHitEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Hit);
-                        break;
-                    case MixedEventType.Chat:
-                        MixedChatEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Chat);
-                        break;
-                    case MixedEventType.Pickup:
-                        MixedPickupEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Pickup);
-                        break;
-                    default: break;
-                }
-            }
-            if (value.Loadout != null) { value.Loadout.AsSpan(0, Math.Min(value.Loadout.Length, 4)).CopyTo(b.Slice(1122)); }
-            int len_player_name = value.PlayerName != null ? value.PlayerNameLength : 0;
-            System.Diagnostics.Debug.Assert(len_player_name <= 15);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1126), len_player_name);
-            if (len_player_name > 0) { value.PlayerName.AsSpan(0, len_player_name).CopyTo(b.Slice(1130)); }
-            int len_payload = value.Payload != null ? value.PayloadLength : 0;
-            System.Diagnostics.Debug.Assert(len_payload <= 16);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1145), len_payload);
-            if (len_payload > 0) { value.Payload.AsSpan(0, len_payload).CopyTo(b.Slice(1149)); }
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1165), value.AimX);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1169), value.AimY);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1173), value.AimZ);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1177), value.Recoil);
-            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1181), value.Drift);
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189), (ulong)(unchecked((UInt128)value.WideKey)));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189).Slice(8), (ulong)(unchecked((UInt128)value.WideKey) >> 64));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205), (ulong)(unchecked((UInt128)(Int128)value.Flux)));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205).Slice(8), (ulong)(unchecked((UInt128)(Int128)value.Flux) >> 64));
-            BinaryPrimitives.WriteUInt16LittleEndian(b.Slice(1221), (ushort)value.Ping);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(1223), (uint)value.CrcHint);
-            b.Slice(1227)[0] = (byte)(value.HasExtra ? 1 : 0);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1228), (int)value.Extra);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1232), (int)value.IdleTicks);
         }
     }
 

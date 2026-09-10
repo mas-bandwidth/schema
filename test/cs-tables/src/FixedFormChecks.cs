@@ -417,7 +417,6 @@ static partial class Program
         }
     }
 
-<<<<<<< HEAD
     static byte[] UtRecord(string label, UT.UtGrade grade, int m, int tail)
     {
         UT.UtRoot root = new UT.UtRoot();

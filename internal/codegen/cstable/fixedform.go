@@ -702,7 +702,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			children: 1,
 			note:     f.Name,
 		})
-		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, 1, %d, 1, 3)", lenSlot-baseSlot, bufSlot-baseSlot))
+		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, 1, %d, 1, 3)", bufSlot-baseSlot, lenSlot-baseSlot))
 		b.entries = append(b.entries, fixedBlockEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"})
 		b.dstRows = append(b.dstRows, "new TableFixedDst(0, 0, 0, 0, 0)")
 		b.plan = append(b.plan, fixedPlanEntry{
