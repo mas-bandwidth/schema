@@ -24,8 +24,10 @@ import (
 
 // tableFixedIdentityCopies rewrites one identity plan so count and text are
 // COPY ops (the clamp bound and the text flavour live in the straight-line
-// that runs after). The coalescer then runs again: neighbours that those ops
-// used to split can become one run.
+// that runs after). Arg stays the guard's ordinal; Meta is cleared, because a
+// copy has no flavour. The coalescer then runs again: neighbours that those
+// ops used to split can become one run. It will not merge across Guard, Arg
+// or Meta.
 func tableFixedIdentityCopies(plan []ir.TableFixedLeaf) (out []ir.TableFixedLeaf, guarded int) {
 	raw := make([]ir.TableFixedLeaf, 0, len(plan)+4)
 	for _, e := range plan {
@@ -33,21 +35,21 @@ func tableFixedIdentityCopies(plan []ir.TableFixedLeaf) (out []ir.TableFixedLeaf
 		case ir.TableFixedOpCount:
 			e.Op = ir.TableFixedOpCopy
 			e.Size = ir.TableFixedCountBytes
-			e.Arg = 0
+			e.Meta = 0
 			raw = append(raw, e)
 		case ir.TableFixedOpText:
 			length := e
 			length.Op = ir.TableFixedOpCopy
 			length.Size = ir.TableFixedCountBytes
 			length.Aux = 0
-			length.Arg = 0
+			length.Meta = 0
 			length.Note = e.Note + " length"
 			content := e
 			content.Op = ir.TableFixedOpCopy
 			content.Src = e.Src + ir.TableFixedCountBytes
 			content.Dst = e.Aux
 			content.Aux = 0
-			content.Arg = 0
+			content.Meta = 0
 			raw = append(raw, length, content)
 		default:
 			raw = append(raw, e)
@@ -65,7 +67,7 @@ func tableFixedCoalesceCopies(raw []ir.TableFixedLeaf) (plan []ir.TableFixedLeaf
 			if len(plan) > guarded {
 				last := &plan[len(plan)-1]
 				if last.Op == ir.TableFixedOpCopy && e.Op == ir.TableFixedOpCopy &&
-					last.Guard == e.Guard && last.Arg == e.Arg &&
+					last.Guard == e.Guard && last.Arg == e.Arg && last.Meta == e.Meta &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
 					last.Size += e.Size
 					continue

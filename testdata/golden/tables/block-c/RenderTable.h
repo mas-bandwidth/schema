@@ -703,7 +703,7 @@ enum
     kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
 };
 
-/* arg on a kTableFixedText entry */
+/* meta on a kTableFixedText entry */
 enum
 {
     kTableFixedTextUtf8  = 1,
@@ -805,7 +805,13 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+       must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+       entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+       shared one, and a string(N) under a union's arm then had to be either
+       guarded correctly or read with the right flavour and could not be both. */
     uint8_t arg;
+    uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
 } TableFixedEntry;
@@ -982,14 +988,14 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_apply( const
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p->arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
-            if ( p->arg != kTableFixedTextBytes )
+            if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
                    unit longer than the bound for exactly this. A store, not a
@@ -1452,7 +1458,7 @@ typedef struct TableFixedDst
     uint32_t stride; /* an array entry's storage stride */
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
-    uint8_t arg;     /* a text field's flavour */
+    uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1739,7 +1745,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-                e.op = kTableFixedText; e.arg = d->arg;
+                e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
                 table_fixed_push( c, e );
                 break;
             }
@@ -11404,6 +11410,69 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     table_fixed_put8( b + 73, (uint8_t) value->team );
 }
 
+/* RenderShip's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_ship_fixed_clamp_body_( RenderShip * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->ship_type > 3u ) { value->ship_type = SHIP_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderTurret's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_turret_fixed_clamp_body_( RenderTurret * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderMissile's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_missile_fixed_clamp_body_( RenderMissile * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->missile_type > 2u ) { value->missile_type = MISSILE_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderDynamicProp's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( RenderDynamicProp * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderStaticProp's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_static_prop_fixed_clamp_body_( RenderStaticProp * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderCosmeticProp's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( RenderCosmeticProp * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->prop_type > 3u ) { value->prop_type = PROP_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderLaser's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_laser_fixed_clamp_body_( RenderLaser * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->laser_type > 2u ) { value->laser_type = LASER_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
+/* RenderExplosion's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_explosion_fixed_clamp_body_( RenderExplosion * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value->explosion_type > 2u ) { value->explosion_type = EXPLOSION_TYPE_NONE; (*clamped)++; }
+    if ( (uint64_t) value->team > 4u ) { value->team = TEAM_NONE; (*clamped)++; }
+}
+
 /* ---- RenderCamera, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -11463,7 +11532,7 @@ static SCHEMA_UNUSED const TableFixedDst render_camera_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_camera_fixed_plan[] = {
-    { 0u, 0u, 72u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 72u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_guarded = 1;
@@ -11501,7 +11570,8 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_save( const RenderCamera * valu
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -11579,6 +11649,19 @@ static SCHEMA_UNUSED int64_t render_camera_fixed_load( RenderCamera * values, in
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_ship_fixed_clamp_( RenderShip * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_ship_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderShip, the fixed form ---- */
@@ -11664,7 +11747,7 @@ static SCHEMA_UNUSED const TableFixedDst render_ship_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_ship_fixed_plan[] = {
-    { 0u, 0u, 81u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 81u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_guarded = 1;
@@ -11702,7 +11785,8 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_save( const RenderShip * values, 
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -11776,9 +11860,25 @@ static SCHEMA_UNUSED int64_t render_ship_fixed_load( RenderShip * values, int64_
             render_ship_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
             table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_ship_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_turret_fixed_clamp_( RenderTurret * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_turret_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderTurret, the fixed form ---- */
@@ -11848,7 +11948,7 @@ static SCHEMA_UNUSED const TableFixedDst render_turret_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_turret_fixed_plan[] = {
-    { 0u, 0u, 59u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 59u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_guarded = 1;
@@ -11886,7 +11986,8 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_save( const RenderTurret * valu
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -11960,9 +12061,25 @@ static SCHEMA_UNUSED int64_t render_turret_fixed_load( RenderTurret * values, in
             render_turret_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
             table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_turret_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_missile_fixed_clamp_( RenderMissile * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_missile_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderMissile, the fixed form ---- */
@@ -12038,7 +12155,7 @@ static SCHEMA_UNUSED const TableFixedDst render_missile_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_missile_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_guarded = 1;
@@ -12076,7 +12193,8 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_save( const RenderMissile * va
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -12150,9 +12268,25 @@ static SCHEMA_UNUSED int64_t render_missile_fixed_load( RenderMissile * values, 
             render_missile_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
             table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_missile_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_dynamic_prop_fixed_clamp_( RenderDynamicProp * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_dynamic_prop_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderDynamicProp, the fixed form ---- */
@@ -12230,7 +12364,7 @@ static SCHEMA_UNUSED const TableFixedDst render_dynamic_prop_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_dynamic_prop_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_guarded = 1;
@@ -12268,7 +12402,8 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_save( const RenderDynamic
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -12342,9 +12477,25 @@ static SCHEMA_UNUSED int64_t render_dynamic_prop_fixed_load( RenderDynamicProp *
             render_dynamic_prop_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
             table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_dynamic_prop_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_static_prop_fixed_clamp_( RenderStaticProp * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_static_prop_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderStaticProp, the fixed form ---- */
@@ -12422,7 +12573,7 @@ static SCHEMA_UNUSED const TableFixedDst render_static_prop_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_static_prop_fixed_plan[] = {
-    { 0u, 0u, 78u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 78u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_guarded = 1;
@@ -12460,7 +12611,8 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_save( const RenderStaticPr
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -12534,9 +12686,25 @@ static SCHEMA_UNUSED int64_t render_static_prop_fixed_load( RenderStaticProp * v
             render_static_prop_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
             table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_static_prop_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_cosmetic_prop_fixed_clamp_( RenderCosmeticProp * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_cosmetic_prop_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderCosmeticProp, the fixed form ---- */
@@ -12616,7 +12784,7 @@ static SCHEMA_UNUSED const TableFixedDst render_cosmetic_prop_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_cosmetic_prop_fixed_plan[] = {
-    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_guarded = 1;
@@ -12654,7 +12822,8 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_save( const RenderCosmet
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -12728,9 +12897,25 @@ static SCHEMA_UNUSED int64_t render_cosmetic_prop_fixed_load( RenderCosmeticProp
             render_cosmetic_prop_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
             table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_cosmetic_prop_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_laser_fixed_clamp_( RenderLaser * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_laser_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderLaser, the fixed form ---- */
@@ -12802,7 +12987,7 @@ static SCHEMA_UNUSED const TableFixedDst render_laser_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_laser_fixed_plan[] = {
-    { 0u, 0u, 62u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 62u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_guarded = 1;
@@ -12840,7 +13025,8 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_save( const RenderLaser * values
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -12914,9 +13100,25 @@ static SCHEMA_UNUSED int64_t render_laser_fixed_load( RenderLaser * values, int6
             render_laser_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
             table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_laser_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_render_explosion_fixed_clamp_( RenderExplosion * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_blockdemo_render_explosion_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- RenderExplosion, the fixed form ---- */
@@ -12992,7 +13194,7 @@ static SCHEMA_UNUSED const TableFixedDst render_explosion_fixed_dst[] = {
    those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
    that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_explosion_fixed_plan[] = {
-    { 0u, 0u, 74u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* x */
+    { 0u, 0u, 74u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_guarded = 1;
@@ -13030,7 +13232,8 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_save( const RenderExplosion 
 /* THE READ: ONE loop over ONE plan — the identity plan when the layout's
    hash is this build's own, and a plan compiled once from the writer's
    layout otherwise. The identity path does not prefill defaults (this hash
-   wrote every field) and clamps count and text after the copy. Where the C
+   wrote every field) and clamps count and text after the copy. Range and
+   ordinal bounds run after that, over storage, for either plan. Where the C
    ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
@@ -13104,6 +13307,9 @@ static SCHEMA_UNUSED int64_t render_explosion_fixed_load( RenderExplosion * valu
             render_explosion_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
             table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_render_explosion_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;

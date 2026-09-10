@@ -111,6 +111,65 @@ func TestIdentityFlatIsMemcpyEmptyScatter(t *testing.T) {
 	}
 }
 
+func TestIdentityGuardedTextKeepsGuardArg(t *testing.T) {
+	const src = `package probe
+type ArmA
+{
+    n int32
+}
+type ArmB
+{
+    label string(8)
+}
+union Pick
+{
+    a ArmA
+    b ArmB
+}
+table Root
+{
+    pick Pick
+}
+`
+	u := unitFrom(t, src)
+	st := u.Tables["Root"]
+	raw, _ := ir.TableFixedBuildPlan(u, st)
+	var text ir.TableFixedLeaf
+	found := false
+	for _, e := range raw {
+		if e.Op == ir.TableFixedOpText {
+			text = e
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("compiler plan lost the arm's text")
+	}
+	if text.Arg != 2 {
+		t.Fatalf("compiler text arg want 2 (second arm), got %d", text.Arg)
+	}
+	if text.Meta != 1 {
+		t.Fatalf("compiler text meta want 1 (utf8), got %d", text.Meta)
+	}
+	plan, _ := tableFixedIdentityCopies(raw)
+	var copies int
+	for _, e := range plan {
+		if e.Op != ir.TableFixedOpCopy {
+			t.Fatalf("identity copies still carry op %d (%s)", e.Op, e.Note)
+		}
+		if e.Guard != ir.TableFixedNoGuard && e.Arg == 2 {
+			copies++
+			if e.Meta != 0 {
+				t.Fatalf("identity copy kept text flavour in meta: %d", e.Meta)
+			}
+		}
+	}
+	if copies < 2 {
+		t.Fatalf("second-arm text should become two guarded copies, got %d", copies)
+	}
+}
+
 func TestIdentityPaddedDoesNotMemcpyTheStruct(t *testing.T) {
 	u := unitFrom(t, identityPadSchema)
 	if ir.TableFixedFlatType(u, u.Tables["Pad"]) {
