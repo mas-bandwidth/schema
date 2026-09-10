@@ -377,20 +377,20 @@ func benchFixed[T any, E any](name string, baseIters int64, layout []byte,
 		failed = true
 		return
 	}
-	vocab, err := os.ReadFile(variantDir + "/bench_fixed.vocab")
+	corpusLayout, err := os.ReadFile(variantDir + "/bench_fixed.layout")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "missing fixed corpus %s/bench_fixed.vocab — run from the schema repo root (or pass --variant-dir)\n", variantDir)
+		fmt.Fprintf(os.Stderr, "missing fixed corpus %s/bench_fixed.layout — run from the schema repo root (or pass --variant-dir)\n", variantDir)
 		failed = true
 		return
 	}
 	// the two names the C++ and C legs fold, spelled the same way, because the
 	// corpus id the paired driver matches is a hash over these basenames
 	goldensLoaded["bench_fixed.bin"] = file
-	goldensLoaded["bench_fixed.vocab"] = vocab
+	goldensLoaded["bench_fixed.layout"] = corpusLayout
 	bytesPerOp := float64(len(file)) / fixedCount
 
 	// gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT.
-	if len(vocab) != len(layout) || string(vocab) != string(layout) {
+	if len(corpusLayout) != len(layout) || string(corpusLayout) != string(layout) {
 		fail(name, "this build's layout is not the corpus's, byte for byte")
 		return
 	}

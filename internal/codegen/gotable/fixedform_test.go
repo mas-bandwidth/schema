@@ -26,7 +26,8 @@ table Point {
 	}
 	for _, want := range []string{
 		"const TableFixedForm uint8 = 3",
-		"const TableFixedHeaderBytes = 5",
+		"const TableFixedHeaderBytes = 16",
+		"const TableFixedHashAt = 8",
 		"func PointFixedSave(",
 		"func PointFixedLoad(",
 		"func PointFixedMeasure(",
@@ -105,18 +106,19 @@ func TestRoundTrip(t *testing.T) {
 	if n := PointFixedSave([]Point{one}, buf); n != need {
 		t.Fatalf("save %d", n)
 	}
-	// THE FILE: form byte, the layout's u32 length, the layout, the records
-	// (docs/SPEC-TABLES.md §3.4). The hash is per RECORD, not in the header.
+	// THE FILE: form byte, seven reserved zeros, layout hash at 8, body at 16,
+	// then the layout behind its u32 length, then the records.
 	if buf[0] != 3 {
 		t.Fatalf("form byte %d", buf[0])
 	}
-	if tableFixedGet32(buf[1:]) != uint32(len(PointFixedLayout)) {
-		t.Fatalf("layout length %d want %d", tableFixedGet32(buf[1:]), len(PointFixedLayout))
+	if tableFixedGet32(buf[TableFixedHeaderBytes:]) != uint32(len(PointFixedLayout)) {
+		t.Fatalf("layout length %d want %d", tableFixedGet32(buf[TableFixedHeaderBytes:]), len(PointFixedLayout))
 	}
-	if string(buf[TableFixedHeaderBytes:TableFixedHeaderBytes+len(PointFixedLayout)]) != string(PointFixedLayout) {
+	layoutAt := TableFixedHeaderBytes + 4
+	if string(buf[layoutAt:layoutAt+len(PointFixedLayout)]) != string(PointFixedLayout) {
 		t.Fatal("the layout is not this build's layout")
 	}
-	if tableFixedGet64(buf[TableFixedHeaderBytes+len(PointFixedLayout):]) != PointFixedHash {
+	if tableFixedGet64(buf[layoutAt+len(PointFixedLayout):]) != PointFixedHash {
 		t.Fatal("the first record does not open with the layout hash")
 	}
 	got := make([]Point, 1)
@@ -145,13 +147,13 @@ func TestRoundTrip(t *testing.T) {
 		}
 	}
 	broken := append([]byte(nil), buf...)
-	broken[TableFixedHeaderBytes] ^= 0xFF
+	broken[TableFixedHeaderBytes+4] ^= 0xFF
 	r = TableReport{}
 	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
 		t.Fatalf("layout_malformed: %d %+v", n, r)
 	}
 	lying := append([]byte(nil), buf...)
-	lying[TableFixedHeaderBytes+len(PointFixedLayout)] ^= 0xFF
+	lying[TableFixedHeaderBytes+4+len(PointFixedLayout)] ^= 0xFF
 	r = TableReport{}
 	if n := PointFixedLoad(got, lying, plan, &r); n >= 0 || r.Reason != "no_layout" {
 		t.Fatalf("a record whose hash names no layout: %d %+v", n, r)
@@ -292,7 +294,7 @@ func TestPlanPath(t *testing.T) {
 
 	{
 		broken := append([]byte(nil), w2...)
-		broken[tblfx1.TableFixedHeaderBytes] ^= 0xFF
+		broken[tblfx1.TableFixedHeaderBytes+4] ^= 0xFF
 		var r tblfx1.TableReport
 		plan := make([]tblfx1.TableFixedEntry, 1024)
 		v := make([]tblfx1.FxRoot, 1)

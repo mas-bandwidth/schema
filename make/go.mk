@@ -476,7 +476,7 @@ build/schema_tables_bench_go_matched: generated/bench/paired/go/.stamp bench/tab
 tables-go-fixed-form: build/schema_tables_bench_go_matched build/schema_test_bench_paired
 	./build/schema_test_bench_paired verify
 	./build/schema_tables_bench_go_matched --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
-	@echo 'tables Go fixed form: the layout and the whole 80900-byte file match the C++ reference, byte for byte'
+	@echo 'tables Go fixed form: the layout and the whole 80915-byte file match the C++ reference, byte for byte'
 
 test-go: tables-go-fixed-form
 
