@@ -90,6 +90,30 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "rust" {
+			// THE FIXED FORM NEEDS THE DEFAULTS: §3.4's answer to a field a
+			// record does not carry is a PREFILL of the declared defaults, and
+			// this port lays that prefill down as a record image. So Rust
+			// carries table-wire defaults, and the bytes are the proof.
+			if err != nil {
+				t.Fatalf("rust refused the table defaults its fixed-form prefill is built out of: %v", err)
+			}
+			var all strings.Builder
+			for _, b := range out {
+				all.Write(b)
+			}
+			for _, want := range []string{
+				"SHIP_FIXED_DEFAULTS",
+				// "untitled" behind its u32 used length, then "ab" behind its own
+				"0x08, 0x00, 0x00, 0x00, 0x75, 0x6e, 0x74, 0x69, 0x74, 0x6c, 0x65, 0x64,",
+				"0x02, 0x00, 0x00, 0x00, 0x61, 0x62,",
+			} {
+				if !strings.Contains(all.String(), want) {
+					t.Errorf("the rust prefill image lacks %q", want)
+				}
+			}
+			continue
+		}
 		if err == nil {
 			t.Errorf("%s emitted a unit with string, bytes and flags defaults instead of refusing it", target)
 			continue

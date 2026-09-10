@@ -184,21 +184,33 @@ func TableFixedElementBytes(f *Field) int64 {
 		case *Struct:
 			return TableFixedTypeBytes(r)
 		case *Union:
-			// the tag, then the WIDEST ARM: the slack behind a narrower one is
-			// zero on write and ignored on read (§3.4)
-			widest := int64(0)
-			for _, v := range r.Variants {
-				if v.F == nil {
-					continue // a void arm has no storage; TableFixedSupported refuses one anyway
-				}
-				if n := TableFixedFieldBytes(v.F); n > widest {
-					widest = n
-				}
-			}
-			return int64(StorageBitsFor(r.Max)/8) + widest
+			return TableFixedUnionBytes(r)
 		}
 	}
 	return TableFixedStorageBytes(f.Type)
+}
+
+// TableFixedUnionBytes is C(union): the TAG at the width its variant count
+// derives, then the WIDEST ARM. The slack behind a narrower arm is zero on
+// write and ignored on read (§3.4).
+func TableFixedUnionBytes(un *Union) int64 {
+	widest := int64(0)
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue // a void arm has no storage; TableFixedSupported refuses one anyway
+		}
+		if n := TableFixedFieldBytes(v.F); n > widest {
+			widest = n
+		}
+	}
+	return TableFixedUnionTagBytes(un) + widest
+}
+
+// TableFixedUnionTagBytes is the union tag's storage width on this wire, which
+// is what a reader recovers from a layout entry: the entry's size less its
+// widest arm.
+func TableFixedUnionTagBytes(un *Union) int64 {
+	return int64(StorageBitsFor(un.Max)) / 8
 }
 
 // TableFixedSupported reports whether a type's whole closure is one this form
