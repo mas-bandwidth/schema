@@ -48,7 +48,7 @@ table Root { pick Pick }
 func TestFixedGuardWidthTwoByteTag(t *testing.T) {
 	var b strings.Builder
 	b.WriteString("package probe\n\ntype Cell { n int32 }\n\nunion Wide {\n")
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		fmt.Fprintf(&b, "    a%d Cell\n", i)
 	}
 	b.WriteString("}\n\ntable Root { pick Wide }\n")
