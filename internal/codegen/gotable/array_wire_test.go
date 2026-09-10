@@ -1,12 +1,10 @@
 package gotable
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 )
 
-const arrayLengthCacheSchema = `package probe
+const structArrayWireSchema = `package probe
 enum Flavor { Vanilla, Chocolate, Strawberry }
 type Leaf { flavor Flavor
  note uint32 = 7 }
@@ -23,52 +21,14 @@ table Root {
 
 // The reference writer builds the wire independently, including vocabulary
 // first-use order and default elision. The compiled generated runtime is also
-// exercised at both sides of the stack-cache cutoff, with reused load targets.
-func TestArrayLengthCacheWire(t *testing.T) {
-	runGenerated(t, arrayLengthCacheSchema, arrayLengthCacheWireTest)
+// exercised over 1, 2, 128 and 129 elements, with reused load targets.
+func TestStructArrayWire(t *testing.T) {
+	runGenerated(t, structArrayWireSchema, structArrayWireTest)
 }
 
-func TestArrayLengthCacheScope(t *testing.T) {
-	for _, tc := range []struct {
-		name, schema string
-		cached       bool
-	}{
-		{"fixed limit", "type Child { n int32 }\ntable Root { children [128]Child }", true},
-		{"counted limit", "type Child { n int32 }\ntable Root { children [..128]Child }", true},
-		{"large", "type Child { n int32 }\ntable Root { children [129]Child }", false},
-		{"keyed", "enum Key { A, B }\ntype Child { n int32 }\ntable Root { children [Key]Child }", false},
-		{"pointers", "table Child { n int32 }\ntable Root { children [..2]*Child }", false},
-		{"variable closure", "table Child { n int32 }\ntable Root { children [2]Child\n pointer *Child }", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			files := generate(t, "package probe\n"+tc.schema+"\n")
-			cached := false
-			for _, data := range files {
-				cached = cached || strings.Contains(string(data), "var arrayLengths [")
-			}
-			if cached != tc.cached {
-				t.Fatalf("length cache present = %t, want %t", cached, tc.cached)
-			}
-		})
-	}
-}
-
-func TestArrayLengthCacheSharedScratch(t *testing.T) {
-	var schema strings.Builder
-	schema.WriteString("package probe\ntype Child { n int32 }\ntable Root {\n")
-	for i := range 32 {
-		fmt.Fprintf(&schema, "children%d [128]Child\n", i)
-	}
-	schema.WriteString("}\n")
-	declarations := 0
-	for _, data := range generate(t, schema.String()) {
-		declarations += strings.Count(string(data), "var arrayLengths [128]int64")
-	}
-	if declarations != 1 {
-		t.Fatalf("32 eligible fields produced %d scratch arrays, want one", declarations)
-	}
-	// Nested struct calls have their own scratch. Union-arm arrays share the
-	// enclosing function's scratch, even inside arrays of unions.
+func TestNestedStructArrayWire(t *testing.T) {
+	// A struct array nested under unions and under other arrays writes and
+	// reads back the same bytes, with no allocation, on the variable form.
 	runGenerated(t, `package probe
 type Leaf { n int32 }
 type Child { leaves [..2]Leaf }
@@ -103,7 +63,7 @@ func TestNestedScratch(t *testing.T) {
 `)
 }
 
-const arrayLengthCacheWireTest = `package probe
+const structArrayWireTest = `package probe
 import ("bytes"; "encoding/binary"; "hash/fnv"; "testing")
 
 type wireOracle struct { ids []uint64; bodyLengths map[int]bool }

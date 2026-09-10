@@ -1858,99 +1858,25 @@ func MixedEntityReset(value *MixedEntity) {
 }
 
 func MixedEntityMeasureBody(value *MixedEntity, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.EntityId != 0 {
-		bytes += tableLebBytes(ids.refAtHit(11, 0x23fcfd6678e36712)) + 1 + 2
-	} // entity_id
-	if value.PosX != 0 {
-		bytes += tableLebBytes(ids.refAtHit(65, 0xcb4b37357667310e)) + 1 + 4
-	} // pos_x
-	if value.PosY != 0 {
-		bytes += tableLebBytes(ids.refAtHit(66, 0xcb4b3835766732c1)) + 1 + 4
-	} // pos_y
-	if value.PosZ != 0 {
-		bytes += tableLebBytes(ids.refAtHit(64, 0xcb4b353576672da8)) + 1 + 4
-	} // pos_z
-	if value.Yaw != 0 {
-		bytes += tableLebBytes(ids.refAtHit(58, 0xb54d8e19798e16e8)) + 1 + 2
-	} // yaw
-	if value.Pitch != 0 {
-		bytes += tableLebBytes(ids.refAtHit(22, 0x53a9f665a90cc1b1)) + 1 + 2
-	} // pitch
-	if value.VelX != 0 {
-		bytes += tableLebBytes(ids.refAtHit(27, 0x6cede6b6eb60ee67)) + 1 + 4
-	} // vel_x
-	if value.VelY != 0 {
-		bytes += tableLebBytes(ids.refAtHit(26, 0x6cede5b6eb60ecb4)) + 1 + 4
-	} // vel_y
-	if value.VelZ != 0 {
-		bytes += tableLebBytes(ids.refAtHit(28, 0x6cede8b6eb60f1cd)) + 1 + 4
-	} // vel_z
-	if value.Health != 0 {
-		bytes += tableLebBytes(ids.refAtHit(37, 0x7f69d4b5288ba9cf)) + 1 + 4
-	} // health
-	if value.Weapon != MixedWeaponNone {
-		ref := ids.refAtHit(52, 0xa0b610205f2c6e01)
-		var vref uint64
-		switch value.Weapon {
-		case MixedWeaponNone:
-		case MixedWeaponFists:
-			vref = ids.refAtHit(55, 0xa790eee12766cf0c)
-		case MixedWeaponPistol:
-			vref = ids.refAtHit(51, 0x9fbfefa835da8476)
-		case MixedWeaponShotgun:
-			vref = ids.refAtHit(8, 0x188bbb1783928a95)
-		case MixedWeaponRifle:
-			vref = ids.refAtHit(12, 0x2c3667b9c2f272f1)
-		case MixedWeaponSniper:
-			vref = ids.refAtHit(3, 0x0ca8b41b00d755f6)
-		case MixedWeaponSmg:
-			vref = ids.refAtHit(45, 0x985fc819fab21a4e)
-		case MixedWeaponRocket:
-			vref = ids.refAtHit(10, 0x229d0447c3086a55)
-		case MixedWeaponGrenade:
-			vref = ids.refAtHit(0, 0x011c7b49a7228f9d)
-		case MixedWeaponPlasma:
-			vref = ids.refAtHit(41, 0x89f7566e1123e15f)
-		case MixedWeaponRailgun:
-			vref = ids.refAtHit(42, 0x8d7f25318b3b4469)
-		case MixedWeaponFlamer:
-			vref = ids.refAtHit(69, 0xd9cd0dcc285b7816)
-		case MixedWeaponMine:
-			vref = ids.refAtHit(2, 0x04dc16aea8ff5276)
-		case MixedWeaponTurret:
-			vref = ids.refAtHit(17, 0x35e53bc341129217)
-		case MixedWeaponDrone:
-			vref = ids.refAtHit(13, 0x2cc8282fb0de8831)
-		case MixedWeaponRepair:
-			vref = ids.refAtHit(9, 0x20bada21bc8cb334)
-		default:
-			return -1
-		}
-		bytes += tableLebBytes(ref) + 1 + tableLebBytes(vref)
-	}
-	if value.Damage != 0 {
-		bytes += tableLebBytes(ids.refAtHit(36, 0x7f6308be8ab37fc0)) + 1 + 8
-	} // damage
-	if value.Moving != false {
-		bytes += tableLebBytes(ids.refAtHit(5, 0x11a44fc1d1243da7)) + 1 + 1
-	} // moving
-	if value.Firing != false {
-		bytes += tableLebBytes(ids.refAtHit(32, 0x7674cfd19b9031ca)) + 1 + 1
-	} // firing
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !MixedEntitySaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func MixedEntityMeasure(value *MixedEntity) int64 {
 	var ids TableIds
-	body := MixedEntityMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !MixedEntitySaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func MixedEntityMeasureReason(value *MixedEntity) (int64, error) {
@@ -3477,26 +3403,25 @@ func MixedStatReset(value *MixedStat) {
 }
 
 func MixedStatMeasureBody(value *MixedStat, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.StatId != 0 {
-		bytes += tableLebBytes(ids.refAtHit(38, 0x80ab75f0866dbf65)) + 1 + 1
-	} // stat_id
-	if value.Delta != 0 {
-		bytes += tableLebBytes(ids.refAtHit(21, 0x52076675ec13a0c1)) + 1 + 4
-	} // delta
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !MixedStatSaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func MixedStatMeasure(value *MixedStat) int64 {
 	var ids TableIds
-	body := MixedStatMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !MixedStatSaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func MixedStatMeasureReason(value *MixedStat) (int64, error) {
@@ -3892,32 +3817,25 @@ func MixedHitEventReset(value *MixedHitEvent) {
 }
 
 func MixedHitEventMeasureBody(value *MixedHitEvent, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.TargetId != 0 {
-		bytes += tableLebBytes(ids.refAtHit(59, 0xb7bc9ac015a25050)) + 1 + 2
-	} // target_id
-	if value.Damage != 0 {
-		bytes += tableLebBytes(ids.refAtHit(36, 0x7f6308be8ab37fc0)) + 1 + 4
-	} // damage
-	if value.HitKind != 0 {
-		bytes += tableLebBytes(ids.refAtHit(1, 0x01fbc365b059b925)) + 1 + 4
-	} // hit_kind
-	if value.Crit != false {
-		bytes += tableLebBytes(ids.refAtHit(6, 0x126167908c9aa52d)) + 1 + 1
-	} // crit
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !MixedHitEventSaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func MixedHitEventMeasure(value *MixedHitEvent) int64 {
 	var ids TableIds
-	body := MixedHitEventMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !MixedHitEventSaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func MixedHitEventMeasureReason(value *MixedHitEvent) (int64, error) {
@@ -4494,26 +4412,25 @@ func MixedChatEventReset(value *MixedChatEvent) {
 }
 
 func MixedChatEventMeasureBody(value *MixedChatEvent, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.Channel != 0 {
-		bytes += tableLebBytes(ids.refAtHit(54, 0xa5013e9ad5caeda4)) + 1 + 4
-	} // channel
-	if value.Speaker != 0 {
-		bytes += tableLebBytes(ids.refAtHit(76, 0xfbf1ac4d96ebd022)) + 1 + 2
-	} // speaker
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !MixedChatEventSaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func MixedChatEventMeasure(value *MixedChatEvent) int64 {
 	var ids TableIds
-	body := MixedChatEventMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !MixedChatEventSaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func MixedChatEventMeasureReason(value *MixedChatEvent) (int64, error) {
@@ -4923,26 +4840,25 @@ func MixedPickupEventReset(value *MixedPickupEvent) {
 }
 
 func MixedPickupEventMeasureBody(value *MixedPickupEvent, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.ItemId != 0 {
-		bytes += tableLebBytes(ids.refAtHit(48, 0x9e7fd06d864fbd56)) + 1 + 2
-	} // item_id
-	if value.Amount != 0 {
-		bytes += tableLebBytes(ids.refAtHit(39, 0x8113fe7ea2b16969)) + 1 + 4
-	} // amount
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !MixedPickupEventSaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func MixedPickupEventMeasure(value *MixedPickupEvent) int64 {
 	var ids TableIds
-	body := MixedPickupEventMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !MixedPickupEventSaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func MixedPickupEventMeasureReason(value *MixedPickupEvent) (int64, error) {
@@ -5414,7 +5330,6 @@ func BenchMixedMeasureReason(value *BenchMixed) (int64, error) {
 	return size, nil
 }
 func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
-	var arrayLengths [80]int64
 	{
 		if value.Sequence != 0 {
 			if ref := w.Ids.refAtHit(56, 0xaa38aca481f528a8); !w.headerPair(ref, 7) {
@@ -5503,15 +5418,24 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 				payload24 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.EntitiesCount); i++ {
-					n := MixedEntityMeasureBody(&value.Entities[i], payload24.Ids)
-					if n < 0 {
-						return false
+					{
+						mark := payload24.Ids.Count
+						n := MixedEntityMeasureBody(&value.Entities[i], payload24.Ids)
+						if n < 0 {
+							return false
+						}
+						if !payload24.putLebPair(uint64(n)) {
+							payload24.putLebWide(uint64(n))
+						}
+						if payload24.Measuring {
+							payload24.Advance(n)
+						} else {
+							payload24.Ids.Truncate(mark)
+							if !MixedEntitySaveBody(&payload24, &value.Entities[i]) {
+								return false
+							}
+						}
 					}
-					arrayLengths[i] = n
-					if !payload24.putLebPair(uint64(n)) {
-						payload24.putLebWide(uint64(n))
-					}
-					payload24.Advance(n)
 					pairs++
 				}
 				if payload24.Overflow {
@@ -5530,11 +5454,23 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 						w.putLebWide(pairs)
 					}
 					for i := 0; i < int(value.EntitiesCount); i++ {
-						if !w.putLebPair(uint64(arrayLengths[i])) {
-							w.putLebWide(uint64(arrayLengths[i]))
-						}
-						if !MixedEntitySaveBody(w, &value.Entities[i]) {
-							return false
+						{
+							mark := w.Ids.Count
+							n := MixedEntityMeasureBody(&value.Entities[i], w.Ids)
+							if n < 0 {
+								return false
+							}
+							if !w.putLebPair(uint64(n)) {
+								w.putLebWide(uint64(n))
+							}
+							if w.Measuring {
+								w.Advance(n)
+							} else {
+								w.Ids.Truncate(mark)
+								if !MixedEntitySaveBody(w, &value.Entities[i]) {
+									return false
+								}
+							}
 						}
 					}
 				}
@@ -5557,15 +5493,24 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 				payload27 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.StatsCount); i++ {
-					n := MixedStatMeasureBody(&value.Stats[i], payload27.Ids)
-					if n < 0 {
-						return false
+					{
+						mark := payload27.Ids.Count
+						n := MixedStatMeasureBody(&value.Stats[i], payload27.Ids)
+						if n < 0 {
+							return false
+						}
+						if !payload27.putLebPair(uint64(n)) {
+							payload27.putLebWide(uint64(n))
+						}
+						if payload27.Measuring {
+							payload27.Advance(n)
+						} else {
+							payload27.Ids.Truncate(mark)
+							if !MixedStatSaveBody(&payload27, &value.Stats[i]) {
+								return false
+							}
+						}
 					}
-					arrayLengths[i] = n
-					if !payload27.putLebPair(uint64(n)) {
-						payload27.putLebWide(uint64(n))
-					}
-					payload27.Advance(n)
 					pairs++
 				}
 				if payload27.Overflow {
@@ -5584,11 +5529,23 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 						w.putLebWide(pairs)
 					}
 					for i := 0; i < int(value.StatsCount); i++ {
-						if !w.putLebPair(uint64(arrayLengths[i])) {
-							w.putLebWide(uint64(arrayLengths[i]))
-						}
-						if !MixedStatSaveBody(w, &value.Stats[i]) {
-							return false
+						{
+							mark := w.Ids.Count
+							n := MixedStatMeasureBody(&value.Stats[i], w.Ids)
+							if n < 0 {
+								return false
+							}
+							if !w.putLebPair(uint64(n)) {
+								w.putLebWide(uint64(n))
+							}
+							if w.Measuring {
+								w.Advance(n)
+							} else {
+								w.Ids.Truncate(mark)
+								if !MixedStatSaveBody(w, &value.Stats[i]) {
+									return false
+								}
+							}
 						}
 					}
 				}

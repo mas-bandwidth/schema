@@ -63,40 +63,24 @@ func generatedFunc(src, name string) string {
 	return src
 }
 
-func TestArithMeasureBodyShape(t *testing.T) {
+// THE ONE MEASURE SHAPE (docs/SPEC-TABLES.md §3). Every MeasureBody on the
+// variable form is the dry-run SaveBody walk. The constant-width arithmetic
+// MeasureBody that used to be emitted for a pointer-free table is gone: it
+// existed only to make a fixed table fast on form 1, and a fixed table now
+// encodes as form 3. The wire the walk produces is unchanged, which is what
+// the generated test below measures against its own reference writer.
+func TestMeasureBodyIsTheDryRunWalk(t *testing.T) {
 	body := tableGoSource(t, arithMeasureSchema)
-	leaf := generatedFunc(body, "LeafMeasureBody")
-	if leaf == "" {
-		t.Fatal("LeafMeasureBody missing")
-	}
-	for _, want := range []string{
-		"bytes := int64(1)",
-		"tableLebBytes(ids.refAtHit(",
-		"+ 1 + 4",
-		"+ 1 + 1",
-		"+ 1 + 8",
-		"+ 1 + 16",
-		"vref = ids.refAtHit(",
-		"tableLebBytes(ref) + 1 + tableLebBytes(vref)",
-		"if ids.Overflow",
-	} {
-		if !strings.Contains(leaf, want) {
-			t.Fatalf("LeafMeasureBody missing %q\n%s", want, leaf)
-		}
-	}
-	for _, old := range []string{"Measuring", "LeafSaveBody", "TableWriter{", "w.Header(", "w.Ids.RefAt("} {
-		if strings.Contains(leaf, old) {
-			t.Fatalf("LeafMeasureBody still dry-runs via %q\n%s", old, leaf)
-		}
-	}
-	child := generatedFunc(body, "ChildMeasureBody")
-	if !strings.Contains(child, "tableLebBytes(ids.refAtHit(") || strings.Contains(child, "ChildSaveBody") {
-		t.Fatalf("ChildMeasureBody is not arithmetic\n%s", child)
-	}
-	for _, name := range []string{"RootMeasureBody", "ArrMeasureBody", "FixedishMeasureBody"} {
+	for _, name := range []string{"LeafMeasureBody", "ChildMeasureBody", "RootMeasureBody", "ArrMeasureBody", "FixedishMeasureBody"} {
 		fn := generatedFunc(body, name)
+		if fn == "" {
+			t.Fatalf("%s missing", name)
+		}
 		if !strings.Contains(fn, "Measuring") || !strings.Contains(fn, "SaveBody") {
-			t.Fatalf("%s dropped the dry-run walk\n%s", name, fn)
+			t.Fatalf("%s is not the dry-run walk\n%s", name, fn)
+		}
+		if strings.Contains(fn, "bytes := int64(1)") {
+			t.Fatalf("%s still carries the arithmetic body\n%s", name, fn)
 		}
 	}
 	save := generatedFunc(body, "LeafSaveBody")

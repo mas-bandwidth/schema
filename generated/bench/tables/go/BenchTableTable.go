@@ -1928,99 +1928,25 @@ func TableEntityReset(value *TableEntity) {
 }
 
 func TableEntityMeasureBody(value *TableEntity, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.EntityId != 0 {
-		bytes += tableLebBytes(ids.refAtHit(11, 0x23fcfd6678e36712)) + 1 + 2
-	} // entity_id
-	if value.PosX != 0 {
-		bytes += tableLebBytes(ids.refAtHit(65, 0xcb4b37357667310e)) + 1 + 4
-	} // pos_x
-	if value.PosY != 0 {
-		bytes += tableLebBytes(ids.refAtHit(66, 0xcb4b3835766732c1)) + 1 + 4
-	} // pos_y
-	if value.PosZ != 0 {
-		bytes += tableLebBytes(ids.refAtHit(64, 0xcb4b353576672da8)) + 1 + 4
-	} // pos_z
-	if value.Yaw != 0 {
-		bytes += tableLebBytes(ids.refAtHit(59, 0xb54d8e19798e16e8)) + 1 + 2
-	} // yaw
-	if value.Pitch != 0 {
-		bytes += tableLebBytes(ids.refAtHit(24, 0x53a9f665a90cc1b1)) + 1 + 2
-	} // pitch
-	if value.VelX != 0 {
-		bytes += tableLebBytes(ids.refAtHit(30, 0x6cede6b6eb60ee67)) + 1 + 4
-	} // vel_x
-	if value.VelY != 0 {
-		bytes += tableLebBytes(ids.refAtHit(29, 0x6cede5b6eb60ecb4)) + 1 + 4
-	} // vel_y
-	if value.VelZ != 0 {
-		bytes += tableLebBytes(ids.refAtHit(31, 0x6cede8b6eb60f1cd)) + 1 + 4
-	} // vel_z
-	if value.Health != 0 {
-		bytes += tableLebBytes(ids.refAtHit(41, 0x7f69d4b5288ba9cf)) + 1 + 4
-	} // health
-	if value.Weapon != TableWeaponNone {
-		ref := ids.refAtHit(54, 0xa0b610205f2c6e01)
-		var vref uint64
-		switch value.Weapon {
-		case TableWeaponNone:
-		case TableWeaponFists:
-			vref = ids.refAtHit(57, 0xa790eee12766cf0c)
-		case TableWeaponPistol:
-			vref = ids.refAtHit(53, 0x9fbfefa835da8476)
-		case TableWeaponShotgun:
-			vref = ids.refAtHit(8, 0x188bbb1783928a95)
-		case TableWeaponRifle:
-			vref = ids.refAtHit(13, 0x2c3667b9c2f272f1)
-		case TableWeaponSniper:
-			vref = ids.refAtHit(3, 0x0ca8b41b00d755f6)
-		case TableWeaponSmg:
-			vref = ids.refAtHit(48, 0x985fc819fab21a4e)
-		case TableWeaponRocket:
-			vref = ids.refAtHit(10, 0x229d0447c3086a55)
-		case TableWeaponGrenade:
-			vref = ids.refAtHit(0, 0x011c7b49a7228f9d)
-		case TableWeaponPlasma:
-			vref = ids.refAtHit(44, 0x89f7566e1123e15f)
-		case TableWeaponRailgun:
-			vref = ids.refAtHit(45, 0x8d7f25318b3b4469)
-		case TableWeaponFlamer:
-			vref = ids.refAtHit(69, 0xd9cd0dcc285b7816)
-		case TableWeaponMine:
-			vref = ids.refAtHit(2, 0x04dc16aea8ff5276)
-		case TableWeaponTurret:
-			vref = ids.refAtHit(19, 0x35e53bc341129217)
-		case TableWeaponDrone:
-			vref = ids.refAtHit(14, 0x2cc8282fb0de8831)
-		case TableWeaponRepair:
-			vref = ids.refAtHit(9, 0x20bada21bc8cb334)
-		default:
-			return -1
-		}
-		bytes += tableLebBytes(ref) + 1 + tableLebBytes(vref)
-	}
-	if value.Damage != 0 {
-		bytes += tableLebBytes(ids.refAtHit(40, 0x7f6308be8ab37fc0)) + 1 + 8
-	} // damage
-	if value.Moving != false {
-		bytes += tableLebBytes(ids.refAtHit(5, 0x11a44fc1d1243da7)) + 1 + 1
-	} // moving
-	if value.Firing != false {
-		bytes += tableLebBytes(ids.refAtHit(36, 0x7674cfd19b9031ca)) + 1 + 1
-	} // firing
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !TableEntitySaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func TableEntityMeasure(value *TableEntity) int64 {
 	var ids TableIds
-	body := TableEntityMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !TableEntitySaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func TableEntityMeasureReason(value *TableEntity) (int64, error) {
@@ -3560,26 +3486,25 @@ func TableStatReset(value *TableStat) {
 }
 
 func TableStatMeasureBody(value *TableStat, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.StatId != 0 {
-		bytes += tableLebBytes(ids.refAtHit(42, 0x80ab75f0866dbf65)) + 1 + 1
-	} // stat_id
-	if value.Delta != 0 {
-		bytes += tableLebBytes(ids.refAtHit(23, 0x52076675ec13a0c1)) + 1 + 4
-	} // delta
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !TableStatSaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func TableStatMeasure(value *TableStat) int64 {
 	var ids TableIds
-	body := TableStatMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !TableStatSaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func TableStatMeasureReason(value *TableStat) (int64, error) {
@@ -4049,7 +3974,6 @@ func TableMixedMeasureReason(value *TableMixed) (int64, error) {
 	return size, nil
 }
 func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
-	var arrayLengths [80]int64
 	{
 		if value.ProtocolMagic != 0 {
 			if ref := w.Ids.refAtHit(28, 0x6a5a70d91aa115fd); !w.headerPair(ref, 7) {
@@ -4146,15 +4070,24 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 				payload16 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.EntitiesCount); i++ {
-					n := TableEntityMeasureBody(&value.Entities[i], payload16.Ids)
-					if n < 0 {
-						return false
+					{
+						mark := payload16.Ids.Count
+						n := TableEntityMeasureBody(&value.Entities[i], payload16.Ids)
+						if n < 0 {
+							return false
+						}
+						if !payload16.putLebPair(uint64(n)) {
+							payload16.putLebWide(uint64(n))
+						}
+						if payload16.Measuring {
+							payload16.Advance(n)
+						} else {
+							payload16.Ids.Truncate(mark)
+							if !TableEntitySaveBody(&payload16, &value.Entities[i]) {
+								return false
+							}
+						}
 					}
-					arrayLengths[i] = n
-					if !payload16.putLebPair(uint64(n)) {
-						payload16.putLebWide(uint64(n))
-					}
-					payload16.Advance(n)
 					pairs++
 				}
 				if payload16.Overflow {
@@ -4173,11 +4106,23 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 						w.putLebWide(pairs)
 					}
 					for i := 0; i < int(value.EntitiesCount); i++ {
-						if !w.putLebPair(uint64(arrayLengths[i])) {
-							w.putLebWide(uint64(arrayLengths[i]))
-						}
-						if !TableEntitySaveBody(w, &value.Entities[i]) {
-							return false
+						{
+							mark := w.Ids.Count
+							n := TableEntityMeasureBody(&value.Entities[i], w.Ids)
+							if n < 0 {
+								return false
+							}
+							if !w.putLebPair(uint64(n)) {
+								w.putLebWide(uint64(n))
+							}
+							if w.Measuring {
+								w.Advance(n)
+							} else {
+								w.Ids.Truncate(mark)
+								if !TableEntitySaveBody(w, &value.Entities[i]) {
+									return false
+								}
+							}
 						}
 					}
 				}
@@ -4200,15 +4145,24 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 				payload19 := TableWriter{Measuring: true, Ids: w.Ids}
 				pairs := uint64(0)
 				for i := 0; i < int(value.StatsCount); i++ {
-					n := TableStatMeasureBody(&value.Stats[i], payload19.Ids)
-					if n < 0 {
-						return false
+					{
+						mark := payload19.Ids.Count
+						n := TableStatMeasureBody(&value.Stats[i], payload19.Ids)
+						if n < 0 {
+							return false
+						}
+						if !payload19.putLebPair(uint64(n)) {
+							payload19.putLebWide(uint64(n))
+						}
+						if payload19.Measuring {
+							payload19.Advance(n)
+						} else {
+							payload19.Ids.Truncate(mark)
+							if !TableStatSaveBody(&payload19, &value.Stats[i]) {
+								return false
+							}
+						}
 					}
-					arrayLengths[i] = n
-					if !payload19.putLebPair(uint64(n)) {
-						payload19.putLebWide(uint64(n))
-					}
-					payload19.Advance(n)
 					pairs++
 				}
 				if payload19.Overflow {
@@ -4227,11 +4181,23 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 						w.putLebWide(pairs)
 					}
 					for i := 0; i < int(value.StatsCount); i++ {
-						if !w.putLebPair(uint64(arrayLengths[i])) {
-							w.putLebWide(uint64(arrayLengths[i]))
-						}
-						if !TableStatSaveBody(w, &value.Stats[i]) {
-							return false
+						{
+							mark := w.Ids.Count
+							n := TableStatMeasureBody(&value.Stats[i], w.Ids)
+							if n < 0 {
+								return false
+							}
+							if !w.putLebPair(uint64(n)) {
+								w.putLebWide(uint64(n))
+							}
+							if w.Measuring {
+								w.Advance(n)
+							} else {
+								w.Ids.Truncate(mark)
+								if !TableStatSaveBody(w, &value.Stats[i]) {
+									return false
+								}
+							}
 						}
 					}
 				}
@@ -7272,32 +7238,25 @@ func TableHitEventReset(value *TableHitEvent) {
 }
 
 func TableHitEventMeasureBody(value *TableHitEvent, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.TargetId != 0 {
-		bytes += tableLebBytes(ids.refAtHit(60, 0xb7bc9ac015a25050)) + 1 + 2
-	} // target_id
-	if value.Damage != 0 {
-		bytes += tableLebBytes(ids.refAtHit(40, 0x7f6308be8ab37fc0)) + 1 + 4
-	} // damage
-	if value.HitKind != 0 {
-		bytes += tableLebBytes(ids.refAtHit(1, 0x01fbc365b059b925)) + 1 + 4
-	} // hit_kind
-	if value.Crit != false {
-		bytes += tableLebBytes(ids.refAtHit(6, 0x126167908c9aa52d)) + 1 + 1
-	} // crit
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !TableHitEventSaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func TableHitEventMeasure(value *TableHitEvent) int64 {
 	var ids TableIds
-	body := TableHitEventMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !TableHitEventSaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func TableHitEventMeasureReason(value *TableHitEvent) (int64, error) {
@@ -7874,26 +7833,25 @@ func TableChatEventReset(value *TableChatEvent) {
 }
 
 func TableChatEventMeasureBody(value *TableChatEvent, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.Channel != 0 {
-		bytes += tableLebBytes(ids.refAtHit(56, 0xa5013e9ad5caeda4)) + 1 + 4
-	} // channel
-	if value.Speaker != 0 {
-		bytes += tableLebBytes(ids.refAtHit(75, 0xfbf1ac4d96ebd022)) + 1 + 2
-	} // speaker
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !TableChatEventSaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func TableChatEventMeasure(value *TableChatEvent) int64 {
 	var ids TableIds
-	body := TableChatEventMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !TableChatEventSaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func TableChatEventMeasureReason(value *TableChatEvent) (int64, error) {
@@ -8303,26 +8261,25 @@ func TablePickupEventReset(value *TablePickupEvent) {
 }
 
 func TablePickupEventMeasureBody(value *TablePickupEvent, ids *TableIds) int64 {
-	bytes := int64(1)
-	if value.ItemId != 0 {
-		bytes += tableLebBytes(ids.refAtHit(51, 0x9e7fd06d864fbd56)) + 1 + 2
-	} // item_id
-	if value.Amount != 0 {
-		bytes += tableLebBytes(ids.refAtHit(43, 0x8113fe7ea2b16969)) + 1 + 4
-	} // amount
-	if ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: ids}
+	if !TablePickupEventSaveBody(&w, value) {
 		return -1
 	}
-	return bytes
+	return w.Offset
 }
 
 func TablePickupEventMeasure(value *TablePickupEvent) int64 {
 	var ids TableIds
-	body := TablePickupEventMeasureBody(value, &ids)
-	if body < 0 || ids.Overflow {
+	w := TableWriter{Measuring: true, Ids: &ids}
+	w.Put8(1)
+	if !TablePickupEventSaveBody(&w, value) {
 		return -1
 	}
-	return 1 + body + int64(ids.Count)*8 + 8
+	w.Trailer()
+	if w.Overflow || ids.Overflow {
+		return -1
+	}
+	return w.Offset
 }
 
 func TablePickupEventMeasureReason(value *TablePickupEvent) (int64, error) {
