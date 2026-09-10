@@ -1,48 +1,42 @@
-// UT1.schema — the FIXED FORM's UNION-ARM TEXT conformance, old side
-// (docs/SPEC-TABLES.md §3.4).
+// UT1.schema — A TEXT FIELD UNDER A UNION'S ARM (docs/SPEC-TABLES.md §3.4).
 //
-// The fact this pair holds is one a plan entry's LANES have to keep apart. An
-// entry that belongs to a union arm carries TWO independent things: the offset
-// of the writer's tag, and the VALUE that tag must hold for the entry to run.
-// A TEXT entry carries a third — which flavour of text it is landing — and if
-// the flavour is written where the tag's value goes, the read loop compares a
-// tag byte against a text flavour. Then a text field under an arm either never
-// runs under its own arm, or runs under somebody else's and writes its bytes
-// across a sibling arm's storage, which share one union's space.
+// A plan entry carries TWO facts that are not the same fact: the ordinal the
+// guard byte must hold for the entry to run, and the argument the entry's own
+// op takes — for a text entry, its flavour. They had ONE lane between them, so
+// a `string(N)` under a union's arm could be guarded correctly or read with the
+// right flavour and could not be both. This pair is what says so by test.
 //
-// No existing fixture reached it: FO1's union has two arms and NEITHER of them
-// carries text. So the shape is spelled out here — a union whose SECOND arm
-// carries a string beside a scalar, so the failure is visible from both sides:
-// the arm with the text loses it, and the arm WITHOUT the text is corrupted by
-// it.
+// The string sits under the SECOND arm on purpose: the flavour of a
+// `string(N)` is 1 and the second arm's ordinal is 2, so a shared lane does not
+// merely lose one fact — it turns a byte string into a WIDE one, halving the
+// bound and terminating two bytes at a time.
 //
-// The pair is JavaScript-to-JavaScript by design. What is under test is not a
-// byte layout — the layout and the record bytes are settled by the compiler
-// and checked against the C++ reference elsewhere — it is what the runtime
-// PLAN COMPILER builds, which only runs when the two sides' layouts differ.
+// UT2 inserts an arm IN THE MIDDLE, which moves the same string from arm 2 to
+// arm 3 and makes the read a COMPILED plan: the guard must then hold THEIR
+// ordinal while the tag lands MY ordinal, which is the other half of the same
+// confusion.
 package tblut1
 
-type PlainArm
+type ArmA
 {
-    n int32 = 7 | min = -1000, max = 1000
+    n int32 = 7
 }
 
-// THE SECOND ARM, and the one that carries text. `m` rides behind `label` so a
-// smeared text payload is visible as a wrong scalar as well as a wrong string.
-type TextedArm
+type ArmB
 {
-    label string(8)
-    m     int32 = 9 | min = -1000, max = 1000
+    label string(8) = "b"
+    m     int32 = 9
 }
 
 union Pick
 {
-    plain  PlainArm
-    texted TextedArm
+    a ArmA
+    b ArmB
 }
 
 table UtRoot
 {
+    head int32 = 1
     pick Pick
-    tail int32 = 3 | min = -1000, max = 1000
+    tail int32 = 3
 }

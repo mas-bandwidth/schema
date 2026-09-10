@@ -22,6 +22,86 @@ static void fill( FxRoot * value )
     value->gone = 654;
     value->nested.a = 111;
     value->nested.b = 222;
+    value->label[0] = 'h';
+    value->label[1] = 'i';
+    value->label_length = 2;
+    value->marks[0] = 7;
+    value->marks_count = 1;
+    /* A `bytes(N)` IS AN ARRAY OF u8 ON THIS WIRE (§3.4), so its destination
+       row is an ARRAY's — the buffer, and the live length beside it — and not
+       a text field's, which is the other way round. Only a COMPILED plan reads
+       those columns, so only FX2's read of this record can tell. */
+    value->blob[0] = 0xDE; value->blob[1] = 0xAD; value->blob[2] = 0xBE; value->blob[3] = 0xEF;
+    value->blob_length = 4;
+}
+
+/* THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4), and this is the C twin of the
+   reference's slack_case. A `string(N)` shorter than N and a `[..N]T` with
+   unused slots are DECLARED bytes carrying no value: what rides in them is the
+   TEMPLATE'S ZEROS, never whatever this writer's storage held past the used
+   length or the live count.
+
+   THE CONTROL IS THE STAIN: the storage past the used length and the live
+   count is filled with a byte a clean record carries nowhere, the test proves
+   the stain IS in the storage, then proves the WIRE carries none of it, then
+   proves a whole-span copy of the same storage WOULD have carried it. */
+void fixed_fx1_slack( void )
+{
+    static uint8_t file[8192];
+    static TableFixedEntry plan[PlanCapacity];
+    FxRoot v, back;
+    TableReport r;
+    const uint8_t * body;
+    size_t body_bytes;
+    uint8_t whole[sizeof( v.label )];
+    int32_t marks[4];
+    int k;
+    int64_t need, n;
+
+    fx_root_reset( &v );
+    v.keep = 11u;
+    v.narrow = 22u;
+    v.renamed = 33;
+    v.gone = 44;
+    v.nested.a = 55;
+    v.nested.b = 66;
+    memset( v.label, 0xAA, sizeof( v.label ) );
+    v.label[0] = 'h';
+    v.label[1] = 'i';
+    v.label_length = 2;
+    for ( k = 0; k < 4; k++ ) { v.marks[k] = 0x5A5A5A5A; }
+    v.marks[0] = 7;
+    v.marks_count = 1;
+
+    fixed_check( (uint8_t) v.label[2] == 0xAAu, "C CONTROL: the text slack really is stained in storage" );
+    fixed_check( v.marks[1] == 0x5A5A5A5A, "C CONTROL: the array slack really is stained in storage" );
+
+    need = fx_root_fixed_measure( 1 );
+    fixed_check( need <= (int64_t) sizeof( file ), "C slack: the record fits the buffer" );
+    fixed_check( fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) ) == need, "C slack: the record saves" );
+    body = file + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( fx_root_fixed_layout ) + 8;
+    body_bytes = (size_t) fx_root_fixed_body_bytes;
+    fixed_check( memchr( body, 0xAA, body_bytes ) == NULL,
+                 "C SLACK IS ZERO: not one stained TEXT byte reached the wire" );
+    fixed_check( memchr( body, 0x5A, body_bytes ) == NULL,
+                 "C SLACK IS ZERO: not one stained ARRAY byte reached the wire" );
+
+    memcpy( whole, v.label, sizeof( v.label ) );
+    fixed_check( memchr( whole, 0xAA, sizeof( whole ) ) != NULL,
+                 "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain" );
+    memcpy( marks, v.marks, sizeof( marks ) );
+    fixed_check( marks[3] == 0x5A5A5A5A,
+                 "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
+
+    memset( &r, 0, sizeof( r ) );
+    n = fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, &r );
+    fixed_check( n == 1, "C slack: the record reads" );
+    fixed_check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
+                 "C slack: the used length reads, and the buffer terminates at it" );
+    fixed_check( back.marks_count == 1 && back.marks[0] == 7, "C slack: the live count reads" );
+    fixed_check( back.marks[1] == 0 && back.marks[2] == 0 && back.marks[3] == 0,
+                 "C slack: an unused slot lands as the wire's zero" );
+    fixed_check( r.clamped == 0 && !r.malformed && !r.refused, "C slack: a clean read moves no counter" );
 }
 
 int64_t fixed_fx1_bytes( void ) { return fx_root_fixed_measure( 1 ); }

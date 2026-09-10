@@ -1,37 +1,37 @@
-// UT2.schema — the NEW side of the union-arm text conformance (see UT1.schema
-// for what the pair is for).
-//
-// ONE EDIT, and its whole job is to make the two layouts differ so the same
-// records have to land through a COMPILED PLAN instead of the identity one: on
-// the identity path the whole body is a single copy and no text entry exists to
-// get wrong. `lead` is inserted BEFORE `pick`, so the union's tag sits four
-// bytes later in a UT2 record than in a UT1 one — which is exactly the offset
-// a guarded entry has to take from the WRITER's layout rather than its own.
-//
-// Nothing else moves: the union, its arms and their field names are UT1's, so
-// their wire ids match and every arm lands.
+// UT2.schema — the NEW side of UT1's pair. `mid` is inserted IN THE MIDDLE of
+// the union, so `b` — the arm that carries the `string(8)` — moves from ordinal
+// 2 to ordinal 3. A record UT1 wrote is then read under a COMPILED plan, and
+// the entries for b's fields must be guarded by THEIR ordinal (2) while the tag
+// this reader stores is MY ordinal (3). The text entry's flavour is neither
+// number, which is the whole point of the pair (docs/SPEC-TABLES.md §3.4).
 package tblut2
 
-type PlainArm
+type ArmA
 {
-    n int32 = 7 | min = -1000, max = 1000
+    n int32 = 7
 }
 
-type TextedArm
+type ArmMid
 {
-    label string(8)
-    m     int32 = 9 | min = -1000, max = 1000
+    k int32 = 5
+}
+
+type ArmB
+{
+    label string(8) = "b"
+    m     int32 = 9
 }
 
 union Pick
 {
-    plain  PlainArm
-    texted TextedArm
+    a   ArmA
+    mid ArmMid
+    b   ArmB
 }
 
 table UtRoot
 {
-    lead int32 = 0 | min = -1000, max = 1000
+    head int32 = 1
     pick Pick
-    tail int32 = 3 | min = -1000, max = 1000
+    tail int32 = 3
 }
