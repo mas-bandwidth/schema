@@ -27,7 +27,6 @@ package ir
 
 import (
 	"fmt"
-	"math/big"
 	"strconv"
 )
 
@@ -398,16 +397,6 @@ type TableFixedDstSpec struct {
 	// field's flavour. It is named for the plan entry's meta lane, which is
 	// where it ends up, and it is not the guard's tag — that lane is arg's.
 	Meta int
-	// ClampWidth is a COMPILED plan's ranged-integer clamp, in bytes, and 0
-	// when this row is not a ranged scalar the clamp op can hold. The identity
-	// plan never carries that op (docs/SPEC-TABLES.md §3.4); a compiled plan
-	// does, except inside a counted array, whose LIVE count a static entry
-	// cannot name. ClampFlags is bit 0 = low end, bit 1 = high end, bit 2 =
-	// signed. ClampLo and ClampHi are the ends as bit patterns of the slot.
-	ClampWidth uint8
-	ClampFlags uint8
-	ClampLo    uint64
-	ClampHi    uint64
 }
 
 // TableFixedLayoutEntry is one seventeen-byte entry: an id, a kind, a constant
@@ -527,74 +516,7 @@ func tableFixedWalkElement(w *tableFixedWalk, f *Field, id uint64, note string, 
 			return
 		}
 	}
-	spec := TableFixedDstSpec{Dst: dst}
-	tableFixedFillClamp(f, &spec)
-	w.push(TableFixedLayoutEntry{ID: id, Kind: TableWireScalarKind(f), Size: size, Children: 0, Note: note}, spec)
-}
-
-// tableFixedFillClamp is the READER's own range on a scalar leaf, which is
-// what a compiled clamp op holds the landed value to. A bound sitting ON the
-// storage width's own limit cannot fire and is dropped — the same test the
-// straight-line pass already applies (tableClampEnds). Widths past 8 bytes
-// stay on the storage pass: the clamp op is a 64-bit reconstruct.
-func tableFixedFillClamp(f *Field, spec *TableFixedDstSpec) {
-	w := TableFixedStorageBytes(f.Type)
-	if w == 0 || w > 8 {
-		return
-	}
-	signed := TableKindSigned(TableScalarKind(f))
-	var flags uint8
-	if signed {
-		flags |= 4
-	}
-	var lo, hi *big.Int
-	if rlo, rhi, ok := TableRawRange(f); ok {
-		slo, shi := tableStorageRange(signed, int(w)*8)
-		if rlo.Cmp(slo) > 0 {
-			flags |= 1
-			lo = rlo
-		}
-		if rhi.Cmp(shi) < 0 {
-			flags |= 2
-			hi = rhi
-		}
-	}
-	if f.Type.Kind == TBits && int64(f.Type.Width) < 8*w {
-		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
-		if hi == nil || maxv.Cmp(hi) < 0 {
-			hi = maxv
-		}
-		flags |= 2
-	}
-	if flags&3 == 0 {
-		return
-	}
-	if lo == nil {
-		lo = big.NewInt(0)
-	}
-	if hi == nil {
-		hi = big.NewInt(0)
-	}
-	spec.ClampWidth = uint8(w)
-	spec.ClampFlags = flags
-	spec.ClampLo = tableClampBits(lo, signed)
-	spec.ClampHi = tableClampBits(hi, signed)
-}
-
-func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
-	one := big.NewInt(1)
-	if signed {
-		hi := new(big.Int).Lsh(one, uint(bits-1))
-		return new(big.Int).Neg(hi), new(big.Int).Sub(hi, one)
-	}
-	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits)), one)
-}
-
-func tableClampBits(v *big.Int, signed bool) uint64 {
-	if signed {
-		return uint64(v.Int64())
-	}
-	return v.Uint64()
+	w.push(TableFixedLayoutEntry{ID: id, Kind: TableWireScalarKind(f), Size: size, Children: 0, Note: note}, TableFixedDstSpec{Dst: dst})
 }
 
 func tableFixedWalkEnum(w *tableFixedWalk, e *Enum, id uint64, note string, dst []TableFixedTerm) {
@@ -755,10 +677,9 @@ func TableFixedStrideBytes(u *Unit, f *Field) int64 {
 // TableFixedNoGuard is the guard of an entry that belongs to no union arm.
 const TableFixedNoGuard = int64(-1)
 
-// The three ops an IDENTITY plan can carry. The other ops — ordinal, widen,
-// const, widenf, and clamp — are a compiled plan's, built at run time by the
-// runtime each backend carries. A ranged integer is a copy on the identity
-// path; the generated straight-line pass holds it after the copy.
+// The three ops an IDENTITY plan can carry. The other four are a compiled
+// plan's, and a plan compiled from another writer's block is built at run time
+// by the runtime each backend carries.
 const (
 	TableFixedOpCopy  = 0
 	TableFixedOpCount = 1
@@ -771,10 +692,15 @@ type TableFixedLeaf struct {
 	Src, Dst, Size, Aux int64
 	Guard               int64 // TableFixedNoGuard when the entry belongs to no arm
 	Op                  int
-	// Arg is THE GUARD'S TAG and nothing else: the ordinal the byte at Guard
+	// Arg is THE GUARD'S TAG and nothing else: the ordinal the tag at Guard
 	// must hold for this entry to run. It is meaningless on an unguarded entry
-	// and it belongs to no op.
+	// and it belongs to no op. Compared at ArgW bytes, never as a prefix.
 	Arg int
+	// ArgW is THE GUARD'S WIDTH IN BYTES: a union tag is one, two, four or
+	// eight, and comparing only the first of them fires arm 1 on a foreign
+	// tag of 0x0101. Zero is read as one. It is stamped with the OUTER tag's
+	// width when an arm nested inside an arm is rewritten onto that tag.
+	ArgW int
 	// Meta is THE OP'S OWN ARGUMENT, on the ops that have one: a text entry's
 	// flavour today. It has its own lane because Arg's is the guard's, and the
 	// two used to share one — which put a text field under a union arm on a
@@ -866,6 +792,7 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 				for q := at; q < len(*out); q++ {
 					(*out)[q].Guard = src
 					(*out)[q].Arg = i + 1
+					(*out)[q].ArgW = int(tag)
 				}
 			}
 			return
@@ -895,7 +822,7 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 			if len(plan) > guarded {
 				last := &plan[len(plan)-1]
 				if last.Op == TableFixedOpCopy && e.Op == TableFixedOpCopy &&
-					last.Guard == e.Guard && last.Arg == e.Arg && last.Meta == e.Meta &&
+					last.Guard == e.Guard && last.Arg == e.Arg && last.ArgW == e.ArgW && last.Meta == e.Meta &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
 					last.Size += e.Size
 					continue
@@ -1179,26 +1106,24 @@ func TableFixedHasWriteBound(u *Unit) bool {
 //
 // A fixed record is a positional image, so the reader's ONE loop moves bytes
 // and asks nothing about what they mean. Two things a declaration bounds are
-// therefore not held by the loop at all on the identity path: a RANGED SCALAR's
+// therefore not held by the loop at all, on either path: a RANGED SCALAR's
 // declared min and max, and an ORDINAL's set — a union tag past the arm count,
 // an enum ordinal past the enum's top value.
 //
-// On the IDENTITY path they are held by STRAIGHT-LINE CODE in the generated
-// decode, after the copy, and never by plan entries. A plan entry per bounded
-// field is an entry on EVERY read of every record, which is the cost the
-// identity plan exists to avoid; the Elixir port measured what that does
-// (144 clamp entries, 77% of the load).
+// NEITHER PLAN CLAMPS. They are held by STRAIGHT-LINE CODE in the generated
+// decode, after the copy, and never by plan entries — not the identity plan's
+// and not a compiled plan's. A plan entry per bounded field is an entry on
+// EVERY read of every record, which is the cost the identity plan exists to
+// avoid; the Elixir port measured what that does. A COMPILED plan is built
+// once per peer, but it lands values into the same storage the identity plan
+// does, so the same pass covers it and it needs no op of its own either. That
+// is the one path: one prefill, one loop over the plan the layout hash chose,
+// then one bounds pass — the same pass, whichever plan ran.
 //
-// A COMPILED plan is built once per peer and already interprets, so a ranged
-// integer is a `clamp` op there — except inside a counted array, whose LIVE
-// count a static entry cannot name. Slack is never a value to hold. The
-// generated pass still runs after either plan: identity's only clamp, the
-// compiled path's live-count remainder and ordinals. It is idempotent, so a
-// value the clamp op already held counts nothing a second time.
-//
-// THE PASS RUNS OVER STORAGE, NOT OVER THE WIRE. It walks only what a read
-// can have written: a counted array's LIVE elements and not its slack, and
-// an optional's payload only when the present byte says so.
+// THE PASS RUNS OVER STORAGE, NOT OVER THE WIRE, which is what makes it one
+// pass for both plans. It walks only what a read can have written: a counted
+// array's LIVE elements and not its slack, and an optional's payload only when
+// the present byte says so.
 // ---------------------------------------------------------------------------
 
 // TableFixedClampNeeded answers whether a type's closure declares anything the

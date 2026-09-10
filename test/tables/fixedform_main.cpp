@@ -883,10 +883,11 @@ static void bounds_case()
         check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
     }
 
-    // 1b. A COMPILED PLAN FROM THIS BUILD'S OWN LAYOUT. The identity plan
-    // copies; a compiled plan clamps. The loop alone, without the storage
-    // pass, must already hold the range — which is what says the clamp is a
-    // plan entry on this path, and only on this path.
+    // 1b. THE SAME CONTROL ON A COMPILED PLAN. A plan compiled from this
+    // build's OWN layout is the compiled path with nothing else moving, and it
+    // must behave the same way in kind: the loop alone leaves the out-of-range
+    // value standing, because NO PLAN OP CLAMPS — the pass after the loop is
+    // the clamp, and it is the same pass for either plan.
     {
         tblfx1::TableFixedLayoutView parsed;
         tblfx1::TableMessageReason why = tblfx1::layout_malformed;
@@ -898,22 +899,27 @@ static void bounds_case()
         const int32_t made = tblfx1::TableFixedCompile( parsed, tblfx1::FxRootFixedLayout, (int32_t) tblfx1::FxRootFixedLayoutBytes,
                                                         tblfx1::FxRootFixedDst, compiled.data(), 1024, &guarded, &cr );
         check( made > 0, "bounds, compiled-own: the plan compiles" );
-        int32_t clamp_ops = 0;
+        int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op == tblfx1::kTableFixedClamp ) { clamp_ops++; }
+            if ( compiled[(size_t) i].op > tblfx1::kTableFixedWidenF ) { past_the_set++; }
         }
-        check( clamp_ops >= 2, "bounds, compiled-own: ranged scalars are clamp ops" );
+        check( past_the_set == 0, "bounds, compiled-own: the ops are the whole set and none of them clamps" );
 
         tblfx1::FxRoot held;
         tblfx1::FxRootReset( held );
         tblfx1::TableReport r;
         const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
         tblfx1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        check( held.renamed == 5000 && held.gone == -7,
+               "COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
+        check( r.clamped == 0, "COMPILED, NEGATIVE CONTROL: and counts nothing" );
+
+        tblfx1::FxRootFixedClamp( held, &r );
         check( held.renamed == 1000 && held.gone == 0,
-               "COMPILED CLAMP: the loop alone holds a ranged integer" );
-        check( r.clamped == 2, "COMPILED CLAMP: and counts the same two" );
-        check( held.nested.a == 111 && held.nested.b == 222, "COMPILED CLAMP: an in-range neighbour is untouched" );
+               "COMPILED: THE PASS IS THE CLAMP — the same pass, after the compiled plan" );
+        check( r.clamped == 2, "COMPILED: and it counts the same two the identity path counted" );
+        check( held.nested.a == 111 && held.nested.b == 222, "COMPILED: an in-range neighbour is untouched" );
     }
 
     // 2. THE SAME NUMBERS THROUGH A COMPILED PLAN. FX2 reads the same record
@@ -965,10 +971,12 @@ static void bounds_case()
         check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
     }
 
-    // 5. LIVE COUNT, NEVER SLACK. A counted array of ranged integers: the
-    // compiled plan must not emit one clamp per declared slot (Go #852), and
-    // the loop alone must leave a live out-of-range element standing so the
-    // storage pass can count it. Identity and compiled-own then match.
+    // 5. LIVE COUNT, NEVER SLACK, ON BOTH PATHS. A counted array of ranged
+    // integers, read twice: once through the identity plan and once through a
+    // plan compiled from this build's own layout. Neither plan clamps, so the
+    // loop alone leaves both live values standing on both paths, and the ONE
+    // pass over storage holds both and counts two — the same two, because the
+    // pass walks the LIVE count and never the slack behind it.
     {
         tblv1::Cfg v;
         tblv1::CfgReset( v );
@@ -981,7 +989,7 @@ static void bounds_case()
         tblv1::Cfg identity;
         tblv1::TableReport ir;
         std::vector<tblv1::TableFixedEntry> iplan( 8192 );
-        check( tblv1::CfgFixedLoad( &identity, 1, vw.data(), (int64_t) vw.size(), iplan.data(), 8192, &ir ) == 1,
+        check( tblv1::CfgFixedLoad( &identity, 1, vw.data(), (int64_t) vw.size(), iplan.data(), 8192, NULL, &ir ) == 1,
                "live-count: identity reads" );
         check( identity.a == 1000 && identity.items[0] == 255, "live-count, identity: both live values clamp" );
         check( ir.clamped == 2, "live-count, identity: two clamps, slack never" );
@@ -996,24 +1004,24 @@ static void bounds_case()
         const int32_t made = tblv1::TableFixedCompile( parsed, tblv1::CfgFixedLayout, (int32_t) tblv1::CfgFixedLayoutBytes,
                                                        tblv1::CfgFixedDst, compiled.data(), 8192, &guarded, &cr );
         check( made > 0, "live-count: the plan compiles" );
-        int32_t clamp_ops = 0;
+        int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op == tblv1::kTableFixedClamp ) { clamp_ops++; }
+            if ( compiled[(size_t) i].op > tblv1::kTableFixedWidenF ) { past_the_set++; }
         }
-        check( clamp_ops >= 1 && clamp_ops < 8,
-               "live-count: compiled plan does not emit one clamp per counted-array slot" );
+        check( past_the_set == 0, "live-count: a compiled plan carries no clamp op either" );
 
         tblv1::Cfg held;
         tblv1::CfgReset( held );
         tblv1::TableReport r;
         const uint8_t * body = vw.data() + tblv1::kTableFixedHeaderBytes + 4 + tblv1::CfgFixedLayoutBytes + 8;
         tblv1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
-        check( held.a == 1000, "live-count, compiled loop: the scalar clamp op fired" );
-        check( held.items[0] == 300, "live-count, compiled loop: the live array element is not a plan clamp" );
-        check( r.clamped == 1, "live-count, compiled loop: one clamp, the scalar's" );
+        check( held.a == 5000 && held.items[0] == 300,
+               "live-count, compiled loop: nothing in the plan held either value" );
+        check( r.clamped == 0, "live-count, compiled loop: and it counted nothing" );
+
         tblv1::CfgFixedClamp( held, &r );
-        check( held.items[0] == 255, "live-count, compiled pass: the live element clamps after the copy" );
+        check( held.a == 1000 && held.items[0] == 255, "live-count, compiled pass: both live values clamp" );
         check( r.clamped == 2, "live-count: identity and compiled count the same two" );
     }
 }
@@ -1170,6 +1178,52 @@ static void text_content_case()
     }
 }
 
+// THE GUARD IS COMPARED AT THE TAG'S WIDTH (docs/SPEC-TABLES.md §3.4). A
+// union tag can be two bytes, and comparing only the first of them fires
+// arm 1 on a foreign tag of 0x0101 — an ordinal no arm names. This case is
+// a hand-built plan so the one-byte compare and the whole-width compare
+// meet the same record; no schema has to declare two hundred and fifty six
+// arms for the width to exist.
+static void guard_width_case()
+{
+    uint8_t src[4] = { 0x01, 0x01, 0xAA, 0x00 };
+    uint8_t dst[4];
+    tblfx1::TableFixedEntry plan[2] = {};
+    tblfx1::TableReport r = {};
+
+    plan[0].src = 0; plan[0].dst = 0; plan[0].size = 2; plan[0].aux = 0;
+    plan[0].guard = tblfx1::kTableFixedNoGuard;
+    plan[0].op = tblfx1::kTableFixedCopy;
+    plan[0].arg = 0; plan[0].meta = 0; plan[0].dstsize = 0; plan[0].sign = 0;
+    plan[0].argw = 1;
+
+    plan[1].src = 2; plan[1].dst = 2; plan[1].size = 1; plan[1].aux = 0;
+    plan[1].guard = 0;
+    plan[1].op = tblfx1::kTableFixedCopy;
+    plan[1].arg = 1; plan[1].meta = 0; plan[1].dstsize = 0; plan[1].sign = 0;
+    plan[1].argw = 2;
+
+    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( &r, 0, sizeof( r ) );
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0, "GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
+
+    src[1] = 0x00;
+    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( &r, 0, sizeof( r ) );
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0xAA, "GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
+
+    // NEGATIVE CONTROL — the bug itself, watched failing. argw planted at 1
+    // is the old one-byte compare, and the SAME 0x0101 record then fires arm 1.
+    src[1] = 0x01;
+    plan[1].argw = 1;
+    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( &r, 0, sizeof( r ) );
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
+}
+
 // THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
 // the same foreign layout compile once; a third load with a different hash
 // compiles once more; identity never increments the counter.
@@ -1242,6 +1296,7 @@ int main()
     bounds_case();
     absent_optional_case();
     text_content_case();
+    guard_width_case();
     cache_case();
     layout_validation();
     fuzz_case();

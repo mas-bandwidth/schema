@@ -1,0 +1,70 @@
+// FN2.schema — FN1 one generation on, so every shape FN1 declares is read
+// through a COMPILED plan as well as through the identity plan
+// (docs/SPEC-TABLES.md §3.4). See FN1.schema for
+// what the six shapes are for. The edits, and each is chosen so the thing it
+// moves is a thing a positional read would get WRONG:
+//
+//   Tier      Silver inserted IN THE MIDDLE — Gold slides from ordinal 2 to 3,
+//             so a stored Gold read positionally reads back Silver
+//   Pick      the `c` arm inserted IN THE MIDDLE — `b`, the WIDEST arm, slides
+//             from ordinal 2 to 3, and `c` is an arm FN1 has no name for
+//   label     renamed `caption` under `was`, so the wire id is unmoved
+//   Deep3     gains a field, so the innermost type of a three-deep nesting
+//             changes size and every offset behind it moves
+//   tail      appended, a field FN1 has no name for at all
+package tblfn2
+
+enum Tier { Bronze, Silver, Gold }
+
+type Deep3
+{
+    z     int32 = 30 | min = 0, max = 1000
+    added int32 = 33 | min = 0, max = 1000
+}
+
+type Deep2
+{
+    y      int32 = 20 | min = 0, max = 1000
+    deeper Deep3
+}
+
+type Deep1
+{
+    x   int32 = 10 | min = 0, max = 1000
+    mid Deep2
+}
+
+type CellA
+{
+    n int32 = 0 | min = 0, max = 1000
+}
+
+type CellC
+{
+    q int32 = 0 | min = 0, max = 1000
+}
+
+type CellB
+{
+    pts [2]int32 | min = 0, max = 1000
+    m   int32 = 0 | min = 0, max = 1000
+}
+
+union Pick
+{
+    a CellA
+    c CellC
+    b CellB
+}
+
+table FnRoot
+{
+    flag    bool
+    tier    Tier
+    opt     ?Deep3
+    picks   [..2]Pick
+    deep    Deep1
+    caption string(4) | was = "label"
+    after   int32 = 7 | min = 0, max = 1000
+    tail    int32 = 3 | min = 0, max = 1000
+}

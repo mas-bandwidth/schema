@@ -79,6 +79,32 @@ func goIntLit(v *big.Int, signed bool, widthBytes int) string {
 	return s
 }
 
+// tableStorageRange is the inclusive range an integer storage of the given
+// width can hold.
+func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
+	one := big.NewInt(1)
+	if signed {
+		hi := new(big.Int).Lsh(one, uint(bits-1))
+		return new(big.Int).Neg(hi), new(big.Int).Sub(hi, one)
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, uint(bits)), one)
+}
+
+// tableClampEnds answers which ends of a declared min/max range a read can
+// actually clamp at. A bound sitting ON the storage width's limit is a
+// comparison no stored value can satisfy, and the emitter drops it — the same
+// "this check cannot fire" test the bits(N) width clamp applies when N is the
+// storage width.
+func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
+	signed := ir.TableKindSigned(ir.TableScalarKind(f))
+	lo, hi := tableStorageRange(signed, widthBytes*8)
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return false, false
+	}
+	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
+}
+
 // fieldDefaultExpr renders the Go expression a field's default compares
 // against on the write side (elision) — identical values to the reader's
 // prefill, so measure, save and load agree.
