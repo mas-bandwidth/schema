@@ -650,3 +650,105 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormArgLaneTextUnderSecondArm is reference-fix 12's probe (Rowan,
+// Java #833 read): a string(8) under a union's SECOND arm. Write on the
+// identity path, read with a compiled plan from a different layout. If Arg
+// is both the guard's arm ordinal and the text flavour, the compiled read
+// drops the string silently.
+func TestFixedFormArgLaneTextUnderSecondArm(t *testing.T) {
+	dir := t.TempDir()
+	runtime, err := filepath.Abs("../../../../serialize.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := `package tblw
+type ArmA { n int32 }
+type ArmB { s string(8) }
+union Pick
+{
+    a ArmA
+    b ArmB
+}
+table Root {
+    pick Pick
+}
+`
+	reader := `package tblr
+type ArmA { n int32 }
+type ArmB { s string(8) }
+union Pick
+{
+    a ArmA
+    b ArmB
+}
+table Root {
+    pick Pick
+    tail int32 = 7
+}
+`
+	writeUnit(t, filepath.Join(dir, "w"), "tblw", writer, runtime)
+	writeUnit(t, filepath.Join(dir, "r"), "tblr", reader, runtime)
+	testDir := filepath.Join(dir, "test")
+	if err := os.MkdirAll(testDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mod := fmt.Sprintf("module arglanetest\n\ngo 1.26\n\nrequire (\n\ttblw v0.0.0\n\ttblr v0.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\nreplace tblw => ../w\nreplace tblr => ../r\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+	if err := os.WriteFile(filepath.Join(testDir, "go.mod"), []byte(mod), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := `package arglanetest
+
+import (
+	"testing"
+
+	"tblr"
+	"tblw"
+)
+
+func TestArgLane(t *testing.T) {
+	one := tblw.Root{}
+	tblw.RootReset(&one)
+	one.Pick.Type = tblw.PickTypeB
+	copy(one.Pick.B.S[:], "hi")
+	one.Pick.B.SLength = 2
+	buf := make([]byte, tblw.RootFixedMeasure(1))
+	if n := tblw.RootFixedSave([]tblw.Root{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("identity save %d", n)
+	}
+
+	// same-layout identity read: the string must survive or the fixture is wrong
+	same := make([]tblw.Root, 1)
+	var wr tblw.TableReport
+	wplan := make([]tblw.TableFixedEntry, 256)
+	if n := tblw.RootFixedLoad(same, buf, wplan, &wr); n != 1 || same[0].Pick.Type != tblw.PickTypeB || string(same[0].Pick.B.S[:same[0].Pick.B.SLength]) != "hi" {
+		t.Fatalf("identity: n=%d %+v %+v", n, same[0], wr)
+	}
+
+	got := make([]tblr.Root, 1)
+	var r tblr.TableReport
+	plan := make([]tblr.TableFixedEntry, 256)
+	if n := tblr.RootFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("compiled n=%d %+v", n, r)
+	}
+	if got[0].Pick.Type != tblr.PickTypeB {
+		t.Fatalf("compiled arm %d, want B; report %+v", got[0].Pick.Type, r)
+	}
+	if string(got[0].Pick.B.S[:got[0].Pick.B.SLength]) != "hi" {
+		t.Fatalf("ARG LANE BITES: compiled read of string under union arm 2 landed %q (len %d), identity had hi; report %+v", got[0].Pick.B.S[:got[0].Pick.B.SLength], got[0].Pick.B.SLength, r)
+	}
+	if got[0].Tail != 7 {
+		t.Fatalf("reader tail default %d", got[0].Tail)
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(testDir, "arg_lane_test.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd.Dir = testDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("arg-lane probe:\n%s", out)
+	}
+}
