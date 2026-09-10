@@ -83,19 +83,20 @@ type Loose
 }
 `
 	for _, tc := range []struct {
-		name string
-		decl string
-		edge string
+		name  string
+		decl  string
+		edge  string
+		form1 bool // form-1 / variable tables still refuse; the fixed form does not
 	}{
-		{"direct", "table", ""},
-		{"nested_type", "type", "type Middle { badge Badge }\ntable Root { middle Middle }"},
-		{"fixed_array", "type", "table Root { badges [2]Badge }"},
-		{"counted_array", "type", "table Root { badges [..2]Badge }"},
-		{"union_arm", "type", "union Choice { badge Badge }\ntable Root { choice Choice }"},
-		{"union_array_arm", "type", "union Choice { badges [2]Badge }\ntable Root { choice Choice }"},
-		{"pointer", "table", "table Root { badge *Badge }"},
-		{"map_value", "type", "table Root { badges map[uint8]Badge }"},
-		{"nested_map_value", "type", "table Root { badges map[uint8]map[uint8]Badge }"},
+		{"direct", "table", "", false},
+		{"nested_type", "type", "type Middle { badge Badge }\ntable Root { middle Middle }", false},
+		{"fixed_array", "type", "table Root { badges [2]Badge }", false},
+		{"counted_array", "type", "table Root { badges [..2]Badge }", false},
+		{"union_arm", "type", "union Choice { badge Badge }\ntable Root { choice Choice }", false},
+		{"union_array_arm", "type", "union Choice { badges [2]Badge }\ntable Root { choice Choice }", true},
+		{"pointer", "table", "table Root { badge *Badge }", true},
+		{"map_value", "type", "table Root { badges map[uint8]Badge }", true},
+		{"nested_map_value", "type", "table Root { badges map[uint8]map[uint8]Badge }", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := "package vdef\nflags Caps { Jump, Crouch }\n" +
@@ -103,8 +104,14 @@ type Loose
 			u := unitFromSource(t, src)
 			for _, target := range []string{"rust", "java", "js", "dart", "elixir"} {
 				_, err := New().Generate(u, target, Options{})
+				if !tc.form1 {
+					if err != nil && strings.Contains(err.Error(), "table-wire defaults") {
+						t.Errorf("fixed-form defaults refused as form-1 table-wire: %v", err)
+					}
+					continue
+				}
 				if err == nil {
-					t.Fatal("table-closure defaults accepted without table reset and elision support")
+					t.Fatal("form-1 table-closure defaults accepted without table reset and elision support")
 				}
 				// A later refusal of maps or table unions is not enough: the
 				// defaults must be found through those edges before codec generation.

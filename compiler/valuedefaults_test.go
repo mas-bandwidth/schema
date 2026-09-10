@@ -1,8 +1,11 @@
 // A string, bytes or flags default (SPEC §4.2) has separate packet and table
-// carriers. C, C++, C# and Go carry both; other targets carry packet-only defaults.
+// carriers. Form 1's table-wire list is C, C++, C# and Go (elision); the
+// fixed form elides nothing and does not take that refusal. Other targets
+// carry packet-only defaults, and the fixed form's prefill on every leg.
 package compiler
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -96,6 +99,64 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "Badge.caps, Badge.label, Ship.caps, Ship.name and Ship.tag") || !strings.Contains(err.Error(), "--lang cpp") {
 			t.Errorf("%s refused without naming the fields and the carrier: %v", target, err)
+		}
+	}
+}
+
+const fixedValueDefaultsUnit = `package vdef
+
+flags Caps { Jump, Crouch }
+
+table Ship
+{
+    name string(32) = "untitled"
+    tag  bytes(4) = "ab"
+    caps Caps = { Jump, Crouch }
+    label string(8) = "fx"
+}
+`
+
+func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
+	u := unitFromSource(t, fixedValueDefaultsUnit)
+	c := New()
+	for _, target := range c.Targets() {
+		out, err := c.Generate(u, target, Options{})
+		if err != nil {
+			t.Errorf("%s refused a fixed table's string, bytes and flags defaults: %v", target, err)
+			continue
+		}
+		var all strings.Builder
+		for _, b := range out {
+			all.Write(b)
+		}
+		got := all.String()
+		switch target {
+		case "cpp":
+			for _, want := range []string{`char name[32 + 1] = "untitled";`, `char label[8 + 1] = "fx";`, `uint8_t tag[4] = { 0x61, 0x62 };`} {
+				if !strings.Contains(got, want) {
+					t.Errorf("cpp fixed-form prefill lacks %q", want)
+				}
+			}
+		case "c":
+			for _, want := range []string{"value->name_length = 8;", "value->label_length = 2;", "value->tag_length = 2;", "value->caps = 3ull;"} {
+				if !strings.Contains(got, want) {
+					t.Errorf("C fixed-form prefill lacks %q", want)
+				}
+			}
+		}
+	}
+}
+
+func TestFX1GeneratesOnEveryLeg(t *testing.T) {
+	src, err := os.ReadFile("../test/tables/FX1.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := unitFromSource(t, string(src))
+	c := New()
+	for _, target := range c.Targets() {
+		if _, err := c.Generate(u, target, Options{}); err != nil {
+			t.Errorf("%s refused FX1 (label string(8) = \"fx\"): %v", target, err)
 		}
 	}
 }
