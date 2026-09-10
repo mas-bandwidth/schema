@@ -21,9 +21,9 @@ REFUSE name                stop; decode nothing; move no counter; report `name`
 COUNT c                    add one to a §4 counter
 ```
 
-Every integer is little-endian; nothing is aligned or padded between fields. `REFUSE` is total: no plan
-compiled, no value written, `malformed` not set. The §4 counters are `unknown`, `kind_mismatch`, `widened`,
-`clamped`, `duplicate` and `malformed`; this form raises all but `duplicate`.
+Every integer is little-endian; nothing is aligned or padded between fields. `REFUSE` is total: no plan compiled,
+no value written, `malformed` not set. The §4 counters are `unknown`, `kind_mismatch`, `widened`, `clamped`,
+`duplicate` and `malformed`; this form raises all but `duplicate`.
 
 ## 1. The layout
 
@@ -39,7 +39,7 @@ Entry `i` begins at `4 + 17*i`; within it `id` at +0 (8), `kind` at +8 (1), `siz
 subtree extent. **There is no version byte inside a layout** — the form byte versions the layout's own format.
 **The walk is pre-order**: entry `0` is the root, kind `13`, and each entry is followed immediately by its
 `children` children, each followed by its own — so a child's index always exceeds its parent's, **the
-representation cannot express a cycle**, and there is no cycle rule.
+representation cannot express a cycle**, and there is no cycle rule to write.
 
 | kind | children, in declared order |
 |---|---|
@@ -71,16 +71,15 @@ kind outside it names a form this reader never saw: `REFUSE layout_kind_unknown`
 | 7 | nesting does not pass the reader's own walk bound (the reference states 64) | `layout_too_deep` |
 
 Bytes that are not a layout at all — shorter than the 4-byte header, or absent — are `layout_malformed`, the
-residue after the seven and not a bucket they fall into, and a layout that fails any rule **sets nothing**.
-**The order is load-bearing**: rule 1; the root's kind (`13`, else rule 4) and size (nonzero, within 65536, else
-rule 6); then the walk — per entry, index in range (5), depth (7), **kind known first** (2), own size within
-65536 (6), recurse, then the size and shape rules. Keep the FIRST reason and stop. **The subtree walk is
-iterative**, or a chain of single-child entries is a stack depth the wire chooses.
+residue after the seven and not a bucket they fall into, and a layout that fails any rule **sets nothing**. **The
+order is load-bearing**: rule 1; the root's kind (`13`, else rule 4) and size (nonzero, within 65536, else rule
+6); then the walk — per entry, index in range (5), depth (7), **kind known first** (2), own size within 65536
+(6), recurse, then the size and shape rules. Keep the FIRST reason and stop. **The subtree walk is iterative**,
+or a chain of single-child entries is a stack depth the wire chooses.
 
 ### 1.2 What a size and a shape must be
 
-`sum` totals an entry's children's sizes, `widest` is the largest of them, `elem` is the one child's size, and
-an ordinal width is one of `1, 2, 4, 8`.
+`sum` totals an entry's children's sizes, `widest` is the largest, `elem` is the one child's size, and an ordinal width is one of `1, 2, 4, 8`.
 
 | kind | admitted size | shape |
 |---|---|---|
@@ -97,8 +96,7 @@ an ordinal width is one of `1, 2, 4, 8`.
 
 ## 2. The file and the framings
 
-**The form byte and the layout each appear ONCE PER CARRIER; a record carries only its hash.** A record is never
-self-describing, in any carrier.
+**The form byte and the layout each appear ONCE PER CARRIER; a record carries only its hash** — a record is never self-describing, in any carrier.
 
 ```
 a FILE:
@@ -128,8 +126,7 @@ load, in order:**
 announcement, once per hash, before the first record carrying it. **A peer may announce more than one layout,
 one per hash** — the form's one departure from §3.3's "no re-announcement, ever", a layout being NAMED BY ITS
 HASH; a second for a hash already held is refused by name. **THE MESSAGE FORM (§3.3), planned**: one form byte
-per batch and the layout on the batch's announcement. **Inside a packet no form byte is written at all**, the
-one exception.
+per batch, the layout on its announcement. **Inside a packet no form byte is written at all**, the one exception.
 
 ## 3. The record and the writer
 
@@ -162,8 +159,8 @@ constants, so measuring never reads a value.
 
 No text field carries a terminator on the wire, however the language stores one. A pointer, a map, an unbounded
 `[]T` and a guarded branch are refused in a fixed table by name (§2.2, §11). **Kind `35` is a LAYOUT kind, not a
-wire kind**: §2.3 makes `?T` and a plain `T` nesting wire-identical on form `1`, but **on this form they are one
-byte apart**, so the edit reads as `kind_mismatch` rather than every byte after it sliding by one.
+wire kind**: §2.3 makes `?T` and a plain `T` wire-identical on form `1`, but **here they are one byte apart**, so
+the edit reads as `kind_mismatch` rather than every byte after it sliding by one.
 
 ### 3.1 The write
 
@@ -205,8 +202,7 @@ struct Op {
     guard : u32   // the offset of the TAG BYTE this entry is conditional on, or NO_GUARD
     op : u8 ; arg : u8 ; meta : u8 ; dstsize : u8 ; sign : u8
 }
-// arg is THE GUARD'S ORDINAL and nothing else; meta is THE OP'S OWN ARGUMENT, today a text
-// entry's flavour; dstsize and sign belong to widen and ordinal.
+// arg is THE GUARD'S ORDINAL and nothing else; meta is THE OP'S OWN ARGUMENT (a text flavour).
 ```
 
 **`arg` and `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never share one.** (fix 12) A `string(N)`
@@ -242,18 +238,16 @@ survive that stamp.
 
 ### 4.2 Which plan, and where it comes from
 
-**The identity plan — the build's own hash — is BAKED.** The schema compiler does the walk once and every
-backend lays the finished array down as static data — one answer for every port, and the only way a language
-with no compile-time evaluation carries this form. Two shapes are permitted, both the coalescing rule taken to
-its end:
+**The identity plan — the build's own hash — is BAKED.** The schema compiler does the walk once and every backend
+lays the finished array down as static data — one answer for every port, and the only way a language with no
+compile-time evaluation carries this form. Two shapes are permitted, both the coalescing rule taken to its end:
 
 - **coalesced runs straight into the reader's storage.** Merge two entries only when both are `copy`,
-  `guard`/`arg`/`meta` all agree, and `src` and `dst` both advance by `size`. An array of a FLAT element type —
-  storage image equal to wire image — is ONE run however many elements it holds.
+  `guard`/`arg`/`meta` agree, and `src` and `dst` both advance by `size`. An array of a FLAT element type — one
+  whose storage image is its wire image — is ONE run however many elements it holds.
 - **one whole-body copy into a RECORD IMAGE, then a straight-line scatter.** In the image domain the record's
-  declared order IS the destination's order, so every run merges and the plan is one entry — the shape a
-  language takes when its storage is not the wire's: a `string(N)` stored as `N+1` units, a union that is a real
-  tagged enum.
+  declared order IS the destination's order, so every run merges and the plan is one entry — the shape a language
+  takes when its storage is not the wire's: a `string(N)` stored as `N+1` units, a union that is a real tagged enum.
 
 Coalesce inside each half, **never across the split**. **For any other hash the SAME loop runs over a plan
 compiled once from the writer's layout, and CACHED BY HASH.** (note b) The compiler walks the layout against the
@@ -272,10 +266,9 @@ within `root.size`. A layout reaching past it is **refused WHOLE and never partl
 
 **Prefill the bytes the plan does not write.** The plan compiler computes the UNWRITTEN RANGES — the destination
 bytes no entry covers — and only those take the declared defaults before the loop; **for the identity plan that
-list is EMPTY**, so the identity read pays no prefill at all (fix 15). That answers "absent field" — no plan entry,
-so the field keeps what the prefill put there — and "unknown field": a field this reader cannot name is never a
-source, its bytes stepped over because the next entry's `src` is past them. **Skipping costs nothing, because
-skipping is not an act.**
+list is EMPTY**, so the identity read pays no prefill (fix 15). That answers "absent field" — no plan entry, so
+the field keeps what the prefill put there — and "unknown field": a field this reader cannot name is never a
+source, its bytes stepped over because the next entry's `src` is past them. **Skipping is not an act.**
 
 ### 4.4 The run
 
@@ -301,8 +294,24 @@ The reader validates on load in **every** build, release included, and a clamp c
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction, NaN payloads included |
 | `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
 | a `bool` or a PRESENT FLAG | lands as **`byte != 0`**, normalised to the language's own true. `0x02` is not a bool a reader stores verbatim (fix 2) |
-| a UNION TAG or ENUM ORDINAL past the last arm or variant | lands `0` — `None` — and `COUNT clamped`; **closed on the IDENTITY path too**, where the value rides inside a plain `copy` run (fixes 9 and 14). An ordinal naming a variant the writer HAS and this reader does not lands `None` and **counts NOTHING**, the plan compiler having counted that `unknown` once already |
-| a RANGED INTEGER | clamps on load to the reader's declared bounds, `COUNT clamped`. **A fixed-point field clamps on the RAW scale**: its bounds are whole units and the wire carries units × 2^F, so it clamps to `[A << F, B << F]` and lands on the bound (fix 5) |
+
+### 4.6 The bounds pass
+
+**A record is a positional image and the read loop moves bytes: it asks nothing about what they mean.** Two
+things a declaration bounds are held by nobody in §4.5 — a RANGED SCALAR's min and max, and an ORDINAL's set: a
+union tag past the arm count, an enum ordinal past the enum's top value. They are held by **STRAIGHT-LINE CODE
+AFTER THE PLAN RUN, and NOT BY PLAN ENTRIES**, an entry per bounded field being a test on every read of every
+record. **THE PASS RUNS OVER STORAGE, which is what makes ONE pass cover BOTH plans**: both land values in the
+same places, so a compiled plan needs no op of its own. It walks only **what a read can have written** — a
+counted array's LIVE elements and never its slack, an optional's payload only when the present byte says so —
+because the prefill's defaults are in range by construction, and clamping storage nobody wrote would count a
+clamp on every clean read. A type that bounds nothing emits no pass at all.
+
+- **A RANGED SCALAR** clamps to its declared min and max, `COUNT clamped`. **A fixed-point field's bounds are in
+  VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)` clamps to `2^N - 1`.
+- **A UNION TAG past the arm count, or an ENUM ORDINAL past the enum's top value, lands `None`** — the same
+  nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). A value inside an `| max = K` headroom
+  is in the set and stands.
 
 ## 5. Evolution
 
@@ -331,31 +340,31 @@ fixed field's `F` moved under one kind, a referent that cannot stand in. It is o
 | **4096 bytes of record body** | a WARNING, always on, naming the table and the size. Nothing about the wire changes there; it is where a fixed table stops being a small thing |
 | **65536 bytes of record body** | a COMPILE REFUSAL for a DECLARED fixed table, by name, naming the table and the size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
 | **`--fixed-record-limit N`** | a project's own policy, off by default, and it only ever LOWERS — it cannot raise the 65536, because a gate a stranger does not honour is not a wire bound |
-| **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP.** (fix 4) The identity plan is static data, so the walk is bounded, and **an array of a FLAT type is ONE leaf** — the cap is reached only by a large array of a type carrying text, a count, a union or an optional. A type whose leaves do not fit one plan **does not compile, by name, naming the type and the count**; at run time, against the caller's buffer, the same question is `plan_too_large` |
+| **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP** (fix 4), on the 65536's own split: a DECLARED fixed table past it does not compile, naming the table and its leaf count; one merely DERIVED into the form is warned and keeps form `1`. The cap bounds the identity plan a backend lays down as STATIC DATA — source a consumer's compiler parses on every build. **THE FLAT-ELEMENT FOLD says what spends a leaf**: an array whose element's storage image IS its wire image, a scalar or a struct of them, is ONE leaf however long it is, so `[..8192]int32` costs two — the count and the run. What reaches the cap is a big array of a type this form must walk element by element: one carrying text, a count, a union or an optional. At run time, against the caller's own buffer, the same question is `plan_too_large` |
 
 ## 7. What a port takes, and what it must not
 
 **Take the SHAPE from your own PACKET codec**: a straight line of stores by field name into a buffer the caller
 owns, a reader that is the writer mirrored, one ranged load per value, and the language's own allocation and
-safety policy. **Take NOTHING from form `1`** — no per-field reference, no kind byte, no length, no terminator,
-no id table, no tolerant probe. If your form-`1` path is where you started, you are on the wrong wire.
+safety policy. **Take NOTHING from form `1`** — no per-field reference, no kind byte, no length, no terminator, no
+id table, no tolerant probe. If your form-`1` path is where you started, you are on the wrong wire.
 
 **Where the compiler hands you data, CONSUME IT — do not re-derive the walk.** The layout bytes and the identity
-plan are compiler output, laid down as static data; a port that walks the type again has a second wire that
-agrees today and drifts tomorrow. The Rust leg is the example: its private record twin re-derived the layout,
-and what caught it was a Go test comparing the emitted layout arrays and hash constants against the reference
-entry for entry (`compiler.TestRustFixedFormBlockIsTheCppReferenceByteForByte`). **Every port owes that test**,
-and the build-time assertion that the plan's destination offsets equal its own `offsetof` and `sizeof`.
+plan are compiler output, laid down as static data; a port that walks the type again has a second wire that agrees
+today and drifts tomorrow. The Rust leg is the example: its private record twin re-derived the layout, and what
+caught it was a Go test comparing the emitted layout arrays and hash constants against the reference entry for
+entry (`compiler.TestRustFixedFormBlockIsTheCppReferenceByteForByte`). **Every port owes that test**, and the
+build-time assertion that the plan's destinations equal its own `offsetof` and `sizeof`.
 
 **Storage is not the wire.** A struct is padded and a body is not; a count or length precedes its payload ON THE
-WIRE and follows the buffer IN C++ STORAGE, so never infer wire order from member order; text storage is one
-unit longer than the bound where the wire is not. Two live accidents beside them: the reference's small-copy
-routine is unsound for runs of 17..31 bytes, and its guard test compares one byte, so a union past 255 arms
-wraps. **Do not transliterate.** Then **prove against the oracle, in this order**:
+WIRE and follows the buffer IN C++ STORAGE, so never infer wire order from member order; text storage is one unit
+longer than the bound where the wire is not. Two live accidents beside them: the reference's small-copy routine
+is unsound for runs of 17..31 bytes, and its guard test compares one byte, so a union past 255 arms wraps. **Do
+not transliterate.** Then **prove against the oracle, in this order**:
 
 | # | the proof |
 |---|---|
-| 1 | **`make tables-fixedform-corpus`** writes six form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements). **Read a file and save it back; the bytes must be identical** — a byte a port encodes differently is a byte that does not come back. **One exception: `p3`, `keyed` and `pack` ship meaning under a clear present flag, so the oracle is the non-conforming party and a correct port fails it until fix 13 lands** |
+| 1 | **`make tables-fixedform-corpus`** writes six form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements). **Read a file and save it back; the bytes must be identical** — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
 | 2 | **read a file written under ANOTHER schema's layout** — `fx1`/`fx2` both directions, `p1` into `p3`. That is the plan path, and the whole of what the versioning invariant is worth |
 | 3 | **the negative controls, one per named rule and one per named refusal**: each of §1.1's seven, over a file that reads clean and is broken in exactly one place; `layout_malformed` for a header shorter than a layout and for a header hash that is not the hash of the layout behind it; `plan_too_large` for a one-entry plan slice; `batch_too_large` for a batch past the caller's room; `previous_form`, `message_form_as_file` and `newer_form` for form bytes `1`, `2` and `6`; `no_layout` for a record hash naming nothing; `malformed` for a ragged tail. **Each comes back under ITS OWN NAME, nothing decoded, no counter moved.** A validation nobody watched fail is a validation nobody has |
 | 4 | **the wrong plan must go red**, and so must each fix's own bug: this build's identity plan over another schema's record, the swapped `bytes(N)` row, the shared `arg`/`meta` lane, a whole-span copy over stained slack |
@@ -364,24 +373,24 @@ wraps. **Do not transliterate.** Then **prove against the oracle, in this order*
 
 ## Reference fixes pending
 
-Where this page and the C++ reference or §3.4 disagree, **this page is the ruling**.
+Where this page and the C++ reference or §3.4 disagree, **this page is the ruling**. Four landed while it was written.
 
 | fix | what it is | where it stands |
 |---|---|---|
-| 1 | **Text and array slack** — the writer writes `length` units and `count` elements onto the zeroed template and stops, never the caller's leftovers or an element's default image | LANDED |
+| 1 | **Text and array slack** — the writer writes `length` units and `count` elements onto the zeroed template and stops, never the caller's leftovers or an element's default image | LANDED, `860d9f6f` |
 | 2 | **Bool and present flags** land as `byte != 0`; the reference lands both with a plain one-byte copy, so `0x02` becomes a `bool` holding `2` | in flight (Go, Rust) |
-| 3 | **Layout overrun** — an entry reaching past the writer's declared record size owes `layout_record_too_large`, and a failure to parse the reader's OWN layout owes its own name, not `plan_too_large` | validation LANDED, the names pending |
-| 4 | **The leaf cap** is a compile refusal by name; §3.4 and `ir` drop the form silently, and `ir`'s own comment names a `TableFixedLeafCapRefusals` that does not exist | pending |
-| 5 | **The ranged clamp** — the reference has no clamp op at all; a ranged integer clamps on load and counts, fixed-point on the raw scale | in flight (Dart, Rust) |
+| 3 | **Layout overrun** — an entry reaching past the writer's declared record size owes `layout_record_too_large`, and a failure to parse the reader's OWN layout owes its own name, not `plan_too_large` | validation LANDED, `3e3da58d`; the names pending |
+| 4 | **The leaf cap** refuses BY NAME instead of dropping the form in silence, on the 65536's declared/derived split, and the flat-element fold says what spends a leaf | LANDED, `eeb5563b` |
+| 5 | **The ranged clamp** — a ranged integer clamps on load and counts, fixed-point on the raw scale | LANDED, `a17e1b0c` — §4.6 |
 | 6 | **The measurement file** — `test/bench/fixedform_measure.cpp` no longer compiles against the generated plan and is in no test target, so the ratios §3.4 quotes are unverifiable today | pending |
-| 7 | **Wide kinds** — the wide text flavour has NO oracle bytes anywhere, so a leg counting bytes where it owes UTF-16 CODE UNITS passes; and §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS, not this wire, which names no kind on the emitted path | in flight (Dart: `FXW.schema`, `fxw.bin`) |
+| 7 | **Wide kinds**, two halves — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path; and the wide TEXT flavour has NO oracle bytes anywhere, so a leg counting BYTES where it owes UTF-16 CODE UNITS still passes | the first LANDED, `22a161c5`; the oracle in flight (Dart) |
 | 8 | **Name claims** — `internal/tablenames/cpp.go` claims none of the fixed form's module-scope names where the C backend claims twenty-three, so a schema can collide with the runtime; and the layout hash is a wire identity, never a security claim | in flight (JS) |
-| 9 | **The Envelope clamp count** — on the identity path a union tag is a plain one-byte copy, so a tag past the last arm lands RAW and counts nothing | pending |
-| 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | LANDED |
+| 9 | **The Envelope clamp count** — a union tag past the last arm landed RAW on the identity path, where it was a plain one-byte copy, and counted nothing | LANDED, `a17e1b0c` — §4.6 |
+| 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | LANDED, `79e34542` |
 | 11 | **Text content** — the reference performs NO UTF-8 or surrogate validation here, and a length past the bound clamps where §3.4 says `malformed`. The ruling: the length CLAMPS and counts, the CONTENT refuses by name as the packet reader does | pending |
-| 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | LANDED |
-| 13 | **Absent-optional zero** — the emitted writer stores an optional's payload unconditionally, and the ORACLE encodes that: `p3`, `keyed` and `pack` ship values under a clear flag | pending; the oracle moves with it |
-| 14 | **The tag and ordinal rulings** — a tag past the last arm and an ordinal past the last variant land `None` and `COUNT clamped`, on the identity path as well as the compiled one; a name this reader lacks lands `None` and counts nothing more | in flight (Java, Elixir, Dart, Rust, Go) |
+| 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | LANDED, `8c15973d` |
+| 13 | **Absent-optional zero** — the writer stored an optional's payload unconditionally, so a caller's untouched storage rode behind a flag that said absent | LANDED, `db52975f` |
+| 14 | **The tag and ordinal rulings** — a tag past the last arm and an ordinal past the last variant land `None` and `COUNT clamped`, on the identity path as well as the compiled one, and by a straight-line pass rather than a plan entry | LANDED, `a17e1b0c` — §4.6 |
 | 15 | **The prefill** — the reference resets the whole destination before every record, on both paths. Glenn's ruling: prefill the bytes the plan does not write; identity's list is empty | in flight (C #838, Rust #837) |
 
 Three smaller divergences, recorded rather than fixed here. **(a)** §3.4's `C` table gives an enum's ordinal
