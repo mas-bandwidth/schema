@@ -26,6 +26,7 @@ const (
 	tableFixedConst
 	tableFixedWidenF
 	tableFixedBool
+	tableFixedTag
 )
 
 const (
@@ -139,6 +140,24 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		switch p.Op {
 		case tableFixedCopy:
 			tableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
+		case tableFixedTag:
+			// A UNION TAG NAMING NO ARM LANDS AS None AND COUNTS UNKNOWN,
+			// which is what form 1 does with an arm id it does not know
+			// (docs/SPEC-TABLES.md §4). Copied raw it would land as a
+			// discriminant no variant spells, and every arm's guard would
+			// then decline to fill it — a value that is neither None nor an
+			// arm. Aux is the reader's own arm count.
+			var tag uint64
+			for k := uint32(0); k < p.Size; k++ {
+				tag |= uint64(src[p.Src+k]) << (8 * k)
+			}
+			if tag > uint64(p.Aux) {
+				tag = 0
+				report.Unknown++
+			}
+			for k := uint32(0); k < p.Size; k++ {
+				dst[p.Dst+k] = byte(tag >> (8 * k))
+			}
 		case tableFixedBool:
 			// A GO bool IS NOT A BYTE: the comparison reads the byte against
 			// 1, so a hostile 2 in a bool slot lands as FALSE if it is copied

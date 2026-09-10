@@ -572,3 +572,80 @@ func TestHostileBoolNegativeControl(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormHostileUnionTag is the union tag's control. A tag beyond the
+// arms this reader has is form 1's UNKNOWN ARM ID (docs/SPEC-TABLES.md §4):
+// the union lands as None and `unknown` counts. Copied raw it would land as a
+// discriminant no variant spells, with every arm's guard declining to fill it
+// — a value that is neither None nor an arm, and nothing counted to say so.
+func TestFixedFormHostileUnionTag(t *testing.T) {
+	runGenerated(t, `package probe
+type Hit { damage int32 }
+type Chat { volume int32 }
+union Pick
+{
+    hit  Hit
+    chat Chat
+}
+table Host {
+    pick Pick
+    tail int32 = 9
+}
+`, `package probe
+import ("testing")
+
+func TestUnknownTagIsNoneAndCounts(t *testing.T) {
+	one := Host{Tail: 9}
+	HostReset(&one)
+	one.Pick.Type = PickTypeChat
+	one.Pick.Chat.Volume = 4242
+	buf := make([]byte, HostFixedMeasure(1))
+	if n := HostFixedSave([]Host{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+	body := buf[len(buf)-HostFixedRecordBytes+8:]
+	if body[0] != byte(PickTypeChat) {
+		t.Fatalf("the tag does not lead the record: %d", body[0])
+	}
+
+	// the arm this reader HAS still lands, and nothing counts
+	got := make([]Host, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := HostFixedLoad(got, buf, plan, &r); n != 1 || got[0].Pick.Type != PickTypeChat || got[0].Pick.Chat.Volume != 4242 {
+		t.Fatalf("known arm: n=%d %+v %+v", n, got[0], r)
+	}
+	if r != (TableReport{}) || got[0].Tail != 9 {
+		t.Fatalf("known arm moved a counter or the tail: %+v %+v", r, got[0])
+	}
+
+	// EVERY TAG BEYOND THE ARMS, and 0 stays None without counting
+	for _, tag := range []byte{3, 4, 0x7F, 0xFF} {
+		hostile := append([]byte(nil), buf...)
+		hostile[len(hostile)-HostFixedRecordBytes+8] = tag
+		got = make([]Host, 1)
+		r = TableReport{}
+		if n := HostFixedLoad(got, hostile, plan, &r); n != 1 {
+			t.Fatalf("tag %d: n=%d %+v", tag, n, r)
+		}
+		if got[0].Pick.Type != PickTypeNone {
+			t.Fatalf("tag %d landed as %d, not None", tag, got[0].Pick.Type)
+		}
+		if r.Unknown != 1 || r.KindMismatch != 0 || r.Malformed || r.Verdict != TableOpenOk {
+			t.Fatalf("tag %d: an unknown arm is one unknown and nothing else: %+v", tag, r)
+		}
+		if got[0].Tail != 9 {
+			t.Fatalf("tag %d: the field past the union moved: %d", tag, got[0].Tail)
+		}
+	}
+
+	none := append([]byte(nil), buf...)
+	none[len(none)-HostFixedRecordBytes+8] = 0
+	got = make([]Host, 1)
+	r = TableReport{}
+	if n := HostFixedLoad(got, none, plan, &r); n != 1 || got[0].Pick.Type != PickTypeNone || r != (TableReport{}) {
+		t.Fatalf("None is not unknown: n=%d %+v %+v", n, got[0], r)
+	}
+}
+`)
+}
