@@ -8,9 +8,11 @@
 // ONE plan-driven path. There is no version byte inside the layout; the form
 // byte versions it. The word is LAYOUT, not block.
 //
-// File header (C++ 073c762a): form byte 3 at 0, seven reserved zeros, 8-byte
-// layout hash at 8, layout description from 16 (u32 LE length, then the
-// layout), then records. Records are hash plus values and do not move.
+// FILE HEADER (docs/SPEC-TABLES.md §3.4, WHAT A FILE CARRIES): form byte 3,
+// the layout's length as a u32 LE, the layout, then the records back to back
+// to the end of the file. Five bytes before the layout, and THE HASH IS PER
+// RECORD and not in the header — a record is its hash and then its values.
+// This is the reference's header (cpptable) and the committed corpus's.
 //
 // Form-1 Load of a DECLARED fixed table is a named refusal (Glenn
 // 2026-09-09), never a slow read — and the word that matters is DECLARED.
@@ -695,17 +697,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("func %sFixedMeasure(count int64) int64 {\n", st.Name)
-	g.pf("\treturn TableFixedHeaderBytes + 4 + int64(len(%sFixedLayout)) + count*%sFixedRecordBytes\n}\n\n", st.Name, st.Name)
+	g.pf("\treturn TableFixedHeaderBytes + int64(len(%sFixedLayout)) + count*%sFixedRecordBytes\n}\n\n", st.Name, st.Name)
 
 	g.pf("func %sFixedSave(values []%s, buffer []byte) int64 {\n", st.Name, st.Name)
 	g.pf("\tneed := %sFixedMeasure(int64(len(values)))\n", st.Name)
 	g.pf("\tif int64(len(buffer)) < need {\n\t\treturn -1\n\t}\n")
-	g.pf("\tclear(buffer[:TableFixedHeaderBytes])\n")
 	g.pf("\tbuffer[0] = TableFixedForm\n")
-	g.pf("\ttableFixedPut64(buffer[TableFixedHashAt:], %sFixedHash)\n", st.Name)
-	g.pf("\ttableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(%sFixedLayout)))\n", st.Name)
-	g.pf("\tcopy(buffer[TableFixedHeaderBytes+4:], %sFixedLayout)\n", st.Name)
-	g.pf("\tat := buffer[TableFixedHeaderBytes+4+len(%sFixedLayout):]\n", st.Name)
+	g.pf("\ttableFixedPut32(buffer[1:], uint32(len(%sFixedLayout)))\n", st.Name)
+	g.pf("\tcopy(buffer[TableFixedHeaderBytes:], %sFixedLayout)\n", st.Name)
+	g.pf("\tat := buffer[TableFixedHeaderBytes+len(%sFixedLayout):]\n", st.Name)
 	g.pf("\tfor k := range values {\n")
 	g.pf("\t\ttableFixedPut64(at, %sFixedHash)\n", st.Name)
 	g.pf("\t\tclear(at[8 : 8+%sFixedBodyBytes])\n", st.Name)
@@ -715,7 +715,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
-	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	g.pf("\tif len(data) < TableFixedHeaderBytes {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	// THE FORM REGISTRY IS THREE (docs/SPEC-TABLES.md §3, THE FIRST BYTE): 1
 	// the variable form, 2 the message form, 3 this one. Each assigned byte
 	// gets its OWN name, and `newer_form` — "a form byte this reader does not
@@ -730,12 +730,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, \"message_form_as_file\")\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
-	g.pf("\tlayoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])\n")
-	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
-	g.pf("\tlayout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]\n")
+	g.pf("\tlayoutBytes := tableFixedGet32(data[1:])\n")
+	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
+	g.pf("\tlayout := data[TableFixedHeaderBytes : TableFixedHeaderBytes+layoutBytes]\n")
 	g.pf("\thash := tableFixedHashOf(layout)\n")
-	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
-	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
+	g.pf("\tat := data[TableFixedHeaderBytes+layoutBytes:]\n")
+	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - int64(layoutBytes)\n")
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
 	g.pf("\tentryCount := %sFixedPlan.Count\n", st.Name)
 	g.pf("\trecordBytes := int64(%sFixedRecordBytes)\n", st.Name)
@@ -747,7 +747,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tentries = plan\n\t\tentryCount = made\n")
 	g.pf("\t\trecordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)\n")
 	g.pf("\t}\n")
-	g.pf("\tif tableFixedGet64(data[TableFixedHashAt:]) != hash {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")

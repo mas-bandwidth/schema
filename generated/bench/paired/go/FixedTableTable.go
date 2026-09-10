@@ -1009,7 +1009,7 @@ var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func FixedTableFixedMeasure(count int64) int64 {
-	return TableFixedHeaderBytes + 4 + int64(len(FixedTableFixedLayout)) + count*FixedTableFixedRecordBytes
+	return TableFixedHeaderBytes + int64(len(FixedTableFixedLayout)) + count*FixedTableFixedRecordBytes
 }
 
 func FixedTableFixedSave(values []FixedTable, buffer []byte) int64 {
@@ -1017,12 +1017,10 @@ func FixedTableFixedSave(values []FixedTable, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
-	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
-	tableFixedPut64(buffer[TableFixedHashAt:], FixedTableFixedHash)
-	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(FixedTableFixedLayout)))
-	copy(buffer[TableFixedHeaderBytes+4:], FixedTableFixedLayout)
-	at := buffer[TableFixedHeaderBytes+4+len(FixedTableFixedLayout):]
+	tableFixedPut32(buffer[1:], uint32(len(FixedTableFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes:], FixedTableFixedLayout)
+	at := buffer[TableFixedHeaderBytes+len(FixedTableFixedLayout):]
 	for k := range values {
 		tableFixedPut64(at, FixedTableFixedHash)
 		clear(at[8 : 8+FixedTableFixedBodyBytes])
@@ -1037,7 +1035,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		var local TableReport
 		report = &local
 	}
-	if len(data) < TableFixedHeaderBytes+4 {
+	if len(data) < TableFixedHeaderBytes {
 		report.Malformed = true
 		return -1
 	}
@@ -1050,14 +1048,14 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		}
 		return tableFixedRefuse(report, "newer_form")
 	}
-	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
-	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+	layoutBytes := tableFixedGet32(data[1:])
+	if int64(layoutBytes)+TableFixedHeaderBytes > int64(len(data)) {
 		return tableFixedRefuse(report, "layout_malformed")
 	}
-	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	layout := data[TableFixedHeaderBytes : TableFixedHeaderBytes+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	at := data[TableFixedHeaderBytes+4+layoutBytes:]
-	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	at := data[TableFixedHeaderBytes+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - int64(layoutBytes)
 	entries := FixedTableFixedPlan.Entries
 	entryCount := FixedTableFixedPlan.Count
 	recordBytes := int64(FixedTableFixedRecordBytes)
@@ -1073,9 +1071,6 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
-	}
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
-		return tableFixedRefuse(report, "layout_malformed")
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true

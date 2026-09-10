@@ -10,12 +10,17 @@ package gotable
 // whose bytes are not a layout is layout_malformed. An unknown kind is refused
 // (Glenn, same sitting).
 //
-// File header pinned to C++ 073c762a (docs/SPEC-TABLES.md §3 THE FIRST BYTE):
-// form byte 3 at 0, seven reserved zeros, layout hash at 8, body at 16.
+// FILE HEADER: docs/SPEC-TABLES.md §3.4, WHAT A FILE CARRIES — form byte 3,
+// then the layout's length as a u32 LE, then the layout, then the records back
+// to back to the end of the file. Five bytes before the layout, and the hash
+// is per RECORD and not in the header. This is the reference's header
+// (cpptable, FixedTableFixedLoad) and the committed corpus's.
 const tableFixedRuntime = `
 const TableFixedForm uint8 = 3
-const TableFixedHeaderBytes = 16
-const TableFixedHashAt = 8
+
+// TableFixedHeaderBytes is the form byte plus the u32 layout length in front
+// of it; the length itself sits at offset 1, behind the form byte.
+const TableFixedHeaderBytes = 5
 
 const (
 	tableFixedCopy uint8 = iota
