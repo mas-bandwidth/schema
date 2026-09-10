@@ -7,6 +7,8 @@
 // unit's protocol id.
 
 using System;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Tabledemo
 {
@@ -1456,6 +1458,777 @@ namespace Tabledemo
         public static long DebuffToJson(Debuff value, Span<byte> buffer)
         {
             return TableJson.Write(value, DebuffTableType(), buffer, false);
+        }
+
+        // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+        //
+        // A record is an eight-byte hash of the writer's vocabulary block and then
+        // the values in declared order, every field at its declared storage width.
+        // The writer is the constant bytes memcpy'd and then stores; the reader is
+        // ONE loop over ONE plan, the identity plan here and a plan compiled from
+        // the writer's own block for anybody else.
+
+        // Buff's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void BuffFixedWriteBody(Span<byte> b, Buff value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteSingleLittleEndian(b, value.Multiplier);
+        }
+
+        // Buff's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void BuffFixedIdentityScatter(Buff dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.Multiplier = BinaryPrimitives.ReadSingleLittleEndian(b);
+        }
+
+        // Debuff's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void DebuffFixedWriteBody(Span<byte> b, Debuff value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Amount);
+        }
+
+        // Debuff's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void DebuffFixedIdentityScatter(Debuff dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.Amount = BinaryPrimitives.ReadInt32LittleEndian(b);
+        }
+
+        // WeaponConfig's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void WeaponConfigFixedWriteBody(Span<byte> b, WeaponConfig value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteSingleLittleEndian(b, value.Damage);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Speed);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.Penetration);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(12), (uint)value.Channel);
+            b.Slice(16)[0] = (byte)(value.Homing ? 1 : 0);
+            if (value.Effect != null)
+            {
+                b.Slice(17)[0] = (byte)value.Effect.Type;
+                switch (value.Effect.Type)
+                {
+                    case EffectType.Buff:
+                        BuffFixedWriteBody(b.Slice(17).Slice(1), value.Effect.Buff);
+                        break;
+                    case EffectType.Debuff:
+                        DebuffFixedWriteBody(b.Slice(17).Slice(1), value.Effect.Debuff);
+                        break;
+                    default: break;
+                }
+            }
+        }
+
+        // WeaponConfig's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void WeaponConfigFixedIdentityScatter(WeaponConfig dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.Damage = BinaryPrimitives.ReadSingleLittleEndian(b);
+            dst.Speed = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(4));
+            dst.Penetration = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(8));
+            dst.Channel = BinaryPrimitives.ReadUInt32LittleEndian(b.Slice(12));
+            dst.Homing = b.Slice(16)[0] != 0;
+            if (dst.Effect == null) dst.Effect = new Effect();
+            uint tag_effect = b.Slice(17)[0];
+            if (tag_effect > 2)
+            {
+                dst.Effect.Type = 0;
+                if (report != null) report.Clamped++;
+            }
+            else
+            {
+                dst.Effect.Type = (EffectType)tag_effect;
+                switch (dst.Effect.Type)
+                {
+                    case EffectType.Buff:
+                    {
+                        if (dst.Effect.Buff == null) dst.Effect.Buff = new Buff();
+                        BuffFixedIdentityScatter(dst.Effect.Buff, b.Slice(17).Slice(1), report);
+                        break;
+                    }
+                    case EffectType.Debuff:
+                    {
+                        if (dst.Effect.Debuff == null) dst.Effect.Debuff = new Debuff();
+                        DebuffFixedIdentityScatter(dst.Effect.Debuff, b.Slice(17).Slice(1), report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+        }
+
+        // Attachment's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void AttachmentFixedWriteBody(Span<byte> b, Attachment value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Slot);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Power);
+        }
+
+        // Attachment's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void AttachmentFixedIdentityScatter(Attachment dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.Slot = BinaryPrimitives.ReadInt32LittleEndian(b);
+            dst.Power = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(4));
+        }
+
+        // LoadoutConfig's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void LoadoutConfigFixedWriteBody(Span<byte> b, LoadoutConfig value)
+        {
+            if (value == null) return;
+            b[0] = (byte)value.Grade;
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1), value.GradesCount);
+            if (value.Grades != null) { MemoryMarshal.AsBytes(value.Grades.AsSpan(0, Math.Min(value.Grades.Length, 4))).CopyTo(b.Slice(5)); }
+            if (value.Podium != null) { MemoryMarshal.AsBytes(value.Podium.AsSpan(0, Math.Min(value.Podium.Length, 3))).CopyTo(b.Slice(9)); }
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(12), (ulong)value.Perks);
+            WeaponConfigFixedWriteBody(b.Slice(20), value.Primary);
+            if (value.Backups != null)
+            {
+                for (int i = 0; i < 2 && i < value.Backups.Length; ++i)
+                {
+                    WeaponConfigFixedWriteBody(b.Slice(42 + i * 22), value.Backups[i]);
+                }
+            }
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(86), value.AttachmentsCount);
+            if (value.Attachments != null)
+            {
+                for (int i = 0; i < 8 && i < value.Attachments.Length; ++i)
+                {
+                    AttachmentFixedWriteBody(b.Slice(90 + i * 8), value.Attachments[i]);
+                }
+            }
+        }
+
+        // LoadoutConfig's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void LoadoutConfigFixedIdentityScatter(LoadoutConfig dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            uint enum_grade = b[0];
+            if (enum_grade > 3)
+            {
+                dst.Grade = 0;
+                if (report != null) report.Clamped++;
+            }
+            else
+            {
+                dst.Grade = (Grade)enum_grade;
+            }
+            int count_grades = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(1));
+            if (count_grades < 0) { count_grades = 0; if (report != null) report.Clamped++; }
+            else if ((uint)count_grades > 4) { count_grades = 4; if (report != null) report.Clamped++; }
+            dst.GradesCount = count_grades;
+            if (count_grades > 0 && dst.Grades != null) { MemoryMarshal.Cast<byte, Grade>(b.Slice(5, Math.Min(count_grades, dst.Grades.Length) * 1)).CopyTo(dst.Grades); }
+            if (dst.Podium != null) { MemoryMarshal.Cast<byte, Grade>(b.Slice(9, Math.Min(3, dst.Podium.Length) * 1)).CopyTo(dst.Podium); }
+            dst.Perks = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(12));
+            if (dst.Primary == null) dst.Primary = new WeaponConfig();
+            WeaponConfigFixedIdentityScatter(dst.Primary, b.Slice(20), report);
+            if (dst.Backups != null)
+            {
+                for (int i = 0; i < 2 && i < dst.Backups.Length; ++i)
+                {
+                    if (dst.Backups[i] == null) dst.Backups[i] = new WeaponConfig();
+                    WeaponConfigFixedIdentityScatter(dst.Backups[i], b.Slice(42 + i * 22), report);
+                }
+            }
+            int count_attachments = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(86));
+            if (count_attachments < 0) { count_attachments = 0; if (report != null) report.Clamped++; }
+            else if ((uint)count_attachments > 8) { count_attachments = 8; if (report != null) report.Clamped++; }
+            dst.AttachmentsCount = count_attachments;
+            if (dst.Attachments != null)
+            {
+                for (int i = 0; i < count_attachments && i < dst.Attachments.Length; ++i)
+                {
+                    if (dst.Attachments[i] == null) dst.Attachments[i] = new Attachment();
+                    AttachmentFixedIdentityScatter(dst.Attachments[i], b.Slice(90 + i * 8), report);
+                }
+            }
+        }
+
+        // ---- WeaponConfig, the fixed form ----
+
+        public const long WeaponConfigFixedBodyBytes = 22;
+        public const long WeaponConfigFixedRecordBytes = 8 + WeaponConfigFixedBodyBytes;
+        public const ulong WeaponConfigFixedHash = 0x1b545259baa4f450ul;
+
+        public static readonly byte[] WeaponConfigFixedLayout = new byte[] {
+            0x0b, 0x00, 0x00, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d, 0x78, 0x77, 0x05, 0x0d, 0x16, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5,
+            0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+            0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8,
+            0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b,
+            0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80,
+            0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d,
+            0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
+            0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long WeaponConfigFixedLayoutBytes = 191;
+
+        public static readonly TableFixedDst[] WeaponConfigFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // WeaponConfig
+            new TableFixedDst(0, 0, 0, 0, 0), // damage
+            new TableFixedDst(1, 0, 0, 0, 0), // speed
+            new TableFixedDst(2, 0, 0, 0, 0), // penetration
+            new TableFixedDst(3, 0, 0, 0, 0), // channel
+            new TableFixedDst(4, 0, 0, 0, 0), // homing
+            new TableFixedDst(6, 0, 5, 0, 0), // effect
+            new TableFixedDst(0, 0, 0, 0, 0), // buff
+            new TableFixedDst(0, 0, 0, 0, 0), // multiplier
+            new TableFixedDst(1, 0, 0, 0, 0), // debuff
+            new TableFixedDst(0, 0, 0, 0, 0), // amount
+        };
+
+        public static readonly TableFixedSlot<WeaponConfig>[] WeaponConfigFixedSlots = new TableFixedSlot<WeaponConfig>[] {
+            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Damage = (float)d),
+            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Speed = (float)d),
+            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Penetration = unchecked((int)v)),
+            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Channel = (uint)v),
+            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Homing = v != 0),
+            new TableFixedSlot<WeaponConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Effect.Type = (EffectType)v; } }),
+            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Effect.Buff.Multiplier = (float)d),
+            new TableFixedSlot<WeaponConfig>(setRaw: (t, v) => t.Effect.Debuff.Amount = unchecked((int)v)),
+        };
+
+        public static readonly TableFixedPlan WeaponConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(12u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(16u, 4u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(17u, 5u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(18u, 6u, 4u, 0u, 17u, TableFixedWire.Copy, 1, 0, 0, 0),
+            new TableFixedEntry(18u, 7u, 4u, 0u, 17u, TableFixedWire.Copy, 2, 0, 0, 0),
+        });
+
+        public static long WeaponConfigFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + WeaponConfigFixedLayoutBytes + count * WeaponConfigFixedRecordBytes;
+        }
+
+        public static long WeaponConfigFixedSave(ReadOnlySpan<WeaponConfig> values, Span<byte> buffer)
+        {
+            long need = WeaponConfigFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), WeaponConfigFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)WeaponConfigFixedLayoutBytes);
+            WeaponConfigFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)WeaponConfigFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, WeaponConfigFixedHash);
+                at.Slice(8, (int)WeaponConfigFixedBodyBytes).Clear();
+                WeaponConfigFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)WeaponConfigFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long WeaponConfigFixedSave(WeaponConfig[] values, Span<byte> buffer)
+        {
+            return WeaponConfigFixedSave((ReadOnlySpan<WeaponConfig>)values, buffer);
+        }
+
+        public static long WeaponConfigFixedSave(WeaponConfig value, Span<byte> buffer)
+        {
+            ReadOnlySpan<WeaponConfig> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return WeaponConfigFixedSave(span, buffer);
+        }
+
+        public static long WeaponConfigFixedLoad(
+            Span<WeaponConfig> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = WeaponConfigFixedPlan;
+            long record_bytes = WeaponConfigFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != WeaponConfigFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, WeaponConfigFixedLayout, WeaponConfigFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (hash == WeaponConfigFixedHash)
+            {
+                for (int k = 0; k < n; ++k)
+                {
+                    if (values[k] == null) { values[k] = new WeaponConfig(); }
+                    if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                    {
+                        if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                    WeaponConfigFixedIdentityScatter(values[k], at.Slice(8), report);
+                    at = at.Slice((int)record_bytes);
+                }
+                if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+                return n;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new WeaponConfig(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, WeaponConfigFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long WeaponConfigFixedLoad(WeaponConfig[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return WeaponConfigFixedLoad((Span<WeaponConfig>)values, data, plan, report);
+        }
+
+        public static long WeaponConfigFixedLoad(WeaponConfig value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<WeaponConfig> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return WeaponConfigFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            WeaponConfig dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, WeaponConfigFixedSlots, src, dst, report, planBytes);
+        }
+
+        // ---- LoadoutConfig, the fixed form ----
+
+        public const long LoadoutConfigFixedBodyBytes = 154;
+        public const long LoadoutConfigFixedRecordBytes = 8 + LoadoutConfigFixedBodyBytes;
+        public const ulong LoadoutConfigFixedHash = 0xe747768b18247870ul;
+
+        public static readonly byte[] LoadoutConfigFixedLayout = new byte[] {
+            0x2b, 0x00, 0x00, 0x00, 0xa1, 0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6, 0x0d, 0x9a, 0x00, 0x00,
+            0x00, 0x07, 0x00, 0x00, 0x00, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0x01, 0x00,
+            0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc5, 0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a,
+            0xd9, 0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x91, 0xc5, 0xc4, 0xaa, 0x39,
+            0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x25, 0xf1, 0xea,
+            0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32,
+            0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x25,
+            0xd7, 0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+            0x91, 0xc5, 0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5, 0xc3, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x4a, 0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x08, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x39, 0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x16, 0x00, 0x00,
+            0x00, 0x06, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5,
+            0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+            0xad, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8,
+            0xc1, 0x36, 0x0f, 0x05, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b,
+            0xbe, 0xb5, 0xff, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80,
+            0x3a, 0x62, 0xdc, 0x9a, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d,
+            0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69,
+            0xb1, 0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24,
+            0xcc, 0x8a, 0x11, 0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x2c, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x16, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00,
+            0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31, 0x4f, 0x04, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01, 0xa5, 0x06, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65, 0xad, 0x01, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x05,
+            0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d,
+            0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc6, 0x87, 0x5c, 0x80, 0x3a, 0x62, 0xdc, 0x9a,
+            0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0x2f, 0x3d, 0xe7, 0xed, 0xc5, 0xcd,
+            0x13, 0x0d, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1, 0xa2, 0x7e, 0xfe,
+            0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x9a, 0x24, 0x40, 0x03,
+            0xaa, 0x01, 0xf9, 0x0e, 0x44, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xd1, 0x31, 0xfe,
+            0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe6, 0xb4,
+            0xe7, 0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long LoadoutConfigFixedLayoutBytes = 735;
+
+        public static readonly TableFixedDst[] LoadoutConfigFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // LoadoutConfig
+            new TableFixedDst(0, 0, 0, 0, 0), // grade
+            new TableFixedDst(0, 0, 0, 0, 0), // Bronze
+            new TableFixedDst(0, 0, 0, 0, 0), // Silver
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+            new TableFixedDst(2, 0, 1, 1, 0), // grades
+            new TableFixedDst(0, 0, 0, 0, 0), // element
+            new TableFixedDst(0, 0, 0, 0, 0), // Bronze
+            new TableFixedDst(0, 0, 0, 0, 0), // Silver
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+            new TableFixedDst(3, 0, 0, 0, 0), // podium
+            new TableFixedDst(0, 0, 0, 0, 0), // element
+            new TableFixedDst(0, 0, 0, 0, 0), // Bronze
+            new TableFixedDst(0, 0, 0, 0, 0), // Silver
+            new TableFixedDst(0, 0, 0, 0, 0), // Gold
+            new TableFixedDst(4, 0, 0, 0, 0), // perks
+            new TableFixedDst(5, 0, 0, 0, 0), // primary
+            new TableFixedDst(0, 0, 0, 0, 0), // damage
+            new TableFixedDst(1, 0, 0, 0, 0), // speed
+            new TableFixedDst(2, 0, 0, 0, 0), // penetration
+            new TableFixedDst(3, 0, 0, 0, 0), // channel
+            new TableFixedDst(4, 0, 0, 0, 0), // homing
+            new TableFixedDst(6, 0, 5, 0, 0), // effect
+            new TableFixedDst(0, 0, 0, 0, 0), // buff
+            new TableFixedDst(0, 0, 0, 0, 0), // multiplier
+            new TableFixedDst(1, 0, 0, 0, 0), // debuff
+            new TableFixedDst(0, 0, 0, 0, 0), // amount
+            new TableFixedDst(13, 8, 0, 0, 0), // backups
+            new TableFixedDst(0, 0, 0, 0, 0), // element
+            new TableFixedDst(0, 0, 0, 0, 0), // damage
+            new TableFixedDst(0, 0, 0, 0, 0), // speed
+            new TableFixedDst(0, 0, 0, 0, 0), // penetration
+            new TableFixedDst(0, 0, 0, 0, 0), // channel
+            new TableFixedDst(0, 0, 0, 0, 0), // homing
+            new TableFixedDst(0, 0, 0, 0, 0), // effect
+            new TableFixedDst(0, 0, 0, 0, 0), // buff
+            new TableFixedDst(0, 0, 0, 0, 0), // multiplier
+            new TableFixedDst(0, 0, 0, 0, 0), // debuff
+            new TableFixedDst(0, 0, 0, 0, 0), // amount
+            new TableFixedDst(30, 2, 29, 1, 0), // attachments
+            new TableFixedDst(0, 0, 0, 0, 0), // element
+            new TableFixedDst(0, 0, 0, 0, 0), // slot
+            new TableFixedDst(0, 0, 0, 0, 0), // power
+        };
+
+        public static readonly TableFixedSlot<LoadoutConfig>[] LoadoutConfigFixedSlots = new TableFixedSlot<LoadoutConfig>[] {
+            new TableFixedSlot<LoadoutConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Grade = (Grade)v; } }),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.GradesCount = (int)v),
+            new TableFixedSlot<LoadoutConfig>(setBytes: (t, b, l) => { if (t.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Grades.Length * 1))).CopyTo(t.Grades); }),
+            new TableFixedSlot<LoadoutConfig>(setBytes: (t, b, l) => { if (t.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Podium.Length * 1))).CopyTo(t.Podium); }),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Perks = v),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Primary.Damage = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Primary.Speed = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Penetration = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Channel = (uint)v),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Homing = v != 0),
+            new TableFixedSlot<LoadoutConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Primary.Effect.Type = (EffectType)v; } }),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Primary.Effect.Buff.Multiplier = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Primary.Effect.Debuff.Amount = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[0].Damage = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[0].Speed = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Penetration = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Channel = (uint)v),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Homing = v != 0),
+            new TableFixedSlot<LoadoutConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Backups[0].Effect.Type = (EffectType)v; } }),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[0].Effect.Buff.Multiplier = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[0].Effect.Debuff.Amount = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[1].Damage = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[1].Speed = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Penetration = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Channel = (uint)v),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Homing = v != 0),
+            new TableFixedSlot<LoadoutConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Backups[1].Effect.Type = (EffectType)v; } }),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Backups[1].Effect.Buff.Multiplier = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Backups[1].Effect.Debuff.Amount = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.AttachmentsCount = (int)v),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[0].Slot = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Attachments[0].Power = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[1].Slot = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Attachments[1].Power = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[2].Slot = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Attachments[2].Power = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[3].Slot = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Attachments[3].Power = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[4].Slot = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Attachments[4].Power = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[5].Slot = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Attachments[5].Power = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[6].Slot = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Attachments[6].Power = (float)d),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[7].Slot = unchecked((int)v)),
+            new TableFixedSlot<LoadoutConfig>(setRaw: (t, v) => t.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Attachments[7].Power = (float)d),
+        };
+
+        public static readonly TableFixedPlan LoadoutConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0),
+            new TableFixedEntry(5u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0),
+            new TableFixedEntry(9u, 3u, 3u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0),
+            new TableFixedEntry(12u, 4u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(20u, 5u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 6u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(28u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(36u, 9u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(37u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(38u, 11u, 4u, 0u, 37u, TableFixedWire.Copy, 1, 0, 0, 0),
+            new TableFixedEntry(38u, 12u, 4u, 0u, 37u, TableFixedWire.Copy, 2, 0, 0, 0),
+            new TableFixedEntry(42u, 13u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(46u, 14u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(50u, 15u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(54u, 16u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(58u, 17u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(59u, 18u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(60u, 19u, 4u, 0u, 59u, TableFixedWire.Copy, 1, 0, 0, 0),
+            new TableFixedEntry(60u, 20u, 4u, 0u, 59u, TableFixedWire.Copy, 2, 0, 0, 0),
+            new TableFixedEntry(64u, 21u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(68u, 22u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(72u, 23u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(76u, 24u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(80u, 25u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(81u, 26u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(82u, 27u, 4u, 0u, 81u, TableFixedWire.Copy, 1, 0, 0, 0),
+            new TableFixedEntry(82u, 28u, 4u, 0u, 81u, TableFixedWire.Copy, 2, 0, 0, 0),
+            new TableFixedEntry(86u, 29u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0),
+            new TableFixedEntry(90u, 30u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(94u, 31u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(98u, 32u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(102u, 33u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(106u, 34u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(110u, 35u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(114u, 36u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(118u, 37u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(122u, 38u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(126u, 39u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(130u, 40u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(134u, 41u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(138u, 42u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(142u, 43u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(146u, 44u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(150u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long LoadoutConfigFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + LoadoutConfigFixedLayoutBytes + count * LoadoutConfigFixedRecordBytes;
+        }
+
+        public static long LoadoutConfigFixedSave(ReadOnlySpan<LoadoutConfig> values, Span<byte> buffer)
+        {
+            long need = LoadoutConfigFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), LoadoutConfigFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)LoadoutConfigFixedLayoutBytes);
+            LoadoutConfigFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)LoadoutConfigFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, LoadoutConfigFixedHash);
+                at.Slice(8, (int)LoadoutConfigFixedBodyBytes).Clear();
+                LoadoutConfigFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)LoadoutConfigFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long LoadoutConfigFixedSave(LoadoutConfig[] values, Span<byte> buffer)
+        {
+            return LoadoutConfigFixedSave((ReadOnlySpan<LoadoutConfig>)values, buffer);
+        }
+
+        public static long LoadoutConfigFixedSave(LoadoutConfig value, Span<byte> buffer)
+        {
+            ReadOnlySpan<LoadoutConfig> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return LoadoutConfigFixedSave(span, buffer);
+        }
+
+        public static long LoadoutConfigFixedLoad(
+            Span<LoadoutConfig> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = LoadoutConfigFixedPlan;
+            long record_bytes = LoadoutConfigFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != LoadoutConfigFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, LoadoutConfigFixedLayout, LoadoutConfigFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (hash == LoadoutConfigFixedHash)
+            {
+                for (int k = 0; k < n; ++k)
+                {
+                    if (values[k] == null) { values[k] = new LoadoutConfig(); }
+                    if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                    {
+                        if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                    LoadoutConfigFixedIdentityScatter(values[k], at.Slice(8), report);
+                    at = at.Slice((int)record_bytes);
+                }
+                if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+                return n;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new LoadoutConfig(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, LoadoutConfigFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long LoadoutConfigFixedLoad(LoadoutConfig[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return LoadoutConfigFixedLoad((Span<LoadoutConfig>)values, data, plan, report);
+        }
+
+        public static long LoadoutConfigFixedLoad(LoadoutConfig value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<LoadoutConfig> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return LoadoutConfigFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            LoadoutConfig dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, LoadoutConfigFixedSlots, src, dst, report, planBytes);
         }
     }
 

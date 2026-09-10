@@ -199,6 +199,36 @@ namespace Bench
             b.Slice(50)[0] = (byte)(value.Firing ? 1 : 0);
         }
 
+        // MixedEntity's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void MixedEntityFixedIdentityScatter(MixedEntity dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.EntityId = BinaryPrimitives.ReadUInt32LittleEndian(b);
+            dst.PosX = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(4));
+            dst.PosY = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(8));
+            dst.PosZ = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(12));
+            dst.Yaw = BinaryPrimitives.ReadUInt32LittleEndian(b.Slice(16));
+            dst.Pitch = BinaryPrimitives.ReadUInt32LittleEndian(b.Slice(20));
+            dst.VelX = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(24));
+            dst.VelY = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(28));
+            dst.VelZ = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(32));
+            dst.Health = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(36));
+            uint enum_weapon = b.Slice(40)[0];
+            if (enum_weapon > 15)
+            {
+                dst.Weapon = 0;
+                if (report != null) report.Clamped++;
+            }
+            else
+            {
+                dst.Weapon = (MixedWeapon)enum_weapon;
+            }
+            dst.Damage = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(41));
+            dst.Moving = b.Slice(49)[0] != 0;
+            dst.Firing = b.Slice(50)[0] != 0;
+        }
+
         // MixedStat's stores. The template — the hash, then zeros — is memcpy'd first,
         // which is also what zero-fills every byte of declared slack.
         public static void MixedStatFixedWriteBody(Span<byte> b, MixedStat value)
@@ -206,6 +236,15 @@ namespace Bench
             if (value == null) return;
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.StatId);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Delta);
+        }
+
+        // MixedStat's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void MixedStatFixedIdentityScatter(MixedStat dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.StatId = BinaryPrimitives.ReadUInt32LittleEndian(b);
+            dst.Delta = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(4));
         }
 
         // MixedHitEvent's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -219,6 +258,17 @@ namespace Bench
             b.Slice(12)[0] = (byte)(value.Crit ? 1 : 0);
         }
 
+        // MixedHitEvent's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void MixedHitEventFixedIdentityScatter(MixedHitEvent dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.TargetId = BinaryPrimitives.ReadUInt32LittleEndian(b);
+            dst.Damage = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(4));
+            dst.HitKind = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(8));
+            dst.Crit = b.Slice(12)[0] != 0;
+        }
+
         // MixedChatEvent's stores. The template — the hash, then zeros — is memcpy'd first,
         // which is also what zero-fills every byte of declared slack.
         public static void MixedChatEventFixedWriteBody(Span<byte> b, MixedChatEvent value)
@@ -228,6 +278,15 @@ namespace Bench
             BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(4), (uint)value.Speaker);
         }
 
+        // MixedChatEvent's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void MixedChatEventFixedIdentityScatter(MixedChatEvent dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.Channel = BinaryPrimitives.ReadInt32LittleEndian(b);
+            dst.Speaker = BinaryPrimitives.ReadUInt32LittleEndian(b.Slice(4));
+        }
+
         // MixedPickupEvent's stores. The template — the hash, then zeros — is memcpy'd first,
         // which is also what zero-fills every byte of declared slack.
         public static void MixedPickupEventFixedWriteBody(Span<byte> b, MixedPickupEvent value)
@@ -235,6 +294,15 @@ namespace Bench
             if (value == null) return;
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.ItemId);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Amount);
+        }
+
+        // MixedPickupEvent's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void MixedPickupEventFixedIdentityScatter(MixedPickupEvent dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.ItemId = BinaryPrimitives.ReadUInt32LittleEndian(b);
+            dst.Amount = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(4));
         }
 
         // BenchMixed's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -309,12 +377,121 @@ namespace Bench
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1232), (int)value.IdleTicks);
         }
 
+        // BenchMixed's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void BenchMixedFixedIdentityScatter(BenchMixed dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            dst.Sequence = BinaryPrimitives.ReadUInt32LittleEndian(b);
+            dst.AckSequence = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(4));
+            dst.AckBits = BinaryPrimitives.ReadUInt32LittleEndian(b.Slice(8));
+            dst.SessionId = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(12));
+            dst.ClientId = BinaryPrimitives.ReadUInt32LittleEndian(b.Slice(20));
+            dst.Nonce = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(24));
+            dst.WorldTime = BinaryPrimitives.ReadInt64LittleEndian(b.Slice(32));
+            dst.FrameTick = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(40));
+            dst.ServerTime = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(48));
+            int count_entities = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(52));
+            if (count_entities < 0) { count_entities = 0; if (report != null) report.Clamped++; }
+            else if ((uint)count_entities > 8) { count_entities = 8; if (report != null) report.Clamped++; }
+            dst.EntitiesCount = count_entities;
+            if (dst.Entities != null)
+            {
+                for (int i = 0; i < count_entities && i < dst.Entities.Length; ++i)
+                {
+                    if (dst.Entities[i] == null) dst.Entities[i] = new MixedEntity();
+                    MixedEntityFixedIdentityScatter(dst.Entities[i], b.Slice(56 + i * 51), report);
+                }
+            }
+            int count_stats = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(464));
+            if (count_stats < 0) { count_stats = 0; if (report != null) report.Clamped++; }
+            else if ((uint)count_stats > 80) { count_stats = 80; if (report != null) report.Clamped++; }
+            dst.StatsCount = count_stats;
+            if (dst.Stats != null)
+            {
+                for (int i = 0; i < count_stats && i < dst.Stats.Length; ++i)
+                {
+                    if (dst.Stats[i] == null) dst.Stats[i] = new MixedStat();
+                    MixedStatFixedIdentityScatter(dst.Stats[i], b.Slice(468 + i * 8), report);
+                }
+            }
+            if (dst.GameEvent == null) dst.GameEvent = new MixedEvent();
+            uint tag_game_event = b.Slice(1108)[0];
+            if (tag_game_event > 3)
+            {
+                dst.GameEvent.Type = 0;
+                if (report != null) report.Clamped++;
+            }
+            else
+            {
+                dst.GameEvent.Type = (MixedEventType)tag_game_event;
+                switch (dst.GameEvent.Type)
+                {
+                    case MixedEventType.Hit:
+                    {
+                        if (dst.GameEvent.Hit == null) dst.GameEvent.Hit = new MixedHitEvent();
+                        MixedHitEventFixedIdentityScatter(dst.GameEvent.Hit, b.Slice(1108).Slice(1), report);
+                        break;
+                    }
+                    case MixedEventType.Chat:
+                    {
+                        if (dst.GameEvent.Chat == null) dst.GameEvent.Chat = new MixedChatEvent();
+                        MixedChatEventFixedIdentityScatter(dst.GameEvent.Chat, b.Slice(1108).Slice(1), report);
+                        break;
+                    }
+                    case MixedEventType.Pickup:
+                    {
+                        if (dst.GameEvent.Pickup == null) dst.GameEvent.Pickup = new MixedPickupEvent();
+                        MixedPickupEventFixedIdentityScatter(dst.GameEvent.Pickup, b.Slice(1108).Slice(1), report);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+            if (dst.Loadout != null) { b.Slice(1122, Math.Min(4, dst.Loadout.Length)).CopyTo(dst.Loadout); }
+            int len_player_name = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(1126));
+            if (len_player_name < 0) { len_player_name = 0; if (report != null) report.Clamped++; }
+            else if ((uint)len_player_name > 15) { len_player_name = 15; if (report != null) report.Clamped++; }
+            dst.PlayerNameLength = len_player_name;
+            if (len_player_name > 0 && dst.PlayerName != null) { b.Slice(1130, Math.Min(len_player_name, dst.PlayerName.Length)).CopyTo(dst.PlayerName); }
+            int len_payload = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(1145));
+            if (len_payload < 0) { len_payload = 0; if (report != null) report.Clamped++; }
+            else if ((uint)len_payload > 16) { len_payload = 16; if (report != null) report.Clamped++; }
+            dst.PayloadLength = len_payload;
+            if (len_payload > 0 && dst.Payload != null) { b.Slice(1149, Math.Min(len_payload, dst.Payload.Length)).CopyTo(dst.Payload); }
+            dst.AimX = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(1165));
+            dst.AimY = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(1169));
+            dst.AimZ = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(1173));
+            dst.Recoil = BinaryPrimitives.ReadSingleLittleEndian(b.Slice(1177));
+            dst.Drift = BinaryPrimitives.ReadDoubleLittleEndian(b.Slice(1181));
+            ulong lo_wide_key = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(1189));
+            ulong hi_wide_key = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(1189).Slice(8));
+            dst.WideKey = unchecked((System.UInt128)(((UInt128)hi_wide_key << 64) | lo_wide_key));
+            ulong lo_flux = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(1205));
+            ulong hi_flux = BinaryPrimitives.ReadUInt64LittleEndian(b.Slice(1205).Slice(8));
+            dst.Flux = unchecked((System.Int128)(((UInt128)hi_flux << 64) | lo_flux));
+            dst.Ping = BinaryPrimitives.ReadUInt16LittleEndian(b.Slice(1221));
+            dst.CrcHint = BinaryPrimitives.ReadUInt32LittleEndian(b.Slice(1223));
+            dst.HasExtra = b.Slice(1227)[0] != 0;
+            dst.Extra = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(1228));
+            dst.IdleTicks = BinaryPrimitives.ReadInt32LittleEndian(b.Slice(1232));
+        }
+
         // FixedTable's stores. The template — the hash, then zeros — is memcpy'd first,
         // which is also what zero-fills every byte of declared slack.
         public static void FixedTableFixedWriteBody(Span<byte> b, FixedTable value)
         {
             if (value == null) return;
             BenchMixedFixedWriteBody(b, value.Value);
+        }
+
+        // FixedTable's identity scatter: straight-line read into dst from wire image b.
+        // No delegate dispatches, no per-slot loops, no allocations.
+        public static void FixedTableFixedIdentityScatter(FixedTable dst, ReadOnlySpan<byte> b, TableReport report = null)
+        {
+            if (dst == null) return;
+            if (dst.Value == null) dst.Value = new BenchMixed();
+            BenchMixedFixedIdentityScatter(dst.Value, b, report);
         }
 
         // ---- FixedTable, the fixed form ----
@@ -1211,6 +1388,22 @@ namespace Bench
             {
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
+            }
+            if (hash == FixedTableFixedHash)
+            {
+                for (int k = 0; k < n; ++k)
+                {
+                    if (values[k] == null) { values[k] = new FixedTable(); }
+                    if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                    {
+                        if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                        return -1;
+                    }
+                    FixedTableFixedIdentityScatter(values[k], at.Slice(8), report);
+                    at = at.Slice((int)record_bytes);
+                }
+                if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+                return n;
             }
             for (int k = 0; k < n; ++k)
             {

@@ -1206,6 +1206,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	for _, st := range order {
 		g.emitFixedWriteBody(st)
+		g.emitFixedIdentityScatter(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
@@ -1408,6 +1409,267 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 	}
 }
 
+func (g *tableGen) emitFixedIdentityScatter(st *ir.Struct) {
+	name := st.Name
+	g.pf("// %s's identity scatter: straight-line read into dst from wire image b.\n", name)
+	g.pf("// No delegate dispatches, no per-slot loops, no allocations.\n")
+	g.pf("public static void %sFixedIdentityScatter(%s dst, ReadOnlySpan<byte> b, TableReport report = null)\n{\n", name, name)
+	g.pf("    if (dst == null) return;\n")
+	off := int64(0)
+	for _, f := range st.Fields {
+		g.emitFixedScatterField(st, f, off, "b", "dst", 4)
+		off += fixedFieldBytes(f)
+	}
+	g.pf("}\n\n")
+}
+
+func (g *tableGen) emitFixedScatterField(owner *ir.Struct, f *ir.Field, off int64, buf, val string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	base := off
+	prop := member(f)
+	if f.Type.Optional {
+		g.pf("%s%s.%sPresent = %s[%d] != 0;\n", ind, val, prop, buf, base)
+		base += fixedPresentBytes
+	}
+	slice := fmt.Sprintf("%s.Slice(%d)", buf, base)
+	if base == 0 {
+		slice = buf
+	}
+	switch {
+	case f.KeyEnum != "":
+		g.emitFixedScatterKeyedLoop(owner, f, base, f.KeyEnumRef.Max, buf, val+"."+prop, indent)
+	case f.Array == ir.ArrayFixed:
+		g.emitFixedScatterLoop(f, base, f.ArrayBound, buf, val+"."+prop, indent)
+	case f.Array == ir.ArrayCounted:
+		g.emitFixedScatterCountedLoop(f, base, buf, val, prop, indent)
+	case f.Type.Kind == ir.TString:
+		g.pf("%sint len_%s = BinaryPrimitives.ReadInt32LittleEndian(%s);\n", ind, f.Name, slice)
+		g.pf("%sif (len_%s < 0) { len_%s = 0; if (report != null) report.Clamped++; }\n", ind, f.Name, f.Name)
+		g.pf("%selse if ((uint)len_%s > %d) { len_%s = %d; if (report != null) report.Clamped++; }\n", ind, f.Name, f.Type.Size, f.Name, f.Type.Size)
+		g.pf("%s%s.%sLength = len_%s;\n", ind, val, prop, f.Name)
+		g.pf("%sif (len_%s > 0 && %s.%s != null) { %s.Slice(%d, Math.Min(len_%s, %s.%s.Length)).CopyTo(%s.%s); }\n",
+			ind, f.Name, val, prop, buf, base+4, f.Name, val, prop, val, prop)
+	case f.Type.Kind == ir.TWString:
+		g.pf("%sint len_%s = BinaryPrimitives.ReadInt32LittleEndian(%s);\n", ind, f.Name, slice)
+		g.pf("%sif (len_%s < 0) { len_%s = 0; if (report != null) report.Clamped++; }\n", ind, f.Name, f.Name)
+		g.pf("%selse if ((uint)len_%s > %d) { len_%s = %d; if (report != null) report.Clamped++; }\n", ind, f.Name, f.Type.Size, f.Name, f.Type.Size)
+		g.pf("%s%s.%sLength = len_%s;\n", ind, val, prop, f.Name)
+		g.pf("%sif (len_%s > 0 && %s.%s != null) { MemoryMarshal.Cast<byte, char>(%s.Slice(%d, Math.Min(len_%s, %s.%s.Length) * 2)).CopyTo(%s.%s); }\n",
+			ind, f.Name, val, prop, buf, base+4, f.Name, val, prop, val, prop)
+	case f.Type.Kind == ir.TBytes:
+		g.pf("%sint len_%s = BinaryPrimitives.ReadInt32LittleEndian(%s);\n", ind, f.Name, slice)
+		g.pf("%sif (len_%s < 0) { len_%s = 0; if (report != null) report.Clamped++; }\n", ind, f.Name, f.Name)
+		g.pf("%selse if ((uint)len_%s > %d) { len_%s = %d; if (report != null) report.Clamped++; }\n", ind, f.Name, f.Type.Size, f.Name, f.Type.Size)
+		g.pf("%s%s.%sLength = len_%s;\n", ind, val, prop, f.Name)
+		g.pf("%sif (len_%s > 0 && %s.%s != null) { %s.Slice(%d, Math.Min(len_%s, %s.%s.Length)).CopyTo(%s.%s); }\n",
+			ind, f.Name, val, prop, buf, base+4, f.Name, val, prop, val, prop)
+	default:
+		g.emitFixedScatterElement(f, base, buf, val+"."+prop, indent)
+	}
+}
+
+func (g *tableGen) emitFixedScatterKeyedLoop(owner *ir.Struct, f *ir.Field, base, count int64, buf, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	elemWire := fixedElementBytes(f)
+	slotsExpr := expr
+	if owner != nil && owner.IsTable {
+		slotsExpr = expr + ".Slots"
+	}
+	if g.fixedFlatElem(f) {
+		elemType := csFieldType(f.Type)
+		if elemType == "byte" {
+			g.pf("%sif (%s != null) { %s.Slice(%d, Math.Min(%d, %s.Length)).CopyTo(%s); }\n",
+				ind, slotsExpr, buf, base, count, slotsExpr, slotsExpr)
+		} else {
+			g.pf("%sif (%s != null) { MemoryMarshal.Cast<byte, %s>(%s.Slice(%d, Math.Min(%d, %s.Length) * %d)).CopyTo(%s); }\n",
+				ind, slotsExpr, elemType, buf, base, count, slotsExpr, elemWire, slotsExpr)
+		}
+		return
+	}
+	g.pf("%sif (%s != null)\n%s{\n", ind, slotsExpr, ind)
+	g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, count, slotsExpr, ind)
+	elemSlice := fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elemWire)
+	if base == 0 {
+		elemSlice = fmt.Sprintf("%s.Slice(i * %d)", buf, elemWire)
+	}
+	elemExpr := fmt.Sprintf("%s[i]", slotsExpr)
+	g.emitFixedScatterElement(f, 0, elemSlice, elemExpr, indent+8)
+	g.pf("%s    }\n%s}\n", ind, ind)
+}
+
+func (g *tableGen) emitFixedScatterLoop(f *ir.Field, base, count int64, buf, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	elemWire := fixedElementBytes(f)
+	if g.fixedFlatElem(f) {
+		elemType := csFieldType(f.Type)
+		if elemType == "byte" {
+			g.pf("%sif (%s != null) { %s.Slice(%d, Math.Min(%d, %s.Length)).CopyTo(%s); }\n",
+				ind, expr, buf, base, count, expr, expr)
+		} else {
+			g.pf("%sif (%s != null) { MemoryMarshal.Cast<byte, %s>(%s.Slice(%d, Math.Min(%d, %s.Length) * %d)).CopyTo(%s); }\n",
+				ind, expr, elemType, buf, base, count, expr, elemWire, expr)
+		}
+		return
+	}
+	g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
+	g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, count, expr, ind)
+	elemSlice := fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elemWire)
+	if base == 0 {
+		elemSlice = fmt.Sprintf("%s.Slice(i * %d)", buf, elemWire)
+	}
+	elemExpr := fmt.Sprintf("%s[i]", expr)
+	g.emitFixedScatterElement(f, 0, elemSlice, elemExpr, indent+8)
+	g.pf("%s    }\n%s}\n", ind, ind)
+}
+
+func (g *tableGen) emitFixedScatterCountedLoop(f *ir.Field, base int64, buf, val, prop string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	expr := val + "." + prop
+	elemWire := fixedElementBytes(f)
+	slice := fmt.Sprintf("%s.Slice(%d)", buf, base)
+	if base == 0 {
+		slice = buf
+	}
+	g.pf("%sint count_%s = BinaryPrimitives.ReadInt32LittleEndian(%s);\n", ind, f.Name, slice)
+	g.pf("%sif (count_%s < 0) { count_%s = 0; if (report != null) report.Clamped++; }\n", ind, f.Name, f.Name)
+	g.pf("%selse if ((uint)count_%s > %d) { count_%s = %d; if (report != null) report.Clamped++; }\n", ind, f.Name, f.ArrayBound, f.Name, f.ArrayBound)
+	g.pf("%s%sCount = count_%s;\n", ind, expr, f.Name)
+	if g.fixedFlatElem(f) {
+		elemType := csFieldType(f.Type)
+		if elemType == "byte" {
+			g.pf("%sif (count_%s > 0 && %s != null) { %s.Slice(%d, Math.Min(count_%s, %s.Length)).CopyTo(%s); }\n",
+				ind, f.Name, expr, buf, base+fixedCountBytes, f.Name, expr, expr)
+		} else {
+			g.pf("%sif (count_%s > 0 && %s != null) { MemoryMarshal.Cast<byte, %s>(%s.Slice(%d, Math.Min(count_%s, %s.Length) * %d)).CopyTo(%s); }\n",
+				ind, f.Name, expr, elemType, buf, base+fixedCountBytes, f.Name, expr, elemWire, expr)
+		}
+		return
+	}
+	g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
+	g.pf("%s    for (int i = 0; i < count_%s && i < %s.Length; ++i)\n%s    {\n", ind, f.Name, expr, ind)
+	elemSlice := fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base+fixedCountBytes, elemWire)
+	elemExpr := fmt.Sprintf("%s[i]", expr)
+	g.emitFixedScatterElement(f, 0, elemSlice, elemExpr, indent+8)
+	g.pf("%s    }\n%s}\n", ind, ind)
+}
+
+func (g *tableGen) emitFixedScatterElement(f *ir.Field, off int64, buf, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	slice := fmt.Sprintf("%s.Slice(%d)", buf, off)
+	if off == 0 {
+		slice = buf
+	}
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.pf("%sif (%s == null) %s = new %s();\n", ind, expr, expr, r.Name)
+			g.pf("%s%sFixedIdentityScatter(%s, %s, report);\n", ind, r.Name, expr, slice)
+			return
+		case *ir.Union:
+			tagBytes := int64(ir.StorageBitsFor(r.Max) / 8)
+			tagType := f.Type.Name + "Type"
+			g.pf("%sif (%s == null) %s = new %s();\n", ind, expr, expr, f.Type.Name)
+			switch tagBytes {
+			case 1:
+				g.pf("%suint tag_%s = %s[0];\n", ind, f.Name, slice)
+			case 2:
+				g.pf("%suint tag_%s = BinaryPrimitives.ReadUInt16LittleEndian(%s);\n", ind, f.Name, slice)
+			case 4:
+				g.pf("%suint tag_%s = BinaryPrimitives.ReadUInt32LittleEndian(%s);\n", ind, f.Name, slice)
+			}
+			g.pf("%sif (tag_%s > %d)\n%s{\n", ind, f.Name, len(r.Variants), ind)
+			g.pf("%s    %s.Type = 0;\n", ind, expr)
+			g.pf("%s    if (report != null) report.Clamped++;\n", ind)
+			g.pf("%s}\n%selse\n%s{\n", ind, ind, ind)
+			g.pf("%s    %s.Type = (%s)tag_%s;\n", ind, expr, tagType, f.Name)
+			g.pf("%s    switch (%s.Type)\n%s    {\n", ind, expr, ind)
+			for _, v := range r.Variants {
+				armProp := ir.GoExportName(v.Name)
+				armExpr := fmt.Sprintf("%s.%s", expr, armProp)
+				armSlice := fmt.Sprintf("%s.Slice(%d)", slice, tagBytes)
+				g.pf("%s        case %s.%s:\n%s        {\n", ind, tagType, armProp, ind)
+				g.emitFixedScatterElement(v.F, 0, armSlice, armExpr, indent+12)
+				g.pf("%s            break;\n%s        }\n", ind, ind)
+			}
+			g.pf("%s        default: break;\n%s    }\n%s}\n", ind, ind, ind)
+			return
+		case *ir.Enum:
+			w := int64(r.StorageBits / 8)
+			switch w {
+			case 1:
+				g.pf("%suint enum_%s = %s[0];\n", ind, f.Name, slice)
+			case 2:
+				g.pf("%suint enum_%s = BinaryPrimitives.ReadUInt16LittleEndian(%s);\n", ind, f.Name, slice)
+			case 4:
+				g.pf("%suint enum_%s = BinaryPrimitives.ReadUInt32LittleEndian(%s);\n", ind, f.Name, slice)
+			}
+			g.pf("%sif (enum_%s > %d)\n%s{\n", ind, f.Name, len(r.Variants), ind)
+			g.pf("%s    %s = 0;\n", ind, expr)
+			g.pf("%s    if (report != null) report.Clamped++;\n", ind)
+			g.pf("%s}\n%selse\n%s{\n", ind, ind, ind)
+			g.pf("%s    %s = (%s)enum_%s;\n%s}\n", ind, expr, f.Type.Name, f.Name, ind)
+			return
+		case *ir.Flags:
+			g.pf("%s%s = BinaryPrimitives.ReadUInt64LittleEndian(%s);\n", ind, expr, slice)
+			return
+		}
+	}
+	w := fixedStorageBytes(f.Type)
+	switch f.Type.Kind {
+	case ir.TBool:
+		g.pf("%s%s = %s[0] != 0;\n", ind, expr, slice)
+	case ir.TFloat32:
+		g.pf("%s%s = BinaryPrimitives.ReadSingleLittleEndian(%s);\n", ind, expr, slice)
+	case ir.TFloat64:
+		g.pf("%s%s = BinaryPrimitives.ReadDoubleLittleEndian(%s);\n", ind, expr, slice)
+	case ir.TInt, ir.TFixed:
+		if w == 16 {
+			typ := csFieldType(f.Type)
+			g.pf("%sulong lo_%s = BinaryPrimitives.ReadUInt64LittleEndian(%s);\n", ind, f.Name, slice)
+			g.pf("%sulong hi_%s = BinaryPrimitives.ReadUInt64LittleEndian(%s.Slice(8));\n", ind, f.Name, slice)
+			g.pf("%s%s = unchecked((%s)(((UInt128)hi_%s << 64) | lo_%s));\n", ind, expr, typ, f.Name, f.Name)
+			return
+		}
+		signed := f.Type.Signed
+		readExpr := ""
+		switch w {
+		case 1:
+			if signed {
+				readExpr = fmt.Sprintf("unchecked((sbyte)%s[0])", slice)
+			} else {
+				readExpr = fmt.Sprintf("%s[0]", slice)
+			}
+		case 2:
+			if signed {
+				readExpr = fmt.Sprintf("BinaryPrimitives.ReadInt16LittleEndian(%s)", slice)
+			} else {
+				readExpr = fmt.Sprintf("BinaryPrimitives.ReadUInt16LittleEndian(%s)", slice)
+			}
+		case 4:
+			if signed {
+				readExpr = fmt.Sprintf("BinaryPrimitives.ReadInt32LittleEndian(%s)", slice)
+			} else {
+				readExpr = fmt.Sprintf("BinaryPrimitives.ReadUInt32LittleEndian(%s)", slice)
+			}
+		case 8:
+			if signed {
+				readExpr = fmt.Sprintf("BinaryPrimitives.ReadInt64LittleEndian(%s)", slice)
+			} else {
+				readExpr = fmt.Sprintf("BinaryPrimitives.ReadUInt64LittleEndian(%s)", slice)
+			}
+		}
+		g.pf("%s%s = %s;\n", ind, expr, readExpr)
+	case ir.TBits:
+		readExpr := ""
+		if w <= 4 {
+			readExpr = fmt.Sprintf("BinaryPrimitives.ReadUInt32LittleEndian(%s)", slice)
+		} else {
+			readExpr = fmt.Sprintf("BinaryPrimitives.ReadUInt64LittleEndian(%s)", slice)
+		}
+		g.pf("%s%s = %s;\n", ind, expr, readExpr)
+	}
+}
+
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	b := &fixedRootBuild{g: g}
 	b.entries = append(b.entries, fixedBlockEntry{
@@ -1559,6 +1821,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if (n > values.Length)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
+	g.pf("    if (hash == %sFixedHash)\n    {\n", name)
+	g.pf("        for (int k = 0; k < n; ++k)\n        {\n")
+	g.pf("            if (values[k] == null) { values[k] = new %s(); }\n", name)
+	g.pf("            if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n            {\n")
+	g.pf("                if (report != null) { report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("                return -1;\n            }\n")
+	g.pf("            %sFixedIdentityScatter(values[k], at.Slice(8), report);\n", name)
+	g.pf("            at = at.Slice((int)record_bytes);\n        }\n")
+	g.pf("        if (report != null) { report.Verdict = TableWire.Verdict.Ok; }\n        return n;\n    }\n")
 	g.pf("    for (int k = 0; k < n; ++k)\n    {\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        TableReset(values[k]);\n")
