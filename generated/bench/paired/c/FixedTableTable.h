@@ -3117,9 +3117,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
 }
 
 /* MixedEntity's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_clamp_body_( MixedEntity * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_clamp_body_( MixedEntity * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     /* bits(12) width clamp */
     (*clamped) += ( value->entity_id > 4095ull );
     value->entity_id = ( value->entity_id > 4095ull ) ? 4095ull : value->entity_id;
@@ -3147,9 +3147,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fi
 }
 
 /* MixedStat's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_clamp_body_( MixedStat * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_clamp_body_( MixedStat * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     /* bits(8) width clamp */
     (*clamped) += ( value->stat_id > 255ull );
     value->stat_id = ( value->stat_id > 255ull ) ? 255ull : value->stat_id;
@@ -3158,9 +3158,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixe
 }
 
 /* MixedHitEvent's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_clamp_body_( MixedHitEvent * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_clamp_body_( MixedHitEvent * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     /* bits(12) width clamp */
     (*clamped) += ( value->target_id > 4095ull );
     value->target_id = ( value->target_id > 4095ull ) ? 4095ull : value->target_id;
@@ -3171,9 +3171,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event
 }
 
 /* MixedChatEvent's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_clamp_body_( MixedChatEvent * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_clamp_body_( MixedChatEvent * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     (*clamped) += (int) ( value->channel < 0 ) | (int) ( value->channel > 3 );
     value->channel = ( value->channel < 0 ) ? 0 : ( ( value->channel > 3 ) ? 3 : value->channel );
     /* bits(12) width clamp */
@@ -3182,9 +3182,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_even
 }
 
 /* MixedPickupEvent's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_clamp_body_( MixedPickupEvent * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_clamp_body_( MixedPickupEvent * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     /* bits(10) width clamp */
     (*clamped) += ( value->item_id > 1023ull );
     value->item_id = ( value->item_id > 1023ull ) ? 1023ull : value->item_id;
@@ -3193,9 +3193,9 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_ev
 }
 
 /* BenchMixed's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_clamp_body_( BenchMixed * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_clamp_body_( BenchMixed * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     /* bits(16) width clamp */
     (*clamped) += ( value->sequence > 65535ull );
     value->sequence = ( value->sequence > 65535ull ) ? 65535ull : value->sequence;
@@ -3212,14 +3212,14 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
         int64_t i;
         for ( i = 0; i < (int64_t) value->entities_count; ++i )
         {
-            schema_bench_mixed_entity_fixed_clamp_body_( &value->entities[i], clamped );
+            schema_bench_mixed_entity_fixed_clamp_body_( &value->entities[i], clamped, damaged );
         }
     }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->stats_count; ++i )
         {
-            schema_bench_mixed_stat_fixed_clamp_body_( &value->stats[i], clamped );
+            schema_bench_mixed_stat_fixed_clamp_body_( &value->stats[i], clamped, damaged );
         }
     }
     if ( (uint32_t) value->game_event.type > 3u ) { value->game_event.type = MIXED_EVENT_TYPE_NONE; (*clamped)++; }
@@ -3227,20 +3227,26 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     {
         case MIXED_EVENT_TYPE_HIT:
         {
-            schema_bench_mixed_hit_event_fixed_clamp_body_( &value->game_event.as.hit, clamped );
+            schema_bench_mixed_hit_event_fixed_clamp_body_( &value->game_event.as.hit, clamped, damaged );
             break;
         }
         case MIXED_EVENT_TYPE_CHAT:
         {
-            schema_bench_mixed_chat_event_fixed_clamp_body_( &value->game_event.as.chat, clamped );
+            schema_bench_mixed_chat_event_fixed_clamp_body_( &value->game_event.as.chat, clamped, damaged );
             break;
         }
         case MIXED_EVENT_TYPE_PICKUP:
         {
-            schema_bench_mixed_pickup_event_fixed_clamp_body_( &value->game_event.as.pickup, clamped );
+            schema_bench_mixed_pickup_event_fixed_clamp_body_( &value->game_event.as.pickup, clamped, damaged );
             break;
         }
         default: break;
+    }
+    if ( !table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) )
+    {
+        memset( value->player_name, 0, sizeof( value->player_name ) );
+        value->player_name_length = 0;
+        (*damaged)++;
     }
     (*clamped) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
     value->aim_x = ( value->aim_x < -1.0f ) ? -1.0f : ( ( value->aim_x > 1.0f ) ? 1.0f : value->aim_x );
@@ -3262,10 +3268,10 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
 }
 
 /* FixedTable's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_clamp_body_( FixedTable * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_clamp_body_( FixedTable * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    schema_bench_bench_mixed_fixed_clamp_body_( &value->value, clamped );
+    (void) value; (void) clamped; (void) damaged;
+    schema_bench_bench_mixed_fixed_clamp_body_( &value->value, clamped, damaged );
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -3277,8 +3283,13 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
 static SCHEMA_UNUSED void schema_bench_fixed_table_fixed_clamp_( FixedTable * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_bench_fixed_table_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_bench_fixed_table_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- FixedTable, the fixed form ---- */

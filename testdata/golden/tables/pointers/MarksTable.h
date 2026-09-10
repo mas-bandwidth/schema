@@ -6979,9 +6979,9 @@ inline void TallyFixedWriteBody( uint8_t * b, const Tally & value )
 }
 
 // Tally's read-side bounds.
-inline void TallyFixedClampBody( Tally & value, int32_t & clamped )
+inline void TallyFixedClampBody( Tally & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.hits < 0 ) | (int) ( value.hits > 10000 );
     value.hits = ( value.hits < 0 ) ? 0 : ( ( value.hits > 10000 ) ? 10000 : value.hits );
 }
@@ -6995,8 +6995,13 @@ inline void TallyFixedClampBody( Tally & value, int32_t & clamped )
 inline void TallyFixedClamp( Tally & value, TableReport * report )
 {
     int32_t clamped = 0;
-    TallyFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    TallyFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- Tally, the fixed form ----

@@ -5114,17 +5114,23 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
 }
 
 /* TeamConfig's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_clamp_body_( TeamConfig * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_clamp_body_( TeamConfig * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     (*clamped) += (int) ( value->spawn_count < 0 ) | (int) ( value->spawn_count > 64 );
     value->spawn_count = ( value->spawn_count < 0 ) ? 0 : ( ( value->spawn_count > 64 ) ? 64 : value->spawn_count );
+    if ( !table_wire_utf8( (const uint8_t *) value->banner, (uint64_t) value->banner_length ) )
+    {
+        memset( value->banner, 0, sizeof( value->banner ) );
+        value->banner_length = 0;
+        (*damaged)++;
+    }
 }
 
 /* ScoreBoard's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_board_fixed_clamp_body_( ScoreBoard * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_board_fixed_clamp_body_( ScoreBoard * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     {
         int64_t i;
         for ( i = 0; i < 3; ++i )
@@ -5136,17 +5142,17 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_b
 }
 
 /* KeyedConfig's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_config_fixed_clamp_body_( KeyedConfig * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_config_fixed_clamp_body_( KeyedConfig * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     {
         int64_t i;
         for ( i = 0; i < 3; ++i )
         {
-            schema_tabledemo_team_config_fixed_clamp_body_( &value->teams[i], clamped );
+            schema_tabledemo_team_config_fixed_clamp_body_( &value->teams[i], clamped, damaged );
         }
     }
-    schema_tabledemo_score_board_fixed_clamp_body_( &value->scores, clamped );
+    schema_tabledemo_score_board_fixed_clamp_body_( &value->scores, clamped, damaged );
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -5158,8 +5164,13 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
 static SCHEMA_UNUSED void schema_tabledemo_team_config_fixed_clamp_( TeamConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_team_config_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_team_config_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- TeamConfig, the fixed form ---- */
@@ -5782,8 +5793,13 @@ static SCHEMA_UNUSED int64_t hull_config_fixed_load( HullConfig * values, int64_
 static SCHEMA_UNUSED void schema_tabledemo_keyed_config_fixed_clamp_( KeyedConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_keyed_config_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_keyed_config_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- KeyedConfig, the fixed form ---- */

@@ -6844,17 +6844,17 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
 }
 
 /* Debuff's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_debuff_fixed_clamp_body_( Debuff * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_debuff_fixed_clamp_body_( Debuff * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     (*clamped) += (int) ( value->amount < 0 ) | (int) ( value->amount > 100 );
     value->amount = ( value->amount < 0 ) ? 0 : ( ( value->amount > 100 ) ? 100 : value->amount );
 }
 
 /* WeaponConfig's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_weapon_config_fixed_clamp_body_( WeaponConfig * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_weapon_config_fixed_clamp_body_( WeaponConfig * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     (*clamped) += (int) ( value->penetration < 0 ) | (int) ( value->penetration > 10 );
     value->penetration = ( value->penetration < 0 ) ? 0 : ( ( value->penetration > 10 ) ? 10 : value->penetration );
     /* bits(6) width clamp */
@@ -6865,7 +6865,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_weapon_
     {
         case EFFECT_TYPE_DEBUFF:
         {
-            schema_tabledemo_debuff_fixed_clamp_body_( &value->effect.as.debuff, clamped );
+            schema_tabledemo_debuff_fixed_clamp_body_( &value->effect.as.debuff, clamped, damaged );
             break;
         }
         default: break;
@@ -6873,17 +6873,17 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_weapon_
 }
 
 /* Attachment's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_attachment_fixed_clamp_body_( Attachment * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_attachment_fixed_clamp_body_( Attachment * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     (*clamped) += (int) ( value->slot < 0 ) | (int) ( value->slot > 7 );
     value->slot = ( value->slot < 0 ) ? 0 : ( ( value->slot > 7 ) ? 7 : value->slot );
 }
 
 /* LoadoutConfig's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout_config_fixed_clamp_body_( LoadoutConfig * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout_config_fixed_clamp_body_( LoadoutConfig * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value->grade > 3u ) { value->grade = GRADE_NONE; (*clamped)++; }
     {
         int64_t i;
@@ -6899,19 +6899,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
             if ( (uint64_t) value->podium[i] > 3u ) { value->podium[i] = GRADE_NONE; (*clamped)++; }
         }
     }
-    schema_tabledemo_weapon_config_fixed_clamp_body_( &value->primary, clamped );
+    schema_tabledemo_weapon_config_fixed_clamp_body_( &value->primary, clamped, damaged );
     {
         int64_t i;
         for ( i = 0; i < 2; ++i )
         {
-            schema_tabledemo_weapon_config_fixed_clamp_body_( &value->backups[i], clamped );
+            schema_tabledemo_weapon_config_fixed_clamp_body_( &value->backups[i], clamped, damaged );
         }
     }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->attachments_count; ++i )
         {
-            schema_tabledemo_attachment_fixed_clamp_body_( &value->attachments[i], clamped );
+            schema_tabledemo_attachment_fixed_clamp_body_( &value->attachments[i], clamped, damaged );
         }
     }
 }
@@ -6925,8 +6925,13 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
 static SCHEMA_UNUSED void schema_tabledemo_weapon_config_fixed_clamp_( WeaponConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_weapon_config_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_weapon_config_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- WeaponConfig, the fixed form ---- */
@@ -7101,8 +7106,13 @@ static SCHEMA_UNUSED int64_t weapon_config_fixed_load( WeaponConfig * values, in
 static SCHEMA_UNUSED void schema_tabledemo_loadout_config_fixed_clamp_( LoadoutConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_loadout_config_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_loadout_config_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- LoadoutConfig, the fixed form ---- */
