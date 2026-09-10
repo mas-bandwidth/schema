@@ -1,0 +1,37 @@
+// FU2.schema — the NEWER side of the text-under-an-arm pair. See FU1.schema.
+//
+// ONE FIELD IS APPENDED to the root and nothing else moves. That is enough to
+// change the layout hash, which is enough to send a read of FU1's bytes down
+// the COMPILED plan instead of the identity one — and the compiled plan is the
+// path where an overloaded plan lane drops a union arm's text.
+//
+// `extra` takes its declared default on a record FU1 wrote, because a field the
+// writer does not carry has no plan entry and the prefill is what lands there.
+package tblfu2
+
+type Plain
+{
+    n int32 = 7
+}
+
+type Labelled
+{
+    lead  int32 = 5
+    label string(8)
+    trail int32 = 9
+}
+
+union Pick
+{
+    plain    Plain
+    labelled Labelled
+}
+
+table FuRoot
+{
+    flag  bool = false
+    note  ?int32
+    pick  Pick
+    tail  int32 = 3
+    extra int32 = 11
+}

@@ -808,7 +808,7 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
-    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the tag at guard
        must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
        entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
        shared one, and a string(N) under a union's arm then had to be either
@@ -817,6 +817,13 @@ typedef struct TableFixedEntry
     uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
+    /* argw IS THE GUARD'S WIDTH IN BYTES. A union tag is one, two, four or
+       eight, and comparing only the FIRST of them fires arm 1 on a foreign
+       tag of 0x0101 — an ordinal no arm of this build names. Zero is read as
+       one, which is the width a tag had when this field did not exist. It
+       sits last so a ten-value aggregate still names op, arg, meta, dstsize
+       and sign in that order. */
+    uint8_t argw;
 } TableFixedEntry;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -829,6 +836,7 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
     TableFixedEntry e;
     memset( &e, 0, sizeof( e ) );
     e.guard = SCHEMA_TABLE_FIXED_NO_GUARD;
+    e.argw = 1;
     return e;
 }
 
@@ -902,6 +910,22 @@ static SCHEMA_UNUSED uint64_t table_fixed_get64( const uint8_t * b )
     uint64_t v = 0;
     int i;
     for ( i = 0; i < 8; ++i ) { v |= ( (uint64_t) b[i] ) << ( 8 * i ); }
+    return v;
+}
+
+/* THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+   byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+   for, and reading only the first byte let 0x0101 run arm 1's entries over
+   a stranger's record. */
+static SCHEMA_UNUSED uint64_t table_fixed_tag_at( const uint8_t * src, uint32_t guard, uint8_t argw )
+{
+    const uint8_t w = argw == 0 ? (uint8_t) 1 : ( argw > 8u ? (uint8_t) 8 : argw );
+    uint64_t v = 0;
+    uint8_t i;
+    for ( i = 0; i < w; ++i )
+    {
+        v |= ( (uint64_t) src[guard + i] ) << ( 8 * i );
+    }
     return v;
 }
 
@@ -1138,7 +1162,7 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
-        if ( src[p->guard] != p->arg ) { continue; }
+        if ( table_fixed_tag_at( src, p->guard, p->argw ) != (uint64_t) p->arg ) { continue; }
         table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
     }
     report->clamped += clamped;
@@ -1538,6 +1562,7 @@ typedef struct TableFixedCompiler
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
+    uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     int skip_clamp;    /* counted-array elements: the live count, never slack */
     TableReport * report;
 } TableFixedCompiler;
@@ -1549,6 +1574,7 @@ static SCHEMA_UNUSED void table_fixed_compiler_init( TableFixedCompiler * c )
     memset( c, 0, sizeof( *c ) );
     c->plan = NULL;
     c->report = NULL;
+    c->argw = 1;
 }
 
 static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEntry e )
@@ -1562,19 +1588,22 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
     {
+        if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) { e.argw = c->argw ? c->argw : (uint8_t) 1; }
+        const uint8_t gw = e.argw == 0 ? (uint8_t) 1 : e.argw;
+        const int guard_out = e.guard != SCHEMA_TABLE_FIXED_NO_GUARD &&
+            ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record );
         /* A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
            already landed. src+size is not a wire reach. */
         if ( e.op != kTableFixedClamp )
         {
             const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-            if ( reach > (uint64_t) c->record ||
-                 ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
+            if ( reach > (uint64_t) c->record || guard_out )
             {
                 c->hostile = 1;
                 return;
             }
         }
-        else if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record )
+        else if ( guard_out )
         {
             c->hostile = 1;
             return;
@@ -1800,8 +1829,10 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             {
                 const uint32_t their_tag = table_fixed_tag_bytes( theirs, ti );
                 const uint32_t my_tag = table_fixed_tag_bytes( mine, mi );
+                const uint8_t saved_argw = c->argw;
                 int32_t my_arm = mi + 1;
                 uint32_t k;
+                c->argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : (uint8_t) 1;
                 for ( k = 0; k < me.children && my_arm < mine->count; ++k )
                 {
                     const TableFixedLayoutEntry ma = table_fixed_entry_at( mine, my_arm );
@@ -1816,6 +1847,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                             TableFixedEntry tag = table_fixed_entry_zero();
                             tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
                             tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint8_t) ( j + 1 );
+                            tag.argw = c->argw;
                             table_fixed_push( c, tag );
                             table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
                                                        mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 ) );
@@ -1825,6 +1857,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     }
                     my_arm += table_fixed_subtree( mine, my_arm );
                 }
+                c->argw = saved_argw;
                 break;
             }
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
@@ -1929,6 +1962,7 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
         if ( i == plain ) { split = out; }
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
+             plan[out-1].argw == plan[i].argw &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -5341,8 +5375,8 @@ static SCHEMA_UNUSED const TableFixedDst gunner_settings_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry gunner_settings_fixed_plan[] = {
-    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
-    { 5u, 32u, 24u, 5u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* callsign */
+    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 5u, 32u, 24u, 5u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
 };
 static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_guarded = 2;
@@ -5563,13 +5597,13 @@ static SCHEMA_UNUSED const TableFixedDst ship_entry_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry ship_entry_fixed_plan[] = {
-    { 0u, 36u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* display_name */
-    { 36u, 40u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
-    { 44u, 64u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* hardpoints count */
-    { 48u, 48u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* hardpoints, whole */
-    { 64u, 104u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
-    { 65u, 68u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
-    { 70u, 100u, 24u, 73u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* callsign */
+    { 0u, 36u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
+    { 36u, 40u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
+    { 44u, 64u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
+    { 48u, 48u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
+    { 64u, 104u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 65u, 68u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 70u, 100u, 24u, 73u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
 };
 static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_count = 7;
 static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_guarded = 7;
@@ -5786,9 +5820,9 @@ static SCHEMA_UNUSED const TableFixedDst global_settings_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry global_settings_fixed_plan[] = {
-    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* tick_rate */
-    { 5u, 56u, 48u, 5u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* build_note */
-    { 57u, 60u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* spawn_delays, whole */
+    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* tick_rate */
+    { 5u, 56u, 48u, 5u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* build_note */
+    { 57u, 60u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* spawn_delays, whole */
 };
 static SCHEMA_UNUSED const int32_t global_settings_fixed_plan_count = 3;
 static SCHEMA_UNUSED const int32_t global_settings_fixed_plan_guarded = 3;
@@ -6080,53 +6114,53 @@ static SCHEMA_UNUSED const TableFixedDst pack_config_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry pack_config_fixed_plan[] = {
-    { 0u, 0u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* version */
-    { 9u, 60u, 48u, 9u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* build_note */
-    { 61u, 64u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* spawn_delays, whole */
-    { 73u, 112u, 32u, 76u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* display_name */
-    { 109u, 116u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
-    { 117u, 140u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* hardpoints count */
-    { 121u, 124u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* hardpoints, whole */
-    { 137u, 180u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
-    { 138u, 144u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
-    { 143u, 176u, 24u, 149u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* callsign */
-    { 171u, 220u, 32u, 184u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* display_name */
-    { 207u, 224u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
-    { 215u, 248u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* hardpoints count */
-    { 219u, 232u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* hardpoints, whole */
-    { 235u, 288u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
-    { 236u, 252u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
-    { 241u, 284u, 24u, 257u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* callsign */
-    { 269u, 328u, 32u, 292u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* display_name */
-    { 305u, 332u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
-    { 313u, 356u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* hardpoints count */
-    { 317u, 340u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* hardpoints, whole */
-    { 333u, 396u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
-    { 334u, 360u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
-    { 339u, 392u, 24u, 365u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* callsign */
-    { 367u, 400u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* thresholds, whole */
-    { 379u, 736u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* reserves count */
-    { 383u, 448u, 32u, 412u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* display_name */
-    { 419u, 452u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
-    { 427u, 476u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* hardpoints count */
-    { 431u, 460u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* hardpoints, whole */
-    { 447u, 516u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
-    { 448u, 480u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
-    { 453u, 512u, 24u, 485u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* callsign */
-    { 481u, 556u, 32u, 520u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* display_name */
-    { 517u, 560u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
-    { 525u, 584u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* hardpoints count */
-    { 529u, 568u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* hardpoints, whole */
-    { 545u, 624u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
-    { 546u, 588u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
-    { 551u, 620u, 24u, 593u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* callsign */
-    { 579u, 664u, 32u, 628u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* display_name */
-    { 615u, 668u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
-    { 623u, 692u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* hardpoints count */
-    { 627u, 676u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* hardpoints, whole */
-    { 643u, 732u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
-    { 644u, 696u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
-    { 649u, 728u, 24u, 701u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* callsign */
+    { 0u, 0u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* version */
+    { 9u, 60u, 48u, 9u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* build_note */
+    { 61u, 64u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* spawn_delays, whole */
+    { 73u, 112u, 32u, 76u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
+    { 109u, 116u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
+    { 117u, 140u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
+    { 121u, 124u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
+    { 137u, 180u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 138u, 144u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 143u, 176u, 24u, 149u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
+    { 171u, 220u, 32u, 184u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
+    { 207u, 224u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
+    { 215u, 248u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
+    { 219u, 232u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
+    { 235u, 288u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 236u, 252u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 241u, 284u, 24u, 257u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
+    { 269u, 328u, 32u, 292u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
+    { 305u, 332u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
+    { 313u, 356u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
+    { 317u, 340u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
+    { 333u, 396u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 334u, 360u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 339u, 392u, 24u, 365u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
+    { 367u, 400u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* thresholds, whole */
+    { 379u, 736u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* reserves count */
+    { 383u, 448u, 32u, 412u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
+    { 419u, 452u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
+    { 427u, 476u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
+    { 431u, 460u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
+    { 447u, 516u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 448u, 480u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 453u, 512u, 24u, 485u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
+    { 481u, 556u, 32u, 520u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
+    { 517u, 560u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
+    { 525u, 584u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
+    { 529u, 568u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
+    { 545u, 624u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 546u, 588u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 551u, 620u, 24u, 593u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
+    { 579u, 664u, 32u, 628u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
+    { 615u, 668u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
+    { 623u, 692u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
+    { 627u, 676u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
+    { 643u, 732u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 644u, 696u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 649u, 728u, 24u, 701u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
 };
 static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_count = 47;
 static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_guarded = 47;

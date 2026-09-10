@@ -60,11 +60,15 @@ func fastCommand(wire, lang string, round int, iterations int64) command {
 	return runner(wire, lang, args...)
 }
 
-func fastWires(round, languageIndex int) []string {
-	if (round+languageIndex)%2 == 1 {
+// fastWires orders a language's own wires for this round, so the interleave
+// alternates for a paired language and is the single table leg for a
+// table-only one.
+func fastWires(round, languageIndex int, lang string) []string {
+	wires := wiresFor(lang)
+	if len(wires) == 2 && (round+languageIndex)%2 == 1 {
 		return []string{"table", "packet"}
 	}
-	return []string{"packet", "table"}
+	return wires
 }
 
 // Adapt only a short sample. CSV rates encode the runner's actual measured
@@ -107,14 +111,19 @@ func inadequateWires(raised map[string]int64) string {
 // again at it. Superseded attempts stay in the evidence and supply no row, so
 // a rendered table cannot mix counts. counts carries the final values out.
 func fastSchedule(langs []string, rounds int, counts map[string]int64, measure func(pass, round int, lang, wire string, n int64) (int64, bool, error)) error {
-	pending := map[string]bool{"packet": true, "table": true}
+	pending := map[string]bool{}
+	for _, lang := range langs {
+		for _, wire := range wiresFor(lang) {
+			pending[wire] = true
+		}
+	}
 	for pass := range fastPasses {
 		raised := map[string]int64{}
 		for round := range rounds {
 			for i := range langs {
 				languageIndex := (i + round) % len(langs)
 				lang := langs[languageIndex]
-				for _, wire := range fastWires(round, languageIndex) {
+				for _, wire := range fastWires(round, languageIndex, lang) {
 					if !pending[wire] {
 						continue
 					}
@@ -269,7 +278,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		return errors.New("fast process monitoring requires Linux or macOS")
 	}
-	if len(langs) == 4 && (info.Dirty || gitValue(".", "status", "--porcelain") != "") {
+	if info.Dirty || gitValue(".", "status", "--porcelain") != "" {
 		return errors.New("fast mode requires a clean source/build checkpoint")
 	}
 	if out == "" {
@@ -279,9 +288,9 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 		return errors.New("refusing to overwrite diagnostic directory")
 	}
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		for _, wire := range wiresFor(lang) {
 			if info.Binaries[binary(wire, lang)] == "" {
-				return fmt.Errorf("cached build lacks %s/%s; run the gate first", lang, wire)
+				return fmt.Errorf("cached build lacks %s/%s; run the all-language gate first", lang, wire)
 			}
 		}
 	}
@@ -325,7 +334,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 		return err
 	}
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		for _, wire := range wiresFor(lang) {
 			data, err := f.capture(ctx, runner(wire, lang, "--gate"), "gate-"+lang+"-"+wire)
 			if err != nil {
 				return err
@@ -383,7 +392,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if rel, err := filepath.Rel(abs("."), abs(tmp)); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		statusArgs = append(statusArgs, ":(exclude,top,literal)"+filepath.ToSlash(rel))
 	}
-	if len(langs) == 4 && gitValue(".", statusArgs...) != "" {
+	if gitValue(".", statusArgs...) != "" {
 		return errors.New("source changed during fast diagnostic")
 	}
 	if err := writeFastSummary(tmp, langs, f.evidence); err != nil {
@@ -422,9 +431,6 @@ func grouped(n int64) string {
 	return b.String()
 }
 
-// langs is the set actually measured, which is not always every paired
-// language: a leg whose rows do not answer to this sitting's corpus is left
-// out before the first clock rather than refused after it.
 func writeFastSummary(dir string, langs []string, e fastEvidence) error {
 	costs := map[string][]float64{}
 	for _, attempt := range e.Attempts {
@@ -440,9 +446,20 @@ func writeFastSummary(dir string, langs []string, e fastEvidence) error {
 	}
 	median := map[string]float64{}
 	var text strings.Builder
-	fmt.Fprintf(&text, "# Fast iteration diagnostic — not certified\n\n%s\n\nOperator context: %s\n\n%d observed noise warnings; see fast.json and process-samples.jsonl. Every accepted sample is at least 200ms. Short attempts are retained but excluded below. Costs use the median of the adequate rounds; one round does not establish stability.\n\nOne iteration count per wire, identical across all four languages and every round (BENCH-STANDARD §2.1): %s Packet and %s Table operations per warmup and per measured sample. A short leg raised the count for its whole group, never for itself alone. At one round the Range column is degenerate — the single value is its own minimum and maximum — so it reads as zero variance by construction, not as measured stability.\n\n| Language | Wire | Path | Median µs/op | Range µs/op |\n|---|---|---|---:|---:|\n", e.Qualification, e.Config.Noise, len(e.Noise), grouped(e.FinalCounts["packet"]), grouped(e.FinalCounts["table"]))
+	// A TABLE-ONLY DIAGNOSTIC IS NOT THE PAIRED ONE and does not pretend to
+	// be: it names the language, states the table wire's own cost, and prints
+	// no ratio, because it has no packet row to divide and the fastest of one
+	// leg is that leg.
+	paired := !onlyTableLanguages(langs)
+	counts := "no Packet leg and " + grouped(e.FinalCounts["table"]) + " Table"
+	scope := "the requested table-only leg"
+	if paired {
+		counts = grouped(e.FinalCounts["packet"]) + " Packet and " + grouped(e.FinalCounts["table"]) + " Table"
+		scope = "all four paired languages"
+	}
+	fmt.Fprintf(&text, "# Fast iteration diagnostic — not certified\n\n%s\n\nOperator context: %s\n\n%d observed noise warnings; see fast.json and process-samples.jsonl. Every accepted sample is at least 200ms. Short attempts are retained but excluded below. Costs use the median of the adequate rounds; one round does not establish stability.\n\nOne iteration count per wire, identical across %s and every round (BENCH-STANDARD §2.1): %s operations per warmup and per measured sample. A short leg raised the count for its whole group, never for itself alone. At one round the Range column is degenerate — the single value is its own minimum and maximum — so it reads as zero variance by construction, not as measured stability.\n\n| Language | Wire | Path | Median µs/op | Range µs/op |\n|---|---|---|---:|---:|\n", e.Qualification, e.Config.Noise, len(e.Noise), scope, counts)
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		for _, wire := range wiresFor(lang) {
 			for _, path := range []string{"write", "round_trip"} {
 				key := lang + "/" + wire + "/" + path
 				values := costs[key]
@@ -460,16 +477,20 @@ func writeFastSummary(dir string, langs []string, e fastEvidence) error {
 			}
 		}
 	}
-	fastest := math.Inf(1)
-	for _, lang := range langs {
-		fastest = math.Min(fastest, median[lang+"/table/round_trip"])
+	if !paired {
+		fmt.Fprintf(&text, "\nNO RATIO. %s has no packet leg in this driver (bench/paired/main.go names why), so there is nothing here to divide and no board row: this is the table wire's own cost in that language, and the paired percentages stay defined over the four paired languages alone.\n", names[langs[0]])
 	}
-	text.WriteString("\n| Language | Fixed Table % | vs Packet Wire % |\n|---|---:|---:|\n")
-	for _, lang := range langs {
-		table := median[lang+"/table/round_trip"]
-		fmt.Fprintf(&text, "| %s | %.1f%% | %.1f%% |\n", names[lang], 100*table/fastest, 100*table/median[lang+"/packet/round_trip"])
+	if paired {
+		fastest := math.Inf(1)
+		for _, lang := range langs {
+			fastest = math.Min(fastest, median[lang+"/table/round_trip"])
+		}
+		text.WriteString("\n| Language | Fixed Table % | vs Packet Wire % |\n|---|---:|---:|\n")
+		for _, lang := range langs {
+			table := median[lang+"/table/round_trip"]
+			fmt.Fprintf(&text, "| %s | %.1f%% | %.1f%% |\n", names[lang], 100*table/fastest, 100*table/median[lang+"/packet/round_trip"])
+		}
 	}
 	text.WriteString("\n" + checksDetails + "\n\nConfirmation remains the separate seven-round `-mode run` protocol. This directory has no confirmation seal.\n")
-	fmt.Print(text.String())
 	return os.WriteFile(filepath.Join(dir, "README.md"), []byte(text.String()), 0644)
 }
