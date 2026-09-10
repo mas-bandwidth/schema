@@ -31,7 +31,7 @@ func (g *tableGen) knownOrdinal(id uint64) int {
 	return ord
 }
 
-// wireIdCall is a header's id call. The FILE form interns through the ORDINAL
+// wireIdCall is a header's id call. The VARIABLE form interns through the ORDINAL
 // SLOT CACHE, because every id spelled here is a compile-time constant of the
 // unit and so carries an ordinal. The RETAINED family keeps the general path:
 // it has an id table of its own (TableRetainIds), whose numbering interleaves
@@ -83,9 +83,62 @@ func (g *tableGen) wirePrimitives() string {
 		runtime = strings.ReplaceAll(runtime, "@CHECK_DEFAULT@", checkDefault)
 		runtime = strings.ReplaceAll(runtime, "@WRITE_NODES@", writeNodes)
 		runtime = strings.ReplaceAll(runtime, "@READ_NODES@", readNodes)
+		// THE FLOAT RUNG, kind 10 into kind 11 (docs/SPEC-TABLES.md §4), only
+		// where kind 11 is declared. table_wire_widen_f32 has exactly two call
+		// sites in this emitter — the file wire's widened scalar
+		// (wire_read.go) and the message form's f32-shaped entry read into an
+		// f64 field (message_read.go) — and both sit behind a DECLARED f64, so
+		// a unit whose closure declares no kind 11 carried nine lines it could
+		// not reach. table_kind_widens above stays in every unit: a kind
+		// comparison is what every reader does.
+		widenF32 := ""
+		if ir.TableDeclaredKinds(g.unit)[ir.TableKindF64] {
+			widenF32 = tableWidenF32Runtime
+		}
+		runtime = strings.ReplaceAll(runtime, "@WIDEN_F32@", widenF32)
 	}
-	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime) + tableTextRuntime
+	// KIND 33's RUNTIME, and only where a kind 33 payload can arrive
+	// (docs/SPEC-TABLES.md §3, §2.2). table_wire_utf16_unit, table_wire_utf16
+	// and table_wire_utf16_clamp have exactly two call sites in this emitter —
+	// a `wstring(N)` field (wire_read.go) and a `wstring(N)` arm (unions.go) —
+	// and both sit behind ir.TWString, so a unit whose census names no
+	// wide-text field cannot reach one of them.
+	//
+	// THE CENSUS IS UNIT-LEVEL AND NOT PER-FILE, because a package's files are
+	// separate headers and a translation unit may include only one of them: a
+	// file that declares no wide text of its own still has to define the
+	// runtime, since the file of the package that does declare it may not be
+	// in this translation unit at all.
+	//
+	// SCHEMA_TABLE_UTF16_RUNTIME STAYS GLOBAL rather than package-prefixed,
+	// which is how it already was, and the census cannot lean on it either
+	// way. A guard suppresses a REDEFINITION when two of a package's headers
+	// meet in one translation unit; it cannot SUPPLY a definition. So a file
+	// that declares wide text carries the block itself, and a file with no
+	// call site for it carries nothing.
+	wideText := ""
+	if len(ir.WideTextFields(g.unit)) > 0 {
+		wideText = tableTextRuntime
+	}
+	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit)) + wideText
 }
+
+// tableWidenF32Runtime is the FLOAT RUNG of the widening rule (§4): f32 into
+// f64, exact, with a NaN's payload riding on the bits because the hardware
+// conversion would set the quiet bit. It goes into @WIDEN_F32@ inside
+// fileWireRuntime, and only into a unit whose closure DECLARES a kind 11 —
+// see wirePrimitives for the census and for why the other five widening
+// symbols stay in every unit.
+const tableWidenF32Runtime = `static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
+{
+    if ( (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu) != 0 )
+    {
+        uint64_t wide = ((uint64_t) (bits >> 31) << 63) | 0x7ff0000000000000ull | ((uint64_t) (bits & 0x007fffffu) << 29);
+        double d; memcpy( &d, &wide, 8 ); return d;
+    }
+    { float f; memcpy( &f, &bits, 4 ); return (double) f; }
+}
+`
 
 const fileWireRuntime = `
 /* Each save owns one bounded identity table. Probes share it and rewind their
@@ -375,16 +428,7 @@ static SCHEMA_UNUSED int table_kind_widens( uint8_t kind, uint8_t declared )
     if ( declared == 19 ) { return kind >= 6 && kind <= 9; }
     return declared == 11 && kind == 10;
 }
-static SCHEMA_UNUSED double table_wire_widen_f32( uint32_t bits )
-{
-    if ( (bits & 0x7f800000u) == 0x7f800000u && (bits & 0x007fffffu) != 0 )
-    {
-        uint64_t wide = ((uint64_t) (bits >> 31) << 63) | 0x7ff0000000000000ull | ((uint64_t) (bits & 0x007fffffu) << 29);
-        double d; memcpy( &d, &wide, 8 ); return d;
-    }
-    { float f; memcpy( &f, &bits, 4 ); return (double) f; }
-}
-static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
+@WIDEN_F32@static SCHEMA_UNUSED int table_wire_open( TableReader * r, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     uint64_t count, i, j; int64_t span; TableReader tail;
     if ( bytes < 1 || buffer == NULL ) { report->malformed = 1; return 0; }

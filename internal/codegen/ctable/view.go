@@ -49,7 +49,7 @@ func generateViewFiles(u *ir.Unit, closure map[string]bool, variable, targets ma
 			fmt.Fprintf(&h, "#include \"%sTable.h\"\n", f.Base)
 		}
 	} else {
-		h.WriteString(tablePrimitives(u.Package, false, false, "\n"))
+		h.WriteString(tablePrimitives(u.Package, false, false, "\n", false, false))
 	}
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n")
 	h.WriteString(viewRecords)

@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package bench — protocol id 0x8d12c3149393f40f */
+   package bench — protocol id 0xc93127c82f083edf */
 
 #ifndef SCHEMA_BENCH_BENCH_H
 #define SCHEMA_BENCH_BENCH_H
@@ -25,7 +25,7 @@ extern "C" {
 
 /* The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
    sides at the same id speak identical bits; there is no other versioning. */
-#define BENCH_PROTOCOL_ID 0x8d12c3149393f40fULL
+#define BENCH_PROTOCOL_ID 0xc93127c82f083edfULL
 
 
 /* type BenchPacket */
@@ -386,7 +386,7 @@ typedef struct BenchMixed {
     int32_t idle_ticks;
 } BenchMixed;
 
-#define BENCH_MIXED_MAX_BITS 3626   /* longest wire path; align pads at worst case (SPEC §6.1) */
+#define BENCH_MIXED_MAX_BITS 3630   /* longest wire path; align pads at worst case (SPEC §6.1) */
 #define BENCH_MIXED_MAX_BYTES 456  /* 8-byte write granularity; read slack per the contract above */
 
 /* Returns a BenchMixed with its SPECIFIED defaults applied. A memset to zero is

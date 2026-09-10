@@ -7,7 +7,7 @@
 // The C++ backend (internal/codegen/cpptable) is the REFERENCE: this port
 // follows its framing, elision decisions, clamps and recovery rules. The
 // compiler engine (internal/tablewire) is the independent conformance oracle.
-// The contract is docs/SPEC-TABLES.md, including the id-table file form. Where Go
+// The contract is docs/SPEC-TABLES.md, including the id-table wire (form 1, the variable form). Where Go
 // forces a different spelling the reason is stated at the site.
 //
 // Storage follows the Go PACKET emitter's conventions exactly

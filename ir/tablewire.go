@@ -97,10 +97,15 @@ func BlobWireTypeId(f *Field) uint64 {
 	}
 }
 
-// TableWireForm is the FORM BYTE, and it is the whole header
-// (docs/SPEC-TABLES.md §3). It versions the FRAMING §3 describes; a reader
-// that meets a byte it does not know refuses the wire by name and never
-// reports damage.
+// TableWireForm is the VARIABLE FORM's form byte (docs/SPEC-TABLES.md §3), row
+// `1` of [WireForms], which is the registry and the only place a form byte is
+// assigned a meaning. It versions the FRAMING §3 describes; a reader that meets
+// a byte it does not know refuses the wire by name and never reports damage.
+//
+// THE VARIABLE FORM IS THE ONE ARM WHOSE HEADER IS THE FORM BYTE ALONE: it
+// carries no hash to put at offset 8 and no memory-mapped body to align, and
+// §3's own "nothing is aligned and nothing is padded" is its rule. The body
+// begins at byte 1.
 const TableWireForm = 1
 
 // The kinds this form adds to §3's closed set. An ENUM rides under its own
@@ -292,8 +297,8 @@ const TableBuildVersionWireId = uint64(0xFFFFFFFFFFFFFFFE)
 const TableMessageVocabularyWireId = uint64(0xFFFFFFFFFFFFFFFD)
 
 // TableWireMessageForm is the MESSAGE FORM's form byte (docs/SPEC-TABLES.md
-// §3.3). A form-2 wire is TWO PARTS, the form byte and the root body, and its
-// id table is the CONNECTION's rather than the wire's.
+// §3.3), row `2` of [WireForms]. A form-2 wire is TWO PARTS, the form byte and
+// the root body, and its id table is the CONNECTION's rather than the wire's.
 const TableWireMessageForm = 2
 
 // The CONFORMING DEFAULT BOUNDS on an announcement (docs/SPEC-TABLES.md §3.3).

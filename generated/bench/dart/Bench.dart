@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 //
 // The shipped Dart wire path (issue #155): the serialize.dart bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -135,7 +135,7 @@ String _hex64(int value) => value < 0
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const int protocolId = 0x8d12c3149393f40f;
+const int protocolId = 0xc93127c82f083edf;
 
 // type BenchPacket
 final class BenchPacket {
@@ -1898,21 +1898,15 @@ final class BenchMixed {
   int crcHint = 0;
   // specified default at construction; zero* gives the §5 zero form
   bool hasExtra = true;
-
-  // has_extra — wire branch; storage holds both sides, a read zeroes the
-  // untaken side (SPEC §5)
   // wire [0, 255]
   int extra = 0;
-
-  // !has_extra — wire branch; storage holds both sides, a read zeroes the
-  // untaken side (SPEC §5)
   // wire [0, 15]
   int idleTicks = 0;
 }
 
 // benchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
 // benchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-const int benchMixedMaxBits = 3626;
+const int benchMixedMaxBits = 3630;
 const int benchMixedMaxBytes = 456;
 
 // The §5 zero form: all-zero storage; specified defaults live only in
@@ -2513,39 +2507,22 @@ int writeBenchMixed(BenchMixed value, ByteData view) {
       }
     }
   }
-  v = ((value.crcHint) & 0xffffff) | ((value.hasExtra ? 1 : 0) << 24);
+  assert(value.extra >= 0);
+  assert(value.extra <= 255);
+  assert(value.idleTicks >= 0);
+  assert(value.idleTicks <= 15);
+  v =
+      ((value.crcHint) & 0xffffff) |
+      ((value.hasExtra ? 1 : 0) << 24) |
+      (((value.extra) & 0xff) << 25) |
+      (((value.idleTicks) & 0xf) << 33);
   scratch |= v << scratchBits;
-  scratchBits += 25;
+  scratchBits += 37;
   if (scratchBits >= 64) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
     wordIndex++;
     scratchBits -= 64;
-    scratch = v >>> (25 - scratchBits);
-  }
-  if (value.hasExtra) {
-    assert(value.extra >= 0);
-    assert(value.extra <= 255);
-    v = ((value.extra) & 0xff);
-    scratch |= v << scratchBits;
-    scratchBits += 8;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (8 - scratchBits);
-    }
-  } else {
-    assert(value.idleTicks >= 0);
-    assert(value.idleTicks <= 15);
-    v = ((value.idleTicks) & 0xf);
-    scratch |= v << scratchBits;
-    scratchBits += 4;
-    if (scratchBits >= 64) {
-      view.setUint64(wordIndex * 8, scratch, Endian.little);
-      wordIndex++;
-      scratchBits -= 64;
-      scratch = v >>> (4 - scratchBits);
-    }
+    scratch = v >>> (37 - scratchBits);
   }
   if (scratchBits != 0) {
     view.setUint64(wordIndex * 8, scratch, Endian.little);
@@ -3138,7 +3115,7 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
       bitsRead += 8 - pad;
     }
   }
-  if (bitsRead + 25 > numBits) {
+  if (bitsRead + 37 > numBits) {
     return false;
   }
   if (bitsRead >>> 3 < tailBase) {
@@ -3152,33 +3129,12 @@ bool readBenchMixed(BenchMixed value, ByteData view, int numBits) {
   v = (window >>> 24) & 0x1;
   bitsRead += 1;
   value.hasExtra = v != 0;
-  if (value.hasExtra) {
-    if (bitsRead + 8 > numBits) {
-      return false;
-    }
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
-    }
-    v = window & 0xff;
-    bitsRead += 8;
-    value.extra = v;
-    value.idleTicks = 0;
-  } else {
-    if (bitsRead + 4 > numBits) {
-      return false;
-    }
-    if (bitsRead >>> 3 < tailBase) {
-      window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
-    } else {
-      window = tailWord >>> (bitsRead - tailBase * 8);
-    }
-    v = window & 0xf;
-    bitsRead += 4;
-    value.idleTicks = v;
-    value.extra = 0;
-  }
+  v = (window >>> 25) & 0xff;
+  bitsRead += 8;
+  value.extra = v;
+  v = (window >>> 33) & 0xf;
+  bitsRead += 4;
+  value.idleTicks = v;
   return true;
 }
 
@@ -3207,11 +3163,6 @@ int measureBenchMixed(BenchMixed value) {
   bits += value.payloadLength * 8;
   bits += 370;
   bits += (8 - (bits & 7)) & 7;
-  bits += 25;
-  if (value.hasExtra) {
-    bits += 8;
-  } else {
-    bits += 4;
-  }
+  bits += 37;
   return bits;
 }

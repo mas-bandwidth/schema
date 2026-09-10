@@ -2807,7 +2807,8 @@ tables-cook-endian: bin/schema
 # whole argument for the leg: this is precisely the defect class no
 # little-endian CI can see. The C twin is tables-c-big-endian-negative-control
 # (make/c.mk): it sabotages table_writer_finish's #else arm, because this
-# control never reaches that arm.
+# control never reaches that arm. The memcpy arm of that function is
+# tables-c-little-endian-negative-control, a host soak.
 #
 # The sabotaged emitter reaches the compiler through `go build -overlay`, so no
 # tracked file is ever written to: an interrupt cannot leave a sabotaged
@@ -3578,7 +3579,7 @@ tables-retain-fixed-class-negative-control: build/tables-generated/.stamp
 	@grep -q "FIXED-class root" build/retain-fixed-class.log || { echo "RETAIN GATE FAILED: the fixed-class refusal was not by name"; cat build/retain-fixed-class.log; exit 1; }
 	@echo "the fixed-class root refuses retention BY NAME (docs/SPEC-TABLES.md §6.6)"
 # AND THE MESSAGE FORM'S TWO ON THE SAME ROOT (§3.3, schema#680). A fixed-class
-# root that declared only the file form's three would answer LoadRetainMessages
+# root that declared only the variable form's three would answer LoadRetainMessages
 # with a missing symbol, which is a compile error with no reason in it, so the
 # row asks for the name and greps for the same sentence.
 	@printf '#include "RT1Table.h"\nint main()\n{\n    const tblrt1::Inner * roots[1] = { NULL };\n    int64_t count = 1;\n    uint8_t storage[ 64 ];\n    tblrt1::TableMessageEntry entries[ 1 ];\n    tblrt1::TableVocabulary vocabulary( entries, 1 );\n    tblrt1::TableRetain retain;\n    retain.bytes = storage;\n    tblrt1::TableReport report;\n    (void) tblrt1::InnerLoadRetainMessages( roots, &count, storage, (int64_t) 64, vocabulary, storage, (int64_t) 0, &retain, &report );\n    return 0;\n}\n' > build/retain-fixed-class-message.cpp
@@ -4306,6 +4307,27 @@ bench-paired-gate:
 	go run ./bench/paired -mode gate
 
 .PHONY: bench-paired-corpus bench-paired-check bench-paired-gate
+
+# THE FIXED FORM'S MATCHED BYTE GATE (docs/SPEC-TABLES.md §3.4). The two legs
+# that carry form 3 each rebuild bench/paired/corpus/bench_fixed.bin from the
+# records they loaded out of it and compare the whole file byte for byte, and
+# each compares its OWN vocabulary block against the corpus's before anything
+# else — the block settles the positions, the ids, the kinds, the record size
+# and the hash, so a leg that matches it is speaking the form and not a near
+# miss. `--gate` is the runner's no-clock mode: this is a correctness gate and
+# starts no timer, so it belongs in `make test` where the measurement above
+# does not.
+build/schema_test_bench_paired_table_cpp: generated/bench/paired/cpp/.stamp bench/tables/cpp/table_main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -DBENCH_MATCHED -Igenerated/bench/paired/cpp bench/tables/cpp/table_main.cpp -o $@
+
+tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test_bench_paired_c
+	./build/schema_test_bench_paired_table_cpp --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+	./build/schema_test_bench_paired_c --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+
+.PHONY: tables-fixed-matched
+
+test: tables-fixed-matched
 
 # THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
 # path is a design decision with a price, and this is the price: the
@@ -5614,8 +5636,9 @@ toolchain-negative-control:
 # writer, a newer writer with an unknown field AND an unknown nested type, a
 # rename under `was`, a widened field, an enum variant and a union arm inserted
 # in the middle, a keyed array whose keys moved, an optional against a value,
-# and the NEGATIVE CONTROLS — the wrong plan, a block that is not a block, a
-# form byte this reader does not carry, and a plan that does not fit.
+# and the NEGATIVE CONTROLS — the wrong plan, a form byte this reader does not
+# carry, a plan that does not fit, and ONE CORRUPTED-LAYOUT CASE PER NAMED RULE
+# a reader holds an untrusted peer's layout to.
 build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
@@ -5623,8 +5646,22 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
-tables-fixedform: build/schema_test_fixedform
+# THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
+# fixed record carries no lengths and no terminators, so every offset the
+# reader uses is arithmetic over sizes a STRANGER wrote down. "The reader never
+# leaves the buffer" is a claim only a sanitizer can hold.
+build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g \
+	    -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+
+tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
 	./build/schema_test_fixedform
+	./build/schema_test_fixedform_asan
 
 test: tables-fixedform
 

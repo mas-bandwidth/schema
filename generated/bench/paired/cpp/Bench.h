@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 
 #pragma once
 
@@ -14,7 +14,7 @@ namespace bench {
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-inline constexpr uint64_t ProtocolId = 0x8d12c3149393f40full;
+inline constexpr uint64_t ProtocolId = 0xc93127c82f083edfull;
 
 // type BenchPacket
 struct BenchPacket {
@@ -368,17 +368,11 @@ struct BenchMixed {
     uint16_t ping = 0; // ufixed(8, 8) — UQ8.8, raw value scaled by 2^8; bounds in whole units; wire [0, 250]
     uint32_t crc_hint = 0;
     bool has_extra = true;
-
-    // has_extra — wire branch; storage holds both sides, a read zeroes the
-    // untaken side (SPEC §5)
     int32_t extra = 0; // wire [0, 255]
-
-    // !has_extra — wire branch; storage holds both sides, a read zeroes the
-    // untaken side (SPEC §5)
     int32_t idle_ticks = 0; // wire [0, 15]
 };
 
-inline constexpr int64_t BenchMixedMaxBits = 3626; // longest wire path; align pads at worst case (SPEC §6.1)
+inline constexpr int64_t BenchMixedMaxBits = 3630; // longest wire path; align pads at worst case (SPEC §6.1)
 inline constexpr int64_t BenchMixedMaxBytes = 456; // 8-byte write granularity; read slack per the contract above
 
 } // namespace bench

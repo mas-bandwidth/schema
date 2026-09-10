@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 
 package bench
 
@@ -17,7 +17,7 @@ import (
 
 // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
 // sides at the same id speak identical bits; there is no other versioning.
-const ProtocolId uint64 = 0x8d12c3149393f40f
+const ProtocolId uint64 = 0xc93127c82f083edf
 
 // ErrValidation is returned when a read rejects the wire: a wrong constant,
 // nonzero reserved bits, or an interior null in a string (SPEC §4.3, §4.7).
@@ -934,15 +934,9 @@ type BenchMixed struct {
 	Flux             serialize.Int128 // wire [-1267650600228229401496703205376, 1267650600228229401496703205376]
 	Ping             uint16           // wire [0, 250]
 	CrcHint          uint32
-	HasExtra         bool // = true in New* (zero value otherwise)
-
-	// has_extra — wire branch; storage holds both sides, a read zeroes the
-	// untaken side (SPEC §5)
-	Extra int32 // wire [0, 255]
-
-	// !has_extra — wire branch; storage holds both sides, a read zeroes the
-	// untaken side (SPEC §5)
-	IdleTicks int32 // wire [0, 15]
+	HasExtra         bool  // = true in New* (zero value otherwise)
+	Extra            int32 // wire [0, 255]
+	IdleTicks        int32 // wire [0, 15]
 }
 
 // NewBenchMixed returns a BenchMixed with its specified defaults applied; the plain zero
@@ -957,7 +951,7 @@ func NewBenchMixed() BenchMixed {
 
 // BenchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
 // BenchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-const BenchMixedMaxBits = 3626
+const BenchMixedMaxBits = 3630
 const BenchMixedMaxBytes = 456
 
 func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
@@ -1317,30 +1311,21 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	}
 	stream.SerializeAlign()
 	{
+		if value.Extra < 0 || value.Extra > 255 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.IdleTicks < 0 || value.IdleTicks > 15 {
+			return serialize.ErrValueOutOfRange
+		}
 		f0 := (uint64(value.CrcHint)) & 0xffffff
 		f1 := uint64(0)
 		if value.HasExtra {
 			f1 = 1
 		}
-		w0 := uint32(f0 | (f1 << 24))
-		stream.SerializeBits(&w0, 25)
-	}
-	if value.HasExtra {
-		if value.Extra < 0 || value.Extra > 255 {
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			offsetValue := uint32(value.Extra)
-			stream.SerializeBits(&offsetValue, 8)
-		}
-	} else {
-		if value.IdleTicks < 0 || value.IdleTicks > 15 {
-			return serialize.ErrValueOutOfRange
-		}
-		{
-			offsetValue := uint32(value.IdleTicks)
-			stream.SerializeBits(&offsetValue, 4)
-		}
+		f2 := (uint64(uint32(value.Extra))) & 0xff
+		f3 := (uint64(uint32(value.IdleTicks))) & 0xf
+		w0 := f0 | (f1 << 24) | (f2 << 25) | (f3 << 33)
+		stream.SerializeBits64(&w0, 37)
 	}
 	return stream.Err()
 }
@@ -1803,9 +1788,8 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 	}
 	stream.SerializeAlign() // rejects nonzero padding (SPEC §4.3)
 	{
-		n0 := uint32(0)
-		stream.SerializeBits(&n0, 25)
-		c0 := uint64(n0)
+		c0 := uint64(0)
+		stream.SerializeBits64(&c0, 37)
 		if stream.Err() != nil {
 			return stream.Err()
 		}
@@ -1813,27 +1797,10 @@ func ReadBenchMixed(stream *serialize.ReadStream, value *BenchMixed) error {
 		value.CrcHint = uint32(v0)
 		v1 := (c0 >> 24) & 0x1
 		value.HasExtra = v1 != 0
-	}
-	if value.HasExtra {
-		{
-			offsetValue := uint32(0)
-			stream.SerializeBits(&offsetValue, 8)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.Extra = int32(offsetValue)
-		}
-		value.IdleTicks = 0
-	} else {
-		{
-			offsetValue := uint32(0)
-			stream.SerializeBits(&offsetValue, 4)
-			if stream.Err() != nil {
-				return stream.Err()
-			}
-			value.IdleTicks = int32(offsetValue)
-		}
-		value.Extra = 0
+		v2 := (c0 >> 25) & 0xff
+		value.Extra = int32(v2)
+		v3 := (c0 >> 33) & 0xf
+		value.IdleTicks = int32(v3)
 	}
 	return stream.Err()
 }

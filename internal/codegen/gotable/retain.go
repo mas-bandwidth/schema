@@ -108,7 +108,7 @@ var retainBodyName = regexp.MustCompile(`\b([A-Za-z_][A-Za-z_0-9]*)(LoadMessageB
 func (g *tableGen) emitRetainMember(st *ir.Struct) {
 	if st.IsTable && !st.IsMapEntry() {
 		for _, verb := range []string{"LoadRetainBuilder", "SaveRetainMessages"} {
-			g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a region round trip through file form")
+			g.pf("const %s%s = %q\n", st.Name, verb, st.Name+": retention requires a region round trip through the VARIABLE form")
 		}
 		if !ir.VariableTables(g.unit)[st.Name] {
 			for _, verb := range []string{"LoadRetain", "MeasureRetain", "SaveRetain"} {

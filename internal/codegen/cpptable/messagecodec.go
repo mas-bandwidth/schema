@@ -1,7 +1,7 @@
 // THE MESSAGE FORM's BITPACKED CODEC (docs/SPEC-TABLES.md §3.3): the measure
-// and the save a form-2 body takes, beside the file form's own.
+// and the save a form-2 body takes, beside the variable form's own.
 //
-// It is a codec of its own rather than a mode of the file form's, because
+// It is a codec of its own rather than a mode of the variable form's, because
 // almost nothing about a field header survives the move: a reference is bits
 // rather than a canonical LEB128, there is no kind byte and no length at all,
 // a value rides at the width its declaration states, a fixed array spends no
@@ -13,7 +13,7 @@
 // for each id is settled by the compiler, and so is the reference width. A
 // save does no lookup at all.
 //
-// THE TWO CLASSES TAKE TWO SHAPES, exactly as the file form's codecs do: a
+// THE TWO CLASSES TAKE TWO SHAPES, exactly as the variable form's codecs do: a
 // FIXED table's codec takes the value alone, and a VARIABLE table's takes the
 // resolution context, the numbering its pointers resolve through, and the
 // width of a node index, which is `bits_required(0, node count)` settled once
@@ -55,7 +55,7 @@ func (g *tableGen) msgSaveCall(name, expr string) string {
 
 func (g *tableGen) msgLoadCall(f *ir.Field, name, reader, expr string) string {
 	if g.retain {
-		// THE PATH IS THREADED exactly as the file form threads it
+		// THE PATH IS THREADED exactly as the variable form threads it
 		// (docs/SPEC-TABLES.md §6.6): the step is computed LOCALLY, at the
 		// moment the walk descends, and the store is NULL where the element is
 		// one the reader is dropping.
@@ -200,7 +200,7 @@ func (g *tableGen) emitMessageMeasureBody(st *ir.Struct) {
 func (g *tableGen) emitMessageSaveBody(st *ir.Struct) {
 	g.pf("// The BITPACKED body: the fields, then the ZERO REFERENCE that ends it. No\n")
 	g.pf("// kind byte rides at all, and no length frames a nested body, because a\n")
-	g.pf("// body is self-delimiting: it is written where the file form put an L.\n")
+	g.pf("// body is self-delimiting: it is written where the VARIABLE form put an L.\n")
 	if g.isVar(st.Name) {
 		g.pf("template <typename Ctx>\ninline bool %sSaveMessageBody( const Ctx & ctx, const TableNumbering & numbering, int64_t index_bits, TableBitWriter & w, const %s & value )\n{\n", st.Name, st.Name)
 		g.pf("    (void) ctx; (void) numbering; (void) index_bits;\n")
@@ -283,7 +283,7 @@ func (g *tableGen) emitMessageField(f *ir.Field, pass messagePass) {
 	case f.IsList():
 		// AN UNBOUNDED ARRAY rides as the count the data decides, thirty-two
 		// raw bits, then its live elements in INDEX order (docs/SPEC-TABLES.md
-		// §2.9, §3.3): the cursor is the file form's own, and an EMPTY list
+		// §2.9, §3.3): the cursor is the variable form's own, and an EMPTY list
 		// elides on the by-value rule.
 		cursor := "cursor_" + name
 		g.pf("    {\n")
@@ -585,7 +585,7 @@ func (g *tableGen) emitMessagePayload(f *ir.Field, entry ir.TableVocabularyEntry
 
 // emitMessageUnion writes a SET arm: its NAME's reference and then the payload
 // a FIELD of the arm's type carries (§2.6). A payload-free arm carries nothing
-// at all, where the file form spent a kind byte and a zero length.
+// at all, where the variable form spent a kind byte and a zero length.
 func (g *tableGen) emitMessageUnion(f *ir.Field, expr, ind string, pass messagePass) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()
@@ -673,7 +673,7 @@ func (g *tableGen) emitMessageArm(v ir.UnionVariant, entry ir.TableVocabularyEnt
 
 // emitMessageKeyed writes an enum-keyed array (docs/SPEC-TABLES.md §3.2): the
 // number of PRESENT slots, then one `(key reference, element)` pair per slot,
-// ascending by variant ordinal. Elision is the file form's, unchanged.
+// ascending by variant ordinal. Elision is the variable form's, unchanged.
 func (g *tableGen) emitMessageKeyed(f *ir.Field, entry ir.TableVocabularyEntry, pass messagePass) {
 	sfx := g.msgEnter()
 	defer g.msgLeave()

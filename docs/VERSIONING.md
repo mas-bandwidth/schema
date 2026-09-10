@@ -55,7 +55,7 @@ what proves them across releases, #463, named in its section below.
    this major skips it, counts it as unknown, and continues (#434).
 7. **Ids are 64 bits, and the wire form is versioned.** Every id on the table
    wire is a 64-bit name hash, carried in an id table and named by a
-   reference: once per FILE under the file form, and once per CONNECTION under
+   reference: once per FILE under the variable form, and once per CONNECTION under
    the message form, which announces the unit's whole vocabulary and then
    carries none of it (#523). The first byte is the form version, so a reader
    that meets a later form
@@ -592,7 +592,7 @@ REFUSAL, closing the connection being the application's act and not this
 library's, and a refused announcement sets no vocabulary at all, so every body
 after it is refused for want of one. A stateless request-response transport stays out of scope by name, because
 an announcement would ride every request and cost more than the id table it
-replaced, and the file form rides there. yojimbo's connect handshake is the
+replaced, and the variable form rides there. yojimbo's connect handshake is the
 carrier the form was shaped against (yojimbo#344): reliable by retry, ahead of
 every channel, and needing no knowledge of what it carries.
 
@@ -671,7 +671,7 @@ exception to the other.
 the same instances, with the packet wire in the table so the residual is a
 number:
 
-  | instance | packet wire | file form | byte body | bitpacked body | proto3 |
+  | instance | packet wire | variable form | byte body | bitpacked body | proto3 |
   |---|---:|---:|---:|---:|---:|
   | `LoginRequest`, full | 46 | 106 | 58 | 52 | 49 |
   | `MatchResult`, full | 115 | 273 | 225 | 148 | 189 |
@@ -706,7 +706,7 @@ width its announced shape gives it, and counted, which is the case that actually
 happens between two builds.
 
 **Nothing else moves, and the one thing that does is named above.** No kind is
-spent, no payload of the file form changes, no skip rule of the file form
+spent, no payload of the variable form changes, no skip rule of the variable form
 changes. The protocol id does not move, the build version does not move, the
 baseline does not move, the text form does not move, the cook and the block do
 not move, and no EVOLUTION row of the table above moves. TWO rows do, in this
@@ -738,7 +738,7 @@ Two sharp edges come with it, and both are the same fact seen twice.
   refused by name rather than read. proto3 makes the same trade, since a
   `.proto` is required out of band, and the build version is what makes this
   one nameable: a receiver says which build's vocabulary it lacks. `schema pack`
-  and `schema unpack` write and read the FILE form, and reach the message form
+  and `schema unpack` write and read the VARIABLE form, and reach the message form
   only when asked: `pack --message` writes a batch and `--announce` writes the
   unit's announcement beside it, and `unpack --announce` reads a batch back
   against that announcement, because the vocabulary is the other half of the
@@ -746,7 +746,7 @@ Two sharp edges come with it, and both are the same fact seen twice.
 - **The announcement has to arrive first, and it has to arrive.** That is the
   form's whole requirement and it is a requirement on ONE message, not on the
   channel the bodies ride. Where nothing can carry it once and reliably, the
-  answer is the file form, which is self-contained, or the packet wire, which is
+  answer is the variable form, which is self-contained, or the packet wire, which is
   positional and carries no identity at all.
 
 ## The text form
@@ -1025,7 +1025,7 @@ still open.
   pipeline, to re-download, or to fix its own unaligned pointer, and one that
   passes nothing learns none of it. `unaligned_base` is the value worth
   checking first, because it is the one the caller caused.
-- **Tiny messages pay for 64-bit identity, in the FILE form.** A file carries
+- **Tiny messages pay for 64-bit identity, in the VARIABLE form.** A file carries
   each distinct id once at eight bytes, so a three-field message is about 45
   bytes and an empty table is ten. A stream whose peers ship together is a
   `type` stream; one whose peers do not is the message form above, which sheds

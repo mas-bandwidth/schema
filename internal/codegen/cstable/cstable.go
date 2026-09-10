@@ -122,20 +122,6 @@ type tableGen struct {
 	indent    string // extra per-line indent while emitting inside a branch guard
 }
 
-func (g *tableGen) knownOrdinal(id uint64) int {
-	if g.idOrdinal == nil {
-		g.idOrdinal = make(map[uint64]int)
-		for i, known := range ir.TableWireIds(g.unit) {
-			g.idOrdinal[known] = i
-		}
-	}
-	ord, ok := g.idOrdinal[id]
-	if !ok {
-		panic(fmt.Sprintf("table id 0x%016x is not in the unit's vocabulary (ir.TableWireIds)", id))
-	}
-	return ord
-}
-
 // tf prints into the namespace-level region (storage classes).
 func (g *tableGen) tf(format string, args ...any) {
 	fmt.Fprintf(&g.types, format, args...)

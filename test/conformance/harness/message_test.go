@@ -75,7 +75,7 @@ func fileInstance(t *testing.T, model *tabletext.Model, root, wire string) *tabl
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, inst, wireBytes(t, wire), &report)
 	if err != nil || !ok || !report.Silent() {
-		t.Fatalf("%s: the file form did not read clean: ok=%v err=%v report=%+v", wire, ok, err, report)
+		t.Fatalf("%s: the variable form did not read clean: ok=%v err=%v report=%+v", wire, ok, err, report)
 	}
 	return inst
 }
@@ -243,7 +243,7 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 			continue
 		}
 		if string(again) != string(message) {
-			t.Errorf("%s: the file form saved as a message is %d bytes where the pinned message is %d, first difference at byte %d",
+			t.Errorf("%s: the variable form saved as a message is %d bytes where the pinned message is %d, first difference at byte %d",
 				msg.Name, len(again), len(message), firstDifference(again, message))
 		}
 		// MESSAGE in, FILE out
@@ -302,7 +302,7 @@ func TestTheCostRows(t *testing.T) {
 			continue
 		}
 		if got := len(wireBytes(t, msg.FileWire)); got != row.file {
-			t.Errorf("%s: the file form is %d bytes, the page prints %d", row.name, got, row.file)
+			t.Errorf("%s: the variable form is %d bytes, the page prints %d", row.name, got, row.file)
 		}
 		if got := len(wireBytes(t, msg.MessageWire)); got != row.message {
 			t.Errorf("%s: the message form is %d bytes, the page prints %d", row.name, got, row.message)
