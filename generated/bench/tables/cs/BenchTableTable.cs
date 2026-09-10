@@ -2617,28 +2617,20 @@ namespace Benchtable
             {
                 public Span<ulong> Values;
                 public Span<int> Slots;
-                public Span<uint> OrdinalSlots;
-                public Span<int> OrdinalOf;
                 public int Count;
                 internal Graph Graph;
                 public Ids(Span<ulong> values)
                 {
                     Values = values;
                     Slots = default;
-                    OrdinalSlots = default;
-                    OrdinalOf = default;
                     Count = 0;
                     Graph = null;
                 }
-                public Ids(Span<ulong> values, Span<int> slots, Span<uint> ordinalSlots, Span<int> ordinalOf)
+                public Ids(Span<ulong> values, Span<int> slots)
                 {
                     Values = values;
                     Slots = slots;
                     if (!Slots.IsEmpty) { Slots.Clear(); }
-                    OrdinalSlots = ordinalSlots;
-                    if (!OrdinalSlots.IsEmpty) { OrdinalSlots.Clear(); }
-                    OrdinalOf = ordinalOf;
-                    if (!OrdinalOf.IsEmpty) { OrdinalOf.Fill(-1); }
                     Count = 0;
                     Graph = null;
                 }
@@ -2665,7 +2657,6 @@ namespace Benchtable
                         if (Slots[slot] != 0) { return (ulong)Slots[slot]; }
                         if (Count == Values.Length) { return 0; }
                         Values[Count] = id;
-                        if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
                         Count++;
                         Slots[slot] = Count;
                         return (ulong)Count;
@@ -2673,32 +2664,8 @@ namespace Benchtable
                     for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
                     if (Count == Values.Length) { return 0; }
                     Values[Count] = id;
-                    if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
                     Count++;
                     return (ulong)Count;
-                }
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public ulong RefAt(int ordinal, ulong id)
-                {
-                    if (!OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
-                    {
-                        uint s = OrdinalSlots[ordinal];
-                        if (s != 0) { return (ulong)s; }
-                    }
-                    return RefAtMiss(ordinal, id);
-                }
-                ulong RefAtMiss(int ordinal, ulong id)
-                {
-                    ulong r = Ref(id);
-                    if (r != 0 && !OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
-                    {
-                        OrdinalSlots[ordinal] = (uint)r;
-                        if (!OrdinalOf.IsEmpty && (int)(r - 1) < OrdinalOf.Length)
-                        {
-                            OrdinalOf[(int)(r - 1)] = ordinal;
-                        }
-                    }
-                    return r;
                 }
                 public bool Add(ulong id)
                 {
@@ -2708,7 +2675,6 @@ namespace Benchtable
                         if (Slots[slot] != 0) { return true; }
                         if (Count == Values.Length) { return false; }
                         Values[Count] = id;
-                        if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
                         Count++;
                         Slots[slot] = Count;
                         return true;
@@ -2716,7 +2682,6 @@ namespace Benchtable
                     if (Reference(id) != 0) { return true; }
                     if (Count == Values.Length) { return false; }
                     Values[Count] = id;
-                    if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
                     Count++;
                     return true;
                 }
@@ -2729,15 +2694,6 @@ namespace Benchtable
                         {
                             int slot = Slot(Values[Count]);
                             Slots[slot] = 0;
-                        }
-                        if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length)
-                        {
-                            int o = OrdinalOf[Count];
-                            if (o >= 0 && !OrdinalSlots.IsEmpty && (uint)o < (uint)OrdinalSlots.Length)
-                            {
-                                OrdinalSlots[o] = 0;
-                            }
-                            OrdinalOf[Count] = -1;
                         }
                     }
                 }
@@ -2775,11 +2731,6 @@ namespace Benchtable
                         return;
                     }
                     Var(reference); Byte(kind);
-                }
-                [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                public void HeaderAt(int ordinal, ulong id, byte kind, ref Ids ids)
-                {
-                    Header(ids.RefAt(ordinal, id), kind);
                 }
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 public void Var(ulong v)
@@ -4523,9 +4474,7 @@ namespace Benchtable
                     while (slots < vocabulary.Length * 2) { slots <<= 1; }
                 }
                 Span<int> index = stackalloc int[slots];
-                Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-                Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-                Ids ids = new Ids(vocabulary, index, ordinalSlots, ordinalOf);
+                Ids ids = new Ids(vocabulary, index);
                 if (type.Variable) { ids.Graph = Number(value, type); if (ids.Graph == null) { return -1; } }
                 if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
                 // Reuse the root's measured length prefixes while writing its fields,
@@ -5108,154 +5057,16 @@ namespace Benchtable
             value.Firing = false;
         }
 
-        public static bool TableEntityCollectTyped(TableEntity v, ref TableWire.Ids ids)
-        {
-            TableFieldInfo[] fields = TableEntityTableType().Fields;
-            if (v.EntityId != 0 && !ids.Add(0x23fcfd6678e36712ul)) return false;
-            if (v.PosX != 0 && !ids.Add(0xcb4b37357667310eul)) return false;
-            if (v.PosY != 0 && !ids.Add(0xcb4b3835766732c1ul)) return false;
-            if (v.PosZ != 0 && !ids.Add(0xcb4b353576672da8ul)) return false;
-            if (v.Yaw != 0 && !ids.Add(0xb54d8e19798e16e8ul)) return false;
-            if (v.Pitch != 0 && !ids.Add(0x53a9f665a90cc1b1ul)) return false;
-            if (v.VelX != 0 && !ids.Add(0x6cede6b6eb60ee67ul)) return false;
-            if (v.VelY != 0 && !ids.Add(0x6cede5b6eb60ecb4ul)) return false;
-            if (v.VelZ != 0 && !ids.Add(0x6cede8b6eb60f1cdul)) return false;
-            if (v.Health != 0 && !ids.Add(0x7f69d4b5288ba9cful)) return false;
-            if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[11], ref ids)) return false;
-            if (v.Moving != false && !ids.Add(0x11a44fc1d1243da7ul)) return false;
-            if (v.Firing != false && !ids.Add(0x7674cfd19b9031caul)) return false;
-            return true;
-        }
-
-        public static long TableEntityBodySizeTyped(TableEntity v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
-        {
-            long n = 1;
-            TableFieldInfo[] fields = TableEntityTableType().Fields;
-            if (v.EntityId != 0) { n += TableWire.VarSize(ids.RefAt(11, 0x23fcfd6678e36712ul)) + 3; }
-            if (v.PosX != 0) { n += TableWire.VarSize(ids.RefAt(65, 0xcb4b37357667310eul)) + 5; }
-            if (v.PosY != 0) { n += TableWire.VarSize(ids.RefAt(66, 0xcb4b3835766732c1ul)) + 5; }
-            if (v.PosZ != 0) { n += TableWire.VarSize(ids.RefAt(64, 0xcb4b353576672da8ul)) + 5; }
-            if (v.Yaw != 0) { n += TableWire.VarSize(ids.RefAt(59, 0xb54d8e19798e16e8ul)) + 3; }
-            if (v.Pitch != 0) { n += TableWire.VarSize(ids.RefAt(24, 0x53a9f665a90cc1b1ul)) + 3; }
-            if (v.VelX != 0) { n += TableWire.VarSize(ids.RefAt(30, 0x6cede6b6eb60ee67ul)) + 5; }
-            if (v.VelY != 0) { n += TableWire.VarSize(ids.RefAt(29, 0x6cede5b6eb60ecb4ul)) + 5; }
-            if (v.VelZ != 0) { n += TableWire.VarSize(ids.RefAt(31, 0x6cede8b6eb60f1cdul)) + 5; }
-            if (v.Health != 0) { n += TableWire.VarSize(ids.RefAt(41, 0x7f69d4b5288ba9cful)) + 5; }
-            n += TableWire.BodySizeField(v, fields[10], ref ids);
-            n += TableWire.BodySizeField(v, fields[11], ref ids);
-            if (v.Moving != false) { n += TableWire.VarSize(ids.RefAt(5, 0x11a44fc1d1243da7ul)) + 2; }
-            if (v.Firing != false) { n += TableWire.VarSize(ids.RefAt(36, 0x7674cfd19b9031caul)) + 2; }
-            return n;
-        }
-
-        public static void TableEntityWriteBodyTyped(ref TableWire.Writer w, TableEntity v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
-        {
-            TableFieldInfo[] fields = TableEntityTableType().Fields;
-            if (v.EntityId != 0)
-            {
-                w.HeaderAt(11, 0x23fcfd6678e36712ul, 7, ref ids);
-                w.Fixed((ulong)v.EntityId, 2);
-            }
-            if (v.PosX != 0)
-            {
-                w.HeaderAt(65, 0xcb4b37357667310eul, 4, ref ids);
-                w.Fixed((ulong)(long)v.PosX, 4);
-            }
-            if (v.PosY != 0)
-            {
-                w.HeaderAt(66, 0xcb4b3835766732c1ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.PosY, 4);
-            }
-            if (v.PosZ != 0)
-            {
-                w.HeaderAt(64, 0xcb4b353576672da8ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.PosZ, 4);
-            }
-            if (v.Yaw != 0)
-            {
-                w.HeaderAt(59, 0xb54d8e19798e16e8ul, 7, ref ids);
-                w.Fixed((ulong)v.Yaw, 2);
-            }
-            if (v.Pitch != 0)
-            {
-                w.HeaderAt(24, 0x53a9f665a90cc1b1ul, 7, ref ids);
-                w.Fixed((ulong)v.Pitch, 2);
-            }
-            if (v.VelX != 0)
-            {
-                w.HeaderAt(30, 0x6cede6b6eb60ee67ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.VelX, 4);
-            }
-            if (v.VelY != 0)
-            {
-                w.HeaderAt(29, 0x6cede5b6eb60ecb4ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.VelY, 4);
-            }
-            if (v.VelZ != 0)
-            {
-                w.HeaderAt(31, 0x6cede8b6eb60f1cdul, 4, ref ids);
-                w.Fixed((ulong)(long)v.VelZ, 4);
-            }
-            if (v.Health != 0)
-            {
-                w.HeaderAt(41, 0x7f69d4b5288ba9cful, 4, ref ids);
-                w.Fixed((ulong)(long)v.Health, 4);
-            }
-            TableWire.WriteBodyField(ref w, v, fields[10], ref ids);
-            TableWire.WriteBodyField(ref w, v, fields[11], ref ids);
-            if (v.Moving != false)
-            {
-                w.HeaderAt(5, 0x11a44fc1d1243da7ul, 1, ref ids);
-                w.Fixed(v.Moving ? 1ul : 0ul, 1);
-            }
-            if (v.Firing != false)
-            {
-                w.HeaderAt(36, 0x7674cfd19b9031caul, 1, ref ids);
-                w.Fixed(v.Firing ? 1ul : 0ul, 1);
-            }
-            w.Var(0);
-        }
-
-        public static long TableEntitySaveTyped(TableEntity value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
-        {
-            TableTypeInfo type = TableEntityTableType();
-            int slots = 0;
-            if (vocabulary.Length <= 1024)
-            {
-                slots = 1;
-                while (slots < vocabulary.Length * 2) { slots <<= 1; }
-            }
-            Span<int> index = stackalloc int[slots];
-            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
-            if (!TableEntityCollectTyped(value, ref ids)) { return -1; }
-            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
-            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
-            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
-            long n = 1 + TableEntityBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
-            if (measure) { return n; }
-            if (n > buffer.Length) { return -1; }
-            scoped TableWire.Writer w = new TableWire.Writer(buffer);
-            w.Byte(1);
-            TableEntityWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
-            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
-            w.Fixed((ulong)ids.Count, 8);
-            return w.Offset;
-        }
-
         public static long TableEntityMeasure(TableEntity value)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableEntitySaveTyped(value, Span<byte>.Empty, ids, true);
+            return TableWire.Save(value, TableEntityTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long TableEntitySave(TableEntity value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableEntitySaveTyped(value, buffer, ids, false);
+            return TableWire.Save(value, TableEntityTableType(), buffer, ids, false);
         }
 
         public static TableWire.Verdict TableEntityLoadVerdict(TableEntity value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -5283,75 +5094,16 @@ namespace Benchtable
             value.Delta = 0;
         }
 
-        public static bool TableStatCollectTyped(TableStat v, ref TableWire.Ids ids)
-        {
-            if (v.StatId != 0 && !ids.Add(0x80ab75f0866dbf65ul)) return false;
-            if (v.Delta != 0 && !ids.Add(0x52076675ec13a0c1ul)) return false;
-            return true;
-        }
-
-        public static long TableStatBodySizeTyped(TableStat v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
-        {
-            long n = 1;
-            if (v.StatId != 0) { n += TableWire.VarSize(ids.RefAt(42, 0x80ab75f0866dbf65ul)) + 2; }
-            if (v.Delta != 0) { n += TableWire.VarSize(ids.RefAt(23, 0x52076675ec13a0c1ul)) + 5; }
-            return n;
-        }
-
-        public static void TableStatWriteBodyTyped(ref TableWire.Writer w, TableStat v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
-        {
-            if (v.StatId != 0)
-            {
-                w.HeaderAt(42, 0x80ab75f0866dbf65ul, 6, ref ids);
-                w.Fixed((ulong)v.StatId, 1);
-            }
-            if (v.Delta != 0)
-            {
-                w.HeaderAt(23, 0x52076675ec13a0c1ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.Delta, 4);
-            }
-            w.Var(0);
-        }
-
-        public static long TableStatSaveTyped(TableStat value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
-        {
-            TableTypeInfo type = TableStatTableType();
-            int slots = 0;
-            if (vocabulary.Length <= 1024)
-            {
-                slots = 1;
-                while (slots < vocabulary.Length * 2) { slots <<= 1; }
-            }
-            Span<int> index = stackalloc int[slots];
-            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
-            if (!TableStatCollectTyped(value, ref ids)) { return -1; }
-            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
-            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
-            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
-            long n = 1 + TableStatBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
-            if (measure) { return n; }
-            if (n > buffer.Length) { return -1; }
-            scoped TableWire.Writer w = new TableWire.Writer(buffer);
-            w.Byte(1);
-            TableStatWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
-            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
-            w.Fixed((ulong)ids.Count, 8);
-            return w.Offset;
-        }
-
         public static long TableStatMeasure(TableStat value)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableStatSaveTyped(value, Span<byte>.Empty, ids, true);
+            return TableWire.Save(value, TableStatTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long TableStatSave(TableStat value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableStatSaveTyped(value, buffer, ids, false);
+            return TableWire.Save(value, TableStatTableType(), buffer, ids, false);
         }
 
         public static TableWire.Verdict TableStatLoadVerdict(TableStat value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -5415,312 +5167,16 @@ namespace Benchtable
             value.IdleTicks = 0;
         }
 
-        public static bool TableMixedCollectTyped(TableMixed v, ref TableWire.Ids ids)
-        {
-            TableFieldInfo[] fields = TableMixedTableType().Fields;
-            if (v.ProtocolMagic != 0 && !ids.Add(0x6a5a70d91aa115fdul)) return false;
-            if (v.Sequence != 0 && !ids.Add(0xaa38aca481f528a8ul)) return false;
-            if (v.AckSequence != 0 && !ids.Add(0x0dbe005c56697c3eul)) return false;
-            if (v.AckBits != 0 && !ids.Add(0x9bae0da8b829ee03ul)) return false;
-            if (v.SessionId != 0 && !ids.Add(0xb7d7b5650a590b05ul)) return false;
-            if (v.ClientId != 0 && !ids.Add(0x6d7b98e2d095967eul)) return false;
-            if (v.Nonce != 1ul && !ids.Add(0x73a94c71d60dc0d8ul)) return false;
-            if (v.WorldTime != 0 && !ids.Add(0x3eee6b51be54fc85ul)) return false;
-            if (v.FrameTick != 0 && !ids.Add(0x7bbc035f7b6d0112ul)) return false;
-            if (v.ServerTime != 0.0f && !ids.Add(0x3c460475f9be69c6ul)) return false;
-            if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
-            int count_11 = v.StatsCount;
-            if (count_11 < 0 || count_11 > 80) return false;
-            if (count_11 > 0)
-            {
-                if (!ids.Add(0xee639cad45b1994cul)) return false;
-                for (int i_11 = 0; i_11 < count_11; i_11++)
-                {
-                    if (!TableStatCollectTyped(v.Stats[i_11], ref ids)) return false;
-                }
-            }
-            if (!TableWire.CollectField(v, fields[12], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[13], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[14], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[15], ref ids)) return false;
-            if (v.AimX != 0.0f && !ids.Add(0xdbaf7be5e24296c9ul)) return false;
-            if (v.AimY != 0.0f && !ids.Add(0xdbaf7ae5e2429516ul)) return false;
-            if (v.AimZ != 0.0f && !ids.Add(0xdbaf79e5e2429363ul)) return false;
-            if (v.Recoil != 0.0f && !ids.Add(0x9cef31fff7e2e457ul)) return false;
-            if (v.Drift != 0.0 && !ids.Add(0x5ab3f9c9341f6c04ul)) return false;
-            if (v.WideKey != 0 && !ids.Add(0xa3348580461faf16ul)) return false;
-            if (v.Flux != 0 && !ids.Add(0xd61bdd7908af2642ul)) return false;
-            if (v.Ping != 0.0f && !ids.Add(0xbf30e00dc53307a9ul)) return false;
-            if (v.CrcHint != 0 && !ids.Add(0x560d6527ccd8515ful)) return false;
-            if (v.HasExtra != false && !ids.Add(0xc08292176cfd8672ul)) return false;
-            if (!TableWire.CollectField(v, fields[26], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[27], ref ids)) return false;
-            return true;
-        }
-
-        public static long TableMixedBodySizeTyped(TableMixed v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
-        {
-            long n = 1;
-            TableFieldInfo[] fields = TableMixedTableType().Fields;
-            int elemOffset = 0;
-            if (v.ProtocolMagic != 0) { n += TableWire.VarSize(ids.RefAt(28, 0x6a5a70d91aa115fdul)) + 3; }
-            if (v.Sequence != 0) { n += TableWire.VarSize(ids.RefAt(58, 0xaa38aca481f528a8ul)) + 3; }
-            if (v.AckSequence != 0) { n += TableWire.VarSize(ids.RefAt(4, 0x0dbe005c56697c3eul)) + 5; }
-            if (v.AckBits != 0) { n += TableWire.VarSize(ids.RefAt(49, 0x9bae0da8b829ee03ul)) + 5; }
-            if (v.SessionId != 0) { n += TableWire.VarSize(ids.RefAt(61, 0xb7d7b5650a590b05ul)) + 9; }
-            if (v.ClientId != 0) { n += TableWire.VarSize(ids.RefAt(32, 0x6d7b98e2d095967eul)) + 5; }
-            if (v.Nonce != 1ul) { n += TableWire.VarSize(ids.RefAt(34, 0x73a94c71d60dc0d8ul)) + 9; }
-            if (v.WorldTime != 0) { n += TableWire.VarSize(ids.RefAt(21, 0x3eee6b51be54fc85ul)) + 9; }
-            if (v.FrameTick != 0) { n += TableWire.VarSize(ids.RefAt(39, 0x7bbc035f7b6d0112ul)) + 9; }
-            if (v.ServerTime != 0.0f) { n += TableWire.VarSize(ids.RefAt(20, 0x3c460475f9be69c6ul)) + 5; }
-            scoped Span<long> elemCache_10 = default;
-            if (!rootElemSizes.IsEmpty)
-            {
-                int c = TableWire.Count(v, fields[10]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_10 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
-            }
-            n += TableWire.BodySizeField(v, fields[10], ref ids, elemCache_10, out long payload_10);
-            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[10] = payload_10; }
-            int count_11 = v.StatsCount;
-            if (count_11 > 0)
-            {
-                scoped Span<long> elemCache_11 = default;
-                if (!rootElemSizes.IsEmpty)
-                {
-                    int take = System.Math.Min(count_11, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                    elemCache_11 = rootElemSizes.Slice(elemOffset, take);
-                    elemOffset += take;
-                }
-                long nChild_11 = 0;
-                for (int i_11 = 0; i_11 < count_11; i_11++)
-                {
-                    long childBody = TableStatBodySizeTyped(v.Stats[i_11], ref ids);
-                    if (!elemCache_11.IsEmpty && i_11 < elemCache_11.Length) { elemCache_11[i_11] = childBody; }
-                    nChild_11 += TableWire.VarSize((ulong)childBody) + childBody;
-                }
-                long payload_11 = 1 + TableWire.VarSize((ulong)count_11) + nChild_11;
-                n += TableWire.VarSize(ids.RefAt(73, 0xee639cad45b1994cul)) + 1 + TableWire.VarSize((ulong)payload_11) + payload_11;
-                if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[11] = payload_11; }
-            }
-            n += TableWire.BodySizeField(v, fields[12], ref ids);
-            n += TableWire.BodySizeField(v, fields[13], ref ids, default, out long payload_13);
-            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[13] = payload_13; }
-            n += TableWire.BodySizeField(v, fields[14], ref ids, default, out long payload_14);
-            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[14] = payload_14; }
-            n += TableWire.BodySizeField(v, fields[15], ref ids);
-            if (v.AimX != 0.0f) { n += TableWire.VarSize(ids.RefAt(72, 0xdbaf7be5e24296c9ul)) + 5; }
-            if (v.AimY != 0.0f) { n += TableWire.VarSize(ids.RefAt(71, 0xdbaf7ae5e2429516ul)) + 5; }
-            if (v.AimZ != 0.0f) { n += TableWire.VarSize(ids.RefAt(70, 0xdbaf79e5e2429363ul)) + 5; }
-            if (v.Recoil != 0.0f) { n += TableWire.VarSize(ids.RefAt(50, 0x9cef31fff7e2e457ul)) + 5; }
-            if (v.Drift != 0.0) { n += TableWire.VarSize(ids.RefAt(27, 0x5ab3f9c9341f6c04ul)) + 9; }
-            if (v.WideKey != 0) { n += TableWire.VarSize(ids.RefAt(55, 0xa3348580461faf16ul)) + 9; }
-            if (v.Flux != 0) { n += TableWire.VarSize(ids.RefAt(68, 0xd61bdd7908af2642ul)) + 9; }
-            if (v.Ping != 0.0f) { n += TableWire.VarSize(ids.RefAt(62, 0xbf30e00dc53307a9ul)) + 5; }
-            if (v.CrcHint != 0) { n += TableWire.VarSize(ids.RefAt(25, 0x560d6527ccd8515ful)) + 5; }
-            if (v.HasExtra != false) { n += TableWire.VarSize(ids.RefAt(63, 0xc08292176cfd8672ul)) + 2; }
-            n += TableWire.BodySizeField(v, fields[26], ref ids);
-            n += TableWire.BodySizeField(v, fields[27], ref ids);
-            return n;
-        }
-
-        public static void TableMixedWriteBodyTyped(ref TableWire.Writer w, TableMixed v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
-        {
-            TableFieldInfo[] fields = TableMixedTableType().Fields;
-            int elemOffset = 0;
-            if (v.ProtocolMagic != 0)
-            {
-                w.HeaderAt(28, 0x6a5a70d91aa115fdul, 7, ref ids);
-                w.Fixed((ulong)v.ProtocolMagic, 2);
-            }
-            if (v.Sequence != 0)
-            {
-                w.HeaderAt(58, 0xaa38aca481f528a8ul, 7, ref ids);
-                w.Fixed((ulong)v.Sequence, 2);
-            }
-            if (v.AckSequence != 0)
-            {
-                w.HeaderAt(4, 0x0dbe005c56697c3eul, 4, ref ids);
-                w.Fixed((ulong)(long)v.AckSequence, 4);
-            }
-            if (v.AckBits != 0)
-            {
-                w.HeaderAt(49, 0x9bae0da8b829ee03ul, 8, ref ids);
-                w.Fixed((ulong)v.AckBits, 4);
-            }
-            if (v.SessionId != 0)
-            {
-                w.HeaderAt(61, 0xb7d7b5650a590b05ul, 9, ref ids);
-                w.Fixed((ulong)v.SessionId, 8);
-            }
-            if (v.ClientId != 0)
-            {
-                w.HeaderAt(32, 0x6d7b98e2d095967eul, 8, ref ids);
-                w.Fixed((ulong)v.ClientId, 4);
-            }
-            if (v.Nonce != 1ul)
-            {
-                w.HeaderAt(34, 0x73a94c71d60dc0d8ul, 9, ref ids);
-                w.Fixed((ulong)v.Nonce, 8);
-            }
-            if (v.WorldTime != 0)
-            {
-                w.HeaderAt(21, 0x3eee6b51be54fc85ul, 5, ref ids);
-                w.Fixed((ulong)(long)v.WorldTime, 8);
-            }
-            if (v.FrameTick != 0)
-            {
-                w.HeaderAt(39, 0x7bbc035f7b6d0112ul, 9, ref ids);
-                w.Fixed((ulong)v.FrameTick, 8);
-            }
-            if (v.ServerTime != 0.0f)
-            {
-                w.HeaderAt(20, 0x3c460475f9be69c6ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.ServerTime)), 4);
-            }
-            scoped ReadOnlySpan<long> elemCache_10 = default;
-            if (!rootElemSizes.IsEmpty)
-            {
-                int c = TableWire.Count(v, fields[10]);
-                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                elemCache_10 = rootElemSizes.Slice(elemOffset, take);
-                elemOffset += take;
-            }
-            long payload_10 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[10] : -1;
-            TableWire.WriteBodyField(ref w, v, fields[10], ref ids, elemCache_10, payload_10);
-            int count_11 = v.StatsCount;
-            if (count_11 > 0)
-            {
-                w.HeaderAt(73, 0xee639cad45b1994cul, 14, ref ids);
-                scoped ReadOnlySpan<long> elemCache_11 = default;
-                if (!rootElemSizes.IsEmpty)
-                {
-                    int take = System.Math.Min(count_11, System.Math.Max(0, rootElemSizes.Length - elemOffset));
-                    elemCache_11 = rootElemSizes.Slice(elemOffset, take);
-                    elemOffset += take;
-                }
-                long payload_11 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[11] : -1;
-                if (payload_11 < 0)
-                {
-                    long nChild_11 = 0;
-                    for (int i_11 = 0; i_11 < count_11; i_11++)
-                    {
-                        long childBody = (!elemCache_11.IsEmpty && i_11 < elemCache_11.Length) ? elemCache_11[i_11] : TableStatBodySizeTyped(v.Stats[i_11], ref ids);
-                        nChild_11 += TableWire.VarSize((ulong)childBody) + childBody;
-                    }
-                    payload_11 = 1 + TableWire.VarSize((ulong)count_11) + nChild_11;
-                }
-                w.Var((ulong)payload_11);
-                w.Byte(13);
-                w.Var((ulong)count_11);
-                for (int i_11 = 0; i_11 < count_11; i_11++)
-                {
-                    long childBody = (!elemCache_11.IsEmpty && i_11 < elemCache_11.Length) ? elemCache_11[i_11] : TableStatBodySizeTyped(v.Stats[i_11], ref ids);
-                    w.Var((ulong)childBody);
-                    TableStatWriteBodyTyped(ref w, v.Stats[i_11], ref ids);
-                }
-            }
-            TableWire.WriteBodyField(ref w, v, fields[12], ref ids);
-            long payload_13 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[13] : -1;
-            TableWire.WriteBodyField(ref w, v, fields[13], ref ids, default, payload_13);
-            long payload_14 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[14] : -1;
-            TableWire.WriteBodyField(ref w, v, fields[14], ref ids, default, payload_14);
-            TableWire.WriteBodyField(ref w, v, fields[15], ref ids);
-            if (v.AimX != 0.0f)
-            {
-                w.HeaderAt(72, 0xdbaf7be5e24296c9ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimX)), 4);
-            }
-            if (v.AimY != 0.0f)
-            {
-                w.HeaderAt(71, 0xdbaf7ae5e2429516ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimY)), 4);
-            }
-            if (v.AimZ != 0.0f)
-            {
-                w.HeaderAt(70, 0xdbaf79e5e2429363ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimZ)), 4);
-            }
-            if (v.Recoil != 0.0f)
-            {
-                w.HeaderAt(50, 0x9cef31fff7e2e457ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Recoil)), 4);
-            }
-            if (v.Drift != 0.0)
-            {
-                w.HeaderAt(27, 0x5ab3f9c9341f6c04ul, 11, ref ids);
-                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Drift)), 8);
-            }
-            if (v.WideKey != 0)
-            {
-                w.HeaderAt(55, 0xa3348580461faf16ul, 9, ref ids);
-                w.Fixed((ulong)v.WideKey, 8);
-            }
-            if (v.Flux != 0)
-            {
-                w.HeaderAt(68, 0xd61bdd7908af2642ul, 5, ref ids);
-                w.Fixed((ulong)(long)v.Flux, 8);
-            }
-            if (v.Ping != 0.0f)
-            {
-                w.HeaderAt(62, 0xbf30e00dc53307a9ul, 10, ref ids);
-                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Ping)), 4);
-            }
-            if (v.CrcHint != 0)
-            {
-                w.HeaderAt(25, 0x560d6527ccd8515ful, 8, ref ids);
-                w.Fixed((ulong)v.CrcHint, 4);
-            }
-            if (v.HasExtra != false)
-            {
-                w.HeaderAt(63, 0xc08292176cfd8672ul, 1, ref ids);
-                w.Fixed(v.HasExtra ? 1ul : 0ul, 1);
-            }
-            TableWire.WriteBodyField(ref w, v, fields[26], ref ids);
-            TableWire.WriteBodyField(ref w, v, fields[27], ref ids);
-            w.Var(0);
-        }
-
-        public static long TableMixedSaveTyped(TableMixed value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
-        {
-            TableTypeInfo type = TableMixedTableType();
-            int slots = 0;
-            if (vocabulary.Length <= 1024)
-            {
-                slots = 1;
-                while (slots < vocabulary.Length * 2) { slots <<= 1; }
-            }
-            Span<int> index = stackalloc int[slots];
-            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
-            if (!TableMixedCollectTyped(value, ref ids)) { return -1; }
-            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
-            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
-            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
-            long n = 1 + TableMixedBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
-            if (measure) { return n; }
-            if (n > buffer.Length) { return -1; }
-            scoped TableWire.Writer w = new TableWire.Writer(buffer);
-            w.Byte(1);
-            TableMixedWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
-            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
-            w.Fixed((ulong)ids.Count, 8);
-            return w.Offset;
-        }
-
         public static long TableMixedMeasure(TableMixed value)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableMixedSaveTyped(value, Span<byte>.Empty, ids, true);
+            return TableWire.Save(value, TableMixedTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long TableMixedSave(TableMixed value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableMixedSaveTyped(value, buffer, ids, false);
+            return TableWire.Save(value, TableMixedTableType(), buffer, ids, false);
         }
 
         public static TableWire.Verdict TableMixedLoadVerdict(TableMixed value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -5750,89 +5206,16 @@ namespace Benchtable
             value.Crit = false;
         }
 
-        public static bool TableHitEventCollectTyped(TableHitEvent v, ref TableWire.Ids ids)
-        {
-            if (v.TargetId != 0 && !ids.Add(0xb7bc9ac015a25050ul)) return false;
-            if (v.Damage != 0 && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
-            if (v.HitKind != 0 && !ids.Add(0x01fbc365b059b925ul)) return false;
-            if (v.Crit != false && !ids.Add(0x126167908c9aa52dul)) return false;
-            return true;
-        }
-
-        public static long TableHitEventBodySizeTyped(TableHitEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
-        {
-            long n = 1;
-            if (v.TargetId != 0) { n += TableWire.VarSize(ids.RefAt(60, 0xb7bc9ac015a25050ul)) + 3; }
-            if (v.Damage != 0) { n += TableWire.VarSize(ids.RefAt(40, 0x7f6308be8ab37fc0ul)) + 5; }
-            if (v.HitKind != 0) { n += TableWire.VarSize(ids.RefAt(1, 0x01fbc365b059b925ul)) + 5; }
-            if (v.Crit != false) { n += TableWire.VarSize(ids.RefAt(6, 0x126167908c9aa52dul)) + 2; }
-            return n;
-        }
-
-        public static void TableHitEventWriteBodyTyped(ref TableWire.Writer w, TableHitEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
-        {
-            if (v.TargetId != 0)
-            {
-                w.HeaderAt(60, 0xb7bc9ac015a25050ul, 7, ref ids);
-                w.Fixed((ulong)v.TargetId, 2);
-            }
-            if (v.Damage != 0)
-            {
-                w.HeaderAt(40, 0x7f6308be8ab37fc0ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.Damage, 4);
-            }
-            if (v.HitKind != 0)
-            {
-                w.HeaderAt(1, 0x01fbc365b059b925ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.HitKind, 4);
-            }
-            if (v.Crit != false)
-            {
-                w.HeaderAt(6, 0x126167908c9aa52dul, 1, ref ids);
-                w.Fixed(v.Crit ? 1ul : 0ul, 1);
-            }
-            w.Var(0);
-        }
-
-        public static long TableHitEventSaveTyped(TableHitEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
-        {
-            TableTypeInfo type = TableHitEventTableType();
-            int slots = 0;
-            if (vocabulary.Length <= 1024)
-            {
-                slots = 1;
-                while (slots < vocabulary.Length * 2) { slots <<= 1; }
-            }
-            Span<int> index = stackalloc int[slots];
-            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
-            if (!TableHitEventCollectTyped(value, ref ids)) { return -1; }
-            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
-            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
-            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
-            long n = 1 + TableHitEventBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
-            if (measure) { return n; }
-            if (n > buffer.Length) { return -1; }
-            scoped TableWire.Writer w = new TableWire.Writer(buffer);
-            w.Byte(1);
-            TableHitEventWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
-            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
-            w.Fixed((ulong)ids.Count, 8);
-            return w.Offset;
-        }
-
         public static long TableHitEventMeasure(TableHitEvent value)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableHitEventSaveTyped(value, Span<byte>.Empty, ids, true);
+            return TableWire.Save(value, TableHitEventTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long TableHitEventSave(TableHitEvent value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableHitEventSaveTyped(value, buffer, ids, false);
+            return TableWire.Save(value, TableHitEventTableType(), buffer, ids, false);
         }
 
         public static TableWire.Verdict TableHitEventLoadVerdict(TableHitEvent value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -5860,75 +5243,16 @@ namespace Benchtable
             value.Speaker = 0;
         }
 
-        public static bool TableChatEventCollectTyped(TableChatEvent v, ref TableWire.Ids ids)
-        {
-            if (v.Channel != 0 && !ids.Add(0xa5013e9ad5caeda4ul)) return false;
-            if (v.Speaker != 0 && !ids.Add(0xfbf1ac4d96ebd022ul)) return false;
-            return true;
-        }
-
-        public static long TableChatEventBodySizeTyped(TableChatEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
-        {
-            long n = 1;
-            if (v.Channel != 0) { n += TableWire.VarSize(ids.RefAt(56, 0xa5013e9ad5caeda4ul)) + 5; }
-            if (v.Speaker != 0) { n += TableWire.VarSize(ids.RefAt(75, 0xfbf1ac4d96ebd022ul)) + 3; }
-            return n;
-        }
-
-        public static void TableChatEventWriteBodyTyped(ref TableWire.Writer w, TableChatEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
-        {
-            if (v.Channel != 0)
-            {
-                w.HeaderAt(56, 0xa5013e9ad5caeda4ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.Channel, 4);
-            }
-            if (v.Speaker != 0)
-            {
-                w.HeaderAt(75, 0xfbf1ac4d96ebd022ul, 7, ref ids);
-                w.Fixed((ulong)v.Speaker, 2);
-            }
-            w.Var(0);
-        }
-
-        public static long TableChatEventSaveTyped(TableChatEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
-        {
-            TableTypeInfo type = TableChatEventTableType();
-            int slots = 0;
-            if (vocabulary.Length <= 1024)
-            {
-                slots = 1;
-                while (slots < vocabulary.Length * 2) { slots <<= 1; }
-            }
-            Span<int> index = stackalloc int[slots];
-            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
-            if (!TableChatEventCollectTyped(value, ref ids)) { return -1; }
-            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
-            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
-            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
-            long n = 1 + TableChatEventBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
-            if (measure) { return n; }
-            if (n > buffer.Length) { return -1; }
-            scoped TableWire.Writer w = new TableWire.Writer(buffer);
-            w.Byte(1);
-            TableChatEventWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
-            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
-            w.Fixed((ulong)ids.Count, 8);
-            return w.Offset;
-        }
-
         public static long TableChatEventMeasure(TableChatEvent value)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableChatEventSaveTyped(value, Span<byte>.Empty, ids, true);
+            return TableWire.Save(value, TableChatEventTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long TableChatEventSave(TableChatEvent value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableChatEventSaveTyped(value, buffer, ids, false);
+            return TableWire.Save(value, TableChatEventTableType(), buffer, ids, false);
         }
 
         public static TableWire.Verdict TableChatEventLoadVerdict(TableChatEvent value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -5956,75 +5280,16 @@ namespace Benchtable
             value.Amount = 0;
         }
 
-        public static bool TablePickupEventCollectTyped(TablePickupEvent v, ref TableWire.Ids ids)
-        {
-            if (v.ItemId != 0 && !ids.Add(0x9e7fd06d864fbd56ul)) return false;
-            if (v.Amount != 0 && !ids.Add(0x8113fe7ea2b16969ul)) return false;
-            return true;
-        }
-
-        public static long TablePickupEventBodySizeTyped(TablePickupEvent v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
-        {
-            long n = 1;
-            if (v.ItemId != 0) { n += TableWire.VarSize(ids.RefAt(51, 0x9e7fd06d864fbd56ul)) + 3; }
-            if (v.Amount != 0) { n += TableWire.VarSize(ids.RefAt(43, 0x8113fe7ea2b16969ul)) + 5; }
-            return n;
-        }
-
-        public static void TablePickupEventWriteBodyTyped(ref TableWire.Writer w, TablePickupEvent v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
-        {
-            if (v.ItemId != 0)
-            {
-                w.HeaderAt(51, 0x9e7fd06d864fbd56ul, 7, ref ids);
-                w.Fixed((ulong)v.ItemId, 2);
-            }
-            if (v.Amount != 0)
-            {
-                w.HeaderAt(43, 0x8113fe7ea2b16969ul, 4, ref ids);
-                w.Fixed((ulong)(long)v.Amount, 4);
-            }
-            w.Var(0);
-        }
-
-        public static long TablePickupEventSaveTyped(TablePickupEvent value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
-        {
-            TableTypeInfo type = TablePickupEventTableType();
-            int slots = 0;
-            if (vocabulary.Length <= 1024)
-            {
-                slots = 1;
-                while (slots < vocabulary.Length * 2) { slots <<= 1; }
-            }
-            Span<int> index = stackalloc int[slots];
-            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
-            if (!TablePickupEventCollectTyped(value, ref ids)) { return -1; }
-            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
-            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
-            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
-            long n = 1 + TablePickupEventBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
-            if (measure) { return n; }
-            if (n > buffer.Length) { return -1; }
-            scoped TableWire.Writer w = new TableWire.Writer(buffer);
-            w.Byte(1);
-            TablePickupEventWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
-            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
-            w.Fixed((ulong)ids.Count, 8);
-            return w.Offset;
-        }
-
         public static long TablePickupEventMeasure(TablePickupEvent value)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TablePickupEventSaveTyped(value, Span<byte>.Empty, ids, true);
+            return TableWire.Save(value, TablePickupEventTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long TablePickupEventSave(TablePickupEvent value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TablePickupEventSaveTyped(value, buffer, ids, false);
+            return TableWire.Save(value, TablePickupEventTableType(), buffer, ids, false);
         }
 
         public static TableWire.Verdict TablePickupEventLoadVerdict(TablePickupEvent value, ReadOnlySpan<byte> bytes, TableReport report)

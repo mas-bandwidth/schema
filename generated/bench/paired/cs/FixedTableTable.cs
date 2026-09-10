@@ -30,69 +30,16 @@ namespace Bench
             TableReset(value.Value);
         }
 
-        public static bool FixedTableCollectTyped(FixedTable v, ref TableWire.Ids ids)
-        {
-            TableFieldInfo[] fields = FixedTableTableType().Fields;
-            if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
-            return true;
-        }
-
-        public static long FixedTableBodySizeTyped(FixedTable v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
-        {
-            long n = 1;
-            TableFieldInfo[] fields = FixedTableTableType().Fields;
-            n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
-            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
-            return n;
-        }
-
-        public static void FixedTableWriteBodyTyped(ref TableWire.Writer w, FixedTable v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
-        {
-            TableFieldInfo[] fields = FixedTableTableType().Fields;
-            long payload_0 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[0] : -1;
-            TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
-            w.Var(0);
-        }
-
-        public static long FixedTableSaveTyped(FixedTable value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
-        {
-            TableTypeInfo type = FixedTableTableType();
-            int slots = 0;
-            if (vocabulary.Length <= 1024)
-            {
-                slots = 1;
-                while (slots < vocabulary.Length * 2) { slots <<= 1; }
-            }
-            Span<int> index = stackalloc int[slots];
-            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
-            if (!FixedTableCollectTyped(value, ref ids)) { return -1; }
-            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
-            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
-            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
-            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
-            long n = 1 + FixedTableBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
-            if (measure) { return n; }
-            if (n > buffer.Length) { return -1; }
-            scoped TableWire.Writer w = new TableWire.Writer(buffer);
-            w.Byte(1);
-            FixedTableWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
-            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
-            w.Fixed((ulong)ids.Count, 8);
-            return w.Offset;
-        }
-
         public static long FixedTableMeasure(FixedTable value)
         {
             Span<ulong> ids = stackalloc ulong[79];
-            return FixedTableSaveTyped(value, Span<byte>.Empty, ids, true);
+            return TableWire.Save(value, FixedTableTableType(), Span<byte>.Empty, ids, true);
         }
 
         public static long FixedTableSave(FixedTable value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[79];
-            return FixedTableSaveTyped(value, buffer, ids, false);
+            return TableWire.Save(value, FixedTableTableType(), buffer, ids, false);
         }
 
         public static TableWire.Verdict FixedTableLoadVerdict(FixedTable value, ReadOnlySpan<byte> bytes, TableReport report)

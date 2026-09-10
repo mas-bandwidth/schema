@@ -1,5 +1,8 @@
-// The form-1 fixed-table wire. Descriptor walks use the generated,
-// typed storage accessors; no reflection, boxing, or per-read scratch allocation.
+// The form-1 wire — the VARIABLE FORM (docs/SPEC-TABLES.md §3). Descriptor
+// walks use the generated, typed storage accessors; no reflection, boxing, or
+// per-read scratch allocation. Nothing here is specialised on a table's CLASS:
+// a fixed table encodes as form 3 and never as form 1, so this emitter carries
+// one engine and every table of the unit rides it.
 package cstable
 
 import (
@@ -8,295 +11,6 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
-
-func isCleanScalarLeaf(f *ir.Field) bool {
-	if f.Array != ir.ArrayNone || f.Type.Optional || f.Guard != "" || f.IsMap() || f.IsList() || f.Type.Pointer {
-		return false
-	}
-	switch f.Type.Kind {
-	case ir.TBool, ir.TFloat32, ir.TFloat64:
-		return true
-	case ir.TInt:
-		return f.Type.Width <= 64
-	case ir.TBits:
-		return f.Type.Width <= 64
-	}
-	return false
-}
-
-func isScalarLeafStruct(st *ir.Struct) bool {
-	if st == nil || len(st.Fields) == 0 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if !isCleanScalarLeaf(f) {
-			return false
-		}
-	}
-	return true
-}
-
-func isChildScalarArray(f *ir.Field) (*ir.Struct, bool) {
-	if !f.IsMap() && !f.IsList() && f.KeyEnum == "" && !f.Type.Pointer && f.Guard == "" && !f.Type.Optional && (f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted) && f.Type.Kind == ir.TNamed {
-		if st, ok := f.Type.Ref.(*ir.Struct); ok && isScalarLeafStruct(st) {
-			return st, true
-		}
-	}
-	return nil, false
-}
-
-func needsElemOffset(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if f.Array != ir.ArrayNone && f.KeyEnum == "" && tableScalarKind(f) == tkTable {
-			return true
-		}
-	}
-	return false
-}
-
-func needsFieldsArray(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if isCleanScalarLeaf(f) {
-			continue
-		}
-		if _, ok := isChildScalarArray(f); ok {
-			continue
-		}
-		return true
-	}
-	return false
-}
-
-func isPayloadPrefixed(f *ir.Field) bool {
-	kind := tableScalarKind(f)
-	return f.Array != ir.ArrayNone || kind == tkString || kind == 33 || kind == tkTable
-}
-
-func leafRideCondition(f *ir.Field) string {
-	def := fieldDefaultExpr(f)
-	prop := member(f)
-	return fmt.Sprintf("v.%s != %s", prop, def)
-}
-
-func (g *tableGen) emitCollectTyped(st *ir.Struct) {
-	name := st.Name
-	g.pf("public static bool %sCollectTyped(%s v, ref TableWire.Ids ids)\n{\n", name, name)
-	if needsFieldsArray(st) {
-		g.pf("    TableFieldInfo[] fields = %sTableType().Fields;\n", name)
-	}
-	for i, f := range st.Fields {
-		id := ir.TableFieldWireId(f)
-		if isCleanScalarLeaf(f) {
-			cond := leafRideCondition(f)
-			g.pf("    if (%s && !ids.Add(0x%016xul)) return false;\n", cond, id)
-		} else if childSt, ok := isChildScalarArray(f); ok {
-			prop := member(f)
-			childName := childSt.Name
-			if f.CountedOnWire() {
-				g.pf("    int count_%d = v.%sCount;\n", i, prop)
-				g.pf("    if (count_%d < 0 || count_%d > %d) return false;\n", i, i, f.ArrayBound)
-				g.pf("    if (count_%d > 0)\n    {\n", i)
-				g.pf("        if (!ids.Add(0x%016xul)) return false;\n", id)
-				g.pf("        for (int i_%d = 0; i_%d < count_%d; i_%d++)\n        {\n", i, i, i, i)
-				g.pf("            if (!%sCollectTyped(v.%s[i_%d], ref ids)) return false;\n", childName, prop, i)
-				g.pf("        }\n    }\n")
-			} else {
-				g.pf("    if (!ids.Add(0x%016xul)) return false;\n", id)
-				g.pf("    for (int i_%d = 0; i_%d < %d; i_%d++)\n    {\n", i, i, f.ArrayBound, i)
-				g.pf("        if (!%sCollectTyped(v.%s[i_%d], ref ids)) return false;\n", childName, prop, i)
-				g.pf("    }\n")
-			}
-		} else {
-			g.pf("    if (!TableWire.CollectField(v, fields[%d], ref ids)) return false;\n", i)
-		}
-	}
-	g.pf("    return true;\n}\n\n")
-}
-
-func (g *tableGen) knownOrdinal(f *ir.Field, id uint64) int {
-	if g.idOrdinal == nil {
-		g.idOrdinal = make(map[uint64]int)
-		for i, known := range ir.TableWireIds(g.unit) {
-			g.idOrdinal[known] = i
-		}
-	}
-	ord, ok := g.idOrdinal[id]
-	if !ok {
-		panic(fmt.Sprintf("table field %s (%d) missing from wire ID table; schema compiler invariant violated", f.Name, id))
-	}
-	return ord
-}
-
-func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
-	name := st.Name
-	g.pf("public static long %sBodySizeTyped(%s v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)\n{\n", name, name)
-	g.pf("    long n = 1;\n")
-	if needsFieldsArray(st) {
-		g.pf("    TableFieldInfo[] fields = %sTableType().Fields;\n", name)
-	}
-	if needsElemOffset(st) {
-		g.pf("    int elemOffset = 0;\n")
-	}
-	for i, f := range st.Fields {
-		id := ir.TableFieldWireId(f)
-		if isCleanScalarLeaf(f) {
-			cond := leafRideCondition(f)
-			kind := tableScalarKind(f)
-			width := tableKindWidth(kind)
-			g.pf("    if (%s) { n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + %d; }\n", cond, g.knownOrdinal(f, id), id, 1+width)
-		} else if childSt, ok := isChildScalarArray(f); ok {
-			prop := member(f)
-			childName := childSt.Name
-			if f.CountedOnWire() {
-				g.pf("    int count_%d = v.%sCount;\n", i, prop)
-				g.pf("    if (count_%d > 0)\n    {\n", i)
-			} else {
-				g.pf("    int count_%d = %d;\n    {\n", i, f.ArrayBound)
-			}
-			g.pf("        scoped Span<long> elemCache_%d = default;\n", i)
-			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
-			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
-			g.pf("            elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
-			g.pf("            elemOffset += take;\n        }\n")
-			g.pf("        long nChild_%d = 0;\n", i)
-			g.pf("        for (int i_%d = 0; i_%d < count_%d; i_%d++)\n        {\n", i, i, i, i)
-			g.pf("            long childBody = %sBodySizeTyped(v.%s[i_%d], ref ids);\n", childName, prop, i)
-			g.pf("            if (!elemCache_%d.IsEmpty && i_%d < elemCache_%d.Length) { elemCache_%d[i_%d] = childBody; }\n", i, i, i, i, i)
-			g.pf("            nChild_%d += TableWire.VarSize((ulong)childBody) + childBody;\n", i)
-			g.pf("        }\n")
-			g.pf("        long payload_%d = 1 + TableWire.VarSize((ulong)count_%d) + nChild_%d;\n", i, i, i)
-			g.pf("        n += TableWire.VarSize(ids.RefAt(%d, 0x%016xul)) + 1 + TableWire.VarSize((ulong)payload_%d) + payload_%d;\n", g.knownOrdinal(f, id), id, i, i)
-			g.pf("        if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
-			g.pf("    }\n")
-		} else {
-			switch {
-			case f.Array != ir.ArrayNone && f.KeyEnum == "" && tableScalarKind(f) == tkTable:
-				g.pf("    scoped Span<long> elemCache_%d = default;\n", i)
-				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
-				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
-				g.pf("        int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
-				g.pf("        elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
-				g.pf("        elemOffset += take;\n    }\n")
-				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids, elemCache_%d, out long payload_%d);\n", i, i, i)
-				g.pf("    if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
-			case isPayloadPrefixed(f):
-				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids, default, out long payload_%d);\n", i, i)
-				g.pf("    if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[%d] = payload_%d; }\n", i, i)
-			default:
-				g.pf("    n += TableWire.BodySizeField(v, fields[%d], ref ids);\n", i)
-			}
-		}
-	}
-	g.pf("    return n;\n}\n\n")
-}
-
-func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
-	name := st.Name
-	g.pf("public static void %sWriteBodyTyped(ref TableWire.Writer w, %s v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)\n{\n", name, name)
-	if needsFieldsArray(st) {
-		g.pf("    TableFieldInfo[] fields = %sTableType().Fields;\n", name)
-	}
-	if needsElemOffset(st) {
-		g.pf("    int elemOffset = 0;\n")
-	}
-	for i, f := range st.Fields {
-		id := ir.TableFieldWireId(f)
-		if isCleanScalarLeaf(f) {
-			cond := leafRideCondition(f)
-			kind := tableScalarKind(f)
-			width := tableKindWidth(kind)
-			raw := csRawGet("v."+member(f), f.Type)
-			g.pf("    if (%s)\n    {\n", cond)
-			g.pf("        w.HeaderAt(%d, 0x%016xul, %d, ref ids);\n", g.knownOrdinal(f, id), id, kind)
-			g.pf("        w.Fixed(%s, %d);\n", raw, width)
-			g.pf("    }\n")
-		} else if childSt, ok := isChildScalarArray(f); ok {
-			prop := member(f)
-			childName := childSt.Name
-			if f.CountedOnWire() {
-				g.pf("    int count_%d = v.%sCount;\n", i, prop)
-				g.pf("    if (count_%d > 0)\n    {\n", i)
-			} else {
-				g.pf("    int count_%d = %d;\n    {\n", i, f.ArrayBound)
-			}
-			g.pf("        w.HeaderAt(%d, 0x%016xul, 14, ref ids);\n", g.knownOrdinal(f, id), id)
-			g.pf("        scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
-			g.pf("        if (!rootElemSizes.IsEmpty)\n        {\n")
-			g.pf("            int take = System.Math.Min(count_%d, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n", i)
-			g.pf("            elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
-			g.pf("            elemOffset += take;\n        }\n")
-			g.pf("        long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
-			g.pf("        if (payload_%d < 0)\n        {\n", i)
-			g.pf("            long nChild_%d = 0;\n", i)
-			g.pf("            for (int i_%d = 0; i_%d < count_%d; i_%d++)\n            {\n", i, i, i, i)
-			g.pf("                long childBody = (!elemCache_%d.IsEmpty && i_%d < elemCache_%d.Length) ? elemCache_%d[i_%d] : %sBodySizeTyped(v.%s[i_%d], ref ids);\n", i, i, i, i, i, childName, prop, i)
-			g.pf("                nChild_%d += TableWire.VarSize((ulong)childBody) + childBody;\n            }\n", i)
-			g.pf("            payload_%d = 1 + TableWire.VarSize((ulong)count_%d) + nChild_%d;\n", i, i, i)
-			g.pf("        }\n")
-			g.pf("        w.Var((ulong)payload_%d);\n", i)
-			g.pf("        w.Byte(13);\n")
-			g.pf("        w.Var((ulong)count_%d);\n", i)
-			g.pf("        for (int i_%d = 0; i_%d < count_%d; i_%d++)\n        {\n", i, i, i, i)
-			g.pf("            long childBody = (!elemCache_%d.IsEmpty && i_%d < elemCache_%d.Length) ? elemCache_%d[i_%d] : %sBodySizeTyped(v.%s[i_%d], ref ids);\n", i, i, i, i, i, childName, prop, i)
-			g.pf("            w.Var((ulong)childBody);\n")
-			g.pf("            %sWriteBodyTyped(ref w, v.%s[i_%d], ref ids);\n", childName, prop, i)
-			g.pf("        }\n    }\n")
-		} else {
-			switch {
-			case f.Array != ir.ArrayNone && f.KeyEnum == "" && tableScalarKind(f) == tkTable:
-				g.pf("    scoped ReadOnlySpan<long> elemCache_%d = default;\n", i)
-				g.pf("    if (!rootElemSizes.IsEmpty)\n    {\n")
-				g.pf("        int c = TableWire.Count(v, fields[%d]);\n", i)
-				g.pf("        int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));\n")
-				g.pf("        elemCache_%d = rootElemSizes.Slice(elemOffset, take);\n", i)
-				g.pf("        elemOffset += take;\n    }\n")
-				g.pf("    long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
-				g.pf("    TableWire.WriteBodyField(ref w, v, fields[%d], ref ids, elemCache_%d, payload_%d);\n", i, i, i)
-			case isPayloadPrefixed(f):
-				g.pf("    long payload_%d = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[%d] : -1;\n", i, i)
-				g.pf("    TableWire.WriteBodyField(ref w, v, fields[%d], ref ids, default, payload_%d);\n", i, i)
-			default:
-				g.pf("    TableWire.WriteBodyField(ref w, v, fields[%d], ref ids);\n", i)
-			}
-		}
-	}
-	g.pf("    w.Var(0);\n}\n\n")
-}
-
-func (g *tableGen) emitSaveTyped(st *ir.Struct) {
-	name := st.Name
-	g.pf("public static long %sSaveTyped(%s value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)\n{\n", name, name)
-	g.pf("    TableTypeInfo type = %sTableType();\n", name)
-	g.pf("    int slots = 0;\n")
-	g.pf("    if (vocabulary.Length <= 1024)\n    {\n")
-	g.pf("        slots = 1;\n")
-	g.pf("        while (slots < vocabulary.Length * 2) { slots <<= 1; }\n    }\n")
-	g.pf("    Span<int> index = stackalloc int[slots];\n")
-	g.pf("    Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;\n")
-	g.pf("    Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;\n")
-	g.pf("    TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);\n")
-	g.pf("    if (!%sCollectTyped(value, ref ids)) { return -1; }\n", name)
-	g.pf("    int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;\n")
-	g.pf("    Span<long> rootPayloadSizes = stackalloc long[cachedFields];\n")
-	g.pf("    int cachedElemSlots = !measure ? type.RootElemSlots : 0;\n")
-	g.pf("    Span<long> rootElemSizes = stackalloc long[cachedElemSlots];\n")
-	g.pf("    long n = 1 + %sBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;\n", name)
-	g.pf("    if (measure) { return n; }\n")
-	g.pf("    if (n > buffer.Length) { return -1; }\n")
-	g.pf("    scoped TableWire.Writer w = new TableWire.Writer(buffer);\n")
-	g.pf("    w.Byte(1);\n")
-	g.pf("    %sWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);\n", name)
-	g.pf("    for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }\n")
-	g.pf("    w.Fixed((ulong)ids.Count, 8);\n")
-	g.pf("    return w.Offset;\n}\n\n")
-}
-
-func (g *tableGen) emitTypedWireSurface(st *ir.Struct) {
-	g.emitCollectTyped(st)
-	g.emitBodySizeTyped(st)
-	g.emitWriteBodyTyped(st)
-	g.emitSaveTyped(st)
-}
 
 func (g *tableGen) emitWireSurface(st *ir.Struct) {
 	if st.IsMapEntry() {
@@ -307,14 +21,8 @@ func (g *tableGen) emitWireSurface(st *ir.Struct) {
 		g.pf("public static long %sLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(%sTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }\n", st.Name, st.Name)
 	}
 	cap := ir.TableWireIdCapacity(g.unit)
-	if !ir.VariableTables(g.unit)[st.Name] {
-		g.emitTypedWireSurface(st)
-		g.pf("public static long %sMeasure(%s value)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, Span<byte>.Empty, ids, true);\n}\n\n", st.Name, st.Name, cap, st.Name)
-		g.pf("public static long %sSave(%s value, Span<byte> buffer)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return %sSaveTyped(value, buffer, ids, false);\n}\n\n", st.Name, st.Name, cap, st.Name)
-	} else {
-		g.pf("public static long %sMeasure(%s value)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return TableWire.Save(value, %sTableType(), Span<byte>.Empty, ids, true);\n}\n\n", st.Name, st.Name, cap, st.Name)
-		g.pf("public static long %sSave(%s value, Span<byte> buffer)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return TableWire.Save(value, %sTableType(), buffer, ids, false);\n}\n\n", st.Name, st.Name, cap, st.Name)
-	}
+	g.pf("public static long %sMeasure(%s value)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return TableWire.Save(value, %sTableType(), Span<byte>.Empty, ids, true);\n}\n\n", st.Name, st.Name, cap, st.Name)
+	g.pf("public static long %sSave(%s value, Span<byte> buffer)\n{\n    Span<ulong> ids = stackalloc ulong[%d];\n    return TableWire.Save(value, %sTableType(), buffer, ids, false);\n}\n\n", st.Name, st.Name, cap, st.Name)
 	g.pf("public static TableWire.Verdict %sLoadVerdict(%s value, ReadOnlySpan<byte> bytes, TableReport report)\n{\n    return TableWire.Load(value, %sTableType(), bytes, report);\n}\n\n", st.Name, st.Name, st.Name)
 	g.pf("public static bool %sLoad(%s value, ReadOnlySpan<byte> bytes, TableReport report)\n{\n    return %sLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;\n}\n\n", st.Name, st.Name, st.Name)
 }
@@ -421,28 +129,20 @@ public static partial class TableWire
     {
         public Span<ulong> Values;
         public Span<int> Slots;
-        public Span<uint> OrdinalSlots;
-        public Span<int> OrdinalOf;
         public int Count;
         internal Graph Graph;
         public Ids(Span<ulong> values)
         {
             Values = values;
             Slots = default;
-            OrdinalSlots = default;
-            OrdinalOf = default;
             Count = 0;
             Graph = null;
         }
-        public Ids(Span<ulong> values, Span<int> slots, Span<uint> ordinalSlots, Span<int> ordinalOf)
+        public Ids(Span<ulong> values, Span<int> slots)
         {
             Values = values;
             Slots = slots;
             if (!Slots.IsEmpty) { Slots.Clear(); }
-            OrdinalSlots = ordinalSlots;
-            if (!OrdinalSlots.IsEmpty) { OrdinalSlots.Clear(); }
-            OrdinalOf = ordinalOf;
-            if (!OrdinalOf.IsEmpty) { OrdinalOf.Fill(-1); }
             Count = 0;
             Graph = null;
         }
@@ -469,7 +169,6 @@ public static partial class TableWire
                 if (Slots[slot] != 0) { return (ulong)Slots[slot]; }
                 if (Count == Values.Length) { return 0; }
                 Values[Count] = id;
-                if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
                 Count++;
                 Slots[slot] = Count;
                 return (ulong)Count;
@@ -477,32 +176,8 @@ public static partial class TableWire
             for (int i = 0; i < Count; i++) { if (Values[i] == id) { return (ulong)i + 1; } }
             if (Count == Values.Length) { return 0; }
             Values[Count] = id;
-            if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
             Count++;
             return (ulong)Count;
-        }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public ulong RefAt(int ordinal, ulong id)
-        {
-            if (!OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
-            {
-                uint s = OrdinalSlots[ordinal];
-                if (s != 0) { return (ulong)s; }
-            }
-            return RefAtMiss(ordinal, id);
-        }
-        ulong RefAtMiss(int ordinal, ulong id)
-        {
-            ulong r = Ref(id);
-            if (r != 0 && !OrdinalSlots.IsEmpty && (uint)ordinal < (uint)OrdinalSlots.Length)
-            {
-                OrdinalSlots[ordinal] = (uint)r;
-                if (!OrdinalOf.IsEmpty && (int)(r - 1) < OrdinalOf.Length)
-                {
-                    OrdinalOf[(int)(r - 1)] = ordinal;
-                }
-            }
-            return r;
         }
         public bool Add(ulong id)
         {
@@ -512,7 +187,6 @@ public static partial class TableWire
                 if (Slots[slot] != 0) { return true; }
                 if (Count == Values.Length) { return false; }
                 Values[Count] = id;
-                if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
                 Count++;
                 Slots[slot] = Count;
                 return true;
@@ -520,7 +194,6 @@ public static partial class TableWire
             if (Reference(id) != 0) { return true; }
             if (Count == Values.Length) { return false; }
             Values[Count] = id;
-            if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length) { OrdinalOf[Count] = -1; }
             Count++;
             return true;
         }
@@ -533,15 +206,6 @@ public static partial class TableWire
                 {
                     int slot = Slot(Values[Count]);
                     Slots[slot] = 0;
-                }
-                if (!OrdinalOf.IsEmpty && Count < OrdinalOf.Length)
-                {
-                    int o = OrdinalOf[Count];
-                    if (o >= 0 && !OrdinalSlots.IsEmpty && (uint)o < (uint)OrdinalSlots.Length)
-                    {
-                        OrdinalSlots[o] = 0;
-                    }
-                    OrdinalOf[Count] = -1;
                 }
             }
         }
@@ -579,11 +243,6 @@ public static partial class TableWire
                 return;
             }
             Var(reference); Byte(kind);
-        }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void HeaderAt(int ordinal, ulong id, byte kind, ref Ids ids)
-        {
-            Header(ids.RefAt(ordinal, id), kind);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Var(ulong v)
@@ -1012,9 +671,7 @@ public static partial class TableWire
             while (slots < vocabulary.Length * 2) { slots <<= 1; }
         }
         Span<int> index = stackalloc int[slots];
-        Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
-        Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
-        Ids ids = new Ids(vocabulary, index, ordinalSlots, ordinalOf);
+        Ids ids = new Ids(vocabulary, index);
         if (type.Variable) { ids.Graph = Number(value, type); if (ids.Graph == null) { return -1; } }
         if (!Collect(value, type, ref ids) || !CollectNodes(ref ids)) { return -1; }
         // Reuse the root's measured length prefixes while writing its fields,
