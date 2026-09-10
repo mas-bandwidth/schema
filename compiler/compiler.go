@@ -60,6 +60,17 @@ type Compiler struct {
 	// and `generate`.
 	TablesBaseline bool
 
+	// FixedRecordLimit turns §3.4's advisory record-size bound into a GATE:
+	// a fixed table whose record body exceeds it in bytes does not compile.
+	// Zero, the default, is off. It is a project's own policy and never a wire
+	// fact, so it moves neither of the two bounds that are always on — the
+	// 4096-byte warning, and the 65536-byte ceiling past which a table does not
+	// carry the fixed form because no conforming reader decodes a record that
+	// size. A team that wants *"effectively, fixed tables should only be used
+	// for small things"* enforced rather than advised sets it to 4096. The CLI
+	// exposes it as `--fixed-record-limit` (docs/SPEC-TABLES.md §3.4).
+	FixedRecordLimit int64
+
 	// SchemaLock turns on the SCHEMA LOCK check (docs/SPEC-TABLES.md §2.10):
 	// when a schema.lock sits in the unit's directory, Load compares every
 	// FIXED table's field sequence against the locked one and REFUSES ANY
@@ -76,7 +87,8 @@ type Compiler struct {
 	// OnWarn, when set, receives each non-fatal report a load produced — the
 	// baseline's warn class (a shrunk bound, a removed enum variant or union
 	// arm): data survives, something is lost, and the runtime read report
-	// counts it. The CLI writes them to stderr.
+	// counts it — and §3.4's advisory fixed-record size bound. The CLI writes
+	// them to stderr.
 	OnWarn func(msg string)
 
 	gens      map[string]Generator // every accepted --lang spelling
@@ -157,6 +169,18 @@ func (c *Compiler) Load(paths []string) (*ir.Unit, error) {
 	u, cerrs := check.Unit(files)
 	if len(cerrs) > 0 {
 		return nil, Diagnostics(cerrs)
+	}
+	// §3.4'S SIZE BOUNDS on every FIXED table of the unit. The reporting is
+	// never gated on a policy field — a table nobody warned about is a table
+	// nobody fixed — and only the hard refusal is FixedRecordLimit's.
+	fwarns, ferrs := ir.TableFixedRecordBounds(u, c.FixedRecordLimit)
+	for _, w := range fwarns {
+		if c.OnWarn != nil {
+			c.OnWarn(w)
+		}
+	}
+	if len(ferrs) > 0 {
+		return nil, Diagnostics(ferrs)
 	}
 	if c.TablesBaseline {
 		warns, berrs := baseline.Check(u, paths)

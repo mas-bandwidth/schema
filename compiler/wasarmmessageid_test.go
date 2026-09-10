@@ -17,11 +17,11 @@ import (
 // The gate is the C++ reference's because the table layer is (§11, §15), and
 // it is anchored to the emitted `case` line rather than to the id appearing
 // anywhere in the output: the OLD name's hash is in the header already, in the
-// file form's arm dispatch and in the reflection descriptor, so a
+// variable form's arm dispatch and in the reflection descriptor, so a
 // whole-output claim stays green with the message form still wrong.
 const wasArmMessageUnit = `package wasarmmsg
 
-table Edit
+fixed table Edit
 {
     revision uint32
 }
@@ -32,7 +32,7 @@ union Body
     tally int32 | min = 0, max = 100, was = "count"
 }
 
-table Note
+fixed table Note
 {
     body Body
 }

@@ -254,16 +254,12 @@ func (v *ValueList) Child() string {
 // FixedTables names the unit's FIXED tables — the roots this file locks — in
 // name order.
 //
-// THIS IS THE ONE PLACE THE SET IS DECIDED. Today it is derived: a table is
-// fixed when it is not variable-length (ir.VariableTables, §2.2), because
-// that is the only answer the language can give. The sibling work adding the
-// `fixed table` keyword makes the flag DECLARED, and when it lands this
-// function's body is the one line that changes.
-//
-// TODO(fixed-table-keyword): read the declared flag — `st.IsFixedTable` on
-// the `fixed table` keyword branch — instead of deriving the answer here.
+// THIS IS THE ONE PLACE THE SET IS DECIDED. The class is DECLARED: a table
+// is locked when it is spelled `fixed table` (ir.Struct.FixedDeclared, §2.2).
+// A plain `table` is the variable wire whatever its fields are, so it is
+// never in this list. A generated map entry is not a declaration anybody
+// wrote and is skipped even if its body would be a fixed record.
 func FixedTables(u *ir.Unit) []string {
-	variable := ir.VariableTables(u)
 	var out []string
 	for name, st := range u.Tables {
 		if st.IsMapEntry() {
@@ -271,7 +267,7 @@ func FixedTables(u *ir.Unit) []string {
 			// its holder is variable by construction (§2.8)
 			continue
 		}
-		if variable[name] {
+		if !st.FixedDeclared {
 			continue
 		}
 		out = append(out, name)

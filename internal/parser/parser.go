@@ -232,16 +232,25 @@ func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 		// (docs/SPEC-TABLES.md): field identity by name hash, unknown fields
 		// skipped, absent fields defaulted. The body grammar is the type
 		// body's; the qualification carries tags and the `was` rename
-		// (docs/SPEC-TABLES.md §5). The BLOCK FORM
-		// (docs/SPEC-TABLES.md §19) declares nothing at all: every fixed table has
-		// one, emitted on the side, so there is no marker to parse.
-		p.advance()
-		name := p.expect(scanner.Ident, "table name")
-		d := &ast.TableDecl{Name: name.Text, Pos: t.Pos, Doc: doc}
-		d.Attrs = p.declQualifiers("table")
-		d.Body = p.parseBlock()
-		p.expectTerminator("table declaration")
-		p.file.Decls = append(p.file.Decls, d)
+		// (docs/SPEC-TABLES.md §5). A plain `table` is the VARIABLE wire
+		// always; `fixed table` declares the fixed class (§2.2). The BLOCK
+		// FORM (docs/SPEC-TABLES.md §19) declares nothing at all: every fixed
+		// table has one, emitted on the side, so there is no marker to parse.
+		p.parseTableDecl(t.Pos, doc, false)
+
+	case scanner.KwFixed:
+		// `fixed` at FILE SCOPE is the table declaration's class keyword
+		// (docs/SPEC-TABLES.md §2.2) — `fixed table Physics { … }`. The same
+		// word inside a body is the `fixed(I, F)` scalar (SPEC §4.3), and the
+		// two never meet: a declaration begins a line at file scope, a scalar
+		// only ever follows a field name.
+		if p.peek().Kind != scanner.KwTable {
+			p.errf(t.Pos, "`fixed` at file scope qualifies a table declaration — write `fixed table <Name>` (docs/SPEC-TABLES.md §2.2); `fixed(I, F)` is a field's scalar type and belongs inside a body (SPEC §4.3)")
+			p.skipDecl()
+			return
+		}
+		p.advance() // `fixed`
+		p.parseTableDecl(t.Pos, doc, true)
 
 	case scanner.KwMessage:
 		// `message` is reserved and refused: messages are not part of the
@@ -292,7 +301,7 @@ func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 			p.expectTerminator("union declaration")
 			p.file.Decls = append(p.file.Decls, d)
 		default:
-			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, table or union)", t.Text)
+			p.errf(t.Pos, "unexpected %q at file scope (declarations begin with package, const, enum, flags, type, table, fixed table or union)", t.Text)
 			p.skipDecl()
 		}
 
@@ -300,6 +309,20 @@ func (p *parser) parseDecl(doc string, docPos ast.Pos, hasDoc bool) {
 		p.errf(t.Pos, "unexpected %q at file scope", describe(t))
 		p.skipDecl()
 	}
+}
+
+// parseTableDecl parses a table declaration's name, qualification and body.
+// `at` is the position of the declaration's FIRST token — `table`, or the
+// `fixed` in front of it — so a refusal points at the whole declaration and
+// not at the middle of it.
+func (p *parser) parseTableDecl(at ast.Pos, doc string, fixed bool) {
+	p.advance() // `table`
+	name := p.expect(scanner.Ident, "table name")
+	d := &ast.TableDecl{Name: name.Text, Pos: at, Fixed: fixed, Doc: doc}
+	d.Attrs = p.declQualifiers("table")
+	d.Body = p.parseBlock()
+	p.expectTerminator("table declaration")
+	p.file.Decls = append(p.file.Decls, d)
 }
 
 // constType parses the optional explicit type of a const declaration.

@@ -33,7 +33,7 @@ type Inner
     factor float32 = 2.5
 }
 
-table Config
+fixed table Config
 {
     scale  float32 = 1.0
     label  string(24)
@@ -113,7 +113,7 @@ type Buff
     multiplier float32 = 1.0
 }
 
-table Wide
+fixed table Wide
 {
     blob   bytes(16)
     perks  Perks

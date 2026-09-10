@@ -1,0 +1,30 @@
+// FX1.schema — the OLD side of the FIXED FORM's versioning conformance
+// (docs/SPEC-TABLES.md §3.4). The invariant this pair holds is the one §3.4
+// states first: the form is positional BY PLAN, and the positions are the
+// WRITER's block, never the reader's own layout. So every edit below has to
+// land through a plan compiled from the other side's block:
+//
+//   narrow   uint16 here, uint32 in FX2   — a WIDENED field
+//   renamed  renamed in FX2 under `was`   — wire identity survives the rename
+//   gone     absent in FX2                — an UNKNOWN field to an FX2 reader
+//   added    absent here                  — a MISSING field an FX1 record defaults
+//   extra    a whole nested TYPE FX1 has no name for at all
+//
+// Distinct packages so both generations compile into ONE test binary; the wire
+// does not care, because identity is the field-name hash and nothing else.
+package tblfx1
+
+fixed table FxNested
+{
+    a int32 = 1 | min = 0, max = 1000
+    b int32 = 2 | min = 0, max = 1000
+}
+
+fixed table FxRoot
+{
+    keep    uint32 = 7
+    narrow  uint16 = 3
+    renamed int32 = 5 | min = 0, max = 1000
+    gone    int32 = 9 | min = 0, max = 1000
+    nested  FxNested
+}

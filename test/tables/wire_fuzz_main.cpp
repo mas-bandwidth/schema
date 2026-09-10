@@ -394,7 +394,7 @@ static const Codec codecs[] = {
     FIXED( "tblscalars2", scalardemo2, SimState ),
     FIXED( "tblr1", tblr1, Cfg ),
     FIXED( "tblr2", tblr2, Cfg ),
-    // the MESSAGE FORM's units in the FILE form (docs/SPEC-TABLES.md §3.3):
+    // the MESSAGE FORM's units in the VARIABLE form (docs/SPEC-TABLES.md §3.3):
     // their file-form vectors are ordinary instances and are fuzzed as any
     // instance is, and the message form's own entries are below
     FIXED( "backenddemo", backenddemo, LoginRequest ),

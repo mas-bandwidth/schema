@@ -12,7 +12,7 @@
 // the lists so the record's storage can be seen to end where it should.
 package tbll1
 
-table Sample
+fixed table Sample
 {
     v int32
 }

@@ -13,10 +13,10 @@ union Choice {
  ping
  leaf Leaf
 }
-table Child {
+fixed table Child {
  n uint32
 }
-table Root {
+fixed table Root {
  a uint32
  b uint32
  c uint32

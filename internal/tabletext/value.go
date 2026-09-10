@@ -194,6 +194,17 @@ func (m *Model) IsVariable(name string) bool {
 	return m.variable[name]
 }
 
+// NeedsLabels reports whether a root's text has to carry `&node` LABELS —
+// whether its by-value closure declares a pointer, a map or an unbounded array
+// (docs/SPEC-TABLES.md §16.7). It is the question the DIRECTORY RULE turns on
+// (§17.2): a tree of `<field>.json` entries has nowhere to put a label, so a
+// root that needs them packs from one file instead. The MODE is a different
+// question and is declared (§2.2) — a guarded table is variable and needs no
+// label at all — so the text asks this one directly.
+func (m *Model) NeedsLabels(name string) bool {
+	return ir.ClosureHoldsArenaEdge(m.Lookup, name)
+}
+
 // Lookup resolves a closure member by name — a `table` or the `type` a table
 // reaches — exactly as the emitters resolve one.
 func (m *Model) Lookup(name string) *ir.Struct {

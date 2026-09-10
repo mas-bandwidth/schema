@@ -114,7 +114,7 @@ static backenddemo::TableVocabulary backend_connection()
 }
 
 // pin_message_vector writes the two forms of ONE value and holds both counts.
-// The FILE form rides every surface an instance rides; the MESSAGE form rides
+// The VARIABLE form rides every surface an instance rides; the MESSAGE form rides
 // the wire surface alone, because its text is the file-form vector's byte for
 // byte and a second json/ file would be one golden with two homes. A single
 // message is the BATCH OF ONE (§3.3).
@@ -352,7 +352,7 @@ static void reload_message_golden( const char * name, const backenddemo::TableVo
 }
 
 // THE TWO FORMS ARE TWO ENCODINGS OF ONE VALUE, and the pin is a ROUND TRIP
-// (§3.3): loading the file form and saving the message form reproduces the
+// (§3.3): loading the variable form and saving the message form reproduces the
 // message's pinned bytes, and the reverse reproduces the file's.
 template <typename T, typename Load, typename Measure, typename Save, typename LoadMessages, typename MeasureMessages, typename SaveMessages, typename Reset>
 static void cross_message_golden( const char * name, const backenddemo::TableVocabulary & vocabulary,
@@ -379,7 +379,7 @@ static void cross_message_golden( const char * name, const backenddemo::TableVoc
         CHECK( save_messages( &value, 1, golden_again, sizeof( golden_again ), &report ) == message_bytes );
         if ( memcmp( golden_again, message, (size_t) message_bytes ) != 0 )
         {
-            printf( "FAIL %s: the file form loaded and saved as a message is not the pinned message\n", name );
+            printf( "FAIL %s: the variable form loaded and saved as a message is not the pinned message\n", name );
             failures++;
         }
     }
@@ -741,7 +741,7 @@ static void test_message_form_refusals()
 
     // A MESSAGE WITH NO VOCABULARY FOR THE CONNECTION is refused BY NAME:
     // nothing is decoded, the reader says it holds no vocabulary, and
-    // malformed does not fire. It does not fall back to the file form and
+    // malformed does not fire. It does not fall back to the variable form and
     // does not guess a vocabulary.
     {
         static backenddemo::LoginRequest value;
@@ -1982,10 +1982,10 @@ static void test_message_form_cold_read()
 
 // ---- THE WIDENING ROW ON THIS FORM (docs/SPEC-TABLES.md §3.3, §4) ----------
 
-// §3.3 holds §4's evolution rows to the file form's word, and the widening row
+// §3.3 holds §4's evolution rows to the variable form's word, and the widening row
 // is one of them: a kind below this reader's on the same ladder decodes
 // EXACTLY at the width the ANNOUNCEMENT states, the value lands, and one
-// `widened` counts. A1 and A2 are the pair the file form already reads across
+// `widened` counts. A1 and A2 are the pair the variable form already reads across
 // (the a1_arm_moved_width_as_a2 report row): arm `a` is `int32` under A1 and
 // `int64` under A2, so the same wire under this form names the same answer.
 //

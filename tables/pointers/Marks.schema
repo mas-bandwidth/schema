@@ -4,7 +4,7 @@
 // picks them up through the include it already has.
 package graphdemo
 
-table Tally
+fixed table Tally
 {
     hits int32 = 0 | min = 0, max = 10000
 }

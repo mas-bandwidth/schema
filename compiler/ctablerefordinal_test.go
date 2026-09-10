@@ -63,14 +63,14 @@ func cRefOrdinalSchema() string {
 	b.WriteString("package refordinal\n\n")
 	b.WriteString("enum Slot { Low, High, Mid }\n\n")
 	b.WriteString("// 140 fields, so the id table crosses 127 entries mid-array\n")
-	b.WriteString("table Wide\n{\n")
+	b.WriteString("fixed table Wide\n{\n")
 	for i := range cRefOrdinalWideFields {
 		fmt.Fprintf(&b, "    f%03d int32\n", i)
 	}
 	b.WriteString("}\n\n")
-	b.WriteString("table Inner\n{\n    a    int32\n    leaf Wide\n    z    int32\n}\n\n")
+	b.WriteString("fixed table Inner\n{\n    a    int32\n    leaf Wide\n    z    int32\n}\n\n")
 	b.WriteString("union Pick\n{\n    alpha Inner\n    beta  int32\n}\n\n")
-	b.WriteString("table Outer\n{\n")
+	b.WriteString("fixed table Outer\n{\n")
 	b.WriteString("    many  [..96]Inner\n")
 	b.WriteString("    banks [Slot]Inner\n")
 	b.WriteString("    few   [..8]Inner\n")
@@ -385,18 +385,18 @@ const cRefOrdinalCollisionSchema = `package collide
 
 enum Tag { alpha, beta }
 
-table Wide
+fixed table Wide
 {
     w0 int32
     w1 int32
 }
 
-table Leaf
+fixed table Leaf
 {
     alpha Wide
 }
 
-table Root
+fixed table Root
 {
     t     Tag
     banks [Tag]Leaf

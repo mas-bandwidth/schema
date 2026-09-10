@@ -176,7 +176,7 @@ union MixedEvent
     pickup MixedPickupEvent
 }
 
-// The message. Pinned wire: 3504 bits = 438 bytes (the goldens are the
+// The message. Pinned wire: 3508 bits in 438 bytes (the goldens are the
 // authority — testdata/wire/bench_mixed.bin).
 type BenchMixed
 {
@@ -216,13 +216,15 @@ type BenchMixed
     reserved(4) //  4 — zeros; a read rejects nonzero
     align //  pad to the next byte boundary
     crc_hint  bits(24) // 24
-    has_extra bool = true //  1 — branch gate: STRUCTURE, pinned true
-    if has_extra
-    {
-        extra int32 | min = 0, max = 255 //  8
-    }
-    else
-    {
-        idle_ticks int32 | min = 0, max = 15 // (does not ride: gate pinned true)
-    }
-} // = 3504 bits, 438 bytes
+    // THE LOOKBACK CONDITIONAL IS GONE FROM THIS SHAPE, and its three fields
+    // stay as PLAIN FIELDS carrying the same logical data (docs/SPEC-TABLES.md
+    // §3, the fixed table's body). The paired corpus wraps this same type on
+    // the TABLE wire (bench/corpus/FixedTable.schema), and a guarded branch is
+    // what a fixed table cannot carry: its whole purpose is to make the body
+    // vary in size, which is the one thing the fixed class refuses. Both wires
+    // therefore still carry has_extra, extra and idle_ticks; what moved is that
+    // idle_ticks now rides too, where the untaken arm used to cost nothing.
+    has_extra  bool = true //  1 — STRUCTURE, pinned true
+    extra      int32 | min = 0, max = 255 //  8
+    idle_ticks int32 | min = 0, max = 15 //  4 — rides now; the branch that gated it is gone
+} // = 3508 bits, 438 bytes (the four new bits land in the tail padding)

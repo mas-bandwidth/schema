@@ -1,6 +1,6 @@
 // The schema compiler CLI (SPEC §7).
 //
-//	schema check      [dir|files...]                 parse + typecheck; exit code for CI
+//	schema check      [dir|files...|saved-file]      parse + typecheck; a saved file answers its FORM BYTE (§3)
 //	schema generate   --lang cpp --out <dir> [dir]   emit generated code
 //	schema id         [dir|files...]                 print the protocol id
 //	schema projection [dir|files...]                 print the wire shape the id hashes
@@ -67,10 +67,36 @@ func main() {
 	case "check":
 		fs := flag.NewFlagSet("check", flag.ExitOnError)
 		fs.BoolVar(&verbose, "verbose", false, "report the package and protocol id on success")
+		// §3.4'S RECORD SIZE GATE, and it is OFF by default. Two bounds are
+		// always on and need no flag: a fixed table warns past 4096 bytes of
+		// record body, and past 65536 it does not carry the fixed form at all
+		// because no conforming reader decodes a record that size. This flag
+		// is the third, a project's own POLICY: set it and a fixed table past
+		// it does not compile, which is how a team makes *"effectively, fixed
+		// tables should only be used for small things"* a gate rather than
+		// advice. It is not a wire fact and moves neither of the other two.
+		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
-		paths, err := compiler.GatherPaths(fs.Args())
+		// WHAT BYTE 0 SAYS, FIRST (docs/SPEC-TABLES.md §3, "THE FIRST BYTE").
+		// Every schema file begins with the form byte, so a file handed to
+		// `check` is answered by its form before anything else is said about
+		// it: one line, `FORM <n> <name>`, or a refusal that names the byte.
+		// A tool that read a file and never told you which of the five arms
+		// it was would be hiding the one fact the rest of the read depends on.
+		args, wires := splitWireFiles(fs.Args())
+		for _, w := range wires {
+			fmt.Printf("%s: %s\n", w.path, ir.WireFormLine(w.head))
+		}
+		// A CHECK OVER FILES ALONE IS FINISHED: there is no unit to compile,
+		// and defaulting to the working directory would compile something the
+		// caller never named.
+		if len(wires) > 0 && len(args) == 0 {
+			return
+		}
+		paths, err := compiler.GatherPaths(args)
 		if err != nil {
 			fail(err)
 		}
@@ -228,7 +254,9 @@ func main() {
 		lang := fs.String("lang", "cpp", "target language ("+strings.Join(c.Targets(), ", ")+")")
 		out := fs.String("out", "generated", "output directory")
 		fs.BoolVar(&verbose, "verbose", false, "list the files emitted")
+		limit := fs.Int64("fixed-record-limit", 0, "refuse any FIXED table whose record body exceeds this many `bytes` (0 = no refusal; §3.4 warns at 4096 and drops the form at 65536 regardless)")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
+		c.FixedRecordLimit = *limit
 		c.TablesBaseline = true
 		c.SchemaLock = true
 		unit := loadUnit(c, fs.Args())
@@ -254,7 +282,7 @@ func main() {
 		// live in the CONNECTION's announced table, so `--announce <file>`
 		// writes that announcement beside the message — a receiver that has
 		// not read one holds no table and refuses every message on the wire.
-		message := fs.Bool("message", false, "write the `message` form (docs/SPEC-TABLES.md §3.3) instead of the file form")
+		message := fs.Bool("message", false, "write the `message` form (docs/SPEC-TABLES.md §3.3) instead of the variable form")
 		announce := fs.String("announce", "", "with --message, also write the unit's announcement to this `file`")
 		// THE PRIMITIVE IS A BATCH (docs/SPEC-TABLES.md §3.3): a number of
 		// messages in one buffer, one count and one bit stream. --root and its
@@ -630,8 +658,8 @@ func reportLineStage(r compiler.TableReport, verbose, tolerate bool, stage strin
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `usage:
-  schema check      [--verbose] [dir|files...]
-  schema generate   [--lang <target>] [--out generated] [--verbose] [dir|files...]
+  schema check      [--verbose] [--fixed-record-limit N] [saved-file] [dir|files...]
+  schema generate   [--lang <target>] [--out generated] [--verbose] [--fixed-record-limit N] [dir|files...]
   schema id         [dir|files...]
   schema projection [dir|files...]
   schema build-version [--facts] [dir|files...]
@@ -645,12 +673,24 @@ func usage() {
   schema uncook     --root <Table> --in  <file.cook> --out <file> [--attribution <file>] [--verbose] [dir|files...]
   schema version
 
+check handed a SAVED FILE rather than a schema source answers its FORM BYTE
+first, on one line — FORM 1 the variable form, FORM 2 the message form, FORM 3
+the fixed form — or refuses it by name (docs/SPEC-TABLES.md §3). Every schema
+file begins with that byte and the registry there is the only place a value is
+assigned, so it is the first thing said about any file.
+
 fmt is the only command that writes a schema file (schemafmt — one style, no
 options); a file already in format is not touched. Every other command reads
 the unit as it sits on disk and leaves it alone, so a read-only tree works and
 a check never edits what it checked. Success is silent: --verbose lists the
 files a command wrote. pack and unpack exit nonzero when their read report is
 not silent; --tolerate accepts it.
+
+A FIXED table's record body warns past 4096 bytes and stops carrying the fixed
+form past 65536, which is the size no conforming reader decodes
+(docs/SPEC-TABLES.md §3.4) — every read and write copies the whole of it, and
+fixed tables are for small things. --fixed-record-limit turns that advice into
+a gate: a fixed table past the limit given does not compile.
 `)
 }
 
@@ -671,6 +711,47 @@ func fail(err error) {
 		os.Exit(1)
 	}
 	fatalf("%v", err)
+}
+
+// wireFile is one argument that named a SAVED FILE rather than a schema
+// source: its path, and the first byte, which is its form (§3).
+type wireFile struct {
+	path string
+	head []byte
+}
+
+// splitWireFiles separates the arguments that name SAVED FILES from the ones
+// that name schema sources. A schema source is a `.schema` file or a directory
+// of them; anything else that exists as a regular file is a saved file, and
+// §3's first byte is the whole of what this command can say about it without
+// being told which root it is.
+//
+// A path that does not exist is left in the schema arguments, so its "no such
+// file" comes from the loader that owns that message and not from here.
+func splitWireFiles(args []string) (schemas []string, wires []wireFile) {
+	for _, a := range args {
+		if strings.HasSuffix(a, ".schema") {
+			schemas = append(schemas, a)
+			continue
+		}
+		info, err := os.Stat(a)
+		if err != nil || info.IsDir() {
+			schemas = append(schemas, a)
+			continue
+		}
+		// ONE BYTE IS ALL THIS READS. A form byte is the whole header, and a
+		// tool that slurped a gigabyte to print one line would be answering a
+		// cheap question expensively.
+		f, err := os.Open(a) //nolint:gosec // the path is the caller's own argument
+		if err != nil {
+			fatalf("%v", err)
+		}
+		var head [1]byte
+		n, _ := f.Read(head[:])
+		_ = f.Close()
+		wires = append(wires, wireFile{path: a, head: head[:n]})
+	}
+	return schemas, wires
 }
 
 // loadUnit gathers the unit's files and compiles them, exiting nonzero on any

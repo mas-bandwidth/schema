@@ -75,7 +75,7 @@ func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Rep
 // announced table rather than in a trailer of this wire's.
 //
 // The tree is unchanged, which is the text form's own claim: a message's text
-// is its file form's text, byte for byte.
+// is its variable form's text, byte for byte.
 func PackMessage(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Report, error) {
 	return PackMessages(m, []MessageTree{{Root: root, Dir: dir}})
 }
@@ -99,6 +99,13 @@ func PackMessages(m *tabletext.Model, trees []MessageTree) ([]byte, []string, ta
 		st := m.Unit.Tables[tree.Root]
 		if st == nil {
 			return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names no table in this unit; the roots it declares are %s", tree.Root, strings.Join(m.Roots(), ", "))
+		}
+		// THE MESSAGE FORM IS A FIXED TABLE'S (docs/SPEC-TABLES.md §2.2,
+		// §3.3), and the class is declared: a plain `table` is the
+		// VARIABLE wire, and a message-form request naming one is refused
+		// naming the table rather than quietly writing another form.
+		if !st.FixedDeclared {
+			return nil, nil, tabletext.Report{}, fmt.Errorf("--root %s names a plain `table`, and the MESSAGE FORM is a fixed table's: a message is a bitpacked body under one announced vocabulary, so the shape has to be one the declaration fixes. Declare it `fixed table %s`, or use the FILE form, which every table has (docs/SPEC-TABLES.md §2.2, §3.3)", tree.Root, tree.Root)
 		}
 		inst := m.New(st)
 		if err := p.rootTree(inst, tree.Root, tree.Dir); err != nil {
@@ -146,8 +153,8 @@ func (p *packer) rootTree(inst *tabletext.Instance, root, dir string) error {
 		p.readTableText(inst, filepath.Join(dir, whole), text)
 		return nil
 	}
-	if p.m.IsVariable(root) {
-		p.refusef("%s: %s is VARIABLE-LENGTH and packs from one %s — its shared nodes are named by labels a text owns, so a tree of fields cannot carry it (docs/SPEC-TABLES.md §16.7, §17.2)",
+	if p.m.NeedsLabels(root) {
+		p.refusef("%s: %s holds a pointer, a map or an unbounded array and packs from one %s — its shared nodes are named by labels a text owns, so a tree of fields cannot carry it (docs/SPEC-TABLES.md §16.7, §17.2)",
 			dir, root, whole)
 		return nil
 	}

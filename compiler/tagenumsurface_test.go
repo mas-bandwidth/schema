@@ -149,7 +149,7 @@ type T
 
 const countArmTableUnion = `package tagcounttable
 
-table A
+fixed table A
 {
     x uint16
 }
@@ -160,7 +160,7 @@ union U
     count int32 | min = 0, max = 100
 }
 
-table T
+fixed table T
 {
     body U
 }
@@ -224,12 +224,12 @@ const tableClosureTagEnumUnit = `package tabletag
 
 enum ShipType { Fighter, Bomber, Scout }
 
-table LaserFire
+fixed table LaserFire
 {
     target_id uint16
 }
 
-table MissileFire
+fixed table MissileFire
 {
     target_id uint16
 }
@@ -240,7 +240,7 @@ union WeaponFire
     missile MissileFire
 }
 
-table FireCommand
+fixed table FireCommand
 {
     fire WeaponFire
 }

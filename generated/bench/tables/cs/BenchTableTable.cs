@@ -339,13 +339,7 @@ namespace Benchtable
         public float Ping;
         public uint CrcHint;
         public bool HasExtra;
-
-        // has_extra — guarded fields stay off the wire when the guard says so;
-        // a read's restored defaults stand in for the untaken side
         public int Extra;
-
-        // !has_extra — guarded fields stay off the wire when the guard says so;
-        // a read's restored defaults stand in for the untaken side
         public int IdleTicks;
 
         public TableMixed()
@@ -5453,8 +5447,8 @@ namespace Benchtable
             if (v.Ping != 0.0f && !ids.Add(0xbf30e00dc53307a9ul)) return false;
             if (v.CrcHint != 0 && !ids.Add(0x560d6527ccd8515ful)) return false;
             if (v.HasExtra != false && !ids.Add(0xc08292176cfd8672ul)) return false;
-            if (!TableWire.CollectField(v, fields[26], ref ids)) return false;
-            if (!TableWire.CollectField(v, fields[27], ref ids)) return false;
+            if (v.Extra != 0 && !ids.Add(0xfd29ee12a979cb69ul)) return false;
+            if (v.IdleTicks != 0 && !ids.Add(0x78101ac0aa8cbcfeul)) return false;
             return true;
         }
 
@@ -5520,8 +5514,8 @@ namespace Benchtable
             if (v.Ping != 0.0f) { n += TableWire.VarSize(ids.RefAt(62, 0xbf30e00dc53307a9ul)) + 5; }
             if (v.CrcHint != 0) { n += TableWire.VarSize(ids.RefAt(25, 0x560d6527ccd8515ful)) + 5; }
             if (v.HasExtra != false) { n += TableWire.VarSize(ids.RefAt(63, 0xc08292176cfd8672ul)) + 2; }
-            n += TableWire.BodySizeField(v, fields[26], ref ids);
-            n += TableWire.BodySizeField(v, fields[27], ref ids);
+            if (v.Extra != 0) { n += TableWire.VarSize(ids.RefAt(76, 0xfd29ee12a979cb69ul)) + 5; }
+            if (v.IdleTicks != 0) { n += TableWire.VarSize(ids.RefAt(37, 0x78101ac0aa8cbcfeul)) + 5; }
             return n;
         }
 
@@ -5677,8 +5671,16 @@ namespace Benchtable
                 w.HeaderAt(63, 0xc08292176cfd8672ul, 1, ref ids);
                 w.Fixed(v.HasExtra ? 1ul : 0ul, 1);
             }
-            TableWire.WriteBodyField(ref w, v, fields[26], ref ids);
-            TableWire.WriteBodyField(ref w, v, fields[27], ref ids);
+            if (v.Extra != 0)
+            {
+                w.HeaderAt(76, 0xfd29ee12a979cb69ul, 4, ref ids);
+                w.Fixed((ulong)(long)v.Extra, 4);
+            }
+            if (v.IdleTicks != 0)
+            {
+                w.HeaderAt(37, 0x78101ac0aa8cbcfeul, 4, ref ids);
+                w.Fixed((ulong)(long)v.IdleTicks, 4);
+            }
             w.Var(0);
         }
 
@@ -6175,8 +6177,8 @@ namespace Benchtable
                     new TableFieldInfo { Name = "ping", Json = "ping", TypeName = "float32", Id = 0xbf30e00dc53307a9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 250.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Benchtable.TableMixed)o).Ping)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).Ping = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 44, Ordinal = 23, NativeOffset = 1328, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.Ping = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); if (v < 0.0f) { r.Clamped++; v = 0.0f; } else if (v > 250.0f) { r.Clamped++; v = 250.0f; } return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "crc_hint", Json = "crc_hint", TypeName = "bits(24)", Id = 0x560d6527ccd8515f, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1.6777215e+07, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Benchtable.TableMixed)o).CrcHint; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).CrcHint = unchecked((uint)r); }, MessageSlot = 45, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffful)), Ordinal = 24, NativeOffset = 1332, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.CrcHint = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 16777215ul) { r.Clamped++; v = 16777215; } return (ulong)v; } },
                     new TableFieldInfo { Name = "has_extra", Json = "has_extra", TypeName = "bool", Id = 0xc08292176cfd8672, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((global::Benchtable.TableMixed)o).HasExtra ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).HasExtra = r != 0; }, MessageSlot = 46, Ordinal = 25, NativeOffset = 1336, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.HasExtra = false; }, DefaultRaw = false ? 1ul : 0ul },
-                    new TableFieldInfo { Name = "extra", Json = "extra", TypeName = "int32", Id = 0xfd29ee12a979cb69, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "has_extra", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Benchtable.TableMixed)o).Extra; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).Extra = unchecked((int)(long)r); }, MessageSlot = 47, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 26, NativeOffset = 1340, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, NativeGuardOffsets = new int[] {1336}, NativeGuardValues = new bool[] {true}, WireGuard = delegate(object o) { var value = (global::Benchtable.TableMixed)o; return value.HasExtra; }, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.Extra = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 255) { r.Clamped++; v = 255; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "idle_ticks", Json = "idle_ticks", TypeName = "int32", Id = 0x78101ac0aa8cbcfe, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 15.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "!has_extra", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Benchtable.TableMixed)o).IdleTicks; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).IdleTicks = unchecked((int)(long)r); }, MessageSlot = 48, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xful)), Ordinal = 27, NativeOffset = 1344, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, NativeGuardOffsets = new int[] {1336}, NativeGuardValues = new bool[] {false}, WireGuard = delegate(object o) { var value = (global::Benchtable.TableMixed)o; return !value.HasExtra; }, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.IdleTicks = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 15) { r.Clamped++; v = 15; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "extra", Json = "extra", TypeName = "int32", Id = 0xfd29ee12a979cb69, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Benchtable.TableMixed)o).Extra; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).Extra = unchecked((int)(long)r); }, MessageSlot = 47, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 26, NativeOffset = 1340, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.Extra = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 255) { r.Clamped++; v = 255; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "idle_ticks", Json = "idle_ticks", TypeName = "int32", Id = 0x78101ac0aa8cbcfe, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 15.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Benchtable.TableMixed)o).IdleTicks; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).IdleTicks = unchecked((int)(long)r); }, MessageSlot = 48, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xful)), Ordinal = 27, NativeOffset = 1344, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.IdleTicks = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 15) { r.Clamped++; v = 15; } return (ulong)(long)v; } },
                 };
                 info.Reset = delegate(object o) { TableReset((global::Benchtable.TableMixed)o); };
                 info.Doc = TableDocNone;

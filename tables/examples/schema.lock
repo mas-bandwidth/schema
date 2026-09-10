@@ -46,14 +46,6 @@ fixed table PackConfig layout=0xc401fa1fabbdb99f
     field thresholds id=0x9cda940a344e1571 kind=16 width=12 default=born:0 min=0 max=1000 elem=4/4 key=Difficulty@0x8c7731ffcc25bee0
     field reserves id=0x77707fccd201c228 kind=14 width=328 default=born:0 held=ShipEntry@0x09a64721f993b5da elem=13/108
 
-fixed table Patrol layout=0xe5e88ef190270115
-    field active id=0x6580790b036f0c6f kind=1 width=1 default=false
-    field speed id=0x2281498aa0200e40 kind=10 width=4 default=1.0
-    field has_target id=0x247f0e7f55aacfbd kind=1 width=1 default=false
-    field target_id id=0xb7bc9ac015a25050 kind=4 width=4 default=0 min=0 max=1000
-    field wander id=0xb8c758d8bd1845d4 kind=10 width=4 default=0.5
-    field note id=0x3bf8fbbad1587cdd kind=12 width=16 default=bytes:
-
 fixed table ProfileConfig layout=0xbc3a524e52a29909
     field name id=0xc4bcadba8e631b86 kind=12 width=40 default=bytes:
     field icon id=0xdbff4cc56c2092f0 kind=14 width=20 default=bytes: elem=6/1

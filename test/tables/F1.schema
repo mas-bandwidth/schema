@@ -10,7 +10,7 @@
 // float64: the WIDENED rung (§4), which is where a conversion would show.
 package tblf1
 
-table Floats
+fixed table Floats
 {
     signalling float32 // 0x7F800001: the quiet bit CLEAR, the smallest payload
     payload    float32 // 0x7FC0DEAD: quiet, and a mantissa well past the quiet bit

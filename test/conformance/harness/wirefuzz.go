@@ -137,7 +137,7 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 		// RETENTION IS THE VARIABLE CLASS'S AND A FIXED-CLASS ROOT GETS NONE
 		// (docs/SPEC-TABLES.md §6.6), and a form-2 SaveRetain refuses by name
 		// (§3.3): neither is a roster entry this arm can hold.
-		return nil, fmt.Errorf("unit %s root %s: retention is the variable class's file form and nothing else", unitKey, rootName)
+		return nil, fmt.Errorf("unit %s root %s: retention is the variable class's variable form and nothing else", unitKey, rootName)
 	}
 	if message {
 		r.vocabulary = &tablewire.Vocabulary{}
@@ -379,7 +379,7 @@ func startWireLeg(command string, roots []*wireRoot) (*wireLeg, error) {
 	// the roster: which roots the stream will name, in which FORM, and which
 	// the leg has. The form is the wire's own byte (docs/SPEC-TABLES.md §3,
 	// §3.3) rather than a flag of this protocol's minting, so a leg reads the
-	// value it already knows: `1` is the file form and `2` is the message
+	// value it already knows: `1` is the variable form and `2` is the message
 	// form, whose mutants resolve against the connection's announced table.
 	// A leg derives that table from its OWN unit's announcement, because the
 	// vocabulary is a pure function of the build version and both sides

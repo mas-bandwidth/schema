@@ -558,7 +558,7 @@ union Shape {
     size  int32 | min = 0, max = 100
 }
 
-table Holder {
+fixed table Holder {
     shape Shape
 }
 `
@@ -787,7 +787,7 @@ type Packet {
     e Carried
 }
 
-table Bag {
+fixed table Bag {
     kind  ItemKind
     perks Perks
 }
@@ -847,7 +847,7 @@ type Packet {
     seq  uint32
 }
 
-table Bag {
+fixed table Bag {
     kind Kind
 }
 `

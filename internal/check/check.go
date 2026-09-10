@@ -1048,7 +1048,11 @@ func (c *checker) resolveBodies() {
 				// tables share the struct shape but live beside the packet
 				// decls, never among them (docs/SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
-				st := &ir.Struct{Name: d.Name, IsTable: true, Doc: d.Doc}
+				// THE CLASS IS DECLARED, never inferred (docs/SPEC-TABLES.md
+				// §2.2): `fixed table` is the fixed wire and a plain `table`
+				// is the variable one, and checkFixedTableClosures below
+				// refuses a fixed table whose closure cannot hold the class.
+				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
 				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
 				for _, a := range tvalued {
@@ -2535,6 +2539,7 @@ func (c *checker) checkTables() {
 			seen[id] = f
 		}
 	}
+	c.checkFixedTableClosures(names)
 	c.checkReservedWireIds(names)
 	c.checkTableVariantIdentity(names)
 	c.checkOptionalVariableClosures(names)
@@ -3869,7 +3874,7 @@ func (c *checker) addTableSymbols(add func(name, what string, pos ast.Pos), name
 var tableGeneratedVerbs = []string{
 	"Measure", "MeasureBody", "Save", "SaveInto", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
 	// the MESSAGE FORM's three suffixes (docs/SPEC-TABLES.md §3.3), beside the
-	// file form's own. They are PLURAL because the form's primitive is a BATCH
+	// variable form's own. They are PLURAL because the form's primitive is a BATCH
 	// of bodies of one root and a single message is the batch of one, and the
 	// singular verbs are not claimed beside them: a surface with both would let
 	// a caller write one message a call and never learn where the bandwidth is
@@ -3900,6 +3905,14 @@ var tableGeneratedVerbs = []string{
 	"MeasureWireRetain", "SaveWireRetain", "NodeBodyRetain",
 	"FromJson", "ToJson", "ToJsonMeasure",
 	"Block", "BlockStorage", "BlockBegin", "BlockBytes", "BlockMaxBytes", "BlockOpen", "Counts",
+	// THE FIXED FORM's spellings (docs/SPEC-TABLES.md §3.4). Nothing declares
+	// the form and every fixed table whose closure §3.4 lays out has one, so a
+	// name that is free today becomes a collision the day a field of the type
+	// changes — which is this list's own rule. The C backend spells the same
+	// set in snake_case (<name>_fixed_save) and the two are one claim.
+	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
+	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
+	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a
 	// block type's Type — and a member function claims nothing. C has no
@@ -4128,6 +4141,9 @@ func (c *checker) cReservedMacros() map[string]bool {
 		// the table backend's (internal/codegen/ctable)
 		"SCHEMA_C_ALIGN16", "SCHEMA_TABLE_ALIGNOF", "SCHEMA_TABLE_ATOMIC", "SCHEMA_TABLE_STATIC_ASSERT",
 		"SCHEMA_TABLE_KEYED_AT",
+		// the FIXED FORM's two (docs/SPEC-TABLES.md §3.4): a guard sentinel that
+		// does not fit an int enum, and the restrict spelling the read loop needs
+		"SCHEMA_TABLE_FIXED_NO_GUARD", "SCHEMA_TABLE_RESTRICT",
 	} {
 		out[fixed] = true
 	}

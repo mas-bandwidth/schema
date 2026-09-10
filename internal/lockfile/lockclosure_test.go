@@ -156,7 +156,7 @@ union Stowage
     trim    Trim
 }
 
-table Config
+fixed table Config
 {
     tick_rate int32 = 60 | min = 1, max = 240
     scale     fixed(16, 16) | min = -8, max = 8

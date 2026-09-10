@@ -5,7 +5,7 @@ import "testing"
 func TestRegionGraphs(t *testing.T) {
 	runGenerated(t, `package probe
 type Colour { r uint8 }
-table Leaf { value int32 = 7 }
+fixed table Leaf { value int32 = 7 }
 table Node {
  value int32
  next *Node
@@ -51,7 +51,7 @@ func TestRegionUnionAndBlobValues(t *testing.T) {
 	runGenerated(t, `package probe
 enum Mode { Fast, Slow }
 type Point { x int32 }
-table Child { score int32 = 7 }
+fixed table Child { score int32 = 7 }
 union Inner { n int32
  text string(8)
  ping

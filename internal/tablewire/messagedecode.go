@@ -294,7 +294,7 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 
 	// THE NODE TYPES THIS ROOT CAN PLACE are the numbering's own walk, and the
 	// id is the WIRE name's so a table renamed under `was` is the node type
-	// its old name numbers (§3.1, §5). It is the file form's map, built the
+	// its old name numbers (§3.1, §5). It is the variable form's map, built the
 	// same way over the same walk.
 	//
 	// The PLACEABLE SET is named on its own line, before the id map is built
@@ -396,7 +396,7 @@ func (d *bitDecoder) nodeTable(inst *tabletext.Instance, st *decodeState) bool {
 			}
 			// A TEXT BLOB'S CONTENT IS REFUSED ON THE SAME TERMS as a kind 12
 			// payload (§3.1), through the same textValid decodenodes.go reads
-			// the FILE form's record with, so there is one rule and no second
+			// the VARIABLE form's record with, so there is one rule and no second
 			// copy. What differs is only the RECOVERY, which a bit stream does
 			// not have: the damage is TERMINAL for the batch, one malformed
 			// counts, and the bodies before it stand (§3.3).
@@ -504,7 +504,7 @@ func (d *bitDecoder) body(inst *tabletext.Instance) bool {
 		mine := ir.TableFieldEntry(fv.Def)
 		if entry.Kind != mine.Kind || entry.Shape.Elem != mine.Shape.Elem {
 			if messageWidens(entry, mine) {
-				// WIDENED (§4), and §3.3 holds that row to the file form's
+				// WIDENED (§4), and §3.3 holds that row to the variable form's
 				// word: a kind below this reader's on the same ladder decodes
 				// EXACTLY at the SENDER's announced width, the value lands,
 				// and one `widened` counts. The field rode, so an optional is
@@ -586,7 +586,7 @@ func (d *bitDecoder) field(fv *tabletext.Field, entry ir.TableVocabularyEntry) b
 // because the length was read and the position after it is known.
 //
 // The content rule is kind 12's own (§3), reached through the same textValid
-// and textBoundary the file form reads with: a payload that is not well-formed
+// and textBoundary the variable form reads with: a payload that is not well-formed
 // UTF-8, or that carries a zero byte, is DAMAGE, checked as the bytes arrive
 // and before this reader's bound, and a clamp cuts at a code point boundary. A
 // `bytes(N)` carries no such rule, because its payload is bytes.
@@ -1372,7 +1372,7 @@ func (d *bitDecoder) clampFloat(v float64, f *ir.Field) float64 {
 }
 
 // resolveCell places one node index in a pointer slot against the numbering,
-// under the file form's own rules: the resolution is the same walk, and only
+// under the variable form's own rules: the resolution is the same walk, and only
 // where the index came from moved.
 func (d *bitDecoder) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64) {
 	r := &wireReader{report: d.report, m: d.m, st: d.st}

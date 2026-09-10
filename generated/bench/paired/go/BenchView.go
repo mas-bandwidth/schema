@@ -535,7 +535,7 @@ func init() {
 			VariantId:   nil,
 			KeyTypeName: "", KeyName: nil, KeyId: nil,
 			Arms:  nil,
-			Guard: "has_extra", Table: nil,
+			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "idle_ticks", Json: "idle_ticks", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x78101ac0aa8cbcfe, Kind: 4, IsArray: false, Counted: false, Optional: false,
 			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), ElemSize: uint32(unsafe.Sizeof(BenchMixed{}.IdleTicks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
@@ -545,7 +545,7 @@ func init() {
 			VariantId:   nil,
 			KeyTypeName: "", KeyName: nil, KeyId: nil,
 			Arms:  nil,
-			Guard: "!has_extra", Table: nil,
+			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
 	tableViewPacketTypes[3] = TableTypeInfo{Name: "BenchPacket", Size: uint32(unsafe.Sizeof(BenchPacket{})), NumFields: 12, Reset: func(p unsafe.Pointer) { *(*BenchPacket)(p) = BenchPacket{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
@@ -963,7 +963,7 @@ func BenchIntsTableType() *TableTypeInfo   { return &tableViewPacketTypes[1] }
 func BenchPacketReset(value *BenchPacket)  { *value = BenchPacket{} }
 func BenchPacketTableType() *TableTypeInfo { return &tableViewPacketTypes[3] }
 
-var tableUnitView = UnitViewInfo{Package: "bench", ProtocolId: 0x8d12c3149393f40f,
+var tableUnitView = UnitViewInfo{Package: "bench", ProtocolId: 0xc93127c82f083edf,
 	NumTypes: 9, Types: []ViewType{
 		{Name: "BenchBits", File: "Bench.schema", Table: false, Type: &tableViewPacketTypes[0], Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "BenchInts", File: "Bench.schema", Table: false, Type: &tableViewPacketTypes[1], Doc: TableDocNone, NumTags: 0, Tags: nil},

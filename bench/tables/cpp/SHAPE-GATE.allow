@@ -2,4 +2,4 @@
 # The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
 # Paths are repository-relative.
 
-names bench/tables/cpp/table_main.cpp 6 shape-blind leg: 1 comment + `benchtable::TableMixed` as the bench_table template argument and its Reset/Save/Load call sites (callsite)
+names bench/tables/cpp/table_main.cpp 10 shape-blind leg: 1 comment + `benchtable::TableMixed` as the bench_table template argument and its Reset/Save/Load call sites, plus `FixedTable`/`BenchMixed` at the FIXED form's storage declaration and its Save/Load call sites (docs/SPEC-TABLES.md §3.4) (callsite)

@@ -87,14 +87,8 @@ type TableMixed struct {
 	Ping             float32
 	CrcHint          uint32
 	HasExtra         bool
-
-	// has_extra — guarded fields stay off the wire when the guard says so;
-	// a read's restored defaults stand in for the untaken side
-	Extra int32
-
-	// !has_extra — guarded fields stay off the wire when the guard says so;
-	// a read's restored defaults stand in for the untaken side
-	IdleTicks int32
+	Extra            int32
+	IdleTicks        int32
 }
 
 // TableReport is the table-wire read report — the permissive contract's
@@ -2796,8 +2790,8 @@ func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool 
 	return true
 }
 
-const TableEntityLoadRetainBuilder = "TableEntity: retention requires a region round trip through file form"
-const TableEntitySaveRetainMessages = "TableEntity: retention requires a region round trip through file form"
+const TableEntityLoadRetainBuilder = "TableEntity: retention requires a region round trip through the VARIABLE form"
+const TableEntitySaveRetainMessages = "TableEntity: retention requires a region round trip through the VARIABLE form"
 const TableEntityLoadRetain = "TableEntity: retention requires a variable root and its region directory"
 const TableEntityMeasureRetain = "TableEntity: retention requires a variable root and its region directory"
 const TableEntitySaveRetain = "TableEntity: retention requires a variable root and its region directory"
@@ -3781,8 +3775,8 @@ func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	return true
 }
 
-const TableStatLoadRetainBuilder = "TableStat: retention requires a region round trip through file form"
-const TableStatSaveRetainMessages = "TableStat: retention requires a region round trip through file form"
+const TableStatLoadRetainBuilder = "TableStat: retention requires a region round trip through the VARIABLE form"
+const TableStatSaveRetainMessages = "TableStat: retention requires a region round trip through the VARIABLE form"
 const TableStatLoadRetain = "TableStat: retention requires a variable root and its region directory"
 const TableStatMeasureRetain = "TableStat: retention requires a variable root and its region directory"
 const TableStatSaveRetain = "TableStat: retention requires a variable root and its region directory"
@@ -4509,24 +4503,20 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 			}
 		}
 	}
-	if value.HasExtra {
-		{
-			if value.Extra != 0 {
-				if ref := w.Ids.refAtHit(76, 0xfd29ee12a979cb69); !w.headerPair(ref, 4) {
-					w.headerRest(ref, 4)
-				}
-				w.Put32(uint32(value.Extra))
+	{
+		if value.Extra != 0 {
+			if ref := w.Ids.refAtHit(76, 0xfd29ee12a979cb69); !w.headerPair(ref, 4) {
+				w.headerRest(ref, 4)
 			}
+			w.Put32(uint32(value.Extra))
 		}
 	}
-	if !value.HasExtra {
-		{
-			if value.IdleTicks != 0 {
-				if ref := w.Ids.refAtHit(37, 0x78101ac0aa8cbcfe); !w.headerPair(ref, 4) {
-					w.headerRest(ref, 4)
-				}
-				w.Put32(uint32(value.IdleTicks))
+	{
+		if value.IdleTicks != 0 {
+			if ref := w.Ids.refAtHit(37, 0x78101ac0aa8cbcfe); !w.headerPair(ref, 4) {
+				w.headerRest(ref, 4)
 			}
+			w.Put32(uint32(value.IdleTicks))
 		}
 	}
 	w.Put8(0)
@@ -5649,8 +5639,8 @@ func TableMixedLoad(value *TableMixed, data []byte, report *TableReport) bool {
 	return true
 }
 
-const TableMixedLoadRetainBuilder = "TableMixed: retention requires a region round trip through file form"
-const TableMixedSaveRetainMessages = "TableMixed: retention requires a region round trip through file form"
+const TableMixedLoadRetainBuilder = "TableMixed: retention requires a region round trip through the VARIABLE form"
+const TableMixedSaveRetainMessages = "TableMixed: retention requires a region round trip through the VARIABLE form"
 const TableMixedLoadRetain = "TableMixed: retention requires a variable root and its region directory"
 const TableMixedMeasureRetain = "TableMixed: retention requires a variable root and its region directory"
 const TableMixedSaveRetain = "TableMixed: retention requires a variable root and its region directory"
@@ -5900,19 +5890,15 @@ func TableMixedSaveMessageBody(w *TableMessageWriter, value *TableMixed) bool {
 		}
 	}
 	{
-		if value.HasExtra {
-			if value.Extra != 0 {
-				w.Put(47, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, TableMessageShape{Kind: 4, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Extra), uint64(0))
-			}
+		if value.Extra != 0 {
+			w.Put(47, TableMessageRefBitsHere)
+			tableMessageWriteScalar(&w.TableBitWriter, TableMessageShape{Kind: 4, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Extra), uint64(0))
 		}
 	}
 	{
-		if !value.HasExtra {
-			if value.IdleTicks != 0 {
-				w.Put(48, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.IdleTicks), uint64(0))
-			}
+		if value.IdleTicks != 0 {
+			w.Put(48, TableMessageRefBitsHere)
+			tableMessageWriteScalar(&w.TableBitWriter, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.IdleTicks), uint64(0))
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -9261,7 +9247,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
-		Guard: "has_extra", Table: nil,
+		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "idle_ticks", Json: "idle_ticks", TypeName: "int32", DeclaredTypeName: "int32", Id: 0x78101ac0aa8cbcfe, Kind: 4, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableMixed{}.IdleTicks)), ElemSize: uint32(unsafe.Sizeof(TableMixed{}.IdleTicks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
@@ -9272,7 +9258,7 @@ var TableMixedTableFields = []TableFieldInfo{
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
-		Guard: "!has_extra", Table: nil,
+		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 }
 

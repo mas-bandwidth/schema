@@ -13,7 +13,7 @@ import (
 func TestRetainMatchesIndependentRewrite(t *testing.T) {
 	old := `package probe
 enum Key { A, B }
-table Child { n int32 }
+fixed table Child { n int32 }
 union Inner { child Child }
 union Choice { child Child
  nested [..2]Inner
@@ -104,7 +104,7 @@ func TestRetainMessage(t *testing.T){
 
 func TestRetainMessageBoundsBeforeExpansion(t *testing.T) {
 	runGenerated(t, `package probe
-table Child { n int32 }
+fixed table Child { n int32 }
 table Root { child *Child }
 `, `package probe
 import("testing";"unsafe")
@@ -131,7 +131,7 @@ func TestCaptureBounds(t *testing.T){
 func TestRetainReplacementAndShapeChanges(t *testing.T) {
 	runGenerated(t, `package probe
 enum Key { A, B }
-table Child { n int32 }
+fixed table Child { n int32 }
 union Choice { branch Child
  empty }
 table Root { child Child
@@ -173,7 +173,7 @@ func TestReplacement(t *testing.T){
 
 func TestRetainFileCapacityBeforeExpansion(t *testing.T) {
 	runGenerated(t, `package probe
- table Child { n int32 }
+ fixed table Child { n int32 }
  table Root { child *Child }
  `, `package probe
  import("testing";"unsafe")
@@ -230,7 +230,7 @@ func TestRetainUnknownNodeRecord(t *testing.T) {
 // decoder: dropping an oversized key must not expose or retain its value.
 func TestRetainMessageMapKeyProbe(t *testing.T) {
 	const old = `package probe
- table Item { number int32 }
+ fixed table Item { number int32 }
  table Root { names map[string(2)]Item }
  `
 	newer := strings.Replace(strings.Replace(old, "string(2)", "string(8)", 1), "number int32", "number int32\nextra int32", 1)

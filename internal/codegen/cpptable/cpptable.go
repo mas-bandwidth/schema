@@ -84,6 +84,9 @@ func tablePut(width int) string { return fmt.Sprintf("put%d", width*8) }
 func tableGet(width int) string { return fmt.Sprintf("get%d", width*8) }
 
 type tableGen struct {
+	// fixedOwner is the type whose fixed-form writer is being emitted, which is
+	// what says whether a keyed array's slots are spelled `.slots` (§2.4)
+	fixedOwner  *ir.Struct
 	unit        *ir.Unit
 	file        *ir.File
 	anyVariable bool // the unit declares at least one variable-length table
@@ -246,7 +249,7 @@ func (g *tableGen) inElementStep(f *ir.Field, emit func()) {
 }
 
 // wireRef is a field header's id reference: the id and its MESSAGE-FORM SLOT,
-// both literals. The FILE form interns the id and answers a first-use
+// both literals. The VARIABLE form interns the id and answers a first-use
 // reference; the MESSAGE form answers the slot and never touches the table
 // (docs/SPEC-TABLES.md §3, §3.3).
 //
@@ -524,7 +527,7 @@ struct TableKeyed
 // same way would be a redefinition.
 func tableInlineMacro(pkg string) string { return strings.ToUpper(pkg) + "_TABLE_INLINE" }
 
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, widen widenCensus, idCap int, u *ir.Unit) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool, anyWide bool, has128 bool, widen widenCensus, idCap int, u *ir.Unit) string {
 	// THE ID TABLE'S CAPACITY IS A COMPILE-TIME FACT of the unit (§3): the
 	// distinct names its table closure can spell, so a save allocates nothing.
 	// The bucket count is the next power of two at twice the capacity, so the
@@ -572,6 +575,12 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 	guard := strings.ToUpper(pkg) + "_SCHEMA_TABLE_PRIMITIVES"
 	forceInline := tableInlineMacro(pkg)
 	messageForm := tableMessageForm(u, anyVariable)
+	// the fixed form's 128-bit stores name serialize.h's types, so they ride
+	// only in a unit that carries 128-bit storage and includes it
+	fixed128 := ""
+	if has128 {
+		fixed128 = tableFixedRuntime128
+	}
 	// the two pointer-era descriptor members exist only in a unit that HAS
 	// pointers: a unit of value-only tables emits the descriptor surface it
 	// always emitted, to the byte (docs/SPEC-TABLES.md §2, the zero-cost gate)
@@ -650,11 +659,37 @@ namespace ` + pkg + ` {
 enum TableMessageReason
 {
     newer_form,           // a FORM BYTE this reader does not carry (§3)
+    // A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
+    // registry is ordered, so a reader meeting a byte it does not carry can
+    // say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
+    // form, which is older, and calling that newer_form would send a caller
+    // looking for a build that does not exist. The bytes are the same refusal
+    // either way — nothing decoded, no counter moved — and only the name of it
+    // differs.
+    previous_form,
     no_vocabulary,        // no table for this connection: the message arrived before the announcement, or after a refused one
     second_announcement,  // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
     vocabulary_too_large, // an announcement above the receiver's declared bound, refused before an entry is touched
     message_form_as_file, // a form 2 wire where a FILE was expected: its table is somewhere else
-    batch_too_large       // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
+    batch_too_large,      // a batch of more than 256 bodies on the write side, or of more than the caller has room for on the read side: nothing is written or decoded, and the count says what the wire carries
+    // THE FIXED FORM'S THREE (docs/SPEC-TABLES.md §3.4). Each is a refusal by
+    // name with nothing decoded and no counter moved, on the form byte's own
+    // precedent. THE LAYOUT is what form 1 called the vocabulary block.
+    no_layout,        // a fixed-form record whose hash names no LAYOUT this reader holds
+    layout_malformed, // bytes handed to the fixed form as a layout that are not one: fewer than a header's worth of them
+    plan_too_large,   // a layout whose compiled plan does not fit the plan storage the caller declared: this codec never allocates
+    // THE LAYOUT VALIDATION'S OWN NAMES (docs/SPEC-TABLES.md §3.4). A layout is
+    // the one structure a reader must parse before it knows anything at all,
+    // and it arrives from an UNTRUSTED PEER, so each rule it is held to
+    // refuses under its own name rather than under one word for all of them.
+    // Every one of them runs BEFORE a single record byte is touched.
+    layout_count_mismatch,  // the entry count does not fit the layout's length exactly: the count, and then that many seventeen-byte entries
+    layout_kind_unknown,    // a kind OUTSIDE §3's closed set: a fixed form's kind set is closed, so an unknown kind means a newer FORM BYTE, which is a different form and not a newer layout of this one
+    layout_kind_invalid,    // a kind this build KNOWS, used in a way its own definition does not allow: a root that is not a table, an optional wrapper without exactly one child, a keyed array without exactly two, an enum whose children are not variants
+    layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
+    layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
+    layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
+    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
 };
 
 // The table-wire read report — the permissive contract's ledger. Silence
@@ -1382,7 +1417,7 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
 inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
 inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
-
+` + tableFixedRuntime + fixed128 + `
 } // namespace ` + pkg + `
 
 #endif // ` + guard + `
@@ -1489,6 +1524,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitMessageCodec(st)
 				g.emitMessageEntries(st)
 			}
+			g.emitFixedForm(members)
 			g.emitVariableSurface(members)
 			// RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6): the second family, and
 			// the fixed class's refusal, which is emitted in every unit because
@@ -1608,7 +1644,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 			fmt.Fprintf(&h, "#include \"%s\"\n", n)
 		}
 		h.WriteString("\n")
-		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, anyWide, widen, ir.TableWireIdCapacity(u), u))
+		h.WriteString(tablePrimitives(u.Package, anyVariable, anyKeyed, anyExtent, anyWide, unitHas128(u, closure), widen, ir.TableWireIdCapacity(u), u))
 		if anyVariable {
 			h.WriteString("\n")
 			h.WriteString(tableArenaRuntime(u, anyExtent))

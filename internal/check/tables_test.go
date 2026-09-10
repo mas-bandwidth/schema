@@ -623,14 +623,14 @@ type Board
 // and neither does EDITING one.
 func TestTablesMoveNoProtocolId(t *testing.T) {
 	withTable := tablelessSrc + `
-table Config
+fixed table Config
 {
     scale  float32 = 1.0
     points [..8]Point
 }
 `
 	editedTable := tablelessSrc + `
-table Config
+fixed table Config
 {
     scale   float32 = 2.0
     points  [..8]Point
@@ -640,7 +640,7 @@ table Config
 	// the table-body constructs are table-wire only: an optional field and an
 	// enum-keyed array move no packet byte either
 	keyedTable := tablelessSrc + `
-table Config
+fixed table Config
 {
     scale   float32 = 2.0
     points  [..8]Point
@@ -679,7 +679,7 @@ table Config
 // packet projection, not the protocol id. Keys are the text's business.
 func TestJsonKeyMovesNoWire(t *testing.T) {
 	plain := tablelessSrc + `
-table Config
+fixed table Config
 {
     ship_type int32
     label     string(32)
@@ -690,7 +690,7 @@ type Keyed
 }
 `
 	keyed := tablelessSrc + `
-table Config
+fixed table Config
 {
     ship_type int32      | json = "type"
     label     string(32) | json = "name"
@@ -790,7 +790,7 @@ type Plain
     x int32
 }
 
-table Leaf
+fixed table Leaf
 {
     v int32
 }
@@ -816,7 +816,7 @@ table ArrayOfVariable
     kids [..4]Node
 }
 
-table StaysFixed
+fixed table StaysFixed
 {
     leaf  Leaf
     p     Plain
@@ -1072,23 +1072,23 @@ func TestSpecSection11EqualsTheChecker(t *testing.T) {
 // it.
 func TestTableArmsAndTablesLeaveTheIdAlone(t *testing.T) {
 	withTables := tablelessSrc + `
-table Open { path string(16) }
-table Save { path string(16) }
+fixed table Open { path string(16) }
+fixed table Save { path string(16) }
 union Body
 {
     open Open
 }
-table Msg { body Body }
+fixed table Msg { body Body }
 `
 	moreArms := tablelessSrc + `
-table Open { path string(16) }
-table Save { path string(16) }
+fixed table Open { path string(16) }
+fixed table Save { path string(16) }
 union Body
 {
     open Open
     save Save
 }
-table Msg { body Body }
+fixed table Msg { body Body }
 `
 	grownTable := strings.Replace(moreArms, "table Open { path string(16) }", "table Open {\n    path string(16)\n    line uint32\n}", 1)
 	scalarArm := strings.Replace(moreArms, "    save Save\n", "    save Save\n    seq  uint32\n", 1)
@@ -1122,19 +1122,19 @@ table Msg { body Body }
 // table arms leaves its holder fixed, and one VARIABLE arm makes it variable.
 func TestTableArmModeRunsThroughArms(t *testing.T) {
 	fixed := buildUnit(t, `package t
-table Open { path string(16) }
+fixed table Open { path string(16) }
 union Body
 {
     open Open
 }
-table Msg { body Body }
+fixed table Msg { body Body }
 `)
 	if v := ir.VariableTables(fixed); v["Msg"] {
 		t.Fatalf("a union of fixed table arms made its holder variable: %v", v)
 	}
 	variable := buildUnit(t, `package t
 table Chunk { next *Chunk }
-table Open { path string(16) }
+fixed table Open { path string(16) }
 union Body
 {
     open  Open
@@ -1204,7 +1204,7 @@ func TestEveryScalarRidesInATable(t *testing.T) {
 // their element rides under kind 17.
 func TestPointerArraysAreLegal(t *testing.T) {
 	u := buildUnit(t, `package t
-table Node { x int32 }
+fixed table Node { x int32 }
 table Tab
 {
     kids  [..4]*Node
@@ -1239,13 +1239,13 @@ table Tab
 func TestUnionArraysAreLegal(t *testing.T) {
 	u := buildUnit(t, `package t
 type P { x int32 }
-table Node { y int32 }
+fixed table Node { y int32 }
 union U
 {
     p P
     n Node
 }
-table Tab
+fixed table Tab
 {
     log  [..4]U
     undo [2]U

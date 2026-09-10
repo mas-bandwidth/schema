@@ -217,6 +217,11 @@ define tables_generate
 	# THE LIST UNIT WITH NO MAP IN IT (docs/SPEC-TABLES.md §2.9, schema#380):
 	# where the tool's cook half and the reference's are held to one artifact
 	$(1) generate --lang cpp --out $(2)/l1 test/tables/L1.schema
+	# THE FIXED FORM'S VERSIONING PAIR (docs/SPEC-TABLES.md §3.4): a widened
+	# field, a rename under `was`, a field each side does not have, and a whole
+	# nested TYPE the older side has no name for
+	$(1) generate --lang cpp --out $(2)/fx1 test/tables/FX1.schema
+	$(1) generate --lang cpp --out $(2)/fx2 test/tables/FX2.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -239,7 +244,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -289,7 +294,24 @@ TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRefus
 # costs the unit one enum and one out-parameter and no machinery at all.
 TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason
 
-TABLES_ZERO_COST_HEADERS := build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
+# THE SCANNED UNITS, AND WHY `examples` IS NOT ONE OF THEM ANY MORE (#823).
+# The property this gate holds is stated of a UNIT — "in a unit whose tables are
+# all fixed-size the generated output carries no builder, no arena, no reference
+# type, no lifecycle surface" (docs/SPEC-TABLES.md §2.2) — and under the KEYWORD
+# `tables/examples` is no longer such a unit: `Guarded.schema`'s `Patrol` is a
+# plain `table`, because a guarded branch is exactly the construct that keeps it
+# one, so the whole unit is a variable unit and carries the machinery by right.
+# Scanning it would be this gate asserting something the declaration has made
+# false, which is worse than not scanning it.
+#
+# THE FOLLOW-ON THAT WOULD GIVE THE GATE ITS BIGGEST SUBJECT BACK is to move
+# `Guarded.schema` into a UNIT OF ITS OWN — the guarded corpus is the VARIABLE
+# class's fixture and does not belong in the pointer-free demo unit — at which
+# point `examples` returns to this list unchanged. That is a corpus move with a
+# blast radius (a package rename through `test/tables/main.cpp`, the goldens,
+# and the tabletext and tablepack suites that load `tables/examples` by name),
+# so it is named here rather than done under a wire branch.
+TABLES_ZERO_COST_HEADERS := build/tables-generated/v1/*Table.h \
 	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
 	build/tables-generated/p3/*Table.h \
 	build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
@@ -312,7 +334,7 @@ tables-zero-cost: build/tables-generated/.stamp
 .PHONY: tables-zero-cost-negative-control
 tables-zero-cost-negative-control: build/tables-generated/.stamp
 	@rm -rf build/zero-cost-control && mkdir -p build/zero-cost-control
-	@cp build/tables-generated/examples/GuardedTable.h build/zero-cost-control/GuardedTable.h
+	@cp build/tables-generated/scalars/ScalarsTable.h build/zero-cost-control/GuardedTable.h
 	@printf 'static const TableNodeMap * kPlanted = NULL; /* PLANTED */\n' >> build/zero-cost-control/GuardedTable.h
 	@if ! grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h \
 			| grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
@@ -336,29 +358,38 @@ tables-json-walk: build/tables-generated/.stamp
 	done
 	@echo "tables generic-walk gate: one walker, byte-identical in $$(ls build/json-walk | wc -l | tr -d ' ') generated .cpp files"
 
-# THE GRAPH-WALK GATE (docs/SPEC-TABLES.md §16.7): the variable class's half of
-# the text form is emitted only in a unit that declares a pointer, and it is ONE
-# half too — the same bytes in every pointered .cpp of the corpus, on the walk's
-# own terms — and none of it reaches a pointer-free unit, which is the zero-cost
-# property (§2.2) holding for the text form.
+# THE GRAPH-WALK GATE (docs/SPEC-TABLES.md §16.7): the VARIABLE class's half of
+# the text form is emitted only in a unit that carries a VARIABLE table, and it
+# is ONE half too — the same bytes in every such .cpp of the corpus, on the
+# walk's own terms — and none of it reaches an ALL-FIXED unit, which is the
+# zero-cost property (§2.2) holding for the text form.
+#
+# "VARIABLE", not "pointered", and the two stopped being the same word at #823.
+# The variable class stores through the arena and the region whether or not it
+# has a pointer in it, so a variable table's own `FromJson` names the graph
+# half's entry points — which is why `tables/examples` moved from the second
+# list to the first here: `Guarded.schema`'s `Patrol` is a plain `table`, and a
+# guarded branch is exactly the construct that keeps it one. The gate is
+# UNCHANGED in strength: every unit is still on one list or the other, and the
+# byte comparison across the first list now spans one unit more.
 .PHONY: tables-json-graph-walk
 tables-json-graph-walk: build/tables-generated/.stamp
 	@rm -rf build/json-graph-walk && mkdir -p build/json-graph-walk
-	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp build/tables-generated/blobs/*Table.cpp; do \
+	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp build/tables-generated/blobs/*Table.cpp build/tables-generated/examples/*Table.cpp; do \
 		out=build/json-graph-walk/$$(echo $$f | tr / _); \
 		awk '/---- json graph walk: begin ----/,/---- json graph walk: end ----/' $$f > $$out; \
 		if [ ! -s $$out ]; then echo "GRAPH-WALK GATE FAILED: no graph half in $$f"; exit 1; fi; \
 	done
-	@for f in build/tables-generated/examples/*Table.cpp build/tables-generated/v1/*Table.cpp build/tables-generated/p1/*Table.cpp; do \
+	@for f in build/tables-generated/v1/*Table.cpp build/tables-generated/p1/*Table.cpp; do \
 		if grep -q -- '---- json graph walk: begin ----' $$f; then \
-			echo "GRAPH-WALK GATE FAILED: the graph half leaked into the pointer-free $$f"; exit 1; fi; \
+			echo "GRAPH-WALK GATE FAILED: the graph half leaked into the all-fixed $$f"; exit 1; fi; \
 	done
 	@first=""; for f in build/json-graph-walk/*; do \
 		if [ -z "$$first" ]; then first=$$f; else \
 			cmp -s $$first $$f || { echo "GRAPH-WALK GATE FAILED: the graph half in $$f is not the one in $$first"; exit 1; }; \
 		fi; \
 	done
-	@echo "tables graph-walk gate: one graph half, byte-identical in $$(ls build/json-graph-walk | wc -l | tr -d ' ') pointered .cpp files"
+	@echo "tables graph-walk gate: one graph half, byte-identical in $$(ls build/json-graph-walk | wc -l | tr -d ' ') variable-class .cpp files"
 
 # The NEGATIVE CONTROL for the walk (docs/SPEC-TABLES.md §16.5). A green round-trip
 # suite proves nothing until the suite is shown capable of going red: the
@@ -3574,7 +3605,7 @@ tables-retain-fixed-class-negative-control: build/tables-generated/.stamp
 	@grep -q "FIXED-class root" build/retain-fixed-class.log || { echo "RETAIN GATE FAILED: the fixed-class refusal was not by name"; cat build/retain-fixed-class.log; exit 1; }
 	@echo "the fixed-class root refuses retention BY NAME (docs/SPEC-TABLES.md §6.6)"
 # AND THE MESSAGE FORM'S TWO ON THE SAME ROOT (§3.3, schema#680). A fixed-class
-# root that declared only the file form's three would answer LoadRetainMessages
+# root that declared only the variable form's three would answer LoadRetainMessages
 # with a missing symbol, which is a compile error with no reason in it, so the
 # row asks for the name and greps for the same sentence.
 	@printf '#include "RT1Table.h"\nint main()\n{\n    const tblrt1::Inner * roots[1] = { NULL };\n    int64_t count = 1;\n    uint8_t storage[ 64 ];\n    tblrt1::TableMessageEntry entries[ 1 ];\n    tblrt1::TableVocabulary vocabulary( entries, 1 );\n    tblrt1::TableRetain retain;\n    retain.bytes = storage;\n    tblrt1::TableReport report;\n    (void) tblrt1::InnerLoadRetainMessages( roots, &count, storage, (int64_t) 64, vocabulary, storage, (int64_t) 0, &retain, &report );\n    return 0;\n}\n' > build/retain-fixed-class-message.cpp
@@ -4302,6 +4333,42 @@ bench-paired-gate:
 	go run ./bench/paired -mode gate
 
 .PHONY: bench-paired-corpus bench-paired-check bench-paired-gate
+
+# THE FIXED FORM'S MATCHED BYTE GATE (docs/SPEC-TABLES.md §3.4). The two legs
+# that carry form 3 each rebuild bench/paired/corpus/bench_fixed.bin from the
+# records they loaded out of it and compare the whole file byte for byte, and
+# each compares its OWN vocabulary block against the corpus's before anything
+# else — the block settles the positions, the ids, the kinds, the record size
+# and the hash, so a leg that matches it is speaking the form and not a near
+# miss. `--gate` is the runner's no-clock mode: this is a correctness gate and
+# starts no timer, so it belongs in `make test` where the measurement above
+# does not.
+build/schema_test_bench_paired_table_cpp: generated/bench/paired/cpp/.stamp bench/tables/cpp/table_main.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -O2 -DNDEBUG -DBENCH_MATCHED -Igenerated/bench/paired/cpp bench/tables/cpp/table_main.cpp -o $@
+
+tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test_bench_paired_c
+	./build/schema_test_bench_paired_table_cpp --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+	./build/schema_test_bench_paired_c --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+
+.PHONY: tables-fixed-matched
+
+test: tables-fixed-matched
+
+# THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
+# path is a design decision with a price, and this is the price: the
+# plan-driven reader running its identity plan against straight-line
+# constant-offset loads written by hand, over the paired unit's own 64
+# records. It prints a ratio; the ruling's bound is ~1.5x. Not part of
+# `make test` — it is a clock, and clocks do not gate a build.
+build/schema_bench_fixedform: generated/bench/paired/cpp/.stamp test/bench/fixedform_measure.cpp
+	@mkdir -p build
+	$(CXX) $(CXXFLAGS) -O2 -Igenerated/bench/paired/cpp test/bench/fixedform_measure.cpp -o $@
+
+bench-fixedform-measure: build/schema_bench_fixedform
+	./build/schema_bench_fixedform 4000 9
+
+.PHONY: bench-fixedform-measure
 
 
 # Prove the COMMITTED generated/ tree matches what the current compiler
@@ -5590,6 +5657,42 @@ toolchain-negative-control:
 # positive half runs first, against the shipped W2, so the two answers are
 # read side by side.
 .PHONY: tables-was-negative-control
+# THE FIXED FORM'S VERSIONING CONFORMANCE (docs/SPEC-TABLES.md §3.4). One
+# binary, every case of §3.4's "held by test" row: the identity plan, an older
+# writer, a newer writer with an unknown field AND an unknown nested type, a
+# rename under `was`, a widened field, an enum variant and a union arm inserted
+# in the middle, a keyed array whose keys moved, an optional against a value,
+# and the NEGATIVE CONTROLS — the wrong plan, a form byte this reader does not
+# carry, a plan that does not fit, and ONE CORRUPTED-LAYOUT CASE PER NAMED RULE
+# a reader holds an untrusted peer's layout to.
+build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+
+# THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
+# fixed record carries no lengths and no terminators, so every offset the
+# reader uses is arithmetic over sizes a STRANGER wrote down. "The reader never
+# leaves the buffer" is a claim only a sanitizer can hold.
+build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g \
+	    -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+
+tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
+	./build/schema_test_fixedform
+	./build/schema_test_fixedform_asan
+
+test: tables-fixedform
+
+.PHONY: tables-fixedform
+
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/w2 -I$(SERIALIZE) test/tables/was_control_main.cpp \
@@ -5598,7 +5701,7 @@ tables-was-negative-control: build/tables-generated/.stamp test/tables/was_contr
 	@cat build/tables-was-nc/with-was.log
 	@grep -q '^unknown=0 kind_mismatch=0 malformed=0 flagship=Aurora escorts=2 home_name=untitled$$' build/tables-was-nc/with-was.log || \
 		{ echo "CONTROL FAILED: with was, the W1 fleet did not read in silence under W2"; exit 1; }
-	@sed -e 's/^table Ship | was = "Vessel"$$/table Ship/' test/tables/W2.schema > build/tables-was-nc/W2.schema
+	@sed -e 's/^fixed table Ship | was = "Vessel"$$/fixed table Ship/' test/tables/W2.schema > build/tables-was-nc/W2.schema
 	@cmp -s test/tables/W2.schema build/tables-was-nc/W2.schema && \
 		{ echo "NEGATIVE CONTROL: the was sabotage patched nothing"; exit 1; } || true
 	@rm -rf build/tables-was-nc/w2 && ./bin/schema generate --lang cpp --out build/tables-was-nc/w2 build/tables-was-nc/W2.schema

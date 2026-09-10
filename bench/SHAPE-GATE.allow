@@ -69,7 +69,7 @@
 # its test fixtures — no serialization, no timing.
 # ---------------------------------------------------------------------------
 
-names bench/tools/variantgen/main.go 94 the single deliberate copy of BenchMixed shape code; emits the corpus the nine legs read blind (superseded by #195)
+names bench/tools/variantgen/main.go 96 the single deliberate copy of BenchMixed shape code; emits the corpus the nine legs read blind (superseded by #195)
 names bench/tools/realpacket-gen/main.go 11 the single deliberate copy of the RealWorld snapshot shape code (§1.7)
 names bench/tools/realpacket-gen/pin_test.go 3 pins the generator above against its golden
 names bench/tools/inline-gate.sh 9 shape names inside the inline-budget symbol map and its disassembly test fixtures — row labels, no serialization, no clock
@@ -178,3 +178,5 @@ timing test/go-tables/soak_test.go 2 the Go port's allocation soak: the clock BO
 # Matched wire coordinator: existing runners, no field list or timing loop.
 names bench/paired/main.go 3 source filenames passed to the existing compiler; no corpus fields
 paths test/bench/paired_main.cpp 1 shared-data producer and packet/table equivalence oracle; no timing
+timing test/bench/fixedform_measure.cpp 8 THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4): one reader path was decided against a ratio, and this is the file that reports it — the plan-driven reader against straight-line constant-offset loads. It is not in `make test` and produces no CSV row; it exists so the ruling's bound stays checkable
+paths test/bench/fixedform_measure.cpp 1 the same file: its path names a measurement because it IS one, and it lives beside the corpus it measures rather than in a runner directory

@@ -4,7 +4,7 @@ import "testing"
 
 func TestUnionPointerArrayReaders(t *testing.T) {
 	runGenerated(t, `package probe
- table Node { value int32 }
+ fixed table Node { value int32 }
  union Choice { many [..2]*Node
  plain int32 }
  table Root { choices [..2]Choice }

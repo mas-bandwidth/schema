@@ -19,7 +19,7 @@ type Text
     name wstring(4)
 }
 
-table Root
+fixed table Root
 {
     t     Text
     title wstring(6)

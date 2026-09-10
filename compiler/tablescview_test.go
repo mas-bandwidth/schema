@@ -15,7 +15,7 @@ func TestCTableViewOutsideClosure(t *testing.T) {
 		t.Run(map[bool]string{false: "packet", true: "tables"}[tables], func(t *testing.T) {
 			source := viewSrc
 			if !tables {
-				source = strings.Replace(source, "table Root", "type Root", 1)
+				source = strings.Replace(source, "fixed table Root", "type Root", 1)
 			}
 			u := unitFromSource(t, source)
 			runCTableWireProbe(t, u, `#include "ProbeView.h"

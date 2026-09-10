@@ -60,7 +60,7 @@ type Packet
 // already, so this adds a table and no other declaration — the independence
 // proof below still compares like with like.
 const tableSrc = packetSrc + `
-table Config
+fixed table Config
 {
     scale  float32 = 1.0
     label  string(24)
@@ -75,7 +75,7 @@ table Config
 // from tableSrc on purpose — the zero-cost gate reads tableSrc and a keyed
 // array legitimately emits a C++ class template, which that gate greps for.
 const runtimeSrc = tableSrc + `
-table Keyed
+fixed table Keyed
 {
     slots [Kind]int32
     extra ?Point
@@ -264,7 +264,7 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 }
 
 const pointerSrc = packetSrc + `
-table Leaf
+fixed table Leaf
 {
     quality int32 = 2 | min = 0, max = 4
 }
@@ -275,7 +275,7 @@ table Node
     next  *Node
 }
 
-table Plain
+fixed table Plain
 {
     scale float32 = 1.0
 }
@@ -831,7 +831,7 @@ type Free
     slot   fixed(6, 10) | min = 0, max = 30
 }
 
-table Only
+fixed table Only
 {
     n int32
 }
@@ -975,7 +975,7 @@ func TestEmittedBuildVersionIsTheSpecsNumber(t *testing.T) {
 
 enum Grade { Bronze, Silver, Gold }
 
-table ShipConfig
+fixed table ShipConfig
 {
     damage float32 = 21.0
     speed  float32 = 500.0 | was = "velocity"
@@ -1022,7 +1022,7 @@ table ShipConfig
 
 // THE RESOLVING WALK'S CAP COUNTS NESTED FRAMED VALUES IN BOTH FORMS
 // (docs/SPEC-TABLES.md §6.6): a message body resolved against the connection's
-// vocabulary takes the same bound the file form's own walk takes, so the last
+// vocabulary takes the same bound the variable form's own walk takes, so the last
 // depth the cap admits rides and one past it is dropped, whichever form the
 // record arrived in. The C target pins the same pair in
 // TestCTableRetainFramedDepth. CONTROL: a message chain that passes its depth
@@ -1078,7 +1078,7 @@ static const uint8_t wire[]={%s};
 static const uint8_t batch[]={%s};
 static const uint8_t announcement[]={%s};
 int main(){
- // THE FILE FORM, whose walk resolves against the wire's own trailer
+ // THE VARIABLE FORM, whose walk resolves against the wire's own trailer
  {TableRetain retain;TableRetain::Id ids[256];TableReport report;uint8_t store[8192],out[8192];
   retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;
   const int64_t need=RootLoadMeasure(wire,sizeof(wire));CHECK(need>0);uint8_t * region=(uint8_t *)malloc((size_t)need);CHECK(region);

@@ -8,6 +8,7 @@
 #include <vector>
 #include "BenchWire.h"
 #include "BenchTable.h"
+#include "FixedTableTable.h"
 
 static bool read_file( const char * path, std::vector<uint8_t> & data )
 {
@@ -97,5 +98,56 @@ int main( int argc, char ** argv )
          !pin_or_verify( "bench/paired/corpus/bench_table.lengths", lengths, pin ) ) return 1;
     std::printf( "paired corpus %s: 64 identical logical records; packet %zu bytes, table %zu..%zu (mean %.6f) bytes\n",
                  pin ? "pinned" : "verified", stride, smallest, largest, double( table.size() ) / Count );
+
+    // ---- THE FIXED FORM'S HALF (docs/SPEC-TABLES.md §3.4), the same 64
+    // logical records again. There is no lengths file, and its absence is the
+    // point: every record is the same size, so there is nothing to write down.
+    std::vector<bench::FixedTable> fixed( Count );
+    for ( size_t k = 0; k < Count; ++k )
+    {
+        std::memcpy( source, packet.data() + k * stride, stride );
+        serialize::ReadStream rs( source, (int) stride );
+        if ( !bench::ReadBenchMixed( rs, fixed[k].value ) ) return 1;
+    }
+    std::vector<uint8_t> file( (size_t) bench::FixedTableFixedMeasure( (int64_t) Count ) );
+    if ( bench::FixedTableFixedSave( fixed.data(), (int64_t) Count, file.data(), (int64_t) file.size() ) != (int64_t) file.size() ) return 1;
+    {
+        // the wire round trips, and the LOGICAL DATA survives it: a form-3 load
+        // followed by a packet save must reproduce the canonical bytes
+        std::vector<bench::FixedTable> back( Count );
+        std::vector<bench::TableFixedEntry> plan( 4096 );
+        bench::TableReport report;
+        const int64_t got = bench::FixedTableFixedLoad( back.data(), (int64_t) Count, file.data(), (int64_t) file.size(),
+                                                        plan.data(), (int32_t) plan.size(), &report );
+        if ( got != (int64_t) Count || report.malformed || report.refused || report.unknown ||
+             report.kind_mismatch || report.widened || report.clamped )
+        {
+            std::fprintf( stderr, "fixed form: the corpus did not load clean\n" );
+            return 1;
+        }
+        for ( size_t k = 0; k < Count; ++k )
+        {
+            serialize::WriteStream ws( roundtrip, Capacity );
+            if ( !bench::WriteBenchMixed( ws, back[k].value ) ) return 1;
+            ws.Flush();
+            std::memcpy( source, packet.data() + k * stride, stride );
+            if ( ws.GetBytesProcessed() != (int64_t) stride || std::memcmp( source, roundtrip, stride ) )
+            {
+                std::fprintf( stderr, "fixed record %zu: the form changed the canonical packet's logical data\n", k );
+                return 1;
+            }
+        }
+    }
+    std::vector<uint8_t> layout( bench::FixedTableFixedLayout, bench::FixedTableFixedLayout + bench::FixedTableFixedLayoutBytes );
+    if ( !pin_or_verify( "bench/paired/corpus/bench_fixed.bin", file, pin ) ||
+         !pin_or_verify( "bench/paired/corpus/bench_fixed.layout", layout, pin ) ) return 1;
+    std::printf( "fixed corpus %s: 64 records of %lld bytes (8 hash + %lld values), layout %lld bytes once; "
+                 "values/packet %.3fx, record/packet %.3fx, whole file %zu bytes\n",
+                 pin ? "pinned" : "verified",
+                 (long long) bench::FixedTableFixedRecordBytes, (long long) bench::FixedTableFixedBodyBytes,
+                 (long long) bench::FixedTableFixedLayoutBytes,
+                 double( bench::FixedTableFixedBodyBytes ) / double( stride ),
+                 double( bench::FixedTableFixedRecordBytes ) / double( stride ),
+                 file.size() );
     return 0;
 }

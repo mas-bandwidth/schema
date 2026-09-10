@@ -210,9 +210,16 @@ build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance
 # builder, no arena, no reference slot, no lifecycle surface, no extra
 # descriptor column. The pointer-free corpus's generated headers must not
 # contain one symbol of it.
+#
+# `examples` IS NOT ON THIS LIST ANY MORE, for the reason its C++ twin is not
+# (see TABLES_ZERO_COST_HEADERS in the root Makefile): under the KEYWORD (#823)
+# `Guarded.schema`'s `Patrol` is a plain `table` — a guarded branch is exactly
+# the construct that keeps it one — so `tables/examples` is a VARIABLE unit and
+# carries the machinery by right. The follow-on that brings it back is the same
+# one: move `Guarded.schema` into a unit of its own.
 .PHONY: tables-c-zero-cost
 tables-c-zero-cost: build/tables-generated-c/.stamp
-	@for f in build/tables-generated-c/examples/*Table.h build/tables-generated-c/v1/*Table.h \
+	@for f in build/tables-generated-c/v1/*Table.h \
 	          build/tables-generated-c/v2/*Table.h build/tables-generated-c/p1/*Table.h \
 	          build/tables-generated-c/p3/*Table.h; do \
 		if grep -nE "TableArena|TableWorker|TableRef([^u]|$$)|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
@@ -869,6 +876,49 @@ test-c tables-c: tables-c-view
 # mutants and more wall clock. `make tables-c` runs the leg whole at the full
 # N, and the HOUR-long soak is a release act: `make tables-c-soak
 # SOAK_SECONDS=3600`.
+
+# THE FIXED FORM'S VERSIONING CONFORMANCE ON THE C LEG (docs/SPEC-TABLES.md
+# §3.4). The invariant §3.4 states before anything else is that a fixed record
+# is positional BY PLAN and the positions are the WRITER's block, never the
+# reader's own layout — so the cases here are the C++ reference's cases
+# (test/tables/fixedform_main.cpp), read through the same one plan-driven path.
+#
+# EACH GENERATION IS ITS OWN TRANSLATION UNIT. C has no namespace, so the
+# reference's tblfx1::FxRoot beside tblfx2::FxRoot has no C spelling: two
+# generations of one schema cannot share a TU (SPEC §6.1). Each side gets a .c,
+# test/c-tables/fixedform.h is the whole surface between them and names no
+# generated type at all, and the main links them — the shape the conformance
+# driver already uses for two generations of one schema.
+build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/tables/FX2.schema test/tables/V1.schema test/tables/V2.schema
+	@mkdir -p build/tables-generated-c-fixed
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fx1 test/tables/FX1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fx2 test/tables/FX2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/v1 test/tables/V1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/v2 test/tables/V2.schema
+	@touch $@
+
+C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
+	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c
+C_FIXEDFORM_INCLUDES := -Itest/c-tables -Ibuild/tables-generated-c-fixed/fx1 -Ibuild/tables-generated-c-fixed/fx2 \
+	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 -I$(SERIALIZE_C)
+
+build/schema_test_c_fixedform: build/tables-generated-c-fixed/.stamp $(C_FIXEDFORM_SOURCES) test/c-tables/fixedform.h
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) $(C_FIXEDFORM_INCLUDES) $(C_FIXEDFORM_SOURCES) -o $@ -lm
+
+# THE SANITIZED TWIN, and it is the point of the pair. A fixed record carries
+# no lengths and no terminators, so every offset the reader uses is arithmetic
+# over sizes a STRANGER wrote down: "the reader never leaves the buffer" is a
+# claim only a sanitizer can hold, and the C++ leg's own twin says the same.
+build/schema_test_c_fixedform_asan: build/tables-generated-c-fixed/.stamp $(C_FIXEDFORM_SOURCES) test/c-tables/fixedform.h
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) $(C_FIXEDFORM_INCLUDES) $(C_FIXEDFORM_SOURCES) -o $@ -lm
+
+.PHONY: tables-c-fixedform
+tables-c-fixedform: build/schema_test_c_fixedform build/schema_test_c_fixedform_asan
+	./build/schema_test_c_fixedform
+	./build/schema_test_c_fixedform_asan
+
 .PHONY: test-c
 test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) tables-c-wire-fuzz SEED=1 N=20000
@@ -884,6 +934,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-soak SOAK_SECONDS=2
 	$(MAKE) tables-c-soak-negative-control
 	$(MAKE) tables-c-ref-ordinal-negative-control
+	$(MAKE) tables-c-fixedform
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
 	# nobody types is not in the chain.

@@ -267,7 +267,19 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime string) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime string, fixedForm bool, wide bool) string {
+	// THE FIXED FORM'S RUNTIME RIDES IN THE PRIMITIVES BLOCK (docs/SPEC-TABLES.md
+	// §3.4) and not beside the codecs that use it, because this block carries the
+	// per-package guard: whichever <Base>Table.h a translation unit includes
+	// FIRST defines the runtime for the whole unit, and a runtime some of those
+	// headers carried and others did not would depend on include order.
+	fixed := ""
+	if fixedForm {
+		fixed = strings.ReplaceAll(tableFixedRuntime, "@INLINE@", tableInlineMacro(pkg))
+		if wide {
+			fixed += tableFixedRuntime128
+		}
+	}
 	keyed := ""
 	if anyKeyed {
 		keyed = tableKeyedAccessor
@@ -366,7 +378,7 @@ typedef struct TableReport
     int malformed;         /* framing damage; decode stopped, partial result kept */
     int32_t widened;        /* exact widening of a known kind */
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
-    int refused;           /* unsupported file form, not framing damage */
+    int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
 } TableReport;
 
@@ -501,7 +513,7 @@ typedef struct TableTypeInfo
     const char * const * tags;
 } TableTypeInfo;
 
-` + wireRuntime + keyed + `
+` + wireRuntime + keyed + fixed + `
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
 static SCHEMA_UNUSED uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
 static SCHEMA_UNUSED double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
@@ -616,6 +628,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				g.emitMessageRead(st)
 				g.emitMessageExtent(st)
 			}
+			g.emitFixedForm(members)
 			if g.anySequence {
 				for _, st := range members {
 					for _, field := range st.Fields {

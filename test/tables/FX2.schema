@@ -1,0 +1,29 @@
+// FX2.schema — the NEW side of the fixed form's versioning conformance pair
+// (docs/SPEC-TABLES.md §3.4). See FX1.schema for the five edits and what each
+// one is for.
+package tblfx2
+
+fixed table FxNested
+{
+    a int32 = 1 | min = 0, max = 1000
+    b int32 = 2 | min = 0, max = 1000
+}
+
+// A NESTED TYPE FX1 HAS NO NAME FOR. An FX1 reader steps over the whole of it
+// by the size its block entry states, which is the one skip a positional form
+// has to get right.
+fixed table FxExtra
+{
+    x int32 = 0 | min = 0, max = 1000
+    y int32 = 0 | min = 0, max = 1000
+}
+
+fixed table FxRoot
+{
+    keep       uint32 = 7
+    narrow     uint32 = 3
+    renamed_to int32 = 5 | min = 0, max = 1000, was = "renamed"
+    added      int32 = 11 | min = 0, max = 1000
+    nested     FxNested
+    extra      FxExtra
+}

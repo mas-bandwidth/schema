@@ -227,6 +227,23 @@ func (u *Union) GeneralArm() string {
 type Struct struct {
 	Name    string
 	IsTable bool // declared with `table`: a table-wire root
+	// FixedDeclared is the DECLARED class of a table (docs/SPEC-TABLES.md
+	// §2.2): set by the `fixed table` spelling, and false on a plain `table`,
+	// which is the VARIABLE wire whatever its fields happen to be. Nothing
+	// infers it — the compiler instead REFUSES a fixed table whose by-value
+	// closure holds a construct that makes a body variable size, so a feature
+	// that stops a table being fixed is a compile error at the declaration
+	// rather than a silent change of wire. [VariableTables] is this flag's
+	// complement, and every emitter switches on that.
+	//
+	// It is also the SELECTION rule for the fixed record form (§3.4): a
+	// declared fixed table encodes as form `3` ALWAYS and there is no path by
+	// which it reaches form `1`, so the form's size bounds are a COMPILE
+	// REFUSAL on it rather than a form quietly dropped.
+	//
+	// On a GENERATED map-entry table (MapEntryOf) nothing is declared, so the
+	// checker sets this from the entry's own body.
+	FixedDeclared bool
 	// MapEntryOf names the `Table.field` whose `map[K]V` GENERATED this table
 	// (docs/SPEC-TABLES.md §2.8), and is empty on every declared table. A
 	// generated entry is a real table of the closure — it has a record, a
