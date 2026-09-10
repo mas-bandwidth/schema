@@ -8,7 +8,7 @@
 #include "fixedform.h"
 
 /* The plan storage the caller owns. The identity path never touches it; a
-   plan compiled from another writer's block lands in it, and a block whose
+   plan compiled from another writer's layout lands in it, and a layout whose
    plan does not fit is a refusal by name (§3.4: this codec never allocates). */
 #define PlanCapacity 8192
 static TableFixedEntry g_plan[PlanCapacity];
@@ -51,8 +51,8 @@ void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
 }
 
 /* CASE 3: A NEWER WRITER — a field this reader cannot name, stepped over by
-   the size its block entry states; a whole nested TYPE it cannot name, stepped
-   over by its block size; a field the writer dropped, which keeps this
+   the size its layout entry states; a whole nested TYPE it cannot name, stepped
+   over by its layout size; a field the writer dropped, which keeps this
    reader's declared default; and a kind that MOVED, which is reported and
    never reinterpreted. */
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )

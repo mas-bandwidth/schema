@@ -1722,7 +1722,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        %sReset( value );\n", st.Name)
 	g.pf("        if ( verdict == TableOpenDamaged ) { to->malformed = true; }\n")
 	g.pf("        else\n        {\n")
-	g.pf("            // FORM 2 IS A STREAM FORM AND NEVER A FILE FORM: a message\n")
+	g.pf("            // FORM 2 IS A STREAM FORM AND NEVER A FILE'S OWN FORM: a message\n")
 	g.pf("            // stored on its own is not readable, because its table is\n")
 	g.pf("            // somewhere else, and the refusal says so BY NAME rather than\n")
 	g.pf("            // merely by form byte (docs/SPEC-TABLES.md §3.3).\n")

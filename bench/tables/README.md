@@ -20,7 +20,7 @@ records, framed by ids, kinds and lengths.
 
 ## Scope and performance standard
 
-The current profile is the fixed table's file form in **C, C++, C# and Go**.
+The current profile is the fixed table on the variable form (form 1) in **C, C++, C# and Go**.
 Glenn's September 8 direction is the **fastest correct implementation for each
 language**. The shared workload fixes the work being measured; each language may
 use its best correct representation, compiler and runtime techniques. Optimize

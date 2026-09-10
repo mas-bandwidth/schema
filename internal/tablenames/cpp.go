@@ -20,6 +20,7 @@ func init() {
 		Name{Name: "TableVocabulary", What: "one direction of one connection's announced id table"},
 		Name{Name: "TableMessageReason", What: "why a read was refused, by name — the message path's vocabulary, not the cooked form's (§7.4)"},
 		Name{Name: "newer_form", What: "a form byte this reader does not carry (§3)"},
+		Name{Name: "previous_form", What: "a form byte this form is AHEAD of — the variable form handed to a fixed reader (§3, §3.4)"},
 		Name{Name: "no_vocabulary", What: "no table for this connection"},
 		Name{Name: "second_announcement", What: "a second announcement on a connection: it sets nothing and the connection closes"},
 		Name{Name: "vocabulary_too_large", What: "an announcement above the receiver's declared bound"},

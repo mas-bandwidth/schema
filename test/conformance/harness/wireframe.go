@@ -678,9 +678,13 @@ func enumerated(seed *wireSeed, emit func(pass string, data []byte)) {
 		sp := f.spots[si]
 		switch sp.kind {
 		case spotForm:
-			// THE FORM BYTE set to 0, to 2 and to 0xFF, which must be a named
-			// refusal and never damage (§3)
-			for _, v := range []uint64{0, 2, 0xFF} {
+			// THE FORM BYTE set to 0, to the first byte NO FORM DEFINES, and to
+			// 0xFF, each of which must be a named refusal and never damage (§3).
+			// It is ir.WireFormNone and neither 2 nor 3, because both of those
+			// are KNOWN forms with rules of their own (§3.3, §3.4) and planting
+			// one would pin that form's behavior rather than the unknown-form
+			// refusal this strategy exists for.
+			for _, v := range []uint64{0, uint64(ir.WireFormNone), 0xFF} {
 				emit("form", patched(seed, si, v))
 			}
 		case spotKind:
@@ -1270,7 +1274,7 @@ func retext(seed *wireSeed, si int, payload []byte) []byte {
 // largest the width can spell, every node index to null, the root, the last
 // record and past it, and every bit of the batch flipped once.
 //
-// THE FILE FORM'S WIDEN PASS HAS NO COUNTERPART HERE, and that is a fact about
+// THE VARIABLE FORM'S WIDEN PASS HAS NO COUNTERPART HERE, and that is a fact about
 // the form rather than a gap in the pass: a form-2 body carries no kind byte at
 // all, so the kind a reader compares against is the ANNOUNCEMENT's, which both
 // this engine and the leg read from their OWN unit. A widening mutant would
@@ -1343,7 +1347,7 @@ func bitPatched(seed *wireSeed, sp tablewire.BitSpot, value uint64) []byte {
 
 // messageRandomStep is one strategy of the random pass over a message seed,
 // where a byte frame has nothing to say: a spot set to a value the strategy
-// picks, and otherwise the byte-level strategies the file form shares.
+// picks, and otherwise the byte-level strategies the variable form shares.
 func messageRandomStep(r *splitmix64, s *wireSeed, data []byte) []byte {
 	if len(s.spots) == 0 || len(data) != len(s.wire) {
 		data[r.below(len(data))] = uint8(r.next())

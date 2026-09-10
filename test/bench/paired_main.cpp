@@ -138,14 +138,14 @@ int main( int argc, char ** argv )
             }
         }
     }
-    std::vector<uint8_t> block( bench::FixedTableFixedVocab, bench::FixedTableFixedVocab + bench::FixedTableFixedVocabBytes );
+    std::vector<uint8_t> layout( bench::FixedTableFixedLayout, bench::FixedTableFixedLayout + bench::FixedTableFixedLayoutBytes );
     if ( !pin_or_verify( "bench/paired/corpus/bench_fixed.bin", file, pin ) ||
-         !pin_or_verify( "bench/paired/corpus/bench_fixed.vocab", block, pin ) ) return 1;
-    std::printf( "fixed corpus %s: 64 records of %lld bytes (8 hash + %lld values), block %lld bytes once; "
+         !pin_or_verify( "bench/paired/corpus/bench_fixed.layout", layout, pin ) ) return 1;
+    std::printf( "fixed corpus %s: 64 records of %lld bytes (8 hash + %lld values), layout %lld bytes once; "
                  "values/packet %.3fx, record/packet %.3fx, whole file %zu bytes\n",
                  pin ? "pinned" : "verified",
                  (long long) bench::FixedTableFixedRecordBytes, (long long) bench::FixedTableFixedBodyBytes,
-                 (long long) bench::FixedTableFixedVocabBytes,
+                 (long long) bench::FixedTableFixedLayoutBytes,
                  double( bench::FixedTableFixedBodyBytes ) / double( stride ),
                  double( bench::FixedTableFixedRecordBytes ) / double( stride ),
                  file.size() );
