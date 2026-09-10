@@ -727,6 +727,65 @@ void pairedCorpus(String dir) {
     'bench: save',
   );
   sameBytes(out, file, 'bench');
+
+  // A PLAN COMPILED FROM MY OWN LAYOUT MUST LAND WHAT THE IDENTITY PLAN LANDS.
+  // Identity uses the TEXT op for bytes(N) and never reads the dest row;
+  // compileEntry kind 14 treats counted as an array. BenchMixed.payload is
+  // the field that would have been silent.
+  {
+    final plan = bench.fixedTableFixedNewPlan();
+    check(
+      plan.theirs.parse(
+        ByteData.sublistView(bench.fixedTableFixedLayout),
+        0,
+        bench.fixedTableFixedLayout.length,
+      ),
+      'bench: own layout parses',
+    );
+    final rc = benchHome.TableFixedReport();
+    final made = benchHome.TableFixedCompiler.compile(
+      plan,
+      bench.fixedTableFixedLayout,
+      ByteData.sublistView(bench.fixedTableFixedLayout),
+      bench.fixedTableFixedDst,
+      rc,
+    );
+    check(made > 0, 'bench: compiled-from-own-layout wrote $made entries');
+    plan.image.setRange(
+      0,
+      bench.fixedTableFixedBodyBytes,
+      bench.fixedTableFixedPrefill,
+    );
+    benchHome.tableFixedRun(
+      plan.entries,
+      made,
+      file,
+      ByteData.sublistView(file),
+      bench.fixedTableFixedHeaderBytes + 8,
+      plan.image,
+      plan.imageView,
+      plan.remap,
+      plan.conv,
+      rc,
+    );
+    final compiled = benchHome.FixedTable();
+    benchHome.fixedTableFixedDecode(
+      compiled,
+      plan.image,
+      plan.imageView,
+      0,
+      rc,
+    );
+    var payloadSame =
+        compiled.value.payloadLength == values[0].value.payloadLength;
+    for (var i = 0; payloadSame && i < 16; i++) {
+      payloadSame = compiled.value.payload[i] == values[0].value.payload[i];
+    }
+    check(
+      payloadSame,
+      'bench: compiled-from-own-layout payload matches identity',
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

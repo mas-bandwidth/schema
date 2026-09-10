@@ -51,6 +51,61 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	}
 }
 
+// A `bytes(N)` DESTINATION ROW IS AN ARRAY'S: dest the buffer, aux the live
+// count. The TEXT row is the other way round (dest the length, aux the buffer),
+// and a `bytes(N)` written under that convention hands compileEntry a count
+// destination that is the buffer's first four bytes. Identity lands the field
+// with the TEXT op and never reads those columns, so only the compiled path
+// saw it.
+func TestBytesNDstRowIsAnArray(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+table Probe
+{
+    label string(8)
+    blob  bytes(6)
+    wide  wstring(3)
+    marks [..4]int32
+}
+`)
+	st := findTable(t, u, "Probe")
+	w := fixedWalkRoot(st)
+	row := map[string]fixedDst{}
+	for i, e := range w.entries {
+		row[e.note] = w.dst[i]
+	}
+	label, ok := row["label"]
+	if !ok {
+		t.Fatal("no destination row for label")
+	}
+	// TEXT convention: dest the length at the field's start, aux the buffer
+	if label.dst != 0 || label.aux != 4 || label.counted != 0 || label.arg != fixedTextUtf8 {
+		t.Fatalf("label dst row = %+v, want dest=length 0, aux=buffer 4, counted=0, arg=utf8", label)
+	}
+	blob, ok := row["blob"]
+	if !ok {
+		t.Fatal("no destination row for blob")
+	}
+	// ARRAY convention: dest the buffer (after the length), aux the length
+	if blob.dst != 16 || blob.aux != 12 || blob.counted != 1 || blob.stride != 1 || blob.arg != fixedTextBytes {
+		t.Fatalf("blob dst row = %+v, want dest=buffer 16, aux=length 12, counted=1, stride=1, arg=bytes", blob)
+	}
+	wide, ok := row["wide"]
+	if !ok {
+		t.Fatal("no destination row for wide")
+	}
+	if wide.dst != 22 || wide.aux != 26 || wide.counted != 0 || wide.arg != fixedTextWide {
+		t.Fatalf("wide dst row = %+v, want dest=length 22, aux=buffer 26, counted=0, arg=wide", wide)
+	}
+	marks, ok := row["marks"]
+	if !ok {
+		t.Fatal("no destination row for marks")
+	}
+	if marks.dst != 36 || marks.aux != 32 || marks.counted != 1 || marks.stride != 4 {
+		t.Fatalf("marks dst row = %+v, want dest=buffer 36, aux=count 32, counted=1, stride=4", marks)
+	}
+}
+
 // THE PREFILL IS THE DECLARED DEFAULTS, and the one this corpus carries is
 // `has_extra bool = true` — the byte that would silently read false if the
 // prefill were a zero fill.
@@ -235,6 +290,21 @@ func findTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 	}
 	t.Fatalf("table %s not found in the unit", name)
 	return nil
+}
+
+func unitFrom(t *testing.T, src string) *ir.Unit {
+	t.Helper()
+	f, perrs := parser.Parse("Probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	return u
 }
 
 // loadUnit builds a unit from schema files on disk, so this test reads the SAME

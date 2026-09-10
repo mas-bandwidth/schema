@@ -241,6 +241,11 @@ type fixedLayoutEntry struct {
 // the C++ reference's rows carry `offsetof( T, member )` these carry the
 // field's own offset inside the body, and the identity plan's source and
 // destination are the same number.
+//
+// A `bytes(N)` DESTINATION ROW IS AN ARRAY'S — Dst the buffer, Aux the live
+// count — because the TEXT row is the other way round (Dst the length, Aux
+// the buffer). Identity lands `bytes(N)` with the TEXT op and reads neither
+// column; a plan compiled from this row is what compileEntry walks.
 type fixedDst struct {
 	dst     int64 // this entry's byte offset inside its parent's image
 	stride  int64 // an array entry's element stride
@@ -314,10 +319,15 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 			fixedDst{dst: base, stride: fixedElementBytes(f), aux: aux, counted: counted})
 		fixedWalkElement(w, f, 0, "element", 0)
 	case f.Type.Kind == ir.TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, and the
-		// text flavour on the row is what lands it in one move
+		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, so its
+		// destination row is an ARRAY's: Dst is the buffer the elements land
+		// in and Aux is the live count beside it. The TEXT row is the other
+		// way round (Dst the length, Aux the buffer), and a `bytes(N)` written
+		// under that convention hands compileEntry a count destination that is
+		// the buffer's first four bytes. Identity lands this field with the
+		// TEXT op and never reads those columns.
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			fixedDst{dst: at, stride: 1, aux: at + fixedCountBytes, counted: 1, arg: fixedTextBytes})
+			fixedDst{dst: at + fixedCountBytes, stride: 1, aux: at, counted: 1, arg: fixedTextBytes})
 		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, fixedDst{})
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
