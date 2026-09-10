@@ -22,8 +22,8 @@
 
 #include "FX1Table.h"
 #include "FX2Table.h"
-#include "FU1Table.h"
-#include "FU2Table.h"
+#include "FM1Table.h"
+#include "FM2Table.h"
 #include "FN1Table.h"
 #include "FN2Table.h"
 #include "V1Table.h"
@@ -100,18 +100,18 @@ inline void FillFx2( tblfx2::FxRoot & v )
 }
 
 // ---------------------------------------------------------------------------
-// FU1/FU2: TEXT OF EACH FLAVOUR AND A COUNTED ARRAY, UNDER A UNION ARM
+// FM1/FM2: TEXT OF EACH FLAVOUR AND A COUNTED ARRAY, UNDER A UNION ARM
 //
 // One arm per text flavour in ordinal order, so the arm's ORDINAL and the
 // field's FLAVOUR disagree at every arm but the first — which is the whole
 // point of the pair, the plan entry carrying both in one lane.
 
-inline void FillFu1Wide( tblfu1::MarkRoot & r )
+inline void FillFm1Wide( tblfm1::MarkRoot & r )
 {
-    tblfu1::MarkRootReset( r );
+    tblfm1::MarkRootReset( r );
     r.id = 1001u;
     r.after = 9;
-    SELECT_ARM( r.mark, wide, tblfu1::MarkWide, tblfu1::MarkType::Wide );
+    SELECT_ARM( r.mark, wide, tblfm1::MarkWide, tblfm1::MarkType::Wide );
     // A CODE UNIT WITH A NON-ZERO HIGH BYTE, on purpose: a wide field read as
     // narrow puts its terminator at the length rather than at twice it, which
     // for ASCII-only content lands on a high byte that was already zero and
@@ -123,12 +123,12 @@ inline void FillFu1Wide( tblfu1::MarkRoot & r )
     r.mark.wide.n = 31;
 }
 
-inline void FillFu1Narrow( tblfu1::MarkRoot & r )
+inline void FillFm1Narrow( tblfm1::MarkRoot & r )
 {
-    tblfu1::MarkRootReset( r );
+    tblfm1::MarkRootReset( r );
     r.id = 1002u;
     r.after = 9;
-    SELECT_ARM( r.mark, narrow, tblfu1::MarkNarrow, tblfu1::MarkType::Narrow );
+    SELECT_ARM( r.mark, narrow, tblfm1::MarkNarrow, tblfm1::MarkType::Narrow );
     // FIVE USED BYTES OF A string(6): past the three a WIDE reading of the same
     // bound would allow, which is what makes the flavour visible in the LENGTH
     // and not only in the terminator.
@@ -137,24 +137,24 @@ inline void FillFu1Narrow( tblfu1::MarkRoot & r )
     r.mark.narrow.n = 55;
 }
 
-inline void FillFu1Raw( tblfu1::MarkRoot & r )
+inline void FillFm1Raw( tblfm1::MarkRoot & r )
 {
-    tblfu1::MarkRootReset( r );
+    tblfm1::MarkRootReset( r );
     r.id = 1003u;
     r.after = 9;
-    SELECT_ARM( r.mark, raw, tblfu1::MarkRaw, tblfu1::MarkType::Raw );
+    SELECT_ARM( r.mark, raw, tblfm1::MarkRaw, tblfm1::MarkType::Raw );
     r.mark.raw.d[0] = 0xDEu; r.mark.raw.d[1] = 0xADu;
     r.mark.raw.d[2] = 0xBEu; r.mark.raw.d[3] = 0xEFu;
     r.mark.raw.d_length = 4;  // USED == MAX: no slack behind it at all
     r.mark.raw.n = 77;
 }
 
-inline void FillFu1List( tblfu1::MarkRoot & r )
+inline void FillFm1List( tblfm1::MarkRoot & r )
 {
-    tblfu1::MarkRootReset( r );
+    tblfm1::MarkRootReset( r );
     r.id = 1004u;
     r.after = 9;
-    SELECT_ARM( r.mark, list, tblfu1::MarkList, tblfu1::MarkType::List );
+    SELECT_ARM( r.mark, list, tblfm1::MarkList, tblfm1::MarkType::List );
     r.mark.list.items[0] = 11;
     r.mark.list.items[1] = 22;
     r.mark.list.items_count = 2;   // AT MAX
@@ -163,57 +163,57 @@ inline void FillFu1List( tblfu1::MarkRoot & r )
 
 // TAG 0 IS `None` AND IT IS NOT AN ARM: the whole arm extent is declared slack
 // and a writer zero-fills it (§3.4's union row).
-inline void FillFu1None( tblfu1::MarkRoot & r )
+inline void FillFm1None( tblfm1::MarkRoot & r )
 {
-    tblfu1::MarkRootReset( r );
+    tblfm1::MarkRootReset( r );
     r.id = 1005u;
     r.after = 4;
 }
 
-// AN ARM FU1 HAS NO NAME FOR.
-inline void FillFu2Skip( tblfu2::MarkRoot & r )
+// AN ARM FM1 HAS NO NAME FOR.
+inline void FillFm2Skip( tblfm2::MarkRoot & r )
 {
-    tblfu2::MarkRootReset( r );
+    tblfm2::MarkRootReset( r );
     r.id = 2001u;
     r.after = 6;
     r.tail = 8;
-    SELECT_ARM( r.mark, skip, tblfu2::MarkSkip, tblfu2::MarkType::Skip );
+    SELECT_ARM( r.mark, skip, tblfm2::MarkSkip, tblfm2::MarkType::Skip );
     r.mark.skip.e = 42;
 }
 
-inline void FillFu2List( tblfu2::MarkRoot & r )
+inline void FillFm2List( tblfm2::MarkRoot & r )
 {
-    tblfu2::MarkRootReset( r );
+    tblfm2::MarkRootReset( r );
     r.id = 2002u;
     r.after = 5;
-    SELECT_ARM( r.mark, list, tblfu2::MarkList, tblfu2::MarkType::List );
+    SELECT_ARM( r.mark, list, tblfm2::MarkList, tblfm2::MarkType::List );
     r.mark.list.items[0] = 71;
     r.mark.list.items[1] = 72;
     r.mark.list.items_count = 2;
     r.mark.list.n = 13;
 }
 
-inline void FillFu2Narrow( tblfu2::MarkRoot & r )
+inline void FillFm2Narrow( tblfm2::MarkRoot & r )
 {
-    tblfu2::MarkRootReset( r );
+    tblfm2::MarkRootReset( r );
     r.id = 2003u;
     r.after = 5;
     r.tail = 8;
-    SELECT_ARM( r.mark, narrow, tblfu2::MarkNarrow, tblfu2::MarkType::Narrow );
+    SELECT_ARM( r.mark, narrow, tblfm2::MarkNarrow, tblfm2::MarkType::Narrow );
     std::strcpy( r.mark.narrow.s, "world" );
     r.mark.narrow.s_length = 5;
     r.mark.narrow.n = 66;
 }
 
-// A `bytes(N)` UNDER A NEWER WRITER (docs/FIXED-FORM-COVERAGE.md GAP-5): FU1
+// A `bytes(N)` UNDER A NEWER WRITER (docs/FIXED-FORM-COVERAGE.md GAP-5): FM1
 // reads this through a compiled plan. The raw arm slid from ordinal 3 to 4.
-inline void FillFu2Raw( tblfu2::MarkRoot & r )
+inline void FillFm2Raw( tblfm2::MarkRoot & r )
 {
-    tblfu2::MarkRootReset( r );
+    tblfm2::MarkRootReset( r );
     r.id = 2004u;
     r.after = 5;
     r.tail = 8;
-    SELECT_ARM( r.mark, raw, tblfu2::MarkRaw, tblfu2::MarkType::Raw );
+    SELECT_ARM( r.mark, raw, tblfm2::MarkRaw, tblfm2::MarkType::Raw );
     r.mark.raw.d[0] = 0xCAu; r.mark.raw.d[1] = 0xFEu;
     r.mark.raw.d[2] = 0xBAu; r.mark.raw.d[3] = 0xBEu;
     r.mark.raw.d_length = 4;
@@ -284,7 +284,7 @@ inline void FillFn2( tblfn2::FnRoot & v )
 // ---------------------------------------------------------------------------
 // A TOP-LEVEL wstring(N) (docs/SPEC-TABLES.md §3.4's `wstring(N)` row).
 //
-// FLAVOUR 2 HAD NO ORACLE BYTES ANYWHERE. FU1's `wide` arm is the flavour under
+// FLAVOUR 2 HAD NO ORACLE BYTES ANYWHERE. FM1's `wide` arm is the flavour under
 // a union; this is the flavour AT THE ROOT, where the length is in CODE UNITS
 // and the payload is two bytes each — the one row of the text family whose
 // length and byte extent are different numbers, so a leg that treats the length
@@ -296,7 +296,7 @@ inline void FillWideStamp( wide::Stamp & v )
     v.label[0] = (char16_t) 0x0041;   // 'A', one byte's worth of a two-byte unit
     v.label[1] = (char16_t) 0x00E9;   // U+00E9, a high byte inside the BMP's low half
     v.label[2] = (char16_t) 0x4E2D;   // U+4E2D, both bytes non-zero
-    v.label[3] = (char16_t) 0xD83D;   // A LONE SURROGATE: a code unit, not a code point
+    v.label[3] = (char16_t) 0x20AC;   // U+20AC euro, both bytes non-zero. A lone surrogate is damage on this tip.
     v.label_length = 4;               // USED == MAX
     v.seq = 90210u;
 }
@@ -315,17 +315,17 @@ inline void FillScalars( scalardemo::SimState & v )
     v.ratio = 0xA5u;
     v.speed = 500u * 65536u;                     // PAST Scalars2's own max of 10
     v.span = 0x0000FFFFFFFFFFFFull;              // ufixed(48, 16) AT ITS FULL EXTENT
-    v.mass = ( serialize::uint128_t( 7ull ) << 64 ) | serialize::uint128_t( 9ull );
+    v.mass = serialize::uint128_t( 100u ) * serialize::uint128_t( 65536u ); // 100 whole units, inside [0, 2000000]
     v.frames = 0xFFFFFFFFu;                      // ufixed(32, 0) at its full extent
-    v.flux = ( serialize::int128_t( 1 ) << 100 ); // int128, a value only 128 bits hold
+    v.flux = ( serialize::int128_t( 1 ) << 99 ); // int128, a value only 128 bits hold, inside the declared max 2^100
     v.energy = serialize::int128_t( -5000000000ll );
     v.entity_id = ( serialize::uint128_t( 0xDEADBEEFull ) << 64 ) | serialize::uint128_t( 0xFEEDFACEull );
     v.scale = 2 * 65536;
     v.samples[0] = 65536; v.samples[1] = -65536; v.samples[2] = 32768;
     v.weights[0] = 256u; v.weights[1] = 512u; v.weights[2] = 1024u; v.weights[3] = 2048u;
     v.weights_count = 4;                         // A COUNTED ARRAY AT MAX
-    v.axes[scalardemo::Axis::X] = (int64_t) 1 << 40;
-    v.axes[scalardemo::Axis::Y] = -( (int64_t) 1 << 40 );
+    v.axes[scalardemo::Axis::X] = (int64_t) 50 << 32;   // 50 whole units, inside [-100, 100]
+    v.axes[scalardemo::Axis::Y] = -( (int64_t) 50 << 32 );
     v.axes[scalardemo::Axis::Z] = 0;
     v.seeds[0] = serialize::uint128_t( 11u ); v.seeds[1] = serialize::uint128_t( 22u );
     v.seeds_count = 2;
@@ -521,7 +521,7 @@ inline void FillFc2( tblfc2::Probe & v )
 inline void FillKm1( tblkm1::Probe & v )
 {
     tblkm1::ProbeReset( v );
-    v.keep = 4242;
+    v.keep = 424;                     // inside [-1000, 1000]; the tip clamps identity
     v.angle = 45 * 65536;             // 45 whole units, raw Q16.16
     v.tail = 99;
 }
@@ -529,7 +529,7 @@ inline void FillKm1( tblkm1::Probe & v )
 inline void FillKm2( tblkm2::Probe & v )
 {
     tblkm2::ProbeReset( v );
-    v.keep = 5150;
+    v.keep = 515;                     // inside [-1000, 1000]
     v.angle = 77;
     v.tail = 88;
     v.extra = (int8_t) 42;

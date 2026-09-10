@@ -49,7 +49,8 @@ hole this page was written to find.
   take and why it is or is not filled here.
 - **`—`** — the column does not apply to that row.
 
-**THE SCHEMA PAIRS.** `FX1/FX2` the scalar edits; `FU1/FU2` text and a counted
+**THE SCHEMA PAIRS.** `FX1/FX2` the scalar edits; `FU1/FU2` the tip's
+text-under-an-arm pair; `FM1/FM2` text of each flavour and a counted
 array under a UNION ARM; `FN1/FN2` the bool, the optional, the enum ordinal, an
 ARRAY OF UNIONS and a THREE-DEEP nesting; `NK1/NK2` the plain narrow integer
 kinds spelled as themselves; `FC1/FC2` a compressed float as IEEE, not as a
@@ -70,25 +71,25 @@ window; `WC1/WC2/WC3` a `was =` chain that keeps the first wire name.
 | `int8`/`uint8` … `int64`/`uint64` | `fx`, `s` | `fx` | `fx` | `oracle fx1/root` |
 | — the plain narrow kinds, spelled as themselves | `nk` | `nk` | `nk` | `oracle nk1/narrow` |
 | `bits(N)`, N ≤ 32 and above | `bits` | `bits` | `bits` | `oracle bits/widths` |
-| a RANGED integer | `fx`, `s` | `s` + **RED-1** | `s` | `oracle scalars/simstate` |
+| a RANGED integer | `fx`, `s` | `s` | `s` | `oracle scalars/simstate` |
 | `float32`, `float64` | `fl` | `fl` (widened) | `fl` | `oracle f1/floats` |
 | a COMPRESSED float | `cf` | `cf` | `cf` | `oracle fc1/probe` |
 | `int128`/`uint128` | `s` | `s` | `s` | `oracle scalars/simstate` |
-| `fixed(I,F)`, `ufixed(I,F)` | `s` + **RED-3** | `s` + **RED-3** | `s` | `oracle scalars/simstate` |
+| `fixed(I,F)`, `ufixed(I,F)` | `s` | `s` | `s` | `oracle scalars/simstate` |
 | `flags` | `w` | `w` (table renamed) | `w` | `oracle w1/vessel`, `w2/ship` |
 | an ENUM, ordinal from `1`, `0` is `None` | `fn`, `v` | `fn`, `v` | `fn`, `v` (unknown variant) | `oracle fn1/full`, `v1/cfg` |
 | — an ordinal PAST the last variant | **RED-6** | **RED-6** | **RED-6** | — |
 | a nested `table`/`type`, INLINE | `fx`, `fn` | `fx`, `fn` | `fx` (unknown type), `fn` | `oracle fn1/full` |
 | — nested THREE DEEP | `fn` | `fn` | `fn` | `oracle fn1/full` |
 | `[N]T` | `s`, `fn` | `s`, `fn` | `s`, `fn` | `oracle scalars/simstate` |
-| `[Min..Max]T`, count then MAX elements | `fu`, `fn`, `s` + **RED-3** | `fu`, `fn` | `fu`, `fn` | `oracle fu1/list`, `fn1/full` |
+| `[Min..Max]T`, count then MAX elements | `fu`, `fn`, `s` | `fu`, `fn` | `fu`, `fn` | `oracle fm1/list`, `fn1/full` |
 | — a count PAST the reader's `Max`, and a negative one | `fn` | `fn` | — | — |
 | `string(N)`, length in BYTES | `text`, `v`, `fn` | `v`, `fn` (`was`) | `v`, `fn` | `oracle p1/{empty,short,full}` |
-| `wstring(N)`, length in CODE UNITS, `2N` payload | `wstr`, `fu` | `fu` | `fu` | `oracle wide/stamp`, `fu1/wide` |
-| `bytes(N)`, length in BYTES | `w`, `fu` | `fu` + **RED-9** | `fu` + **RED-9** | `oracle fu1/raw`, `fu2/raw`, `w1/vessel` |
-| — TEXT OF ANY FLAVOUR UNDER A UNION ARM | `fu` | `fu` | `fu` | `oracle fu1/{wide,narrow,raw}` |
-| a UNION: tag then the WIDEST ARM | `fu`, `fn`, `v` | `fu`, `fn`, `v` | `fu`, `fn` (unknown arm) | `oracle fu1/*`, `fn1/full` |
-| — tag `0` is `None` | `fu` | `fu` | `fu` | `oracle fu1/none` |
+| `wstring(N)`, length in CODE UNITS, `2N` payload | `wstr`, `fu` | `fu` | `fu` | `oracle wide/stamp`, `fm1/wide` |
+| `bytes(N)`, length in BYTES | `w`, `fu` | `fu` + **RED-9** | `fu` + **RED-9** | `oracle fm1/raw`, `fm2/raw`, `w1/vessel` |
+| — TEXT OF ANY FLAVOUR UNDER A UNION ARM | `fu` | `fu` | `fu` | `oracle fm1/{wide,narrow,raw}` |
+| a UNION: tag then the WIDEST ARM | `fu`, `fn`, `v` | `fu`, `fn`, `v` | `fu`, `fn` (unknown arm) | `oracle fm1/*`, `fn1/full` |
+| — tag `0` is `None` | `fu` | `fu` | `fu` | `oracle fm1/none` |
 | — a tag PAST the last arm | **RED-7** | **RED-7** | **RED-7** | — |
 | — an ARRAY of unions, the guard re-tested per element | `fn` | `fn` | `fn` | `oracle fn1/full` |
 | — an arm holding an ARRAY, and a narrower arm's slack | `fu`, `fn` | `fu`, `fn` | `fu`, `fn` | `oracle fn1/full` |
@@ -115,9 +116,9 @@ window; `WC1/WC2/WC3` a `was =` chain that keeps the first wire name.
 | **`--fixed-record-limit N`** | — | — | — | **GAP-8** |
 | record := hash + body, DECLARED ORDER, each at its constant size | every case | every case | every case | `oracle` |
 | **the declared STORAGE IMAGE, LE, declared width, nothing padded** | `bits`, `s`, `wstr` | — | — | `oracle` |
-| **slack: ZERO ON WRITE** | — | — | — | `oracle fu1/none`, `fn1/absent` |
+| **slack: ZERO ON WRITE** | — | — | — | `oracle fm1/none`, `fn1/absent` |
 | **slack: UNSPECIFIED ON READ**, not `malformed`, no counter | `text` | — | — | — |
-| **content rules over the USED UNITS and nothing else** | `text` + **RED-2**, `wstr` | — | — | — |
+| **content rules over the USED UNITS and nothing else** | `text`, `wstr` | — | — | — |
 | a length PAST the field's own bound | `text`, `wstr`, `fn` | `fn` | — | — |
 | **a DEPRECATED field keeps its slot forever** | **GAP-9** | **GAP-9** | **GAP-9** | **GAP-9** |
 | what a fixed table CANNOT carry: pointer, map, `[]T`, a guarded branch | — | — | — | **GAP-10** |
@@ -128,14 +129,14 @@ window; `WC1/WC2/WC3` a `was =` chain that keeps the first wire name.
 | **op `text`** | `text`, `wstr`, `fu` | `fu` | `fu` | — |
 | **op `union`** | `fu`, `fn`, `v` | `fu`, `fn`, `v` | `fu`, `fn` | — |
 | **op `widen`** | — | `fx` (u16→u32), `fl` (f32→f64) | — | — |
-| **op `clamp`** | — | **RED-1** (the op does not exist) | — | — |
+| **op `clamp`** | — | `s` (tightened bounds, counted) | — | — |
 | **op `ordinal`** | **RED-6** | `v`, `fn` | `v`, `fn` | — |
-| a kind that MOVED is skipped and never misdecoded | `p`, `km` | `v`, `s` + **RED-8**, `km` | `s`, `km` | `oracle km1/probe` |
+| a kind that MOVED is skipped and never misdecoded | `p`, `km` | `v`, `s`, `km` | `s`, `km` | `oracle km1/probe` |
 | **the plan is PARTITIONED**: unguarded first, then the arms' | `plan` | `plan` | `plan` | — |
 | **the PREFILL answers "absent field"** | — | `fx`, `fn`, `v`, `w` | — | — |
 | **the ABSENCE of an entry answers "unknown field"** | — | — | `fx`, `fn`, `s`, `fu` | — |
 | an unknown NESTED TYPE stepped over by its whole size | — | — | `fx` | — |
-| **the identity plan is a static constant, with ADJACENT RUNS COALESCED** | `plan` + **RED-3** | — | — | — |
+| **the identity plan is a static constant, with ADJACENT RUNS COALESCED** | `plan` | — | — | — |
 | a compiled plan is CACHED BY HASH | **GAP-15** | **GAP-15** | **GAP-15** | — |
 | the plan's storage is the CALLER's; `plan_too_large` | `neg` | `neg` | `neg` | — |
 | **the write is a TEMPLATE `memcpy` then constant stores**; `MeasureBody` is `constexpr` | — | — | — | `bits`, `oracle` |
@@ -164,18 +165,18 @@ first build. A rule whose breach is a wrong value in a clean read is not.
 
 | gap | what it was | what fills it |
 |---|---|---|
-| TEXT UNDER A UNION ARM | the plan entry's `arg` lane carries an arm ORDINAL for a guarded entry and a text FLAVOUR for a text entry — and a text field under an arm needs both. No fixture in the set had text under an arm, so neither half was reachable. | `FU1/FU2`, `fu` — one arm per flavour in ordinal order, so ordinal and flavour disagree at every arm but the first. **FIXED ON THE BRANCH** by `tables: the guard's ordinal and the text op's flavour are two lanes`, and the two reds that named it were deleted in the same commit as these rows |
-| `wstring` HAS NO ORACLE BYTES ANYWHERE | flavour 2's length is in CODE UNITS and its payload is `2N` bytes — the one text row whose two numbers differ — and nothing pinned a byte of it | `wstr` + `oracle wide/stamp` (at the root) and `oracle fu1/wide` (under an arm), including a lone surrogate |
+| TEXT UNDER A UNION ARM | the plan entry's `arg` lane carries an arm ORDINAL for a guarded entry and a text FLAVOUR for a text entry — and a text field under an arm needs both. No fixture in the set had text under an arm, so neither half was reachable. | `FM1/FM2`, `fu` — one arm per flavour in ordinal order, so ordinal and flavour disagree at every arm but the first. **FIXED ON THE BRANCH** by `tables: the guard's ordinal and the text op's flavour are two lanes`, and the two reds that named it were deleted in the same commit as these rows |
+| `wstring` HAS NO ORACLE BYTES ANYWHERE | flavour 2's length is in CODE UNITS and its payload is `2N` bytes — the one text row whose two numbers differ — and nothing pinned a byte of it | `wstr` + `oracle wide/stamp` (at the root) and `oracle fm1/wide` (under an arm), including a lone surrogate |
 | `bytes(N)` UNDER A COMPILED PLAN | — | `fu` (the `raw` arm, read by both generations) |
 | A TAG PAST THE LAST ARM | — | `fu`, `fn` (per element of an array). **RED-7** |
 | AN ENUM ORDINAL PAST THE LAST VARIANT | — | `fn`. **RED-6** |
 | A PRESENT BYTE OF `7` | — | `fn`. **RED-5** |
 | A BOOL BYTE OF `2` | nothing in the set had a `bool` in a fixed root at all | `fn`. **RED-5** |
 | OVER-`Max` COUNTS AND LENGTHS | — | `fn` (a count of 99 and a negative one), `text`, `wstr` |
-| TEXT CONTENT VIOLATIONS | — | `text` (ill-formed UTF-8 and an interior zero, inside the USED bytes). **RED-2** |
+| TEXT CONTENT VIOLATIONS | — | `text` (ill-formed UTF-8 and an interior zero, inside the USED bytes). **FIXED ON THIS TIP** (`e53bfede`) |
 | AN ABSENT OPTIONAL WITH NON-ZERO RESIDUE | — | `fn`. **RED-4** |
 | AN ARRAY OF UNIONS | the arm guard has to be re-tested PER ELEMENT | `FN1/FN2`, `fn` |
-| AN ARM THAT IS A NESTED TYPE WITH AN ARRAY | — | `FU1` `MarkList`, `FN1` `CellB` |
+| AN ARM THAT IS A NESTED TYPE WITH AN ARRAY | — | `FM1` `MarkList`, `FN1` `CellB` |
 | THREE-DEEP NESTING | two deep was the deepest anything reached | `FN1/FN2`, `fn`, with the INNERMOST type resized in FN2 |
 | RECORD COUNTS `0` AND MANY | every fixture read a file of exactly one record, leaving the framing arithmetic untested in both directions | `frame` — zero, three, every truncation, and one byte left over |
 | `flags`, AND THE TEXT FAMILY'S DECLARED DEFAULTS | §3.4's `flags` row had no fixture, and neither did a `string`/`bytes`/`flags` default that is not zero | `W1/W2`, `w` + `oracle w1/vessel` |
@@ -185,10 +186,10 @@ first build. A rule whose breach is a wrong value in a clean read is not.
 | A `bits(N)` EDIT ACROSS GENERATIONS | `examples/Ranges` had one generation; N cannot move without moving the kind | `RW2`, `bits` — a `bits(24)` and a tail appended, so both compiled directions skip or default |
 | A COMPRESSED FLOAT | §3.4: "rides as the float, not as a quantized index". The one silent-class gap the first pass left | `FC1/FC2`, `cf` + `oracle fc1/probe` — 2.5 is IEEE `00 00 20 40`, not integer 250; 1.234 is not snapped |
 | A `flags` FIELD UNDER A NEWER WRITER | W2 renamed the table and the first pass only ran W1→W2 | `w` — a W2 `Ship` read as a W1 `Vessel`. Gaining a bit is still not a wire event (the mask is raw) |
-| `bytes(N)` UNDER A COMPILED PLAN | identity of the raw arm is green; both compiled directions walk kind 14 | `fu` + **RED-9** — FU1↔FU2 `raw`. The identity plan is a `text` op; a compiled plan sees layout kind 14 and the dst/aux lanes are the counted-array's, swapped for `bytes(N)` (reference-fix 10) |
+| `bytes(N)` UNDER A COMPILED PLAN | identity of the raw arm is green; both compiled directions walk kind 14 | `fu` + **RED-9** — FM1↔FM2 `raw`. The identity plan is a `text` op; a compiled plan sees layout kind 14 and the dst/aux lanes are the counted-array's, swapped for `bytes(N)` (reference-fix 10) |
 | THE PLAN'S PARTITION | `FnRootFixedPlanGuarded` was emitted and unasserted | `plan` — unguarded entries first, then the arms, on the identity plan and on a plan compiled in each direction |
-| ADJACENT RUNS COALESCED | only RED-3 was watching, and it is the copy implementation | `plan` — no two adjacent copy entries inside one half would still merge. **RED-3** still watches the 17..31-byte copy |
-| A KIND THAT MOVED, OFF RED-3'S WINDOW | RED-8's `angle` sits inside the 17..31-byte run that clobbers it, so a kind mismatch and a clobber could not be told apart | `KM1/KM2`, `km` — `fixed(16, 16)` respelled `int32` on a 12-byte body. The compile path skips and counts; the declared default stands. **RED-8** remains on Scalars until the run copy is fixed |
+| ADJACENT RUNS COALESCED | only RED-3 was watching, and it is the copy implementation | `plan` — no two adjacent copy entries inside one half would still merge. RED-3 DELETED: the run copy never touches a byte outside its run (#842) |
+| A KIND THAT MOVED, OFF RED-3'S WINDOW | RED-8's `angle` sat inside the 17..31-byte run that clobbered it, so a kind mismatch and a clobber could not be told apart | `KM1/KM2`, `km` — `fixed(16, 16)` respelled `int32` on a 12-byte body. The compile path skips and counts; the declared default stands. RED-8 DELETED on this tip; `s` and `km` both hold it |
 | A `was =` CHAIN | `ir.Field.WasName` is a SINGLE name, which is how a chain is spelled: the FIRST wire name, forever (USAGE). Aiming the third spelling at the intermediate name hashes a name no file carried | `WC1/WC2/WC3`, `wc` — `label` → `caption \| was = "label"` → `title \| was = "label"`. A WC1 record resolves at WC3 |
 
 ### Open, and why a fixture cannot be written
@@ -222,45 +223,12 @@ of landing the fix.
 
 | | key | waits on |
 |---|---|---|
-| **RED-1** | `clamp-op/compiled/tightened-bounds-do-not-clamp` | a `clamp` op in the reference's read loop (§3.4's op table names one; the op set has none) |
-| **RED-2** | `text-content/identity/invalid-utf8-is-not-malformed` | UTF-8 validation in the reference's `text` op |
-| **RED-3** | `run-copy/identity/a-17-to-31-byte-run-clobbers-its-neighbours` | the run copy's 17..31-byte branch, `internal/codegen/cpptable/fixedruntime.go` and ctable's twin |
 | **RED-4** | `optional/absent-payload-residue-is-copied` | the `?T` payload gated on the present byte (§3.4: "IGNORED on read") |
 | **RED-5** | `bool-domain/a-byte-outside-0-and-1-lands-in-the-caller-s-bool` | a ruling on what a bool byte outside `{0, 1}` means, and a normalise to match it |
-| **RED-6** | `ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant` | a ruling: §3.4 does not say what an ordinal naming no variant means, and the two plans answer differently |
-| **RED-7** | `ordinal-bound/paths-disagree/union-tag-past-the-last-arm` | the same ruling, for a tag naming no arm |
-| **RED-8** | `kind-mismatch/compiled/a-moved-kind-is-decoded-anyway` | the run copy first — `angle` sits inside the window RED-3 clobbers. **KM1/KM2 holds the same respelling off that window** |
-| **RED-9** | `bytes-compiled/dst-aux-swap/kind-14-walks-bytes-as-an-array` | TableFixedDst for `bytes(N)` vs the array compile path (reference-fix 10) |
 
-### RED-3 is not like the others
-
-**IT IS AN OUT-OF-BOUNDS READ, AND IT IS SILENT.** §3.4 requires the run copy to
-be "OVERLAPPING UNALIGNED WORD MOVES AND NOT A CALL", and the reference's branch
-for a run of more than sixteen bytes performs a sixteen, a second sixteen, and
-then a THIRTY-TWO anchored at the run's END. For a run of 17..31 bytes that last
-move is anchored BEFORE the run: it reads `32 - n` bytes in front of the source,
-writes `32 - n` bytes in front of the destination, and reads up to `32 - n` bytes
-PAST the record body — which for the last record of a file is past the buffer.
-The sanitizer names it a `heap-buffer-overflow` inside `TableFixedRun`.
-
-It wears five faces on `Scalars` alone — `span`'s high half, `weights_count`,
-`seeds_count`, `pose.heading` and `spawn_present` — plus `tilt` at destination
-offset zero on the compiled path, and every one of them comes back with **six
-zero counters and a clean verdict**. A conformance suite that checked only the
-report is blind to all six.
-
-**AND THE DIVERGENCE POINTS THE WRONG WAY.** The branch is emitted for C++ and
-for C and for nobody else, so a leg whose run copy is a plain `memcpy` — or that
-has no such micro-optimization at all — is GREEN where the reference is red. The
-reference is the odd one out, and only a shared conformance set says so.
-
-**THE SANITIZED TWIN SKIPS THAT ONE FIXTURE**, because a halted process reports
-nothing behind it, and the fault is WATCHED SEPARATELY instead of dropped:
-`make tables-fixedform` runs the sanitized binary again with
-`SCHEMA_FIXEDFORM_FAULT=1`, which puts the fixture back, and REQUIRES the
-sanitizer to name the overflow inside `TableFixedRun`. The day the run copy is
-fixed that gate goes red, and the skip and the gate are deleted together. A skip
-nobody watches fail is a skip that has quietly become a hole.
+RED-1 (no clamp op), RED-2, RED-3, RED-6, RED-7, RED-8 and RED-9 started PASSING
+on this tip and are deleted here in the same commit as `known_red[]`. The
+sanitized skip and the Makefile fault gate went with RED-3.
 
 ---
 
@@ -273,8 +241,8 @@ nobody watches fail is a skip that has quietly become a hole.
 | cells filled by the second pass | 16, in 7 gaps (**GAP-1, 2, 3, 4, 5, 13, 14**) |
 | cells filled by this pass | 2 — a `was =` chain (`WC1/WC2/WC3`) and a kind-mismatch pair off RED-3's window (`KM1/KM2`). Neither was a numbered GAP |
 | cells still open | 8, in 12 gaps — none of which can take a shared C++ oracle fixture today. 2 of them are the largest thing left (**GAP-16/17**, the stream and message carriers) |
-| KNOWN-REDS | 9, each named and printed on a green run — 2 were DELETED when fix 12 landed on the branch; **RED-9** is new, the compiled `bytes(N)` walk. **RED-8** remains on Scalars; `km` holds the same cell off that window |
-| KNOWN-FAULTS | 1, watched by a gate that goes red when it stops happening |
+| KNOWN-REDS | 2, each named and printed on a green run — optional residue, bool-domain. RED-1/2/3/6/7/8/9 DELETED on this tip |
+| KNOWN-FAULTS | 0 — the run-copy overflow gate went with RED-3 |
 | oracle cases pinned | 34 |
 
 ---

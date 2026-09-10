@@ -132,17 +132,17 @@ int main()
 
     // ---- TEXT OF EACH FLAVOUR UNDER A UNION ARM --------------------------
     //
-    // `fu1/wide` is where FLAVOUR 2 GETS ORACLE BYTES: a length in CODE UNITS
+    // `fm1/wide` is where FLAVOUR 2 GETS ORACLE BYTES: a length in CODE UNITS
     // and two bytes per unit, one of which has a non-zero high byte.
-    { tblfu1::MarkRoot v; FillFu1Wide( v );   DUMP( "fu1/wide",   tblfu1, MarkRoot, v ); }
-    { tblfu1::MarkRoot v; FillFu1Narrow( v ); DUMP( "fu1/narrow", tblfu1, MarkRoot, v ); }
-    { tblfu1::MarkRoot v; FillFu1Raw( v );    DUMP( "fu1/raw",    tblfu1, MarkRoot, v ); }
-    { tblfu1::MarkRoot v; FillFu1List( v );   DUMP( "fu1/list",   tblfu1, MarkRoot, v ); }
+    { tblfm1::MarkRoot v; FillFm1Wide( v );   DUMP( "fm1/wide",   tblfm1, MarkRoot, v ); }
+    { tblfm1::MarkRoot v; FillFm1Narrow( v ); DUMP( "fm1/narrow", tblfm1, MarkRoot, v ); }
+    { tblfm1::MarkRoot v; FillFm1Raw( v );    DUMP( "fm1/raw",    tblfm1, MarkRoot, v ); }
+    { tblfm1::MarkRoot v; FillFm1List( v );   DUMP( "fm1/list",   tblfm1, MarkRoot, v ); }
     // TAG 0: the arm extent is declared slack and every byte of it is zero
-    { tblfu1::MarkRoot v; FillFu1None( v );   DUMP( "fu1/none",   tblfu1, MarkRoot, v ); }
-    { tblfu2::MarkRoot v; FillFu2Skip( v );   DUMP( "fu2/skip",   tblfu2, MarkRoot, v ); }
-    { tblfu2::MarkRoot v; FillFu2List( v );   DUMP( "fu2/list",   tblfu2, MarkRoot, v ); }
-    { tblfu2::MarkRoot v; FillFu2Narrow( v ); DUMP( "fu2/narrow", tblfu2, MarkRoot, v ); }
+    { tblfm1::MarkRoot v; FillFm1None( v );   DUMP( "fm1/none",   tblfm1, MarkRoot, v ); }
+    { tblfm2::MarkRoot v; FillFm2Skip( v );   DUMP( "fm2/skip",   tblfm2, MarkRoot, v ); }
+    { tblfm2::MarkRoot v; FillFm2List( v );   DUMP( "fm2/list",   tblfm2, MarkRoot, v ); }
+    { tblfm2::MarkRoot v; FillFm2Narrow( v ); DUMP( "fm2/narrow", tblfm2, MarkRoot, v ); }
 
     // ---- the bool, the optional, the array of unions, the three-deep ------
     { tblfn1::FnRoot v; FillFn1( v );       DUMP( "fn1/full",   tblfn1, FnRoot, v ); }
@@ -192,7 +192,7 @@ int main()
     { tblw2::Ship v; FillW2( v ); DUMP( "w2/ship", tblw2, Ship, v ); }
 
     // ---- bytes(N) under a newer writer (GAP-5) ---------------------------
-    { tblfu2::MarkRoot v; FillFu2Raw( v ); DUMP( "fu2/raw", tblfu2, MarkRoot, v ); }
+    { tblfm2::MarkRoot v; FillFm2Raw( v ); DUMP( "fm2/raw", tblfm2, MarkRoot, v ); }
 
     // ---- the text-content proving ground, at three used extents ----------
     { tblp1::Chain v; FillP1( v, "", 0 );                 DUMP( "p1/empty", tblp1, Chain, v ); }
