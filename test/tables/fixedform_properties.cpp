@@ -17,7 +17,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <cstdlib>
 #include <vector>
 
 #include "ScalarsTable.h"
@@ -31,8 +30,8 @@
 #include "P3Table.h"
 #include "FN1Table.h"
 #include "FN2Table.h"
-#include "FU1Table.h"
-#include "FU2Table.h"
+#include "FM1Table.h"
+#include "FM2Table.h"
 #include "F1Table.h"
 
 static int failures = 0;
@@ -54,10 +53,6 @@ struct KnownRed
 };
 
 static KnownRed known_red[] = {
-    { "text-content/identity/invalid-utf8-is-not-malformed",
-      "UTF-8 validation in the text op (§3.4: a content violation is malformed)", 0, 0 },
-    { "run-copy/identity/a-17-to-31-byte-run-clobbers-its-neighbours",
-      "the run copy's 17..31-byte branch (internal/codegen/cpptable/fixedruntime.go)", 0, 0 },
     { "optional/absent-payload-residue-is-copied",
       "the ?T payload gated on the present byte (§3.4: IGNORED on read)", 0, 0 },
     { "bool-domain/a-byte-outside-0-and-1-lands-in-the-caller-s-bool",
@@ -66,8 +61,6 @@ static KnownRed known_red[] = {
       "identity and compiled must agree on an ordinal that names no variant", 0, 0 },
     { "ordinal-bound/paths-disagree/union-tag-past-the-last-arm",
       "identity and compiled must agree on a tag that names no arm", 0, 0 },
-    { "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway",
-      "a kind that moved is skipped and never misdecoded (§4), counted", 0, 0 },
 };
 
 static KnownRed * find_red( const char * key )
@@ -98,11 +91,6 @@ static void check_red( bool ok, const char * key, const char * what )
 
 static int file_slack()
 {
-    // THE RUN COPY'S 17..31 BRANCH READS PAST THE RECORD. A tight allocation
-    // is what ASan names; a padded one is what lets the plain binary report
-    // the clobber as a wrong value instead of dying on the page.
-    const char * fault = std::getenv( "SCHEMA_FIXEDFORM_FAULT" );
-    if ( fault != NULL && fault[0] != '\0' ) { return 0; }
     return 32;
 }
 
@@ -210,7 +198,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, r ); } \
+    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T & v, Report * r ) { NS::TYPE##FixedClamp( v, r ); } \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -247,7 +235,7 @@ struct TAG##Codec \
     static int64_t measure( int64_t n ) { return NS::TYPE##FixedMeasure( n ); } \
     static int64_t save( const T * v, int64_t n, uint8_t * b, int64_t c ) { return NS::TYPE##FixedSave( v, n, b, c ); } \
     static int64_t load( T * v, int64_t cap, const uint8_t * d, int64_t b, Entry * p, int32_t pc, Report * r ) \
-    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, r ); } \
+    { return NS::TYPE##FixedLoad( v, cap, d, b, p, pc, NULL, r ); } \
     static void reset( T & v ) { NS::TYPE##Reset( v ); } \
     static void clamp( T &, Report * ) {} \
     static constexpr const Entry * plan = NS::TYPE##FixedPlan; \
@@ -912,13 +900,13 @@ struct FN2 : FN2Codec
     }
 };
 
-FIXED_TRAITS( tblfu1, MarkRoot, FU1 );
-struct FU1 : FU1Codec
+FIXED_TRAITS( tblfm1, MarkRoot, FM1 );
+struct FM1 : FM1Codec
 {
     static void fill( T & v )
     {
         v.id = 9;
-        v.mark.type = tblfu1::MarkType::Narrow;
+        v.mark.type = tblfm1::MarkType::Narrow;
         std::strcpy( v.mark.narrow.s, "hello" );
         v.mark.narrow.s_length = 5;
         v.mark.narrow.n = 11;
@@ -926,9 +914,9 @@ struct FU1 : FU1Codec
     }
     static void inspect( const T & v, Issues & i )
     {
-        if ( byte_of( &v.mark.type ) > (uint8_t) tblfu1::MarkType::Max ) { i.tag_oob = true; }
+        if ( byte_of( &v.mark.type ) > (uint8_t) tblfm1::MarkType::Max ) { i.tag_oob = true; }
         if ( v.after < 0 || v.after > 1000 ) { i.range_oob = true; }
-        if ( v.mark.type == tblfu1::MarkType::Narrow )
+        if ( v.mark.type == tblfm1::MarkType::Narrow )
         {
             if ( v.mark.narrow.s_length < 0 || v.mark.narrow.s_length > 6 ) { i.range_oob = true; }
             else if ( !utf8_ok( v.mark.narrow.s, v.mark.narrow.s_length ) ) { i.utf8_bad = true; }
@@ -938,7 +926,7 @@ struct FU1 : FU1Codec
     static bool same( const T & a, const T & b )
     {
         if ( a.id != b.id || a.after != b.after || a.mark.type != b.mark.type ) { return false; }
-        if ( a.mark.type == tblfu1::MarkType::Narrow )
+        if ( a.mark.type == tblfm1::MarkType::Narrow )
         {
             return a.mark.narrow.s_length == b.mark.narrow.s_length && a.mark.narrow.n == b.mark.narrow.n &&
                    a.mark.narrow.s_length >= 0 && a.mark.narrow.s_length <= 6 &&
@@ -948,13 +936,13 @@ struct FU1 : FU1Codec
     }
 };
 
-FIXED_TRAITS( tblfu2, MarkRoot, FU2 );
-struct FU2 : FU2Codec
+FIXED_TRAITS( tblfm2, MarkRoot, FM2 );
+struct FM2 : FM2Codec
 {
     static void fill( T & v )
     {
         v.id = 10;
-        v.mark.type = tblfu2::MarkType::Narrow;
+        v.mark.type = tblfm2::MarkType::Narrow;
         std::strcpy( v.mark.narrow.s, "world" );
         v.mark.narrow.s_length = 5;
         v.mark.narrow.n = 12;
@@ -963,10 +951,10 @@ struct FU2 : FU2Codec
     }
     static void inspect( const T & v, Issues & i )
     {
-        if ( byte_of( &v.mark.type ) > (uint8_t) tblfu2::MarkType::Max ) { i.tag_oob = true; }
+        if ( byte_of( &v.mark.type ) > (uint8_t) tblfm2::MarkType::Max ) { i.tag_oob = true; }
         if ( v.after < 0 || v.after > 1000 ) { i.range_oob = true; }
         if ( v.tail < 0 || v.tail > 1000 ) { i.range_oob = true; }
-        if ( v.mark.type == tblfu2::MarkType::Narrow )
+        if ( v.mark.type == tblfm2::MarkType::Narrow )
         {
             if ( v.mark.narrow.s_length < 0 || v.mark.narrow.s_length > 6 ) { i.range_oob = true; }
             else if ( !utf8_ok( v.mark.narrow.s, v.mark.narrow.s_length ) ) { i.utf8_bad = true; }
@@ -975,7 +963,7 @@ struct FU2 : FU2Codec
     static bool same( const T & a, const T & b )
     {
         if ( a.id != b.id || a.after != b.after || a.tail != b.tail || a.mark.type != b.mark.type ) { return false; }
-        if ( a.mark.type == tblfu2::MarkType::Narrow )
+        if ( a.mark.type == tblfm2::MarkType::Narrow )
         {
             return a.mark.narrow.s_length == b.mark.narrow.s_length && a.mark.narrow.n == b.mark.narrow.n &&
                    a.mark.narrow.s_length >= 0 && a.mark.narrow.s_length <= 6 &&
@@ -1185,7 +1173,7 @@ static void probe_clamp_op()
     std::memset( &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, &r );
+    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
     check( n == 1, "probe clamp-op: Scalars2 reads Scalars" );
     const bool clamped = back.position == 1000LL * 65536 && r.clamped >= 1;
     check( clamped, "probe clamp-op: a value past the reader's max lands at max and counts" );
@@ -1208,7 +1196,7 @@ static void probe_text_content()
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
-                                               plan.data(), kPlanCap, &r );
+                                               plan.data(), kPlanCap, NULL, &r );
     check( n == 1 || r.malformed || r.refused, "probe text-content: the read answers" );
     check_red( r.malformed, "text-content/identity/invalid-utf8-is-not-malformed",
                "probe text-content: invalid UTF-8 in a string(N)'s used bytes is malformed" );
@@ -1236,7 +1224,7 @@ static void probe_absent_optional()
     tblp3::TableReport r;
     std::vector<tblp3::TableFixedEntry> plan( (size_t) kPlanCap );
     const int64_t n = tblp3::ChainFixedLoad( &back, 1, file.data(), (int64_t) file.size(),
-                                             plan.data(), kPlanCap, &r );
+                                             plan.data(), kPlanCap, NULL, &r );
     check( n == 1 && !back.link_present, "probe absent-optional: the flag" );
     const bool ignored = back.link.value == 0 && back.link.tag_length == 0;
     check_red( ignored, "optional/absent-payload-residue-is-copied",
@@ -1327,7 +1315,7 @@ static void probe_kind_mismatch()
     std::memset( &back, 0, sizeof( back ) );
     scalardemo2::TableReport r;
     std::vector<scalardemo2::TableFixedEntry> plan( (size_t) kPlanCap );
-    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, &r );
+    const int64_t n = scalardemo2::SimStateFixedLoad( &back, 1, file.data(), need, plan.data(), kPlanCap, NULL, &r );
     check( n == 1, "probe kind-mismatch: Scalars2 reads Scalars" );
     const bool skipped = back.angle == 0 && r.kind_mismatch >= 1;
     check_red( skipped, "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway",
@@ -1364,8 +1352,8 @@ int main()
     run_properties<P3>();
     run_properties<FN1>();
     run_properties<FN2>();
-    run_properties<FU1>();
-    run_properties<FU2>();
+    run_properties<FM1>();
+    run_properties<FM2>();
     run_properties<F1>();
     run_properties<V1>();
     run_properties<V2>();

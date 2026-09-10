@@ -1,59 +1,37 @@
-// FU2.schema — FU1 one generation on: an arm INSERTED IN THE MIDDLE and a
-// field appended, so the layouts differ, the hashes differ and each side reads
-// the other through a COMPILED plan (docs/SPEC-TABLES.md §3.4). See FU1.schema
-// for what the arms are for.
+// FU2.schema — the NEWER side of the text-under-an-arm pair. See FU1.schema.
 //
-//   1 wide    unmoved
-//   2 skip    AN ARM FU1 HAS NO NAME FOR: an FU1 reader meets a tag it cannot
-//             resolve and the whole union takes its prefill, never another
-//             arm's bytes
-//   3 narrow  ordinal 2 -> 3
-//   4 raw     ordinal 3 -> 4
-//   5 list    ordinal 4 -> 5
+// ONE FIELD IS APPENDED to the root and nothing else moves. That is enough to
+// change the layout hash, which is enough to send a read of FU1's bytes down
+// the COMPILED plan instead of the identity one — and the compiled plan is the
+// path where an overloaded plan lane drops a union arm's text.
+//
+// `extra` takes its declared default on a record FU1 wrote, because a field the
+// writer does not carry has no plan entry and the prefill is what lands there.
 package tblfu2
 
-type MarkWide
+type Plain
 {
-    w wstring(4)
-    n int32 = 0 | min = 0, max = 1000
+    n int32 = 7
 }
 
-type MarkNarrow
+type Labelled
 {
-    s string(6)
-    n int32 = 0 | min = 0, max = 1000
+    lead  int32 = 5
+    label string(8)
+    trail int32 = 9
 }
 
-type MarkRaw
+union Pick
 {
-    d bytes(4)
-    n int32 = 0 | min = 0, max = 1000
+    plain    Plain
+    labelled Labelled
 }
 
-type MarkList
+table FuRoot
 {
-    items [..2]int32 | min = 0, max = 1000
-    n     int32 = 0      | min = 0, max = 1000
-}
-
-type MarkSkip
-{
-    e int32 = 0 | min = 0, max = 1000
-}
-
-union Mark
-{
-    wide   MarkWide
-    skip   MarkSkip
-    narrow MarkNarrow
-    raw    MarkRaw
-    list   MarkList
-}
-
-table MarkRoot
-{
-    id    uint32 = 0
-    mark  Mark
-    after int32 = 7 | min = 0, max = 1000
-    tail  int32 = 3 | min = 0, max = 1000
+    flag  bool = false
+    note  ?int32
+    pick  Pick
+    tail  int32 = 3
+    extra int32 = 11
 }

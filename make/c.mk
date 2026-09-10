@@ -1101,3 +1101,40 @@ test-c tables-c: tables-c-retain tables-c-retain-negative-control
 
 # Collection adapters belong to the common roster as well as their direct differential.
 build/conformance-c build/conformance-c-asan build/wire-fuzz-c build/wire-fuzz-c-asan: test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c
+
+# THE RUN COPY'S BOUND ON THE C LEG (docs/SPEC-TABLES.md §3.4,
+# test/tables/fixedform_runcopy.c). The driver above is the versioning
+# conformance set, and it checks the VALUES a read produces. The copy primitive
+# under it has one invariant those cases cannot state — every byte a copy of n
+# bytes reads or writes is inside [ start, start + n ) — because a move
+# anchored outside the run still copies the run correctly and merely takes a
+# neighbour with it. Exact-size heap blocks over every length from 0 to 96 make
+# the sanitized twin the assertion, and the same file runs on the C++ leg.
+#
+# ITS OWN GENERATED DIRECTORY, for the reason every C table unit has one: two
+# emitters write <Base>Table.h and one directory would have them overwrite each
+# other. One schema is enough — the runtime is package-scoped and identical in
+# every unit this emitter writes.
+build/runcopy-c/.stamp: bin/schema tables/scalars/Scalars.schema
+	@mkdir -p build/runcopy-c
+	./bin/schema generate --lang c --out build/runcopy-c tables/scalars
+	@touch $@
+
+build/schema_test_c_runcopy: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) -Ibuild/runcopy-c -I$(SERIALIZE_C) \
+		test/tables/fixedform_runcopy.c -o $@ -lm
+
+build/schema_test_c_runcopy_asan: build/runcopy-c/.stamp test/tables/fixedform_runcopy.c
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_SANITIZE) -Ibuild/runcopy-c -I$(SERIALIZE_C) \
+		test/tables/fixedform_runcopy.c -o $@ -lm
+
+.PHONY: tables-c-runcopy
+tables-c-runcopy: build/schema_test_c_runcopy build/schema_test_c_runcopy_asan
+	./build/schema_test_c_runcopy
+	./build/schema_test_c_runcopy_asan
+
+# It rides the leg's own fixed-form target rather than a target of its own that
+# somebody has to remember: one name for "check the C fixed form".
+tables-c-fixedform: tables-c-runcopy

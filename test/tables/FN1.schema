@@ -1,6 +1,6 @@
 // FN1.schema — THE SHAPES THE FIXED FORM'S CONFORMANCE SET COULD NOT REACH
 // (docs/SPEC-TABLES.md §3.4). FX1/FX2 carry the
-// scalar edits, V1/V2 the enum and the arm inserted in the middle, FU1/FU2 the
+// scalar edits, V1/V2 the enum and the arm inserted in the middle, FM1/FM2 the
 // text and the counted array under an arm, and Scalars/Scalars2 the widths.
 // Between them they still leave six of §3.4's rows with no fixture at all, and
 // each of the six is a row where a leg gets a WRONG VALUE rather than an error:
