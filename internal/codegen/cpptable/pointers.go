@@ -1218,28 +1218,33 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	if len(blobs) == 0 {
 		g.pf("    (void) length; // no byte buffer below this root: every node's storage is its type's\n")
 	}
-	g.pf("    switch ( type_id )\n    {\n")
-	for _, t := range reachable {
-		if g.anyExtent && g.hasExtent(t) {
-			g.pf("        case 0x%016xull: // %s\n        {\n", ir.TableWireId(t.WireName()), t.Name)
-			g.pf("            int64_t extent = 0;\n")
-			g.pf("            if ( !%sWireExtent( body, length, extent, ids, reason ) ) { return kTableNodeRefused; }\n", t.Name)
-			g.pf("            return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent );\n        }\n", t.Name)
-			continue
-		}
-		g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
-	}
-	for _, b := range blobs {
-		// A BLOB PAST THE SIZE CAP is refused at load (docs/SPEC-TABLES.md
-		// §3.1, §6.5, §11): the measure answers -1 with its reason, and a
-		// Load past it counts malformed
-		g.pf("        case %s: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
-	}
-	if len(blobs) == 0 && !anyExtent {
-		g.pf("        default: break;\n    }\n")
+	if nodeDispatchEmpty(reachable, blobs) {
+		g.pf("    (void) type_id;\n")
 		g.pf("    (void) reason; // no blob and no extent below this root: nothing here refuses\n")
 	} else {
-		g.pf("        default: break;\n    }\n")
+		g.pf("    switch ( type_id )\n    {\n")
+		for _, t := range reachable {
+			if g.anyExtent && g.hasExtent(t) {
+				g.pf("        case 0x%016xull: // %s\n        {\n", ir.TableWireId(t.WireName()), t.Name)
+				g.pf("            int64_t extent = 0;\n")
+				g.pf("            if ( !%sWireExtent( body, length, extent, ids, reason ) ) { return kTableNodeRefused; }\n", t.Name)
+				g.pf("            return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent );\n        }\n", t.Name)
+				continue
+			}
+			g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
+		}
+		for _, b := range blobs {
+			// A BLOB PAST THE SIZE CAP is refused at load (docs/SPEC-TABLES.md
+			// §3.1, §6.5, §11): the measure answers -1 with its reason, and a
+			// Load past it counts malformed
+			g.pf("        case %s: if ( length > kTableBlobMaxLength ) { reason = blob_over_size_cap; return kTableNodeRefused; } return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
+		}
+		if len(blobs) == 0 && !anyExtent {
+			g.pf("        default: break;\n    }\n")
+			g.pf("    (void) reason; // no blob and no extent below this root: nothing here refuses\n")
+		} else {
+			g.pf("        default: break;\n    }\n")
+		}
 	}
 	g.pf("    return -1;\n}\n\n")
 
@@ -1250,30 +1255,37 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	if len(blobs) == 0 {
 		g.pf("    (void) length;\n")
 	}
-	if len(reachable) == 0 && len(blobs) == 0 {
+	if nodeDispatchEmpty(reachable, blobs) {
 		// a VARIABLE root whose maps reach no node: its numbering is always
 		// empty, so nothing is ever placed (docs/SPEC-TABLES.md §2.8)
+		g.pf("    (void) type_id;\n")
 		g.pf("    (void) at;\n")
+	} else {
+		g.pf("    switch ( type_id )\n    {\n")
+		for _, t := range reachable {
+			g.pf("        case 0x%016xull: { %s * node = new ( at ) %s; %sReset( *node ); break; } // %s\n",
+				ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name, t.Name)
+		}
+		for _, b := range blobs {
+			g.pf("        case %s: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *%s\n", b.constant, b.word)
+		}
+		g.pf("        default: break;\n    }\n")
 	}
-	g.pf("    switch ( type_id )\n    {\n")
-	for _, t := range reachable {
-		g.pf("        case 0x%016xull: { %s * node = new ( at ) %s; %sReset( *node ); break; } // %s\n",
-			ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name, t.Name)
-	}
-	for _, b := range blobs {
-		g.pf("        case %s: { TableBlob * blob = (TableBlob *) at; blob->length = (uint32_t) length; blob->zero = 0; break; } // *%s\n", b.constant, b.word)
-	}
-	g.pf("        default: break;\n    }\n}\n\n")
+	g.pf("}\n\n")
 
 	if g.anyExtent {
 		g.pf("// %sNodeRecordBytes: one record's OWN storage, before the extent its maps\n", n)
 		g.pf("// take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.\n")
 		g.pf("inline int64_t %sNodeRecordBytes( uint64_t type_id )\n{\n", n)
-		g.pf("    switch ( type_id )\n    {\n")
-		for _, t := range reachable {
-			g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
+		if len(reachable) == 0 {
+			g.pf("    (void) type_id;\n")
+		} else {
+			g.pf("    switch ( type_id )\n    {\n")
+			for _, t := range reachable {
+				g.pf("        case 0x%016xull: return TableAlignUp64( (int64_t) sizeof( %s ) ); // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
+			}
+			g.pf("        default: break;\n    }\n")
 		}
-		g.pf("        default: break;\n    }\n")
 		g.pf("    return 0;\n}\n\n")
 	}
 
@@ -1284,21 +1296,23 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	if len(blobs) == 0 {
 		g.pf("    (void) length;\n")
 	}
-	if len(reachable) == 0 && len(blobs) == 0 {
+	if nodeDispatchEmpty(reachable, blobs) {
+		g.pf("    (void) type_id;\n")
 		g.pf("    (void) worker;\n")
-	}
-	g.pf("    switch ( type_id )\n    {\n")
-	for _, t := range reachable {
-		g.pf("        case 0x%016xull: return (uint32_t) worker.Alloc<%s>().ref.value; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
-	}
-	for _, b := range blobs {
-		if b.terminated {
-			g.pf("        case %s: return (uint32_t) worker.AllocString( length ).ref.value; // *string\n", b.constant)
-		} else {
-			g.pf("        case %s: return (uint32_t) worker.AllocBytes( length ).ref.value; // *bytes\n", b.constant)
+	} else {
+		g.pf("    switch ( type_id )\n    {\n")
+		for _, t := range reachable {
+			g.pf("        case 0x%016xull: return (uint32_t) worker.Alloc<%s>().ref.value; // %s\n", ir.TableWireId(t.WireName()), t.Name, t.Name)
 		}
+		for _, b := range blobs {
+			if b.terminated {
+				g.pf("        case %s: return (uint32_t) worker.AllocString( length ).ref.value; // *string\n", b.constant)
+			} else {
+				g.pf("        case %s: return (uint32_t) worker.AllocBytes( length ).ref.value; // *bytes\n", b.constant)
+			}
+		}
+		g.pf("        default: break;\n    }\n")
 	}
-	g.pf("        default: break;\n    }\n")
 	g.pf("    return 0;\n}\n\n")
 
 	g.emitRootNodeBody(st, reachable, blobs)
@@ -1352,37 +1366,41 @@ func (g *tableGen) emitRootNodeBody(st *ir.Struct, reachable []*ir.Struct, blobs
 	// A VARIABLE ROOT WHOSE NUMBERING CAN NAME NOTHING is a state the DECLARED
 	// class creates (docs/SPEC-TABLES.md §2.2): a plain `table` is the variable
 	// wire whatever its fields are, so a unit can now have a variable root with
-	// no pointer, no map and no unbounded array anywhere under it. The switch
-	// below is then empty and the reader and the storage are read by nothing —
-	// which is what `NodePlace` and `NodeAlloc` above already say of themselves
-	// under the same emptiness, and what -Wunused-parameter otherwise refuses.
-	if !g.anyExtent && len(reachable) == 0 && len(blobs) == 0 {
+	// no pointer, no map and no unbounded array anywhere under it. The reader
+	// and the storage are then read by nothing — which is what `NodePlace` and
+	// `NodeAlloc` above already say of themselves under the same emptiness,
+	// and what -Wunused-parameter otherwise refuses. The switch is not
+	// emitted: an empty `default` is C4065 under MSVC /W4 /WX.
+	if !g.anyExtent && nodeDispatchEmpty(reachable, blobs) {
 		g.pf("    (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded\n")
+		g.pf("    (void) type_id;\n")
 	}
 	if g.retain && len(reachable) == 0 {
 		// a root whose numbering can name no TABLE record: a blob's bytes carry
 		// no body, so there is nothing under this node for a path to reach
 		g.pf("    (void) retain; (void) node;\n")
 	}
-	g.pf("    switch ( type_id )\n    {\n")
-	for _, t := range reachable {
-		call := fmt.Sprintf("%sLoadBody( r, nodes, *(%s *) at )", t.Name, t.Name)
-		if !g.isVar(t.Name) {
-			call = fmt.Sprintf("%sLoadBody( r, *(%s *) at )", t.Name, t.Name)
-		}
-		if g.retain {
-			call = fmt.Sprintf("%sLoadBodyRetain( r, nodes, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+	if !nodeDispatchEmpty(reachable, blobs) {
+		g.pf("    switch ( type_id )\n    {\n")
+		for _, t := range reachable {
+			call := fmt.Sprintf("%sLoadBody( r, nodes, *(%s *) at )", t.Name, t.Name)
 			if !g.isVar(t.Name) {
-				call = fmt.Sprintf("%sLoadBodyRetain( r, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+				call = fmt.Sprintf("%sLoadBody( r, *(%s *) at )", t.Name, t.Name)
 			}
+			if g.retain {
+				call = fmt.Sprintf("%sLoadBodyRetain( r, nodes, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+				if !g.isVar(t.Name) {
+					call = fmt.Sprintf("%sLoadBodyRetain( r, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+				}
+			}
+			g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableWireId(t.WireName()), call, t.Name)
 		}
-		g.pf("        case 0x%016xull: %s; break; // %s\n", ir.TableWireId(t.WireName()), call, t.Name)
+		for _, b := range blobs {
+			// the bytes verbatim; the storage's zeros are a string's terminator
+			g.pf("        case %s: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *%s\n", b.constant, b.word)
+		}
+		g.pf("        default: break;\n    }\n")
 	}
-	for _, b := range blobs {
-		// the bytes verbatim; the storage's zeros are a string's terminator
-		g.pf("        case %s: if ( r.size > 0 ) { memcpy( at + kTableBlobHeader, r.buffer, (size_t) r.size ); } break; // *%s\n", b.constant, b.word)
-	}
-	g.pf("        default: break;\n    }\n")
 	if g.anyExtent {
 		g.pf("    nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done\n")
 	}
@@ -1411,6 +1429,15 @@ func reachableBlobs(root *ir.Struct) []reachableBlob {
 		out = append(out, reachableBlob{constant: "kTableStringTypeId", word: "string", terminated: true})
 	}
 	return out
+}
+
+// nodeDispatchEmpty is whether a root's numbering can name no TABLE record
+// and no byte buffer. The DECLARED class (docs/SPEC-TABLES.md §2.2) makes
+// that a real state: a plain `table` is the variable wire with nothing
+// under it to number. A switch over type_id with only `default` is C4065
+// under MSVC /W4 /WX, so it is not emitted.
+func nodeDispatchEmpty(reachable []*ir.Struct, blobs []reachableBlob) bool {
+	return len(reachable) == 0 && len(blobs) == 0
 }
 
 // emitRelocatabilityPreamble writes the comment above the static asserts,

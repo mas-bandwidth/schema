@@ -7139,10 +7139,7 @@ inline bool PatrolBuilder::Lock()
 inline int64_t PatrolNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -7153,11 +7150,8 @@ inline int64_t PatrolNodeStorage( uint64_t type_id, int64_t length, TableRefuseR
 inline void PatrolNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // PatrolNodeAlloc: the TOOL's path — one record's node in the builder's arena.
@@ -7166,11 +7160,8 @@ inline void PatrolNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 inline uint32_t PatrolNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -7180,10 +7171,7 @@ inline void PatrolNodeBody( uint64_t type_id, TableReader & r, const TableNodeMa
 {
     (void) nodes; // every node this root can name is a FIXED table
     (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
 }
 
 // PatrolNodeMessageStorage: the region bytes one record commands on the message
@@ -7194,10 +7182,7 @@ inline int64_t PatrolNodeMessageStorage( uint64_t type_id, int64_t extent, int64
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -7217,13 +7202,9 @@ inline bool PatrolNodeMessageBody( uint64_t type_id, TableBitReader & r, const T
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
-    return ok;
+    (void) type_id;
+    report->malformed = true;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -8314,11 +8295,8 @@ inline void PatrolNodeBodyRetain( uint64_t type_id, TableReader & r, const Table
 {
     (void) nodes; // every node this root can name is a FIXED table
     (void) r; (void) at; // this root's numbering is always empty: nothing is ever decoded
+    (void) type_id;
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // PatrolLoadRetain: decode the tolerant wire into the caller's exact-sized region and
@@ -8466,14 +8444,10 @@ inline bool PatrolNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, c
 {
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded
+    (void) type_id;
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
-    return ok;
+    report->malformed = true;
+    return false;
 }
 
 // PatrolLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -8627,10 +8601,7 @@ inline int64_t PatrolMeasureWireRetain( const Ctx & ctx, const Patrol & root, Ta
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( PatrolNumberFrom( ctx, numbering, root ) )
@@ -8657,20 +8628,14 @@ inline int64_t PatrolSaveWireRetain( const Ctx & ctx, const Patrol & root, Table
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !PatrolNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -8799,16 +8764,8 @@ inline bool PatrolCookLayout( const TableNumbering & numbering, TableCookRegion 
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;

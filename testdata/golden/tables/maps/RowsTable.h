@@ -12022,10 +12022,7 @@ inline bool RowBuilder::Lock()
 inline int64_t RowNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -12036,21 +12033,15 @@ inline int64_t RowNodeStorage( uint64_t type_id, int64_t length, TableRefuseReas
 inline void RowNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // RowNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t RowNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -12060,11 +12051,8 @@ inline int64_t RowNodeRecordBytes( uint64_t type_id )
 inline uint32_t RowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -12088,10 +12076,6 @@ inline void RowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap &
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -12103,10 +12087,7 @@ inline int64_t RowNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t 
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -12137,14 +12118,9 @@ inline bool RowNodeMessageBody( uint64_t type_id, TableBitReader & r, const Tabl
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -12921,10 +12897,7 @@ inline bool WideRowBuilder::Lock()
 inline int64_t WideRowNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -12935,21 +12908,15 @@ inline int64_t WideRowNodeStorage( uint64_t type_id, int64_t length, TableRefuse
 inline void WideRowNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // WideRowNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t WideRowNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -12959,11 +12926,8 @@ inline int64_t WideRowNodeRecordBytes( uint64_t type_id )
 inline uint32_t WideRowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -12987,10 +12951,6 @@ inline void WideRowNodeBody( uint64_t type_id, TableReader & r, const TableNodeM
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -13002,10 +12962,7 @@ inline int64_t WideRowNodeMessageStorage( uint64_t type_id, int64_t extent, int6
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -13036,14 +12993,9 @@ inline bool WideRowNodeMessageBody( uint64_t type_id, TableBitReader & r, const 
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -13820,10 +13772,7 @@ inline bool EdgeRowBuilder::Lock()
 inline int64_t EdgeRowNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -13834,21 +13783,15 @@ inline int64_t EdgeRowNodeStorage( uint64_t type_id, int64_t length, TableRefuse
 inline void EdgeRowNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // EdgeRowNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t EdgeRowNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -13858,11 +13801,8 @@ inline int64_t EdgeRowNodeRecordBytes( uint64_t type_id )
 inline uint32_t EdgeRowNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -13886,10 +13826,6 @@ inline void EdgeRowNodeBody( uint64_t type_id, TableReader & r, const TableNodeM
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -13901,10 +13837,7 @@ inline int64_t EdgeRowNodeMessageStorage( uint64_t type_id, int64_t extent, int6
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -13935,14 +13868,9 @@ inline bool EdgeRowNodeMessageBody( uint64_t type_id, TableBitReader & r, const 
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -16889,10 +16817,6 @@ inline void RowNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNod
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -17059,14 +16983,9 @@ inline bool RowNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, cons
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // RowLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -17228,10 +17147,7 @@ inline int64_t RowMeasureWireRetain( const Ctx & ctx, const Row & root, TableRet
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( RowNumberFrom( ctx, numbering, root ) )
@@ -17258,20 +17174,14 @@ inline int64_t RowSaveWireRetain( const Ctx & ctx, const Row & root, TableRetain
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !RowNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -17353,10 +17263,6 @@ inline void WideRowNodeBodyRetain( uint64_t type_id, TableReader & r, const Tabl
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -17523,14 +17429,9 @@ inline bool WideRowNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, 
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // WideRowLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -17692,10 +17593,7 @@ inline int64_t WideRowMeasureWireRetain( const Ctx & ctx, const WideRow & root, 
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( WideRowNumberFrom( ctx, numbering, root ) )
@@ -17722,20 +17620,14 @@ inline int64_t WideRowSaveWireRetain( const Ctx & ctx, const WideRow & root, Tab
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !WideRowNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -17817,10 +17709,6 @@ inline void EdgeRowNodeBodyRetain( uint64_t type_id, TableReader & r, const Tabl
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -17987,14 +17875,9 @@ inline bool EdgeRowNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, 
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // EdgeRowLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -18156,10 +18039,7 @@ inline int64_t EdgeRowMeasureWireRetain( const Ctx & ctx, const EdgeRow & root, 
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( EdgeRowNumberFrom( ctx, numbering, root ) )
@@ -18186,20 +18066,14 @@ inline int64_t EdgeRowSaveWireRetain( const Ctx & ctx, const EdgeRow & root, Tab
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !EdgeRowNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -18634,16 +18508,8 @@ inline bool RowCookLayout( const Ctx & ctx, const Row & root, const TableNumberi
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
@@ -18797,16 +18663,8 @@ inline bool WideRowCookLayout( const Ctx & ctx, const WideRow & root, const Tabl
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
@@ -18960,16 +18818,8 @@ inline bool EdgeRowCookLayout( const Ctx & ctx, const EdgeRow & root, const Tabl
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;

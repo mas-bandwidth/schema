@@ -10190,10 +10190,7 @@ inline bool LeafBuilder::Lock()
 inline int64_t LeafNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -10204,21 +10201,15 @@ inline int64_t LeafNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
 inline void LeafNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // LeafNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t LeafNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -10228,11 +10219,8 @@ inline int64_t LeafNodeRecordBytes( uint64_t type_id )
 inline uint32_t LeafNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -10256,10 +10244,6 @@ inline void LeafNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -10271,10 +10255,7 @@ inline int64_t LeafNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -10305,14 +10286,9 @@ inline bool LeafNodeMessageBody( uint64_t type_id, TableBitReader & r, const Tab
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -11089,10 +11065,7 @@ inline bool HolderBuilder::Lock()
 inline int64_t HolderNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -11103,21 +11076,15 @@ inline int64_t HolderNodeStorage( uint64_t type_id, int64_t length, TableRefuseR
 inline void HolderNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // HolderNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t HolderNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -11127,11 +11094,8 @@ inline int64_t HolderNodeRecordBytes( uint64_t type_id )
 inline uint32_t HolderNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -11155,10 +11119,6 @@ inline void HolderNodeBody( uint64_t type_id, TableReader & r, const TableNodeMa
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -11170,10 +11130,7 @@ inline int64_t HolderNodeMessageStorage( uint64_t type_id, int64_t extent, int64
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -11204,14 +11161,9 @@ inline bool HolderNodeMessageBody( uint64_t type_id, TableBitReader & r, const T
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -11988,10 +11940,7 @@ inline bool HandBuilder::Lock()
 inline int64_t HandNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -12002,21 +11951,15 @@ inline int64_t HandNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
 inline void HandNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // HandNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t HandNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -12026,11 +11969,8 @@ inline int64_t HandNodeRecordBytes( uint64_t type_id )
 inline uint32_t HandNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -12054,10 +11994,6 @@ inline void HandNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -12069,10 +12005,7 @@ inline int64_t HandNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -12103,14 +12036,9 @@ inline bool HandNodeMessageBody( uint64_t type_id, TableBitReader & r, const Tab
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -12887,10 +12815,7 @@ inline bool ChainBuilder::Lock()
 inline int64_t ChainNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -12901,21 +12826,15 @@ inline int64_t ChainNodeStorage( uint64_t type_id, int64_t length, TableRefuseRe
 inline void ChainNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // ChainNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t ChainNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -12925,11 +12844,8 @@ inline int64_t ChainNodeRecordBytes( uint64_t type_id )
 inline uint32_t ChainNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -12953,10 +12869,6 @@ inline void ChainNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -12968,10 +12880,7 @@ inline int64_t ChainNodeMessageStorage( uint64_t type_id, int64_t extent, int64_
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -13002,14 +12911,9 @@ inline bool ChainNodeMessageBody( uint64_t type_id, TableBitReader & r, const Ta
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -15532,10 +15436,6 @@ inline void LeafNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -15702,14 +15602,9 @@ inline bool LeafNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, con
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // LeafLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -15871,10 +15766,7 @@ inline int64_t LeafMeasureWireRetain( const Ctx & ctx, const Leaf & root, TableR
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( LeafNumberFrom( ctx, numbering, root ) )
@@ -15901,20 +15793,14 @@ inline int64_t LeafSaveWireRetain( const Ctx & ctx, const Leaf & root, TableReta
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !LeafNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -15996,10 +15882,6 @@ inline void HolderNodeBodyRetain( uint64_t type_id, TableReader & r, const Table
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -16166,14 +16048,9 @@ inline bool HolderNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, c
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // HolderLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -16335,10 +16212,7 @@ inline int64_t HolderMeasureWireRetain( const Ctx & ctx, const Holder & root, Ta
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( HolderNumberFrom( ctx, numbering, root ) )
@@ -16365,20 +16239,14 @@ inline int64_t HolderSaveWireRetain( const Ctx & ctx, const Holder & root, Table
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !HolderNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -16460,10 +16328,6 @@ inline void HandNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -16630,14 +16494,9 @@ inline bool HandNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, con
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // HandLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -16799,10 +16658,7 @@ inline int64_t HandMeasureWireRetain( const Ctx & ctx, const Hand & root, TableR
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( HandNumberFrom( ctx, numbering, root ) )
@@ -16829,20 +16685,14 @@ inline int64_t HandSaveWireRetain( const Ctx & ctx, const Hand & root, TableReta
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !HandNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -16924,10 +16774,6 @@ inline void ChainNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -17094,14 +16940,9 @@ inline bool ChainNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, co
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // ChainLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -17263,10 +17104,7 @@ inline int64_t ChainMeasureWireRetain( const Ctx & ctx, const Chain & root, Tabl
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( ChainNumberFrom( ctx, numbering, root ) )
@@ -17293,20 +17131,14 @@ inline int64_t ChainSaveWireRetain( const Ctx & ctx, const Chain & root, TableRe
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !ChainNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -17763,16 +17595,8 @@ inline bool LeafCookLayout( const Ctx & ctx, const Leaf & root, const TableNumbe
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
@@ -17926,16 +17750,8 @@ inline bool HolderCookLayout( const Ctx & ctx, const Holder & root, const TableN
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
@@ -18089,16 +17905,8 @@ inline bool HandCookLayout( const Ctx & ctx, const Hand & root, const TableNumbe
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
@@ -18252,16 +18060,8 @@ inline bool ChainCookLayout( const Ctx & ctx, const Chain & root, const TableNum
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;

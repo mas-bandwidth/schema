@@ -702,7 +702,7 @@ func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64,
 		return
 	}
 	stride := TableFixedStrideBytes(u, f)
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		tableFixedElementLeavesAt(u, f, src+i*elem, at+i*stride, f.Name+"["+strconv.FormatInt(i, 10)+"]", out)
 	}
 }
@@ -750,7 +750,7 @@ func TableFixedBuildPlan(u *Unit, st *Struct) (plan []TableFixedLeaf, guarded in
 }
 
 func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded int) {
-	for pass := 0; pass < 2; pass++ {
+	for pass := range 2 {
 		for _, e := range raw {
 			if (e.Guard != TableFixedNoGuard) != (pass == 1) {
 				continue

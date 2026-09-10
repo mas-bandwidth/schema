@@ -9423,10 +9423,7 @@ inline bool BytesBuilder::Lock()
 inline int64_t BytesNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -9437,21 +9434,15 @@ inline int64_t BytesNodeStorage( uint64_t type_id, int64_t length, TableRefuseRe
 inline void BytesNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // BytesNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t BytesNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -9461,11 +9452,8 @@ inline int64_t BytesNodeRecordBytes( uint64_t type_id )
 inline uint32_t BytesNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -9489,10 +9477,6 @@ inline void BytesNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -9504,10 +9488,7 @@ inline int64_t BytesNodeMessageStorage( uint64_t type_id, int64_t extent, int64_
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -9538,14 +9519,9 @@ inline bool BytesNodeMessageBody( uint64_t type_id, TableBitReader & r, const Ta
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -10322,10 +10298,7 @@ inline bool IntsBuilder::Lock()
 inline int64_t IntsNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -10336,21 +10309,15 @@ inline int64_t IntsNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
 inline void IntsNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // IntsNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t IntsNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -10360,11 +10327,8 @@ inline int64_t IntsNodeRecordBytes( uint64_t type_id )
 inline uint32_t IntsNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -10388,10 +10352,6 @@ inline void IntsNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -10403,10 +10363,7 @@ inline int64_t IntsNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -10437,14 +10394,9 @@ inline bool IntsNodeMessageBody( uint64_t type_id, TableBitReader & r, const Tab
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -11221,10 +11173,7 @@ inline bool FloatsBuilder::Lock()
 inline int64_t FloatsNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -11235,21 +11184,15 @@ inline int64_t FloatsNodeStorage( uint64_t type_id, int64_t length, TableRefuseR
 inline void FloatsNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // FloatsNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t FloatsNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -11259,11 +11202,8 @@ inline int64_t FloatsNodeRecordBytes( uint64_t type_id )
 inline uint32_t FloatsNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -11287,10 +11227,6 @@ inline void FloatsNodeBody( uint64_t type_id, TableReader & r, const TableNodeMa
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -11302,10 +11238,7 @@ inline int64_t FloatsNodeMessageStorage( uint64_t type_id, int64_t extent, int64
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -11336,14 +11269,9 @@ inline bool FloatsNodeMessageBody( uint64_t type_id, TableBitReader & r, const T
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -13016,10 +12944,6 @@ inline void BytesNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -13186,14 +13110,9 @@ inline bool BytesNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, co
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // BytesLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -13355,10 +13274,7 @@ inline int64_t BytesMeasureWireRetain( const Ctx & ctx, const Bytes & root, Tabl
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( BytesNumberFrom( ctx, numbering, root ) )
@@ -13385,20 +13301,14 @@ inline int64_t BytesSaveWireRetain( const Ctx & ctx, const Bytes & root, TableRe
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !BytesNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -13480,10 +13390,6 @@ inline void IntsNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -13650,14 +13556,9 @@ inline bool IntsNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, con
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // IntsLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -13819,10 +13720,7 @@ inline int64_t IntsMeasureWireRetain( const Ctx & ctx, const Ints & root, TableR
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( IntsNumberFrom( ctx, numbering, root ) )
@@ -13849,20 +13747,14 @@ inline int64_t IntsSaveWireRetain( const Ctx & ctx, const Ints & root, TableReta
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !IntsNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -13944,10 +13836,6 @@ inline void FloatsNodeBodyRetain( uint64_t type_id, TableReader & r, const Table
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -14114,14 +14002,9 @@ inline bool FloatsNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, c
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // FloatsLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -14283,10 +14166,7 @@ inline int64_t FloatsMeasureWireRetain( const Ctx & ctx, const Floats & root, Ta
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( FloatsNumberFrom( ctx, numbering, root ) )
@@ -14313,20 +14193,14 @@ inline int64_t FloatsSaveWireRetain( const Ctx & ctx, const Floats & root, Table
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !FloatsNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -14639,16 +14513,8 @@ inline bool BytesCookLayout( const Ctx & ctx, const Bytes & root, const TableNum
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
@@ -14802,16 +14668,8 @@ inline bool IntsCookLayout( const Ctx & ctx, const Ints & root, const TableNumbe
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
@@ -14965,16 +14823,8 @@ inline bool FloatsCookLayout( const Ctx & ctx, const Floats & root, const TableN
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
