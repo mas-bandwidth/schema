@@ -256,30 +256,29 @@ func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 // payload WHOLE behind it, so `?T` and a plain `T` are ONE BYTE APART here
 // where the packet wire cannot tell them apart at all.
 //
-// THE PAYLOAD IS WRITTEN WHETHER THE FLAG SAYS PRESENT OR NOT, and it is
-// written from the value's own storage either way. That is the C++ reference's
-// line exactly (internal/codegen/cpptable/fixedform.go's emitFixedWriteField:
-// the present byte, then the payload, with no branch between them), and this
-// form's rule is that the reference goes first and every other port matches
-// its BYTES — a fixed table writes every field, and "every field" includes the
-// one behind a zero flag. Two ports agree here because both spell a fresh
-// value's storage the same way: the DECLARED DEFAULTS, which is what the class
-// constructor and the reference's member initializers both lay down, and what
-// the prefill lays in the reader's image.
+// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS (docs/SPEC-TABLES.md
+// §3.4). The payload rides WHOLE whether or not it is present, and when the
+// flag is 0 what rides is zero. It is ONE `if` here and a rule nowhere else,
+// because the template already put the zeros there — so an absent optional
+// costs the writer the branch and not one store, and a caller's untouched
+// payload storage never reaches the wire.
 //
-// So this stays a STRAIGHT LINE and not a branch — the flat tier's shape,
-// which is the shape §3.4 tells every port to take. Note what it costs: the
-// bytes behind a zero flag are the writer's STORAGE and not its VALUE, so a
-// value that had its optional set and then cleared writes different bytes from
-// one that never set it. The reference has the same property, and the
-// reference's own union does NOT — an untaken arm keeps the template's zeros,
-// because only the taken arm is written. That asymmetry is the reference's to
-// settle; matching it is this port's job.
+// THIS BRANCH WAS NOT ALWAYS HERE, and what it settles is worth stating. The
+// payload used to be written from storage either way, matching the reference's
+// line at the time, and that made the bytes a function of the writer's STORAGE
+// rather than of its VALUE: a value that had its optional set and then cleared
+// wrote different bytes from one that never set it. The reference's own union
+// never had the property — an untaken arm keeps the template's zeros, because
+// only the taken arm is written — so the two constructs disagreed inside one
+// form. The reference settled it in favour of the union's rule, and this
+// follows it.
 func (g *fixedGen) emitWriteField(f *ir.Field, base string, at int64, val, ind string) {
 	if f.Type.Optional {
-		g.pf("%sview.setUint8(%s, %s.%sPresent ? 1 : 0);\n",
-			ind, off(base, at), val, ir.GoExportName(f.Name))
-		g.emitWritePayload(f, base, at+fixedPresentBytes, val, ind)
+		name := ir.GoExportName(f.Name)
+		g.pf("%sview.setUint8(%s, %s.%sPresent ? 1 : 0);\n", ind, off(base, at), val, name)
+		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
+		g.emitWritePayload(f, base, at+fixedPresentBytes, val, ind+"  ")
+		g.pf("%s}\n", ind)
 		return
 	}
 	g.emitWritePayload(f, base, at, val, ind)
