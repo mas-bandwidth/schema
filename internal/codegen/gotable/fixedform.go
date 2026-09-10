@@ -547,10 +547,11 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			return
 		}
 	}
-	// A GO bool IS NOT A BYTE. Its comparison reads the byte against 1, so a
-	// raw copy lands a hostile 2 as FALSE where the wire and the reference
-	// both say nonzero is true; tableFixedBool normalises instead of copying,
-	// and being its own op it never coalesces into a neighbouring copy run.
+	// A GO bool IS NOT A BYTE. A Go true is the byte 1 (`== true`, array
+	// equality); `if v` is not portable (TESTB on amd64, TBZ bit 0 on arm64).
+	// The wire and the reference both say nonzero is true; tableFixedBool
+	// normalises (byte != 0 → 1) instead of copying, and being its own op it
+	// never coalesces into a neighbouring copy run.
 	op := "tableFixedCopy"
 	if f.Type.Kind == ir.TBool {
 		op = "tableFixedBool"

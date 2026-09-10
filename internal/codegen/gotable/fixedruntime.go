@@ -168,11 +168,11 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				dst[p.Dst+k] = byte(tag >> (8 * k))
 			}
 		case tableFixedBool:
-			// A GO bool IS NOT A BYTE: the comparison reads the byte against
-			// 1, so a hostile 2 in a bool slot lands as FALSE if it is copied
-			// raw. The wire says nonzero is true (docs/SPEC-TABLES.md §3), and
-			// the reference reads it that way, so the byte is NORMALISED here
-			// and never copied.
+			// A GO bool IS NOT A BYTE. A Go true is the byte 1 (v == true,
+			// array equality). if v is TESTB (nonzero) on amd64 and TBZ bit
+			// 0 on arm64, so a hostile 2 reads true on one and false on the
+			// other. The wire says nonzero is true (docs/SPEC-TABLES.md §3);
+			// normalise here (byte != 0 -> 1) and never copy.
 			for k := uint32(0); k < p.Size; k++ {
 				v := byte(0)
 				if src[p.Src+k] != 0 {

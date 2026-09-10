@@ -454,10 +454,12 @@ func TestForm1VariableLoad(t *testing.T) {
 }
 
 // TestFixedFormHostileBoolByte is the CONTROL for the one place a Go
-// destination is not the wire's own byte: a Go `bool` compares its byte
-// against 1, so a raw copy lands a hostile 2 as FALSE, where the wire and the
-// C++ reference both say NONZERO IS TRUE (docs/SPEC-TABLES.md §3). Every bool
-// destination is here — a plain field, an optional's PRESENT byte, an
+// destination is not the wire's own byte. A Go true is the byte 1 (`== true`,
+// array equality). `if v` is TESTB (nonzero) on amd64 and TBZ bit 0 on arm64,
+// so a raw 2 reads true on one and false on the other — that is not this
+// op's comparison. The wire and the C++ reference both say NONZERO IS TRUE
+// (docs/SPEC-TABLES.md §3); tableFixedBool normalises (byte != 0 → 1). Every
+// bool destination is here — a plain field, an optional's PRESENT byte, an
 // optional's own value, and an array of them, which the coalescer folds into
 // ONE bool run — and both reader paths are: the identity plan the emitter laid
 // down, and the plan the compiler builds when a writer's layout is not this
@@ -489,7 +491,7 @@ func hostileRecord(t *testing.T) []byte {
 	}
 	body := buf[len(buf)-HostFixedRecordBytes+8:]
 	// EVERY BOOL BYTE HOSTILE, and 2 is the one that matters: it is nonzero,
-	// so it is true on the wire, and it is not 1, so a raw copy makes it false
+	// so it is true on the wire, and it is not 1, so a raw copy is not a Go true
 	body[bodyOn] = 2
 	body[bodyOff] = 0
 	body[bodyPresent] = 3
@@ -503,16 +505,17 @@ func hostileRecord(t *testing.T) []byte {
 
 func wantHostile(t *testing.T, what string, v Host, r TableReport) {
 	t.Helper()
-	if !v.On {
+	// v == true compares the byte against 1. if v does not, on amd64.
+	if v.On != true {
 		t.Fatalf("%s: a hostile 2 in a bool landed as false", what)
 	}
-	if v.Off {
+	if v.Off == true {
 		t.Fatalf("%s: a zero bool landed as true", what)
 	}
-	if !v.MaybePresent {
+	if v.MaybePresent != true {
 		t.Fatalf("%s: a hostile 3 in the present byte landed as absent", what)
 	}
-	if !v.Maybe {
+	if v.Maybe != true {
 		t.Fatalf("%s: a hostile 0xFF in an optional bool landed as false", what)
 	}
 	if v.Many != [4]bool{true, false, true, false} {
@@ -557,17 +560,38 @@ func TestHostileBoolOnThePlanPath(t *testing.T) {
 	wantHostile(t, "compiled plan", v, r)
 }
 
-// THE NEGATIVE CONTROL, in the same file: with the normalisation removed the
-// hostile 2 must land as false. A raw byte copy is exactly what the op
-// replaced, so this is the op's own sabotage without a build overlay.
+// THE NEGATIVE CONTROL, in the same file: sabotage tableFixedBool to a copy
+// (the op it replaced) and require a raw 2 not to land as a Go true. if v
+// is TESTB on amd64, so a planted 2 reads true there and the control would
+// claim the op was never needed; v == true compares against 1 on both.
 func TestHostileBoolNegativeControl(t *testing.T) {
 	buf := hostileRecord(t)
 	record := buf[len(buf)-HostFixedRecordBytes:]
+	if HostFixedPlan.Count <= 0 {
+		t.Fatal("NEGATIVE CONTROL FAILED: no identity plan")
+	}
+	plan := make([]TableFixedEntry, HostFixedPlan.Count)
+	copy(plan, HostFixedPlan.Entries[:HostFixedPlan.Count])
+	n := 0
+	for i := range plan {
+		if plan[i].Op == tableFixedBool {
+			plan[i].Op = tableFixedCopy
+			n++
+		}
+	}
+	if n == 0 {
+		t.Fatal("NEGATIVE CONTROL FAILED: identity plan has no tableFixedBool to sabotage")
+	}
 	var v Host
 	HostReset(&v)
+	var r TableReport
+	tableFixedRun(plan, int32(len(plan)), record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &r)
+	if v.On == true {
+		t.Fatal("NEGATIVE CONTROL FAILED: a raw 2 copied into a Go bool read as true, so the op it replaced was never needed")
+	}
 	raw := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
 	raw[unsafe.Offsetof(v.On)] = record[8+bodyOn] // the copy the op replaced
-	if v.On {
+	if v.On == true {
 		t.Fatal("NEGATIVE CONTROL FAILED: a raw 2 copied into a Go bool read as true, so the op it replaced was never needed")
 	}
 }
