@@ -247,7 +247,19 @@ pub fn table_fixed_run(
                     Some(count) if raw != 0 && raw <= u64::from(*count) => {
                         u64::from(remap[base + raw as usize])
                     }
-                    _ => 0,
+                    Some(count) => {
+                        // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT
+                        // OF RANGE, as a count past its bound is: it lands as
+                        // None and counts one clamped. A variant the writer DOES
+                        // carry and this reader cannot name is a different thing
+                        // — it resolves to None through the table and counts
+                        // nothing, because nothing was out of range.
+                        if raw > u64::from(*count) {
+                            report.clamped += 1;
+                        }
+                        0
+                    }
+                    None => 0,
                 };
                 for i in 0..w {
                     image[d + i] = (held >> (8 * i)) as u8;

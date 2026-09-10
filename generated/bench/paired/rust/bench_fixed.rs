@@ -212,7 +212,12 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
     {
         let at = 40;
         let raw = u8::from_le_bytes(b[at..at + 1].try_into().expect("the declared width"));
-        value.weapon = raw;
+        if raw > 15 {
+            report.clamped += 1;
+            value.weapon = 0;
+        } else {
+            value.weapon = raw;
+        }
     }
     {
         let at = 41;
