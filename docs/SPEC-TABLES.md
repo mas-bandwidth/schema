@@ -6343,11 +6343,16 @@ arithmetic, its whole constant size being one entry's worth of `src` advance.
 
 **THE IDENTITY PLAN IS A STATIC CONSTANT BAKED INTO THE GENERATED READER.** When
 a record's hash equals the reader's own, the plan is the one the compiler
-already wrote: every entry a `copy`, with **ADJACENT RUNS COALESCED** — two
-neighbouring fields whose source and destination both advance together are one
-entry, so a record whose declared order matches its storage layout collapses to
-a handful of runs. Coalescing is the only optimization a plan compiler performs
-and it is performed identically on both sides.
+already wrote. **IT CARRIES THREE OPS AND NOT ONE**: a `copy` for every field
+whose wire image is its storage image, a `count` for a `[Min..Max]T`, and a
+`text` for a `string(N)`, a `wstring(N)` or a `bytes(N)` — because a count and a
+length are numbers the reader HOLDS TO ITS OWN BOUND before it moves the units
+behind them, and a copy holds nothing. The other four ops are a compiled plan's
+alone. **ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
+source and destination both advance together are one entry, so a record whose
+declared order matches its storage layout collapses to a handful of runs.
+Coalescing is the only optimization a plan compiler performs and it is performed
+identically on both sides.
 
 **FOR ANY OTHER HASH THE SAME LOOP RUNS OVER A PLAN COMPILED ONCE FROM THE
 WRITER'S LAYOUT, AND CACHED BY HASH.** The compiler walks the layout against the
@@ -11138,6 +11143,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
+  FixedClamp  FixedClampBody
   ```
 
   The `Fixed` row is §3.4's, and it is claimed on this list's own rule:
@@ -11148,6 +11154,11 @@ in build version (§20.5).
   has no struct to hang a plan's two numbers on and spells them as two more
   file-scope constants; the whole row is one claim across the ports, spelled
   `<name>_fixed_save` in C and Rust and `<Name>FixedSave` elsewhere.
+  `FixedClamp` and `FixedClampBody` are §3.4's READ-SIDE BOUNDS — the
+  straight-line pass a read makes after the copy — and they are claimed for
+  every closure member on the same rule and not only for the ones that declare
+  a bound today: a field gains a `min` or a `max`, or a union or an enum, as an
+  ordinary edit, and the name has to already be taken when it does.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was
