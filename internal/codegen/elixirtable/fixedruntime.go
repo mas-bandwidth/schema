@@ -1259,12 +1259,64 @@ const fixedRuntimeBody = `  @moduledoc """
     case body do
       <<_::binary-size(^src), raw::little-signed-32, take::binary-size(^size), _::binary>> ->
         {v, report} = clamp_count(raw, cap, report)
-        step(rest, body, [{aux, take}, {dst, <<v::little-signed-32>>} | writes], report)
+
+        # THE ONE CONTENT RULE THE WIRE HAS (§3, §4), over the USED UNITS and
+        # over nothing else: the slack carries no meaning, and reading a whole
+        # declared bound to check bytes that mean nothing is the cost this form
+        # exists to avoid.
+        if text_ok?(flavour, binary_part(take, 0, v * unit)) do
+          step(rest, body, [{aux, take}, {dst, <<v::little-signed-32>>} | writes], report)
+        else
+          # A PAYLOAD THAT IS NOT THE TEXT ITS KIND SAYS IT IS is DAMAGE and not
+          # data, and the verdict is the one every form reaches: THE FIELD READS
+          # ITS DECLARED DEFAULT, one damage flag fires, and the rest of the
+          # record stands. SPEC.md §4.7 refuses the whole read on the packet
+          # wire because a packet has no position after a field that did not
+          # decode; a FIXED RECORD IS POSITIONAL, so the damage is one field's.
+          #
+          # LANDING THE DEFAULT COSTS NOTHING HERE. A field with no write in the
+          # plan's output is a GAP, and the assembler fills every gap from the
+          # PREFILL — which is this type's declared defaults, the string's
+          # length in front of its bytes. So the answer is the absence of an
+          # answer, which is the same mechanism that answers "absent field".
+          step(rest, body, writes, %{report | malformed: true})
+        end
 
       _ ->
         step(rest, body, writes, report)
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # THE CONTENT RULE: what a string(N) and a wstring(N) are allowed to be
+  # ---------------------------------------------------------------------------
+  #
+  # A bytes(N) IS UNTOUCHED. It is bytes, and there is nothing for it to be
+  # ill-formed as.
+
+  defp text_ok?(1, used), do: String.valid?(used) and :binary.match(used, <<0>>) == :nomatch
+  defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)
+  defp text_ok?(_, _), do: true
+
+  # PAIRED UTF-16 WITH NO ZERO UNIT, read as the wire it came from: the units
+  # ride little-endian and land as a raw copy, so this walks them as they lie.
+  defp utf16_ok?(<<>>), do: true
+  defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false
+
+  defp utf16_ok?(<<u::little-unsigned-16, rest::binary>>) when u >= 0xD800 and u <= 0xDBFF do
+    case rest do
+      <<low::little-unsigned-16, more::binary>> when low >= 0xDC00 and low <= 0xDFFF ->
+        utf16_ok?(more)
+
+      # A HIGH SURROGATE WITH NOTHING BEHIND IT, or with something that is not a
+      # low surrogate, is half a character and not a character.
+      _ ->
+        false
+    end
+  end
+
+  defp utf16_ok?(<<u::little-unsigned-16, _::binary>>) when u >= 0xDC00 and u <= 0xDFFF, do: false
+  defp utf16_ok?(<<_::little-unsigned-16, rest::binary>>), do: utf16_ok?(rest)
 
   defp step([{:ordinal, src, dst, size, width, remap} | rest], body, writes, report) do
     # A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose enum

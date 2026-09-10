@@ -1107,8 +1107,8 @@ func TableFixedHasWriteBound(u *Unit) bool {
 // ---------------------------------------------------------------------------
 
 // TableFixedClampNeeded answers whether a type's closure declares anything the
-// read side bounds — the question that keeps a unit of unbounded scalars from
-// carrying one line of this (§2.2's zero-cost rule).
+// read side bounds or holds to a content rule — the question that keeps a unit
+// of unbounded scalars from carrying one line of this (§2.2's zero-cost rule).
 func TableFixedClampNeeded(st *Struct) bool {
 	return tableFixedClampNeeded(st, map[string]bool{})
 }
@@ -1133,6 +1133,19 @@ func TableFixedClampNeededField(f *Field) bool {
 	return tableFixedClampNeededField(f, map[string]bool{})
 }
 
+// TableFixedClampNeededUnionArm is whether ANY arm's payload is bounded. The
+// tag is a bound of its own (TableFixedClampNeededField is true of every
+// union); a switch over arms that none of them need is not emitted, rather
+// than emitted with nothing to switch on.
+func TableFixedClampNeededUnionArm(r *Union) bool {
+	for _, v := range r.Variants {
+		if v.F != nil && TableFixedClampNeededField(v.F) {
+			return true
+		}
+	}
+	return false
+}
+
 func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
@@ -1154,6 +1167,13 @@ func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
 		return true
 	}
 	if f.HasFloatRange {
+		return true
+	}
+	// TEXT CARRIES THE ONE CONTENT RULE THE WIRE HAS (§3, §4): a `string(N)`'s
+	// used bytes are well-formed UTF-8 with no zero among them, and a
+	// `wstring(N)`'s used units are paired UTF-16 with no zero unit. `bytes(N)`
+	// has no content rule — it is bytes.
+	if f.Type.Kind == TString || f.Type.Kind == TWString {
 		return true
 	}
 	return f.Type.Kind == TBits && int64(f.Type.Width) < 8*TableFixedStorageBytes(f.Type)

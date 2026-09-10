@@ -951,9 +951,104 @@ hostile =
    end).()
 
 {:ok, [clamped], clamp_report} = Tblp1.P1Fixed.chain_fixed_load(hostile)
-Leg.eq("a hostile length is clamped to the declared bound", byte_size(clamped.name), 16)
 Leg.check("the clamp is COUNTED", clamp_report.clamped >= 1)
-Leg.eq("a clamp is not `malformed`", clamp_report.malformed, false)
+
+# AND THEN THE CONTENT RULE FIRES ON WHAT THE CLAMP LEFT, which is the
+# reference's own order: the length is held to the declared bound FIRST, and the
+# used units are checked SECOND. `chain-one` padded out to sixteen bytes carries
+# NULs, and a `string(N)`'s bytes have no zero among them (§3) — so the field is
+# damage, it reads its DECLARED DEFAULT, and the rest of the record stands.
+Leg.eq("the clamped span is then held to the CONTENT rule", clamped.name, "")
+Leg.eq("ill-formed text fires the one damage flag", clamp_report.malformed, true)
+Leg.eq("and the rest of the record stands", clamped.link.value, 77)
+
+# A CLAMP ON ITS OWN IS NOT DAMAGE. The same hostile length over a field whose
+# whole declared bound IS well-formed text: the clamp counts and nothing else
+# moves, which is what makes the case above discriminating.
+full =
+  (fn ->
+     saved =
+       Tblp1.P1Fixed.chain_fixed_save([
+         %Tblp1.Chain{name: "sixteen-bytes!!!", link: %Tblp1.Link{value: 77, tag: "tagged"}}
+       ])
+
+     head = binary_part(saved, 0, byte_size(saved) - Tblp1.P1Fixed.chain_fixed_body_bytes())
+     body = binary_part(saved, byte_size(head), Tblp1.P1Fixed.chain_fixed_body_bytes())
+     <<_::little-signed-32, rest::binary>> = body
+     head <> <<9999::little-signed-32, rest::binary>>
+   end).()
+
+{:ok, [full_back], full_report} = Tblp1.P1Fixed.chain_fixed_load(full)
+Leg.eq("a clamp alone lands the whole declared bound", full_back.name, "sixteen-bytes!!!")
+Leg.check("and is COUNTED", full_report.clamped >= 1)
+Leg.eq("a clamp is not `malformed`", full_report.malformed, false)
+
+# ---------------------------------------------------------------------------
+# THE ONE CONTENT RULE THE WIRE HAS (§3, §4), on this form's terms
+# ---------------------------------------------------------------------------
+#
+# A `string(N)`'s used bytes are well-formed UTF-8 with no zero among them. A
+# payload that is not the text its kind says it is is DAMAGE and not data, and
+# the verdict here is not the packet wire's: SPEC.md §4.7 refuses the WHOLE
+# read, because a packet has no position after a field that did not decode; a
+# FIXED RECORD IS POSITIONAL, so the damage is ONE FIELD's — it reads its
+# declared default, one `malformed` fires, and the rest of the record stands.
+#
+# THE POISON IS WRITTEN THROUGH THE WRITER, because it can be: the write side's
+# bounds are the used length and the live count, and neither is a content rule.
+Leg.section("ill-formed text: the field reads its default, the record stands")
+
+poison = fn bytes ->
+  Tblfx1.FX1Fixed.fx_root_fixed_save([
+    %Tblfx1.FxRoot{keep: 1234, nested: %Tblfx1.FxNested{a: 7, b: 2}, label: bytes}
+  ])
+end
+
+for {bytes, what} <- [
+      {<<0xFF>>, "a lone 0xFF is not text"},
+      {<<0xE2, 0x82>>, "a truncated three-byte sequence is not text"},
+      {<<0xA9>>, "a bare continuation byte is not text"},
+      {<<0xC0, 0x80>>, "an overlong NUL is not text"},
+      {<<?a, 0, ?b>>, "an interior null is not text"}
+    ] do
+  {:ok, [back], r} = Tblfx1.FX1Fixed.fx_root_fixed_load(poison.(bytes))
+  Leg.eq(what, r.malformed, true)
+  Leg.eq("#{what}: the field reads its DECLARED DEFAULT", back.label, "fx")
+  Leg.eq("#{what}: and the rest of the record stands", {back.keep, back.nested.a}, {1234, 7})
+end
+
+# AND WELL-FORMED TEXT IS UNTOUCHED, which is what makes the five above
+# discriminating: multi-byte UTF-8 inside the bound reads back whole.
+{:ok, [ete], ete_report} = Tblfx1.FX1Fixed.fx_root_fixed_load(poison.("été"))
+Leg.eq("well-formed multi-byte UTF-8 rides whole", ete.label, "été")
+Leg.eq("and moves no counter", {ete_report.malformed, ete_report.clamped}, {false, 0})
+
+# THE NEGATIVE CONTROL: the read loop with the content rule taken out of the
+# `text` op, which is what this leg did before. The same record, the same plan,
+# and the byte that is not text stands in the image with nothing said.
+loose_plan =
+  Enum.map(Tblfx1.FX1Fixed.fx_root_fixed_plan(), fn
+    {:text, src, dst, aux, size, _flavour} -> {:text, src, dst, aux, size, 3}
+    entry -> entry
+  end)
+
+[poison_body | _] = bodies_of.(poison.(<<0xFF>>), Tblfx1.FX1Fixed.fx_root_fixed_body_bytes())
+
+{loose_image, loose_report} =
+  Tblfx1.FixedRuntime.run(
+    loose_plan,
+    poison_body,
+    Tblfx1.FX1Fixed.fx_root_fixed_prefill(),
+    Tblfx1.FixedRuntime.report()
+  )
+
+Leg.eq(
+  "NEGATIVE CONTROL: the loop with no content rule leaves the byte standing",
+  Tblfx1.FX1Fixed.fx_root_fixed_decode(loose_image).label,
+  <<0xFF>>
+)
+
+Leg.eq("NEGATIVE CONTROL: and says nothing about it", loose_report.malformed, false)
 
 # THE OVERLOADED LANE, PLANTED BY HAND. The bug this leg is pinned against is a
 # plan entry that spends ONE lane on both the arm ordinal and the text flavour.

@@ -528,9 +528,9 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 		return
 	}
 	g.pf("/* %s's read-side bounds. */\n", st.Name)
-	g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * clamped )\n{\n",
+	g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * clamped, int32_t * damaged )\n{\n",
 		tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_clamp_body"), st.Name)
-	g.pf("    (void) value; (void) clamped;\n")
+	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value->", 4)
 	}
@@ -552,8 +552,13 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED void %s( %s * value, TableReport * report )\n{\n",
 		g.sym(st.Name, "fixed_clamp"), st.Name)
 	g.pf("    int32_t clamped = 0;\n")
-	g.pf("    %s( value, &clamped );\n", g.sym(st.Name, "fixed_clamp_body"))
-	g.pf("    report->clamped += clamped;\n}\n\n")
+	g.pf("    int32_t damaged = 0;\n")
+	g.pf("    %s( value, &clamped, &damaged );\n", g.sym(st.Name, "fixed_clamp_body"))
+	g.pf("    report->clamped += clamped;\n")
+	g.pf("    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the\n")
+	g.pf("       one flag and not on a counter: the field read its declared default\n")
+	g.pf("       and the rest of the record stands. */\n")
+	g.pf("    if ( damaged != 0 ) { report->malformed = 1; }\n}\n\n")
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
@@ -589,9 +594,35 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s%s_count; ++i )\n%s    {\n", ind, ind, ind, val, f.Name, ind)
 		g.emitFixedClampElement(f, val+f.Name+"[i]", indent+8)
 		g.pf("%s    }\n%s}\n", ind, ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		g.emitFixedTextContent(f, val, ind)
 	default:
 		g.emitFixedClampElement(f, val+f.Name, indent)
 	}
+}
+
+/*
+emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), the C
+
+	twin of the reference's: a `string(N)`'s used bytes are well-formed UTF-8
+	with no zero among them and a `wstring(N)`'s used units are paired UTF-16
+	with no zero unit, checked over the USED LENGTH and nothing else. A payload
+	that is not text is DAMAGE and not data: the field reads its declared
+	default, one `malformed` counts, and the rest of the record stands.
+*/
+func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
+	call := fmt.Sprintf("table_wire_utf8( (const uint8_t *) %s%s, (uint64_t) %s%s_length )", val, f.Name, val, f.Name)
+	if f.Type.Kind == ir.TWString {
+		call = fmt.Sprintf("table_wire_utf16( (const uint8_t *) %s%s, (int64_t) %s%s_length )", val, f.Name, val, f.Name)
+	}
+	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
+	g.pf("%s    memset( %s%s, 0, sizeof( %s%s ) );\n", ind, val, f.Name, val, f.Name)
+	if f.HasDefault && len(f.DefBytes) != 0 {
+		g.pf("%s    { static const uint8_t initial[] = { %s }; memcpy( %s%s, initial, sizeof( initial ) ); } /* the declared default */\n",
+			ind, byteLiterals(f.DefBytes), val, f.Name)
+	}
+	g.pf("%s    %s%s_length = %d;\n", ind, val, f.Name, len(f.DefBytes))
+	g.pf("%s    (*damaged)++;\n%s}\n", ind, ind)
 }
 
 func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
@@ -600,12 +631,15 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%s( &%s, clamped );\n", ind, g.sym(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s( &%s, clamped, damaged );\n", ind, g.sym(r.Name, "fixed_clamp_body"), expr)
 			}
 			return
 		case *ir.Union:
 			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %s; (*clamped)++; }\n",
 				ind, expr, r.Max, expr, enumNoneConst(f.Type.Name+"Type"))
+			if !ir.TableFixedClampNeededUnionArm(r) {
+				return
+			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
 				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {

@@ -562,8 +562,8 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	}
 	g.fixedOwner = st
 	g.pf("// %s's read-side bounds.\n", st.Name)
-	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped )\n{\n", st.Name, st.Name)
-	g.pf("    (void) value; (void) clamped;\n")
+	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped, int32_t & damaged )\n{\n", st.Name, st.Name)
+	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value", 4)
 	}
@@ -584,8 +584,13 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("// clamp COUNTS.\n")
 	g.pf("inline void %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    int32_t clamped = 0;\n")
-	g.pf("    %sFixedClampBody( value, clamped );\n", st.Name)
-	g.pf("    report->clamped += clamped;\n}\n\n")
+	g.pf("    int32_t damaged = 0;\n")
+	g.pf("    %sFixedClampBody( value, clamped, damaged );\n", st.Name)
+	g.pf("    report->clamped += clamped;\n")
+	g.pf("    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the\n")
+	g.pf("    // one flag and not on a counter: the field read its declared default\n")
+	g.pf("    // and the rest of the record stands.\n")
+	g.pf("    if ( damaged != 0 ) { report->malformed = true; }\n}\n\n")
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
@@ -623,9 +628,43 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s.%s_count; ++i )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
 		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		g.emitFixedTextContent(f, val, ind)
 	default:
 		g.emitFixedClampElement(f, val+"."+f.Name, indent)
 	}
+}
+
+// emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), on this
+// form's terms. A `string(N)`'s used bytes are well-formed UTF-8 with no zero
+// among them and a `wstring(N)`'s used units are paired UTF-16 with no zero
+// unit; the check runs over the USED LENGTH and over nothing else, because the
+// slack carries no meaning and reading it would be the cost this form exists to
+// avoid.
+//
+// A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and it is the same
+// verdict every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
+// `malformed` counts, and the rest of the record stands. It is what SPEC.md
+// §4.7 and §4.12 put on the packet wire, where the whole read refuses — here
+// the record is positional, so the damage is one field's and the reader does
+// not lose the others to it.
+func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
+	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
+	if f.Type.Kind == ir.TWString {
+		// THE SAME BYTES THE COPY MOVED. A wstring's units ride little-endian
+		// and land as a raw copy, so the validator reads the storage as the
+		// wire it came from.
+		call = fmt.Sprintf("TableUtf16Valid( (const uint8_t *) %s.%s, (int64_t) %s.%s_length )", val, f.Name, val, f.Name)
+	}
+	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
+	g.pf("%s    memset( %s.%s, 0, sizeof( %s.%s ) );\n", ind, val, f.Name, val, f.Name)
+	if f.Type.Kind == ir.TString && hasByteDefault(f) {
+		g.pf("%s    memcpy( %s.%s, %s, %d ); // the declared default\n", ind, val, f.Name, cStringLit(f.DefBytes), len(f.DefBytes))
+		g.pf("%s    %s.%s_length = %d;\n", ind, val, f.Name, len(f.DefBytes))
+	} else {
+		g.pf("%s    %s.%s_length = 0;\n", ind, val, f.Name)
+	}
+	g.pf("%s    damaged++;\n%s}\n", ind, ind)
 }
 
 func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
@@ -634,7 +673,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%sFixedClampBody( %s, clamped );\n", ind, r.Name, expr)
+				g.pf("%s%sFixedClampBody( %s, clamped, damaged );\n", ind, r.Name, expr)
 			}
 			return
 		case *ir.Union:
@@ -645,6 +684,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// counts.
 			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
 				ind, expr, r.Max, expr, f.Type.Name)
+			if !ir.TableFixedClampNeededUnionArm(r) {
+				return
+			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
 				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {

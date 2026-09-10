@@ -7999,9 +7999,9 @@ inline void RangedWidthsFixedWriteBody( uint8_t * b, const RangedWidths & value 
 }
 
 // RangedSigned's read-side bounds.
-inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & clamped )
+inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += ( value.i8_low > 126 );
     value.i8_low = ( value.i8_low > 126 ) ? 126 : value.i8_low;
     clamped += ( value.i8_high < -127 );
@@ -8032,9 +8032,9 @@ inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & clamped 
 }
 
 // RangedUnsigned's read-side bounds.
-inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & clamped )
+inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += ( value.u8_low > 254 );
     value.u8_low = ( value.u8_low > 254 ) ? 254 : value.u8_low;
     clamped += ( value.u8_high < 1 );
@@ -8065,9 +8065,9 @@ inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & clam
 }
 
 // RangedWidths's read-side bounds.
-inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & clamped )
+inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     // bits(8) width clamp
     clamped += ( value.b8 > 255ull );
     value.b8 = ( value.b8 > 255ull ) ? 255ull : value.b8;
@@ -8091,8 +8091,13 @@ inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & clamped 
 inline void RangedSignedFixedClamp( RangedSigned & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RangedSignedFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RangedSignedFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RangedSigned, the fixed form ----
@@ -8275,8 +8280,13 @@ inline int64_t RangedSignedFixedLoad( RangedSigned * values, int64_t capacity, c
 inline void RangedUnsignedFixedClamp( RangedUnsigned & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RangedUnsignedFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RangedUnsignedFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RangedUnsigned, the fixed form ----
@@ -8459,8 +8469,13 @@ inline int64_t RangedUnsignedFixedLoad( RangedUnsigned * values, int64_t capacit
 inline void RangedWidthsFixedClamp( RangedWidths & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RangedWidthsFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RangedWidthsFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RangedWidths, the fixed form ----

@@ -8818,17 +8818,17 @@ inline void LoadoutConfigFixedWriteBody( uint8_t * b, const LoadoutConfig & valu
 }
 
 // Debuff's read-side bounds.
-inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped )
+inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 100 );
     value.amount = ( value.amount < 0 ) ? 0 : ( ( value.amount > 100 ) ? 100 : value.amount );
 }
 
 // WeaponConfig's read-side bounds.
-inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped )
+inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.penetration < 0 ) | (int) ( value.penetration > 10 );
     value.penetration = ( value.penetration < 0 ) ? 0 : ( ( value.penetration > 10 ) ? 10 : value.penetration );
     // bits(6) width clamp
@@ -8839,7 +8839,7 @@ inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped 
     {
         case EffectType::Debuff:
         {
-            DebuffFixedClampBody( value.effect.debuff, clamped );
+            DebuffFixedClampBody( value.effect.debuff, clamped, damaged );
             break;
         }
         default: break;
@@ -8847,17 +8847,17 @@ inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped 
 }
 
 // Attachment's read-side bounds.
-inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped )
+inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     clamped += (int) ( value.slot < 0 ) | (int) ( value.slot > 7 );
     value.slot = ( value.slot < 0 ) ? 0 : ( ( value.slot > 7 ) ? 7 : value.slot );
 }
 
 // LoadoutConfig's read-side bounds.
-inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clamped )
+inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.grade > 3u ) { value.grade = Grade::None; clamped++; }
     for ( int64_t i = 0; i < (int64_t) value.grades_count; ++i )
     {
@@ -8867,14 +8867,14 @@ inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clampe
     {
         if ( (uint64_t) value.podium[i] > 3u ) { value.podium[i] = Grade::None; clamped++; }
     }
-    WeaponConfigFixedClampBody( value.primary, clamped );
+    WeaponConfigFixedClampBody( value.primary, clamped, damaged );
     for ( int64_t i = 0; i < 2; ++i )
     {
-        WeaponConfigFixedClampBody( value.backups[i], clamped );
+        WeaponConfigFixedClampBody( value.backups[i], clamped, damaged );
     }
     for ( int64_t i = 0; i < (int64_t) value.attachments_count; ++i )
     {
-        AttachmentFixedClampBody( value.attachments[i], clamped );
+        AttachmentFixedClampBody( value.attachments[i], clamped, damaged );
     }
 }
 
@@ -8887,8 +8887,13 @@ inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clampe
 inline void WeaponConfigFixedClamp( WeaponConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
-    WeaponConfigFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    WeaponConfigFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- WeaponConfig, the fixed form ----
@@ -9054,8 +9059,13 @@ inline int64_t WeaponConfigFixedLoad( WeaponConfig * values, int64_t capacity, c
 inline void LoadoutConfigFixedClamp( LoadoutConfig & value, TableReport * report )
 {
     int32_t clamped = 0;
-    LoadoutConfigFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    LoadoutConfigFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- LoadoutConfig, the fixed form ----

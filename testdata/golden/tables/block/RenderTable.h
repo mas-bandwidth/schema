@@ -14342,64 +14342,64 @@ inline void RenderExplosionFixedWriteBody( uint8_t * b, const RenderExplosion & 
 }
 
 // RenderShip's read-side bounds.
-inline void RenderShipFixedClampBody( RenderShip & value, int32_t & clamped )
+inline void RenderShipFixedClampBody( RenderShip & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.ship_type > 3u ) { value.ship_type = ShipType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
 // RenderTurret's read-side bounds.
-inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & clamped )
+inline void RenderTurretFixedClampBody( RenderTurret & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
 // RenderMissile's read-side bounds.
-inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & clamped )
+inline void RenderMissileFixedClampBody( RenderMissile & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.missile_type > 2u ) { value.missile_type = MissileType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
 // RenderDynamicProp's read-side bounds.
-inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & clamped )
+inline void RenderDynamicPropFixedClampBody( RenderDynamicProp & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
 // RenderStaticProp's read-side bounds.
-inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & clamped )
+inline void RenderStaticPropFixedClampBody( RenderStaticProp & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
 // RenderCosmeticProp's read-side bounds.
-inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & clamped )
+inline void RenderCosmeticPropFixedClampBody( RenderCosmeticProp & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.prop_type > 3u ) { value.prop_type = PropType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
 // RenderLaser's read-side bounds.
-inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & clamped )
+inline void RenderLaserFixedClampBody( RenderLaser & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.laser_type > 2u ) { value.laser_type = LaserType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
 
 // RenderExplosion's read-side bounds.
-inline void RenderExplosionFixedClampBody( RenderExplosion & value, int32_t & clamped )
+inline void RenderExplosionFixedClampBody( RenderExplosion & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     if ( (uint64_t) value.explosion_type > 2u ) { value.explosion_type = ExplosionType::None; clamped++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; clamped++; }
 }
@@ -14568,8 +14568,13 @@ inline int64_t RenderCameraFixedLoad( RenderCamera * values, int64_t capacity, c
 inline void RenderShipFixedClamp( RenderShip & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RenderShipFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RenderShipFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RenderShip, the fixed form ----
@@ -14763,8 +14768,13 @@ inline int64_t RenderShipFixedLoad( RenderShip * values, int64_t capacity, const
 inline void RenderTurretFixedClamp( RenderTurret & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RenderTurretFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RenderTurretFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RenderTurret, the fixed form ----
@@ -14942,8 +14952,13 @@ inline int64_t RenderTurretFixedLoad( RenderTurret * values, int64_t capacity, c
 inline void RenderMissileFixedClamp( RenderMissile & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RenderMissileFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RenderMissileFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RenderMissile, the fixed form ----
@@ -15127,8 +15142,13 @@ inline int64_t RenderMissileFixedLoad( RenderMissile * values, int64_t capacity,
 inline void RenderDynamicPropFixedClamp( RenderDynamicProp & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RenderDynamicPropFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RenderDynamicPropFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RenderDynamicProp, the fixed form ----
@@ -15314,8 +15334,13 @@ inline int64_t RenderDynamicPropFixedLoad( RenderDynamicProp * values, int64_t c
 inline void RenderStaticPropFixedClamp( RenderStaticProp & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RenderStaticPropFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RenderStaticPropFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RenderStaticProp, the fixed form ----
@@ -15501,8 +15526,13 @@ inline int64_t RenderStaticPropFixedLoad( RenderStaticProp * values, int64_t cap
 inline void RenderCosmeticPropFixedClamp( RenderCosmeticProp & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RenderCosmeticPropFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RenderCosmeticPropFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RenderCosmeticProp, the fixed form ----
@@ -15690,8 +15720,13 @@ inline int64_t RenderCosmeticPropFixedLoad( RenderCosmeticProp * values, int64_t
 inline void RenderLaserFixedClamp( RenderLaser & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RenderLaserFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RenderLaserFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RenderLaser, the fixed form ----
@@ -15871,8 +15906,13 @@ inline int64_t RenderLaserFixedLoad( RenderLaser * values, int64_t capacity, con
 inline void RenderExplosionFixedClamp( RenderExplosion & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RenderExplosionFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RenderExplosionFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RenderExplosion, the fixed form ----
