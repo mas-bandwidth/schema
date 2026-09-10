@@ -7,12 +7,12 @@
 // caller has is form 2 in and form 1 out: the file carries its own table and
 // takes §6.6 unchanged.
 //
-// THE RECORD IS THE FILE FORM'S OWN, to the byte. A retained record must carry
+// THE RECORD IS THE VARIABLE FORM'S OWN, to the byte. A retained record must carry
 // the field's identity and bytes WITH EVERY REFERENCE RESOLVED, so that
 // re-emitting it into any id table is correct, and the table it is re-emitted
 // into is a FILE's. So the capture here is a TRANSCODE as well as a resolve: a
 // bitpacked payload is read at the width its announced shape states and written
-// at the width the file form spells, and from there it is the same record the
+// at the width the variable form spells, and from there it is the same record the
 // file's own capture makes and the same emitter writes back. Nothing below
 // copies the emit side, and nothing below is a second record layout.
 //
@@ -115,13 +115,13 @@ func (rs *resolver) msgId(d *bitDecoder, ref uint64) uint64 {
 }
 
 // msgPayload is the resolving walk over ONE announced payload, a field's, an
-// array element's, a union arm's, written out in the FILE form's own spelling.
+// array element's, a union arm's, written out in the VARIABLE form's own spelling.
 //
 // WHICH KINDS THE WALK TOUCHES is §6.6's list unchanged: kind 13, a body's
 // fields; kind 15, an arm id and then the arm's payload under this same rule;
 // kind 30, a variant id; kind 14 at its element kind; and kind 16 at EVERY
 // element kind, because a keyed body carries a KEY REFERENCE per slot whatever
-// the elements are. What the file form COPIES VERBATIM is transcoded here
+// the elements are. What the variable form COPIES VERBATIM is transcoded here
 // instead, because a bitpacked value is not the file's bytes.
 //
 // KIND 17 IS WHAT THE WALK IS LOOKING FOR AS MUCH AS A REFERENCE IS: meeting
@@ -137,7 +137,7 @@ func (rs *resolver) msgPayload(d *bitDecoder, entry ir.TableVocabularyEntry, dep
 		// kind: the record is dropped whole (§6.6)
 		rs.bad = true
 	case 0:
-		// A KIND-0 ENTRY IS A NAME (§3.3) and names no payload the file form
+		// A KIND-0 ENTRY IS A NAME (§3.3) and names no payload the variable form
 		// has a kind for, so a body that used one as a field is a shape this
 		// walk cannot frame: the plain read skips it and this drops it.
 		rs.bad = true
@@ -241,7 +241,7 @@ func (rs *resolver) msgFramed(d *bitDecoder, entry ir.TableVocabularyEntry, dept
 	rs.patch(at)
 }
 
-// msgContent resolves a payload the file form frames by a length: a kind 13,
+// msgContent resolves a payload the variable form frames by a length: a kind 13,
 // 14 or 16 field's own body, a union arm's payload, and an enum-keyed slot's
 // element.
 func (rs *resolver) msgContent(d *bitDecoder, entry ir.TableVocabularyEntry, depth int) {
@@ -366,7 +366,7 @@ func (rs *resolver) msgBody(d *bitDecoder, depth int) {
 }
 
 // msgScalar transcodes ONE announced value: read at the width the shape states,
-// written at the width the file form spells. It is the third of the three ways
+// written at the width the variable form spells. It is the third of the three ways
 // the form changes a value (§3.3) taken in the one direction retention has: a
 // mask rides at its declared W bits and a compressed float as its QUANTIZED
 // INDEX here, and the file carries the mask's own storage width and the float

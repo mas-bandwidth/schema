@@ -12,7 +12,7 @@
 // A VARIABLE table's read takes the node map its pointer slots resolve
 // through and the index width the body's node table settled (§3.1, §3.3): a
 // pointer index is read at that width and resolved, never followed, and a map
-// carves its entries from the node's extent exactly as the file form's does.
+// carves its entries from the node's extent exactly as the variable form's does.
 //
 // DAMAGE IS TERMINAL FOR THE BATCH: a bit stream has no place to resume, so a
 // reader that has lost its position has lost it for the rest of the buffer.
@@ -102,7 +102,7 @@ func (g *tableGen) emitMessageLoadBody(st *ir.Struct) {
 }
 
 // emitMessageWidenBranch is §4's WIDENING RULE at a message field, which §3.3
-// holds to the file form's word: an announced kind below this reader's on the
+// holds to the variable form's word: an announced kind below this reader's on the
 // same ladder decodes EXACTLY at the width the ANNOUNCEMENT states, the value
 // lands, and one `widened` counts. It is emitted only where a widening is
 // possible and only INSIDE the mismatch branch the reader already takes, so a
@@ -206,7 +206,7 @@ func (g *tableGen) emitMessageReadIndex(f *ir.Field, dst, ind string) {
 // bound keeps what fits and counts `clamped`, which is not damage.
 //
 // A kind 12 payload takes §3's ONE CONTENT RULE through the runtime's own
-// TableUtf8Valid and TableUtf8Clamp, which is what the FILE form reads one
+// TableUtf8Valid and TableUtf8Clamp, which is what the VARIABLE form reads one
 // with: the align left the bytes on a byte boundary, so the payload is one
 // span of the buffer and the two forms reach the same two functions.
 func (g *tableGen) emitMessageReadTextFrom(f *ir.Field, value, count, ind, from string) {
@@ -468,7 +468,7 @@ func (g *tableGen) emitMessageReadUnion(f *ir.Field, dst, ind string) {
 
 // retainLostMessageInline is one EXCLUDED CLASS counted on a MESSAGE body
 // (docs/SPEC-TABLES.md §6.6), emitted into the retain family only and beside
-// the unknown the plain read already counts. It is the file form's own
+// the unknown the plain read already counts. It is the variable form's own
 // retainLostInline with this form's report handle: a message body carries the
 // report as a parameter where a file's rides on the reader.
 func (g *tableGen) retainLostMessageInline() string {
@@ -812,7 +812,7 @@ func (g *tableGen) emitMessageClampWide(f *ir.Field, signed bool, width int, dec
 	}
 }
 
-// emitMessageClamp is §4's clamp, the file form's own text: the declared range
+// emitMessageClamp is §4's clamp, the variable form's own text: the declared range
 // on the RAW scale, and a `bits(N)` width clamp beside it.
 func (g *tableGen) emitMessageClamp(f *ir.Field, signed bool, width int, decoded, ind string) {
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {

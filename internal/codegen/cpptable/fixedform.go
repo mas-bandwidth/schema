@@ -1,7 +1,7 @@
 // THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: the reference
-// writer, the reference reader and the vocabulary block, for C++.
+// writer, the reference reader and the LAYOUT, for C++.
 //
-// A fixed-table record is an eight-byte hash of the writer's vocabulary block
+// A fixed-table record is an eight-byte hash of the writer's LAYOUT
 // and then the values in declared order, every field at its DECLARED STORAGE
 // WIDTH, nothing padded between fields. So:
 //
@@ -12,7 +12,7 @@
 //	a read is one loop over it. For a record whose hash equals the reader's
 //	own the plan is the IDENTITY PLAN, built at COMPILE TIME by a constexpr
 //	walk of this type's leaves with adjacent runs coalesced; for any other
-//	hash the SAME LOOP runs over a plan compiled once from the writer's block.
+//	hash the SAME LOOP runs over a plan compiled once from the writer's layout.
 //	There is no second reader and no fast/slow cliff — the owner's own ruling,
 //	which §3.4 quotes him on.
 //
@@ -27,384 +27,65 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// fixedKindOptional is the ONE kind §3.4's block adds to §3's closed set: the
-// OPTIONAL WRAPPER, one child, whose size is one present byte plus the child's.
-// Nothing rides under it in a record — it is a block kind and not a wire kind.
-const fixedKindOptional = 35
+// THE SIZES, THE WALK, THE LAYOUT AND THE HASH ARE NOT HERE. They produce the
+// BYTES a fixed record and its LAYOUT are made of, and a second copy of them in
+// a second backend is a second answer waiting to happen, so they live in ir
+// (ir/fixedform.go) and every port renders the same walk. The ROOT SELECTION
+// lives there too (ir.TableFixedEmitted): which types carry this form is not a
+// question a port gets to answer for itself. What is left in this file is C++:
+// how an offset is spelled, what an element's storage type is called, and how a
+// plan is laid down in the source.
 
-// fixedLeafCap bounds the compile-time plan array. Past it the constexpr walk
-// is a build-time cost nobody asked for; see fixedRoots.
-const fixedLeafCap = 4096
-
-// ---------------------------------------------------------------------------
-// THE LAYOUT: a constant size per field
-// ---------------------------------------------------------------------------
-
-// fixedStorageBytes is a LEAF's declared storage width — the width SPEC.md
-// gives the declaration, identical in every port, which is what makes the
-// identity plan a copy rather than a conversion (§3.4).
-func fixedStorageBytes(t ir.FieldType) int64 {
-	switch t.Kind {
-	case ir.TBool:
-		return 1
-	case ir.TInt, ir.TFixed:
-		return int64(t.Width / 8)
-	case ir.TBits:
-		if t.Width <= 32 {
-			return 4
-		}
-		return 8
-	case ir.TFloat32:
-		return 4
-	case ir.TFloat64:
-		return 8
-	case ir.TNamed:
-		switch r := t.Ref.(type) {
-		case *ir.Enum:
-			return int64(r.StorageBits / 8)
-		case *ir.Flags:
-			return 8 // the raw mask, as §3 carries it
-		}
-	}
-	return 0
-}
-
-const (
-	fixedCountBytes   = int64(4) // a count and a length are the int32 their storage already is
-	fixedPresentBytes = int64(1)
-)
-
-// fixedTypeBytes is C(T). Every one is a compile-time constant, which is why
-// MeasureBody is a constexpr and not a function that reads the value.
-func fixedTypeBytes(st *ir.Struct) int64 {
-	var n int64
-	for _, f := range st.Fields {
-		n += fixedFieldBytes(f)
-	}
-	return n
-}
-
-// fixedFieldBytes is C(f) — §3.4's constant-size table in one function.
-func fixedFieldBytes(f *ir.Field) int64 {
-	var payload int64
-	switch {
-	case f.KeyEnum != "":
-		payload = f.KeyEnumRef.Max * fixedElementBytes(f)
-	case f.Array == ir.ArrayFixed:
-		payload = f.ArrayBound * fixedElementBytes(f)
-	case f.Array == ir.ArrayCounted:
-		payload = fixedCountBytes + f.ArrayBound*fixedElementBytes(f)
-	case f.Type.Kind == ir.TString:
-		payload = fixedCountBytes + f.Type.Size
-	case f.Type.Kind == ir.TWString:
-		payload = fixedCountBytes + 2*f.Type.Size
-	case f.Type.Kind == ir.TBytes:
-		payload = fixedCountBytes + f.Type.Size
-	default:
-		payload = fixedElementBytes(f)
-	}
-	if f.Type.Optional {
-		return fixedPresentBytes + payload
-	}
-	return payload
-}
-
-// fixedElementBytes is the constant of ONE element of a field.
-func fixedElementBytes(f *ir.Field) int64 {
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			return fixedTypeBytes(r)
-		case *ir.Union:
-			widest := int64(0)
-			for _, v := range r.Variants {
-				if n := fixedFieldBytes(v.F); n > widest {
-					widest = n
-				}
-			}
-			return int64(ir.StorageBitsFor(r.Max)/8) + widest
-		}
-	}
-	return fixedStorageBytes(f.Type)
-}
-
-// fixedSupported reports whether a type's whole closure is one this reference
-// carries. A pointer, a map and an unbounded array make their holder VARIABLE
-// and never reach here; what this adds is the two shapes the reference does
-// not yet lay out — a union arm carrying text or an array, and a guarded
-// branch, which §3.4 refuses outright.
-func fixedSupported(st *ir.Struct, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
-			return false
-		}
-		if f.Type.Kind == ir.TNamed {
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				if !fixedSupported(r, depth+1) {
-					return false
-				}
-			case *ir.Union:
-				for _, v := range r.Variants {
-					if v.F == nil {
-						return false // a void arm has no storage this walk can name
-					}
-					a := v.F
-					if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-						a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes || a.Type.Optional {
-						return false
-					}
-					if s, ok := a.Type.Ref.(*ir.Struct); ok && a.Type.Kind == ir.TNamed && !fixedSupported(s, depth+1) {
-						return false
-					}
-				}
-			}
-		}
-	}
-	return true
-}
-
-// fixedFlatType reports a type whose STORAGE IMAGE IS ITS WIRE IMAGE: the
-// declared order is the storage order, there is no padding anywhere in it, and
-// no field of it reorders against the wire. An array of such a type is ONE run
-// however many elements it has, which is what keeps a plan small and what
-// makes the whole of a big array one move.
-func (g *tableGen) fixedFlatType(st *ir.Struct) bool {
-	for _, f := range st.Fields {
-		if f.Type.Optional || f.KeyEnum != "" || f.Array == ir.ArrayCounted {
-			return false
-		}
-		switch f.Type.Kind {
-		case ir.TString, ir.TWString, ir.TBytes, ir.TMap:
-			return false
-		}
-		if _, isUnion := f.Type.Ref.(*ir.Union); isUnion {
-			return false
-		}
-		if !g.fixedFlatElem(f) {
-			return false
-		}
-	}
-	// and the C ABI agrees: no padding anywhere in the record
-	return ir.RecordLayout(g.unit, st).Size == fixedTypeBytes(st)
-}
-
-// fixedFlatElem is the same question about ONE element of a field.
-func (g *tableGen) fixedFlatElem(f *ir.Field) bool {
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			return g.fixedFlatType(r)
-		case *ir.Union:
-			return false
-		}
-	}
-	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes, ir.TMap:
-		return false
-	}
-	return true
-}
-
-// fixedKeyedSlots is the raw slot storage of a keyed array: a TABLE's keyed
-// field is a TableKeyed whose slots sit behind `.slots`, and a closure type's
-// is the packet backend's plain array (docs/SPEC-TABLES.md §2.4).
-func fixedKeyedSlots(owner *ir.Struct, f *ir.Field) string {
-	if f.KeyEnum != "" && owner.IsTable {
-		return f.Name + ".slots"
-	}
-	return f.Name
-}
-
-// ---------------------------------------------------------------------------
-// THE VOCABULARY BLOCK, and MY side of it
-// ---------------------------------------------------------------------------
-
-// fixedBlockEntry is one seventeen-byte entry: an id, a kind, a constant size
-// and a child count, in the writer's declared order (§3.4).
-type fixedBlockEntry struct {
-	id       uint64
-	kind     int
-	size     int64
-	children int
-	note     string // a comment on the emitted array; never a wire byte
-}
-
-// fixedWalk builds the block and, beside it, the DESTINATION row per entry:
-// the storage facts a block entry cannot carry, which is what a plan compiled
-// from another writer's block lands values through.
-type fixedWalk struct {
-	entries []fixedBlockEntry
-	dst     []string
-}
-
-func (w *fixedWalk) push(e fixedBlockEntry, dst string) {
-	w.entries = append(w.entries, e)
-	w.dst = append(w.dst, dst)
-}
-
-func dstRow(dst, stride, aux string, counted, arg int) string {
-	if dst == "" {
-		dst = "0"
-	}
-	if stride == "" {
-		stride = "0"
-	}
-	if aux == "" {
-		aux = "0"
-	}
-	return fmt.Sprintf("{ %s, %s, %s, %d, %d }", dst, stride, aux, counted, arg)
-}
-
+// offOf is C++'s offsetof, in the spelling that is a constant expression in
+// every compiler this repo builds under.
 func offOf(owner, member string) string {
 	return fmt.Sprintf("(uint32_t) __builtin_offsetof( %s, %s )", owner, member)
 }
 
-func (g *tableGen) fixedWalkRoot(st *ir.Struct) *fixedWalk {
-	w := &fixedWalk{}
-	w.push(fixedBlockEntry{id: ir.TableWireId(st.WireName()), kind: ir.TableKindTable, size: fixedTypeBytes(st), children: len(st.Fields), note: st.Name}, dstRow("0", "", "", 0, 0))
-	for _, f := range st.Fields {
-		g.fixedWalkField(w, st.Name, f)
+// dstTerms renders a destination — a sum of offsetofs, and nothing at all is
+// the record's own base.
+func dstTerms(terms []ir.TableFixedTerm) string {
+	if len(terms) == 0 {
+		return "0"
 	}
-	return w
+	parts := make([]string, 0, len(terms))
+	for _, t := range terms {
+		parts = append(parts, offOf(t.Type, t.Member))
+	}
+	return strings.Join(parts, " + ")
 }
 
-func (g *tableGen) fixedWalkField(w *fixedWalk, owner string, f *ir.Field) {
-	id := ir.TableFieldWireId(f)
-	size := fixedFieldBytes(f)
-	if f.Type.Optional {
-		w.push(fixedBlockEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
-			dstRow("0", "", offOf(owner, f.Name+"_present"), 0, 0))
-		g.fixedWalkPayload(w, owner, f, id, size-fixedPresentBytes)
-		return
-	}
-	g.fixedWalkPayload(w, owner, f, id, size)
-}
-
-func (g *tableGen) fixedWalkPayload(w *fixedWalk, owner string, f *ir.Field, id uint64, size int64) {
+// dstRow is one TableFixedDst: MY side of a layout entry, in C++.
+func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
+	d := e.Dst
+	stride := "0"
 	switch {
-	case f.KeyEnum != "":
-		// a keyed array's slots are the storage's first member, so the field's
-		// own offset is the slot base (§2.4's TableKeyed)
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name},
-			dstRow(offOf(owner, f.Name), "(uint32_t) sizeof( "+g.fixedElemStorage(f)+" )", "", 0, 0))
-		g.fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum, "0")
-		g.fixedWalkElement(w, f, 0, "element", "0")
-	case f.Array != ir.ArrayNone:
-		counted, aux := 0, ""
-		if f.Array == ir.ArrayCounted {
-			counted, aux = 1, offOf(owner, f.Name+"_count")
-		}
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstRow(offOf(owner, f.Name), "(uint32_t) sizeof( "+g.fixedElemStorage(f)+" )", aux, counted, 0))
-		g.fixedWalkElement(w, f, 0, "element", "0")
-	case f.Type.Kind == ir.TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, and the
-		// text flavour on the row is what makes the reader land it in one move
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstRow(offOf(owner, f.Name+"_length"), "1", offOf(owner, f.Name), 1, 3))
-		w.push(fixedBlockEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, dstRow("0", "", "", 0, 0))
-	case f.Type.Kind == ir.TString:
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
-			dstRow(offOf(owner, f.Name+"_length"), "", offOf(owner, f.Name), 0, 1))
-	case f.Type.Kind == ir.TWString:
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			dstRow(offOf(owner, f.Name+"_length"), "", offOf(owner, f.Name), 0, 2))
-	default:
-		g.fixedWalkElement(w, f, id, f.Name, offOf(owner, f.Name))
+	case d.Stride1:
+		stride = "1"
+	case d.Stride != nil:
+		stride = "(uint32_t) sizeof( " + g.fixedElemStorage(d.Stride) + " )"
 	}
-}
-
-func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note, dst string) {
-	size := fixedElementBytes(f)
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			w.push(fixedBlockEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note}, dstRow(dst, "", "", 0, 0))
-			for _, sub := range r.Fields {
-				g.fixedWalkField(w, r.Name, sub)
-			}
-			return
-		case *ir.Union:
-			tagType := f.Type.Name + "Type"
-			w.push(fixedBlockEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
-				dstRow(dst, "", dst+" + "+offOf(f.Type.Name, "type"), 0, 0))
-			_ = tagType
-			for _, v := range r.Variants {
-				armID := ir.TableWireId(v.WireName())
-				g.fixedWalkElement(w, v.F, armID, v.Name, offOf(f.Type.Name, v.Name))
-			}
-			return
-		case *ir.Enum:
-			g.fixedWalkEnum(w, r, id, note, dst)
-			return
-		}
+	aux := dstTerms(d.Aux)
+	if d.AuxExtendsDst && len(d.Aux) == 1 {
+		// a union's tag sits INSIDE the union storage the destination named,
+		// so the aux is that destination and then the tag's own offset
+		aux = dstTerms(d.Dst) + " + " + offOf(d.Aux[0].Type, d.Aux[0].Member)
 	}
-	w.push(fixedBlockEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note}, dstRow(dst, "", "", 0, 0))
-}
-
-func (g *tableGen) fixedWalkEnum(w *fixedWalk, e *ir.Enum, id uint64, note, dst string) {
-	w.push(fixedBlockEntry{id: id, kind: ir.TableKindEnum, size: int64(e.StorageBits / 8), children: len(e.Variants), note: note}, dstRow(dst, "", "", 0, 0))
-	for i := range e.Variants {
-		w.push(fixedBlockEntry{id: ir.TableWireId(e.VariantWireName(i)), kind: ir.TableKindNoPayload, size: 0, children: 0, note: e.Variants[i]}, dstRow("0", "", "", 0, 0))
-	}
-}
-
-// fixedBlockBytes is the block exactly as it rides: a u32 entry count and a
-// run of seventeen-byte entries, every number little-endian.
-func fixedBlockBytes(entries []fixedBlockEntry) []byte {
-	out := make([]byte, 0, 4+17*len(entries))
-	out = appendFixedU32(out, uint32(len(entries)))
-	for _, e := range entries {
-		out = appendFixedU64(out, e.id)
-		out = append(out, byte(e.kind))
-		out = appendFixedU32(out, uint32(e.size))
-		out = appendFixedU32(out, uint32(e.children))
-	}
-	return out
-}
-
-func appendFixedU32(b []byte, v uint32) []byte {
-	return append(b, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
-}
-
-func appendFixedU64(b []byte, v uint64) []byte {
-	for i := 0; i < 8; i++ {
-		b = append(b, byte(v>>(8*i)))
-	}
-	return b
-}
-
-// fixedBlockHash is fnv1a64 over the block's bytes exactly as written, and it
-// is the eight bytes every record carries (§3.4).
-func fixedBlockHash(block []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, b := range block {
-		h ^= uint64(b)
-		h *= 0x100000001b3
-	}
-	return h
+	return fmt.Sprintf("{ %s, %s, %s, %d, %d }", dstTerms(d.Dst), stride, aux, d.Counted, d.Arg)
 }
 
 // ---------------------------------------------------------------------------
 // THE EMISSION
 // ---------------------------------------------------------------------------
 
-// fixedRoots is every table of this file the fixed form is emitted for.
+// fixedRoots is every table of this file the fixed form is emitted for, and
+// the ANSWER IS ir's (ir.TableFixedEmitted): the closure this form lays out,
+// §3.4's record ceiling and the plan's leaf cap are one rule for every port,
+// not one per backend.
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range members {
-		if !st.IsTable || st.IsMapEntry() || g.isVar(st.Name) || !fixedSupported(st, 0) {
-			continue
-		}
-		// A PLAN IS BUILT AT COMPILE TIME, in an array the compiler sizes, so a
-		// type whose leaves do not fit one does not carry this form. It is a
-		// bound on the REFERENCE and not on the wire: nothing about §3.4 stops
-		// such a type, and the follow-on is a plan built at load time instead.
-		if g.fixedLeafCount(st) > fixedLeafCap {
+		if g.isVar(st.Name) || !ir.TableFixedEmitted(g.unit, st) {
 			continue
 		}
 		out = append(out, st)
@@ -419,22 +100,18 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	g.pf("// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----\n")
 	g.pf("//\n")
-	g.pf("// A record is an eight-byte hash of the writer's vocabulary block and then\n")
+	g.pf("// A record is an eight-byte hash of the writer's LAYOUT and then\n")
 	g.pf("// the values in declared order, every field at its declared storage width.\n")
 	g.pf("// The writer is the constant bytes memcpy'd and then stores; the reader is\n")
 	g.pf("// ONE loop over ONE plan, the identity plan here and a plan compiled from\n")
-	g.pf("// the writer's own block for anybody else.\n\n")
+	g.pf("// the writer's own layout for anybody else.\n\n")
 	seen := map[string]bool{}
 	var order []*ir.Struct
 	for _, st := range roots {
 		fixedCollectTypes(st, seen, &order)
 	}
+	g.emitFixedLayoutAsserts(order)
 	for _, st := range order {
-		g.pf("constexpr int %sFixedLeaves( TableFixedEntry * out, uint32_t src, uint32_t dst );\n", st.Name)
-	}
-	g.pf("\n")
-	for _, st := range order {
-		g.emitFixedLeafWalk(st)
 		g.emitFixedWriteBody(st)
 	}
 	for _, st := range roots {
@@ -463,132 +140,6 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 		}
 	}
 	*order = append(*order, st)
-}
-
-// fixedLeafCount bounds the entries a type's leaf walk writes, which sizes the
-// constexpr plan array. It counts leaves BEFORE coalescing.
-func (g *tableGen) fixedLeafCount(st *ir.Struct) int {
-	n := 0
-	for _, f := range st.Fields {
-		n += g.fixedFieldLeafCount(f)
-	}
-	return n
-}
-
-func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
-	per := g.fixedElementLeafCount(f)
-	flat := g.fixedFlatElem(f)
-	n := per
-	switch {
-	case f.KeyEnum != "":
-		n = int(f.KeyEnumRef.Max) * per
-		if flat {
-			n = 1
-		}
-	case f.Array == ir.ArrayFixed:
-		n = int(f.ArrayBound) * per
-		if flat {
-			n = 1
-		}
-	case f.Array == ir.ArrayCounted:
-		n = 1 + int(f.ArrayBound)*per
-		if flat {
-			n = 2
-		}
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
-		n = 1
-	}
-	if f.Type.Optional {
-		n++
-	}
-	return n
-}
-
-func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			return g.fixedLeafCount(r)
-		case *ir.Union:
-			n := 1 // the tag
-			for _, v := range r.Variants {
-				n += g.fixedFieldLeafCount(v.F)
-			}
-			return n
-		}
-	}
-	return 1
-}
-
-// emitFixedLeafWalk emits the constexpr walk that writes this type's LEAVES at
-// a base the caller gives. It is a constexpr function rather than a table of
-// literals so that an array of eighty elements is a loop in the source and not
-// eighty lines of it, and so that every destination is an offsetof the C++
-// compiler folds.
-func (g *tableGen) emitFixedLeafWalk(st *ir.Struct) {
-	g.pf("// %s's LEAVES: one entry per run of bytes that lands, at a base the caller\n", st.Name)
-	g.pf("// gives. TableFixedBuildPlan coalesces the adjacent ones, at compile time.\n")
-	g.pf("constexpr int %sFixedLeaves( TableFixedEntry * out, uint32_t src, uint32_t dst )\n{\n", st.Name)
-	g.pf("    int n = 0;\n    (void) out; (void) src; (void) dst;\n")
-	off := int64(0)
-	for _, f := range st.Fields {
-		g.emitFixedFieldLeaves(st, f, off)
-		off += fixedFieldBytes(f)
-	}
-	g.pf("    return n;\n}\n\n")
-}
-
-func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
-	base := off
-	if f.Type.Optional {
-		g.pf("    out[n++] = TableFixedEntry{ src + %du, dst + %s, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0 }; // %s present\n",
-			base, offOf(st.Name, f.Name+"_present"), f.Name)
-		base += fixedPresentBytes
-	}
-	switch {
-	case f.KeyEnum != "":
-		g.emitFixedElementLoop(st, f, base, f.KeyEnumRef.Max)
-	case f.Array == ir.ArrayFixed:
-		g.emitFixedElementLoop(st, f, base, f.ArrayBound)
-	case f.Array == ir.ArrayCounted:
-		g.pf("    out[n++] = TableFixedEntry{ src + %du, dst + %s, %du, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0 }; // %s count\n",
-			base, offOf(st.Name, f.Name+"_count"), f.ArrayBound, f.Name)
-		g.emitFixedElementLoop(st, f, base+fixedCountBytes, f.ArrayBound)
-	case f.Type.Kind == ir.TString:
-		g.emitFixedTextLeaf(st, f, base, f.Type.Size, 1)
-	case f.Type.Kind == ir.TWString:
-		g.emitFixedTextLeaf(st, f, base, 2*f.Type.Size, 2)
-	case f.Type.Kind == ir.TBytes:
-		g.emitFixedTextLeaf(st, f, base, f.Type.Size, 3)
-	default:
-		g.pf("    {\n        const uint32_t es = src + %du;\n        const uint32_t ed = dst + %s;\n", base, offOf(st.Name, f.Name))
-		g.emitFixedElementLeavesAt(f, "es", "ed", 8)
-		g.pf("    }\n")
-	}
-}
-
-func (g *tableGen) emitFixedTextLeaf(st *ir.Struct, f *ir.Field, base, units int64, flavour int) {
-	g.pf("    out[n++] = TableFixedEntry{ src + %du, dst + %s, %du, dst + %s, kTableFixedNoGuard, kTableFixedText, %d, 0 }; // %s\n",
-		base, offOf(st.Name, f.Name+"_length"), units, offOf(st.Name, f.Name), flavour, f.Name)
-}
-
-func (g *tableGen) emitFixedElementLoop(st *ir.Struct, f *ir.Field, base, count int64) {
-	elem := fixedElementBytes(f)
-	if g.fixedFlatElem(f) {
-		// THE WHOLE ARRAY IS ONE RUN: its storage image is its wire image, so
-		// the elements need no walk at all and the plan carries one entry
-		// however many of them there are.
-		g.pf("    static_assert( sizeof( %s ) == %d, \"%s.%s: a flat element's storage IS its wire image\" );\n",
-			g.fixedElemStorage(f), elem, st.Name, f.Name)
-		g.pf("    out[n++] = TableFixedEntry{ src + %du, dst + %s, %du, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0 }; // %s, whole\n",
-			base, offOf(st.Name, fixedKeyedSlots(st, f)), count*elem, f.Name)
-		return
-	}
-	g.pf("    for ( uint32_t i = 0; i < %du; ++i )\n    {\n", count)
-	g.pf("        const uint32_t es = src + %du + i * %du;\n", base, elem)
-	g.pf("        const uint32_t ed = dst + %s + i * (uint32_t) sizeof( %s );\n", offOf(st.Name, fixedKeyedSlots(st, f)), g.fixedElemStorage(f))
-	g.emitFixedElementLeavesAt(f, "es", "ed", 8)
-	g.pf("    }\n")
 }
 
 // fixedElemStorage is the C++ storage type of ONE element, which is what the
@@ -622,44 +173,18 @@ func (g *tableGen) fixedElemStorage(f *ir.Field) string {
 	return fmt.Sprintf("uint%d_t", f.Type.Width)
 }
 
-// emitFixedElementLeavesAt emits ONE element's leaves at runtime bases.
-func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, indent int) {
-	ind := strings.Repeat(" ", indent)
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			g.pf("%sn += %sFixedLeaves( out + n, %s, %s );\n", ind, r.Name, src, dst)
-			return
-		case *ir.Union:
-			tag := int64(ir.StorageBitsFor(r.Max) / 8)
-			g.pf("%sout[n++] = TableFixedEntry{ %s, %s + %s, %du, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0 }; // the tag\n",
-				ind, src, dst, offOf(f.Type.Name, "type"), tag)
-			for i, v := range r.Variants {
-				g.pf("%s{ // arm %s, ordinal %d — guarded on the tag\n%s    const int guard_at = n;\n", ind, v.Name, i+1, ind)
-				g.emitFixedElementLeavesAt(v.F, fmt.Sprintf("( %s + %du )", src, tag),
-					fmt.Sprintf("( %s + %s )", dst, offOf(f.Type.Name, v.Name)), indent+4)
-				g.pf("%s    for ( int q = guard_at; q < n; ++q ) { out[q].guard = %s; out[q].arg = %d; }\n", ind, src, i+1)
-				g.pf("%s}\n", ind)
-			}
-			return
-		}
-	}
-	g.pf("%sout[n++] = TableFixedEntry{ %s, %s, %du, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0 };\n",
-		ind, src, dst, fixedElementBytes(f))
-}
-
-// ---- the template writer ---------------------------------------------------
+// ---- the writer ------------------------------------------------------------
 
 func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.fixedOwner = st
-	g.pf("// %s's stores. The template — the hash, then zeros — is memcpy'd first,\n", st.Name)
+	g.pf("// %s's stores. The prefill — the hash, then zeros — is memcpy'd first,\n", st.Name)
 	g.pf("// which is also what zero-fills every byte of declared slack.\n")
 	g.pf("inline void %sFixedWriteBody( uint8_t * b, const %s & value )\n{\n", st.Name, st.Name)
 	g.pf("    (void) b; (void) value;\n")
 	off := int64(0)
 	for _, f := range st.Fields {
 		g.emitFixedWriteField(f, off, "b", "value", 4)
-		off += fixedFieldBytes(f)
+		off += ir.TableFixedFieldBytes(f)
 	}
 	g.pf("}\n\n")
 }
@@ -669,16 +194,16 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 	base := off
 	if f.Type.Optional {
 		g.pf("%sTableFixedPut8( %s + %d, %s.%s_present ? 1 : 0 );\n", ind, buf, base, val, f.Name)
-		base += fixedPresentBytes
+		base += ir.TableFixedPresentBytes
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitFixedWriteLoop(f, base, f.KeyEnumRef.Max, buf, val+"."+fixedKeyedSlots(g.fixedOwner, f), indent)
+		g.emitFixedWriteLoop(f, base, f.KeyEnumRef.Max, buf, val+"."+ir.TableFixedKeyedSlots(g.fixedOwner, f), indent)
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedWriteLoop(f, base, f.ArrayBound, buf, val+"."+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s.%s_count );\n", ind, buf, base, val, f.Name)
-		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, buf, val+"."+f.Name, indent)
+		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, f.ArrayBound, buf, val+"."+f.Name, indent)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sTableFixedPut32( %s + %d, (uint32_t) %s.%s_length );\n", ind, buf, base, val, f.Name)
 		g.pf("%smemcpy( %s + %d, %s.%s, %d );\n", ind, buf, base+4, val, f.Name, f.Type.Size)
@@ -695,7 +220,7 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 
 func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, count int64, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
-	elem := fixedElementBytes(f)
+	elem := ir.TableFixedElementBytes(f)
 	g.pf("%sfor ( int64_t i = 0; i < %d; ++i )\n%s{\n", ind, count, ind)
 	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+4)
 	g.pf("%s}\n", ind)
@@ -728,7 +253,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			return
 		}
 	}
-	w := fixedStorageBytes(f.Type)
+	w := ir.TableFixedStorageBytes(f.Type)
 	switch f.Type.Kind {
 	case ir.TBool:
 		g.pf("%sTableFixedPut8( %s + %d, %s ? 1 : 0 );\n", ind, buf, off, expr)
@@ -748,97 +273,133 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 // ---- the root's surface ----------------------------------------------------
 
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
-	w := g.fixedWalkRoot(st)
-	block := fixedBlockBytes(w.entries)
-	hash := fixedBlockHash(block)
-	body := fixedTypeBytes(st)
+	entries := ir.TableFixedWalkRoot(st)
+	layout := ir.TableFixedLayoutBytes(entries)
+	hash := ir.TableFixedLayoutHash(layout)
+	body := ir.TableFixedTypeBytes(st)
 
 	g.pf("// ---- %s, the fixed form ----\n\n", st.Name)
 	g.pf("// MeasureBody IS A CONSTEXPR on this form: the body is the same size for\n")
 	g.pf("// every value the type can hold (docs/SPEC-TABLES.md §3.4).\n")
-	g.pf("inline constexpr int64_t %sFixedBodyBytes = %d;\n", st.Name, body)
-	g.pf("inline constexpr int64_t %sFixedRecordBytes = 8 + %sFixedBodyBytes; // the hash and the body\n", st.Name, st.Name)
-	g.pf("inline constexpr uint64_t %sFixedHash = 0x%016xull; // fnv1a64 over the block's bytes\n\n", st.Name, hash)
+	g.pf("constexpr int64_t %sFixedBodyBytes = %d;\n", st.Name, body)
+	g.pf("constexpr int64_t %sFixedRecordBytes = 8 + %sFixedBodyBytes; // the hash and the body\n", st.Name, st.Name)
+	g.pf("constexpr uint64_t %sFixedHash = 0x%016xull; // fnv1a64 over the layout's bytes\n\n", st.Name, hash)
 
-	g.pf("// THE VOCABULARY BLOCK: %d entries, a PRE-ORDER walk of the closure in the\n", len(w.entries))
-	g.pf("// writer's declared order. Every byte is settled by the compiler.\n")
-	g.pf("inline constexpr uint8_t %sFixedBlock[] = {\n", st.Name)
-	g.emitByteArray(block)
+	g.pf("// THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
+	g.pf("// PRE-ORDER walk of the closure in the writer's declared order.\n")
+	g.pf("// Every byte is settled by the compiler.\n")
+	g.pf("constexpr uint8_t %sFixedLayout[] = {\n", st.Name)
+	g.emitByteArray(layout)
 	g.pf("};\n")
-	g.pf("inline constexpr int64_t %sFixedBlockBytes = (int64_t) sizeof( %sFixedBlock );\n\n", st.Name, st.Name)
+	g.pf("constexpr int64_t %sFixedLayoutBytes = (int64_t) sizeof( %sFixedLayout );\n\n", st.Name, st.Name)
 
-	g.pf("// MY SIDE of the block, one row per entry: the storage facts a block entry\n")
-	g.pf("// cannot carry, which is what a plan compiled from another writer's block\n")
-	g.pf("// lands values through.\n")
-	g.pf("inline constexpr TableFixedDst %sFixedDst[] = {\n", st.Name)
-	for i, row := range w.dst {
-		g.pf("    %s, // %s\n", row, w.entries[i].note)
+	g.pf("// MY SIDE of the layout, one row per entry: the storage facts a layout\n")
+	g.pf("// entry cannot carry, which is what a plan compiled from another writer's\n")
+	g.pf("// layout lands values through.\n")
+	g.pf("constexpr TableFixedDst %sFixedDst[] = {\n", st.Name)
+	for _, e := range entries {
+		g.pf("    %s, // %s\n", g.dstRow(e), e.Note)
 	}
 	g.pf("};\n\n")
 
-	leaves := g.fixedLeafCount(st)
-	g.pf("// THE IDENTITY PLAN, coalesced at COMPILE TIME out of %d leaves.\n", leaves)
-	g.pf("inline constexpr auto %sFixedPlan = TableFixedBuildPlan<%d>( %sFixedLeaves );\n\n", st.Name, leaves, st.Name)
+	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
+	g.pf("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
+	g.pf("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
+	g.pf("// can disagree about what the coalescer did; the asserts above tie every\n")
+	g.pf("// destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,\n")
+	g.pf("// then the arms: the entries that are nearly all of a plan never test a\n")
+	g.pf("// guard at all.\n")
+	g.pf("constexpr TableFixedEntry %sFixedPlan[] = {\n", st.Name)
+	for _, e := range plan {
+		guard := "kTableFixedNoGuard"
+		if e.Guard != ir.TableFixedNoGuard {
+			guard = fmt.Sprintf("%du", e.Guard)
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, 0, 0 }, // %s\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Note)
+	}
+	g.pf("};\n")
+	g.pf("constexpr int32_t %sFixedPlanCount = %d;\n", st.Name, len(plan))
+	g.pf("constexpr int32_t %sFixedPlanGuarded = %d;\n\n", st.Name, guarded)
 
-	g.pf("// A FILE: the form byte, the block, then the records to the end of it.\n")
-	g.pf("inline constexpr int64_t %sFixedMeasure( int64_t count )\n{\n", st.Name)
-	g.pf("    return 1 + 4 + %sFixedBlockBytes + count * %sFixedRecordBytes;\n}\n\n", st.Name, st.Name)
+	g.pf("// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)\n")
+	g.pf("// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
+	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
+	g.pf("constexpr int64_t %sFixedMeasure( int64_t count )\n{\n", st.Name)
+	g.pf("    return kTableFixedHeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", st.Name, st.Name)
 
 	g.pf("inline int64_t %sFixedSave( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    const int64_t need = %sFixedMeasure( count );\n", st.Name)
 	g.pf("    if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }\n")
+	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
-	g.pf("    TableFixedPut32( buffer + 1, (uint32_t) %sFixedBlockBytes );\n", st.Name)
-	g.pf("    memcpy( buffer + 5, %sFixedBlock, (size_t) %sFixedBlockBytes );\n", st.Name, st.Name)
-	g.pf("    uint8_t * at = buffer + 5 + %sFixedBlockBytes;\n", st.Name)
+	g.pf("    TableFixedPut64( buffer + kTableFixedHashAt, %sFixedHash );\n", st.Name)
+	g.pf("    TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) %sFixedLayoutBytes );\n", st.Name)
+	g.pf("    memcpy( buffer + kTableFixedHeaderBytes + 4, %sFixedLayout, (size_t) %sFixedLayoutBytes );\n", st.Name, st.Name)
+	g.pf("    uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + %sFixedLayoutBytes;\n", st.Name)
 	g.pf("    for ( int64_t k = 0; k < count; ++k )\n    {\n")
 	g.pf("        TableFixedPut64( at, %sFixedHash );\n", st.Name)
-	g.pf("        memset( at + 8, 0, (size_t) %sFixedBodyBytes ); // the template's zeros\n", st.Name)
+	g.pf("        memset( at + 8, 0, (size_t) %sFixedBodyBytes ); // the prefill's zeros\n", st.Name)
 	g.pf("        %sFixedWriteBody( at + 8, values[k] );\n", st.Name)
 	g.pf("        at += %sFixedRecordBytes;\n    }\n    return need;\n}\n\n", st.Name)
 
 	g.pf("// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
-	g.pf("// the block's hash is this build's own, and a plan compiled once from the\n")
-	g.pf("// writer's block otherwise. Same loop either way (§3.4).\n")
+	g.pf("// the layout's hash is this build's own, and a plan compiled once from the\n")
+	g.pf("// writer's layout otherwise. Same loop either way (§3.4).\n")
 	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
 	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
-	g.pf("    if ( data == NULL || bytes < 5 ) { report->malformed = true; return -1; }\n")
-	g.pf("    if ( data[0] != kTableFixedForm ) { report->refused = true; report->reason = newer_form; return -1; }\n")
-	g.pf("    const uint32_t block_bytes = TableFixedGet32( data + 1 );\n")
-	g.pf("    if ( (int64_t) block_bytes + 5 > bytes ) { report->refused = true; report->reason = block_malformed; return -1; }\n")
-	g.pf("    const uint8_t * block = data + 5;\n")
-	g.pf("    const uint64_t hash = TableFixedHashOf( block, block_bytes );\n")
-	g.pf("    const uint8_t * at = block + block_bytes;\n")
-	g.pf("    const int64_t rest = bytes - 5 - (int64_t) block_bytes;\n")
-	g.pf("    const TableFixedEntry * entries = %sFixedPlan.entries;\n", st.Name)
-	g.pf("    int32_t entry_count = %sFixedPlan.count;\n", st.Name)
+	g.pf("    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
+	g.pf("    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
+	g.pf("    // the registry is ordered, so a byte this reader does not carry is named\n")
+	g.pf("    // by where it sits relative to this form and never by one word for both.\n")
+	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
+	g.pf("        report->refused = true;\n")
+	g.pf("        report->reason = data[0] == kTableWireForm ? previous_form\n")
+	g.pf("                       : data[0] == kTableWireMessageForm ? message_form_as_file\n")
+	g.pf("                       : newer_form;\n")
+	g.pf("        return -1;\n    }\n")
+	g.pf("    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );\n")
+	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }\n")
+	g.pf("    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;\n")
+	g.pf("    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );\n")
+	g.pf("    const uint8_t * at = layout + layout_bytes;\n")
+	g.pf("    const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
+	g.pf("    const TableFixedEntry * entries = %sFixedPlan;\n", st.Name)
+	g.pf("    int32_t entry_count = %sFixedPlanCount;\n", st.Name)
+	g.pf("    int32_t entry_guarded = %sFixedPlanGuarded;\n", st.Name)
 	g.pf("    int64_t record_bytes = %sFixedRecordBytes;\n", st.Name)
 	g.pf("    if ( hash != %sFixedHash )\n    {\n", st.Name)
-	g.pf("        // ANOTHER WRITER: the same loop, over a plan compiled from its block.\n")
-	g.pf("        TableFixedBlockView parsed;\n")
-	g.pf("        if ( !TableFixedParseBlock( block, block_bytes, parsed ) ) { report->refused = true; report->reason = block_malformed; return -1; }\n")
-	g.pf("        const int32_t made = TableFixedCompile( parsed, %sFixedBlock, (int32_t) %sFixedBlockBytes, %sFixedDst, plan, plan_capacity, report );\n", st.Name, st.Name, st.Name)
-	g.pf("        if ( made < 0 ) { report->refused = true; report->reason = plan_too_large; return -1; }\n")
-	g.pf("        entries = plan;\n        entry_count = made;\n")
+	g.pf("        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.\n")
+	g.pf("        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
+	g.pf("        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).\n")
+	g.pf("        TableFixedLayoutView parsed;\n")
+	g.pf("        TableMessageReason why = layout_malformed;\n")
+	g.pf("        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }\n")
+	g.pf("        int32_t compiled_guarded = 0;\n")
+	g.pf("        const int32_t made = TableFixedCompile( parsed, %sFixedLayout, (int32_t) %sFixedLayoutBytes, %sFixedDst, plan, plan_capacity, &compiled_guarded, report );\n", st.Name, st.Name, st.Name)
+	g.pf("        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }\n")
+	g.pf("        entries = plan;\n        entry_count = made;\n        entry_guarded = compiled_guarded;\n")
 	g.pf("        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;\n")
 	g.pf("    }\n")
+	g.pf("    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:\n")
+	g.pf("    // the layout's own rules each refuse under their own name first, so a\n")
+	g.pf("    // broken layout is never reported as a lying header. A header whose hash\n")
+	g.pf("    // is not the hash of the layout behind it is refused (§3).\n")
+	g.pf("    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }\n")
 	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = true; return -1; }\n")
 	g.pf("    const int64_t n = rest / record_bytes;\n")
 	g.pf("    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }\n")
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
 	g.pf("        %sReset( values[k] ); // the declared defaults, one prefill\n", st.Name)
-	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_block; return -1; }\n")
-	g.pf("        TableFixedRun( entries, entry_count, at + 8, (uint8_t *) &values[k], report );\n")
+	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
+	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
 }
 
 func (g *tableGen) emitByteArray(b []byte) {
 	for i := 0; i < len(b); i += 16 {
-		end := i + 16
-		if end > len(b) {
-			end = len(b)
-		}
+		end := min(i+16, len(b))
 		var sb strings.Builder
 		sb.WriteString("   ")
 		for _, v := range b[i:end] {
@@ -846,4 +407,62 @@ func (g *tableGen) emitByteArray(b []byte) {
 		}
 		g.pf("%s\n", sb.String())
 	}
+}
+
+// emitFixedLayoutAsserts is what makes a generator-computed offset safe: every
+// number the plans and the destination rows below are built from, checked
+// against the compiler's own offsetof and sizeof.
+func (g *tableGen) emitFixedLayoutAsserts(order []*ir.Struct) {
+	g.pf("// THE ABI AGREES WITH THE PLANS. The offsets below were computed by the\n")
+	g.pf("// schema compiler rather than folded by this one, because they are the same\n")
+	g.pf("// offsets every other port needs; these are that arithmetic checked against\n")
+	g.pf("// this compiler's own, at build time, one line per fact the plans rest on.\n")
+	unions := map[string]bool{}
+	for _, st := range order {
+		for _, m := range ir.TableFixedMembers(g.unit, st) {
+			if m.Member == "" {
+				g.pf("static_assert( sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n", m.Owner, m.Value, m.Owner)
+				continue
+			}
+			g.pf("static_assert( %s == %d, \"%s.%s: the fixed form's plan lands here\" );\n",
+				offOf(m.Owner, g.fixedMemberSpelling(st, m.Member)), m.Value, m.Owner, m.Member)
+		}
+		for _, f := range st.Fields {
+			un, ok := f.Type.Ref.(*ir.Union)
+			if !ok || f.Type.Kind != ir.TNamed || unions[f.Type.Name] {
+				continue
+			}
+			unions[f.Type.Name] = true
+			size, _, _, arms := ir.UnionLayout(g.unit, un)
+			g.pf("static_assert( sizeof( %s ) == %d, \"%s: the fixed form's plan is laid out for this size\" );\n", f.Type.Name, size, f.Type.Name)
+			g.pf("static_assert( %s == 0, \"%s: the tag leads the union storage\" );\n", offOf(f.Type.Name, "type"), f.Type.Name)
+			for _, v := range un.Variants {
+				g.pf("static_assert( %s == %d, \"%s.%s: every arm is overlaid here\" );\n", offOf(f.Type.Name, v.Name), arms, f.Type.Name, v.Name)
+			}
+		}
+	}
+	g.pf("\n")
+}
+
+// fixedMemberSpelling is how THIS backend names a storage member ir's C ABI
+// walk answered for: a keyed array's slots sit behind the accessor wrapper here
+// and are the field itself in C, and the wrapper's slots are its first member,
+// so the two are the same byte under two spellings.
+func (g *tableGen) fixedMemberSpelling(st *ir.Struct, member string) string {
+	for _, f := range st.Fields {
+		if f.Name == member && f.KeyEnum != "" {
+			return ir.TableFixedKeyedSlots(st, f)
+		}
+	}
+	return member
+}
+
+func fixedOpName(op int) string {
+	switch op {
+	case ir.TableFixedOpCount:
+		return "kTableFixedCount"
+	case ir.TableFixedOpText:
+		return "kTableFixedText"
+	}
+	return "kTableFixedCopy"
 }

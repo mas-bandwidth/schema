@@ -2,7 +2,7 @@
    SPDX-License-Identifier: NONE — this generated output is yours, under terms of
    your choice. See the LICENSE exception in the schema compiler; the compiler is
    AGPL-3.0, its output is not.
-   package bench — protocol id 0x8d12c3149393f40f */
+   package bench — protocol id 0xc93127c82f083edf */
 
 #ifndef SCHEMA_BENCH_BENCHWIRE_H
 #define SCHEMA_BENCH_BENCHWIRE_H
@@ -1321,21 +1321,15 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_bench_mixed( serialize_writ
     {
         return 0;
     }
-    if ( value->has_extra )
+    serialize_assert( (serialize_int64_t) value->extra >= 0 && (serialize_int64_t) value->extra <= 255 );
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->extra ), 8 ) )
     {
-        serialize_assert( (serialize_int64_t) value->extra >= 0 && (serialize_int64_t) value->extra <= 255 );
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->extra ), 8 ) )
-        {
-            return 0;
-        }
+        return 0;
     }
-    else
+    serialize_assert( (serialize_int64_t) value->idle_ticks >= 0 && (serialize_int64_t) value->idle_ticks <= 15 );
+    if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->idle_ticks ), 4 ) )
     {
-        serialize_assert( (serialize_int64_t) value->idle_ticks >= 0 && (serialize_int64_t) value->idle_ticks <= 15 );
-        if ( !serialize_write_bits( stream, (serialize_uint32_t) ( value->idle_ticks ), 4 ) )
-        {
-            return 0;
-        }
+        return 0;
     }
     return 1;
 }
@@ -1590,33 +1584,25 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int read_bench_mixed( serialize_read_s
         }
         value->has_extra = (uint8_t) bool_value;
     }
-    if ( value->has_extra )
     {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 8 ) )
         {
-            serialize_uint64_t offset_value = 0;
-            serialize_uint32_t raw = 0;
-            if ( !serialize_read_bits( stream, &raw, 8 ) )
-            {
-                return 0;
-            }
-            offset_value = raw;
-            value->extra = (int32_t) offset_value;
+            return 0;
         }
-        value->idle_ticks = 0;
+        offset_value = raw;
+        value->extra = (int32_t) offset_value;
     }
-    else
     {
+        serialize_uint64_t offset_value = 0;
+        serialize_uint32_t raw = 0;
+        if ( !serialize_read_bits( stream, &raw, 4 ) )
         {
-            serialize_uint64_t offset_value = 0;
-            serialize_uint32_t raw = 0;
-            if ( !serialize_read_bits( stream, &raw, 4 ) )
-            {
-                return 0;
-            }
-            offset_value = raw;
-            value->idle_ticks = (int32_t) offset_value;
+            return 0;
         }
-        value->extra = 0;
+        offset_value = raw;
+        value->idle_ticks = (int32_t) offset_value;
     }
     return 1;
 }

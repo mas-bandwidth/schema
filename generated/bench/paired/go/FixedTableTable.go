@@ -176,8 +176,8 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	return false
 }
 
-const FixedTableLoadRetainBuilder = "FixedTable: retention requires a region round trip through file form"
-const FixedTableSaveRetainMessages = "FixedTable: retention requires a region round trip through file form"
+const FixedTableLoadRetainBuilder = "FixedTable: retention requires a region round trip through the VARIABLE form"
+const FixedTableSaveRetainMessages = "FixedTable: retention requires a region round trip through the VARIABLE form"
 const FixedTableLoadRetain = "FixedTable: retention requires a variable root and its region directory"
 const FixedTableMeasureRetain = "FixedTable: retention requires a variable root and its region directory"
 const FixedTableSaveRetain = "FixedTable: retention requires a variable root and its region directory"

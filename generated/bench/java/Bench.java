@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f
+// package bench — protocol id 0xc93127c82f083edf
 //
 // The shipped Java wire path (issue #156): the serialize.java bitpacker
 // inlined at every field, literal constant widths and masks, monomorphic
@@ -39,7 +39,7 @@ public final class Bench {
 
     // The unit's protocol id — the hash of its wire shape (SPEC §3.1). Two
     // sides at the same id speak identical bits; there is no other versioning.
-    public static final long protocolId = 0x8d12c3149393f40fL;
+    public static final long protocolId = 0xc93127c82f083edfL;
 
     // type BenchPacket
     public static final class BenchPacket {
@@ -2615,14 +2615,8 @@ public final class Bench {
         public int crcHint;
         // specified default at construction; zero* gives the §5 zero form
         public boolean hasExtra = true;
-
-        // has_extra — wire branch; storage holds both sides, a read zeroes the
-        // untaken side (SPEC §5)
         // wire [0, 255]
         public int extra;
-
-        // !has_extra — wire branch; storage holds both sides, a read zeroes the
-        // untaken side (SPEC §5)
         // wire [0, 15]
         public int idleTicks;
 
@@ -2640,7 +2634,7 @@ public final class Bench {
 
     // benchMixedMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
     // benchMixedMaxBytes is rounded up to the 8-byte write-buffer granularity.
-    public static final int benchMixedMaxBits = 3626;
+    public static final int benchMixedMaxBits = 3630;
     public static final int benchMixedMaxBytes = 456;
 
     // The §5 zero form: all-zero storage; specified defaults live only in
@@ -2797,13 +2791,10 @@ public final class Bench {
         }
         assert (value.ping & 0xffffL) >= 0;
         assert (value.ping & 0xffffL) <= 64000;
-        if (value.hasExtra) {
-            assert value.extra >= 0;
-            assert value.extra <= 255;
-        } else {
-            assert value.idleTicks >= 0;
-            assert value.idleTicks <= 15;
-        }
+        assert value.extra >= 0;
+        assert value.extra <= 255;
+        assert value.idleTicks >= 0;
+        assert value.idleTicks <= 15;
         return true;
     }
 
@@ -3493,26 +3484,23 @@ public final class Bench {
             scratchBits -= 64;
             scratch = v >>> (1 - scratchBits);
         }
-        if (value.hasExtra) {
-            v = (value.extra) & 0xffL;
-            scratch |= v << scratchBits;
-            scratchBits += 8;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (8 - scratchBits);
-            }
-        } else {
-            v = (value.idleTicks) & 0xfL;
-            scratch |= v << scratchBits;
-            scratchBits += 4;
-            if (scratchBits >= 64) {
-                LONG_LE.set(data, wordIndex * 8, scratch);
-                wordIndex++;
-                scratchBits -= 64;
-                scratch = v >>> (4 - scratchBits);
-            }
+        v = (value.extra) & 0xffL;
+        scratch |= v << scratchBits;
+        scratchBits += 8;
+        if (scratchBits >= 64) {
+            LONG_LE.set(data, wordIndex * 8, scratch);
+            wordIndex++;
+            scratchBits -= 64;
+            scratch = v >>> (8 - scratchBits);
+        }
+        v = (value.idleTicks) & 0xfL;
+        scratch |= v << scratchBits;
+        scratchBits += 4;
+        if (scratchBits >= 64) {
+            LONG_LE.set(data, wordIndex * 8, scratch);
+            wordIndex++;
+            scratchBits -= 64;
+            scratch = v >>> (4 - scratchBits);
         }
         if (scratchBits != 0) {
             LONG_LE.set(data, wordIndex * 8, scratch);
@@ -4329,7 +4317,7 @@ public final class Bench {
                 bitsRead += 8 - pad;
             }
         }
-        if (bitsRead + 25 > numBits) {
+        if (bitsRead + 37 > numBits) {
             return false;
         }
         if (bitsRead >>> 3 < tailBase) {
@@ -4352,37 +4340,26 @@ public final class Bench {
         v = (window >>> shift) & 0x1L;
         bitsRead += 1;
         value.hasExtra = v != 0;
-        if (value.hasExtra) {
-            if (bitsRead + 8 > numBits) {
-                return false;
-            }
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xffL;
-            bitsRead += 8;
-            value.extra = (int) v;
-            value.idleTicks = 0;
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
         } else {
-            if (bitsRead + 4 > numBits) {
-                return false;
-            }
-            if (bitsRead >>> 3 < tailBase) {
-                window = (long) LONG_LE.get(data, bitsRead >>> 3);
-                shift = bitsRead & 7;
-            } else {
-                window = tailWord;
-                shift = bitsRead - tailBase * 8;
-            }
-            v = (window >>> shift) & 0xfL;
-            bitsRead += 4;
-            value.idleTicks = (int) v;
-            value.extra = 0;
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
         }
+        v = (window >>> shift) & 0xffL;
+        bitsRead += 8;
+        value.extra = (int) v;
+        if (bitsRead >>> 3 < tailBase) {
+            window = (long) LONG_LE.get(data, bitsRead >>> 3);
+            shift = bitsRead & 7;
+        } else {
+            window = tailWord;
+            shift = bitsRead - tailBase * 8;
+        }
+        v = (window >>> shift) & 0xfL;
+        bitsRead += 4;
+        value.idleTicks = (int) v;
         return true;
     }
 
@@ -4414,12 +4391,7 @@ public final class Bench {
         bits += value.payloadLength * 8;
         bits += 370;
         bits += (8 - (bits & 7)) & 7;
-        bits += 25;
-        if (value.hasExtra) {
-            bits += 8;
-        } else {
-            bits += 4;
-        }
+        bits += 37;
         return bits;
     }
 }

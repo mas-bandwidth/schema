@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// The variable file form uses one numbering shared by the root and every
+// The VARIABLE class on form 1 uses one numbering shared by the root and every
 // record. The work stack makes pointer depth independent of the C call stack;
 // generated edge callbacks recurse only through finite by-value schema edges.
 const tableGraphRuntime = `

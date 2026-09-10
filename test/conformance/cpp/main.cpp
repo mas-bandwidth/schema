@@ -498,7 +498,7 @@ static const MsgCodec msg_codecs[] = {
 //
 // THE MESSAGE ROW IS THE SAME PAIR WITH A FORM-2 LOAD (§3.3): the batch takes
 // one region and one retention buffer a body, the announcement carries the id
-// table, and the SAVE is the FILE form on every body, because retention writing
+// table, and the SAVE is the VARIABLE form on every body, because retention writing
 // form 2 refuses by name.
 struct RetainAnswer
 {
