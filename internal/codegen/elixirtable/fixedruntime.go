@@ -177,6 +177,70 @@ const fixedRuntimeBody = `  @moduledoc """
 
   defp bump(report, key), do: Map.update!(report, key, &(&1 + 1))
 
+  @doc """
+  Add ` + "`" + `n` + "`" + ` ` + "`" + `clamped` + "`" + ` to a report at once, and the same report back when there were
+  none — which is what a record whose every ranged value was already in range
+  hands back, so the common read allocates no new map at all.
+
+  THE COUNTING IS THE GENERATED DECODE'S ON THE IDENTITY PATH (docs/SPEC-TABLES.md
+  §3.4, and the fold this leg made): the plan there is ONE identity copy and
+  carries no ` + "`" + `count` + "`" + `, ` + "`" + `text` + "`" + ` or ` + "`" + `clamp` + "`" + ` op to count from, so the projection's own
+  ` + "`" + `_fixed_clamped` + "`" + ` pass answers how many bounds the record's values crossed and
+  this is where that number joins §4's six.
+  """
+  def clamped(report, 0), do: report
+  def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))
+
+  @doc """
+  ONE VALUE AGAINST ONE PAIR OF BOUNDS: ` + "`" + `acc` + "`" + ` and one more when the value lies
+  outside them, ` + "`" + `acc` + "`" + ` unchanged when it does not.
+
+  The accumulator leads so that a generated counting pass is a column of
+  ` + "`" + `c = R.clamps(c, ...)` + "`" + ` and nothing else — one shape the emitter has to know
+  the formatter's mind about, rather than a ` + "`" + `+` + "`" + ` chain that breaks differently at
+  every width.
+  """
+  def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1
+  def clamps(acc, _v, _lo, _hi), do: acc
+
+  @doc """
+  A RUN OF ELEMENTS, ` + "`" + `size` + "`" + ` bytes each: ` + "`" + `fun` + "`" + ` applied to every one of them and the
+  counts added up. EVERY SLOT IS COUNTED, including the slots behind a counted
+  array's count, because the identity plan's ` + "`" + `clamp` + "`" + ` entries covered every slot
+  too and no counter may move differently than it did.
+  """
+  def clamps_each(acc, bin, size, fun) do
+    case bin do
+      <<e::binary-size(^size), rest::binary>> -> clamps_each(acc + fun.(e), rest, size, fun)
+      _ -> acc
+    end
+  end
+
+  @doc """
+  The same for a run of RANGED SCALARS, whose elements have no projection of
+  their own to call: each read at its storage width and signedness and counted
+  against the reader's own bounds.
+  """
+  def clamps_run(acc, bin, size, true, lo, hi) do
+    case bin do
+      <<v::little-signed-size(^size)-unit(8), rest::binary>> ->
+        clamps_run(clamps(acc, v, lo, hi), rest, size, true, lo, hi)
+
+      _ ->
+        acc
+    end
+  end
+
+  def clamps_run(acc, bin, size, false, lo, hi) do
+    case bin do
+      <<v::little-unsigned-size(^size)-unit(8), rest::binary>> ->
+        clamps_run(clamps(acc, v, lo, hi), rest, size, false, lo, hi)
+
+      _ ->
+        acc
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # THE HASH: fnv1a64 over the layout's bytes, exactly as written
   # ---------------------------------------------------------------------------

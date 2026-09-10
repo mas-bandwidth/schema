@@ -282,20 +282,47 @@ Leg.check(
 # A PLAN COMPILED FROM A LAYOUT THAT IS MINE, BYTE FOR BYTE, MUST LAND EXACTLY
 # WHAT THE IDENTITY PLAN LANDS. That is what reaches `count`, `text`, `ordinal`
 # and the keyed walk, which the cross-schema cases above do not touch.
-compiled_is_identity = fn name, layout, dst, plan, prefill, decode, values ->
+compiled_is_identity = fn name, layout, dst, plan, prefill, decode, clamped, values ->
   {:ok, mine} = Tblp1.FixedRuntime.parse_layout(layout)
   {:ok, made, _} = Tblp1.FixedRuntime.compile(mine, mine, dst, 4096, Tblp1.FixedRuntime.report())
 
-  bodies =
-    Enum.map(values, fn body ->
-      {img_a, _} = Tblp1.FixedRuntime.run(plan, body, prefill, Tblp1.FixedRuntime.report())
-      {img_b, _} = Tblp1.FixedRuntime.run(made, body, prefill, Tblp1.FixedRuntime.report())
-      {decode.(img_a), decode.(img_b)}
-    end)
+  run_both = fn body ->
+    {img_a, ra} = Tblp1.FixedRuntime.run(plan, body, prefill, Tblp1.FixedRuntime.report())
+    {img_b, rb} = Tblp1.FixedRuntime.run(made, body, prefill, Tblp1.FixedRuntime.report())
+    {{img_a, ra.clamped + clamped.(img_a)}, {img_b, rb.clamped + clamped.(img_b)}}
+  end
+
+  both = Enum.map(values, run_both)
 
   Leg.check(
     "#{name}: a plan compiled from MY OWN layout lands what the identity plan lands",
-    Enum.all?(bodies, fn {x, y} -> x == y end)
+    Enum.all?(both, fn {{a, _}, {b, _}} -> decode.(a) == decode.(b) end)
+  )
+
+  # THE COUNTER MOVES THE SAME EITHER WAY, which is what the clamp fold owes
+  # §4. THE IDENTITY PATH CHECKS IN THE PROJECTION — its plan is one copy and
+  # carries no `clamp`, `count` or `text` op at all — and a COMPILED plan
+  # checks in the interpreter, as it always did; the two are two spellings of
+  # the same rule and a record has to be `clamped` the same number of times
+  # under both.
+  #
+  # A HOSTILE BODY RIDES BESIDE THE REAL ONES: every byte 0xFF, so every
+  # declared bound is crossed at once. A corpus whose values are all in range
+  # would let both sides count nothing and call it agreement. It is counted and
+  # not decoded, because an ENUM ORDINAL the writer does not carry is remapped
+  # by a compiled plan and passed through by the identity plan, which is §3.4's
+  # own rule and not this fold's business.
+  hostile = :binary.copy(<<0xFF>>, byte_size(prefill))
+  counted = both ++ [run_both.(hostile)]
+
+  Leg.check(
+    "#{name}: the identity path counts the `clamped` a compiled plan counts",
+    Enum.all?(counted, fn {{_, a}, {_, b}} -> a == b end)
+  )
+
+  Leg.check(
+    "#{name}: and a body of nothing but 0xFF actually crossed a bound",
+    match?({{_, n}, {_, _}} when n > 0, List.last(counted))
   )
 end
 
@@ -312,6 +339,7 @@ compiled_is_identity.(
   Tabledemo.PackFixed.pack_config_fixed_plan(),
   Tabledemo.PackFixed.pack_config_fixed_prefill(),
   &Tabledemo.PackFixed.pack_config_fixed_decode/1,
+  &Tabledemo.PackFixed.pack_config_fixed_clamped/1,
   bodies_of.(read.("pack.bin"), Tabledemo.PackFixed.pack_config_fixed_body_bytes())
 )
 
@@ -322,6 +350,7 @@ compiled_is_identity.(
   Tabledemo.KeyedFixed.keyed_config_fixed_plan(),
   Tabledemo.KeyedFixed.keyed_config_fixed_prefill(),
   &Tabledemo.KeyedFixed.keyed_config_fixed_decode/1,
+  &Tabledemo.KeyedFixed.keyed_config_fixed_clamped/1,
   bodies_of.(read.("keyed.bin"), Tabledemo.KeyedFixed.keyed_config_fixed_body_bytes())
 )
 

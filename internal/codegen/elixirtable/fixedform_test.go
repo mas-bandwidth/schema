@@ -95,6 +95,75 @@ func TestFixedImageIsContiguous(t *testing.T) {
 	}
 }
 
+// THE IDENTITY PLAN OF A RECORD THAT HAS EVERYTHING IN IT IS STILL ONE ENTRY.
+// This is the fold this leg made, stated as a test: a ranged integer, a count,
+// a text length and a union arm each used to be an op of their own, and each
+// one broke the run, so a record like the one below arrived as a plan of
+// hundreds of entries for a reader whose destination IS the source. The checks
+// they stood for now ride the generated projection (fixedclamp.go); what is
+// left on this path is one move of the whole body.
+//
+// A SECOND ENTRY HERE MEANS AN OP CAME BACK, or that a field's image stopped
+// being contiguous with the one before it. Both are worth a red test.
+func TestIdentityPlanOfEverythingIsOneRun(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+enum Grade { Bronze, Silver, Gold }
+
+type Leg
+{
+    reach int32 | min = -16383, max = 16383
+    scale fixed(24, 8) | min = -100, max = 100
+}
+
+type Hop
+{
+    height int32 | min = 0, max = 4095
+}
+
+union Step
+{
+    walk Leg
+    hop  Hop
+}
+
+type Inner
+{
+    x int32
+    y float32
+}
+
+table Everything
+{
+    a      uint32
+    b      bool
+    ranged int32 | min = 0, max = 1000
+    grade  Grade
+    name   string(16)
+    wide   wstring(8)
+    blob   bytes(12)
+    legs   [4]Leg
+    counts [..4]uint16
+    step   Step
+    inner  Inner
+    tail   int64 | min = -5, max = 5
+}
+`)
+	st := findTable(t, u, "Everything")
+	plan := fixedIdentityPlan(st)
+	if len(plan) != 1 {
+		t.Fatalf("the identity plan is %d entries, not one run: %v", len(plan), plan)
+	}
+	if want := "{:copy, 0, 0, " + itoa(fixedTypeBytes(st)) + "}"; plan[0].String() != want {
+		t.Fatalf("the identity plan is %s, not %s", plan[0].String(), want)
+	}
+	// AND THE PROJECTION IS WHERE THE BOUNDS WENT: a type this shape must carry
+	// a counting pass, or the `clamped` the plan used to move stopped moving.
+	if !fixedClampsType(st) {
+		t.Fatalf("nothing in Everything can clamp, so the fold dropped a check")
+	}
+}
+
 // THE IDENTITY PLAN OF A RECORD OF PLAIN SCALARS IS ONE ENTRY — §3.4's
 // coalescing rule reaching its best case, which in the image domain is the
 // whole body in one move. A plan that grew a second entry means the destination

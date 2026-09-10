@@ -83,6 +83,12 @@ func (c callNode) render(at, ind, tail int) string {
 
 // structNode is `%Mod{k: v, ...}`, which the formatter breaks ONE KEY PER LINE
 // with the closing brace back at the literal's own column.
+//
+// A VALUE THAT BREAKS BREAKS TWO WAYS, and which one is the value's own shape:
+// a literal — another struct, a list — keeps its opening brace up beside the
+// key and breaks inside it, while a CALL moves down to its own line two columns
+// in and breaks from there. That is the formatter's rule and not a preference,
+// so `hangs` below is the shape's answer to it.
 type structNode struct {
 	mod  string
 	keys []string
@@ -109,10 +115,26 @@ func (s structNode) render(at, ind, tail int) string {
 		if i == len(s.keys)-1 {
 			sep = ""
 		}
-		b.WriteString(pad + k + ": " + s.vals[i].render(ind+2+len(k)+2, ind+2, len(sep)) + sep + "\n")
+		v := s.vals[i]
+		if one := k + ": " + v.flat(); fits(ind+2, len(sep), one) {
+			b.WriteString(pad + one + sep + "\n")
+			continue
+		}
+		if hangs(v) {
+			b.WriteString(pad + k + ":\n" + indentOf(ind+4) + v.render(ind+4, ind+4, len(sep)) + sep + "\n")
+			continue
+		}
+		b.WriteString(pad + k + ": " + v.render(ind+2+len(k)+2, ind+2, len(sep)) + sep + "\n")
 	}
 	b.WriteString(indentOf(ind) + "}")
 	return b.String()
+}
+
+// hangs reports a shape that, when it breaks behind a `key:`, goes to its own
+// line rather than opening beside the key.
+func hangs(n node) bool {
+	_, ok := n.(callNode)
+	return ok
 }
 
 // binNode is `<<a, b, c>>`, which the formatter FILLS GREEDILY to the width
@@ -210,4 +232,22 @@ func (t tupleNode) render(at, _, tail int) string {
 	}
 	b.WriteString("}")
 	return b.String()
+}
+
+// forNode is `for <generator>, do: <body>` — a comprehension, which the
+// formatter breaks after the GENERATOR's comma and puts the `do:` two columns
+// in, rather than one item per line the way a call breaks.
+type forNode struct {
+	gen  string
+	body node
+}
+
+func (f forNode) flat() string { return "for " + f.gen + ", do: " + f.body.flat() }
+
+func (f forNode) render(at, ind, tail int) string {
+	if one := f.flat(); fits(at, tail, one) {
+		return one
+	}
+	pad := indentOf(ind + 2)
+	return "for " + f.gen + ",\n" + pad + "do: " + f.body.render(ind+2+4, ind+2, tail)
 }

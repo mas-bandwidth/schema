@@ -412,9 +412,17 @@ func (g *fixedGen) writeBodyNode(segs []wseg) node {
 // a term, and the FIELDS it contributes to the struct.
 type rseg struct {
 	match []string
-	post  []string
+	post  []postStmt
 	keys  []string
 	vals  []node
+}
+
+// postStmt is one `name = value` the projection makes after its match: a SHAPE
+// and not a string, because a comprehension and a call break differently and
+// the formatter knows which is which.
+type postStmt struct {
+	name string
+	val  node
 }
 
 func (r *rseg) field(name string, v node) {
@@ -450,11 +458,14 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 	case f.Array == ir.ArrayFixed:
 		g.readElements(&out, f, v, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		// THE COUNT ALREADY CAME THROUGH THE PLAN'S `count` OP, which clamped
-		// it to this reader's own bound, so the projection takes it as read.
+		// THE COUNT IS CLAMPED HERE, to this reader's own bound, counting one
+		// `clamped` if it moved (§4). On the identity path this IS the check —
+		// the plan carries no `count` op there any more — and on a compiled
+		// plan the op already held it, so this holds nothing and counts nothing.
 		out.match = append(out.match, "n_"+v+"::little-signed-32")
 		g.readElements(&out, f, v, f.ArrayBound)
-		out.post = append(out.post, fmt.Sprintf("l_%s = Enum.take(l_%s, n_%s)", v, v, v))
+		out.post = append(out.post, postStmt{name: "l_" + v, val: call("Enum.take", raw("l_"+v),
+			call("min", call("max", raw("n_"+v), raw("0")), rawf("%d", f.ArrayBound)))})
 		out.field(f.Name, rawf("l_%s", v))
 		return out
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
@@ -482,20 +493,21 @@ func (g *fixedGen) readField(f *ir.Field, prefix string) rseg {
 func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, count int64) {
 	elem := fixedElementBytes(f)
 	out.match = append(out.match, fmt.Sprintf("b_%s::binary-size(%d)", v, count*elem))
-	out.post = append(out.post, fmt.Sprintf("l_%s = %s", v, g.elementList(f, "b_"+v, elem)))
+	out.post = append(out.post, postStmt{name: "l_" + v, val: g.elementList(f, "b_"+v, elem)})
 }
 
-func (g *fixedGen) elementList(f *ir.Field, src string, elem int64) string {
+func (g *fixedGen) elementList(f *ir.Field, src string, elem int64) node {
 	if f.Type.Kind == ir.TNamed {
+		gen := fmt.Sprintf("<<e::binary-size(%d) <- %s>>", elem, src)
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			return fmt.Sprintf("for <<e::binary-size(%d) <- %s>>, do: %s", elem, src, g.callDecode(r, "e"))
+			return forNode{gen: gen, body: raw(g.callDecode(r, "e"))}
 		case *ir.Union:
-			return fmt.Sprintf("for <<e::binary-size(%d) <- %s>>, do: %s", elem, src, g.callUnionDecode(r, "e"))
+			return forNode{gen: gen, body: raw(g.callUnionDecode(r, "e"))}
 		}
 	}
 	spec, wrap := g.leafMatch(f, "e")
-	return fmt.Sprintf("for <<%s <- %s>>, do: %s", spec, src, wrap.flat())
+	return forNode{gen: fmt.Sprintf("<<%s <- %s>>", spec, src), body: wrap}
 }
 
 // readElement binds ONE element, inlining a nested type whose image is a run of
@@ -527,9 +539,13 @@ func (g *fixedGen) readElement(out *rseg, f *ir.Field, v, field string) {
 
 // leafMatch is a LEAF's match segment and the term it makes.
 //
-// A RANGED INTEGER IS NOT CLAMPED HERE. The plan's `clamp` op already held it
-// to this reader's own bounds and counted the `clamped` if it fired, so the
-// projection is a pure function of the image and the report never reaches it.
+// A RANGED INTEGER CLAMPS HERE, against the READER's own bounds and nothing
+// else — the bounds do not ride on this form (§3.4). The clamp is `min(max(..))`
+// and not a branch because a branch is what the plan's `clamp` op was, and the
+// op is what this fold removed. WHAT IT COUNTS IS COUNTED SEPARATELY, by the
+// `_fixed_clamped` pass beside this one, so the projection stays a pure
+// function of the image with no report threaded through every nested call and
+// every element of every list.
 func (g *fixedGen) leafMatch(f *ir.Field, v string) (string, node) {
 	name := "f_" + v
 	width := ir.FixedStorageBytes(f.Type) * 8
@@ -551,10 +567,15 @@ func (g *fixedGen) leafMatch(f *ir.Field, v string) (string, node) {
 	case ir.TFloat64:
 		return name + "::little-unsigned-64", rawf("R.f64_value(%s)", name)
 	}
+	spec := fmt.Sprintf("%s::little-unsigned-%d", name, width)
 	if f.Type.Signed {
-		return fmt.Sprintf("%s::little-signed-%d", name, width), raw(name)
+		spec = fmt.Sprintf("%s::little-signed-%d", name, width)
 	}
-	return fmt.Sprintf("%s::little-unsigned-%d", name, width), raw(name)
+	lo, hi := fixedRangeOf(f)
+	if lo == "nil" {
+		return spec, raw(name)
+	}
+	return spec, call("min", call("max", raw(name), raw(lo)), raw(hi))
 }
 
 func (g *fixedGen) structNodeOf(st *ir.Struct, r rseg) node {
@@ -578,39 +599,44 @@ func (g *fixedGen) typeHelpers(st *ir.Struct) {
 	g.pf("  # %s's projection: ONE binary pattern match over its %d bytes of record\n", st.Name, size)
 	g.pf("  # image, and the struct it makes.\n")
 	r := g.readType(st, "")
-	g.emitDecodeHead(snake, r.match, 2)
-	for _, p := range r.post {
-		g.emitAssign(p, 4)
-	}
-	if len(r.post) > 0 {
-		// the blank line the formatter puts after a COMPREHENSION's assignment
-		g.pf("\n")
-	}
+	g.emitMatchHead(snake+"_fixed_decode", r.match, 2)
+	g.emitPost(r.post, 4)
 	g.pf("    %s\n", g.structNodeOf(st, r).render(4, 4, 0))
 	g.pf("  end\n\n")
+
+	g.clampHelper(st, r.match)
 }
 
-// emitAssign prints one `name = expr` statement in the formatter's own shape:
-// on one line where it fits, and otherwise the name, the `=`, and the value on
-// its own line two columns in, with the blank line the formatter puts after a
-// multi-line assignment.
-func (g *fixedGen) emitAssign(stmt string, col int) {
+// emitPost prints a projection's `name = value` statements in the formatter's
+// own shape: on one line where it fits, and otherwise the name, the `=`, and
+// the value on its own line two columns in — with the blank line the formatter
+// puts after a multi-line assignment, and the one it puts after the whole block
+// before the struct the projection makes.
+func (g *fixedGen) emitPost(post []postStmt, col int) {
 	ind := indentOf(col)
-	if fits(col, 0, stmt) {
-		g.pf("%s%s\n", ind, stmt)
-		return
+	for i, p := range post {
+		if one := p.name + " = " + p.val.flat(); fits(col, 0, one) {
+			g.pf("%s%s\n", ind, one)
+			continue
+		}
+		g.pf("%s%s =\n%s%s\n", ind, p.name, indentOf(col+2), p.val.render(col+2, col+2, 0))
+		if i < len(post)-1 {
+			g.pf("\n")
+		}
 	}
-	name, value, _ := strings.Cut(stmt, " = ")
-	g.pf("%s%s =\n%s%s\n", ind, name, indentOf(col+2), value)
+	if len(post) > 0 {
+		g.pf("\n")
+	}
 }
 
-// emitDecodeHead prints the decode's function head — the whole image matched at
-// once, filled greedily to the format width. Where the one-line head outgrows
-// the width the formatter puts the pattern on its own line and the closing
-// paren under `do`, and this writes that shape rather than checking it after.
-func (g *fixedGen) emitDecodeHead(snake string, match []string, col int) {
+// emitMatchHead prints a projection's function head — the whole image matched
+// at once, filled greedily to the format width. Where the one-line head
+// outgrows the width the formatter puts the pattern on its own line and the
+// closing paren under `do`, and this writes that shape rather than checking it
+// after.
+func (g *fixedGen) emitMatchHead(name string, match []string, col int) {
 	ind := indentOf(col)
-	head := fmt.Sprintf("def %s_fixed_decode(", snake)
+	head := fmt.Sprintf("def %s(", name)
 	pattern := binNode{segs: append(append([]string{}, match...), "_::binary")}
 	if one := ind + head + pattern.render(col+len(head), col+len(head), 4) + ") do"; fits(0, 0, one) {
 		g.pf("%s\n", one)
@@ -682,6 +708,8 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	g.emitArms(darms, 6)
 	g.pf("    end\n")
 	g.pf("  end\n\n")
+
+	g.unionClampHelper(u)
 }
 
 // caseArm is one arm of a generated `case`: its pattern and its body.
@@ -851,6 +879,13 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("      {values, report} =\n")
 	g.pf("        Enum.map_reduce(bodies, report, fn body, report ->\n")
 	g.pf("          {image, report} = R.run(plan, body, @%s_prefill, report)\n", snake)
+	if fixedClampsType(st) {
+		// THE BOUNDS ARE CHECKED BY THE PROJECTION on the identity path, whose
+		// plan carries no op to check with, so the `clamped` they counted joins
+		// the report here. A compiled plan already counted its own and the
+		// image it made is in range, so this adds nothing over one of those.
+		g.pf("          report = R.clamped(report, %s_fixed_clamped(image))\n", snake)
+	}
 	g.pf("          {%s_fixed_decode(image), report}\n", snake)
 	g.pf("        end)\n\n")
 	g.pf("      {:ok, values, report}\n")
