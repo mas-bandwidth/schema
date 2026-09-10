@@ -172,14 +172,39 @@ Leg.eq("p1.link", {c1.link.value, c1.link.tag}, {77, "tagged"})
 [present, absent] = p3
 Leg.eq("p3[0] present", {present.name, present.link_present}, {"present", true})
 Leg.eq("p3[0].link", {present.link.value, present.link.tag}, {88, "here"})
-# THE PAYLOAD RIDES WHOLE whether or not it is present (§3.4), which is why the
-# value surface carries it beside the flag and why the bytes come back.
+# THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT (§3.4), and when the flag
+# is 0 what rides is ZERO. The reference's own storage for this record carries
+# 99 and "still" behind the false flag ON PURPOSE — that is the stain the
+# oracle plants — and the FILE carries none of it, so an absent optional is a
+# hole in the record and never a window into the writer's memory.
 Leg.eq("p3[1] absent", {absent.name, absent.link_present}, {"absent", false})
 
 Leg.eq(
-  "p3[1].link rides behind a false flag",
+  "p3[1].link behind a false flag is the template's zeros, not the writer's storage",
   {absent.link.value, absent.link.tag},
-  {99, "still"}
+  {0, ""}
+)
+
+# AND THIS PORT'S OWN WRITER DOES THE SAME. The stain is put in the VALUE this
+# time, which the C++ oracle cannot reach from here, and the wire must carry
+# none of it — the same record with the flag SET does carry it, so the check is
+# about the flag and not about a payload never written.
+stained = %Tblp3.Chain{
+  name: "absent",
+  link_present: false,
+  link: %Tblp3.Link{value: 99, tag: "still"}
+}
+
+Leg.bytes_eq(
+  "an absent optional this port writes carries the template's zeros",
+  Tblp3.P3Fixed.chain_fixed_save([stained]),
+  Tblp3.P3Fixed.chain_fixed_save([%{stained | link: %Tblp3.Link{value: 0, tag: ""}}])
+)
+
+Leg.check(
+  "and the SAME payload PRESENT does put those bytes on the wire",
+  Tblp3.P3Fixed.chain_fixed_save([%{stained | link_present: true}]) !=
+    Tblp3.P3Fixed.chain_fixed_save([%{stained | link_present: true, link: %Tblp3.Link{}}])
 )
 
 [k0, _k1] = keyed

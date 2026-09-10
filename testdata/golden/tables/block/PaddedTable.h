@@ -5392,7 +5392,10 @@ inline void PaddedRowFixedWriteBody( uint8_t * b, const PaddedRow & value )
         TableFixedPut8( b + 41 + i * 1 + 0, (uint8_t) value.teams.slots[i] );
     }
     TableFixedPut8( b + 45, value.counter_present ? 1 : 0 );
-    TableFixedPut32( b + 46, (uint32_t) value.counter );
+    if ( value.counter_present )
+    {
+        TableFixedPut32( b + 46, (uint32_t) value.counter );
+    }
 }
 
 // PaddedFrame's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -5645,7 +5648,7 @@ constexpr TableFixedDst PaddedFrameFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // element
     { 0, 0, (uint32_t) __builtin_offsetof( PaddedRow, counter_present ), 0, 0 }, // counter ?
     { (uint32_t) __builtin_offsetof( PaddedRow, counter ), 0, 0, 0, 0 }, // counter
-    { (uint32_t) __builtin_offsetof( PaddedFrame, blob_length ), 1, (uint32_t) __builtin_offsetof( PaddedFrame, blob ), 1, 3 }, // blob
+    { (uint32_t) __builtin_offsetof( PaddedFrame, blob ), 1, (uint32_t) __builtin_offsetof( PaddedFrame, blob_length ), 1, 3 }, // blob
     { 0, 0, 0, 0, 0 }, // u8
 };
 

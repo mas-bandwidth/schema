@@ -211,3 +211,46 @@ func (t tupleNode) render(at, _, tail int) string {
 	b.WriteString("}")
 	return b.String()
 }
+
+// ifNode is `if cond, do: yes, else: no`: the formatter's KEYWORD form while it
+// fits on one line, and its BLOCK form when it does not. It is here for ONE
+// shape — an absent optional's payload, which is the template's zeros
+// (docs/SPEC-TABLES.md §3.4) — and that shape is a branch rather than a
+// segment, so it cannot be spelled inside a binary construction.
+type ifNode struct {
+	cond string
+	yes  node
+	no   node
+}
+
+func (n ifNode) flat() string {
+	return "if(" + n.cond + ", do: " + n.yes.flat() + ", else: " + n.no.flat() + ")"
+}
+
+// THE PARENTHESISED FORM IS NOT A STYLE. This shape rides INSIDE a container —
+// the iodata list a body's pieces are joined in — and Elixir refuses a bare
+// `if cond, do: …, else: …` there ("parentheses are required to solve ambiguity
+// inside containers"). Broken, the formatter keeps the condition on the `if`'s
+// own line and puts each keyword on its own, closing the paren back at the
+// call's column, which is what a call breaks to.
+func (n ifNode) render(at, ind, tail int) string {
+	if one := n.flat(); fits(at, tail, one) {
+		return one
+	}
+	pad := indentOf(ind + 2)
+	return "if(" + n.cond + ",\n" +
+		pad + keyword("do: ", n.yes, ind+2, 1) + ",\n" +
+		pad + keyword("else: ", n.no, ind+2, 0) + "\n" +
+		indentOf(ind) + ")"
+}
+
+// keyword is `do: value` / `else: value` in the formatter's own shape: beside
+// the key while the value fits there, and on the NEXT LINE indented two more
+// when it does not — which is what the formatter does with any keyword whose
+// value has to break.
+func keyword(key string, v node, ind, tail int) string {
+	if one := v.render(ind+len(key), ind+len(key), tail); fits(ind+len(key), tail, one) {
+		return key + one
+	}
+	return strings.TrimRight(key, " ") + "\n" + indentOf(ind+2) + v.render(ind+2, ind+2, tail)
+}

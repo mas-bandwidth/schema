@@ -14241,6 +14241,13 @@ inline void SaveDocumentFixedWriteBody( uint8_t * b, const SaveDocument & value 
     TableFixedPut8( b + 68, value.force ? 1 : 0 );
 }
 
+// OpenDocument's read-side bounds.
+inline void OpenDocumentFixedClampBody( OpenDocument & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.mode > 2u ) { value.mode = Mode::None; clamped++; }
+}
+
 // ---- User, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -14786,6 +14793,19 @@ inline int64_t RemoveTextFixedLoad( RemoveText * values, int64_t capacity, const
     return n;
 }
 
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void OpenDocumentFixedClamp( OpenDocument & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    OpenDocumentFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- OpenDocument, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -14925,6 +14945,9 @@ inline int64_t OpenDocumentFixedLoad( OpenDocument * values, int64_t capacity, c
         OpenDocumentReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        OpenDocumentFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

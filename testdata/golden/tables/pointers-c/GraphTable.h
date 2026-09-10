@@ -7424,6 +7424,35 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
     memcpy( b + 8, value->label, (size_t) ( value->label_length ) );
 }
 
+/* Meta's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_meta_fixed_clamp_body_( Meta * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->build < 0 ) { value->build = 0; (*clamped)++; }
+    else if ( value->build > 1000 ) { value->build = 1000; (*clamped)++; }
+}
+
+/* Settings's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_settings_fixed_clamp_body_( Settings * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->quality < 0 ) { value->quality = 0; (*clamped)++; }
+    else if ( value->quality > 4 ) { value->quality = 4; (*clamped)++; }
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_graphdemo_meta_fixed_clamp_( Meta * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_graphdemo_meta_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
+}
+
 /* ---- Meta, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -7561,9 +7590,25 @@ static SCHEMA_UNUSED int64_t meta_fixed_load( Meta * values, int64_t capacity, c
         meta_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_graphdemo_meta_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_graphdemo_settings_fixed_clamp_( Settings * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_graphdemo_settings_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- Settings, the fixed form ---- */
@@ -7703,6 +7748,9 @@ static SCHEMA_UNUSED int64_t settings_fixed_load( Settings * values, int64_t cap
         settings_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_graphdemo_settings_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;

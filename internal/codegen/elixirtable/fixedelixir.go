@@ -256,12 +256,37 @@ func (g *fixedGen) writeType(st *ir.Struct, val string) []wseg {
 	return out
 }
 
+// writeField is one field's pieces: the PRESENT FLAG where it has one, and
+// then the payload.
+//
+// AN ABSENT OPTIONAL'S PAYLOAD IS ZERO (docs/SPEC-TABLES.md §3.4). The payload
+// rides WHOLE whether or not the flag is set, and when the flag is 0 what rides
+// is zeros — an absent optional is a hole in the record and not a window into
+// the writer's own value. So the payload becomes a BRANCH, which is why it
+// leaves the surrounding binary construction and rides beside it: the zeros are
+// one literal segment of exactly the payload's width, and the reference pays
+// the same branch (its template already holds the zeros, so its absent arm is
+// no store at all).
 func (g *fixedGen) writeField(f *ir.Field, val string) []wseg {
-	var out []wseg
 	name := val + "." + f.Name
 	if f.Type.Optional {
-		out = append(out, wseg{inline: fmt.Sprintf("if(%s_present, do: 1, else: 0)::unsigned-8", name)})
+		payload := g.writePayload(f, val)
+		zeros := fixedFieldBytes(f) - ir.TableFixedPresentBytes
+		return []wseg{
+			{inline: fmt.Sprintf("if(%s_present, do: 1, else: 0)::unsigned-8", name)},
+			{block: ifNode{
+				cond: name + "_present",
+				yes:  g.writeBodyNode(payload),
+				no:   rawf("<<0::size(%d)-unit(8)>>", zeros),
+			}},
+		}
 	}
+	return g.writePayload(f, val)
+}
+
+func (g *fixedGen) writePayload(f *ir.Field, val string) []wseg {
+	var out []wseg
+	name := val + "." + f.Name
 	switch {
 	case f.KeyEnum != "":
 		out = append(out, g.writeElements(f, name, f.KeyEnumRef.Max*fixedElementBytes(f)))

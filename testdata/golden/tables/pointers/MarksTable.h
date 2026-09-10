@@ -6978,6 +6978,27 @@ inline void TallyFixedWriteBody( uint8_t * b, const Tally & value )
     TableFixedPut32( b + 0, (uint32_t) value.hits );
 }
 
+// Tally's read-side bounds.
+inline void TallyFixedClampBody( Tally & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.hits < 0 ) { value.hits = 0; clamped++; }
+    else if ( value.hits > 10000 ) { value.hits = 10000; clamped++; }
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void TallyFixedClamp( Tally & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    TallyFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- Tally, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -7103,6 +7124,9 @@ inline int64_t TallyFixedLoad( Tally * values, int64_t capacity, const uint8_t *
         TallyReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        TallyFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
