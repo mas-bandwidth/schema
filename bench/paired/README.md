@@ -81,9 +81,9 @@ publishing requires all four languages and at least seven rounds.
 ## Table-only languages
 
 **A language outside the paired four may ride the table wire alone, and it
-never appears in a ratio, a board or a confirmation pass.** The percentages on this page are a
-division, and a division needs both halves over the same records; a language
-with one half has one number and says so.
+never appears in a ratio, a board or a confirmation pass.** The percentages on
+this page are a division, and a division needs both halves over the same
+records; a language with one half has one number and says so.
 
 `rust` is the first. It is table-only because its packet leg does not meet this
 driver's contract, not because anybody chose to skip it: `bench/rust` is a real
