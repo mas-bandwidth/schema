@@ -384,6 +384,158 @@ Leg.eq("an arm this reader cannot name leaves the tag at None", b0.effect.type, 
 Leg.eq("and the tail past it still lands", b0.tail, 8)
 Leg.eq("nothing was damaged coming back", back_report.malformed, false)
 
+# TEXT INSIDE A UNION ARM, read BOTH WAYS (docs/SPEC-TABLES.md §3.4, §15).
+#
+# A plan entry for a `string(N)` that sits inside a union arm carries TWO
+# INDEPENDENT FACTS: which arm's tag guards it, and which flavour of text it is
+# (utf8, wide, bytes). A port that spends ONE lane on both loses whichever was
+# written second, and the loss is silent — no counter, no refusal. It went
+# wrong exactly that way on another leg (reference-fix 12): a `string(8)` in a
+# union's SECOND arm read as "" through a compiled plan while the identity read
+# landed the text.
+#
+# THIS PORT KEEPS THEM APART BY SHAPE and not by convention: the arm's tag
+# rides in the `{:guard, src, tag, inner}` wrapper the entry is nested in, and
+# the flavour is the entry's own last element. FU1/FU2 is the pin that says so
+# — the same two records read once through the IDENTITY plan and once through a
+# plan COMPILED from FU1's layout, and they have to agree field for field.
+Leg.section("text under a union arm: the identity read and the compiled read agree")
+
+fu =
+  Tblfu1.FU1Fixed.fu_root_fixed_save([
+    %Tblfu1.FuRoot{
+      pick: %Tblfu1.Pick{
+        type: 2,
+        labelled: %Tblfu1.Labelled{lead: 5, label: "hello", trail: 9}
+      },
+      tail: 3
+    },
+    %Tblfu1.FuRoot{pick: %Tblfu1.Pick{type: 1, plain: %Tblfu1.Plain{n: 7}}, tail: 4}
+  ])
+
+{:ok, [i_arm2, i_arm1], fu_ident} = Tblfu1.FU1Fixed.fu_root_fixed_load(fu)
+{:ok, [c_arm2, c_arm1], fu_comp} = Tblfu2.FU2Fixed.fu_root_fixed_load(fu)
+
+# THE SECOND ARM, field by field. `lead` and `trail` sit either side of the
+# text on purpose: a mislaid length or a mislaid guard moves a neighbour too.
+Leg.eq("arm 2, identity: the tag", i_arm2.pick.type, 2)
+Leg.eq("arm 2, compiled: the tag", c_arm2.pick.type, 2)
+Leg.eq("arm 2, identity: lead before the text", i_arm2.pick.labelled.lead, 5)
+Leg.eq("arm 2, compiled: lead before the text", c_arm2.pick.labelled.lead, 5)
+Leg.eq("arm 2, identity: the text's length", byte_size(i_arm2.pick.labelled.label), 5)
+Leg.eq("arm 2, compiled: the text's length", byte_size(c_arm2.pick.labelled.label), 5)
+Leg.eq("arm 2, identity: the text", i_arm2.pick.labelled.label, "hello")
+Leg.eq("arm 2, compiled: the text", c_arm2.pick.labelled.label, "hello")
+Leg.eq("arm 2, identity: trail after the text", i_arm2.pick.labelled.trail, 9)
+Leg.eq("arm 2, compiled: trail after the text", c_arm2.pick.labelled.trail, 9)
+Leg.eq("arm 2, identity: the tail past the union", i_arm2.tail, 3)
+Leg.eq("arm 2, compiled: the tail past the union", c_arm2.tail, 3)
+# a field the writer does not carry has no plan entry, so the PREFILL lands it
+Leg.eq("arm 2, compiled: `extra` takes its declared default", c_arm2.extra, 11)
+
+# AND THE FIRST ARM, which is right by accident wherever the second is wrong:
+# an arm ordinal of 1 survives being confused with a utf8 flavour of 1.
+Leg.eq("arm 1, identity", {i_arm1.pick.type, i_arm1.pick.plain.n, i_arm1.tail}, {1, 7, 4})
+Leg.eq("arm 1, compiled", {c_arm1.pick.type, c_arm1.pick.plain.n, c_arm1.tail}, {1, 7, 4})
+Leg.eq("arm 1, compiled: `extra` takes its declared default", c_arm1.extra, 11)
+
+Leg.eq("text under an arm moves no counter, identity", fu_ident.clamped, 0)
+Leg.eq("text under an arm moves no counter, compiled", fu_comp.clamped, 0)
+Leg.eq("nothing was damaged either way", {fu_ident.malformed, fu_comp.malformed}, {false, false})
+
+# ---------------------------------------------------------------------------
+# WHAT A HOSTILE ORDINAL, A HOSTILE FLAG AND A HOSTILE BOOL LAND AS
+# ---------------------------------------------------------------------------
+#
+# A NUMBER OUTSIDE ITS DECLARED SET IS HELD, NOT REINTERPRETED, and the holding
+# is COUNTED so the caller can see it happened. FE1's body is ten bytes — the
+# grade ordinal, the union tag, the arm, the tail — so the two hostile bytes go
+# in by hand rather than through a value surface that could not express them.
+Leg.section("hostile ordinals, flags and bools: what each one lands as")
+
+fe_file = fn body ->
+  Tblfe1.FE1Fixed.fe_root_fixed_save([]) <>
+    <<Tblfe1.FE1Fixed.fe_root_fixed_hash()::little-unsigned-64, body::binary>>
+end
+
+# grade, tag, the arm's int32, the tail
+fe_body = fn grade, tag ->
+  <<grade::unsigned-8, tag::unsigned-8, 41::little-signed-32, 99::little-signed-32>>
+end
+
+# A UNION TAG BEYOND THE DECLARED ARM COUNT lands None and counts one `clamped`
+# on the identity path: the tag is an ordinal like any other and 0 is None.
+{:ok, [t0], tag_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(3, 9)))
+Leg.eq("a tag past the last arm lands None", t0.effect.type, 0)
+Leg.eq("and COUNTS one clamped", tag_report.clamped, 1)
+Leg.eq("the tail past the union still lands", t0.tail, 99)
+Leg.eq("a held tag is not damage", tag_report.malformed, false)
+
+# ON A COMPILED PATH a tag that matches no arm OF THE WRITER'S fires no entry
+# at all, so the prefill's None is what stays and nothing is counted. That is a
+# different event from the clamp above, and it is the correct one.
+{:ok, [t1], compiled_tag} = Tblfe2.FE2Fixed.fe_root_fixed_load(fe_file.(fe_body.(3, 9)))
+Leg.eq("compiled: a tag matching no arm of the writer's lands None", t1.effect.type, 0)
+Leg.eq("compiled: and fires no entry, so nothing is counted", compiled_tag.clamped, 0)
+
+# AN ENUM ORDINAL PAST THE LAST VARIANT lands 0 (None) and counts one
+# `clamped`, on BOTH paths — the identity plan holds it against the variant
+# count it was built from, a compiled plan against the writer's own table.
+{:ok, [e0], enum_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(99, 2)))
+Leg.eq("identity: an ordinal past the last variant lands None", e0.grade, 0)
+Leg.eq("identity: and COUNTS one clamped", enum_report.clamped, 1)
+Leg.eq("identity: the arm behind a good tag is undisturbed", e0.effect.ward.charge, 41)
+
+{:ok, [e1], compiled_enum} = Tblfe2.FE2Fixed.fe_root_fixed_load(fe_file.(fe_body.(99, 2)))
+Leg.eq("compiled: an ordinal past the last variant lands None", e1.grade, 0)
+Leg.eq("compiled: and COUNTS one clamped", compiled_enum.clamped, 1)
+
+# ORDINAL 0 IS None AND IS NOT A CLAMP, which is what keeps the counter honest.
+{:ok, [z0], none_report} = Tblfe1.FE1Fixed.fe_root_fixed_load(fe_file.(fe_body.(0, 0)))
+Leg.eq("None is a value and not a clamp", {z0.grade, z0.effect.type}, {0, 0})
+Leg.eq("so nothing is counted", none_report.clamped, 0)
+
+# A PRESENT BYTE AND A BOOL BYTE ARE BOTH `!= 0` AND NEVER `== 1`, which is
+# what a form that writes 0 or 1 and reads anything owes a hostile writer. Both
+# land through the PROJECTION, which the identity and compiled paths share, so
+# planting the byte once reaches both. The offset is found by writing the same
+# value twice with only that flag moved, so no offset is hard-coded here.
+only_diff = fn a, b ->
+  Enum.find(0..(byte_size(a) - 1)//1, fn i -> :binary.at(a, i) != :binary.at(b, i) end)
+end
+
+plant = fn data, at, byte ->
+  <<binary_part(data, 0, at)::binary, byte::unsigned-8,
+    binary_part(data, at + 1, byte_size(data) - at - 1)::binary>>
+end
+
+absent_bytes = Tblp3.P3Fixed.chain_fixed_save([%{present | link_present: false}])
+present_bytes = Tblp3.P3Fixed.chain_fixed_save([%{present | link_present: true}])
+present_at = only_diff.(absent_bytes, present_bytes)
+
+{:ok, [seven], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(absent_bytes, present_at, 7))
+Leg.eq("a present byte of 7 LANDS PRESENT — the test is `!= 0`", seven.link_present, true)
+
+{:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0))
+Leg.eq("and only 0 is absent", zero.link_present, false)
+
+track = fn v, on ->
+  ships =
+    List.update_at(v.ships, 0, fn ship -> %{ship | gunner: %{ship.gunner | tracking: on}} end)
+
+  %{v | ships: ships}
+end
+
+bool_off = Tabledemo.PackFixed.pack_config_fixed_save([track.(p0, false)])
+bool_on = Tabledemo.PackFixed.pack_config_fixed_save([track.(p0, true)])
+bool_at = only_diff.(bool_off, bool_on)
+
+{:ok, [two], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_off, bool_at, 2))
+Leg.eq("a bool byte of 2 LANDS TRUE", Enum.at(two.ships, 0).gunner.tracking, true)
+
+{:ok, [off], _} = Tabledemo.PackFixed.pack_config_fixed_load(plant.(bool_on, bool_at, 0))
+Leg.eq("and only 0 is false", Enum.at(off.ships, 0).gunner.tracking, false)
+
 # ---------------------------------------------------------------------------
 # THE NEGATIVE CONTROLS
 # ---------------------------------------------------------------------------
@@ -575,5 +727,64 @@ hostile =
 Leg.eq("a hostile length is clamped to the declared bound", byte_size(clamped.name), 16)
 Leg.check("the clamp is COUNTED", clamp_report.clamped >= 1)
 Leg.eq("a clamp is not `malformed`", clamp_report.malformed, false)
+
+# THE OVERLOADED LANE, PLANTED BY HAND. The bug this leg is pinned against is a
+# plan entry that spends ONE lane on both the arm ordinal and the text flavour.
+# This port cannot spell that — the two live in different tuples — so the
+# control WRITES IT ANYWAY: the arm's tag copied over the flavour element of
+# the `text` entry, which is what the overloaded encoding would have produced.
+# A tag of 2 read as a flavour is `wide`, whose unit is two bytes, so the
+# length is held to four and the text comes back short. IF THE TWO FACTS EVER
+# SHARE A LANE AGAIN, THIS IS WHAT THE READ WOULD DO.
+[fu_body | _] = bodies_of.(fu, Tblfu1.FU1Fixed.fu_root_fixed_body_bytes())
+
+overloaded =
+  Enum.map(Tblfu1.FU1Fixed.fu_root_fixed_plan(), fn
+    {:guard, g, tag, {:text, src, dst, aux, size, _flavour}} ->
+      {:guard, g, tag, {:text, src, dst, aux, size, tag}}
+
+    entry ->
+      entry
+  end)
+
+Leg.check(
+  "an overloaded flavour lane does NOT reproduce the arm's text",
+  (fn ->
+     {image, _} =
+       Tblfu1.FixedRuntime.run(
+         overloaded,
+         fu_body,
+         Tblfu1.FU1Fixed.fu_root_fixed_prefill(),
+         Tblfu1.FixedRuntime.report()
+       )
+
+     Tblfu1.FU1Fixed.fu_root_fixed_decode(image).pick.labelled.label
+   end).() != "hello"
+)
+
+# AND THE UNCHECKED ORDINAL, planted the same way: an ordinal that rides as a
+# plain COPY is an ordinal nothing holds, which is what this leg did before the
+# `ordinal` op reached the identity plan. A grade of 99 would land as 99 — a
+# variant no reader has a name for — and no counter would say so.
+unchecked =
+  Enum.map(Tblfe1.FE1Fixed.fe_root_fixed_plan(), fn
+    {:ordinal, src, dst, size, _width, _variants} -> {:copy, src, dst, size}
+    entry -> entry
+  end)
+
+{loose_image, loose_report} =
+  Tblfe1.FixedRuntime.run(
+    unchecked,
+    fe_body.(99, 2),
+    Tblfe1.FE1Fixed.fe_root_fixed_prefill(),
+    Tblfe1.FixedRuntime.report()
+  )
+
+loose = Tblfe1.FE1Fixed.fe_root_fixed_decode(loose_image)
+
+Leg.check(
+  "an ordinal riding as a plain copy is NOT held to the declared variants",
+  loose.grade == 99 and loose_report.clamped == 0
+)
 
 Leg.verdict()

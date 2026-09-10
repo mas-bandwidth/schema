@@ -1,0 +1,46 @@
+// FU1.schema — the OLDER side of the fixed form's TEXT-UNDER-AN-ARM pair
+// (docs/SPEC-TABLES.md §3.4, §15). It exists because of a hole nothing else in
+// the corpus reached: FE1/FE2 slides a union's ordinals, FX1/FX2 edits fields,
+// and the paired bench corpus carries a three-arm union — but NOT ONE of them
+// puts a `string(N)` INSIDE A UNION ARM, and a plan entry that has to carry
+// both "which arm am I guarded by" and "which flavour of text am I" is exactly
+// where a single overloaded lane goes wrong. It went wrong (reference-fix 12,
+// found on the Dart leg): a `string(N)` in a union's SECOND arm read as ''
+// through a compiled plan while the identity read landed the text, with no
+// counter and no refusal to say so.
+//
+// So the fixture is the shape the bug needs: a union whose SECOND arm carries a
+// string(8) with a SCALAR BEFORE AND AFTER it, so a mislaid length or a
+// mislaid guard moves a neighbour too and the equality check sees it. The
+// scalar in the FIRST arm keeps the arms different sizes, which is what makes
+// the second arm's offsets its own.
+//
+// FU2 is the same declaration with one field appended, so its layout hash
+// differs and a read of FU1's bytes goes through a COMPILED plan rather than
+// the identity one. That is the whole point: the two reads have to agree field
+// for field, and the text is a field.
+package tblfu1
+
+type Plain
+{
+    n int32 = 7
+}
+
+type Labelled
+{
+    lead  int32 = 5
+    label string(8)
+    trail int32 = 9
+}
+
+union Pick
+{
+    plain    Plain
+    labelled Labelled
+}
+
+table FuRoot
+{
+    pick Pick
+    tail int32 = 3
+}

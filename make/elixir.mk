@@ -309,13 +309,20 @@ test-elixir: packet-wide-elixir packet-wide-elixir-negative-control
 # optional against a value, and an ENUM and a UNION that each gained a variant
 # in the middle so their ordinals SLIDE — and the negative controls, of which
 # the one §3.4 names is a reader given the WRONG PLAN for a record.
+#
+# FU1/FU2 is the TEXT-UNDER-AN-ARM pin: a `string(N)` inside a union's SECOND
+# arm, read once through the identity plan and once through a COMPILED one, so
+# a plan entry that spent ONE lane on both "which arm guards me" and "which
+# flavour of text am I" cannot pass here (reference-fix 12).
 ELIXIR_FIXED_UNITS := fx1:test/tables/FX1.schema fx2:test/tables/FX2.schema \
 	fe1:test/tables/FE1.schema fe2:test/tables/FE2.schema \
+	fu1:test/tables/FU1.schema fu2:test/tables/FU2.schema \
 	p1:test/tables/P1.schema p3:test/tables/P3.schema \
 	examples:tables/examples
 
 ELIXIR_FIXED_SCHEMAS := test/tables/FX1.schema test/tables/FX2.schema \
 	test/tables/FE1.schema test/tables/FE2.schema \
+	test/tables/FU1.schema test/tables/FU2.schema \
 	test/tables/P1.schema test/tables/P3.schema $(SCHEMAS_TABLES)
 
 build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
