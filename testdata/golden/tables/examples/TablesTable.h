@@ -8817,6 +8817,78 @@ inline void LoadoutConfigFixedWriteBody( uint8_t * b, const LoadoutConfig & valu
     }
 }
 
+// Debuff's read-side bounds.
+inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.amount < 0 ) { value.amount = 0; clamped++; }
+    else if ( value.amount > 100 ) { value.amount = 100; clamped++; }
+}
+
+// WeaponConfig's read-side bounds.
+inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.penetration < 0 ) { value.penetration = 0; clamped++; }
+    else if ( value.penetration > 10 ) { value.penetration = 10; clamped++; }
+    if ( value.channel > 63ull ) { value.channel = 63ull; clamped++; } // bits(6) width clamp
+    if ( (uint32_t) value.effect.type > 2u ) { value.effect.type = EffectType::None; clamped++; }
+    switch ( value.effect.type )
+    {
+        case EffectType::Debuff:
+        {
+            DebuffFixedClampBody( value.effect.debuff, clamped );
+            break;
+        }
+        default: break;
+    }
+}
+
+// Attachment's read-side bounds.
+inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.slot < 0 ) { value.slot = 0; clamped++; }
+    else if ( value.slot > 7 ) { value.slot = 7; clamped++; }
+}
+
+// LoadoutConfig's read-side bounds.
+inline void LoadoutConfigFixedClampBody( LoadoutConfig & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( (uint64_t) value.grade > 3u ) { value.grade = Grade::None; clamped++; }
+    for ( int64_t i = 0; i < (int64_t) value.grades_count; ++i )
+    {
+        if ( (uint64_t) value.grades[i] > 3u ) { value.grades[i] = Grade::None; clamped++; }
+    }
+    for ( int64_t i = 0; i < 3; ++i )
+    {
+        if ( (uint64_t) value.podium[i] > 3u ) { value.podium[i] = Grade::None; clamped++; }
+    }
+    WeaponConfigFixedClampBody( value.primary, clamped );
+    for ( int64_t i = 0; i < 2; ++i )
+    {
+        WeaponConfigFixedClampBody( value.backups[i], clamped );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.attachments_count; ++i )
+    {
+        AttachmentFixedClampBody( value.attachments[i], clamped );
+    }
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void WeaponConfigFixedClamp( WeaponConfig & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    WeaponConfigFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- WeaponConfig, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -8963,9 +9035,25 @@ inline int64_t WeaponConfigFixedLoad( WeaponConfig * values, int64_t capacity, c
         WeaponConfigReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        WeaponConfigFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void LoadoutConfigFixedClamp( LoadoutConfig & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    LoadoutConfigFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- LoadoutConfig, the fixed form ----
@@ -9194,6 +9282,9 @@ inline int64_t LoadoutConfigFixedLoad( LoadoutConfig * values, int64_t capacity,
         LoadoutConfigReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        LoadoutConfigFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

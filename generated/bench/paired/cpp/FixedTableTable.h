@@ -3965,6 +3965,144 @@ inline void FixedTableFixedWriteBody( uint8_t * b, const FixedTable & value )
     BenchMixedFixedWriteBody( b + 0, value.value );
 }
 
+// MixedEntity's read-side bounds.
+inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.entity_id > 4095ull ) { value.entity_id = 4095ull; clamped++; } // bits(12) width clamp
+    if ( value.pos_x < -16383 ) { value.pos_x = -16383; clamped++; }
+    else if ( value.pos_x > 16383 ) { value.pos_x = 16383; clamped++; }
+    if ( value.pos_y < -16383 ) { value.pos_y = -16383; clamped++; }
+    else if ( value.pos_y > 16383 ) { value.pos_y = 16383; clamped++; }
+    if ( value.pos_z < -16383 ) { value.pos_z = -16383; clamped++; }
+    else if ( value.pos_z > 16383 ) { value.pos_z = 16383; clamped++; }
+    if ( value.yaw > 511ull ) { value.yaw = 511ull; clamped++; } // bits(9) width clamp
+    if ( value.pitch > 511ull ) { value.pitch = 511ull; clamped++; } // bits(9) width clamp
+    if ( value.vel_x < -2048 ) { value.vel_x = -2048; clamped++; }
+    else if ( value.vel_x > 2047 ) { value.vel_x = 2047; clamped++; }
+    if ( value.vel_y < -2048 ) { value.vel_y = -2048; clamped++; }
+    else if ( value.vel_y > 2047 ) { value.vel_y = 2047; clamped++; }
+    if ( value.vel_z < -2048 ) { value.vel_z = -2048; clamped++; }
+    else if ( value.vel_z > 2047 ) { value.vel_z = 2047; clamped++; }
+    if ( value.health < 0 ) { value.health = 0; clamped++; }
+    else if ( value.health > 1000 ) { value.health = 1000; clamped++; }
+    if ( (uint64_t) value.weapon > 15u ) { value.weapon = MixedWeapon::None; clamped++; }
+}
+
+// MixedStat's read-side bounds.
+inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.stat_id > 255ull ) { value.stat_id = 255ull; clamped++; } // bits(8) width clamp
+    if ( value.delta < -512 ) { value.delta = -512; clamped++; }
+    else if ( value.delta > 511 ) { value.delta = 511; clamped++; }
+}
+
+// MixedHitEvent's read-side bounds.
+inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.target_id > 4095ull ) { value.target_id = 4095ull; clamped++; } // bits(12) width clamp
+    if ( value.damage < 0 ) { value.damage = 0; clamped++; }
+    else if ( value.damage > 4095 ) { value.damage = 4095; clamped++; }
+    if ( value.hit_kind < 0 ) { value.hit_kind = 0; clamped++; }
+    else if ( value.hit_kind > 7 ) { value.hit_kind = 7; clamped++; }
+}
+
+// MixedChatEvent's read-side bounds.
+inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.channel < 0 ) { value.channel = 0; clamped++; }
+    else if ( value.channel > 3 ) { value.channel = 3; clamped++; }
+    if ( value.speaker > 4095ull ) { value.speaker = 4095ull; clamped++; } // bits(12) width clamp
+}
+
+// MixedPickupEvent's read-side bounds.
+inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.item_id > 1023ull ) { value.item_id = 1023ull; clamped++; } // bits(10) width clamp
+    if ( value.amount < 0 ) { value.amount = 0; clamped++; }
+    else if ( value.amount > 255 ) { value.amount = 255; clamped++; }
+}
+
+// BenchMixed's read-side bounds.
+inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.sequence > 65535ull ) { value.sequence = 65535ull; clamped++; } // bits(16) width clamp
+    if ( value.ack_sequence < 0 ) { value.ack_sequence = 0; clamped++; }
+    else if ( value.ack_sequence > 65535 ) { value.ack_sequence = 65535; clamped++; }
+    if ( value.world_time < -1000000000000ll ) { value.world_time = -1000000000000ll; clamped++; }
+    else if ( value.world_time > 1000000000000ll ) { value.world_time = 1000000000000ll; clamped++; }
+    if ( value.frame_tick > 281474976710655ull ) { value.frame_tick = 281474976710655ull; clamped++; } // bits(48) width clamp
+    if ( value.server_time < 0 ) { value.server_time = 0; clamped++; }
+    else if ( value.server_time > 16776960 ) { value.server_time = 16776960; clamped++; }
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
+    {
+        MixedEntityFixedClampBody( value.entities[i], clamped );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
+    {
+        MixedStatFixedClampBody( value.stats[i], clamped );
+    }
+    if ( (uint32_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; clamped++; }
+    switch ( value.game_event.type )
+    {
+        case MixedEventType::Hit:
+        {
+            MixedHitEventFixedClampBody( value.game_event.hit, clamped );
+            break;
+        }
+        case MixedEventType::Chat:
+        {
+            MixedChatEventFixedClampBody( value.game_event.chat, clamped );
+            break;
+        }
+        case MixedEventType::Pickup:
+        {
+            MixedPickupEventFixedClampBody( value.game_event.pickup, clamped );
+            break;
+        }
+        default: break;
+    }
+    if ( value.aim_x < -1.0f ) { value.aim_x = -1.0f; clamped++; }
+    else if ( value.aim_x > 1.0f ) { value.aim_x = 1.0f; clamped++; }
+    if ( value.aim_y < -1.0f ) { value.aim_y = -1.0f; clamped++; }
+    else if ( value.aim_y > 1.0f ) { value.aim_y = 1.0f; clamped++; }
+    if ( value.aim_z < -1.0f ) { value.aim_z = -1.0f; clamped++; }
+    else if ( value.aim_z > 1.0f ) { value.aim_z = 1.0f; clamped++; }
+    if ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
+    else if ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
+    if ( value.ping > 64000 ) { value.ping = 64000; clamped++; }
+    if ( value.crc_hint > 16777215ull ) { value.crc_hint = 16777215ull; clamped++; } // bits(24) width clamp
+    if ( value.extra < 0 ) { value.extra = 0; clamped++; }
+    else if ( value.extra > 255 ) { value.extra = 255; clamped++; }
+    if ( value.idle_ticks < 0 ) { value.idle_ticks = 0; clamped++; }
+    else if ( value.idle_ticks > 15 ) { value.idle_ticks = 15; clamped++; }
+}
+
+// FixedTable's read-side bounds.
+inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    BenchMixedFixedClampBody( value.value, clamped );
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void FixedTableFixedClamp( FixedTable & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    FixedTableFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- FixedTable, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -4271,6 +4409,9 @@ inline int64_t FixedTableFixedLoad( FixedTable * values, int64_t capacity, const
         FixedTableReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        FixedTableFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

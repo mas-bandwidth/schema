@@ -115,7 +115,13 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range order {
 		g.emitFixedWriteBody(st)
 	}
+	// THE READ-SIDE BOUNDS, in the same closure order the write bodies take —
+	// post-order, so a nested type's body stands before the call to it.
+	for _, st := range order {
+		g.emitFixedClampBodyFn(st)
+	}
 	for _, st := range roots {
+		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -191,12 +197,27 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 }
 
 func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, indent int) { //nolint:gocyclo
+	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
+		// is present, and when the flag is 0 what rides is zero. It is ONE `if`
+		// here rather than a rule anywhere else, because the template already
+		// put the zeros there — so an absent optional costs the writer the
+		// branch and not one store, and a caller's untouched payload storage
+		// never reaches the wire.
+		ind := strings.Repeat(" ", indent)
+		g.pf("%sTableFixedPut8( %s + %d, %s.%s_present ? 1 : 0 );\n", ind, buf, off, val, f.Name)
+		g.pf("%sif ( %s.%s_present )\n%s{\n", ind, val, f.Name, ind)
+		g.emitFixedWritePayload(f, off+ir.TableFixedPresentBytes, buf, val, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedWritePayload(f, off, buf, val, indent)
+}
+
+func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, indent int) { //nolint:gocyclo
 	ind := strings.Repeat(" ", indent)
 	base := off
-	if f.Type.Optional {
-		g.pf("%sTableFixedPut8( %s + %d, %s.%s_present ? 1 : 0 );\n", ind, buf, base, val, f.Name)
-		base += ir.TableFixedPresentBytes
-	}
 	switch {
 	case f.KeyEnum != "":
 		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
@@ -425,6 +446,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        %sReset( values[k] ); // the declared defaults, one prefill\n", st.Name)
 	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
+	if ir.TableFixedClampNeeded(st) {
+		g.pf("        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
+		g.pf("        // storage it just wrote: the same pass for either plan (§3.4).\n")
+		g.pf("        %sFixedClamp( values[k], report );\n", st.Name)
+	}
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
 }
 
@@ -496,4 +522,170 @@ func fixedOpName(op int) string {
 		return "kTableFixedText"
 	}
 	return "kTableFixedCopy"
+}
+
+// ---- the read-side bounds --------------------------------------------------
+//
+// A fixed record is a positional image, so the ONE read loop moves bytes and
+// asks nothing about what they mean. What a declaration bounds is held HERE,
+// as straight-line code in the generated decode, after the copy — never as plan
+// entries, which would be a test per bounded field on every read of every
+// record and is the cost the identity plan exists to avoid.
+//
+// THE PASS RUNS OVER STORAGE, so ONE pass covers both plans: the identity plan
+// and a plan compiled from a stranger's layout land values in the same places.
+// It walks only what a read can have written — a counted array's LIVE elements
+// and never its slack, an optional's payload only when the present byte says
+// so — because the prefill's declared defaults are in range by construction
+// (internal/check refuses a range that excludes zero without a default in it)
+// and clamping storage nobody wrote would count a clamp on every clean read.
+
+// emitFixedClampBodyFn is ONE type's bounds, the twin of its write body: a
+// nested type is a call and not an inlining, so a type that appears twice in a
+// closure is spelled once.
+func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
+	if !ir.TableFixedClampNeeded(st) {
+		return
+	}
+	g.fixedOwner = st
+	g.pf("// %s's read-side bounds.\n", st.Name)
+	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped )\n{\n", st.Name, st.Name)
+	g.pf("    (void) value; (void) clamped;\n")
+	for _, f := range st.Fields {
+		g.emitFixedClampField(f, "value", 4)
+	}
+	g.pf("}\n\n")
+}
+
+// emitFixedClamp is the ROOT's entry point: the one call a read makes, and the
+// one place the count reaches the report.
+func (g *tableGen) emitFixedClamp(st *ir.Struct) {
+	if !ir.TableFixedClampNeeded(st) {
+		return
+	}
+	g.pf("// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's\n")
+	g.pf("// declared min and max, and an ORDINAL's set — a union tag past the arm\n")
+	g.pf("// count, an enum ordinal past the enum's top value. Straight-line, after\n")
+	g.pf("// the copy, over STORAGE, so the identity plan and a plan compiled from a\n")
+	g.pf("// stranger's layout are held to the same numbers by the same pass. Every\n")
+	g.pf("// clamp COUNTS.\n")
+	g.pf("inline void %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
+	g.pf("    int32_t clamped = 0;\n")
+	g.pf("    %sFixedClampBody( value, clamped );\n", st.Name)
+	g.pf("    report->clamped += clamped;\n}\n\n")
+}
+
+func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
+	if !ir.TableFixedClampNeededField(f) {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
+		// held to a bound either: what rides there is zero from the template
+		// and nobody wrote it.
+		g.pf("%sif ( %s.%s_present )\n%s{\n", ind, val, f.Name, ind)
+		g.emitFixedClampPayload(f, val, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedClampPayload(f, val, indent)
+}
+
+func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.KeyEnum != "":
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4).
+		g.pf("%sfor ( int64_t i = 0; i < %d; ++i )\n%s{\n", ind, f.KeyEnumRef.Max, ind)
+		g.emitFixedClampElement(f, val+"."+ir.TableFixedKeyedSlots(g.fixedOwner, f)+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		g.pf("%sfor ( int64_t i = 0; i < %d; ++i )\n%s{\n", ind, f.ArrayBound, ind)
+		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		// THE LIVE COUNT AND NOT THE BOUND: the slack is the template's zeros
+		// and a zero nobody wrote is not a value to hold to a range.
+		g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s.%s_count; ++i )\n%s{\n", ind, val, f.Name, ind)
+		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
+		g.pf("%s}\n", ind)
+	default:
+		g.emitFixedClampElement(f, val+"."+f.Name, indent)
+	}
+}
+
+func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ir.TableFixedClampNeeded(r) {
+				g.pf("%s%sFixedClampBody( %s, clamped );\n", ind, r.Name, expr)
+			}
+			return
+		case *ir.Union:
+			// A UNION TAG PAST THE ARM COUNT NAMES NO ARM. On the compiled path
+			// the ordinal op has already remapped it; on the identity path it
+			// is a raw copy out of a stranger's bytes, and this is what holds
+			// it. It lands None — the same nothing an unset union holds — and
+			// counts.
+			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
+				ind, expr, r.Max, expr, f.Type.Name)
+			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+			for _, v := range r.Variants {
+				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
+					continue
+				}
+				g.pf("%s    case %sType::%s:\n%s    {\n", ind, f.Type.Name, ir.GoExportName(v.Name), ind)
+				g.emitFixedClampElement(v.F, fmt.Sprintf("%s.%s", expr, v.Name), indent+8)
+				g.pf("%s        break;\n%s    }\n", ind, ind)
+			}
+			g.pf("%s    default: break;\n%s}\n", ind, ind)
+			return
+		case *ir.Enum:
+			// AN ORDINAL PAST THE ENUM'S TOP VALUE is not a variant this
+			// generation cannot name — it is a number the enum cannot hold at
+			// all. It lands None and counts. A value INSIDE an `| max = K`
+			// widening is the other case and is left alone: that is a name a
+			// later generation has, not a bound this one broke.
+			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s::None; clamped++; }\n",
+				ind, expr, r.Max, expr, f.Type.Name)
+			return
+		}
+		return
+	}
+	width := int(ir.TableFixedStorageBytes(f.Type))
+	switch {
+	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
+		g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMin, true))
+		g.pf("%selse if ( %s > %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMax, true), expr, formatFloat(f.FMax, true))
+	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
+		g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMin, false))
+		g.pf("%selse if ( %s > %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMax, false), expr, formatFloat(f.FMax, false))
+	default:
+		signed := ir.TableKindSigned(ir.TableScalarKind(f))
+		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
+		// raw, so ir.TableRawRange shifts them by F before either end is
+		// spelled — the same numbers the variable form's codec clamps at.
+		if rlo, rhi, ok := ir.TableRawRange(f); ok {
+			low, high := tableClampEnds(f, width)
+			if low {
+				lo := tableIntLit(rlo, signed, width)
+				g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, lo, expr, lo)
+			}
+			if high {
+				hi := tableIntLit(rhi, signed, width)
+				lead := "if"
+				if low {
+					lead = "else if"
+				}
+				g.pf("%s%s ( %s > %s ) { %s = %s; clamped++; }\n", ind, lead, expr, hi, expr, hi)
+			}
+		}
+		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
+			maxv := (uint64(1) << f.Type.Width) - 1
+			g.pf("%sif ( %s > %dull ) { %s = %dull; clamped++; } // bits(%d) width clamp\n", ind, expr, maxv, expr, maxv, f.Type.Width)
+		}
+	}
 }

@@ -138,7 +138,10 @@ static bool p3_file( const char * dir )
     std::strcpy( v[1].name, "absent" );
     v[1].name_length = 6;
     v[1].link_present = false;
-    // the payload rides WHOLE whether or not it is present (§3.4)
+    // THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT (§3.4), and when the
+    // flag is 0 what rides is ZERO. These stores are here to prove it: the
+    // storage carries values, the flag says absent, and the file's bytes for
+    // this payload are the template's zeros all the same.
     v[1].link.value = 99;
     std::strcpy( v[1].link.tag, "still" );
     v[1].link.tag_length = 5;
