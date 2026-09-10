@@ -94,13 +94,32 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range roots {
 		fixedCollectTypes(st, seen, &order)
 	}
-	g.emitFixedLayoutAsserts(order)
+	// THE DECLARING FILE OWNS A TYPE'S FIXED-FORM MATERIAL. The walk above is
+	// the ROOT'S CLOSURE, and a unit is many files (SPEC §3.2): a root here can
+	// nest a fixed table declared in another file of the same package, whose
+	// own header already carries that type's asserts and write body — a header
+	// this one includes. Emitting them again is a redefinition, and in C it is
+	// a hard one, because the assert is a `typedef char name[1]` and repeating
+	// a typedef is a C11 feature this generated code does not require. Every
+	// closure member declared elsewhere is itself a fixed root of its own file,
+	// so nothing is lost by leaving it there.
+	own := make([]*ir.Struct, 0, len(order))
+	here := map[string]bool{}
+	for _, st := range members {
+		here[st.Name] = true
+	}
 	for _, st := range order {
+		if here[st.Name] {
+			own = append(own, st)
+		}
+	}
+	g.emitFixedLayoutAsserts(own)
+	for _, st := range own {
 		g.pf("static SCHEMA_UNUSED %s void %s( uint8_t * b, const %s * value );\n",
 			tableInlineMacro(g.unit.Package), g.sym(st.Name, "fixed_write_body"), st.Name)
 	}
 	g.pf("\n")
-	for _, st := range order {
+	for _, st := range own {
 		g.emitFixedWriteBody(st)
 	}
 	for _, st := range roots {

@@ -135,8 +135,10 @@ union TableEvent
     pickup TablePickupEvent
 }
 
-// The message. Field for field, BenchMixed with the four substitutions above.
-table TableMixed
+// The message. Field for field, BenchMixed with the four substitutions above,
+// and a FIXED TABLE for the same reason BenchMixed is a fixed table's body:
+// the lookback conditional is gone from both (see the tail of this body).
+fixed table TableMixed
 {
     // ---- header ----
     protocol_magic uint16
@@ -186,15 +188,19 @@ table TableMixed
     ping     float32  | min = 0, max = 250, resolution = 0.01
     crc_hint bits(24)
 
-    // The branch gate: STRUCTURE, pinned true, so `extra` rides and
-    // `idle_ticks` never does — the same pin the type corpus holds.
-    has_extra bool
-    if has_extra
-    {
-        extra int32 | min = 0, max = 255
-    }
-    else
-    {
-        idle_ticks int32 | min = 0, max = 15
-    }
+    // THE LOOKBACK CONDITIONAL IS GONE FROM THIS SHAPE, and its three fields
+    // stay as PLAIN FIELDS carrying the same logical data — the same edit
+    // bench/corpus/Bench.schema made to BenchMixed, for the same reason. A
+    // guarded branch is the one thing a `fixed table` cannot carry: its whole
+    // purpose is to make the body vary in size, and *"that is a disqualifying
+    // thing for a fixed table. not supported. only variable."* — the project
+    // owner. Guard coverage lives on tables/examples/Guarded.schema's
+    // `Patrol`, which is a plain `table` and read as one by its driver.
+    //
+    // has_extra stays STRUCTURE (§2.7), pinned true and off its default so
+    // §3's writer never elides it; both `extra` and `idle_ticks` ride now,
+    // where the untaken arm used to cost nothing.
+    has_extra  bool
+    extra      int32 | min = 0, max = 255
+    idle_ticks int32 | min = 0, max = 15
 }

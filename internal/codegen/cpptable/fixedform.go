@@ -110,8 +110,24 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range roots {
 		fixedCollectTypes(st, seen, &order)
 	}
-	g.emitFixedLayoutAsserts(order)
+	// THE DECLARING FILE OWNS A TYPE'S FIXED-FORM MATERIAL — the same rule the
+	// C backend states at length: the walk above is the ROOT'S CLOSURE, a unit
+	// is many files (SPEC §3.2), and a closure member declared elsewhere is a
+	// fixed root of its own header, which this one includes. Emitting its
+	// asserts and its `inline` write body again would define both twice in one
+	// translation unit.
+	own := make([]*ir.Struct, 0, len(order))
+	here := map[string]bool{}
+	for _, st := range members {
+		here[st.Name] = true
+	}
 	for _, st := range order {
+		if here[st.Name] {
+			own = append(own, st)
+		}
+	}
+	g.emitFixedLayoutAsserts(own)
+	for _, st := range own {
 		g.emitFixedWriteBody(st)
 	}
 	for _, st := range roots {

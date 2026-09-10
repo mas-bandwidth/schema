@@ -6298,12 +6298,36 @@ and the plan compiler absorbs, at the cost of a plan per peer — and keeping th
 slot is what makes the deprecation cost nothing at all. The marker and the
 baseline lock that holds it are #823 and #825.
 
-**WHAT A FIXED TABLE CANNOT CARRY, and each is refused by name rather than
-framed.** A POINTER, a MAP and an UNBOUNDED `[]T` have no bound to be constant
-at — they are what makes a table VARIABLE (§2.2), and a variable table keeps §3
-entirely. A GUARDED BRANCH is refused for the owner's own reason: *"the intent
-of the lookback conditional is to make it variable size … so that is a
-disqualifying thing for a fixed table. not supported. only variable."*
+**WHAT A FIXED TABLE CANNOT CARRY, and each is a COMPILE ERROR naming the field
+and the fixed table it breaks (§11), never a demotion to another form.** The
+list is §2.2's SIX, unabridged, and this section repeats it because a record of
+ONE CONSTANT SIZE PER TYPE is exactly what refusing them buys:
+
+- a **POINTER** (§2.1), a **MAP** (§2.8) and an **UNBOUNDED `[]T`** (§2.9) — a
+  count the DATA decides, with no bound to be constant at,
+- a **BYTE BUFFER AT ITS USED SIZE** (§2.5) — `*bytes`, `*string`, `*wstring`,
+  the same thing spelled as a length rather than as a count,
+- a **NESTED PLAIN `table` HELD BY VALUE** — the variable wire has no size a
+  fixed body could hold. Nest a `fixed table`, or a `type`,
+- a **GUARDED (`if`) BRANCH** (SPEC §4.5), refused for the owner's own reason:
+  *"the intent of the lookback conditional is to make it variable size … so
+  that is a disqualifying thing for a fixed table. not supported. only
+  variable."*
+
+**NOT ONE OF THE SIX MAKES A TABLE VARIABLE. THE DECLARATION DOES** (§2.2), and
+this is the sentence the keyword (#823) moved. Nothing is inferred in either
+direction: a plain `table` holding any of the six is the VARIABLE wire and keeps
+§3 entirely — exactly as a plain `table` holding NONE of them is the variable
+wire and keeps §3 entirely — and a `fixed table` holding one is not a table that
+falls back to form `1`, it is a build that does not finish. `ir.FixedClosureBreaks`
+is the check, its walk and its two stopping edges are §2.2's, and it is where the
+owner aimed the compile error: *"if we add any feature that stops it from being
+fixed, it is a compile error … we don't want to surprise the user"*.
+
+**SO A CORPUS TABLE MEANT TO BE FIXED CARRIES NO GUARD**, and the guarded-branch
+coverage the emitters owe lives on a plain `table` — `tables/examples/Guarded.schema`'s
+`Patrol`, read as the variable wire by its own driver. A guard and `fixed` in one
+body is not a table with two wires to choose between; it is a diagnostic.
 
 #### SELECTION IS BY THE KEYWORD
 
