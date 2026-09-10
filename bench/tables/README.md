@@ -225,6 +225,18 @@ Stated so a reader knows what is not here, and why:
   emitters. The lock is a ruling about a profiling round, not a side effect of
   a board existing; it belongs to the round the owner opens after the first
   box sitting reads.
+- **`bench/tables/rust` has a runner and NO `leg`.** `run.sh` discovers a leg
+  by the path `bench/tables/<lang>/leg`, and this page's leg measures the
+  TOLERANT wire — which the Rust port does not have: its backend emits the
+  fixed form and the two accelerators and no form-1 codec at all. So there is
+  nothing here for this pass to run, and registering a command that could only
+  ever SKIP would put a row of noise on the board.
+  `bench/tables/rust/src/main.rs` is instead the FIXED form's leg for
+  [`bench/paired`](../paired/README.md), where it is a table-only language: it
+  names the same flags and emits the same CSV columns as the C++ reference, it
+  is gated by `make tables-rust-fixed-matched`, and its rows are named
+  `bench_fixed`. When a form-1 Rust wire lands, its `leg` lands with it.
+
 - **The `inline` column stays `unknown`** for both legs. The §4 verdict pass
   has no branch for the generated table codec, which is the same open item the
   type board's data-driven rows carry.

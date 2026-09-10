@@ -1,0 +1,25 @@
+# Build wiring for the generated paired bench unit — NOT generator output. The
+# emitter writes only .rs files (make/rust.mk says the same of every other Rust
+# unit's manifest), so this manifest is written beside them, by both
+# `make/rust.mk`'s stamp and `bench/paired`'s own build step, with the same
+# bytes from both.
+#
+# `[lib] path` names lib.rs where it lands: the paired generation goes to the
+# crate root rather than to src/, because `bench/paired` invokes
+# `schema generate --out generated/bench/paired/<lang>` for every language and
+# the Rust leg does not get its own spelling of that path.
+#
+# The serialize.rs dependency is the PACKET module's — the generated table
+# modules name no runtime at all — and the crate links it because the unit's
+# packet codec is part of the same crate. The path is the sibling checkout at
+# make/rust.mk's own SERIALIZE_RS default.
+[package]
+name = "benchpaired"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+serialize = { package = "serialize-official", path = "../../../../../serialize.rs" }

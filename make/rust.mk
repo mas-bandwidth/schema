@@ -272,16 +272,51 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
+# THE PAIRED BENCH UNIT, for bench/tables/rust — the FIXED FORM's leg in
+# `bench/paired` (bench/paired/main.go, bench/tables/rust/src/main.rs).
+# Bench.schema and FixedTable.schema are ONE unit, exactly as the C, C++, Go
+# and C# paired generations are: the fixed root reaches the packet type so the
+# compiler emits its table codec. The manifest beside the modules is TRACKED
+# build wiring rather than something this stamp writes — the paired unit is
+# generated to the crate ROOT (that is the --out path `bench/paired` passes for
+# every language), so its Cargo.toml names `[lib] path = "lib.rs"` and does not
+# change when the emitter adds or drops a module. The driver regenerates the
+# same .rs files itself, so the two agree byte for byte or `generated-current`
+# says so.
+generated/bench/paired/rust/.stamp: bin/schema $(RUST_TABLE_BENCH_SCHEMAS)
+	@mkdir -p generated/bench/paired/rust
+	./bin/schema generate --lang rust --out generated/bench/paired/rust $(RUST_TABLE_BENCH_SCHEMAS)
+	@touch $@
+
+# THE FIXED FORM'S PAIRED LEG, gated and not timed: the same no-clock `--gate`
+# the C++ and C legs answer in `tables-fixed-matched`, over the same corpus.
+# The clock lives in `go run ./bench/paired`, and a clock does not gate a build.
+#
+# RELEASE, because that is the build the driver measures and the build whose
+# write-side `debug_assert!`s are gone (the 2026-09-07 ruling) — the debug
+# build's contracts are already proved by `tables-rust-fixedform`, which runs
+# both modes over these same bytes.
+.PHONY: tables-rust-fixed-matched
+tables-rust-fixed-matched: generated/bench/paired/rust/.stamp
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release \
+		--manifest-path bench/tables/rust/Cargo.toml --target-dir build/paired/rust
+	./build/paired/rust/release/table-rust --gate --indexed \
+		--wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+
 # THE RUST LEG of `make test`: the clippy and feature gates, the names
 # control, the big-endian check, the bench crates' compile gates, and the
 # packet tests — the corpus binaries in BOTH build modes (see below).
 .PHONY: test-rust
-test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp
+test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control
 	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
 	$(MAKE) tables-rust-fixedform
+	# THE PAIRED LEG's own no-clock gate (bench/tables/rust): the block is the
+	# corpus's, the file loads, it saves back identical, reused storage
+	# round-trips twice.
+	$(MAKE) tables-rust-fixed-matched
 	# the generated Rust table surface CHECKED for a big-endian target, layout
 	# const asserts and all. It SKIPS cleanly where the target is not
 	# installed, so it costs a machine without it nothing.
