@@ -70,7 +70,9 @@ func init() {
 	// The id-table wire (§3) is NOT emitted for this backend (schema#515), so
 	// its elision rule is not this port's to carry today; when #515 lands, the
 	// codec it brings has to keep this claim true.
-	registerTableValueDefaultCarrier("elixir")
+	// Registered the way go, java and rust register (target_go.go,
+	// target_java.go, target_rust.go): the append IS the registration.
+	valueDefaultTargets = append(valueDefaultTargets, "elixir")
 	registerWideTextCarrier("elixir")
 	registerBuiltin(elixirTarget{}, true, false, false, false)
 }

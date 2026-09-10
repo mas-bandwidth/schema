@@ -1,0 +1,48 @@
+// UT.schema — A TEXT FIELD AND AN ENUM UNDER A UNION'S SECOND ARM, which is
+// the shape the fixed form's compiled plan had no fixture for
+// (docs/SPEC-TABLES.md §3.4).
+//
+// Every field inside a union arm is carried by a plan entry GUARDED on the
+// writer's own tag, and the guard compares the entry's arm ordinal. So an op
+// that borrows that lane for something of its own — a text entry's flavour,
+// say — is a field under the SECOND arm whose guard compares a flavour against
+// a tag: it never fires, the field never lands, and nothing counts. No corpus
+// root had text under an arm past the first, so the compiled path was never
+// asked. This is that question, and the answer it must give is the identity
+// path's, exactly.
+//
+// The enum is here for the OTHER half: an ordinal past the last variant lands
+// None (0) and counts one clamped, on the identity path and the compiled path
+// alike, and a tag past the last arm does the same.
+package tblut
+
+enum UtGrade
+{
+    bronze
+    silver
+    gold
+}
+
+type UtArmA
+{
+    n int32 = 7
+}
+
+type UtArmB
+{
+    label string(8)
+    grade UtGrade
+    m     int32 = 9
+}
+
+union UtPick
+{
+    a UtArmA
+    b UtArmB
+}
+
+table UtRoot
+{
+    pick UtPick
+    tail int32 = 3
+}

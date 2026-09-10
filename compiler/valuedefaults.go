@@ -23,14 +23,6 @@ import (
 // emits the form writes the default into the prefill.
 var valueDefaultTargets = []string{"cpp", "c", "cs"}
 
-// registerTableValueDefaultCarrier registers a port on the TABLE half of the
-// list above. A port calls it from its own target file's init, beside the
-// packet call, so a target stays one file (docs/CONTRIBUTING.md, "Adding a
-// language").
-func registerTableValueDefaultCarrier(name string) {
-	valueDefaultTargets = append(valueDefaultTargets, name)
-}
-
 // packetValueDefaultTargets names the packet carriers independently of the
 // table carriers. A port registers here from its own target file's init.
 var packetValueDefaultTargets = []string{"cpp"}

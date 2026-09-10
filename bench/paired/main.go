@@ -57,9 +57,18 @@ var unpublishedLanguages = []string{"elixir"}
 // separate work with their own ruling; filling this driver's second wire with
 // a fabricated row would be inventing a measurement. So rust rides the table
 // wire alone and appears in no ratio, no confirmation pass and no board.
-var tableOnlyLanguages = []string{"rust"}
+//
+// java is here for the same reason arrived at down a different road:
+// bench/java/Main.java is the TYPE BOARD's runner, with neither `--gate` nor
+// `--iterations` either, and the paired set above is the four the board is
+// defined over. The table leg (bench/tables/java/TableMain.java) is this
+// driver's own shape. A packet leg here is separate work with its own ruling,
+// so java too rides the table wire alone and appears in no ratio, no
+// confirmation pass and no board; its packet number is the type board's,
+// measured by its own runner over the same sixty-four records.
+var tableOnlyLanguages = []string{"rust", "java"}
 
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust"}
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java"}
 
 // allLanguages IS EVERY NAME -langs ACCEPTS: the published four, the paired
 // legs that are measurable but not published yet, and the table-only legs.
@@ -274,6 +283,14 @@ func abs(p string) string {
 	return s
 }
 func binary(wire, lang string) string {
+	// THE JAVA LEG'S BUILD PRODUCT is a directory of classfiles, so the thing
+	// this driver pins and hashes is the runner's own class in it; the
+	// generated sources it was compiled beside are hashed too
+	// (generateAndBuild), so the recorded identity covers the whole unit that
+	// runs and not only the entry point.
+	if lang == "java" {
+		return filepath.Join(javaClassDir, "TableMain.class")
+	}
 	p := filepath.Join("build", "paired", wire+"-"+lang)
 	if lang == "elixir" {
 		// AN INTERPRETED LEG HAS NO EXECUTABLE. What stands in its place is the
@@ -347,12 +364,56 @@ func rustupTool(env, name string) string {
 	}
 	return name
 }
+
+// generatedModules names the generated sources a leg COMPILES rather than
+// links, so readBuild verifies them the way it verifies a compiled leg's
+// binary. It is a GLOB and not a list: the emitter decides how many modules a
+// unit has, and a list here would be one more place to keep in step with it —
+// and one more place naming a corpus type, which this driver has no business
+// doing. Only java answers it: rust's unit is inside its binary, and the
+// binary's own hash already covers it.
+func generatedModules(lang string) ([]string, error) {
+	if lang != "java" {
+		return nil, nil
+	}
+	found, err := filepath.Glob(filepath.Join("generated", "bench", "paired", lang, "*."+lang))
+	if err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no generated %s modules for the paired unit", lang)
+	}
+	sort.Strings(found)
+	return found, nil
+}
+
+// javaClassDir is where the Java table leg's classfiles land.
+const javaClassDir = "build/paired/table-java"
+
+// javaExecutable and javacExecutable are the JDK's two halves, the same pins
+// make/java.mk carries: the repository-local JDK when it is there, and the one
+// on PATH otherwise, with JAVA and JAVAC overriding both.
+func javaExecutable() string  { return jdkTool("JAVA", "java") }
+func javacExecutable() string { return jdkTool("JAVAC", "javac") }
+func jdkTool(name, tool string) string {
+	if s := os.Getenv(name); s != "" {
+		return s
+	}
+	local := filepath.Join("dist", "jdk-21.0.12.1", "Contents", "Home", "bin", tool)
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return tool
+}
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
 	var env []string
 	switch lang {
 	case "cs":
 		a = append([]string{"dotnet"}, a...)
+	case "java":
+		// The class, by name, on the classpath the build filled.
+		a = []string{javaExecutable(), "-cp", javaClassDir, "TableMain"}
 	case "elixir":
 		// The leg is a script, and it is spawned from the REPOSITORY ROOT like
 		// every other leg, so its corpus paths arrive through --wire-dir and
@@ -633,6 +694,30 @@ func generateAndBuild(langs []string) error {
 			if e = os.WriteFile(binary("table", lang), built, 0755); e != nil {
 				return e
 			}
+		case "java":
+			// The generated unit and the runner, compiled beside each other
+			// into one classpath under the same javac flags the Java legs
+			// use everywhere (make/java.mk): -Werror, because the generated
+			// sources are compiled by the consumer's javac. Then the gate.
+			if e := os.RemoveAll(javaClassDir); e != nil {
+				return e
+			}
+			if e := os.MkdirAll(javaClassDir, 0755); e != nil {
+				return e
+			}
+			modules, e := generatedModules(lang)
+			if e != nil {
+				return e
+			}
+			javac := []string{"--release", "17", "-Xlint:all", "-Werror", "-d", javaClassDir}
+			javac = append(javac, modules...)
+			javac = append(javac, filepath.Join("bench", "tables", "java", "TableMain.java"))
+			if e := run(append([]string{javacExecutable()}, javac...)...); e != nil {
+				return fmt.Errorf("javac is required for the java leg (set JAVAC): %w", e)
+			}
+			if e := execute(runner("table", lang, "--gate")); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -643,7 +728,7 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
@@ -652,6 +737,17 @@ func generateAndBuild(langs []string) error {
 		info.Tools["elixir"] = strings.TrimSpace(string(b))
 	}
 	for _, lang := range langs {
+		modules, e := generatedModules(lang)
+		if e != nil {
+			return e
+		}
+		for _, p := range modules {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
 		for _, wire := range wiresFor(lang) {
 			p := binary(wire, lang)
 			h, e := hashFile(p)
@@ -712,6 +808,11 @@ func generateAndBuild(langs []string) error {
 		if gitValue(abs(setting("SERIALIZE_RS", "../serialize.rs")), "diff", "--name-only", "HEAD", "--") != "" {
 			info.Runtimes["serialize.rs"] += "-dirty"
 		}
+	}
+	if contains(langs, "java") {
+		// The Java leg's compile is the JDK's own, and what decides its code is
+		// the JIT, which the tools map above carries by version.
+		info.Tools["java_table_flags"] = "javac --release 17 -Xlint:all -Werror; java default (JIT, no -ea)"
 	}
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {
