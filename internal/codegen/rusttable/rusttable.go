@@ -42,22 +42,27 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	closure := ir.TableClosure(u)
 	blocks := ir.Blocks(u)
 
-	// §15's WIDE-KIND REFUSAL IS OWED BY THE ACCELERATORS AND NOT BY THE WIRE.
-	// The block form and the cooked form are the two things this backend has
-	// that must name a kind's storage column and its reflection descriptor, and
-	// they are what does not carry the fixed-point and 128-bit kinds yet. The
-	// FIXED FORM (§3.4) names no kind at all on the emitted path: a field is a
-	// store of its width at its offset, so a 128-bit field is a `u128` store
-	// and a fixed-point one is its raw integer, and the block's own entry
-	// carries the kind byte the reader compares. So a unit that declares the
-	// wide kinds still gets its form-3 codec and it is the accelerators that
-	// stand down; a unit with NO fixed root has nothing left to emit and the
-	// refusal is the whole answer, BY NAME, exactly as before.
-	accelerators := ir.RefuseWideTableKinds(u, "Rust")
+	// §15's WIDE-KIND REFUSAL IS OWED BY THE ACCELERATORS AND NOT BY THE WIRE,
+	// and ir.WideTableKinds is the one place that rule lives. The block form and
+	// the cooked form are the two things this backend has that must name a
+	// kind's storage column and its reflection descriptor, and they are what
+	// does not carry the fixed-point and 128-bit kinds yet. The FIXED FORM
+	// (§3.4) names no kind at all on the emitted path: a field is a store of its
+	// width at its offset, so a 128-bit field is a `u128` store and a
+	// fixed-point one is its raw integer, and the layout's own entry carries the
+	// kind byte the reader compares.
+	//
+	// THE `fixedForm` ARGUMENT IS THIS BACKEND'S OWN ANSWER, and it is `true`
+	// here now: the day the ir rule landed it read `false` because this port had
+	// no form-3 codec. It has one. So a unit that declares the wide kinds still
+	// gets it, the two accelerators stand down alone, and only a unit with NO
+	// fixed root is refused whole, BY NAME.
 	fixed := anyFixedRoot(u, closure)
-	if accelerators != nil && !fixed {
-		return nil, accelerators
+	scope := ir.WideTableKinds(u, "Rust", fixed)
+	if scope.Unit {
+		return nil, scope.Refusal
 	}
+	accelerators := scope.Refusal
 
 	if accelerators == nil && anyCookable(u, closure) {
 		out[CookRuntimeModule+".rs"] = cookRuntimeModule(u)

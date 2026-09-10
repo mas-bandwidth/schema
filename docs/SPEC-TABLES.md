@@ -6352,11 +6352,16 @@ arithmetic, its whole constant size being one entry's worth of `src` advance.
 
 **THE IDENTITY PLAN IS A STATIC CONSTANT BAKED INTO THE GENERATED READER.** When
 a record's hash equals the reader's own, the plan is the one the compiler
-already wrote: every entry a `copy`, with **ADJACENT RUNS COALESCED** — two
-neighbouring fields whose source and destination both advance together are one
-entry, so a record whose declared order matches its storage layout collapses to
-a handful of runs. Coalescing is the only optimization a plan compiler performs
-and it is performed identically on both sides.
+already wrote. **IT CARRIES THREE OPS AND NOT ONE**: a `copy` for every field
+whose wire image is its storage image, a `count` for a `[Min..Max]T`, and a
+`text` for a `string(N)`, a `wstring(N)` or a `bytes(N)` — because a count and a
+length are numbers the reader HOLDS TO ITS OWN BOUND before it moves the units
+behind them, and a copy holds nothing. The other four ops are a compiled plan's
+alone. **ADJACENT RUNS ARE COALESCED** — two neighbouring `copy` entries whose
+source and destination both advance together are one entry, so a record whose
+declared order matches its storage layout collapses to a handful of runs.
+Coalescing is the only optimization a plan compiler performs and it is performed
+identically on both sides.
 
 **FOR ANY OTHER HASH THE SAME LOOP RUNS OVER A PLAN COMPILED ONCE FROM THE
 WRITER'S LAYOUT, AND CACHED BY HASH.** The compiler walks the layout against the

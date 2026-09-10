@@ -384,35 +384,49 @@ func (g *gen) emitFixedWriteBody(st *ir.Struct) {
 }
 
 func (g *gen) emitFixedWriteField(f *ir.Field, off int64) {
-	base := off
 	if f.Type.Optional {
-		g.pf("    b[%d] = u8::from(value.%s_present);\n", base, f.Name)
-		base += ir.TableFixedPresentBytes
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
+		// is present, and when the flag is 0 what rides is ZERO. It is ONE `if`
+		// here rather than a rule anywhere else, because the template already
+		// put the zeros there — so an absent optional costs the writer the
+		// branch and not one store, and a caller's untouched payload storage
+		// never reaches the wire.
+		g.pf("    b[%d] = u8::from(value.%s_present);\n", off, f.Name)
+		g.pf("    if value.%s_present {\n", f.Name)
+		g.emitFixedWritePayload(f, off+ir.TableFixedPresentBytes, 8)
+		g.pf("    }\n")
+		return
 	}
+	g.emitFixedWritePayload(f, off, 4)
+}
+
+func (g *gen) emitFixedWritePayload(f *ir.Field, base int64, indent int) {
+	ind := strings.Repeat(" ", indent)
 	switch {
 	case f.KeyEnum != "":
 		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
 		// slack, so the bound is the loop.
-		g.emitFixedWriteSlots(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max))
+		g.emitFixedWriteSlots(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), indent)
 	case f.Array == ir.ArrayFixed:
 		// AND EVERY ELEMENT OF `[N]T` IS LIVE: min equals max, so no count rides.
-		g.emitFixedWriteSlots(f, base, fmt.Sprintf("%d", f.ArrayBound))
+		g.emitFixedWriteSlots(f, base, fmt.Sprintf("%d", f.ArrayBound), indent)
 	case f.Array == ir.ArrayCounted:
 		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
 		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
 		// slots' STORAGE on the wire, which for an array of a type with
 		// declared defaults is the element's default image and not zero — a
 		// value nobody wrote, riding as if somebody had.
-		g.fixedWriteBound(f.Name+"_count", f.ArrayBound, "count")
-		g.pf("    b[%d..%d].copy_from_slice(&(value.%s_count as u32).to_le_bytes());\n", base, base+4, f.Name)
+		g.fixedWriteBound(f.Name+"_count", f.ArrayBound, "count", ind)
+		g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_count as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
 		g.emitFixedWriteSlots(f, base+ir.TableFixedCountBytes,
-			fmt.Sprintf("value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound))
+			fmt.Sprintf("value.%s_count.clamp(0, %d) as usize", f.Name, f.ArrayBound), indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		g.emitFixedWriteText(f, base, 1)
+		g.emitFixedWriteText(f, base, 1, indent)
 	case f.Type.Kind == ir.TWString:
-		g.emitFixedWriteText(f, base, 2)
+		g.emitFixedWriteText(f, base, 2, indent)
 	default:
-		g.emitFixedWriteElement(f, base, "value."+f.Name)
+		g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", base), "value."+f.Name, indent)
 	}
 }
 
@@ -425,20 +439,21 @@ func (g *gen) emitFixedWriteField(f *ir.Field, off int64) {
 // A `wstring(N)` is the same store with a TWO-BYTE unit, and it is here rather
 // than in a default case that emitted a zero-width slice: wide text's buffer is
 // [u16; N + 1] and its length counts CODE UNITS, so the span is 2 * length.
-func (g *gen) emitFixedWriteText(f *ir.Field, base, unit int64) {
-	g.fixedWriteBound(f.Name+"_length", f.Type.Size, "length")
-	g.pf("    b[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", base, base+4, f.Name)
-	g.pf("    {\n")
-	g.pf("        let n = value.%s_length.clamp(0, %d) as usize;\n", f.Name, f.Type.Size)
+func (g *gen) emitFixedWriteText(f *ir.Field, base, unit int64, indent int) {
+	ind := strings.Repeat(" ", indent)
+	g.fixedWriteBound(f.Name+"_length", f.Type.Size, "length", ind)
+	g.pf("%sb[%d..%d].copy_from_slice(&(value.%s_length as u32).to_le_bytes());\n", ind, base, base+4, f.Name)
+	g.pf("%s{\n", ind)
+	g.pf("%s    let n = value.%s_length.clamp(0, %d) as usize;\n", ind, f.Name, f.Type.Size)
 	if unit == 1 {
-		g.pf("        b[%d..%d + n].copy_from_slice(&value.%s[..n]);\n", base+4, base+4, f.Name)
+		g.pf("%s    b[%d..%d + n].copy_from_slice(&value.%s[..n]);\n", ind, base+4, base+4, f.Name)
 	} else {
-		g.pf("        for i in 0..n {\n")
-		g.pf("            let at = %d + %d * i;\n", base+4, unit)
-		g.pf("            b[at..at + %d].copy_from_slice(&value.%s[i].to_le_bytes());\n", unit, f.Name)
-		g.pf("        }\n")
+		g.pf("%s    for i in 0..n {\n", ind)
+		g.pf("%s        let at = %d + %d * i;\n", ind, base+4, unit)
+		g.pf("%s        b[at..at + %d].copy_from_slice(&value.%s[i].to_le_bytes());\n", ind, unit, f.Name)
+		g.pf("%s    }\n", ind)
 	}
-	g.pf("    }\n")
+	g.pf("%s}\n", ind)
 }
 
 // fixedWriteBound is the WRITE-SIDE CHECK, and it is DEBUG-ONLY BY RULE:
@@ -449,25 +464,21 @@ func (g *gen) emitFixedWriteText(f *ir.Field, base, unit int64) {
 // keeps the wire safe. The store beside it CLAMPS rather than trusting the
 // number, because a Rust slice out of range is a panic and not a memcpy past
 // the end.
-func (g *gen) fixedWriteBound(member string, bound int64, what string) {
-	g.pf("    debug_assert!(\n")
-	g.pf("        value.%s >= 0 && value.%s <= %d,\n", member, member, bound)
-	g.pf("        \"the declared %s is the bound (docs/SPEC-TABLES.md §3.4)\"\n", what)
-	g.pf("    );\n")
+func (g *gen) fixedWriteBound(member string, bound int64, what, ind string) {
+	g.pf("%sdebug_assert!(\n", ind)
+	g.pf("%s    value.%s >= 0 && value.%s <= %d,\n", ind, member, member, bound)
+	g.pf("%s    \"the declared %s is the bound (docs/SPEC-TABLES.md §3.4)\"\n", ind, what)
+	g.pf("%s);\n", ind)
 }
 
-func (g *gen) emitFixedWriteSlots(f *ir.Field, base int64, count string) {
+func (g *gen) emitFixedWriteSlots(f *ir.Field, base int64, count string, indent int) {
 	elem := ir.TableFixedElementBytes(f)
 	if count == "0" {
 		return
 	}
-	g.pf("    for i in 0..%s {\n", count)
-	g.emitFixedWriteElementAt(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), 8)
-	g.pf("    }\n")
-}
-
-func (g *gen) emitFixedWriteElement(f *ir.Field, off int64, expr string) {
-	g.emitFixedWriteElementAt(f, fmt.Sprintf("%d", off), expr, 4)
+	g.pf("%sfor i in 0..%s {\n", strings.Repeat(" ", indent), count)
+	g.emitFixedWriteElementAt(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), indent+4)
+	g.pf("%s}\n", strings.Repeat(" ", indent))
 }
 
 func (g *gen) emitFixedWriteElementAt(f *ir.Field, at, expr string, indent int) {

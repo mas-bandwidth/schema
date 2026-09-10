@@ -129,9 +129,19 @@ fn the_write(dir: &str) {
     check(v.hulls[1].turrets[2].cooldown == 0.75, "keyed: a keyed array nested in a keyed array");
     check(v.hulls[0].turrets[0].gunner_present, "keyed: an optional section that is PRESENT");
     check(!v.hulls[0].turrets[1].gunner_present, "keyed: an optional section that is ABSENT");
+    // AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS (§3.4). The payload
+    // rides WHOLE whether or not the flag is set, and when the flag is 0 what
+    // rides is ZERO — not the writer's untouched storage, and not the field's
+    // declared default either: `reaction` declares 0.3 and the PRESENT turret
+    // beside this one carries it, so a 0.0 here is the absent one's hole and
+    // not a default that failed to land.
     check(
-        v.hulls[0].turrets[1].gunner.reaction == 0.3,
-        "keyed: an ABSENT optional's payload rides WHOLE all the same (§3.4)",
+        v.hulls[0].turrets[1].gunner.reaction == 0.0,
+        "keyed: an ABSENT optional's payload is the template's ZEROS (§3.4)",
+    );
+    check(
+        v.hulls[0].turrets[0].gunner.reaction != 0.0,
+        "NEGATIVE CONTROL: the PRESENT optional beside it carries a payload, so the zero above is absence",
     );
 
     // the packed corpus's root: COUNTED arrays, an enum with a declared

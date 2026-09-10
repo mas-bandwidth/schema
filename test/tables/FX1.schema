@@ -29,4 +29,5 @@ table FxRoot
     nested  FxNested
     label   string(8) = "fx"
     marks   [..4]int32
+    blob    bytes(6)
 }
