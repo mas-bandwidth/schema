@@ -912,7 +912,12 @@ static SCHEMA_UNUSED uint64_t table_fixed_hash_of( const uint8_t * layout, int64
    the form and not an optimization a port may skip: the ruling that there is
    ONE reader path rests on a measurement, and with a runtime-length memcpy per
    entry that same measurement is 3.1x instead of 1.3x
-   (test/bench/fixedform_measure.cpp). */
+   (test/bench/fixedform_measure.cpp).
+
+   AND EVERY MOVE STAYS WITHIN [ run start, run end ). Overlapping moves are the
+   technique; a move anchored OUTSIDE the run is not the technique, it is a
+   defect — it clobbers whatever field sits in front of the destination and it
+   reads past the record body. */
 static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_copy_run( uint8_t * d, const uint8_t * s, uint32_t n )
 {
     if ( n <= 16 )
@@ -935,8 +940,25 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_copy_run( uint8_
         }
         return;
     }
+    /* EVERY MOVE IS ANCHORED INSIDE [ s, s + n ), AND THAT IS THE INVARIANT THIS
+       BRANCH EXISTS TO STATE. A run of 17..31 bytes has no room for a sixteen,
+       a second sixteen and a thirty-two, so it takes TWO SIXTEENS that OVERLAP
+       in the middle: one at the run's start and one at end - 16, both wholly
+       within the run because n >= 16. Anchoring the tail move at n - 32
+       instead would put it 32 - n bytes IN FRONT of the run — reading and
+       writing a neighbour's bytes, and reading past the record body, which for
+       a file's last record is past the buffer. */
+    if ( n <= 32 )
+    {
+        uint64_t w[2];
+        memcpy( w, s, 16 ); memcpy( d, w, 16 );
+        memcpy( w, s + n - 16, 16 ); memcpy( d + n - 16, w, 16 );
+        return;
+    }
     if ( n <= 64 )
     {
+        /* n >= 33 here, so n - 32 is at least 1 and the tail move begins
+           inside the run, exactly as the two moves in front of it do. */
         uint64_t w[4];
         memcpy( w, s, 16 ); memcpy( d, w, 16 );
         memcpy( w, s + 16, 16 ); memcpy( d + 16, w, 16 );
