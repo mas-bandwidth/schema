@@ -414,7 +414,7 @@ func elixirFixedLayouts(text string) (map[string]string, map[string]string) {
 	layouts, hashes := map[string]string{}, map[string]string{}
 	for _, m := range exFixedLayoutRe.FindAllStringSubmatch(text, -1) {
 		var bytes []string
-		for _, esc := range strings.Split(m[2], `\x`) {
+		for esc := range strings.SplitSeq(m[2], `\x`) {
 			if esc != "" {
 				bytes = append(bytes, "0x"+strings.ToLower(esc))
 			}

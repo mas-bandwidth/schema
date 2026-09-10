@@ -66,7 +66,7 @@ func fixedFieldDefault(f *ir.Field) []byte {
 
 func fixedRepeat(one []byte, n int64) []byte {
 	out := make([]byte, 0, int64(len(one))*n)
-	for i := int64(0); i < n; i++ {
+	for range n {
 		out = append(out, one...)
 	}
 	return out

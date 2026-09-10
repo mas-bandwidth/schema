@@ -215,7 +215,7 @@ func fixedElementLoop(w *fixedLeafWalk, f *ir.Field, base, count int64, guard st
 		w.push(fixedCopy(base, base, count*elem, guard))
 		return
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		fixedElementLeaves(w, f, base+i*elem, guard)
 	}
 }
