@@ -174,7 +174,7 @@ int main( int argc, char ** argv )
         std::vector<bench::TableFixedEntry> plan( 4096 );
         bench::TableReport rep;
         const int64_t got = bench::FixedTableFixedLoad( g_fixed_out, NumVariants, g_f3_batch.data(), n,
-                                                        plan.data(), (int32_t) plan.size(), &rep );
+                                                        plan.data(), (int32_t) plan.size(), NULL, &rep );
         if ( got != NumVariants || rep.malformed || rep.refused )
         { fprintf( stderr, "form3 batch load failed (got %lld)\n", (long long) got ); return 1; }
         // cross-wire oracle: every form-3 record must re-encode to its packet source
@@ -314,7 +314,7 @@ int main( int argc, char ** argv )
             {
                 bench::TableReport rep;
                 if ( bench::FixedTableFixedLoad( g_fixed_out, NumVariants, g_f3_batch.data(), (int64_t) g_f3_batch.size(),
-                                                  plan.data(), (int32_t) plan.size(), &rep ) != NumVariants ) return 1;
+                                                  plan.data(), (int32_t) plan.size(), NULL, &rep ) != NumVariants ) return 1;
                 const int64_t n = bench::FixedTableFixedSave( g_fixed_out, NumVariants, g_buffer, BufferSize );
                 if ( n != need ) return 1;
                 bench_escape( g_buffer );
@@ -356,7 +356,7 @@ int main( int argc, char ** argv )
                 const int k = i & ( NumVariants - 1 );
                 bench::TableReport rep;
                 if ( bench::FixedTableFixedLoad( &out, 1, g_f3_single[k].data(), (int64_t) g_f3_single[k].size(),
-                                                  plan.data(), (int32_t) plan.size(), &rep ) != 1 ) return 1;
+                                                  plan.data(), (int32_t) plan.size(), NULL, &rep ) != 1 ) return 1;
                 const int64_t n = bench::FixedTableFixedSave( &out, 1, g_buffer, BufferSize );
                 if ( n != single_need ) return 1;
                 bench_escape( g_buffer );

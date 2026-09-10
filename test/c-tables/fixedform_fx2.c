@@ -37,7 +37,7 @@ void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes )
     TableReport r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
+    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "older writer: one record" );
     fixed_check( back.keep == 4242u, "older writer: an unmoved field" );
     fixed_check( back.narrow == 40000u, "WIDENED: uint16 into uint32, exactly" );
@@ -138,7 +138,7 @@ void fixed_fx2_probe( const uint8_t * data, int64_t bytes )
     TableReport r;
     memset( &r, 0, sizeof( r ) );
     fx_root_reset( &back );
-    (void) fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
+    (void) fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
 }
 
 /* THE SAME NUMBERS THROUGH A COMPILED PLAN: the pass runs over STORAGE, so one
@@ -149,8 +149,65 @@ void fixed_fx2_bounds( const uint8_t * data, int64_t bytes )
     FxRoot back;
     TableReport r;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r ) == 1,
+    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C bounds, compiled: the record reads" );
     fixed_check( back.renamed_to == 1000, "C RANGE, compiled: the same clamp through a compiled plan" );
     fixed_check( r.clamped == 1, "C RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
+}
+
+/* THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
+   the same foreign layout compile once; a third load with a different hash
+   compiles once more; identity never increments the counter. */
+#define CacheStride 1024
+static TableFixedEntry g_cache_slab[kTableFixedPlanCacheCapacity * CacheStride];
+
+void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes )
+{
+    static uint8_t mutated[65536];
+    static uint8_t own[65536];
+    TableFixedPlanCache cache;
+    TableFixedEntry plan[PlanCapacity];
+    FxRoot back;
+    TableReport r;
+    uint32_t layout_bytes;
+    uint64_t hashB;
+    int64_t need;
+    FxRoot two;
+
+    table_fixed_plan_cache_init( &cache, g_cache_slab, CacheStride );
+
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+                 "cache: first foreign load" );
+    fixed_check( cache.compiles == 1, "cache: first foreign load compiled once" );
+    fixed_check( cache.used == 1 && cache.slots[0].made == 1, "cache: the slot is marked made" );
+
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( fx_root_fixed_load( &back, 1, fx1, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+                 "cache: second foreign load" );
+    fixed_check( cache.compiles == 1, "cache: two loads of the same layout compiled once" );
+
+    fixed_check( fx1_bytes <= (int64_t) sizeof( mutated ), "cache: the mutated file fits" );
+    memcpy( mutated, fx1, (size_t) fx1_bytes );
+    layout_bytes = table_fixed_get32( mutated + kTableFixedHeaderBytes );
+    /* the layout is a u32 count then the entries; flip a byte of entry 0's id */
+    mutated[kTableFixedHeaderBytes + 4 + 4] ^= (uint8_t) 0x01;
+    hashB = table_fixed_hash_of( mutated + kTableFixedHeaderBytes + 4, (int64_t) layout_bytes );
+    table_fixed_put64( mutated + kTableFixedHashAt, hashB );
+    table_fixed_put64( mutated + kTableFixedHeaderBytes + 4 + layout_bytes, hashB );
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( fx_root_fixed_load( &back, 1, mutated, fx1_bytes, plan, PlanCapacity, &cache, &r ) == 1,
+                 "cache: a different hash compiles once more" );
+    fixed_check( cache.compiles == 2, "cache: the third load compiled once more" );
+    fixed_check( cache.used == 2 && cache.slots[1].made == 1, "cache: the second slot is marked made" );
+
+    need = fx_root_fixed_measure( 1 );
+    fixed_check( need <= (int64_t) sizeof( own ), "cache: the identity file fits" );
+    fx_root_reset( &two );
+    two.keep = 1;
+    fixed_check( fx_root_fixed_save( &two, 1, own, need ) == need, "cache: FX2 save" );
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( fx_root_fixed_load( &back, 1, own, need, plan, PlanCapacity, &cache, &r ) == 1,
+                 "cache: identity load" );
+    fixed_check( cache.compiles == 2, "cache: identity never increments the compile counter" );
 }
