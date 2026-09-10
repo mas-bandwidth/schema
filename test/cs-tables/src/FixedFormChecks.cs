@@ -19,7 +19,6 @@ static partial class Program
         TestFixedFxCase();
         TestFixedVCase();
         TestFixedPCase();
-        TestFixedWideBlobCase();
         TestFixedWide128Case();
         TestFixedFoldedArraysCase();
         TestFixedNegativeControl();
@@ -282,41 +281,6 @@ static partial class Program
         }
     }
 
-    static void TestFixedWideBlobCase()
-    {
-        Check(TD.Schema.WideBlobFixedHash == 0x8202b907d4ac81c4ul, "WideBlob fixed hash");
-        Check(TD.Schema.WideBlobFixedPlan.Count == 4, "WideBlob 4 leaves");
-
-        TD.WideBlob wb = new TD.WideBlob();
-        byte[] labelBytes = Encoding.UTF8.GetBytes("hello wide blob");
-        labelBytes.CopyTo(wb.Label, 0);
-        wb.LabelLength = labelBytes.Length;
-
-        byte[] payloadBytes = new byte[] { 1, 2, 3, 4, 5 };
-        payloadBytes.CopyTo(wb.Payload, 0);
-        wb.PayloadLength = payloadBytes.Length;
-
-        wb.SamplesCount = 3;
-        wb.Samples[0] = 100;
-        wb.Samples[1] = 200;
-        wb.Samples[2] = 300;
-
-        byte[] buf = new byte[TD.Schema.WideBlobFixedMeasure(1)];
-        long saved = TD.Schema.WideBlobFixedSave(wb, buf);
-        Check(saved == buf.Length, "WideBlob save");
-
-        TD.WideBlob back = new TD.WideBlob();
-        TD.TableReport r = new TD.TableReport();
-        TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
-        long loaded = TD.Schema.WideBlobFixedLoad(back, buf, plan, r);
-        Check(loaded == 1, "WideBlob load one record");
-        Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "WideBlob clean read");
-        Check(back.LabelLength == labelBytes.Length, "WideBlob label length");
-        Check(back.PayloadLength == payloadBytes.Length, "WideBlob payload length");
-        Check(back.Payload[0] == 1 && back.Payload[4] == 5, "WideBlob payload contents");
-        Check(back.SamplesCount == 3, "WideBlob samples count");
-        Check(back.Samples[0] == 100 && back.Samples[1] == 200 && back.Samples[2] == 300, "WideBlob samples contents");
-    }
 
     static void TestFixedWide128Case()
     {

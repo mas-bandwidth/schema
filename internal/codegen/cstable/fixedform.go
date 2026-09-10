@@ -253,15 +253,35 @@ func fixedBlockHash(block []byte) uint64 {
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range members {
-		if !st.IsTable || st.IsMapEntry() || ir.VariableTables(g.unit)[st.Name] || !fixedSupported(st, 0) {
-			continue
-		}
-		if g.fixedLeafCount(st) > fixedLeafCap {
+		if !ir.TableFixedEmitted(g.unit, st) {
 			continue
 		}
 		out = append(out, st)
 	}
 	return out
+}
+
+func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct) {
+	if seen[st.Name] {
+		return
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			fixedCollectTypes(r, seen, order)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
+					fixedCollectTypes(s, seen, order)
+				}
+			}
+		}
+	}
+	*order = append(*order, st)
 }
 
 type fixedSlot struct {
@@ -1159,17 +1179,10 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 }
 
 func (g *tableGen) emitFixedForm(members []*ir.Struct) {
-	hasAny := false
-	for _, st := range members {
-		if fixedSupported(st, 0) {
-			hasAny = true
-			break
-		}
-	}
-	if !hasAny {
+	roots := g.fixedRoots(members)
+	if len(roots) == 0 {
 		return
 	}
-	roots := g.fixedRoots(members)
 	g.pf("// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----\n")
 	g.pf("//\n")
 	g.pf("// A record is an eight-byte hash of the writer's vocabulary block and then\n")
@@ -1178,10 +1191,13 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	g.pf("// ONE loop over ONE plan, the identity plan here and a plan compiled from\n")
 	g.pf("// the writer's own block for anybody else.\n\n")
 
-	for _, st := range members {
-		if fixedSupported(st, 0) {
-			g.emitFixedWriteBody(st)
-		}
+	seen := map[string]bool{}
+	var order []*ir.Struct
+	for _, st := range roots {
+		fixedCollectTypes(st, seen, &order)
+	}
+	for _, st := range order {
+		g.emitFixedWriteBody(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
