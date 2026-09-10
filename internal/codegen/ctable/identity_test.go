@@ -15,10 +15,12 @@ import (
 // scatter where ir.TableFixedIdentityFlat. Packed layout is not forced.
 //
 // gocritic offBy1: Index can be -1 — every needle goes through mustIndex.
-// gcc -Werror=array-bounds: copy_run's 16-byte unroll inlines into fill_run
+// gcc -Werror=array-bounds: copy_run's overlapping unroll inlines into fill_run
 // against the compiled path's stack defaults (Held is 36 bytes, Flat is 8).
 // Identity dest is a pointer; the probe is not the form. The flags on the
 // two execute tests silence that false positive and do not skip the prefill.
+// GNU is detected by __GNUC__ without __clang__: Ubuntu's cc --version never
+// says gcc, and requiring that word dropped the flags on CI.
 
 const identityFlatSchema = `package probe
 table Flat {
@@ -101,11 +103,11 @@ func between(t *testing.T, s, start, end string) string {
 func identityLoad(t *testing.T, h, name string) string {
 	t.Helper()
 	load := fromNeedle(t, h, name+"_fixed_load")
-	end := strings.Index(load, "\n}\n")
-	if end < 0 {
+	body, _, found := strings.Cut(load, "\n}\n")
+	if !found {
 		t.Fatalf("%s_fixed_load not closed", name)
 	}
-	return load[:end]
+	return body
 }
 
 func identityPath(t *testing.T, load string) string {

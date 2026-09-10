@@ -180,19 +180,57 @@ int main(void)
 `, b))
 }
 
-// gccFortifySilence is the flags gcc -O2 -Werror needs when copy_run's
-// 16-byte unroll inlines into fill_run against a stack object smaller
-// than that unroll. Clang rejects -Wno-maybe-uninitialized under -Werror.
+// gccFortifyFlags silence gcc -O2 -Werror when copy_run's overlapping unroll
+// inlines into fill_run against a stack object smaller than that unroll.
+// Clang rejects -Wno-maybe-uninitialized under -Werror, so they are GNU-only.
+var gccFortifyFlags = []string{
+	"-Wno-array-bounds",
+	"-Wno-maybe-uninitialized",
+	"-Wno-stringop-overread",
+}
+
+// gccFortifySilence returns gccFortifyFlags for a GNU cc, and nil for clang.
+// Ubuntu's `cc --version` is "cc (Ubuntu …)" and never contains the word gcc;
+// 2c49a99a required that word and CI dropped the flags. GNU is __GNUC__
+// without __clang__, with --version as a fallback that does not require "gcc".
 func gccFortifySilence(cc string) []string {
-	out, err := exec.Command(cc, "--version").CombinedOutput()
-	if err != nil {
-		return nil
+	if gnuCC(cc) {
+		return gccFortifyFlags
 	}
-	s := strings.ToLower(string(out))
-	if strings.Contains(s, "clang") || !strings.Contains(s, "gcc") {
-		return nil
+	return nil
+}
+
+func gnuCC(cc string) bool {
+	cmd := exec.Command(cc, "-dM", "-E", "-")
+	cmd.Stdin = strings.NewReader("\n")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		defs := string(out)
+		return strings.Contains(defs, "#define __GNUC__") && !strings.Contains(defs, "#define __clang__")
 	}
-	return []string{"-Wno-array-bounds", "-Wno-maybe-uninitialized", "-Wno-stringop-overread"}
+	vout, verr := exec.Command(cc, "--version").CombinedOutput()
+	if verr != nil {
+		return false
+	}
+	s := strings.ToLower(string(vout))
+	return !strings.Contains(s, "clang") && !strings.Contains(s, "apple llvm")
+}
+
+func TestGccFortifySilenceFollowsGNUNotTheWordGcc(t *testing.T) {
+	cc := os.Getenv("CC")
+	if cc == "" {
+		cc = "cc"
+	}
+	flags := gccFortifySilence(cc)
+	if gnuCC(cc) {
+		if flags == nil {
+			t.Fatal("GNU cc dropped fortify silence flags; Ubuntu's cc --version has no word gcc")
+		}
+		return
+	}
+	if flags != nil {
+		t.Fatalf("non-GNU cc must not get fortify silence flags, got %v", flags)
+	}
 }
 
 func runCGenerated(t *testing.T, schema, source string, extraCC ...string) {
