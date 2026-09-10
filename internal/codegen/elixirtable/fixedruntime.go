@@ -205,9 +205,9 @@ const fixedRuntimeBody = `  @moduledoc """
 
   @doc """
   A RUN OF ELEMENTS, ` + "`" + `size` + "`" + ` bytes each: ` + "`" + `fun` + "`" + ` applied to every one of them and the
-  counts added up. EVERY SLOT IS COUNTED, including the slots behind a counted
-  array's count, because the identity plan's ` + "`" + `clamp` + "`" + ` entries covered every slot
-  too and no counter may move differently than it did.
+  counts added up. The 4-arity walks the whole binary (every slot that is
+  there). The 5-arity walks ` + "`" + `n` + "`" + ` LIVE elements and then stops — a counted
+  array's slack is never a value to hold to a range (rowan-256bc36cd9c9).
   """
   def clamps_each(acc, bin, size, fun) do
     case bin do
@@ -216,10 +216,23 @@ const fixedRuntimeBody = `  @moduledoc """
     end
   end
 
+  def clamps_each(acc, _bin, _size, n, _fun) when n <= 0, do: acc
+
+  def clamps_each(acc, bin, size, n, fun) when n > 0 do
+    case bin do
+      <<e::binary-size(^size), rest::binary>> ->
+        clamps_each(acc + fun.(e), rest, size, n - 1, fun)
+
+      _ ->
+        acc
+    end
+  end
+
   @doc """
   The same for a run of RANGED SCALARS, whose elements have no projection of
   their own to call: each read at its storage width and signedness and counted
-  against the reader's own bounds.
+  against the reader's own bounds. The 6-arity walks the whole binary. The
+  7-arity walks ` + "`" + `n` + "`" + ` LIVE elements and then stops.
   """
   def clamps_run(acc, bin, size, true, lo, hi) do
     case bin do
@@ -235,6 +248,28 @@ const fixedRuntimeBody = `  @moduledoc """
     case bin do
       <<v::little-unsigned-size(^size)-unit(8), rest::binary>> ->
         clamps_run(clamps(acc, v, lo, hi), rest, size, false, lo, hi)
+
+      _ ->
+        acc
+    end
+  end
+
+  def clamps_run(acc, _bin, _size, n, _signed, _lo, _hi) when n <= 0, do: acc
+
+  def clamps_run(acc, bin, size, n, true, lo, hi) when n > 0 do
+    case bin do
+      <<v::little-signed-size(^size)-unit(8), rest::binary>> ->
+        clamps_run(clamps(acc, v, lo, hi), rest, size, n - 1, true, lo, hi)
+
+      _ ->
+        acc
+    end
+  end
+
+  def clamps_run(acc, bin, size, n, false, lo, hi) when n > 0 do
+    case bin do
+      <<v::little-unsigned-size(^size)-unit(8), rest::binary>> ->
+        clamps_run(clamps(acc, v, lo, hi), rest, size, n - 1, false, lo, hi)
 
       _ ->
         acc
@@ -735,8 +770,14 @@ const fixedRuntimeBody = `  @moduledoc """
 
   defp push({entries, n}, entry), do: {[entry | entries], n + 1}
 
+  defp push_w({entries, n}, entry, w) when w < 1, do: {[entry | entries], n + 1}
+  defp push_w({entries, n}, entry, w), do: {[entry | entries], n + w}
+
   defp guarded(acc, nil, _tag, entry), do: push(acc, entry)
   defp guarded(acc, guard, tag, entry), do: push(acc, {:guard, guard, tag, entry})
+
+  defp guarded_w(acc, nil, _tag, entry, w), do: push_w(acc, entry, w)
+  defp guarded_w(acc, guard, tag, entry, w), do: push_w(acc, {:guard, guard, tag, entry}, w)
 
   # match_children walks a TABLE's children on both sides, BY ID.
   defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
@@ -884,23 +925,44 @@ const fixedRuntimeBody = `  @moduledoc """
       # or not. §2.3 makes an optional and a plain nesting wire-identical in
       # form 1; ON THIS FORM THEY ARE ONE BYTE APART, and the wrapper kind is
       # what lets a reader SEE the edit rather than have every byte after it
-      # slide by one.
+      # slide by one. THE COUNTER IGNORES AN ABSENT PAYLOAD: the writes still
+      # land (the payload rides whole) and clamped/widened do not move when
+      # the present byte is zero (rowan-256bc36cd9c9).
       35 ->
         acc = guarded(acc, guard, tag, {:copy, their_at, aux_at, 1})
 
-        compile_entry(
-          theirs,
-          ti + 1,
-          their_at + 1,
-          mine,
-          mi + 1,
-          dst,
-          my_at,
-          guard,
-          tag,
-          acc,
-          report
-        )
+        {payload_acc, report} =
+          compile_entry(
+            theirs,
+            ti + 1,
+            their_at + 1,
+            mine,
+            mi + 1,
+            dst,
+            my_at,
+            nil,
+            tag,
+            {[], 0},
+            report
+          )
+
+        {payload_ops, pn} = payload_acc
+        payload_ops = :lists.reverse(payload_ops)
+
+        acc =
+          if pn == 0 do
+            acc
+          else
+            guarded_w(
+              acc,
+              guard,
+              tag,
+              {:quiet_if_absent, their_at, payload_ops},
+              1 + pn
+            )
+          end
+
+        {acc, report}
 
       # a nested TABLE: match its fields
       13 ->
@@ -982,12 +1044,14 @@ const fixedRuntimeBody = `  @moduledoc """
        ) do
     their_elem = size_at(theirs, ti + 1)
     my_elem = size_at(mine, mi + 1)
-    head = if elem(row, 3) == 1, do: 4, else: 0
+    counted = elem(row, 3) == 1
+    head = if counted, do: 4, else: 0
     their_n = if their_elem == 0, do: 0, else: div(size_at(theirs, ti) - head, their_elem)
     my_n = if my_elem == 0, do: 0, else: div(size_at(mine, mi) - head, my_elem)
+    n_slots = min(their_n, my_n)
 
     acc =
-      if elem(row, 3) == 1 do
+      if counted do
         guarded(acc, guard, tag, {:count, their_at, aux_at, my_n})
       else
         acc
@@ -996,7 +1060,7 @@ const fixedRuntimeBody = `  @moduledoc """
     their_base = their_at + head
     stride = elem(row, 1)
 
-    Enum.reduce(0..(min(their_n, my_n) - 1)//1, {acc, report}, fn i, {acc, report} ->
+    compile_slot = fn i, acc, report, slot_guard ->
       compile_entry(
         theirs,
         ti + 1,
@@ -1005,12 +1069,44 @@ const fixedRuntimeBody = `  @moduledoc """
         mi + 1,
         dst,
         at + i * stride,
-        guard,
+        slot_guard,
         tag,
         acc,
         report
       )
-    end)
+    end
+
+    cond do
+      n_slots <= 0 ->
+        {acc, report}
+
+      counted ->
+        # LIVE elements only, slack never (rowan-256bc36cd9c9). Each slot's
+        # ops are compiled; at read time only the live prefix runs. Slack
+        # stays the prefill — a zero nobody wrote is not a value to hold.
+        {slots, report, inner_n} =
+          Enum.reduce(0..(n_slots - 1)//1, {[], report, 0}, fn i, {slots, report, inner_n} ->
+            {slot_acc, report} = compile_slot.(i, {[], 0}, report, nil)
+            {entries, n} = slot_acc
+            {[:lists.reverse(entries) | slots], report, inner_n + n}
+          end)
+
+        slots = :lists.reverse(slots)
+
+        acc =
+          if inner_n == 0 do
+            acc
+          else
+            guarded_w(acc, guard, tag, {:live, their_at, my_n, slots}, 1 + inner_n)
+          end
+
+        {acc, report}
+
+      true ->
+        Enum.reduce(0..(n_slots - 1)//1, {acc, report}, fn i, {acc, report} ->
+          compile_slot.(i, acc, report, guard)
+        end)
+    end
   end
 
   defp compile_keyed(theirs, ti, their_at, mine, mi, dst, at, row, guard, tag, acc, report) do
@@ -1134,6 +1230,21 @@ const fixedRuntimeBody = `  @moduledoc """
     coalesce(rest, [{:copy, ps, pd, pn + n} | acc])
   end
 
+  defp coalesce([{:live, src, max, slots} | rest], acc) do
+    coalesce(rest, [{:live, src, max, Enum.map(slots, &coalesce/1)} | acc])
+  end
+
+  defp coalesce([{:quiet_if_absent, src, inner} | rest], acc) do
+    coalesce(rest, [{:quiet_if_absent, src, coalesce(inner)} | acc])
+  end
+
+  defp coalesce([{:guard, gsrc, tag, inner} | rest], acc) do
+    case coalesce([inner]) do
+      [coalesced] -> coalesce(rest, [{:guard, gsrc, tag, coalesced} | acc])
+      _ -> coalesce(rest, [{:guard, gsrc, tag, inner} | acc])
+    end
+  end
+
   defp coalesce([e | rest], acc), do: coalesce(rest, [e | acc])
 
   # ---------------------------------------------------------------------------
@@ -1182,6 +1293,35 @@ const fixedRuntimeBody = `  @moduledoc """
       _ ->
         step(rest, body, writes, report)
     end
+  end
+
+  defp step([{:live, src, max, slots} | rest], body, writes, report) do
+    # A COUNTED ARRAY'S LIVE PREFIX, and never its slack. The count is the
+    # writer's, held to this reader's bound the same way the ` + "`" + `count` + "`" + ` op
+    # holds it; slots behind that number stay the prefill.
+    n = live_count(body, src, max)
+    taken = slots |> Enum.take(n) |> List.flatten()
+    {writes, report} = step(taken, body, writes, report)
+    step(rest, body, writes, report)
+  end
+
+  defp step([{:quiet_if_absent, src, inner} | rest], body, writes, report) do
+    # THE PAYLOAD RIDES WHOLE whether or not it is present, so the writes
+    # always land. THE COUNTER DOES NOT: an absent payload is not a value
+    # this record wrote, and clamping it would count a clamp on every clean
+    # read of an unset optional.
+    {writes, report2} = step(inner, body, writes, report)
+
+    report =
+      case body do
+        <<_::binary-size(^src), p, _::binary>> when p != 0 ->
+          report2
+
+        _ ->
+          %{report2 | clamped: report.clamped, widened: report.widened}
+      end
+
+    step(rest, body, writes, report)
   end
 
   defp step([{:count, src, dst, max} | rest], body, writes, report) do
@@ -1307,6 +1447,20 @@ const fixedRuntimeBody = `  @moduledoc """
       raw < 0 -> {0, bump(report, :clamped)}
       raw > max -> {max, bump(report, :clamped)}
       true -> {raw, report}
+    end
+  end
+
+  defp live_count(body, src, max) do
+    case body do
+      <<_::binary-size(^src), raw::little-signed-32, _::binary>> ->
+        cond do
+          raw < 0 -> 0
+          raw > max -> max
+          true -> raw
+        end
+
+      _ ->
+        0
     end
   end
 

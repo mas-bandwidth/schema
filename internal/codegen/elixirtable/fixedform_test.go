@@ -246,6 +246,52 @@ type Point
 	}
 }
 
+// LIVE ELEMENTS ONLY, SLACK NEVER (rowan-256bc36cd9c9). The identity counting
+// pass walks a counted array's live prefix and skips an absent optional's
+// payload; a compiled plan does the same at run time. Both paths. The values
+// still Enum.take the live prefix — this test is the COUNTER.
+func TestFixedClampCountsLiveOnly(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+enum Grade { Bronze, Silver, Gold }
+
+table Root
+{
+    marks  [..4]int32 | min = 0, max = 100
+    grades [..4]Grade
+    maybe  ?int32     | min = 0, max = 50
+    blob   bytes(6)
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out["ProbeFixed.ex"])
+	if body == "" {
+		t.Fatalf("no ProbeFixed.ex; got %v", keysOf(out))
+	}
+	if !strings.Contains(body, "min(max(n_marks, 0), 4)") {
+		t.Error("a counted array must clamp LIVE elements, not every slot")
+	}
+	if !strings.Contains(body, "R.clamps_run(c, b_marks, 4, min(max(n_marks, 0), 4), true, 0, 100)") &&
+		!strings.Contains(body, "min(max(n_marks, 0), 4)") {
+		t.Error("marks slack must not be walked")
+	}
+	if strings.Contains(body, "R.clamps_run(c, b_marks, 4, true, 0, 100)") {
+		t.Error("marks must not walk every SLOT including behind the count")
+	}
+	if !strings.Contains(body, "p_maybe") {
+		t.Error("an absent optional's payload must be gated on the present byte")
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if !strings.Contains(runtime, "{:live,") && !strings.Contains(runtime, ":live") {
+		t.Error("compiled counted arrays must wrap slot ops in a live prefix")
+	}
+	if !strings.Contains(runtime, "quiet_if_absent") {
+		t.Error("compiled optionals must not count an absent payload")
+	}
+}
+
 // REGENERATION IS BYTE-STABLE, so a golden pin and a diff both mean what they
 // say — and so the layout, whose hash IS the wire, cannot move between two runs
 // of the same compiler over the same source.

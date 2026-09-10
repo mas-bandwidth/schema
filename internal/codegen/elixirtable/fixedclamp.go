@@ -125,18 +125,43 @@ func (g *fixedGen) clampType(c *clampWalk, st *ir.Struct, prefix string) {
 }
 
 func (g *fixedGen) clampField(c *clampWalk, f *ir.Field, prefix string) {
+	// AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
+	// held to a bound either: what rides there is the template and nobody
+	// wrote it. LIVE elements only, slack never (rowan-256bc36cd9c9).
+	if f.Type.Optional {
+		inner := &clampWalk{used: map[string]bool{}}
+		g.clampFieldBody(inner, f, prefix)
+		if len(inner.terms) == 0 {
+			return
+		}
+		p := "p_" + prefix + f.Name
+		for name := range inner.used {
+			c.used[name] = true
+		}
+		c.used[p] = true
+		terms := inner.terms
+		c.term(func(acc string) node {
+			return optionalIf(p, acc, terms)
+		})
+		return
+	}
+	g.clampFieldBody(c, f, prefix)
+}
+
+func (g *fixedGen) clampFieldBody(c *clampWalk, f *ir.Field, prefix string) {
 	v := prefix + f.Name
 	switch {
 	case f.KeyEnum != "":
-		g.clampElements(c, f, v)
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4).
+		g.clampElements(c, f, v, itoa(f.KeyEnumRef.Max))
 	case f.Array == ir.ArrayFixed:
-		g.clampElements(c, f, v)
+		g.clampElements(c, f, v, itoa(f.ArrayBound))
 	case f.Array == ir.ArrayCounted:
 		// THE COUNT IS CLAMPED TO THIS READER'S BOUND, one `clamped` if it
-		// moved, and then every SLOT is counted — the ones behind the count
-		// included, because the plan's entries covered them too.
+		// moved, and then the LIVE prefix only. Slack is the template's zeros
+		// and a zero nobody wrote is not a value to hold to a range.
 		c.bound("n_"+v, "0", itoa(f.ArrayBound))
-		g.clampElements(c, f, v)
+		g.clampElements(c, f, v, fmt.Sprintf("min(max(n_%s, 0), %d)", v, f.ArrayBound))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		c.bound("n_"+v, "0", itoa(f.Type.Size))
 	case f.Type.Kind == ir.TWString:
@@ -174,20 +199,22 @@ func (g *fixedGen) clampElement(c *clampWalk, f *ir.Field, v string) {
 	}
 }
 
-// clampElements is a whole RUN of elements, which the projection bound as one
-// binary: every slot is counted, in declared order, and no key rides.
-func (g *fixedGen) clampElements(c *clampWalk, f *ir.Field, v string) {
+// clampElements is a RUN of LIVE elements, which the projection bound as one
+// binary: `live` is the count that walks, in declared order, and no key rides.
+// A counted array passes min(max(n, 0), bound); a fixed or keyed array passes
+// the bound, because every slot of those is live.
+func (g *fixedGen) clampElements(c *clampWalk, f *ir.Field, v, live string) {
 	elem := fixedElementBytes(f)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if fixedClampsType(r) {
-				g.clampRun(c, "R.clamps_each", v, []node{rawf("%d", elem), raw(g.clampedCapture(r))})
+				g.clampRun(c, "R.clamps_each", v, []node{rawf("%d", elem), raw(live), raw(g.clampedCapture(r))})
 			}
 			return
 		case *ir.Union:
 			if fixedClampsUnion(r) {
-				g.clampRun(c, "R.clamps_each", v, []node{rawf("%d", elem), raw(g.unionClampedCapture(r))})
+				g.clampRun(c, "R.clamps_each", v, []node{rawf("%d", elem), raw(live), raw(g.unionClampedCapture(r))})
 			}
 			return
 		}
@@ -200,7 +227,60 @@ func (g *fixedGen) clampElements(c *clampWalk, f *ir.Field, v string) {
 	if f.Type.Signed {
 		signed = "true"
 	}
-	g.clampRun(c, "R.clamps_run", v, []node{rawf("%d", elem), raw(signed), raw(lo), raw(hi)})
+	g.clampRun(c, "R.clamps_run", v, []node{rawf("%d", elem), raw(live), raw(signed), raw(lo), raw(hi)})
+}
+
+// optionalIf counts the payload only when the present byte is set. The
+// keyword form is mix format's own one-line shape; a payload of more than
+// one term breaks into do/end.
+func optionalIf(p, acc string, terms []func(string) node) node {
+	return ifBlock{cond: p, acc: acc, then: terms}
+}
+
+// ifBlock is `if p != 0, do: inner, else: acc`.
+type ifBlock struct {
+	cond string
+	acc  string
+	then []func(string) node
+}
+
+func (i ifBlock) keywordIf() string {
+	if len(i.then) != 1 {
+		return ""
+	}
+	return "if(" + i.cond + " != 0, do: " + i.then[0](i.acc).flat() + ", else: " + i.acc + ")"
+}
+
+func (i ifBlock) flat() string {
+	if one := i.keywordIf(); one != "" {
+		return one
+	}
+	return i.render(0, 0, 0)
+}
+
+func (i ifBlock) render(at, ind, tail int) string {
+	if one := i.keywordIf(); one != "" && fits(at, tail, one) {
+		return one
+	}
+	inner := indentOf(ind + 2)
+	var b strings.Builder
+	b.WriteString("if " + i.cond + " != 0 do\n")
+	for j, build := range i.then {
+		a := i.acc
+		if j > 0 {
+			a = "c"
+		}
+		t := build(a)
+		if j < len(i.then)-1 {
+			b.WriteString(inner + "c = " + t.flat() + "\n")
+			continue
+		}
+		b.WriteString(inner + t.flat() + "\n")
+	}
+	b.WriteString(indentOf(ind) + "else\n")
+	b.WriteString(inner + i.acc + "\n")
+	b.WriteString(indentOf(ind) + "end")
+	return b.String()
 }
 
 // clampCall is a term that is ONE call whose only accumulator is what it adds
@@ -254,9 +334,10 @@ func (g *fixedGen) clampHelper(st *ir.Struct, match []string) {
 		return
 	}
 	snake := ir.RustSnake(st.Name)
-	g.pf("  # %s's `clamped`: how many of its values crossed a bound this reader\n", st.Name)
-	g.pf("  # declared. THE PROJECTION BESIDE THIS ONE ALREADY HELD THEM THERE; this\n")
-	g.pf("  # says how many times it had to, which is §4's counter and nothing else.\n")
+	g.pf("  # %s's `clamped`: how many of its LIVE values crossed a bound this reader\n", st.Name)
+	g.pf("  # declared. Slack behind a count is never counted, and an absent optional's\n")
+	g.pf("  # payload is not a value to hold. THE PROJECTION BESIDE THIS ONE ALREADY\n")
+	g.pf("  # HELD THE LIVE ONES THERE; this says how many times it had to.\n")
 	g.emitMatchHead(snake+"_fixed_clamped", clampMatch(match, c.used), 2)
 	g.emitClampBody(c.terms, 4)
 	g.pf("  end\n\n")
