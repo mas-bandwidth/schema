@@ -121,7 +121,7 @@ func stripComments(s string) string {
 func stripPreprocessor(s string) string {
 	var out []string
 	depth := 0
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		trim := strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(trim, "#if") || strings.HasPrefix(trim, "#ifdef") || strings.HasPrefix(trim, "#ifndef"):
@@ -441,9 +441,7 @@ func orderCompileEntry(s string) string {
 		const aux = "aux_at = my_at + d.aux;"
 		body = strings.ReplaceAll(body, aux, "")
 		const at = "at = my_at + d.dst;"
-		if strings.Contains(body, at) {
-			body = strings.Replace(body, at, at+" "+aux, 1)
-		}
+		body = strings.Replace(body, at, at+" "+aux, 1)
 		return body
 	})
 }
@@ -666,24 +664,4 @@ func extractArray(src, cName, cppName string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("array %s / %s not found", cName, cppName)
-}
-
-func extractGenerated(src string) string {
-	const banner = "---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----"
-	i := strings.Index(src, banner)
-	if i < 0 {
-		return ""
-	}
-	body := src[i:]
-	for _, stop := range []string{
-		"the cook's layout contract",
-		"static_assert( __is_trivially_copyable",
-		"---- reflection descriptors",
-	} {
-		if j := strings.Index(body, stop); j > 0 {
-			body = body[:j]
-			break
-		}
-	}
-	return body
 }

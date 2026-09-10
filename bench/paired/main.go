@@ -667,7 +667,7 @@ func checkTwinTolerance(best map[string]float64) error {
 			}
 			dev := (hi/lo - 1) * 100
 			if dev > twinTolerance {
-				return fmt.Errorf("C and C++ %s/%s differ by %.1f%% > twin-tolerance %.0f%%", wire, path, dev, twinTolerance)
+				return fmt.Errorf("c and cpp %s/%s differ by %.1f%% > twin-tolerance %.0f%%", wire, path, dev, twinTolerance)
 			}
 		}
 	}
