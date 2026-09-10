@@ -34,20 +34,22 @@ defmodule Bench.WrapFixed do
   end
 
   # FixedTable's projection: ONE binary pattern match over its 1236 bytes of record
-  # image, the struct it makes, and the `clamped` it moved.
-  def fixed_table_fixed_decode(<<b_value::binary-size(1236), _::binary>>, c) do
-    {f_value, c} = Bench.BenchFixed.bench_mixed_fixed_decode(b_value, c)
+  # image, the struct it makes, the `clamped` it moved and the content flag.
+  def fixed_table_fixed_decode(bin, c, m \\ false)
 
-    {%Bench.FixedTable{value: f_value}, c}
+  def fixed_table_fixed_decode(<<b_value::binary-size(1236), _::binary>>, c, m) do
+    {f_value, c, m} = Bench.BenchFixed.bench_mixed_fixed_decode(b_value, c, m)
+
+    {%Bench.FixedTable{value: f_value}, c, m}
   end
 
   # A RUN OF FixedTable: the LIVE elements walked into a list, the count riding beside
   # it, and not a byte of the slack behind them read.
-  def fixed_table_fixed_list(_bin, 0, acc, c), do: {:lists.reverse(acc), c}
+  def fixed_table_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
 
-  def fixed_table_fixed_list(<<e::binary-size(1236), rest::binary>>, n, acc, c) do
-    {v, c} = fixed_table_fixed_decode(e, c)
-    fixed_table_fixed_list(rest, n - 1, [v | acc], c)
+  def fixed_table_fixed_list(<<e::binary-size(1236), rest::binary>>, n, acc, c, m) do
+    {v, c, m} = fixed_table_fixed_decode(e, c, m)
+    fixed_table_fixed_list(rest, n - 1, [v | acc], c, m)
   end
 
   # ---- FixedTable, the fixed form ----
@@ -236,8 +238,8 @@ defmodule Bench.WrapFixed do
   # matched as a literal and its body projected in place.
   defp fixed_table_fixed_identity(stated, records, copy, report) do
     with :ok <- fixed_table_fixed_header_names_it(stated, @fixed_table_hash),
-         {:ok, values, c} <- fixed_table_fixed_identity_loop(records, copy, [], 0) do
-      {:ok, values, R.clamped(report, c)}
+         {:ok, values, c, m} <- fixed_table_fixed_identity_loop(records, copy, [], 0, false) do
+      {:ok, values, R.damaged(R.clamped(report, c), m)}
     else
       {:error, why} -> {:error, why, report}
     end
@@ -247,29 +249,46 @@ defmodule Bench.WrapFixed do
   # the record size from the layout, so the count is arithmetic. BYTES LEFT
   # OVER ARE `malformed`, which is §3's rule for the same reason; a record
   # whose hash names no layout this reader holds is a refusal by name.
-  defp fixed_table_fixed_identity_loop(<<>>, _copy, acc, c), do: {:ok, :lists.reverse(acc), c}
+  # `malformed` ALSO RIDES BESIDE THE COUNT on a well-framed file: ill-formed
+  # text is one field's damage and the rest of the record stands.
+  defp fixed_table_fixed_identity_loop(<<>>, _copy, acc, c, m),
+    do: {:ok, :lists.reverse(acc), c, m}
 
   defp fixed_table_fixed_identity_loop(
          <<@fixed_table_hash::little-unsigned-64, body::binary-size(@fixed_table_body_bytes),
            rest::binary>>,
-         copy,
+         false,
          acc,
-         c
+         c,
+         m
        ) do
-    {value, c} = fixed_table_fixed_decode(R.detach(body, copy), c)
-    fixed_table_fixed_identity_loop(rest, copy, [value | acc], c)
+    {value, c, m} = fixed_table_fixed_decode(body, c, m)
+    fixed_table_fixed_identity_loop(rest, false, [value | acc], c, m)
+  end
+
+  defp fixed_table_fixed_identity_loop(
+         <<@fixed_table_hash::little-unsigned-64, body::binary-size(@fixed_table_body_bytes),
+           rest::binary>>,
+         true,
+         acc,
+         c,
+         m
+       ) do
+    {value, c, m} = fixed_table_fixed_decode(:binary.copy(body), c, m)
+    fixed_table_fixed_identity_loop(rest, true, [value | acc], c, m)
   end
 
   defp fixed_table_fixed_identity_loop(
          <<_::little-unsigned-64, _::binary-size(@fixed_table_body_bytes), _::binary>>,
          _copy,
          _acc,
-         _c
+         _c,
+         _m
        ) do
     {:error, :no_layout}
   end
 
-  defp fixed_table_fixed_identity_loop(_records, _copy, _acc, _c), do: {:error, :malformed}
+  defp fixed_table_fixed_identity_loop(_records, _copy, _acc, _c, _m), do: {:error, :malformed}
 
   # THE FOREIGN PATH: the plan compiled once from the writer's layout and cached
   # by hash, run over each record onto the prefill, and the same projection
@@ -282,8 +301,8 @@ defmodule Bench.WrapFixed do
       {values, report} =
         Enum.map_reduce(bodies, report, fn body, report ->
           {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
-          {value, c} = fixed_table_fixed_decode(image, 0)
-          {value, R.clamped(report, c)}
+          {value, c, m} = fixed_table_fixed_decode(image, 0, false)
+          {value, R.damaged(R.clamped(report, c), m)}
         end)
 
       {:ok, values, report}

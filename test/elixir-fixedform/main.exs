@@ -808,7 +808,7 @@ Leg.section("the negative controls: every refusal BY NAME, and no damage")
     Tblfx2.FixedRuntime.report()
   )
 
-{wrong, _} = Tblfx2.FX2Fixed.fx_root_fixed_decode(wrong_image, 0)
+{wrong, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_decode(wrong_image, 0)
 
 Leg.check(
   "the WRONG plan does NOT reproduce the record",
@@ -1075,9 +1075,13 @@ loose_plan =
     Tblfx1.FixedRuntime.report()
   )
 
+# THE IMAGE, NOT THE PROJECTION: the sabotaged plan leaves the ill-formed byte
+# in the record image, which is what this control is of. The projection now
+# carries the content rule too (identity has no `text` op), so reading the
+# image through `_fixed_decode` would default the field and hide the loop.
 Leg.eq(
   "NEGATIVE CONTROL: the loop with no content rule leaves the byte standing",
-  Tblfx1.FX1Fixed.fx_root_fixed_decode(loose_image).label,
+  binary_part(loose_image, 26, 1),
   <<0xFF>>
 )
 
@@ -1156,7 +1160,7 @@ unchecked =
     Tblfe1.FixedRuntime.report()
   )
 
-{loose, loose_count} = Tblfe1.FE1Fixed.fe_root_fixed_decode(loose_image, 0)
+{loose, loose_count, _} = Tblfe1.FE1Fixed.fe_root_fixed_decode(loose_image, 0)
 
 Leg.check(
   "an ordinal riding as a plain copy is held by the PROJECTION, not the plan",

@@ -172,6 +172,13 @@ defmodule Bench.FixedRuntime do
   def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))
 
   @doc """
+  Set `malformed` when the projection's damage flag rode true, and the same
+  report back when it did not — so a clean identity read allocates no new map.
+  """
+  def damaged(report, false), do: report
+  def damaged(report, true), do: %{report | malformed: true}
+
+  @doc """
   ONE VALUE AGAINST ONE PAIR OF BOUNDS: `acc` and one more when the value lies
   outside them, `acc` unchanged when it does not.
 
@@ -289,6 +296,27 @@ defmodule Bench.FixedRuntime do
     end
 
     bits
+  end
+
+  @doc """
+  A `string(N)`'s used bytes: well-formed UTF-8 with no zero among them, or
+  the field's declared default and `malformed`. An ABSENT optional does not
+  run the rule — the payload is unspecified and nobody wrote it (§3.4).
+  """
+  def text(used, default, m), do: text(used, default, m, true)
+
+  def text(used, default, m, present) do
+    if present and not text_ok?(1, used), do: {default, true}, else: {used, m}
+  end
+
+  @doc """
+  A `wstring(N)`'s used units: paired UTF-16 with no zero unit, or the
+  field's declared default and `malformed`. The same present-flag rule.
+  """
+  def wtext(used, default, m), do: wtext(used, default, m, true)
+
+  def wtext(used, default, m, present) do
+    if present and not text_ok?(2, used), do: {default, true}, else: {used, m}
   end
 
   # ---------------------------------------------------------------------------
@@ -1253,37 +1281,6 @@ defmodule Bench.FixedRuntime do
     end
   end
 
-  # ---------------------------------------------------------------------------
-  # THE CONTENT RULE: what a string(N) and a wstring(N) are allowed to be
-  # ---------------------------------------------------------------------------
-  #
-  # A bytes(N) IS UNTOUCHED. It is bytes, and there is nothing for it to be
-  # ill-formed as.
-
-  defp text_ok?(1, used), do: String.valid?(used) and :binary.match(used, <<0>>) == :nomatch
-  defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)
-  defp text_ok?(_, _), do: true
-
-  # PAIRED UTF-16 WITH NO ZERO UNIT, read as the wire it came from: the units
-  # ride little-endian and land as a raw copy, so this walks them as they lie.
-  defp utf16_ok?(<<>>), do: true
-  defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false
-
-  defp utf16_ok?(<<u::little-unsigned-16, rest::binary>>) when u >= 0xD800 and u <= 0xDBFF do
-    case rest do
-      <<low::little-unsigned-16, more::binary>> when low >= 0xDC00 and low <= 0xDFFF ->
-        utf16_ok?(more)
-
-      # A HIGH SURROGATE WITH NOTHING BEHIND IT, or with something that is not a
-      # low surrogate, is half a character and not a character.
-      _ ->
-        false
-    end
-  end
-
-  defp utf16_ok?(<<u::little-unsigned-16, _::binary>>) when u >= 0xDC00 and u <= 0xDFFF, do: false
-  defp utf16_ok?(<<_::little-unsigned-16, rest::binary>>), do: utf16_ok?(rest)
-
   defp step([{:ordinal, src, dst, size, width, remap} | rest], body, writes, report) do
     # A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose enum
     # gained a variant IN THE MIDDLE is remapped here and never reinterpreted.
@@ -1340,6 +1337,38 @@ defmodule Bench.FixedRuntime do
   defp step([{:const, dst, size, value} | rest], body, writes, report) do
     step(rest, body, [{dst, <<value::little-unsigned-size(size)-unit(8)>>} | writes], report)
   end
+
+  # ---------------------------------------------------------------------------
+  # THE CONTENT RULE: what a string(N) and a wstring(N) are allowed to be
+  # ---------------------------------------------------------------------------
+  #
+  # A bytes(N) IS UNTOUCHED. It is bytes, and there is nothing for it to be
+  # ill-formed as. These sit AFTER every `step/4` clause so the compiler sees
+  # one function, not a helper splitting the clauses.
+
+  defp text_ok?(1, used), do: String.valid?(used) and :binary.match(used, <<0>>) == :nomatch
+  defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)
+  defp text_ok?(_, _), do: true
+
+  # PAIRED UTF-16 WITH NO ZERO UNIT, read as the wire it came from: the units
+  # ride little-endian and land as a raw copy, so this walks them as they lie.
+  defp utf16_ok?(<<>>), do: true
+  defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false
+
+  defp utf16_ok?(<<u::little-unsigned-16, rest::binary>>) when u >= 0xD800 and u <= 0xDBFF do
+    case rest do
+      <<low::little-unsigned-16, more::binary>> when low >= 0xDC00 and low <= 0xDFFF ->
+        utf16_ok?(more)
+
+      # A HIGH SURROGATE WITH NOTHING BEHIND IT, or with something that is not a
+      # low surrogate, is half a character and not a character.
+      _ ->
+        false
+    end
+  end
+
+  defp utf16_ok?(<<u::little-unsigned-16, _::binary>>) when u >= 0xDC00 and u <= 0xDFFF, do: false
+  defp utf16_ok?(<<_::little-unsigned-16, rest::binary>>), do: utf16_ok?(rest)
 
   defp leaf(body, src, size, true) do
     case body do
