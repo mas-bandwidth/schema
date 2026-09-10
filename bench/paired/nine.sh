@@ -21,6 +21,10 @@
 # over the isolated cores — a build pinned to the one measured core would be
 # needlessly slow and would not make the measurement any quieter.
 #
+# Send its output somewhere OUTSIDE the working tree. Table mode measures a
+# named checkpoint, so a stray log file in the tree refuses the sitting; the
+# script checks that before it builds and says so.
+#
 # THE RESULT IS NOT CERTIFIED. It is the fast diagnostic's numbers in the
 # published table's shape: reduced iteration counts, no bracketing drift
 # controls, no quiet-window seal. The certified sitting stays `-mode run` on
@@ -39,7 +43,7 @@ while [ $# -gt 0 ]; do
     --out)    OUT="$2"; shift 2 ;;
     --note)   NOTE="$2"; shift 2 ;;
     -h|--help)
-        sed -n '2,27p' "$0" | cut -c 3-
+        sed -n '2,31p' "$0" | cut -c 3-
         exit 0 ;;
     *)
         echo "nine.sh: unknown argument $1" >&2
@@ -48,6 +52,17 @@ while [ $# -gt 0 ]; do
 done
 
 [ -f bench/corpus/Bench.schema ] || { echo "nine.sh: run from the repository root" >&2; exit 2; }
+
+# Say this BEFORE the build rather than after it. Table mode measures a named
+# checkpoint and refuses a tree that does not match one, and the commonest way
+# to dirty the tree is to redirect this script's own log into it — so send
+# stdout and stderr somewhere outside the working tree.
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    echo "nine.sh: the tree is not clean, and table mode measures a named checkpoint." >&2
+    echo "         Commit or stash first, and keep logs outside the working tree:" >&2
+    git status --porcelain >&2
+    exit 2
+fi
 
 PIN=
 RUN=
