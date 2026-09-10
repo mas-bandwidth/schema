@@ -79,6 +79,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
   versioning(check, fx1, fx2, fx1home, fx2home);
+  bytesArrayConvention(check, fx1, fx2, fx1home, fx2home, oracleDir);
   liveCountSlack(check, fx1, fx1home);
   holePrefill(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
@@ -947,6 +948,92 @@ function holePrefill(check, fx1, fx2, fx1home, fx2home) {
     "hole prefill: a second load on a dirty image");
   check(dirty[0].Gone === 9,
     `hole prefill: holes restore Gone's default after a dirty image, got ${dirty[0].Gone}`);
+}
+
+// BYTES(N) IS AN ARRAY ROW AND NOT A TEXT ROW (docs/SPEC-TABLES.md §3, §3.4;
+// Johnny's fix on the Elixir leg, schema#835). On a TEXT row `dst` is the used
+// LENGTH and `aux` is the buffer; on an ARRAY row it is the other way round —
+// `dst` is the element base and `aux` is where the count lands — and the plan
+// compiler's array case (`case 14`) reads the ARRAY pair. `bytes(N)` rides as
+// a counted array of u8, so its destination row is the array's.
+//
+// The IDENTITY path cannot see the difference: it lands the whole body in one
+// COPY and reads neither column. Only a COMPILED plan walks the row, which is
+// why a text-convention row survived the Elixir leg's own gates until a
+// compiled read landed the count inside the buffer and the first four content
+// bytes inside the used length. THE INSTRUMENT IS THE TWO PATHS AGAINST EACH
+// OTHER, over the same bytes: identity and compiled must land one blob.
+//
+// FX2's `blob` is the same field at the same wire id, so an FX2 reader over an
+// FX1 record is the compiled path over a bytes(N) row this port wrote itself.
+function bytesArrayConvention(check, fx1, fx2, fx1home, fx2home, oracleDir) {
+  // an FX1 record whose blob is PARTLY USED, so a swapped pair is loud: a used
+  // length of 4 in the buffer's place would read back as a content byte, and
+  // the first four content bytes in the length's place as a length of 4028645
+  const one = new fx1home.FxRoot();
+  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
+  one.Nested.A = 111; one.Nested.B = 222;
+  one.LabelLength = setText(one.Label, "fx1");
+  one.Marks[0] = 101; one.Marks[1] = 202; one.MarksCount = 2;
+  one.Blob[0] = 0xDE; one.Blob[1] = 0xAD; one.Blob[2] = 0xBE; one.Blob[3] = 0xEF;
+  one.BlobLength = 4;
+
+  const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([one], 1, w1) === w1.length, "bytes(N): FX1 save of a partly-used blob");
+
+  // ---- THE IDENTITY PATH: FX1's own hash, one copy of the whole body
+  const ident = [new fx1home.FxRoot()];
+  const ri = new fx1home.TableFixedReport();
+  check(fx1.FxRootFixedLoad(ident, 1, w1, w1.length, fx1.FxRootFixedNewPlan(), ri) === 1,
+    "bytes(N): the identity path reads the record");
+
+  // ---- THE COMPILED PATH: FX2's reader, a plan compiled from FX1's block
+  const comp = [new fx2home.FxRoot()];
+  const rc = new fx2home.TableFixedReport();
+  check(fx2.FxRootFixedLoad(comp, 1, w1, w1.length, fx2.FxRootFixedNewPlan(), rc) === 1,
+    "bytes(N): the compiled path reads the same record");
+
+  check(ident[0].BlobLength === 4,
+    `bytes(N): identity lands the used length, got ${ident[0].BlobLength}`);
+  check(comp[0].BlobLength === ident[0].BlobLength,
+    `bytes(N): IDENTITY == COMPILED on the used length — identity ${ident[0].BlobLength}, compiled ${comp[0].BlobLength}. ` +
+    `A text-convention destination row lands the count where the buffer lives and reads a length out of the content`);
+  for (let i = 0; i < 6; i++) {
+    check(comp[0].Blob[i] === ident[0].Blob[i],
+      `bytes(N): IDENTITY == COMPILED on blob[${i}] — identity 0x${ident[0].Blob[i].toString(16)}, compiled 0x${comp[0].Blob[i].toString(16)}`);
+  }
+  check(ident[0].Blob[0] === 0xDE && ident[0].Blob[1] === 0xAD &&
+    ident[0].Blob[2] === 0xBE && ident[0].Blob[3] === 0xEF,
+    "bytes(N): and the blob both paths land is the one that was written");
+  // the slack behind the used length is the template's zeros on BOTH paths
+  check(ident[0].Blob[4] === 0 && ident[0].Blob[5] === 0 &&
+    comp[0].Blob[4] === 0 && comp[0].Blob[5] === 0,
+    "bytes(N): the slack behind the used length is zero on both paths");
+  check(!rc.malformed && rc.refused === 0,
+    "bytes(N): the compiled read moves no refusal counter");
+
+  // ---- AND THE REFERENCE'S OWN FILE, read the second way: fx1.bin is the C++
+  // reference's bytes, the oracle already reads it through FX1's identity plan,
+  // and FX2 reading the same file is the compiled path over a blob NO PORT here
+  // wrote. Its record 0 blob is DE AD BE EF at length 4 (test/tables/fixedform_fx1.c).
+  if (!oracleDir) { return; }
+  let file = null;
+  try { file = new Uint8Array(readFileSync(resolve(oracleDir, "fx1.bin"))); } catch { file = null; }
+  check(file !== null, "bytes(N): fx1.bin is present for the compiled read");
+  if (file === null) { return; }
+  const v = [new fx2home.FxRoot(), new fx2home.FxRoot()];
+  const r = new fx2home.TableFixedReport();
+  const n = fx2.FxRootFixedLoad(v, 2, file, file.length, fx2.FxRootFixedNewPlan(), r);
+  check(n === 2 && !r.malformed,
+    `bytes(N): FX2 reads the reference's fx1.bin through a compiled plan, got ${n}`);
+  if (n !== 2) { return; }
+  check(v[0].BlobLength === 4,
+    `bytes(N): FX2 over fx1.bin lands the reference's used length, got ${v[0].BlobLength}`);
+  check(v[0].Blob[0] === 0xDE && v[0].Blob[1] === 0xAD && v[0].Blob[2] === 0xBE && v[0].Blob[3] === 0xEF,
+    `bytes(N): FX2 over fx1.bin keeps blob[0..3] — got ` +
+    `[${v[0].Blob[0]}, ${v[0].Blob[1]}, ${v[0].Blob[2]}, ${v[0].Blob[3]}], want [222, 173, 190, 239]`);
+  check(v[1].BlobLength === 0 && v[1].Blob[0] === 0,
+    `bytes(N): FX2 over fx1.bin record 1 uses nothing — got length ${v[1].BlobLength}`);
 }
 
 function setText(buf, s) {
