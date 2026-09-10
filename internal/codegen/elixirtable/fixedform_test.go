@@ -356,6 +356,35 @@ table Root
 	}
 }
 
+// THE UTF-8 CONTENT RULE IS ONE WALK: eight ASCII bytes per clause, a zero is
+// not a character, hostile falls through. String.valid?/1 plus a NUL BIF is
+// the check this replaced.
+func TestFixedRuntimeUtf8IsOneWalk(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+table Root
+{
+    label string(15)
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if !strings.Contains(runtime, "defp text_ok?(1, <<>>), do: true") {
+		t.Fatal("the UTF-8 walk has no empty clause")
+	}
+	if !strings.Contains(runtime, "<<a, b, c, d, e, f, g, h, rest::binary>>") {
+		t.Fatal("the UTF-8 walk does not take eight ASCII bytes per clause")
+	}
+	if strings.Contains(runtime, "String.valid?(used)") {
+		t.Fatal("the UTF-8 check still calls String.valid?")
+	}
+	if strings.Contains(runtime, ":binary.match(used, <<0>>)") {
+		t.Fatal("the UTF-8 check still walks a second time for the NUL")
+	}
+}
+
 func keysOf(out map[string][]byte) []string {
 	names := make([]string, 0, len(out))
 	for name := range out {

@@ -1388,8 +1388,29 @@ const fixedRuntimeBody = `  @moduledoc """
   # A bytes(N) IS UNTOUCHED. It is bytes, and there is nothing for it to be
   # ill-formed as. These sit AFTER every ` + "`" + `step/4` + "`" + ` clause so the compiler sees
   # one function, not a helper splitting the clauses.
+  #
+  # UTF-8 IS ONE WALK, the same shape as the UTF-16 walk below: eight ASCII
+  # bytes per clause when they sit in 1..127, then four, then one, then a
+  # codepoint, and a zero is not a character. Hostile falls through. The
+  # previous check was String.valid?/1 (one codepoint per call) plus a second
+  # BIF for the NUL; this does both in one match.
 
-  defp text_ok?(1, used), do: String.valid?(used) and :binary.match(used, <<0>>) == :nomatch
+  defp text_ok?(1, <<>>), do: true
+
+  defp text_ok?(1, <<a, b, c, d, e, f, g, h, rest::binary>>)
+       when a >= 1 and a <= 127 and b >= 1 and b <= 127 and c >= 1 and c <= 127 and d >= 1 and
+              d <= 127 and e >= 1 and e <= 127 and f >= 1 and f <= 127 and g >= 1 and g <= 127 and
+              h >= 1 and h <= 127,
+       do: text_ok?(1, rest)
+
+  defp text_ok?(1, <<a, b, c, d, rest::binary>>)
+       when a >= 1 and a <= 127 and b >= 1 and b <= 127 and c >= 1 and c <= 127 and d >= 1 and
+              d <= 127,
+       do: text_ok?(1, rest)
+
+  defp text_ok?(1, <<c, rest::binary>>) when c >= 1 and c <= 127, do: text_ok?(1, rest)
+  defp text_ok?(1, <<c::utf8, rest::binary>>) when c > 0, do: text_ok?(1, rest)
+  defp text_ok?(1, _), do: false
   defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)
   defp text_ok?(_, _), do: true
 

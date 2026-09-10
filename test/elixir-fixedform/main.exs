@@ -532,6 +532,16 @@ compiled_is_identity.(
   bodies_of.(read.("keyed.bin"), Tabledemo.KeyedFixed.keyed_config_fixed_body_bytes())
 )
 
+compiled_is_identity.(
+  "fx1",
+  Tblfx1.FX1Fixed.fx_root_fixed_layout(),
+  Tblfx1.FX1Fixed.fx_root_fixed_dst(),
+  Tblfx1.FX1Fixed.fx_root_fixed_plan(),
+  Tblfx1.FX1Fixed.fx_root_fixed_prefill(),
+  &Tblfx1.FX1Fixed.fx_root_fixed_decode/2,
+  bodies_of.(read.("fx1.bin"), Tblfx1.FX1Fixed.fx_root_fixed_body_bytes())
+)
+
 # AN ORDINAL SLIDE, which is the one edit a record's bytes cannot show.
 #
 # FE2 inserts `Electrum` between Bronze and Silver, so Gold's ORDINAL slides
