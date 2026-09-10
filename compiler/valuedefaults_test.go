@@ -141,6 +141,33 @@ func TestTableValueDefaultsCarriers(t *testing.T) {
 			}
 			continue
 		}
+		if target == "java" {
+			// THE PREFILL IS WHERE A TABLE DEFAULT LIVES IN THIS PORT
+			// (internal/codegen/javatable/fixedform.go, fixedDefaultImage): the
+			// fixed form's one answer to "absent field" is a constant image of
+			// the declared defaults laid out as RECORD BYTES, and it is the
+			// write template too. So the check is that the bytes are in it —
+			// the length in front of the text, the text, the bytes default
+			// behind its own length, and the flags mask — and beside it that
+			// the value surface constructs the same values.
+			if err != nil {
+				t.Fatalf("java refused supported table defaults: %v", err)
+			}
+			code := string(out["ShipFixed.java"])
+			for _, want := range []string{
+				// "untitled" behind its length 8, then "ab" behind its length 2, then Jump|Crouch
+				"8, 0, 0, 0, 117, 110, 116, 105, 116, 108, 101, 100,",
+				"2, 0, 0, 0, 97, 98, 0, 0, 3, 0, 0, 0,",
+				"public int nameLength = 8;",
+				"public int tagLength = 2;",
+				"public long caps = 3L;",
+			} {
+				if !strings.Contains(code, want) {
+					t.Errorf("java default output lacks %q", want)
+				}
+			}
+			continue
+		}
 		if err == nil {
 			t.Errorf("%s emitted a unit with string, bytes and flags defaults instead of refusing it", target)
 			continue

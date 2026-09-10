@@ -294,7 +294,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	}
 	// THE BUILD HAS TO CARRY WHAT THIS RUN MEASURES, and nothing more: a
 	// diagnostic over one leg is a legitimate thing to ask for, and requiring a
-	// build of the other four to ask it would make the subset flag a lie.
+	// build of the other legs to ask it would make the subset flag a lie.
 	for _, lang := range langs {
 		for _, wire := range wiresFor(lang) {
 			if info.Binaries[binary(wire, lang)] == "" {

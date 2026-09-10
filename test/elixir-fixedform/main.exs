@@ -464,16 +464,44 @@ compiled_is_identity = fn name, layout, dst, plan, prefill, decode, values ->
   {:ok, made, _n, _} =
     Tblp1.FixedRuntime.compile(mine, mine, dst, 4096, Tblp1.FixedRuntime.report())
 
-  bodies =
-    Enum.map(values, fn body ->
-      {img_a, _} = Tblp1.FixedRuntime.run(plan, body, prefill, Tblp1.FixedRuntime.report())
-      {img_b, _} = Tblp1.FixedRuntime.run(made, body, prefill, Tblp1.FixedRuntime.report())
-      {decode.(img_a), decode.(img_b)}
-    end)
+  run_both = fn body ->
+    {img_a, ra} = Tblp1.FixedRuntime.run(plan, body, prefill, Tblp1.FixedRuntime.report())
+    {img_b, rb} = Tblp1.FixedRuntime.run(made, body, prefill, Tblp1.FixedRuntime.report())
+
+    {{img_a, ra.clamped + elem(decode.(img_a, 0), 1)},
+     {img_b, rb.clamped + elem(decode.(img_b, 0), 1)}}
+  end
+
+  both = Enum.map(values, run_both)
 
   Leg.check(
     "#{name}: a plan compiled from MY OWN layout lands what the identity plan lands",
-    Enum.all?(bodies, fn {x, y} -> x == y end)
+    Enum.all?(both, fn {{a, _}, {b, _}} -> decode.(a, 0) == decode.(b, 0) end)
+  )
+
+  # THE COUNTER MOVES THE SAME ON BOTH PLANS, AND THE PROPERTY IS `==`. Both
+  # count only what a read can have written — a counted array's LIVE elements
+  # and never its slack, the reference's own rule (docs/SPEC-TABLES.md §3.4:
+  # slack is unspecified on read and moves no counter). The projection walks
+  # the live run; the interpreter's counter-moving ops ride inside `:live` and
+  # `:present` wrappers so slack and an absent optional's payload never fire
+  # one. A `<=` here would admit a compiled plan counting slack, which is what
+  # that wrapping exists to make impossible.
+  #
+  # A HOSTILE BODY RIDES BESIDE THE REAL ONES: every byte 0xFF, so every
+  # declared bound is crossed at once. A corpus whose values are all in range
+  # would let both sides count nothing and call it agreement.
+  hostile = :binary.copy(<<0xFF>>, byte_size(prefill))
+  counted = both ++ [run_both.(hostile)]
+
+  Leg.check(
+    "#{name}: a compiled plan counts the `clamped` the identity plan counts, slack and all",
+    Enum.all?(counted, fn {{_, a}, {_, b}} -> a == b end)
+  )
+
+  Leg.check(
+    "#{name}: and a body of nothing but 0xFF actually crossed a bound",
+    match?({{_, n}, {_, _}} when n > 0, List.last(counted))
   )
 end
 
@@ -489,7 +517,7 @@ compiled_is_identity.(
   Tabledemo.PackFixed.pack_config_fixed_dst(),
   Tabledemo.PackFixed.pack_config_fixed_plan(),
   Tabledemo.PackFixed.pack_config_fixed_prefill(),
-  &Tabledemo.PackFixed.pack_config_fixed_decode/1,
+  &Tabledemo.PackFixed.pack_config_fixed_decode/2,
   bodies_of.(read.("pack.bin"), Tabledemo.PackFixed.pack_config_fixed_body_bytes())
 )
 
@@ -499,7 +527,7 @@ compiled_is_identity.(
   Tabledemo.KeyedFixed.keyed_config_fixed_dst(),
   Tabledemo.KeyedFixed.keyed_config_fixed_plan(),
   Tabledemo.KeyedFixed.keyed_config_fixed_prefill(),
-  &Tabledemo.KeyedFixed.keyed_config_fixed_decode/1,
+  &Tabledemo.KeyedFixed.keyed_config_fixed_decode/2,
   bodies_of.(read.("keyed.bin"), Tabledemo.KeyedFixed.keyed_config_fixed_body_bytes())
 )
 
@@ -513,7 +541,7 @@ compiled_is_identity.(
   Tblfx1.FX1Fixed.fx_root_fixed_dst(),
   Tblfx1.FX1Fixed.fx_root_fixed_plan(),
   Tblfx1.FX1Fixed.fx_root_fixed_prefill(),
-  &Tblfx1.FX1Fixed.fx_root_fixed_decode/1,
+  &Tblfx1.FX1Fixed.fx_root_fixed_decode/2,
   bodies_of.(read.("fx1.bin"), Tblfx1.FX1Fixed.fx_root_fixed_body_bytes())
 )
 
@@ -882,7 +910,7 @@ Leg.section("the negative controls: every refusal BY NAME, and no damage")
     Tblfx2.FixedRuntime.report()
   )
 
-wrong = Tblfx2.FX2Fixed.fx_root_fixed_decode(wrong_image)
+{wrong, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_decode(wrong_image, 0)
 
 Leg.check(
   "the WRONG plan does NOT reproduce the record",
@@ -1149,9 +1177,13 @@ loose_plan =
     Tblfx1.FixedRuntime.report()
   )
 
+# THE IMAGE, NOT THE PROJECTION: the sabotaged plan leaves the ill-formed byte
+# in the record image, which is what this control is of. The projection now
+# carries the content rule too (identity has no `text` op), so reading the
+# image through `_fixed_decode` would default the field and hide the loop.
 Leg.eq(
   "NEGATIVE CONTROL: the loop with no content rule leaves the byte standing",
-  Tblfx1.FX1Fixed.fx_root_fixed_decode(loose_image).label,
+  binary_part(loose_image, 26, 1),
   <<0xFF>>
 )
 
@@ -1165,10 +1197,30 @@ Leg.eq("NEGATIVE CONTROL: and says nothing about it", loose_report.malformed, fa
 # A tag of 2 read as a flavour is `wide`, whose unit is two bytes, so the
 # length is held to four and the text comes back short. IF THE TWO FACTS EVER
 # SHARE A LANE AGAIN, THIS IS WHAT THE READ WOULD DO.
+#
+# THE PLAN SABOTAGED IS ONE COMPILED FROM FU1's OWN LAYOUT, not the identity
+# plan: the identity plan is ONE copy and carries no `text` entry at all (the
+# identity read is a projection and never a plan), so the entry with a
+# flavour lane to overload only exists on the compiled side.
 [fu_body | _] = bodies_of.(fu, Tblfu1.FU1Fixed.fu_root_fixed_body_bytes())
+{:ok, fu_mine} = Tblfu1.FixedRuntime.parse_layout(Tblfu1.FU1Fixed.fu_root_fixed_layout())
+
+{:ok, fu_compiled, _, _} =
+  Tblfu1.FixedRuntime.compile(
+    fu_mine,
+    fu_mine,
+    Tblfu1.FU1Fixed.fu_root_fixed_dst(),
+    4096,
+    Tblfu1.FixedRuntime.report()
+  )
+
+Leg.check(
+  "the compiled plan carries the text entry under the arm's guard",
+  Enum.any?(fu_compiled, &match?({:guard, _, _, {:text, _, _, _, _, _}}, &1))
+)
 
 overloaded =
-  Enum.map(Tblfu1.FU1Fixed.fu_root_fixed_plan(), fn
+  Enum.map(fu_compiled, fn
     {:guard, g, tag, {:text, src, dst, aux, size, _flavour}} ->
       {:guard, g, tag, {:text, src, dst, aux, size, tag}}
 
@@ -1187,14 +1239,15 @@ Leg.check(
          Tblfu1.FixedRuntime.report()
        )
 
-     Tblfu1.FU1Fixed.fu_root_fixed_decode(image).pick.labelled.label
+     elem(Tblfu1.FU1Fixed.fu_root_fixed_decode(image, 0), 0).pick.labelled.label
    end).() != "hello"
 )
 
 # AND THE UNCHECKED ORDINAL, planted the same way: an ordinal that rides as a
-# plain COPY is an ordinal nothing holds, which is what this leg did before the
-# `ordinal` op reached the identity plan. A grade of 99 would land as 99 — a
-# variant no reader has a name for — and no counter would say so.
+# plain COPY is an ordinal the PLAN does not hold. The projection holds it
+# anyway — a grade of 99 names no variant, so it lands None and counts one
+# `clamped` — because the identity path has no plan op to lean on and the
+# check has to live where both paths meet.
 unchecked =
   Enum.map(Tblfe1.FE1Fixed.fe_root_fixed_plan(), fn
     {:ordinal, src, dst, size, _width, _variants} -> {:copy, src, dst, size}
@@ -1209,11 +1262,11 @@ unchecked =
     Tblfe1.FixedRuntime.report()
   )
 
-loose = Tblfe1.FE1Fixed.fe_root_fixed_decode(loose_image)
+{loose, loose_count, _} = Tblfe1.FE1Fixed.fe_root_fixed_decode(loose_image, 0)
 
 Leg.check(
-  "an ordinal riding as a plain copy is NOT held to the declared variants",
-  loose.grade == 99 and loose_report.clamped == 0
+  "an ordinal riding as a plain copy is held by the PROJECTION, not the plan",
+  loose.grade == 0 and loose_report.clamped == 0 and loose_count == 1
 )
 
 Leg.verdict()

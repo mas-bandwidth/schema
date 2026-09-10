@@ -83,6 +83,12 @@ func (c callNode) render(at, ind, tail int) string {
 
 // structNode is `%Mod{k: v, ...}`, which the formatter breaks ONE KEY PER LINE
 // with the closing brace back at the literal's own column.
+//
+// A VALUE THAT BREAKS BREAKS TWO WAYS, and which one is the value's own shape:
+// a literal — another struct, a list — keeps its opening brace up beside the
+// key and breaks inside it, while a CALL moves down to its own line two columns
+// in and breaks from there. That is the formatter's rule and not a preference,
+// so `hangs` below is the shape's answer to it.
 type structNode struct {
 	mod  string
 	keys []string
@@ -109,9 +115,50 @@ func (s structNode) render(at, ind, tail int) string {
 		if i == len(s.keys)-1 {
 			sep = ""
 		}
-		b.WriteString(pad + k + ": " + s.vals[i].render(ind+2+len(k)+2, ind+2, len(sep)) + sep + "\n")
+		v := s.vals[i]
+		if one := k + ": " + v.flat(); fits(ind+2, len(sep), one) {
+			b.WriteString(pad + one + sep + "\n")
+			continue
+		}
+		if hangs(v) {
+			b.WriteString(pad + k + ":\n" + indentOf(ind+4) + v.render(ind+4, ind+4, len(sep)) + sep + "\n")
+			continue
+		}
+		b.WriteString(pad + k + ": " + v.render(ind+2+len(k)+2, ind+2, len(sep)) + sep + "\n")
 	}
 	b.WriteString(indentOf(ind) + "}")
+	return b.String()
+}
+
+// hangs reports a shape that, when it breaks behind a `key:`, goes to its own
+// line rather than opening beside the key.
+func hangs(n node) bool {
+	_, ok := n.(callNode)
+	return ok
+}
+
+// listNode is `[a, b, c]` — a run of leaves matched in the parent and wrapped
+// one at a time. The formatter breaks a list ONE ITEM PER LINE, two columns in
+// from the line the `[` opened on, with the `]` back at that column.
+type listNode struct{ items []string }
+
+func (l listNode) flat() string { return "[" + strings.Join(l.items, ", ") + "]" }
+
+func (l listNode) render(at, ind, tail int) string {
+	if one := l.flat(); fits(at, tail, one) {
+		return one
+	}
+	pad := indentOf(ind + 2)
+	var b strings.Builder
+	b.WriteString("[\n")
+	for i, it := range l.items {
+		sep := ","
+		if i == len(l.items)-1 {
+			sep = ""
+		}
+		b.WriteString(pad + it + sep + "\n")
+	}
+	b.WriteString(indentOf(ind) + "]")
 	return b.String()
 }
 
@@ -144,36 +191,6 @@ func (n binNode) render(at, ind, tail int) string {
 		line += 2 + len(n.segs[i])
 	}
 	b.WriteString(">>")
-	return b.String()
-}
-
-// listNode is `[a, b]`, which the formatter breaks ONE ITEM PER LINE with the
-// closing bracket back at the list's own column.
-type listNode struct{ items []node }
-
-func (l listNode) flat() string {
-	parts := make([]string, 0, len(l.items))
-	for _, it := range l.items {
-		parts = append(parts, it.flat())
-	}
-	return "[" + strings.Join(parts, ", ") + "]"
-}
-
-func (l listNode) render(at, ind, tail int) string {
-	if one := l.flat(); fits(at, tail, one) {
-		return one
-	}
-	pad := indentOf(ind + 2)
-	var b strings.Builder
-	b.WriteString("[\n")
-	for i, it := range l.items {
-		sep := ","
-		if i == len(l.items)-1 {
-			sep = ""
-		}
-		b.WriteString(pad + it.render(ind+2, ind+2, len(sep)) + sep + "\n")
-	}
-	b.WriteString(indentOf(ind) + "]")
 	return b.String()
 }
 
@@ -212,45 +229,20 @@ func (t tupleNode) render(at, _, tail int) string {
 	return b.String()
 }
 
-// ifNode is `if cond, do: yes, else: no`: the formatter's KEYWORD form while it
-// fits on one line, and its BLOCK form when it does not. It is here for ONE
-// shape — an absent optional's payload, which is the template's zeros
-// (docs/SPEC-TABLES.md §3.4) — and that shape is a branch rather than a
-// segment, so it cannot be spelled inside a binary construction.
-type ifNode struct {
-	cond string
-	yes  node
-	no   node
+// forNode is `for <generator>, do: <body>` — a comprehension, which the
+// formatter breaks after the GENERATOR's comma and puts the `do:` two columns
+// in, rather than one item per line the way a call breaks.
+type forNode struct {
+	gen  string
+	body node
 }
 
-func (n ifNode) flat() string {
-	return "if(" + n.cond + ", do: " + n.yes.flat() + ", else: " + n.no.flat() + ")"
-}
+func (f forNode) flat() string { return "for " + f.gen + ", do: " + f.body.flat() }
 
-// THE PARENTHESISED FORM IS NOT A STYLE. This shape rides INSIDE a container —
-// the iodata list a body's pieces are joined in — and Elixir refuses a bare
-// `if cond, do: …, else: …` there ("parentheses are required to solve ambiguity
-// inside containers"). Broken, the formatter keeps the condition on the `if`'s
-// own line and puts each keyword on its own, closing the paren back at the
-// call's column, which is what a call breaks to.
-func (n ifNode) render(at, ind, tail int) string {
-	if one := n.flat(); fits(at, tail, one) {
+func (f forNode) render(at, ind, tail int) string {
+	if one := f.flat(); fits(at, tail, one) {
 		return one
 	}
 	pad := indentOf(ind + 2)
-	return "if(" + n.cond + ",\n" +
-		pad + keyword("do: ", n.yes, ind+2, 1) + ",\n" +
-		pad + keyword("else: ", n.no, ind+2, 0) + "\n" +
-		indentOf(ind) + ")"
-}
-
-// keyword is `do: value` / `else: value` in the formatter's own shape: beside
-// the key while the value fits there, and on the NEXT LINE indented two more
-// when it does not — which is what the formatter does with any keyword whose
-// value has to break.
-func keyword(key string, v node, ind, tail int) string {
-	if one := v.render(ind+len(key), ind+len(key), tail); fits(ind+len(key), tail, one) {
-		return key + one
-	}
-	return strings.TrimRight(key, " ") + "\n" + indentOf(ind+2) + v.render(ind+2, ind+2, tail)
+	return "for " + f.gen + ",\n" + pad + "do: " + f.body.render(ind+2+4, ind+2, tail)
 }

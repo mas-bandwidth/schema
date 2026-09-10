@@ -18,20 +18,10 @@ import (
 
 // valueDefaultTargets is the canonical name of every built-in target whose
 // backends carry a string, bytes or flags default on the FORM-1 table wire
-// (elision and absent-field reads). Go and Elixir register from their target
-// file's init; Rust appends because its fixed-form prefill is that answer and
-// the form-1 refusal would otherwise refuse a schema the reference writes.
-// The fixed form elides nothing, and every leg that emits the form writes the
-// default into the prefill.
+// (elision and absent-field reads). Go registers from its target file's init.
+// The fixed form is not this list: it elides nothing, and every leg that
+// emits the form writes the default into the prefill.
 var valueDefaultTargets = []string{"cpp", "c", "cs"}
-
-// registerTableValueDefaultCarrier registers a port on the TABLE half of the
-// list above. A port calls it from its own target file's init, beside the
-// packet call, so a target stays one file (docs/CONTRIBUTING.md, "Adding a
-// language").
-func registerTableValueDefaultCarrier(name string) {
-	valueDefaultTargets = append(valueDefaultTargets, name)
-}
 
 // packetValueDefaultTargets names the packet carriers independently of the
 // table carriers. A port registers here from its own target file's init.

@@ -102,10 +102,10 @@ publishing requires all four languages and at least seven rounds.
 
 ## Table-only languages
 
-**A fifth language may ride the table wire alone, and it never appears in a
-ratio, a board or a confirmation pass.** The percentages on this page are a
-division, and a division needs both halves over the same records; a language
-with one half has one number and says so.
+**A language outside the paired four may ride the table wire alone, and it
+never appears in a ratio, a board or a confirmation pass.** The percentages on
+this page are a division, and a division needs both halves over the same
+records; a language with one half has one number and says so.
 
 `rust` is the first. It is table-only because its packet leg does not meet this
 driver's contract, not because anybody chose to skip it: `bench/rust` is a real
@@ -120,16 +120,28 @@ a measurement, so the driver accepts a table-only row instead. `CARGO` (or
 `RUSTUP_BIN`) names the toolchain; `SERIALIZE_RS` relocates the sibling runtime
 the unit's packet module links.
 
+`java` is the second, table-only for the same reason reached down a different
+road: `bench/java/Main.java` is the TYPE BOARD's runner, with neither `--gate`
+nor `--iterations` either, and the paired set is the four the board is defined
+over. Java's packet number is the type board's, from its own runner over the
+same sixty-four records. `JAVA` and `JAVAC` name the JDK (the repository-local
+pin under `dist/` when it is there, as in make/java.mk).
+
     go run ./bench/paired -mode build -langs rust   generate, build, gate the leg
     go run ./bench/paired -mode gate  -langs rust   the no-clock gate alone
     go run ./bench/paired -mode fast  -langs rust -fast-rounds 3 -noise-note "..."
 
-A request is one shape or the other and never a mixture: `-langs rust` is asked
-for alone, `-mode run` refuses it, and its fast summary prints the table wire's
-own cost with **NO RATIO** written where the percentages would be. Because the
-Rust port has no form-1 table wire, its leg measures the FIXED form and names
-its rows `bench_fixed` — the same corpus, the same corpus id and the same
-`table` family as every other table row (docs/SPEC-TABLES.md §3.4).
+    go run ./bench/paired -mode build -langs java   generate, compile, then gate the leg
+    go run ./bench/paired -mode gate  -langs java   the no-clock gate alone
+    go run ./bench/paired -mode fast  -langs java -fast-rounds 3 -noise-note "..."
+
+A request is one shape or the other and never a mixture: `-langs rust` (or
+`-langs java`) is asked for alone, `-mode run` refuses it, and its fast summary
+prints the table wire's own cost with **NO RATIO** written where the
+percentages would be. Because neither port has a form-1 table wire — the fixed
+form is the first for both — each leg measures the FIXED form and names its
+rows `bench_fixed` — the same corpus, the same corpus id and the same `table`
+family as every other table row (docs/SPEC-TABLES.md §3.4).
 
 The standard packet runners keep their existing generated storage, release
 flags and timed loops. Table runners use a separately generated closure so a

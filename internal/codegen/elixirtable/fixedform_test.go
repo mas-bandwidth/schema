@@ -151,60 +151,129 @@ func TestFixedImageIsContiguous(t *testing.T) {
 	}
 }
 
-// THE IDENTITY PLAN OF A RECORD OF PLAIN SCALARS IS ONE ENTRY — §3.4's
-// coalescing rule reaching its best case, which in the image domain is the
-// whole body in one move. A plan that grew a second entry means the destination
-// stopped being the image.
-// Clamp and ordinal count LIVE elements only. The identity plan is static, so
-// each slot still has an op; slack is a :live wrap against the count, and an
-// absent optional's payload is a :present wrap. C++ walks items_count.
-func TestIdentityPlanLiveCountShape(t *testing.T) {
+// THE IDENTITY PLAN OF A RECORD THAT HAS EVERYTHING IN IT IS STILL ONE ENTRY.
+// This is the fold this leg made, stated as a test: a ranged integer, a count,
+// a text length and a union arm each used to be an op of their own, and each
+// one broke the run, so a record like the one below arrived as a plan of
+// hundreds of entries for a reader whose destination IS the source. The checks
+// they stood for now ride the generated projection (fixedclamp.go); what is
+// left on this path is one move of the whole body.
+//
+// A SECOND ENTRY HERE MEANS AN OP CAME BACK, or that a field's image stopped
+// being contiguous with the one before it. Both are worth a red test.
+func TestIdentityPlanOfEverythingIsOneRun(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+enum Grade { Bronze, Silver, Gold }
+
+type Leg
+{
+    reach int32 | min = -16383, max = 16383
+    scale fixed(24, 8) | min = -100, max = 100
+}
+
+type Hop
+{
+    height int32 | min = 0, max = 4095
+}
+
+union Step
+{
+    walk Leg
+    hop  Hop
+}
+
+type Inner
+{
+    x int32
+    y float32
+}
+
+table Everything
+{
+    a      uint32
+    b      bool
+    ranged int32 | min = 0, max = 1000
+    grade  Grade
+    name   string(16)
+    wide   wstring(8)
+    blob   bytes(12)
+    legs   [4]Leg
+    counts [..4]uint16
+    step   Step
+    inner  Inner
+    tail   int64 | min = -5, max = 5
+}
+`)
+	st := findTable(t, u, "Everything")
+	plan := fixedIdentityPlan(st)
+	if len(plan) != 1 {
+		t.Fatalf("the identity plan is %d entries, not one run: %v", len(plan), plan)
+	}
+	if want := "{:copy, 0, 0, " + itoa(fixedTypeBytes(st)) + "}"; plan[0].String() != want {
+		t.Fatalf("the identity plan is %s, not %s", plan[0].String(), want)
+	}
+	// AND THE PROJECTION IS WHERE THE BOUNDS WENT: the generated decode must
+	// hold a ranged value and move the count, or the `clamped` the plan used
+	// to move stopped moving.
+	out, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out["ProbeFixed.ex"])
+	if !strings.Contains(body, "R.clamps(c, ") {
+		t.Fatalf("the projection of Everything counts no clamp, so the fold dropped a check")
+	}
+}
+
+// CLAMP AND ORDINAL COUNT LIVE ELEMENTS ONLY, and on this path that is the
+// PROJECTION's shape rather than a plan op's wrapper. The identity plan here is
+// one run of bytes, so there is no `:live` tuple to hang a guard on; what has to
+// hold instead is that the generated walk stops AT THE COUNT — the zero clause
+// is the whole of it, so a slack slot is never read and so never clamps — and
+// that an absent optional's payload folds its counter away. C++ walks
+// items_count; so does this. The sibling rule on a COMPILED plan is
+// FixedRuntime's, where the interpreter does carry :live and :present.
+func TestIdentityDecodeCountsLiveElementsOnly(t *testing.T) {
 	u := unitFrom(t, `package probe
 
 enum Grade { Bronze, Gold }
 
-table Probe
+table Live
 {
     marks  [..4]int32 | min = 0, max = 10
     grades [..4]Grade
     note   ?int32 | min = 0, max = 10
 }
 `)
-	st := findTable(t, u, "Probe")
-	plan := fixedIdentityPlan(st)
-	var markClamps, gradeOrdinals, noteClamps int
-	for _, e := range plan {
-		switch e.op {
-		case "clamp":
-			if e.hasPresent {
-				noteClamps++
-				if len(e.lives) != 0 {
-					t.Fatalf("absent-optional clamp is live-wrapped: %s", e)
-				}
-			} else {
-				markClamps++
-				if len(e.lives) != 1 || e.lives[0].dst != 0 || e.lives[0].index != int64(markClamps-1) {
-					t.Fatalf("marks clamp %d not LIVE-wrapped to count@0 index %d: %s", markClamps-1, markClamps-1, e)
-				}
-			}
-		case "ordinal":
-			gradeOrdinals++
-			if len(e.lives) != 1 || e.lives[0].dst != 20 || e.lives[0].index != int64(gradeOrdinals-1) {
-				t.Fatalf("grades ordinal %d not LIVE-wrapped to count@20 index %d: %s", gradeOrdinals-1, gradeOrdinals-1, e)
-			}
+	out, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out["ProbeFixed.ex"])
+	for _, want := range []string{
+		// THE WALK STOPS AT THE COUNT: n reaches zero and the slack behind the
+		// live elements is never matched, so it moves no `clamped`.
+		"defp live_marks_fixed_list(_bin, 0, c, m), do: {[], c, m}",
+		"defp live_grades_fixed_list(_bin, 0, c, m), do: {[], c, m}",
+		// AND THE COUNT IT IS HANDED IS THE CLAMPED ONE, so a hostile count
+		// walks the bound and not itself.
+		"live_marks_fixed_list(b_marks, min(max(n_marks, 0), 4), c, m)",
+		"live_grades_fixed_list(b_grades, min(max(n_grades, 0), 4), c, m)",
+		// AN ABSENT OPTIONAL'S PAYLOAD MOVES NO COUNTER: the payload's clamp
+		// lands in a shadow counter the present flag either keeps or drops.
+		"c = if(p_note != 0, do: c_note, else: c)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the projection of Live does not carry %q, so a slack slot or an absent payload counts", want)
 		}
-	}
-	if markClamps != 4 {
-		t.Fatalf("marks clamp ops = %d, want 4 LIVE-wrapped slots", markClamps)
-	}
-	if gradeOrdinals != 4 {
-		t.Fatalf("grades ordinal ops = %d, want 4 LIVE-wrapped slots", gradeOrdinals)
-	}
-	if noteClamps != 1 {
-		t.Fatalf("optional payload clamp ops = %d, want 1 present-wrapped", noteClamps)
 	}
 }
 
+// THE IDENTITY PLAN OF A RECORD OF PLAIN SCALARS IS ONE ENTRY — §3.4's
+// coalescing rule reaching its best case, which in the image domain is the
+// whole body in one move. A plan that grew a second entry means the destination
+// stopped being the image.
 func TestIdentityPlanOfPlainScalarsIsOneRun(t *testing.T) {
 	u := unitFrom(t, `package probe
 
@@ -328,6 +397,91 @@ table Root
 				t.Fatalf("regeneration is not byte-stable: %s moved", name)
 			}
 		}
+	}
+}
+
+// A RUN OF SMALL FLAT RECORDS UNROLLS the way the packet reader unrolls stats:
+// several LIVE elements in one match, consed onto the recursive tail, no
+// reverse. A larger record stays one element. Hostile still has a one-element
+// clause with the clamp.
+func TestFixedListWalkUnrollsSmallRecords(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+type Cell
+{
+    id    uint32
+    delta int32 | min = -512, max = 511
+}
+
+type Wide
+{
+    a int32
+    b int32
+    c int32
+    d int32
+    e int32
+    f int32
+    g int32
+    h int32
+    i int32
+    j int32
+    k int32
+    l int32
+    m int32
+    n int32
+    o int32
+}
+
+table Root
+{
+    cells [..80]Cell
+    wides [..8]Wide
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out["Probe"+FixedModuleSuffix+".ex"])
+	if !strings.Contains(body, "def cell_fixed_list(_bin, 0, c, m), do: {[], c, m}") {
+		t.Fatal("the cell walk still reverses an accumulator")
+	}
+	if !strings.Contains(body, "n >= 8") {
+		t.Fatal("a run of 8-byte cells did not unroll")
+	}
+	if strings.Contains(body, "wide_fixed_list") && strings.Count(body, "n >= 8") != 1 {
+		t.Fatal("a run of 60-byte records unrolled; that match is the whole record")
+	}
+	if !strings.Contains(body, "{[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}") {
+		t.Fatal("the unrolled walk did not cons eight cells onto the recursive tail")
+	}
+}
+
+// THE UTF-8 CONTENT RULE IS ONE WALK: eight ASCII bytes per clause, a zero is
+// not a character, hostile falls through. String.valid?/1 plus a NUL BIF is
+// the check this replaced.
+func TestFixedRuntimeUtf8IsOneWalk(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+table Root
+{
+    label string(15)
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if !strings.Contains(runtime, "defp text_ok?(1, <<>>), do: true") {
+		t.Fatal("the UTF-8 walk has no empty clause")
+	}
+	if !strings.Contains(runtime, "<<a, b, c, d, e, f, g, h, rest::binary>>") {
+		t.Fatal("the UTF-8 walk does not take eight ASCII bytes per clause")
+	}
+	if strings.Contains(runtime, "String.valid?(used)") {
+		t.Fatal("the UTF-8 check still calls String.valid?")
+	}
+	if strings.Contains(runtime, ":binary.match(used, <<0>>)") {
+		t.Fatal("the UTF-8 check still walks a second time for the NUL")
 	}
 }
 

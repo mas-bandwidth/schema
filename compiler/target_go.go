@@ -49,7 +49,7 @@ func init() {
 	registerOptionalArrayCarrier("go")
 	registerListCarrier("go")
 	registerMapCarrier("go")
-	registerTableValueDefaultCarrier("go")
+	valueDefaultTargets = append(valueDefaultTargets, "go")
 	wasRowTargets = append(wasRowTargets, "go")
 	registerPacketValueDefaultCarrier("go")
 	registerWideTextCarrier("go")

@@ -23,14 +23,37 @@ defmodule Bench.WrapFixed do
 
   # FixedTable's body: 1236 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
-  def fixed_table_fixed_write_body(value) do
-    Bench.BenchFixed.bench_mixed_fixed_write_body(value.value)
+  def fixed_table_fixed_write_body(value), do: fixed_table_fixed_write_into(value, <<>>)
+
+  # FixedTable's body APPENDED to `acc`: the value destructured once, then one append per
+  # run of scalars, one per element of every array, and the slack as zero segments.
+  def fixed_table_fixed_write_into(value, acc) do
+    %{value: v_value} = value
+    acc = Bench.BenchFixed.bench_mixed_fixed_write_into(v_value, acc)
+    acc
   end
 
   # FixedTable's projection: ONE binary pattern match over its 1236 bytes of record
-  # image, and the struct it makes.
-  def fixed_table_fixed_decode(<<b_value::binary-size(1236), _::binary>>) do
-    %Bench.FixedTable{value: Bench.BenchFixed.bench_mixed_fixed_decode(b_value)}
+  # image, the struct it makes, the `clamped` it moved and the content flag.
+  def fixed_table_fixed_decode(bin, c, m \\ false)
+
+  def fixed_table_fixed_decode(<<b_value::binary-size(1236), _::binary>>, c, m) do
+    {f_value, c, m} = Bench.BenchFixed.bench_mixed_fixed_decode(b_value, c, m)
+
+    {%Bench.FixedTable{value: f_value}, c, m}
+  end
+
+  # A RUN OF FixedTable: the LIVE elements walked into a list, the count riding beside
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same
+  # counters — so it saves the match and the call and never a bound.
+  def fixed_table_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def fixed_table_fixed_list(<<e::binary-size(1236), rest::binary>>, n, c, m) do
+    {v, c, m} = fixed_table_fixed_decode(e, c, m)
+    {tail, c, m} = fixed_table_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # ---- FixedTable, the fixed form ----
@@ -137,277 +160,12 @@ defmodule Bench.WrapFixed do
   # THE IDENTITY PLAN, coalesced by the same rule the runtime's compiler uses:
   # two neighbouring copies whose source and destination both advance together
   # are one entry. In the image domain source and destination are the same
-  # number, so a record of plain scalars collapses to a SINGLE run.
+  # number, so a record of plain scalars collapses to a SINGLE run. THE READ
+  # RUNS THIS PLAN like any other: a plan whose one entry covers the whole
+  # image lands the body itself as the image, which is a fact about the PLAN's
+  # SHAPE and not about whose build wrote the record (FixedRuntime.assemble/2).
   @fixed_table_plan [
-    {:copy, 0, 0, 4},
-    {:clamp, 4, 4, 4, true, 0, 65_535},
-    {:copy, 8, 8, 16},
-    {:clamp, 24, 24, 8, false, 0, 18_446_744_073_709_551_615},
-    {:clamp, 32, 32, 8, true, -1_000_000_000_000, 1_000_000_000_000},
-    {:copy, 40, 40, 8},
-    {:clamp, 48, 48, 4, true, 0, 16_776_960},
-    {:count, 52, 52, 8},
-    {:copy, 56, 56, 4},
-    {:live, 52, 0, {:clamp, 60, 60, 4, true, -16_383, 16_383}},
-    {:live, 52, 0, {:clamp, 64, 64, 4, true, -16_383, 16_383}},
-    {:live, 52, 0, {:clamp, 68, 68, 4, true, -16_383, 16_383}},
-    {:copy, 72, 72, 8},
-    {:live, 52, 0, {:clamp, 80, 80, 4, true, -2048, 2047}},
-    {:live, 52, 0, {:clamp, 84, 84, 4, true, -2048, 2047}},
-    {:live, 52, 0, {:clamp, 88, 88, 4, true, -2048, 2047}},
-    {:live, 52, 0, {:clamp, 92, 92, 4, true, 0, 1000}},
-    {:live, 52, 0, {:ordinal, 96, 96, 1, 1, 15}},
-    {:copy, 97, 97, 14},
-    {:live, 52, 1, {:clamp, 111, 111, 4, true, -16_383, 16_383}},
-    {:live, 52, 1, {:clamp, 115, 115, 4, true, -16_383, 16_383}},
-    {:live, 52, 1, {:clamp, 119, 119, 4, true, -16_383, 16_383}},
-    {:copy, 123, 123, 8},
-    {:live, 52, 1, {:clamp, 131, 131, 4, true, -2048, 2047}},
-    {:live, 52, 1, {:clamp, 135, 135, 4, true, -2048, 2047}},
-    {:live, 52, 1, {:clamp, 139, 139, 4, true, -2048, 2047}},
-    {:live, 52, 1, {:clamp, 143, 143, 4, true, 0, 1000}},
-    {:live, 52, 1, {:ordinal, 147, 147, 1, 1, 15}},
-    {:copy, 148, 148, 14},
-    {:live, 52, 2, {:clamp, 162, 162, 4, true, -16_383, 16_383}},
-    {:live, 52, 2, {:clamp, 166, 166, 4, true, -16_383, 16_383}},
-    {:live, 52, 2, {:clamp, 170, 170, 4, true, -16_383, 16_383}},
-    {:copy, 174, 174, 8},
-    {:live, 52, 2, {:clamp, 182, 182, 4, true, -2048, 2047}},
-    {:live, 52, 2, {:clamp, 186, 186, 4, true, -2048, 2047}},
-    {:live, 52, 2, {:clamp, 190, 190, 4, true, -2048, 2047}},
-    {:live, 52, 2, {:clamp, 194, 194, 4, true, 0, 1000}},
-    {:live, 52, 2, {:ordinal, 198, 198, 1, 1, 15}},
-    {:copy, 199, 199, 14},
-    {:live, 52, 3, {:clamp, 213, 213, 4, true, -16_383, 16_383}},
-    {:live, 52, 3, {:clamp, 217, 217, 4, true, -16_383, 16_383}},
-    {:live, 52, 3, {:clamp, 221, 221, 4, true, -16_383, 16_383}},
-    {:copy, 225, 225, 8},
-    {:live, 52, 3, {:clamp, 233, 233, 4, true, -2048, 2047}},
-    {:live, 52, 3, {:clamp, 237, 237, 4, true, -2048, 2047}},
-    {:live, 52, 3, {:clamp, 241, 241, 4, true, -2048, 2047}},
-    {:live, 52, 3, {:clamp, 245, 245, 4, true, 0, 1000}},
-    {:live, 52, 3, {:ordinal, 249, 249, 1, 1, 15}},
-    {:copy, 250, 250, 14},
-    {:live, 52, 4, {:clamp, 264, 264, 4, true, -16_383, 16_383}},
-    {:live, 52, 4, {:clamp, 268, 268, 4, true, -16_383, 16_383}},
-    {:live, 52, 4, {:clamp, 272, 272, 4, true, -16_383, 16_383}},
-    {:copy, 276, 276, 8},
-    {:live, 52, 4, {:clamp, 284, 284, 4, true, -2048, 2047}},
-    {:live, 52, 4, {:clamp, 288, 288, 4, true, -2048, 2047}},
-    {:live, 52, 4, {:clamp, 292, 292, 4, true, -2048, 2047}},
-    {:live, 52, 4, {:clamp, 296, 296, 4, true, 0, 1000}},
-    {:live, 52, 4, {:ordinal, 300, 300, 1, 1, 15}},
-    {:copy, 301, 301, 14},
-    {:live, 52, 5, {:clamp, 315, 315, 4, true, -16_383, 16_383}},
-    {:live, 52, 5, {:clamp, 319, 319, 4, true, -16_383, 16_383}},
-    {:live, 52, 5, {:clamp, 323, 323, 4, true, -16_383, 16_383}},
-    {:copy, 327, 327, 8},
-    {:live, 52, 5, {:clamp, 335, 335, 4, true, -2048, 2047}},
-    {:live, 52, 5, {:clamp, 339, 339, 4, true, -2048, 2047}},
-    {:live, 52, 5, {:clamp, 343, 343, 4, true, -2048, 2047}},
-    {:live, 52, 5, {:clamp, 347, 347, 4, true, 0, 1000}},
-    {:live, 52, 5, {:ordinal, 351, 351, 1, 1, 15}},
-    {:copy, 352, 352, 14},
-    {:live, 52, 6, {:clamp, 366, 366, 4, true, -16_383, 16_383}},
-    {:live, 52, 6, {:clamp, 370, 370, 4, true, -16_383, 16_383}},
-    {:live, 52, 6, {:clamp, 374, 374, 4, true, -16_383, 16_383}},
-    {:copy, 378, 378, 8},
-    {:live, 52, 6, {:clamp, 386, 386, 4, true, -2048, 2047}},
-    {:live, 52, 6, {:clamp, 390, 390, 4, true, -2048, 2047}},
-    {:live, 52, 6, {:clamp, 394, 394, 4, true, -2048, 2047}},
-    {:live, 52, 6, {:clamp, 398, 398, 4, true, 0, 1000}},
-    {:live, 52, 6, {:ordinal, 402, 402, 1, 1, 15}},
-    {:copy, 403, 403, 14},
-    {:live, 52, 7, {:clamp, 417, 417, 4, true, -16_383, 16_383}},
-    {:live, 52, 7, {:clamp, 421, 421, 4, true, -16_383, 16_383}},
-    {:live, 52, 7, {:clamp, 425, 425, 4, true, -16_383, 16_383}},
-    {:copy, 429, 429, 8},
-    {:live, 52, 7, {:clamp, 437, 437, 4, true, -2048, 2047}},
-    {:live, 52, 7, {:clamp, 441, 441, 4, true, -2048, 2047}},
-    {:live, 52, 7, {:clamp, 445, 445, 4, true, -2048, 2047}},
-    {:live, 52, 7, {:clamp, 449, 449, 4, true, 0, 1000}},
-    {:live, 52, 7, {:ordinal, 453, 453, 1, 1, 15}},
-    {:copy, 454, 454, 10},
-    {:count, 464, 464, 80},
-    {:copy, 468, 468, 4},
-    {:live, 464, 0, {:clamp, 472, 472, 4, true, -512, 511}},
-    {:copy, 476, 476, 4},
-    {:live, 464, 1, {:clamp, 480, 480, 4, true, -512, 511}},
-    {:copy, 484, 484, 4},
-    {:live, 464, 2, {:clamp, 488, 488, 4, true, -512, 511}},
-    {:copy, 492, 492, 4},
-    {:live, 464, 3, {:clamp, 496, 496, 4, true, -512, 511}},
-    {:copy, 500, 500, 4},
-    {:live, 464, 4, {:clamp, 504, 504, 4, true, -512, 511}},
-    {:copy, 508, 508, 4},
-    {:live, 464, 5, {:clamp, 512, 512, 4, true, -512, 511}},
-    {:copy, 516, 516, 4},
-    {:live, 464, 6, {:clamp, 520, 520, 4, true, -512, 511}},
-    {:copy, 524, 524, 4},
-    {:live, 464, 7, {:clamp, 528, 528, 4, true, -512, 511}},
-    {:copy, 532, 532, 4},
-    {:live, 464, 8, {:clamp, 536, 536, 4, true, -512, 511}},
-    {:copy, 540, 540, 4},
-    {:live, 464, 9, {:clamp, 544, 544, 4, true, -512, 511}},
-    {:copy, 548, 548, 4},
-    {:live, 464, 10, {:clamp, 552, 552, 4, true, -512, 511}},
-    {:copy, 556, 556, 4},
-    {:live, 464, 11, {:clamp, 560, 560, 4, true, -512, 511}},
-    {:copy, 564, 564, 4},
-    {:live, 464, 12, {:clamp, 568, 568, 4, true, -512, 511}},
-    {:copy, 572, 572, 4},
-    {:live, 464, 13, {:clamp, 576, 576, 4, true, -512, 511}},
-    {:copy, 580, 580, 4},
-    {:live, 464, 14, {:clamp, 584, 584, 4, true, -512, 511}},
-    {:copy, 588, 588, 4},
-    {:live, 464, 15, {:clamp, 592, 592, 4, true, -512, 511}},
-    {:copy, 596, 596, 4},
-    {:live, 464, 16, {:clamp, 600, 600, 4, true, -512, 511}},
-    {:copy, 604, 604, 4},
-    {:live, 464, 17, {:clamp, 608, 608, 4, true, -512, 511}},
-    {:copy, 612, 612, 4},
-    {:live, 464, 18, {:clamp, 616, 616, 4, true, -512, 511}},
-    {:copy, 620, 620, 4},
-    {:live, 464, 19, {:clamp, 624, 624, 4, true, -512, 511}},
-    {:copy, 628, 628, 4},
-    {:live, 464, 20, {:clamp, 632, 632, 4, true, -512, 511}},
-    {:copy, 636, 636, 4},
-    {:live, 464, 21, {:clamp, 640, 640, 4, true, -512, 511}},
-    {:copy, 644, 644, 4},
-    {:live, 464, 22, {:clamp, 648, 648, 4, true, -512, 511}},
-    {:copy, 652, 652, 4},
-    {:live, 464, 23, {:clamp, 656, 656, 4, true, -512, 511}},
-    {:copy, 660, 660, 4},
-    {:live, 464, 24, {:clamp, 664, 664, 4, true, -512, 511}},
-    {:copy, 668, 668, 4},
-    {:live, 464, 25, {:clamp, 672, 672, 4, true, -512, 511}},
-    {:copy, 676, 676, 4},
-    {:live, 464, 26, {:clamp, 680, 680, 4, true, -512, 511}},
-    {:copy, 684, 684, 4},
-    {:live, 464, 27, {:clamp, 688, 688, 4, true, -512, 511}},
-    {:copy, 692, 692, 4},
-    {:live, 464, 28, {:clamp, 696, 696, 4, true, -512, 511}},
-    {:copy, 700, 700, 4},
-    {:live, 464, 29, {:clamp, 704, 704, 4, true, -512, 511}},
-    {:copy, 708, 708, 4},
-    {:live, 464, 30, {:clamp, 712, 712, 4, true, -512, 511}},
-    {:copy, 716, 716, 4},
-    {:live, 464, 31, {:clamp, 720, 720, 4, true, -512, 511}},
-    {:copy, 724, 724, 4},
-    {:live, 464, 32, {:clamp, 728, 728, 4, true, -512, 511}},
-    {:copy, 732, 732, 4},
-    {:live, 464, 33, {:clamp, 736, 736, 4, true, -512, 511}},
-    {:copy, 740, 740, 4},
-    {:live, 464, 34, {:clamp, 744, 744, 4, true, -512, 511}},
-    {:copy, 748, 748, 4},
-    {:live, 464, 35, {:clamp, 752, 752, 4, true, -512, 511}},
-    {:copy, 756, 756, 4},
-    {:live, 464, 36, {:clamp, 760, 760, 4, true, -512, 511}},
-    {:copy, 764, 764, 4},
-    {:live, 464, 37, {:clamp, 768, 768, 4, true, -512, 511}},
-    {:copy, 772, 772, 4},
-    {:live, 464, 38, {:clamp, 776, 776, 4, true, -512, 511}},
-    {:copy, 780, 780, 4},
-    {:live, 464, 39, {:clamp, 784, 784, 4, true, -512, 511}},
-    {:copy, 788, 788, 4},
-    {:live, 464, 40, {:clamp, 792, 792, 4, true, -512, 511}},
-    {:copy, 796, 796, 4},
-    {:live, 464, 41, {:clamp, 800, 800, 4, true, -512, 511}},
-    {:copy, 804, 804, 4},
-    {:live, 464, 42, {:clamp, 808, 808, 4, true, -512, 511}},
-    {:copy, 812, 812, 4},
-    {:live, 464, 43, {:clamp, 816, 816, 4, true, -512, 511}},
-    {:copy, 820, 820, 4},
-    {:live, 464, 44, {:clamp, 824, 824, 4, true, -512, 511}},
-    {:copy, 828, 828, 4},
-    {:live, 464, 45, {:clamp, 832, 832, 4, true, -512, 511}},
-    {:copy, 836, 836, 4},
-    {:live, 464, 46, {:clamp, 840, 840, 4, true, -512, 511}},
-    {:copy, 844, 844, 4},
-    {:live, 464, 47, {:clamp, 848, 848, 4, true, -512, 511}},
-    {:copy, 852, 852, 4},
-    {:live, 464, 48, {:clamp, 856, 856, 4, true, -512, 511}},
-    {:copy, 860, 860, 4},
-    {:live, 464, 49, {:clamp, 864, 864, 4, true, -512, 511}},
-    {:copy, 868, 868, 4},
-    {:live, 464, 50, {:clamp, 872, 872, 4, true, -512, 511}},
-    {:copy, 876, 876, 4},
-    {:live, 464, 51, {:clamp, 880, 880, 4, true, -512, 511}},
-    {:copy, 884, 884, 4},
-    {:live, 464, 52, {:clamp, 888, 888, 4, true, -512, 511}},
-    {:copy, 892, 892, 4},
-    {:live, 464, 53, {:clamp, 896, 896, 4, true, -512, 511}},
-    {:copy, 900, 900, 4},
-    {:live, 464, 54, {:clamp, 904, 904, 4, true, -512, 511}},
-    {:copy, 908, 908, 4},
-    {:live, 464, 55, {:clamp, 912, 912, 4, true, -512, 511}},
-    {:copy, 916, 916, 4},
-    {:live, 464, 56, {:clamp, 920, 920, 4, true, -512, 511}},
-    {:copy, 924, 924, 4},
-    {:live, 464, 57, {:clamp, 928, 928, 4, true, -512, 511}},
-    {:copy, 932, 932, 4},
-    {:live, 464, 58, {:clamp, 936, 936, 4, true, -512, 511}},
-    {:copy, 940, 940, 4},
-    {:live, 464, 59, {:clamp, 944, 944, 4, true, -512, 511}},
-    {:copy, 948, 948, 4},
-    {:live, 464, 60, {:clamp, 952, 952, 4, true, -512, 511}},
-    {:copy, 956, 956, 4},
-    {:live, 464, 61, {:clamp, 960, 960, 4, true, -512, 511}},
-    {:copy, 964, 964, 4},
-    {:live, 464, 62, {:clamp, 968, 968, 4, true, -512, 511}},
-    {:copy, 972, 972, 4},
-    {:live, 464, 63, {:clamp, 976, 976, 4, true, -512, 511}},
-    {:copy, 980, 980, 4},
-    {:live, 464, 64, {:clamp, 984, 984, 4, true, -512, 511}},
-    {:copy, 988, 988, 4},
-    {:live, 464, 65, {:clamp, 992, 992, 4, true, -512, 511}},
-    {:copy, 996, 996, 4},
-    {:live, 464, 66, {:clamp, 1000, 1000, 4, true, -512, 511}},
-    {:copy, 1004, 1004, 4},
-    {:live, 464, 67, {:clamp, 1008, 1008, 4, true, -512, 511}},
-    {:copy, 1012, 1012, 4},
-    {:live, 464, 68, {:clamp, 1016, 1016, 4, true, -512, 511}},
-    {:copy, 1020, 1020, 4},
-    {:live, 464, 69, {:clamp, 1024, 1024, 4, true, -512, 511}},
-    {:copy, 1028, 1028, 4},
-    {:live, 464, 70, {:clamp, 1032, 1032, 4, true, -512, 511}},
-    {:copy, 1036, 1036, 4},
-    {:live, 464, 71, {:clamp, 1040, 1040, 4, true, -512, 511}},
-    {:copy, 1044, 1044, 4},
-    {:live, 464, 72, {:clamp, 1048, 1048, 4, true, -512, 511}},
-    {:copy, 1052, 1052, 4},
-    {:live, 464, 73, {:clamp, 1056, 1056, 4, true, -512, 511}},
-    {:copy, 1060, 1060, 4},
-    {:live, 464, 74, {:clamp, 1064, 1064, 4, true, -512, 511}},
-    {:copy, 1068, 1068, 4},
-    {:live, 464, 75, {:clamp, 1072, 1072, 4, true, -512, 511}},
-    {:copy, 1076, 1076, 4},
-    {:live, 464, 76, {:clamp, 1080, 1080, 4, true, -512, 511}},
-    {:copy, 1084, 1084, 4},
-    {:live, 464, 77, {:clamp, 1088, 1088, 4, true, -512, 511}},
-    {:copy, 1092, 1092, 4},
-    {:live, 464, 78, {:clamp, 1096, 1096, 4, true, -512, 511}},
-    {:copy, 1100, 1100, 4},
-    {:live, 464, 79, {:clamp, 1104, 1104, 4, true, -512, 511}},
-    {:ordinal, 1108, 1108, 1, 1, 3},
-    {:guard, 1108, 1, {:copy, 1109, 1109, 4}},
-    {:guard, 1108, 1, {:clamp, 1113, 1113, 4, true, 0, 4095}},
-    {:guard, 1108, 1, {:clamp, 1117, 1117, 4, true, 0, 7}},
-    {:guard, 1108, 1, {:copy, 1121, 1121, 1}},
-    {:guard, 1108, 2, {:clamp, 1109, 1109, 4, true, 0, 3}},
-    {:guard, 1108, 2, {:copy, 1113, 1113, 4}},
-    {:guard, 1108, 3, {:copy, 1109, 1109, 4}},
-    {:guard, 1108, 3, {:clamp, 1113, 1113, 4, true, 0, 255}},
-    {:copy, 1122, 1122, 4},
-    {:text, 1126, 1126, 1130, 15, 1},
-    {:text, 1145, 1145, 1149, 16, 3},
-    {:copy, 1165, 1165, 40},
-    {:clamp, 1205, 1205, 16, true, -1_267_650_600_228_229_401_496_703_205_376,
-     1_267_650_600_228_229_401_496_703_205_376},
-    {:clamp, 1221, 1221, 2, false, 0, 64_000},
-    {:copy, 1223, 1223, 5},
-    {:clamp, 1228, 1228, 4, true, 0, 255},
-    {:clamp, 1232, 1232, 4, true, 0, 15}
+    {:copy, 0, 0, 1236}
   ]
 
   def fixed_table_fixed_body_bytes, do: @fixed_table_body_bytes
@@ -425,19 +183,21 @@ defmodule Bench.WrapFixed do
     R.file_header_bytes() + byte_size(@fixed_table_layout) + count * @fixed_table_record_bytes
   end
 
-  # THE WRITE: the hash, then ONE binary construction whose slack segments are
-  # literal zeros. There is no measuring pass, no id interning, no trailer and
-  # no second walk.
+  # THE WRITE: the hash, then the body APPENDED to it. There is no measuring
+  # pass, no id interning, no trailer, no second walk and no flatten: a file
+  # of records is one binary every record was appended to in place.
   def fixed_table_fixed_record(value) do
-    [<<@fixed_table_hash::little-unsigned-64>>, fixed_table_fixed_write_body(value)]
+    fixed_table_fixed_write_into(value, <<@fixed_table_hash::little-unsigned-64>>)
   end
 
   def fixed_table_fixed_save(values) when is_list(values) do
-    IO.iodata_to_binary([
-      R.file_header(@fixed_table_hash, byte_size(@fixed_table_layout)),
-      @fixed_table_layout,
-      Enum.map(values, &fixed_table_fixed_record/1)
-    ])
+    head =
+      <<R.file_header(@fixed_table_hash, byte_size(@fixed_table_layout))::binary,
+        @fixed_table_layout::binary>>
+
+    R.each(values, head, fn value, acc ->
+      fixed_table_fixed_write_into(value, <<acc::binary, @fixed_table_hash::little-unsigned-64>>)
+    end)
   end
 
   @doc """
@@ -465,6 +225,11 @@ defmodule Bench.WrapFixed do
     end
   end
 
+  # THE READ: a plan, a split, and one prefill-and-project per record. The
+  # plan's own ops hold the writer's values to this reader's bounds and count;
+  # the projection holds them again as it lands them, which costs nothing on a
+  # value already inside the bound and is what lets the IDENTITY plan — which
+  # carries no ops at all, being one copy run — reach the same clamp.
   defp fixed_table_fixed_records(stated, layout, records, report, opts) do
     hash = R.hash(layout)
     copy = Keyword.get(opts, :copy, false)
@@ -475,7 +240,8 @@ defmodule Bench.WrapFixed do
       {values, report} =
         Enum.map_reduce(bodies, report, fn body, report ->
           {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
-          {fixed_table_fixed_decode(image), report}
+          {value, c, m} = fixed_table_fixed_decode(image, 0, false)
+          {value, R.damaged(R.clamped(report, c), m)}
         end)
 
       {:ok, values, report}
@@ -487,7 +253,9 @@ defmodule Bench.WrapFixed do
 
   # THE PLAN: the identity plan for this build's own hash, and for any other
   # hash the one compiled ONCE from the writer's layout and cached by hash.
-  # A caller may own the plan instead and hand it in through `plan:`.
+  # A caller may own the plan instead and hand it in through `plan:`. THIS IS
+  # THE WHOLE OF THE VERSION QUESTION: two heads selecting `{plan, size}` and
+  # nothing else, and one loop behind them.
   defp fixed_table_fixed_plan_for(hash, _layout, report, _opts) when hash == @fixed_table_hash do
     {:ok, @fixed_table_plan, @fixed_table_body_bytes, report}
   end

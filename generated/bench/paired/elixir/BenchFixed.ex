@@ -40,189 +40,650 @@ defmodule Bench.BenchFixed do
 
   # union MixedEvent: the TAG ORDINAL at its own storage width, then the WIDEST ARM,
   # the slack behind a narrower arm zero-filled. TAG 0 IS None.
-  def mixed_event_fixed_write_arm(value) do
-    R.pad(
-      [
-        <<value.type::little-unsigned-8>>,
-        case value.type do
-          1 -> mixed_hit_event_fixed_write_body(value.hit)
-          2 -> mixed_chat_event_fixed_write_body(value.chat)
-          3 -> mixed_pickup_event_fixed_write_body(value.pickup)
-          _ -> <<>>
-        end
-      ],
-      14
-    )
+  def mixed_event_fixed_write_arm(value), do: mixed_event_fixed_write_into(value, <<>>)
+
+  def mixed_event_fixed_write_into(value, acc) do
+    acc = <<acc::binary, value.type::little-unsigned-8>>
+
+    case value.type do
+      1 -> mixed_hit_event_fixed_write_into(value.hit, acc)
+      2 -> <<mixed_chat_event_fixed_write_into(value.chat, acc)::binary, 0::size(5)-unit(8)>>
+      3 -> <<mixed_pickup_event_fixed_write_into(value.pickup, acc)::binary, 0::size(5)-unit(8)>>
+      _ -> <<acc::binary, 0::size(13)-unit(8)>>
+    end
   end
 
-  # union MixedEvent's projection: the tag, then the arm it names.
-  def mixed_event_fixed_decode(<<tag::little-unsigned-8, arm::binary>>) do
+  # union MixedEvent's projection: the tag, then the arm it names and no other. A TAG
+  # BEYOND THE DECLARED ARMS lands None and counts one `clamped`.
+  def mixed_event_fixed_decode(<<tag::little-unsigned-8, arm::binary>>, c, m \\ false) do
     case tag do
       1 ->
-        %Bench.MixedEvent{type: 1, hit: mixed_hit_event_fixed_decode(binary_part(arm, 0, 13))}
+        {v, c, m} = mixed_hit_event_fixed_decode(arm, c, m)
+        {%Bench.MixedEvent{type: 1, hit: v}, c, m}
 
       2 ->
-        %Bench.MixedEvent{type: 2, chat: mixed_chat_event_fixed_decode(binary_part(arm, 0, 8))}
+        {v, c, m} = mixed_chat_event_fixed_decode(arm, c, m)
+        {%Bench.MixedEvent{type: 2, chat: v}, c, m}
 
       3 ->
-        %Bench.MixedEvent{
-          type: 3,
-          pickup: mixed_pickup_event_fixed_decode(binary_part(arm, 0, 8))
-        }
+        {v, c, m} = mixed_pickup_event_fixed_decode(arm, c, m)
+        {%Bench.MixedEvent{type: 3, pickup: v}, c, m}
+
+      0 ->
+        {%Bench.MixedEvent{}, c, m}
 
       _ ->
-        %Bench.MixedEvent{}
+        {%Bench.MixedEvent{}, c + 1, m}
     end
+  end
+
+  # A RUN OF MixedEvent: the LIVE elements walked into a list, the count beside it.
+  def mixed_event_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def mixed_event_fixed_list(<<e::binary-size(14), rest::binary>>, n, c, m) do
+    {v, c, m} = mixed_event_fixed_decode(e, c, m)
+    {tail, c, m} = mixed_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedEntity's body: 51 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
-  def mixed_entity_fixed_write_body(value) do
-    <<R.fits(value.entity_id, 32, false)::little-unsigned-32,
-      R.ranged(value.pos_x, @r_mixed_entity_pos_x)::little-signed-32,
-      R.ranged(value.pos_y, @r_mixed_entity_pos_y)::little-signed-32,
-      R.ranged(value.pos_z, @r_mixed_entity_pos_z)::little-signed-32,
-      R.fits(value.yaw, 32, false)::little-unsigned-32,
-      R.fits(value.pitch, 32, false)::little-unsigned-32,
-      R.ranged(value.vel_x, @r_mixed_entity_vel_x)::little-signed-32,
-      R.ranged(value.vel_y, @r_mixed_entity_vel_y)::little-signed-32,
-      R.ranged(value.vel_z, @r_mixed_entity_vel_z)::little-signed-32,
-      R.ranged(value.health, @r_mixed_entity_health)::little-signed-32,
-      value.weapon::little-unsigned-8, value.damage::little-unsigned-64,
-      if(value.moving, do: 1, else: 0)::unsigned-8, if(value.firing, do: 1, else: 0)::unsigned-8>>
+  def mixed_entity_fixed_write_body(value), do: mixed_entity_fixed_write_into(value, <<>>)
+
+  # MixedEntity's body APPENDED to `acc`: the value destructured once, then one append per
+  # run of scalars, one per element of every array, and the slack as zero segments.
+  def mixed_entity_fixed_write_into(value, acc) do
+    %{
+      entity_id: v_entity_id,
+      pos_x: v_pos_x,
+      pos_y: v_pos_y,
+      pos_z: v_pos_z,
+      yaw: v_yaw,
+      pitch: v_pitch,
+      vel_x: v_vel_x,
+      vel_y: v_vel_y,
+      vel_z: v_vel_z,
+      health: v_health,
+      weapon: v_weapon,
+      damage: v_damage,
+      moving: v_moving,
+      firing: v_firing
+    } = value
+
+    acc =
+      <<acc::binary, R.fits(v_entity_id, 32, false)::little-unsigned-32,
+        R.ranged(v_pos_x, @r_mixed_entity_pos_x)::little-signed-32,
+        R.ranged(v_pos_y, @r_mixed_entity_pos_y)::little-signed-32,
+        R.ranged(v_pos_z, @r_mixed_entity_pos_z)::little-signed-32,
+        R.fits(v_yaw, 32, false)::little-unsigned-32,
+        R.fits(v_pitch, 32, false)::little-unsigned-32,
+        R.ranged(v_vel_x, @r_mixed_entity_vel_x)::little-signed-32,
+        R.ranged(v_vel_y, @r_mixed_entity_vel_y)::little-signed-32,
+        R.ranged(v_vel_z, @r_mixed_entity_vel_z)::little-signed-32,
+        R.ranged(v_health, @r_mixed_entity_health)::little-signed-32, v_weapon::little-unsigned-8,
+        v_damage::little-unsigned-64, if(v_moving, do: 1, else: 0)::unsigned-8,
+        if(v_firing, do: 1, else: 0)::unsigned-8>>
+
+    acc
   end
 
   # MixedEntity's projection: ONE binary pattern match over its 51 bytes of record
-  # image, and the struct it makes.
+  # image, the struct it makes, the `clamped` it moved and the content flag.
+  def mixed_entity_fixed_decode(bin, c, m \\ false)
+
   def mixed_entity_fixed_decode(
         <<f_entity_id::little-unsigned-32, f_pos_x::little-signed-32, f_pos_y::little-signed-32,
           f_pos_z::little-signed-32, f_yaw::little-unsigned-32, f_pitch::little-unsigned-32,
           f_vel_x::little-signed-32, f_vel_y::little-signed-32, f_vel_z::little-signed-32,
           f_health::little-signed-32, f_weapon::little-unsigned-8, f_damage::little-unsigned-64,
-          f_moving::unsigned-8, f_firing::unsigned-8, _::binary>>
+          f_moving::unsigned-8, f_firing::unsigned-8, _::binary>>,
+        c,
+        m
       ) do
-    %Bench.MixedEntity{
-      entity_id: f_entity_id,
-      pos_x: f_pos_x,
-      pos_y: f_pos_y,
-      pos_z: f_pos_z,
-      yaw: f_yaw,
-      pitch: f_pitch,
-      vel_x: f_vel_x,
-      vel_y: f_vel_y,
-      vel_z: f_vel_z,
-      health: f_health,
-      weapon: f_weapon,
-      damage: f_damage,
-      moving: f_moving != 0,
-      firing: f_firing != 0
-    }
+    c = R.clamps(c, f_pos_x, -16_383, 16_383)
+    c = R.clamps(c, f_pos_y, -16_383, 16_383)
+    c = R.clamps(c, f_pos_z, -16_383, 16_383)
+    c = R.clamps(c, f_vel_x, -2048, 2047)
+    c = R.clamps(c, f_vel_y, -2048, 2047)
+    c = R.clamps(c, f_vel_z, -2048, 2047)
+    c = R.clamps(c, f_health, 0, 1000)
+    c = R.past(c, f_weapon, 15)
+
+    {%Bench.MixedEntity{
+       entity_id: f_entity_id,
+       pos_x: min(max(f_pos_x, -16_383), 16_383),
+       pos_y: min(max(f_pos_y, -16_383), 16_383),
+       pos_z: min(max(f_pos_z, -16_383), 16_383),
+       yaw: f_yaw,
+       pitch: f_pitch,
+       vel_x: min(max(f_vel_x, -2048), 2047),
+       vel_y: min(max(f_vel_y, -2048), 2047),
+       vel_z: min(max(f_vel_z, -2048), 2047),
+       health: min(max(f_health, 0), 1000),
+       weapon: if(f_weapon <= 15, do: f_weapon, else: 0),
+       damage: f_damage,
+       moving: f_moving != 0,
+       firing: f_firing != 0
+     }, c, m}
+  end
+
+  # A RUN OF MixedEntity: the LIVE elements walked into a list, the count riding beside
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same
+  # counters — so it saves the match and the call and never a bound.
+  def mixed_entity_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def mixed_entity_fixed_list(
+        <<f_entity_id::little-unsigned-32, f_pos_x::little-signed-32, f_pos_y::little-signed-32,
+          f_pos_z::little-signed-32, f_yaw::little-unsigned-32, f_pitch::little-unsigned-32,
+          f_vel_x::little-signed-32, f_vel_y::little-signed-32, f_vel_z::little-signed-32,
+          f_health::little-signed-32, f_weapon::little-unsigned-8, f_damage::little-unsigned-64,
+          f_moving::unsigned-8, f_firing::unsigned-8, rest::binary>>,
+        n,
+        c,
+        m
+      ) do
+    c = R.clamps(c, f_pos_x, -16_383, 16_383)
+    c = R.clamps(c, f_pos_y, -16_383, 16_383)
+    c = R.clamps(c, f_pos_z, -16_383, 16_383)
+    c = R.clamps(c, f_vel_x, -2048, 2047)
+    c = R.clamps(c, f_vel_y, -2048, 2047)
+    c = R.clamps(c, f_vel_z, -2048, 2047)
+    c = R.clamps(c, f_health, 0, 1000)
+    c = R.past(c, f_weapon, 15)
+
+    v =
+      %Bench.MixedEntity{
+        entity_id: f_entity_id,
+        pos_x: min(max(f_pos_x, -16_383), 16_383),
+        pos_y: min(max(f_pos_y, -16_383), 16_383),
+        pos_z: min(max(f_pos_z, -16_383), 16_383),
+        yaw: f_yaw,
+        pitch: f_pitch,
+        vel_x: min(max(f_vel_x, -2048), 2047),
+        vel_y: min(max(f_vel_y, -2048), 2047),
+        vel_z: min(max(f_vel_z, -2048), 2047),
+        health: min(max(f_health, 0), 1000),
+        weapon: if(f_weapon <= 15, do: f_weapon, else: 0),
+        damage: f_damage,
+        moving: f_moving != 0,
+        firing: f_firing != 0
+      }
+
+    {tail, c, m} = mixed_entity_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedStat's body: 8 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
-  def mixed_stat_fixed_write_body(value) do
-    <<R.fits(value.stat_id, 32, false)::little-unsigned-32,
-      R.ranged(value.delta, @r_mixed_stat_delta)::little-signed-32>>
+  def mixed_stat_fixed_write_body(value), do: mixed_stat_fixed_write_into(value, <<>>)
+
+  # MixedStat's body APPENDED to `acc`: the value destructured once, then one append per
+  # run of scalars, one per element of every array, and the slack as zero segments.
+  def mixed_stat_fixed_write_into(value, acc) do
+    %{stat_id: v_stat_id, delta: v_delta} = value
+
+    acc =
+      <<acc::binary, R.fits(v_stat_id, 32, false)::little-unsigned-32,
+        R.ranged(v_delta, @r_mixed_stat_delta)::little-signed-32>>
+
+    acc
   end
 
   # MixedStat's projection: ONE binary pattern match over its 8 bytes of record
-  # image, and the struct it makes.
+  # image, the struct it makes, the `clamped` it moved and the content flag.
+  def mixed_stat_fixed_decode(bin, c, m \\ false)
+
   def mixed_stat_fixed_decode(
-        <<f_stat_id::little-unsigned-32, f_delta::little-signed-32, _::binary>>
+        <<f_stat_id::little-unsigned-32, f_delta::little-signed-32, _::binary>>,
+        c,
+        m
       ) do
-    %Bench.MixedStat{stat_id: f_stat_id, delta: f_delta}
+    c = R.clamps(c, f_delta, -512, 511)
+
+    {%Bench.MixedStat{stat_id: f_stat_id, delta: min(max(f_delta, -512), 511)}, c, m}
+  end
+
+  # A RUN OF MixedStat: the LIVE elements walked into a list, the count riding beside
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same
+  # counters — so it saves the match and the call and never a bound.
+  def mixed_stat_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def mixed_stat_fixed_list(
+        <<f_stat_id_0::little-unsigned-32, f_delta_0::little-signed-32,
+          f_stat_id_1::little-unsigned-32, f_delta_1::little-signed-32,
+          f_stat_id_2::little-unsigned-32, f_delta_2::little-signed-32,
+          f_stat_id_3::little-unsigned-32, f_delta_3::little-signed-32,
+          f_stat_id_4::little-unsigned-32, f_delta_4::little-signed-32,
+          f_stat_id_5::little-unsigned-32, f_delta_5::little-signed-32,
+          f_stat_id_6::little-unsigned-32, f_delta_6::little-signed-32,
+          f_stat_id_7::little-unsigned-32, f_delta_7::little-signed-32, rest::binary>>,
+        n,
+        c,
+        m
+      )
+      when n >= 8 do
+    c = R.clamps(c, f_delta_0, -512, 511)
+    v0 = %Bench.MixedStat{stat_id: f_stat_id_0, delta: min(max(f_delta_0, -512), 511)}
+    c = R.clamps(c, f_delta_1, -512, 511)
+    v1 = %Bench.MixedStat{stat_id: f_stat_id_1, delta: min(max(f_delta_1, -512), 511)}
+    c = R.clamps(c, f_delta_2, -512, 511)
+    v2 = %Bench.MixedStat{stat_id: f_stat_id_2, delta: min(max(f_delta_2, -512), 511)}
+    c = R.clamps(c, f_delta_3, -512, 511)
+    v3 = %Bench.MixedStat{stat_id: f_stat_id_3, delta: min(max(f_delta_3, -512), 511)}
+    c = R.clamps(c, f_delta_4, -512, 511)
+    v4 = %Bench.MixedStat{stat_id: f_stat_id_4, delta: min(max(f_delta_4, -512), 511)}
+    c = R.clamps(c, f_delta_5, -512, 511)
+    v5 = %Bench.MixedStat{stat_id: f_stat_id_5, delta: min(max(f_delta_5, -512), 511)}
+    c = R.clamps(c, f_delta_6, -512, 511)
+    v6 = %Bench.MixedStat{stat_id: f_stat_id_6, delta: min(max(f_delta_6, -512), 511)}
+    c = R.clamps(c, f_delta_7, -512, 511)
+    v7 = %Bench.MixedStat{stat_id: f_stat_id_7, delta: min(max(f_delta_7, -512), 511)}
+    {tail, c, m} = mixed_stat_fixed_list(rest, n - 8, c, m)
+    {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
+  end
+
+  def mixed_stat_fixed_list(
+        <<f_stat_id::little-unsigned-32, f_delta::little-signed-32, rest::binary>>,
+        n,
+        c,
+        m
+      ) do
+    c = R.clamps(c, f_delta, -512, 511)
+
+    v = %Bench.MixedStat{stat_id: f_stat_id, delta: min(max(f_delta, -512), 511)}
+    {tail, c, m} = mixed_stat_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedHitEvent's body: 13 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
-  def mixed_hit_event_fixed_write_body(value) do
-    <<R.fits(value.target_id, 32, false)::little-unsigned-32,
-      R.ranged(value.damage, @r_mixed_hit_event_damage)::little-signed-32,
-      R.ranged(value.hit_kind, @r_mixed_hit_event_hit_kind)::little-signed-32,
-      if(value.crit, do: 1, else: 0)::unsigned-8>>
+  def mixed_hit_event_fixed_write_body(value), do: mixed_hit_event_fixed_write_into(value, <<>>)
+
+  # MixedHitEvent's body APPENDED to `acc`: the value destructured once, then one append per
+  # run of scalars, one per element of every array, and the slack as zero segments.
+  def mixed_hit_event_fixed_write_into(value, acc) do
+    %{target_id: v_target_id, damage: v_damage, hit_kind: v_hit_kind, crit: v_crit} = value
+
+    acc =
+      <<acc::binary, R.fits(v_target_id, 32, false)::little-unsigned-32,
+        R.ranged(v_damage, @r_mixed_hit_event_damage)::little-signed-32,
+        R.ranged(v_hit_kind, @r_mixed_hit_event_hit_kind)::little-signed-32,
+        if(v_crit, do: 1, else: 0)::unsigned-8>>
+
+    acc
   end
 
   # MixedHitEvent's projection: ONE binary pattern match over its 13 bytes of record
-  # image, and the struct it makes.
+  # image, the struct it makes, the `clamped` it moved and the content flag.
+  def mixed_hit_event_fixed_decode(bin, c, m \\ false)
+
   def mixed_hit_event_fixed_decode(
         <<f_target_id::little-unsigned-32, f_damage::little-signed-32,
-          f_hit_kind::little-signed-32, f_crit::unsigned-8, _::binary>>
+          f_hit_kind::little-signed-32, f_crit::unsigned-8, _::binary>>,
+        c,
+        m
       ) do
-    %Bench.MixedHitEvent{
-      target_id: f_target_id,
-      damage: f_damage,
-      hit_kind: f_hit_kind,
-      crit: f_crit != 0
-    }
+    c = R.clamps(c, f_damage, 0, 4095)
+    c = R.clamps(c, f_hit_kind, 0, 7)
+
+    {%Bench.MixedHitEvent{
+       target_id: f_target_id,
+       damage: min(max(f_damage, 0), 4095),
+       hit_kind: min(max(f_hit_kind, 0), 7),
+       crit: f_crit != 0
+     }, c, m}
+  end
+
+  # A RUN OF MixedHitEvent: the LIVE elements walked into a list, the count riding beside
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same
+  # counters — so it saves the match and the call and never a bound.
+  def mixed_hit_event_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def mixed_hit_event_fixed_list(
+        <<f_target_id_0::little-unsigned-32, f_damage_0::little-signed-32,
+          f_hit_kind_0::little-signed-32, f_crit_0::unsigned-8, f_target_id_1::little-unsigned-32,
+          f_damage_1::little-signed-32, f_hit_kind_1::little-signed-32, f_crit_1::unsigned-8,
+          f_target_id_2::little-unsigned-32, f_damage_2::little-signed-32,
+          f_hit_kind_2::little-signed-32, f_crit_2::unsigned-8, f_target_id_3::little-unsigned-32,
+          f_damage_3::little-signed-32, f_hit_kind_3::little-signed-32, f_crit_3::unsigned-8,
+          rest::binary>>,
+        n,
+        c,
+        m
+      )
+      when n >= 4 do
+    c = R.clamps(c, f_damage_0, 0, 4095)
+    c = R.clamps(c, f_hit_kind_0, 0, 7)
+
+    v0 =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id_0,
+        damage: min(max(f_damage_0, 0), 4095),
+        hit_kind: min(max(f_hit_kind_0, 0), 7),
+        crit: f_crit_0 != 0
+      }
+
+    c = R.clamps(c, f_damage_1, 0, 4095)
+    c = R.clamps(c, f_hit_kind_1, 0, 7)
+
+    v1 =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id_1,
+        damage: min(max(f_damage_1, 0), 4095),
+        hit_kind: min(max(f_hit_kind_1, 0), 7),
+        crit: f_crit_1 != 0
+      }
+
+    c = R.clamps(c, f_damage_2, 0, 4095)
+    c = R.clamps(c, f_hit_kind_2, 0, 7)
+
+    v2 =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id_2,
+        damage: min(max(f_damage_2, 0), 4095),
+        hit_kind: min(max(f_hit_kind_2, 0), 7),
+        crit: f_crit_2 != 0
+      }
+
+    c = R.clamps(c, f_damage_3, 0, 4095)
+    c = R.clamps(c, f_hit_kind_3, 0, 7)
+
+    v3 =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id_3,
+        damage: min(max(f_damage_3, 0), 4095),
+        hit_kind: min(max(f_hit_kind_3, 0), 7),
+        crit: f_crit_3 != 0
+      }
+
+    {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 4, c, m)
+    {[v0, v1, v2, v3 | tail], c, m}
+  end
+
+  def mixed_hit_event_fixed_list(
+        <<f_target_id::little-unsigned-32, f_damage::little-signed-32,
+          f_hit_kind::little-signed-32, f_crit::unsigned-8, rest::binary>>,
+        n,
+        c,
+        m
+      ) do
+    c = R.clamps(c, f_damage, 0, 4095)
+    c = R.clamps(c, f_hit_kind, 0, 7)
+
+    v =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id,
+        damage: min(max(f_damage, 0), 4095),
+        hit_kind: min(max(f_hit_kind, 0), 7),
+        crit: f_crit != 0
+      }
+
+    {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedChatEvent's body: 8 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
-  def mixed_chat_event_fixed_write_body(value) do
-    <<R.ranged(value.channel, @r_mixed_chat_event_channel)::little-signed-32,
-      R.fits(value.speaker, 32, false)::little-unsigned-32>>
+  def mixed_chat_event_fixed_write_body(value), do: mixed_chat_event_fixed_write_into(value, <<>>)
+
+  # MixedChatEvent's body APPENDED to `acc`: the value destructured once, then one append per
+  # run of scalars, one per element of every array, and the slack as zero segments.
+  def mixed_chat_event_fixed_write_into(value, acc) do
+    %{channel: v_channel, speaker: v_speaker} = value
+
+    acc =
+      <<acc::binary, R.ranged(v_channel, @r_mixed_chat_event_channel)::little-signed-32,
+        R.fits(v_speaker, 32, false)::little-unsigned-32>>
+
+    acc
   end
 
   # MixedChatEvent's projection: ONE binary pattern match over its 8 bytes of record
-  # image, and the struct it makes.
+  # image, the struct it makes, the `clamped` it moved and the content flag.
+  def mixed_chat_event_fixed_decode(bin, c, m \\ false)
+
   def mixed_chat_event_fixed_decode(
-        <<f_channel::little-signed-32, f_speaker::little-unsigned-32, _::binary>>
+        <<f_channel::little-signed-32, f_speaker::little-unsigned-32, _::binary>>,
+        c,
+        m
       ) do
-    %Bench.MixedChatEvent{channel: f_channel, speaker: f_speaker}
+    c = R.clamps(c, f_channel, 0, 3)
+
+    {%Bench.MixedChatEvent{channel: min(max(f_channel, 0), 3), speaker: f_speaker}, c, m}
+  end
+
+  # A RUN OF MixedChatEvent: the LIVE elements walked into a list, the count riding beside
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same
+  # counters — so it saves the match and the call and never a bound.
+  def mixed_chat_event_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def mixed_chat_event_fixed_list(
+        <<f_channel_0::little-signed-32, f_speaker_0::little-unsigned-32,
+          f_channel_1::little-signed-32, f_speaker_1::little-unsigned-32,
+          f_channel_2::little-signed-32, f_speaker_2::little-unsigned-32,
+          f_channel_3::little-signed-32, f_speaker_3::little-unsigned-32,
+          f_channel_4::little-signed-32, f_speaker_4::little-unsigned-32,
+          f_channel_5::little-signed-32, f_speaker_5::little-unsigned-32,
+          f_channel_6::little-signed-32, f_speaker_6::little-unsigned-32,
+          f_channel_7::little-signed-32, f_speaker_7::little-unsigned-32, rest::binary>>,
+        n,
+        c,
+        m
+      )
+      when n >= 8 do
+    c = R.clamps(c, f_channel_0, 0, 3)
+    v0 = %Bench.MixedChatEvent{channel: min(max(f_channel_0, 0), 3), speaker: f_speaker_0}
+    c = R.clamps(c, f_channel_1, 0, 3)
+    v1 = %Bench.MixedChatEvent{channel: min(max(f_channel_1, 0), 3), speaker: f_speaker_1}
+    c = R.clamps(c, f_channel_2, 0, 3)
+    v2 = %Bench.MixedChatEvent{channel: min(max(f_channel_2, 0), 3), speaker: f_speaker_2}
+    c = R.clamps(c, f_channel_3, 0, 3)
+    v3 = %Bench.MixedChatEvent{channel: min(max(f_channel_3, 0), 3), speaker: f_speaker_3}
+    c = R.clamps(c, f_channel_4, 0, 3)
+    v4 = %Bench.MixedChatEvent{channel: min(max(f_channel_4, 0), 3), speaker: f_speaker_4}
+    c = R.clamps(c, f_channel_5, 0, 3)
+    v5 = %Bench.MixedChatEvent{channel: min(max(f_channel_5, 0), 3), speaker: f_speaker_5}
+    c = R.clamps(c, f_channel_6, 0, 3)
+    v6 = %Bench.MixedChatEvent{channel: min(max(f_channel_6, 0), 3), speaker: f_speaker_6}
+    c = R.clamps(c, f_channel_7, 0, 3)
+    v7 = %Bench.MixedChatEvent{channel: min(max(f_channel_7, 0), 3), speaker: f_speaker_7}
+    {tail, c, m} = mixed_chat_event_fixed_list(rest, n - 8, c, m)
+    {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
+  end
+
+  def mixed_chat_event_fixed_list(
+        <<f_channel::little-signed-32, f_speaker::little-unsigned-32, rest::binary>>,
+        n,
+        c,
+        m
+      ) do
+    c = R.clamps(c, f_channel, 0, 3)
+
+    v = %Bench.MixedChatEvent{channel: min(max(f_channel, 0), 3), speaker: f_speaker}
+    {tail, c, m} = mixed_chat_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedPickupEvent's body: 8 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
-  def mixed_pickup_event_fixed_write_body(value) do
-    <<R.fits(value.item_id, 32, false)::little-unsigned-32,
-      R.ranged(value.amount, @r_mixed_pickup_event_amount)::little-signed-32>>
+  def mixed_pickup_event_fixed_write_body(value),
+    do: mixed_pickup_event_fixed_write_into(value, <<>>)
+
+  # MixedPickupEvent's body APPENDED to `acc`: the value destructured once, then one append per
+  # run of scalars, one per element of every array, and the slack as zero segments.
+  def mixed_pickup_event_fixed_write_into(value, acc) do
+    %{item_id: v_item_id, amount: v_amount} = value
+
+    acc =
+      <<acc::binary, R.fits(v_item_id, 32, false)::little-unsigned-32,
+        R.ranged(v_amount, @r_mixed_pickup_event_amount)::little-signed-32>>
+
+    acc
   end
 
   # MixedPickupEvent's projection: ONE binary pattern match over its 8 bytes of record
-  # image, and the struct it makes.
+  # image, the struct it makes, the `clamped` it moved and the content flag.
+  def mixed_pickup_event_fixed_decode(bin, c, m \\ false)
+
   def mixed_pickup_event_fixed_decode(
-        <<f_item_id::little-unsigned-32, f_amount::little-signed-32, _::binary>>
+        <<f_item_id::little-unsigned-32, f_amount::little-signed-32, _::binary>>,
+        c,
+        m
       ) do
-    %Bench.MixedPickupEvent{item_id: f_item_id, amount: f_amount}
+    c = R.clamps(c, f_amount, 0, 255)
+
+    {%Bench.MixedPickupEvent{item_id: f_item_id, amount: min(max(f_amount, 0), 255)}, c, m}
+  end
+
+  # A RUN OF MixedPickupEvent: the LIVE elements walked into a list, the count riding beside
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same
+  # counters — so it saves the match and the call and never a bound.
+  def mixed_pickup_event_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def mixed_pickup_event_fixed_list(
+        <<f_item_id_0::little-unsigned-32, f_amount_0::little-signed-32,
+          f_item_id_1::little-unsigned-32, f_amount_1::little-signed-32,
+          f_item_id_2::little-unsigned-32, f_amount_2::little-signed-32,
+          f_item_id_3::little-unsigned-32, f_amount_3::little-signed-32,
+          f_item_id_4::little-unsigned-32, f_amount_4::little-signed-32,
+          f_item_id_5::little-unsigned-32, f_amount_5::little-signed-32,
+          f_item_id_6::little-unsigned-32, f_amount_6::little-signed-32,
+          f_item_id_7::little-unsigned-32, f_amount_7::little-signed-32, rest::binary>>,
+        n,
+        c,
+        m
+      )
+      when n >= 8 do
+    c = R.clamps(c, f_amount_0, 0, 255)
+    v0 = %Bench.MixedPickupEvent{item_id: f_item_id_0, amount: min(max(f_amount_0, 0), 255)}
+    c = R.clamps(c, f_amount_1, 0, 255)
+    v1 = %Bench.MixedPickupEvent{item_id: f_item_id_1, amount: min(max(f_amount_1, 0), 255)}
+    c = R.clamps(c, f_amount_2, 0, 255)
+    v2 = %Bench.MixedPickupEvent{item_id: f_item_id_2, amount: min(max(f_amount_2, 0), 255)}
+    c = R.clamps(c, f_amount_3, 0, 255)
+    v3 = %Bench.MixedPickupEvent{item_id: f_item_id_3, amount: min(max(f_amount_3, 0), 255)}
+    c = R.clamps(c, f_amount_4, 0, 255)
+    v4 = %Bench.MixedPickupEvent{item_id: f_item_id_4, amount: min(max(f_amount_4, 0), 255)}
+    c = R.clamps(c, f_amount_5, 0, 255)
+    v5 = %Bench.MixedPickupEvent{item_id: f_item_id_5, amount: min(max(f_amount_5, 0), 255)}
+    c = R.clamps(c, f_amount_6, 0, 255)
+    v6 = %Bench.MixedPickupEvent{item_id: f_item_id_6, amount: min(max(f_amount_6, 0), 255)}
+    c = R.clamps(c, f_amount_7, 0, 255)
+    v7 = %Bench.MixedPickupEvent{item_id: f_item_id_7, amount: min(max(f_amount_7, 0), 255)}
+    {tail, c, m} = mixed_pickup_event_fixed_list(rest, n - 8, c, m)
+    {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
+  end
+
+  def mixed_pickup_event_fixed_list(
+        <<f_item_id::little-unsigned-32, f_amount::little-signed-32, rest::binary>>,
+        n,
+        c,
+        m
+      ) do
+    c = R.clamps(c, f_amount, 0, 255)
+
+    v = %Bench.MixedPickupEvent{item_id: f_item_id, amount: min(max(f_amount, 0), 255)}
+    {tail, c, m} = mixed_pickup_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # BenchMixed's body: 1236 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
-  def bench_mixed_fixed_write_body(value) do
-    [
-      <<R.fits(value.sequence, 32, false)::little-unsigned-32,
-        R.ranged(value.ack_sequence, @r_bench_mixed_ack_sequence)::little-signed-32,
-        R.fits(value.ack_bits, 32, false)::little-unsigned-32,
-        R.fits(value.session_id, 64, false)::little-unsigned-64,
-        R.fits(value.client_id, 32, false)::little-unsigned-32,
-        R.ranged(value.nonce, @r_bench_mixed_nonce)::little-unsigned-64,
-        R.ranged(value.world_time, @r_bench_mixed_world_time)::little-signed-64,
-        R.fits(value.frame_tick, 64, false)::little-unsigned-64,
-        R.ranged(value.server_time, @r_bench_mixed_server_time)::little-signed-32,
-        R.count(value.entities, 1, 8)::little-signed-32>>,
-      R.pad(Enum.map(value.entities, &mixed_entity_fixed_write_body/1), 408),
-      <<R.count(value.stats, 0, 80)::little-signed-32>>,
-      R.pad(Enum.map(value.stats, &mixed_stat_fixed_write_body/1), 640),
-      mixed_event_fixed_write_arm(value.game_event),
-      R.pad(Enum.map(value.loadout, fn e -> <<R.fits(e, 8, false)::little-unsigned-8>> end), 4),
-      <<byte_size(value.player_name)::little-signed-32, R.fill(value.player_name, 15)::binary,
-        byte_size(value.payload)::little-signed-32, R.fill(value.payload, 16)::binary,
-        R.f32_bits(value.aim_x)::little-unsigned-32, R.f32_bits(value.aim_y)::little-unsigned-32,
-        R.f32_bits(value.aim_z)::little-unsigned-32, R.f32_bits(value.recoil)::little-unsigned-32,
-        R.f64_bits(value.drift)::little-unsigned-64,
-        R.fits(value.wide_key, 128, false)::little-unsigned-128,
-        R.ranged(value.flux, @r_bench_mixed_flux)::little-signed-128,
-        R.ranged(value.ping, @r_bench_mixed_ping)::little-unsigned-16,
-        R.fits(value.crc_hint, 32, false)::little-unsigned-32,
-        if(value.has_extra, do: 1, else: 0)::unsigned-8,
-        R.ranged(value.extra, @r_bench_mixed_extra)::little-signed-32,
-        R.ranged(value.idle_ticks, @r_bench_mixed_idle_ticks)::little-signed-32>>
-    ]
+  def bench_mixed_fixed_write_body(value), do: bench_mixed_fixed_write_into(value, <<>>)
+
+  # BenchMixed's body APPENDED to `acc`: the value destructured once, then one append per
+  # run of scalars, one per element of every array, and the slack as zero segments.
+  def bench_mixed_fixed_write_into(value, acc) do
+    %{
+      sequence: v_sequence,
+      ack_sequence: v_ack_sequence,
+      ack_bits: v_ack_bits,
+      session_id: v_session_id,
+      client_id: v_client_id,
+      nonce: v_nonce,
+      world_time: v_world_time,
+      frame_tick: v_frame_tick,
+      server_time: v_server_time,
+      entities: v_entities,
+      stats: v_stats,
+      game_event: v_game_event,
+      loadout: v_loadout,
+      player_name: v_player_name,
+      payload: v_payload,
+      aim_x: v_aim_x,
+      aim_y: v_aim_y,
+      aim_z: v_aim_z,
+      recoil: v_recoil,
+      drift: v_drift,
+      wide_key: v_wide_key,
+      flux: v_flux,
+      ping: v_ping,
+      crc_hint: v_crc_hint,
+      has_extra: v_has_extra,
+      extra: v_extra,
+      idle_ticks: v_idle_ticks
+    } = value
+
+    acc =
+      <<acc::binary, R.fits(v_sequence, 32, false)::little-unsigned-32,
+        R.ranged(v_ack_sequence, @r_bench_mixed_ack_sequence)::little-signed-32,
+        R.fits(v_ack_bits, 32, false)::little-unsigned-32,
+        R.fits(v_session_id, 64, false)::little-unsigned-64,
+        R.fits(v_client_id, 32, false)::little-unsigned-32,
+        R.ranged(v_nonce, @r_bench_mixed_nonce)::little-unsigned-64,
+        R.ranged(v_world_time, @r_bench_mixed_world_time)::little-signed-64,
+        R.fits(v_frame_tick, 64, false)::little-unsigned-64,
+        R.ranged(v_server_time, @r_bench_mixed_server_time)::little-signed-32>>
+
+    n_entities = R.count(v_entities, 1, 8)
+    acc = <<acc::binary, n_entities::little-signed-32>>
+    acc = R.each(v_entities, acc, &mixed_entity_fixed_write_into/2)
+    acc = <<acc::binary, 0::size((8 - n_entities) * 51)-unit(8)>>
+    n_stats = R.count(v_stats, 0, 80)
+    acc = <<acc::binary, n_stats::little-signed-32>>
+    acc = R.each(v_stats, acc, &mixed_stat_fixed_write_into/2)
+    acc = <<acc::binary, 0::size((80 - n_stats) * 8)-unit(8)>>
+    acc = mixed_event_fixed_write_into(v_game_event, acc)
+    n_loadout = R.count(v_loadout, 0, 4)
+
+    acc =
+      R.each(v_loadout, acc, fn e, acc ->
+        <<acc::binary, R.fits(e, 8, false)::little-unsigned-8>>
+      end)
+
+    acc =
+      <<acc::binary, 0::size((4 - n_loadout) * 1)-unit(8),
+        byte_size(v_player_name)::little-signed-32, v_player_name::binary,
+        0::size(R.text_slack(v_player_name, 15))-unit(8), byte_size(v_payload)::little-signed-32,
+        v_payload::binary, 0::size(R.text_slack(v_payload, 16))-unit(8),
+        R.f32_bits(v_aim_x)::little-unsigned-32, R.f32_bits(v_aim_y)::little-unsigned-32,
+        R.f32_bits(v_aim_z)::little-unsigned-32, R.f32_bits(v_recoil)::little-unsigned-32,
+        R.f64_bits(v_drift)::little-unsigned-64,
+        R.fits(v_wide_key, 128, false)::little-unsigned-128,
+        R.ranged(v_flux, @r_bench_mixed_flux)::little-signed-128,
+        R.ranged(v_ping, @r_bench_mixed_ping)::little-unsigned-16,
+        R.fits(v_crc_hint, 32, false)::little-unsigned-32,
+        if(v_has_extra, do: 1, else: 0)::unsigned-8,
+        R.ranged(v_extra, @r_bench_mixed_extra)::little-signed-32,
+        R.ranged(v_idle_ticks, @r_bench_mixed_idle_ticks)::little-signed-32>>
+
+    acc
   end
 
   # BenchMixed's projection: ONE binary pattern match over its 1236 bytes of record
-  # image, and the struct it makes.
+  # image, the struct it makes, the `clamped` it moved and the content flag.
+  def bench_mixed_fixed_decode(bin, c, m \\ false)
+
   def bench_mixed_fixed_decode(
         <<f_sequence::little-unsigned-32, f_ack_sequence::little-signed-32,
           f_ack_bits::little-unsigned-32, f_session_id::little-unsigned-64,
@@ -230,48 +691,91 @@ defmodule Bench.BenchFixed do
           f_world_time::little-signed-64, f_frame_tick::little-unsigned-64,
           f_server_time::little-signed-32, n_entities::little-signed-32,
           b_entities::binary-size(408), n_stats::little-signed-32, b_stats::binary-size(640),
-          b_game_event::binary-size(14), b_loadout::binary-size(4),
-          n_player_name::little-signed-32, b_player_name::binary-size(15),
-          n_payload::little-signed-32, b_payload::binary-size(16), f_aim_x::little-unsigned-32,
-          f_aim_y::little-unsigned-32, f_aim_z::little-unsigned-32, f_recoil::little-unsigned-32,
-          f_drift::little-unsigned-64, f_wide_key::little-unsigned-128, f_flux::little-signed-128,
-          f_ping::little-unsigned-16, f_crc_hint::little-unsigned-32, f_has_extra::unsigned-8,
-          f_extra::little-signed-32, f_idle_ticks::little-signed-32, _::binary>>
+          b_game_event::binary-size(14), f_loadout_0::little-unsigned-8,
+          f_loadout_1::little-unsigned-8, f_loadout_2::little-unsigned-8,
+          f_loadout_3::little-unsigned-8, n_player_name::little-signed-32,
+          b_player_name::binary-size(15), n_payload::little-signed-32, b_payload::binary-size(16),
+          f_aim_x::little-unsigned-32, f_aim_y::little-unsigned-32, f_aim_z::little-unsigned-32,
+          f_recoil::little-unsigned-32, f_drift::little-unsigned-64,
+          f_wide_key::little-unsigned-128, f_flux::little-signed-128, f_ping::little-unsigned-16,
+          f_crc_hint::little-unsigned-32, f_has_extra::unsigned-8, f_extra::little-signed-32,
+          f_idle_ticks::little-signed-32, _::binary>>,
+        c,
+        m
       ) do
-    l_entities = for <<e::binary-size(51) <- b_entities>>, do: mixed_entity_fixed_decode(e)
-    l_entities = Enum.take(l_entities, n_entities)
-    l_stats = for <<e::binary-size(8) <- b_stats>>, do: mixed_stat_fixed_decode(e)
-    l_stats = Enum.take(l_stats, n_stats)
-    l_loadout = for <<f_e::little-unsigned-8 <- b_loadout>>, do: f_e
+    c = R.clamps(c, f_ack_sequence, 0, 65_535)
+    c = R.clamps(c, f_nonce, 0, 18_446_744_073_709_551_615)
+    c = R.clamps(c, f_world_time, -1_000_000_000_000, 1_000_000_000_000)
+    c = R.clamps(c, f_server_time, 0, 16_776_960)
+    c = R.clamps(c, n_entities, 0, 8)
+    {l_entities, c, m} = mixed_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
+    c = R.clamps(c, n_stats, 0, 80)
+    {l_stats, c, m} = mixed_stat_fixed_list(b_stats, min(max(n_stats, 0), 80), c, m)
+    {f_game_event, c, m} = mixed_event_fixed_decode(b_game_event, c, m)
+    c = R.clamps(c, n_player_name, 0, 15)
 
-    %Bench.BenchMixed{
-      sequence: f_sequence,
-      ack_sequence: f_ack_sequence,
-      ack_bits: f_ack_bits,
-      session_id: f_session_id,
-      client_id: f_client_id,
-      nonce: f_nonce,
-      world_time: f_world_time,
-      frame_tick: f_frame_tick,
-      server_time: f_server_time,
-      entities: l_entities,
-      stats: l_stats,
-      game_event: mixed_event_fixed_decode(b_game_event),
-      loadout: l_loadout,
-      player_name: binary_part(b_player_name, 0, min(max(n_player_name, 0), 15)),
-      payload: binary_part(b_payload, 0, min(max(n_payload, 0), 16)),
-      aim_x: R.f32_value(f_aim_x),
-      aim_y: R.f32_value(f_aim_y),
-      aim_z: R.f32_value(f_aim_z),
-      recoil: R.f32_value(f_recoil),
-      drift: R.f64_value(f_drift),
-      wide_key: f_wide_key,
-      flux: f_flux,
-      ping: f_ping,
-      crc_hint: f_crc_hint,
-      has_extra: f_has_extra != 0,
-      extra: f_extra,
-      idle_ticks: f_idle_ticks
-    }
+    {t_player_name, m} =
+      R.text(binary_part(b_player_name, 0, min(max(n_player_name, 0), 15)), <<>>, m, true)
+
+    c = R.clamps(c, n_payload, 0, 16)
+
+    c =
+      R.clamps(
+        c,
+        f_flux,
+        -1_267_650_600_228_229_401_496_703_205_376,
+        1_267_650_600_228_229_401_496_703_205_376
+      )
+
+    c = R.clamps(c, f_ping, 0, 64_000)
+    c = R.clamps(c, f_extra, 0, 255)
+    c = R.clamps(c, f_idle_ticks, 0, 15)
+
+    {%Bench.BenchMixed{
+       sequence: f_sequence,
+       ack_sequence: min(max(f_ack_sequence, 0), 65_535),
+       ack_bits: f_ack_bits,
+       session_id: f_session_id,
+       client_id: f_client_id,
+       nonce: min(max(f_nonce, 0), 18_446_744_073_709_551_615),
+       world_time: min(max(f_world_time, -1_000_000_000_000), 1_000_000_000_000),
+       frame_tick: f_frame_tick,
+       server_time: min(max(f_server_time, 0), 16_776_960),
+       entities: l_entities,
+       stats: l_stats,
+       game_event: f_game_event,
+       loadout: [f_loadout_0, f_loadout_1, f_loadout_2, f_loadout_3],
+       player_name: t_player_name,
+       payload: binary_part(b_payload, 0, min(max(n_payload, 0), 16)),
+       aim_x: R.f32_value(f_aim_x),
+       aim_y: R.f32_value(f_aim_y),
+       aim_z: R.f32_value(f_aim_z),
+       recoil: R.f32_value(f_recoil),
+       drift: R.f64_value(f_drift),
+       wide_key: f_wide_key,
+       flux:
+         min(
+           max(f_flux, -1_267_650_600_228_229_401_496_703_205_376),
+           1_267_650_600_228_229_401_496_703_205_376
+         ),
+       ping: min(max(f_ping, 0), 64_000),
+       crc_hint: f_crc_hint,
+       has_extra: f_has_extra != 0,
+       extra: min(max(f_extra, 0), 255),
+       idle_ticks: min(max(f_idle_ticks, 0), 15)
+     }, c, m}
+  end
+
+  # A RUN OF BenchMixed: the LIVE elements walked into a list, the count riding beside
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same
+  # counters — so it saves the match and the call and never a bound.
+  def bench_mixed_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def bench_mixed_fixed_list(<<e::binary-size(1236), rest::binary>>, n, c, m) do
+    {v, c, m} = bench_mixed_fixed_decode(e, c, m)
+    {tail, c, m} = bench_mixed_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 end

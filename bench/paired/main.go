@@ -26,19 +26,20 @@ import (
 )
 
 // languages IS THE PUBLISHED SET, and it is what a confirmation pass and a
-// rendered report are sealed over (provenance.go's passInputNames). A leg is
-// not published until every round of a seven-round pass carries it, so adding
-// a name here changes what an old pass renders as — which is why a new leg
-// arrives in knownLanguages first and moves here when it is promoted.
+// rendered report are sealed over (provenance.go's passInputNames). Each one
+// measures BOTH wires over the same 64 logical records, which is the only
+// thing that licenses the division, so the confirmation pass, its window and
+// its board are defined over exactly these. A leg is not published until every
+// round of a seven-round pass carries it, so adding a name here changes what an
+// old pass renders as — which is why a new leg arrives in one of the two lists
+// below and moves here when it is promoted.
 var languages = []string{"cpp", "c", "go", "cs"}
 
-// knownLanguages IS EVERY NAME -langs ACCEPTS: the published four plus the legs
-// that exist and are measurable but are not part of a published pass yet.
-// `-mode fast` is the DIAGNOSTIC mode and takes any non-empty subset of these
-// that share a shape; `-mode run` still takes the published four and nothing
-// else. rust is table-only (see tableOnlyLanguages). elixir measures both wires.
-var knownLanguages = []string{"cpp", "c", "go", "cs", "elixir", "rust"}
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust"}
+// AN UNPUBLISHED PAIRED LANGUAGE has BOTH wires, so it has a ratio of its own,
+// but no published pass carries it yet. `-mode fast` is the DIAGNOSTIC mode and
+// takes one of these ALONE; `-mode run` still takes the published four and
+// nothing else.
+var unpublishedLanguages = []string{"elixir"}
 
 // A TABLE-ONLY LANGUAGE measures the table wire and NEVER a ratio.
 //
@@ -56,7 +57,26 @@ var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "e
 // separate work with their own ruling; filling this driver's second wire with
 // a fabricated row would be inventing a measurement. So rust rides the table
 // wire alone and appears in no ratio, no confirmation pass and no board.
-var tableOnlyLanguages = []string{"rust"}
+//
+// java is here for the same reason arrived at down a different road:
+// bench/java/Main.java is the TYPE BOARD's runner, with neither `--gate` nor
+// `--iterations` either, and the paired set above is the four the board is
+// defined over. The table leg (bench/tables/java/TableMain.java) is this
+// driver's own shape. A packet leg here is separate work with its own ruling,
+// so java too rides the table wire alone and appears in no ratio, no
+// confirmation pass and no board; its packet number is the type board's,
+// measured by its own runner over the same sixty-four records.
+var tableOnlyLanguages = []string{"rust", "java"}
+
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java"}
+
+// allLanguages IS EVERY NAME -langs ACCEPTS: the published four, the paired
+// legs that are measurable but not published yet, and the table-only legs.
+func allLanguages() []string {
+	out := append([]string{}, languages...)
+	out = append(out, unpublishedLanguages...)
+	return append(out, tableOnlyLanguages...)
+}
 
 // wiresFor names the wires a language actually has a runner for. Every loop
 // that walks a language's legs walks this and not the literal pair, so a
@@ -78,6 +98,12 @@ func onlyTableLanguages(langs []string) bool {
 		}
 	}
 	return len(langs) > 0
+}
+
+// unpublishedAlone reports the DIAGNOSTIC shape: one leg that no published
+// pass carries, asked for on its own. It seals nothing and enters no board.
+func unpublishedAlone(langs []string) bool {
+	return len(langs) == 1 && !contains(languages, langs[0])
 }
 
 // THE BEAM TOOLCHAIN, pinned exactly as make/elixir.mk pins it: the repo-local
@@ -186,9 +212,11 @@ type command struct {
 	args []string
 	dir  string
 	// env is added to this process's environment, never replacing it: an
-	// interpreted leg needs its pinned toolchain on PATH, the Rust leg needs
-	// cargo settings, and nothing else about the measured environment may move
-	// (see measuredEnvironment).
+	// interpreted leg needs its pinned toolchain on PATH, and the Rust leg's
+	// optimization level is a cargo setting rather than a compiler flag on a
+	// command line. Nothing here drops what the operator already exported, and
+	// nothing else about the measured environment may move (see
+	// measuredEnvironment).
 	env []string
 }
 
@@ -225,7 +253,7 @@ func (c command) program() string {
 }
 
 func execute(c command) error {
-	fmt.Fprintln(os.Stderr, "+", c.args[0], strings.Join(c.args[1:], " "))
+	fmt.Fprintln(os.Stderr, "+", strings.Join(append(append([]string{}, c.env...), c.args...), " "))
 	cmd := exec.Command(c.program(), c.args[1:]...)
 	cmd.Dir = c.dir
 	cmd.Env = c.environment()
@@ -255,6 +283,14 @@ func abs(p string) string {
 	return s
 }
 func binary(wire, lang string) string {
+	// THE JAVA LEG'S BUILD PRODUCT is a directory of classfiles, so the thing
+	// this driver pins and hashes is the runner's own class in it; the
+	// generated sources it was compiled beside are hashed too
+	// (generateAndBuild), so the recorded identity covers the whole unit that
+	// runs and not only the entry point.
+	if lang == "java" {
+		return filepath.Join(javaClassDir, "TableMain.class")
+	}
 	p := filepath.Join("build", "paired", wire+"-"+lang)
 	if lang == "elixir" {
 		// AN INTERPRETED LEG HAS NO EXECUTABLE. What stands in its place is the
@@ -328,12 +364,56 @@ func rustupTool(env, name string) string {
 	}
 	return name
 }
+
+// generatedModules names the generated sources a leg COMPILES rather than
+// links, so readBuild verifies them the way it verifies a compiled leg's
+// binary. It is a GLOB and not a list: the emitter decides how many modules a
+// unit has, and a list here would be one more place to keep in step with it —
+// and one more place naming a corpus type, which this driver has no business
+// doing. Only java answers it: rust's unit is inside its binary, and the
+// binary's own hash already covers it.
+func generatedModules(lang string) ([]string, error) {
+	if lang != "java" {
+		return nil, nil
+	}
+	found, err := filepath.Glob(filepath.Join("generated", "bench", "paired", lang, "*."+lang))
+	if err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no generated %s modules for the paired unit", lang)
+	}
+	sort.Strings(found)
+	return found, nil
+}
+
+// javaClassDir is where the Java table leg's classfiles land.
+const javaClassDir = "build/paired/table-java"
+
+// javaExecutable and javacExecutable are the JDK's two halves, the same pins
+// make/java.mk carries: the repository-local JDK when it is there, and the one
+// on PATH otherwise, with JAVA and JAVAC overriding both.
+func javaExecutable() string  { return jdkTool("JAVA", "java") }
+func javacExecutable() string { return jdkTool("JAVAC", "javac") }
+func jdkTool(name, tool string) string {
+	if s := os.Getenv(name); s != "" {
+		return s
+	}
+	local := filepath.Join("dist", "jdk-21.0.12.1", "Contents", "Home", "bin", tool)
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return tool
+}
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
 	var env []string
 	switch lang {
 	case "cs":
 		a = append([]string{"dotnet"}, a...)
+	case "java":
+		// The class, by name, on the classpath the build filled.
+		a = []string{javaExecutable(), "-cp", javaClassDir, "TableMain"}
 	case "elixir":
 		// The leg is a script, and it is spawned from the REPOSITORY ROOT like
 		// every other leg, so its corpus paths arrive through --wire-dir and
@@ -614,6 +694,30 @@ func generateAndBuild(langs []string) error {
 			if e = os.WriteFile(binary("table", lang), built, 0755); e != nil {
 				return e
 			}
+		case "java":
+			// The generated unit and the runner, compiled beside each other
+			// into one classpath under the same javac flags the Java legs
+			// use everywhere (make/java.mk): -Werror, because the generated
+			// sources are compiled by the consumer's javac. Then the gate.
+			if e := os.RemoveAll(javaClassDir); e != nil {
+				return e
+			}
+			if e := os.MkdirAll(javaClassDir, 0755); e != nil {
+				return e
+			}
+			modules, e := generatedModules(lang)
+			if e != nil {
+				return e
+			}
+			javac := []string{"--release", "17", "-Xlint:all", "-Werror", "-d", javaClassDir}
+			javac = append(javac, modules...)
+			javac = append(javac, filepath.Join("bench", "tables", "java", "TableMain.java"))
+			if e := run(append([]string{javacExecutable()}, javac...)...); e != nil {
+				return fmt.Errorf("javac is required for the java leg (set JAVAC): %w", e)
+			}
+			if e := execute(runner("table", lang, "--gate")); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -624,7 +728,7 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
@@ -633,6 +737,17 @@ func generateAndBuild(langs []string) error {
 		info.Tools["elixir"] = strings.TrimSpace(string(b))
 	}
 	for _, lang := range langs {
+		modules, e := generatedModules(lang)
+		if e != nil {
+			return e
+		}
+		for _, p := range modules {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
 		for _, wire := range wiresFor(lang) {
 			p := binary(wire, lang)
 			h, e := hashFile(p)
@@ -693,6 +808,11 @@ func generateAndBuild(langs []string) error {
 		if gitValue(abs(setting("SERIALIZE_RS", "../serialize.rs")), "diff", "--name-only", "HEAD", "--") != "" {
 			info.Runtimes["serialize.rs"] += "-dirty"
 		}
+	}
+	if contains(langs, "java") {
+		// The Java leg's compile is the JDK's own, and what decides its code is
+		// the JIT, which the tools map above carries by version.
+		info.Tools["java_table_flags"] = "javac --release 17 -Xlint:all -Werror; java default (JIT, no -ea)"
 	}
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {
@@ -1184,8 +1304,8 @@ func main() {
 	langs := strings.Split(*langsFlag, ",")
 	seen := map[string]bool{}
 	for _, lang := range langs {
-		if !contains(knownLanguages, lang) || seen[lang] {
-			fail(fmt.Errorf("langs must be unique %s names", strings.Join(knownLanguages, ",")))
+		if !contains(allLanguages(), lang) || seen[lang] {
+			fail(errors.New("langs must be unique " + strings.Join(allLanguages(), ",") + " names"))
 		}
 		seen[lang] = true
 	}
@@ -1213,14 +1333,14 @@ func main() {
 	}
 	fast := fastConfig{Rounds: *fastRounds, PacketIterations: *packetIters, TableIterations: *tableIters, Timeout: *fastTimeout, Noise: *noise}
 	if *mode == "fast" {
-		// FAST IS THE DIAGNOSTIC MODE and it takes any non-empty subset that
-		// shares a shape: it publishes nothing, seals nothing, and is where a
-		// leg that is not in a published pass yet is measured at all.
-		// Confirmation is unchanged below — the published four and nothing else.
-		// A table-only language is requested alone (the mixed-request guard
-		// above); elixir may ride with the published four or on its own.
-		if len(langs) == 0 || len(langs) > len(knownLanguages) {
-			fail(errors.New("fast mode requires at least one known language"))
+		// FAST IS THE DIAGNOSTIC MODE. EITHER the whole published paired set —
+		// the only shape that yields the board's ratio — OR one unpublished leg
+		// on its own: paired (its own packet ratio, no board) or table-only (no
+		// ratio at all). It publishes nothing and seals nothing, and it is where
+		// a leg that is not in a published pass yet is measured at all.
+		// Confirmation is unchanged below: the published four and nothing else.
+		if !onlyTableLanguages(langs) && !unpublishedAlone(langs) && len(langs) != len(languages) {
+			fail(errors.New("fast mode requires all four paired languages, or one unpublished language alone"))
 		}
 		if e := fast.validate(); e != nil {
 			fail(e)
@@ -1252,8 +1372,10 @@ func main() {
 	}
 	// A CONFIRMATION PASS IS THE PUBLISHED SET, EXACTLY: provenance.go seals a
 	// pass over `languages`, so a pass measuring anything else would render as
-	// a pass it is not. A table-only language has no packet row to divide.
-	if onlyTableLanguages(langs) || len(langs) != len(languages) || !slices.Equal(slices.Sorted(slices.Values(langs)), slices.Sorted(slices.Values(languages))) {
+	// a pass it is not. The board is a ratio, so a table-only language cannot
+	// enter one at all, and an unpublished paired leg is a diagnostic until it
+	// is promoted.
+	if !slices.Equal(slices.Sorted(slices.Values(langs)), slices.Sorted(slices.Values(languages))) {
 		fail(fmt.Errorf("published pass requires exactly the published languages: %s", strings.Join(languages, ",")))
 	}
 	if e := measure(langs, *out, *rounds, info, *receipt); e != nil {

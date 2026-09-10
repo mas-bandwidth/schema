@@ -345,7 +345,7 @@ func TestElixirFixedFormLayoutIsTheCppReferenceByteForByte(t *testing.T) {
 	if err != nil {
 		t.Fatalf("--lang elixir: %v", err)
 	}
-	cppLayouts, cppHashes := cppFixedLayouts(joinFiles(cppFiles))
+	cppLayouts, cppHashes := cppFixedLayoutsSnake(joinFiles(cppFiles))
 	exLayouts, exHashes := elixirFixedLayouts(joinFiles(exFiles))
 	if len(exLayouts) == 0 {
 		t.Fatal("the Elixir backend emitted no fixed-form layout at all for a unit of fixed tables — " +
@@ -379,32 +379,27 @@ func TestElixirFixedFormLayoutIsTheCppReferenceByteForByte(t *testing.T) {
 	}
 }
 
-func joinFiles(files map[string][]byte) string {
-	var b strings.Builder
-	for _, data := range files {
-		b.Write(data)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
+// joinFiles, cppFixedLayoutRe and cppFixedByteRe are the Java leg's
+// (compiler/tablesjava_test.go); they are one package and the scan of the C++
+// reference is the same scan. Only the SNAKE-keyed rendering below is this
+// leg's own, so only it is spelled separately.
 var (
-	cppFixedLayoutRe = regexp.MustCompile(`(?s)constexpr uint8_t (\w+)FixedLayout\[\] = \{(.*?)\};`)
-	cppFixedHashRe   = regexp.MustCompile(`constexpr uint64_t (\w+)FixedHash = 0x([0-9a-f]+)ull;`)
-	exFixedLayoutRe  = regexp.MustCompile(`@(\w+)_layout "((?:\\x[0-9A-F]{2})+)"`)
-	exFixedHashRe    = regexp.MustCompile(`@(\w+)_hash 0x([0-9A-F]{16})`)
-	cppFixedByteRe   = regexp.MustCompile(`0x[0-9a-f]{2}`)
+	// The Java leg's cppFixedHashRe captures the `0x` with the digits; this
+	// scan wants the digits alone, so it keeps its own pattern.
+	cppFixedHashSnakeRe = regexp.MustCompile(`constexpr uint64_t (\w+)FixedHash = 0x([0-9a-f]+)ull;`)
+	exFixedLayoutRe     = regexp.MustCompile(`@(\w+)_layout "((?:\\x[0-9A-F]{2})+)"`)
+	exFixedHashRe       = regexp.MustCompile(`@(\w+)_hash 0x([0-9A-F]{16})`)
 )
 
 // The two scans key on the SNAKE spelling, which is the one shape both targets
 // map onto without either one's naming rules leaking into the other's.
-func cppFixedLayouts(text string) (map[string]string, map[string]string) {
+func cppFixedLayoutsSnake(text string) (map[string]string, map[string]string) {
 	layouts, hashes := map[string]string{}, map[string]string{}
 	for _, m := range cppFixedLayoutRe.FindAllStringSubmatch(text, -1) {
 		bytes := cppFixedByteRe.FindAllString(m[2], -1)
 		layouts[ir.RustSnake(m[1])] = strings.ToLower(strings.Join(bytes, " "))
 	}
-	for _, m := range cppFixedHashRe.FindAllStringSubmatch(text, -1) {
+	for _, m := range cppFixedHashSnakeRe.FindAllStringSubmatch(text, -1) {
 		hashes[ir.RustSnake(m[1])] = strings.ToLower(m[2])
 	}
 	return layouts, hashes

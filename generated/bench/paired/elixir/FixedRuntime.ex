@@ -157,6 +157,67 @@ defmodule Bench.FixedRuntime do
 
   defp bump(report, key), do: Map.update!(report, key, &(&1 + 1))
 
+  @doc """
+  Add `n` `clamped` to a report at once, and the same report back when there were
+  none — which is what a record whose every ranged value was already in range
+  hands back, so the common read allocates no new map at all.
+
+  THE COUNTING IS THE GENERATED DECODE'S, for every plan (docs/SPEC-TABLES.md
+  §3.4, and the fold this leg made). A compiled plan's ops hold a foreign
+  writer's values to this reader's bounds before the projection sees them, and
+  the IDENTITY plan — ONE copy run, carrying no `count`, `text` or `clamp` op at
+  all — carries none. The projection clamps and counts either way, which is why
+  there is one decode and not two, and this is where its number joins §4's six.
+  """
+  def clamped(report, 0), do: report
+  def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))
+
+  @doc """
+  Set `malformed` when the projection's damage flag rode true, and the same
+  report back when it did not — so a clean read allocates no new map.
+  """
+  def damaged(report, false), do: report
+  def damaged(report, true), do: %{report | malformed: true}
+
+  @doc """
+  ONE VALUE AGAINST ONE PAIR OF BOUNDS: `acc` and one more when the value lies
+  outside them, `acc` unchanged when it does not.
+
+  The accumulator leads so that a generated counting pass is a column of
+  `c = R.clamps(c, ...)` and nothing else — one shape the emitter has to know
+  the formatter's mind about, rather than a `+` chain that breaks differently at
+  every width.
+  """
+  def clamps(acc, v, lo, hi) when v < lo or v > hi, do: acc + 1
+  def clamps(acc, _v, _lo, _hi), do: acc
+
+  @doc """
+  The count moved by an ORDINAL past the last variant the reader declares: an
+  enum value, or a union tag, that names nothing lands None and counts one.
+  """
+  def past(acc, v, variants) when v > variants, do: acc + 1
+  def past(acc, _v, _variants), do: acc
+
+  @doc """
+  `fun.(element, acc)` over every element in order, the binary threaded through:
+  the one loop a writer appends its arrays with, so every element lands on
+  the same binary in place and no list of small binaries is built to flatten.
+  """
+  def each([], acc, _fun), do: acc
+  def each([e | rest], acc, fun), do: each(rest, fun.(e, acc), fun)
+
+  @doc """
+  The bytes of slack behind a text value, out to its declared bound, or
+  ArgumentError when the value is past it — the writer's contract, which this
+  port raises on for the packet port's own reason.
+  """
+  def text_slack(bytes, n) when is_binary(bytes) and byte_size(bytes) <= n,
+    do: n - byte_size(bytes)
+
+  def text_slack(bytes, n) when is_binary(bytes) do
+    raise ArgumentError, "value is #{byte_size(bytes)} bytes, past the declared bound of #{n}"
+  end
+
   # ---------------------------------------------------------------------------
   # THE HASH: fnv1a64 over the layout's bytes, exactly as written
   # ---------------------------------------------------------------------------
@@ -238,61 +299,38 @@ defmodule Bench.FixedRuntime do
     bits
   end
 
+  @doc """
+  A `string(N)`'s used bytes: well-formed UTF-8 with no zero among them, or
+  the field's declared default and `malformed`. An ABSENT optional does not
+  run the rule — the payload is unspecified and nobody wrote it (§3.4).
+  """
+  def text(used, default, m), do: text(used, default, m, true)
+
+  def text(used, default, m, present) do
+    if present and not text_ok?(1, used), do: {default, true}, else: {used, m}
+  end
+
+  @doc """
+  A `wstring(N)`'s used units: paired UTF-16 with no zero unit, or the
+  field's declared default and `malformed`. The same present-flag rule.
+  """
+  def wtext(used, default, m), do: wtext(used, default, m, true)
+
+  def wtext(used, default, m, present) do
+    if present and not text_ok?(2, used), do: {default, true}, else: {used, m}
+  end
+
   # ---------------------------------------------------------------------------
   # THE WRITE's ONE HELPER: a value's bytes onto the zeroed template
   # ---------------------------------------------------------------------------
 
   @doc """
-  `bytes` at the head of an `n`-byte field, the slack behind it ZERO.
-
-  THE TEMPLATE'S ZEROS ARE THE CONSTRUCTION'S. Where the C++ reference memcpy's
-  a constant template and then stores into it, an Elixir writer builds the
-  record in ONE binary construction whose slack segments are literal zeros —
-  the same bytes, one pass, and nothing to memset.
-
-  THE CHECK IS O(1) AND ALWAYS ON, which is the packet port's own stance: the
-  BEAM has no compile-out assert, so a writer's caller contract raises
-  ArgumentError here rather than being compiled away in release.
-  """
-  def fill(bytes, n) when is_binary(bytes) do
-    used = byte_size(bytes)
-
-    if used > n do
-      raise ArgumentError, "value is #{used} bytes, past the declared bound of #{n}"
-    end
-
-    <<bytes::binary, 0::size(n - used)-unit(8)>>
-  end
-
-  @doc """
-  An iodata run of elements padded out to `n` bytes, THE SLACK ZERO.
-
-  ONE RULE FOR EVERY KIND OF SLACK (docs/SPEC-TABLES.md §3.4): the bytes past a
-  counted array's live count, behind a union's narrower arm and past a text
-  field's used length are the template's zeros. This helper once took a FILLER
-  and the fixed emitter handed it the element's default image, on the reasoning
-  that the reference wrote all `Max` elements out of `Reset` storage. That
-  reasoning described a bug in the reference, not a rule — an unused slot
-  carrying a declared default is a value nobody wrote riding as if somebody had
-  — and the reference now writes the count and stops. There is no filler.
-  """
-  def pad(io, n) do
-    used = IO.iodata_length(io)
-
-    if used > n do
-      raise ArgumentError, "value is #{used} bytes, past the declared bound of #{n}"
-    end
-
-    [io, <<0::size(n - used)-unit(8)>>]
-  end
-
-  @doc """
   One record's body, DETACHED from the file it was read out of when `copy`.
 
-  THE FAST PATH HANDS BACK SUB-BINARIES, AND A SUB-BINARY KEEPS ITS WHOLE
-  PARENT ALIVE. A record whose plan is the identity plan needs no image built —
-  the body IS the image, which is a reference and not a copy, and that is where
-  this form's read speed comes from. The projection then binds each text field
+  THE READ HANDS BACK SUB-BINARIES, AND A SUB-BINARY KEEPS ITS WHOLE PARENT
+  ALIVE. A record whose plan is ONE run covering the whole image needs no image
+  built — the body IS the image, which is a reference and not a copy, and that
+  is where this form's read speed comes from. The projection then binds each text field
   as a sub-binary of THAT, so an eight-byte name lifted out of an eighty-kilobyte
   file is an eight-byte term that holds eighty kilobytes off the collector for
   as long as anything keeps it. Hold a few strings out of a big file and the
@@ -1319,37 +1357,6 @@ defmodule Bench.FixedRuntime do
     end
   end
 
-  # ---------------------------------------------------------------------------
-  # THE CONTENT RULE: what a string(N) and a wstring(N) are allowed to be
-  # ---------------------------------------------------------------------------
-  #
-  # A bytes(N) IS UNTOUCHED. It is bytes, and there is nothing for it to be
-  # ill-formed as.
-
-  defp text_ok?(1, used), do: String.valid?(used) and :binary.match(used, <<0>>) == :nomatch
-  defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)
-  defp text_ok?(_, _), do: true
-
-  # PAIRED UTF-16 WITH NO ZERO UNIT, read as the wire it came from: the units
-  # ride little-endian and land as a raw copy, so this walks them as they lie.
-  defp utf16_ok?(<<>>), do: true
-  defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false
-
-  defp utf16_ok?(<<u::little-unsigned-16, rest::binary>>) when u >= 0xD800 and u <= 0xDBFF do
-    case rest do
-      <<low::little-unsigned-16, more::binary>> when low >= 0xDC00 and low <= 0xDFFF ->
-        utf16_ok?(more)
-
-      # A HIGH SURROGATE WITH NOTHING BEHIND IT, or with something that is not a
-      # low surrogate, is half a character and not a character.
-      _ ->
-        false
-    end
-  end
-
-  defp utf16_ok?(<<u::little-unsigned-16, _::binary>>) when u >= 0xDC00 and u <= 0xDFFF, do: false
-  defp utf16_ok?(<<_::little-unsigned-16, rest::binary>>), do: utf16_ok?(rest)
-
   defp step([{:ordinal, src, dst, size, width, remap} | rest], body, writes, report) do
     # A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose enum
     # gained a variant IN THE MIDDLE is remapped here and never reinterpreted.
@@ -1406,6 +1413,59 @@ defmodule Bench.FixedRuntime do
   defp step([{:const, dst, size, value} | rest], body, writes, report) do
     step(rest, body, [{dst, <<value::little-unsigned-size(size)-unit(8)>>} | writes], report)
   end
+
+  # ---------------------------------------------------------------------------
+  # THE CONTENT RULE: what a string(N) and a wstring(N) are allowed to be
+  # ---------------------------------------------------------------------------
+  #
+  # A bytes(N) IS UNTOUCHED. It is bytes, and there is nothing for it to be
+  # ill-formed as. These sit AFTER every `step/4` clause so the compiler sees
+  # one function, not a helper splitting the clauses.
+  #
+  # UTF-8 IS ONE WALK, the same shape as the UTF-16 walk below: eight ASCII
+  # bytes per clause when they sit in 1..127, then four, then one, then a
+  # codepoint, and a zero is not a character. Hostile falls through. The
+  # previous check was String.valid?/1 (one codepoint per call) plus a second
+  # BIF for the NUL; this does both in one match.
+
+  defp text_ok?(1, <<>>), do: true
+
+  defp text_ok?(1, <<a, b, c, d, e, f, g, h, rest::binary>>)
+       when a >= 1 and a <= 127 and b >= 1 and b <= 127 and c >= 1 and c <= 127 and d >= 1 and
+              d <= 127 and e >= 1 and e <= 127 and f >= 1 and f <= 127 and g >= 1 and g <= 127 and
+              h >= 1 and h <= 127,
+       do: text_ok?(1, rest)
+
+  defp text_ok?(1, <<a, b, c, d, rest::binary>>)
+       when a >= 1 and a <= 127 and b >= 1 and b <= 127 and c >= 1 and c <= 127 and d >= 1 and
+              d <= 127,
+       do: text_ok?(1, rest)
+
+  defp text_ok?(1, <<c, rest::binary>>) when c >= 1 and c <= 127, do: text_ok?(1, rest)
+  defp text_ok?(1, <<c::utf8, rest::binary>>) when c > 0, do: text_ok?(1, rest)
+  defp text_ok?(1, _), do: false
+  defp text_ok?(2, used), do: rem(byte_size(used), 2) == 0 and utf16_ok?(used)
+  defp text_ok?(_, _), do: true
+
+  # PAIRED UTF-16 WITH NO ZERO UNIT, read as the wire it came from: the units
+  # ride little-endian and land as a raw copy, so this walks them as they lie.
+  defp utf16_ok?(<<>>), do: true
+  defp utf16_ok?(<<0::little-unsigned-16, _::binary>>), do: false
+
+  defp utf16_ok?(<<u::little-unsigned-16, rest::binary>>) when u >= 0xD800 and u <= 0xDBFF do
+    case rest do
+      <<low::little-unsigned-16, more::binary>> when low >= 0xDC00 and low <= 0xDFFF ->
+        utf16_ok?(more)
+
+      # A HIGH SURROGATE WITH NOTHING BEHIND IT, or with something that is not a
+      # low surrogate, is half a character and not a character.
+      _ ->
+        false
+    end
+  end
+
+  defp utf16_ok?(<<u::little-unsigned-16, _::binary>>) when u >= 0xDC00 and u <= 0xDFFF, do: false
+  defp utf16_ok?(<<_::little-unsigned-16, rest::binary>>), do: utf16_ok?(rest)
 
   defp leaf(body, src, size, true) do
     case body do
