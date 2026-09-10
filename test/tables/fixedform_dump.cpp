@@ -25,6 +25,7 @@
 #include "P3Table.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
+#include "FXWTable.h"
 
 static bool spill( const char * dir, const char * name, const std::vector<uint8_t> & data )
 {
@@ -237,11 +238,47 @@ static bool pack_file( const char * dir )
     return emit( dir, "pack.bin", v, tabledemo::PackConfigFixedMeasure, tabledemo::PackConfigFixedSave );
 }
 
+// ---- the WIDE TEXT unit (docs/SPEC-TABLES.md §3.4, kind 33) ----
+//
+// The wide flavour's ONLY oracle bytes. A length in CODE UNITS and 2N bytes
+// behind it, at the body's head and again at a NESTED offset, with a narrow
+// `string(8)` between them so a leg that counted bytes where it owed units
+// comes out wrong here and nowhere else has to catch it.
+static bool fxw_file( const char * dir )
+{
+    std::vector<tblfxw::FxWide> v( 2 );
+
+    tblfxw::FxWideReset( v[0] );
+    // seven BASIC-PLANE code units, one short of the bound
+    const char16_t hello[7] = { u'h', u'e', u'l', u'l', u'o', u' ', u'!' };
+    std::memcpy( v[0].caption, hello, sizeof( hello ) );
+    v[0].caption_length = 7;
+    std::strcpy( v[0].label, "narrow" );
+    v[0].label_length = 6;
+    const char16_t inner0[4] = { u'a', u'b', u'c', u'd' };
+    std::memcpy( v[0].inner.text, inner0, sizeof( inner0 ) );
+    v[0].inner.text_length = 4;
+    v[0].seq = 41;
+
+    tblfxw::FxWideReset( v[1] );
+    // AN ASTRAL PAIR AND THE TWO BASIC-PLANE ENDS OF THE RANGE: a surrogate
+    // pair is TWO code units and the length counts both, which is the number
+    // a leg using bytes gets wrong by a factor of two.
+    const char16_t astral[5] = { u'\uE000', 0xD83D, 0xDE00, u'\uFFFF', u'z' };
+    std::memcpy( v[1].caption, astral, sizeof( astral ) );
+    v[1].caption_length = 5;
+    v[1].label_length = 0; // empty, and its eight bytes are slack
+    v[1].inner.text_length = 0;
+    v[1].seq = 1000; // the declared max, so the clamp has no false case here
+
+    return emit( dir, "fxw.bin", v, tblfxw::FxWideFixedMeasure, tblfxw::FxWideFixedSave );
+}
+
 int main( int argc, char ** argv )
 {
     if ( argc != 2 ) { std::fprintf( stderr, "usage: %s <outdir>\n", argv[0] ); return 1; }
     const char * dir = argv[1];
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
-         !keyed_file( dir ) || !pack_file( dir ) ) { return 1; }
+         !keyed_file( dir ) || !pack_file( dir ) || !fxw_file( dir ) ) { return 1; }
     return 0;
 }

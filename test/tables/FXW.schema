@@ -1,0 +1,34 @@
+// FXW.schema — the FIXED FORM's WIDE TEXT (docs/SPEC-TABLES.md §3.4, kind 33).
+//
+// `wstring(N)` rides this form as a four-byte length in CODE UNITS and 2N
+// bytes behind it, and the plan runs it under the text op's WIDE flavour
+// rather than the UTF-8 one a `string(N)` takes. Every other file in the
+// fixed-form corpus is narrow, so without this one the wide flavour has NO
+// ORACLE BYTES ANYWHERE: a port's wide-text stores and loads would be read by
+// nothing but themselves, which is the one thing a byte oracle exists to stop.
+//
+// The narrow field beside it is deliberate. The two flavours differ by the
+// unit the length counts and by nothing else, so a record that carries both at
+// once is what catches a leg that used bytes where it owed code units.
+//
+// THIS FILE IS GENERATED FOR THE C++ REFERENCE AND FOR DART AND FOR NOBODY
+// ELSE. Kind 33 in a table closure is C, C++, C#, Dart and Go today, and
+// examples/ pins gate 1 for all nine targets — so the unit stays out of every
+// shared schema list and is wired into the fixed-form corpus and the Dart
+// fixed-form gate alone, exactly as examples-wide/ is.
+package tblfxw
+
+// A nested type the root reaches, so the wide flavour is proved at a NESTED
+// offset too and not only at the body's head.
+table FxCaption
+{
+    text wstring(4)
+}
+
+table FxWide
+{
+    caption wstring(8)
+    label   string(8)
+    inner   FxCaption
+    seq     uint32 = 1 | min = 0, max = 1000
+}

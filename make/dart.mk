@@ -245,7 +245,7 @@ build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart
 # ---------------------------------------------------------------------------
 #
 # THE BYTES ARE THE C++ REFERENCE'S, and that is the whole point of this gate.
-# The reference writes seven form-3 files — the six of
+# The reference writes eight form-3 files — the seven of
 # `make tables-fixedform-corpus` and the paired bench's sixty-four logical
 # records — and states the VALUES beside them, by hand in
 # test/tables/fixedform_dump.cpp and as a JSON oracle beside the bench corpus.
@@ -262,7 +262,8 @@ build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart
 build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema \
 		test/tables/FX1.schema test/tables/FX2.schema \
 		test/tables/V1.schema test/tables/V2.schema \
-		test/tables/P1.schema test/tables/P3.schema $(SCHEMAS_TABLES) make/dart.mk
+		test/tables/P1.schema test/tables/P3.schema test/tables/FXW.schema \
+		$(SCHEMAS_TABLES) make/dart.mk
 	@rm -rf build/dart-fixed && mkdir -p build/dart-fixed
 	./bin/schema generate --lang dart --out build/dart-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	./bin/schema generate --lang dart --out build/dart-fixed/fx1 test/tables/FX1.schema
@@ -272,6 +273,13 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	./bin/schema generate --lang dart --out build/dart-fixed/p1 test/tables/P1.schema
 	./bin/schema generate --lang dart --out build/dart-fixed/p3 test/tables/P3.schema
 	./bin/schema generate --lang dart --out build/dart-fixed/examples tables/examples
+	# THE WIDE TEXT UNIT (docs/SPEC-TABLES.md §3.4, kind 33): its own file and
+	# its own directory, because every SHARED schema list is pinned to targets
+	# that refuse kind 33 in a table closure. Dart carries it on FORM 3 and on
+	# no other form — the block and the cook refuse it by name — so this is the
+	# only gate it can ride in, and without it the wide flavour of the text op
+	# has no oracle bytes anywhere.
+	./bin/schema generate --lang dart --out build/dart-fixed/fxw test/tables/FXW.schema
 	@touch $@
 
 .PHONY: tables-dart-fixed-form
@@ -292,7 +300,7 @@ tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp bu
 # red against the reference's corpus. Without this the byte comparison could be
 # comparing a file with itself and nobody would know.
 .PHONY: tables-dart-fixed-form-negative-control
-tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp test/tables/FXW.schema
 	@rm -rf build/dart-fixed-nc && mkdir -p build/dart-fixed-nc
 	@sed 's|val + "." + name + "Length", "Endian.little"}, ";")|val + "." + name + "Length + 1", "Endian.little"}, ";") // SABOTAGED|' \
 		internal/codegen/darttable/fixeddart.go > build/dart-fixed-nc/fixeddart.go.txt
@@ -309,6 +317,7 @@ tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stam
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p1 test/tables/P1.schema
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p3 test/tables/P3.schema
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/examples tables/examples
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fxw test/tables/FXW.schema
 	@sed 's|../../build/dart-fixed/|$(CURDIR)/build/dart-fixed-nc/gen/|g' \
 		test/dart-tables/fixedform.dart > build/dart-fixed-nc/fixedform.dart
 	@if $(DART) build/dart-fixed-nc/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus \

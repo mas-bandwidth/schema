@@ -5682,11 +5682,22 @@ test: tables-fixedform
 # every port's oracle and none of theirs: a corpus one leg owns is a corpus the
 # next leg re-derives, and a golden a generator has to re-derive is not a
 # golden.
-build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp
+# THE WIDE-TEXT UNIT GETS ITS OWN GENERATION, for the reason examples-wide/
+# already has its own directory: kind 33 in a table closure is C, C++, C#, Dart
+# and Go today, and every SHARED schema list is pinned to targets that refuse
+# it. Naming the unit here rather than in tables_generate keeps it out of the
+# nine negative controls that regenerate that whole corpus.
+build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
+	@rm -rf build/tables-generated-fxw
+	@mkdir -p build/tables-generated-fxw
+	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
+	@touch $@
+
+build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -Ibuild/tables-generated/examples \
+	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump

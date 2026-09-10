@@ -2,8 +2,8 @@
 //
 // Four things are held here and the first two are the whole of the form:
 //
-//   1. THE BYTES ARE THE C++ REFERENCE'S. The reference writes seven form-3
-//      files — the six of `make tables-fixedform-corpus` and the paired
+//   1. THE BYTES ARE THE C++ REFERENCE'S. The reference writes eight form-3
+//      files — the seven of `make tables-fixedform-corpus` and the paired
 //      bench's own sixty-four logical records — and this leg reads each of
 //      them, and writes it back, and the bytes must be IDENTICAL. The LAYOUT
 //      and its fnv1a64 hash are checked against the same files, because two
@@ -55,6 +55,8 @@ import '../../build/dart-fixed/fx1/FX1Fixed.dart' as fx1;
 import '../../build/dart-fixed/fx1/Tblfx1Fixed.dart' as fx1home;
 import '../../build/dart-fixed/fx2/FX2Fixed.dart' as fx2;
 import '../../build/dart-fixed/fx2/Tblfx2Fixed.dart' as fx2home;
+import '../../build/dart-fixed/fxw/FXWFixed.dart' as fxw;
+import '../../build/dart-fixed/fxw/TblfxwFixed.dart' as fxwhome;
 import '../../build/dart-fixed/p1/P1Fixed.dart' as p1;
 import '../../build/dart-fixed/p1/Tblp1Fixed.dart' as p1home;
 import '../../build/dart-fixed/p3/P3Fixed.dart' as p3;
@@ -99,6 +101,12 @@ void sameBytes(Uint8List got, Uint8List want, String what) {
 }
 
 String text(Uint8List buffer, int length) =>
+    String.fromCharCodes(buffer.sublist(0, length));
+
+// WIDE TEXT'S OWN READER: the buffer is UTF-16 CODE UNITS and the length
+// counts units, not bytes — which is the one thing that separates the text
+// op's two flavours (docs/SPEC-TABLES.md §3.4).
+String wide(Uint16List buffer, int length) =>
     String.fromCharCodes(buffer.sublist(0, length));
 
 // A CLEAN READ MOVES NO COUNTER. §4's six events are what a read reports, and
@@ -289,6 +297,64 @@ void corpusFiles(String dir) {
     final out = Uint8List(p3.chainFixedMeasure(n));
     check(p3.chainFixedSave(values, n, out) == out.length, 'p3: save');
     sameBytes(out, file, 'p3');
+  }
+
+  // ---- fxw.bin: WIDE TEXT (kind 33), the only oracle bytes the wide
+  //      flavour of the text op has ----
+  {
+    final file = read('fxw.bin');
+    framing(file, fxw.fxWideFixedLayout, fxw.fxWideFixedHash, 'fxw');
+    final values = List.generate(4, (_) => fxwhome.FxWide());
+    final report = fxwhome.TableFixedReport();
+    final n = fxw.fxWideFixedLoad(
+      values,
+      4,
+      file,
+      file.length,
+      fxw.fxWideFixedNewPlan(),
+      report,
+    );
+    check(n == 2, 'fxw: two records read (got $n)');
+    quiet(report, 'fxw');
+
+    // A WIDE LENGTH IS IN CODE UNITS AND THE PAYLOAD IS TWO BYTES EACH (§3.4).
+    // Seven units, one short of the bound.
+    check(values[0].captionLength == 7, 'fxw[0].caption_length is in units');
+    check(
+      wide(values[0].caption, values[0].captionLength) == 'hello !',
+      'fxw[0].caption',
+    );
+    // and the narrow field beside it, whose length is in BYTES
+    check(values[0].labelLength == 6, 'fxw[0].label_length is in bytes');
+    check(
+      text(values[0].label, values[0].labelLength) == 'narrow',
+      'fxw[0].label',
+    );
+    check(values[0].inner.textLength == 4, 'fxw[0].inner.text_length');
+    check(
+      wide(values[0].inner.text, values[0].inner.textLength) == 'abcd',
+      'fxw[0].inner.text — the wide flavour at a NESTED offset',
+    );
+    check(values[0].seq == 41, 'fxw[0].seq');
+
+    // AN ASTRAL PAIR IS TWO CODE UNITS AND THE LENGTH COUNTS BOTH, which is
+    // the number a leg counting bytes gets wrong by a factor of two.
+    check(
+      values[1].captionLength == 5,
+      'fxw[1].caption_length counts the pair',
+    );
+    check(values[1].caption[0] == 0xE000, 'fxw[1].caption[0]');
+    check(values[1].caption[1] == 0xD83D, 'fxw[1].caption[1] — the HIGH half');
+    check(values[1].caption[2] == 0xDE00, 'fxw[1].caption[2] — the LOW half');
+    check(values[1].caption[3] == 0xFFFF, 'fxw[1].caption[3]');
+    check(values[1].caption[4] == 0x7A, 'fxw[1].caption[4]');
+    check(values[1].labelLength == 0, 'fxw[1].label is empty');
+    check(values[1].inner.textLength == 0, 'fxw[1].inner.text is empty');
+    check(values[1].seq == 1000, 'fxw[1].seq is the declared max');
+
+    final out = Uint8List(fxw.fxWideFixedMeasure(n));
+    check(fxw.fxWideFixedSave(values, n, out) == out.length, 'fxw: save');
+    sameBytes(out, file, 'fxw');
   }
 
   // ---- keyed.bin: keyed arrays NESTING keyed arrays, and an optional ----
@@ -1524,7 +1590,7 @@ void main(List<String> args) {
   }
   print(
     'tables Dart fixed form: the LAYOUT and its hash are the C++ reference\'s byte for '
-    'byte, all seven of its files read to the values it states and write back IDENTICAL, '
+    'byte, all eight of its files read to the values it states and write back IDENTICAL, '
     'the versioning conformance lands through a plan compiled from the other side\'s '
     'layout, and every refusal is by name',
   );
