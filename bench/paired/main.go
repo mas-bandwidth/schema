@@ -25,8 +25,8 @@ import (
 	"time"
 )
 
-var languages = []string{"cpp", "c", "go", "cs"}
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#"}
+var languages = []string{"cpp", "c", "go", "cs", "dart"}
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "dart": "Dart"}
 
 const header = "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline"
 
@@ -294,6 +294,13 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+		case "dart":
+			if e := run("dart", "compile", "exe", "bench/tables/dart/table_main.dart", "-o", binary("table", lang)); e != nil {
+				return e
+			}
+			if e := run("dart", "compile", "exe", "bench/dart/main.dart", "-o", binary("packet", lang)); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -304,7 +311,7 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "dart": {"dart", "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
@@ -523,6 +530,9 @@ func expectedChecks(lang, wire string) string {
 	}
 	if lang == "go" {
 		return "always"
+	}
+	if lang == "dart" {
+		return "contract"
 	}
 	return "removed"
 }
@@ -828,7 +838,7 @@ func main() {
 	seen := map[string]bool{}
 	for _, lang := range langs {
 		if !contains(languages, lang) || seen[lang] {
-			fail(errors.New("langs must be unique c,cpp,go,cs names"))
+			fail(errors.New("langs must be unique c,cpp,go,cs,dart names"))
 		}
 		seen[lang] = true
 	}
@@ -846,8 +856,11 @@ func main() {
 	}
 	fast := fastConfig{Rounds: *fastRounds, PacketIterations: *packetIters, TableIterations: *tableIters, Timeout: *fastTimeout, Noise: *noise}
 	if *mode == "fast" {
-		if len(langs) != 4 {
-			fail(errors.New("fast mode requires all four languages"))
+		if *out == "" {
+			*out = filepath.Join("build", "paired-fast", time.Now().Format("20060102-150405"))
+		}
+		if len(langs) == 0 {
+			fail(errors.New("fast mode requires at least one language"))
 		}
 		if e := fast.validate(); e != nil {
 			fail(e)
