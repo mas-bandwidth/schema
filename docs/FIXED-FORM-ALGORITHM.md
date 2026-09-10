@@ -344,6 +344,16 @@ fixed field's `F` moved under one kind, a referent that cannot stand in. It is o
 
 ## 7. What a port takes, and what it must not
 
+**The CONTRACT must not drift; the SHAPE may.** The contract is everything this page states as a byte, a
+counter, a refusal name or an invariant, and the one-path promise of §4.2: two conforming ports write the same
+bytes for the same values and land the same values and counters for the same bytes. The shape is how a port
+gets there: one copy into a record image and a straight-line scatter, or coalesced runs into storage; the
+clamps inline or after; how a plan is cached. Every good idea the nine ports found tonight was shape drift
+(Rust's one-copy identity, Dart's separate flavour lane, Java's scatter) and every bug was contract drift
+(a byte copied into a `bool`, residue in slack, one lane meaning two things, a private layout walk). So:
+implement the reader the way your language is good at, and let the oracle decide.
+
+
 **Take the SHAPE from your own PACKET codec**: a straight line of stores by field name into a buffer the caller
 owns, a reader that is the writer mirrored, one ranged load per value, and the language's own allocation and
 safety policy. **Take NOTHING from form `1`** — no per-field reference, no kind byte, no length, no terminator, no
