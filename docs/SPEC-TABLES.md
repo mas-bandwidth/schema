@@ -245,24 +245,29 @@ C-like dialect of `serialize.h`, with library calls behind hooks (§13.9).
 C++ and C carry both storage classes. C# carries both classes and the current
 id-table file and bitpacked message forms, JSON, runtime cook writing, block
 construction, native regions, builders, retain-unknown and UnitView. Go carries
-these surfaces too. Rust, JavaScript, Elixir and Java carry no table
-wire: each emits the block and cook read halves only (schema#518, #516,
-#515 and #517 bring the id-table wire to those ports). **DART carries the FIXED
-form (§3.4) and nothing else**: form 3 is that port's first table wire — the
-write template, the plan-driven read and the LAYOUT — and it has no form 1 at
-all until schema#514 brings one. Its fixed form carries the fixed-point and
-128-bit kinds §15 refuses that port's two ACCELERATORS, because §3.4's
-constant-size table fixes them; a unit declaring one gets the fixed form and no
-block or cook read half, and the generated library says so by name. Every
-generated language has a table backend; refusal is scoped to a construct, never
-the table declaration.
+these surfaces too. Rust, Elixir and Java carry no table
+wire: each emits the block and cook read halves only (schema#518, #515
+and #517 bring the id-table wire to those ports). **Dart and JavaScript carry the
+FIXED form (§3.4) and nothing else**: form 3 is each port's first table wire —
+the write template, the plan-driven read and the LAYOUT / vocabulary block — and
+neither has form 1 at all until schema#514 and #516 bring one. Their fixed forms carry the
+fixed-point and 128-bit kinds §15 refuses their ACCELERATORS, because
+§3.4's constant-size table fixes them; a unit declaring one gets the fixed form and no
+block or cook read half in Dart, and JavaScript carries the OPTIONAL wrapper —
+kind 35, the present byte in front of a payload that rides whole — whose flag
+lands in a PRESENCE MEMBER on the table's own storage class. That class is the
+table backend's own: `?T` is a table construct, so an optional never appears in
+a `type`, and the packet emitter — which emits a class for every `type` and
+none for a `table` — neither declares the member nor reads it. Every generated
+language has a table backend; refusal is scoped to a construct, never the table declaration.
 
 **WIRE FORM STATUS.** Section 3's id-table form is carried by the C++
 reference, the compiler engine (`internal/tablewire`), C, C# and Go. Section
-3.4's FIXED form is carried by the C++ reference and by DART, whose layout, hash
-and record bytes are held against the reference's own over seven of its files —
-the six of `make tables-fixedform-corpus` and the paired bench's sixty-four
-records (`tables-dart-fixed-form`). The C codec uses
+3.4's FIXED form is carried by the C++ reference, by Dart, and by JavaScript, whose
+layout/block, hash and record bytes are held against the reference's own over the
+paired bench's corpus, the seven reference files (`tables-dart-fixed-form`), and over an
+OPTIONAL corpus the reference writes at every place a present byte can ride —
+a nested table, a scalar, an enum, and one inside a nested body (`tables-js-fixed-form`). The C codec uses
 full identities, canonical LEB128, first-use references, arm-kind framing,
 flat node records and verdict-bearing reports. Graph JSON, pointer arrays,
 byte/string blobs, wide scalars, fixed-point values, defaults and aliases ride
@@ -11185,9 +11190,24 @@ in build version (§20.5).
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
   FixedClamp  FixedClampBody
+  FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   ```
 
-  The `Fixed` row is §3.4's, and it is claimed on this list's own rule:
+  The last six of the `Fixed` rows are the READING TIER's, and they are the
+  price a language with no struct layout pays for the same form. Where the
+  reference lands a plan's bytes at `offsetof( T, member )`, a reading tier
+  lands them in a canonical body image and then PROJECTS that image into the
+  language's own objects — `FixedDecode` — because there a struct is not its
+  bytes. `FixedPrefill`, `FixedIdentity` and `FixedNewPlan` are the same story
+  told about storage: the declared defaults, the one-entry identity plan and
+  the plan constructor are module data where the reference has a type. And
+  `FixedHashLo` / `FixedHashHi` are `FixedHash` in two uint32 lanes, claimed
+  BESIDE it rather than instead of it, because a sixty-four-bit constant
+  becomes two wherever a per-record compare through a wide integer would be an
+  allocation per record. All six are claimed on this list's own rule, like
+  every row above them.
+
+  The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
   carries it, and a table gains and loses the form as its closure gains and
   loses a pointer — so a name that is free today must not become a collision

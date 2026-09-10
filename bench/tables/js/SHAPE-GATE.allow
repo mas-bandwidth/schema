@@ -1,0 +1,5 @@
+# SHAPE-GATE.allow — this leg's exemptions from the shape gate (bench/tools/shapegate).
+# The format, the rules and the shared tooling's entries: bench/SHAPE-GATE.allow.
+# Paths are repository-relative.
+
+names bench/tables/js/table_main.mjs 3 shape-blind leg: `FixedTable` at the FIXED form's storage declaration and its two generated import sites (docs/SPEC-TABLES.md §3.4); no field, no pinned value, no wire size (callsite)
