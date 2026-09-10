@@ -1,20 +1,20 @@
-schema-lock 4
+schema-lock 5
 package blockdemo
 
-fixed table PaddedFrame layout=0x3ad30b4696945e69
+fixed table PaddedFrame layout=0xb3bbce6e031522fd
     field marker id=0xeddcb72b15486e77 kind=6 width=1 default=0
     field stamp id=0xee7ba9ad45c64144 kind=9 width=8 default=0
-    field rows id=0xa3a7061ff10a8138 kind=14 width=4100 default=born:0 held=PaddedRow@0x9020be3c7b98758c elem=13/64
+    field rows id=0xa3a7061ff10a8138 kind=14 width=4100 default=born:0 held=PaddedRow@0xf4bbd54ffd1ff205 elem=13/64
     field blob id=0xc573b39bc29148ca kind=14 width=16 default=bytes: elem=6/1
 
-fixed table PaddedRow layout=0x9020be3c7b98758c
+fixed table PaddedRow layout=0xf4bbd54ffd1ff205
     field tag id=0x56d7ab194448a4f3 kind=6 width=1 default=0
     field value id=0x7ce4fd9430e80cea kind=11 width=8 default=0.0
     field flag id=0xd5f2d079088c0b17 kind=1 width=1 default=false
     field id id=0x08b72e07b55c3ac0 kind=8 width=4 default=0
     field label id=0x39f7fcec8fcb623d kind=12 width=20 default=bytes:
     field slots id=0xe68c2e6bb1ee5646 kind=14 width=8 default=born:0 elem=7/2
-    field teams id=0xbaaeb048a5a8fa6d kind=16 width=4 default=born:0
+    field teams id=0xbaaeb048a5a8fa6d kind=16 width=4 default=born:0 elem=6/1 key=Team@0x8eb91b0f4cfa397d
     field counter id=0x77976c7416517c63 kind=4 width=5 default=0 optional
 
 fixed table RenderCamera layout=0xbc6d7a94c6456443

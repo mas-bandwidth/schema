@@ -3084,7 +3084,11 @@ entry per field carrying
   flags or union's values hash). Kind 13 (nested record), kind 15 (union),
   kind 7 (enum) and kind 9 (flags) all carry it;
 - an **array**'s element kind and width, as `elem=4/4`, and `held=` beside it
-  when the element is a named type;
+  when the element is a named type — a kind-16 ENUM-KEYED array carries both
+  the same way;
+- which enum a **keyed array** is **keyed by**, as `key=Hull@0x…` — the enum's
+  wire name and its values hash. The key's variants ARE the slots, in declared
+  order, so the list is what says which slot a stored value was written into;
 
 and the hash of that sequence. Then, because a fixed record is MADE OF the
 types its fields name, it records **every type those tables reach** in a block
@@ -3112,7 +3116,7 @@ fixed table ShipConfig
 ```
 
 ```
-schema-lock 4
+schema-lock 5
 package fleet
 
 fixed table ShipConfig layout=0x7047bca71a5890be
@@ -3329,8 +3333,8 @@ at all.
 A lock written under an OLDER RENDERING VERSION is the one file this command
 will not repair. The version is the compiler's own, the file holds nothing a
 hand could carry forward, and unlike a baseline there is no history to salvage
-— so the refusal says the remedy that works: *"this lock is rendering version 3
-and this compiler writes version 4 — the rendering version is the compiler's
+— so the refusal says the remedy that works: *"this lock is rendering version 4
+and this compiler writes version 5 — the rendering version is the compiler's
 own and this file holds nothing a hand can carry forward: delete it and write
 it again with `schema lock`"*.
 
@@ -3359,9 +3363,11 @@ integer range, a moved resolution, a moved fixed-point scale at the same width,
 a `?` turned on, a `?` turned off, a kind change inside a nested `type`, a
 nested slot pointed at a different type, an optional nested slot the same way,
 a union arm's payload types swapped with the names kept, an array's element
-type, an enum slot pointed at a different type, a flags slot the same way,
-an array of enums the same way, and a reordered, renamed or removed enum variant, `flags` variant or
-union arm are each refused on the fixed half with the line named; each of them on the
+type, an enum slot pointed at a different type, a flags slot the same way, an
+array of enums the same way, a keyed array pointed at a different key enum, a
+keyed array's element respelled at the same width, and a reordered, renamed or
+removed enum variant, `flags` variant or union arm are each refused on the
+fixed half with the line named; each of them on the
 VARIABLE-LENGTH half passes in silence and moves no byte of the file, because a
 `table` with a pointer in it rides the id-table wire where those edits are what
 the wire is FOR (§4); and `schema lock` refuses every one of them with the same

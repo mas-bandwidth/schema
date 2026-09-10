@@ -1,7 +1,7 @@
-schema-lock 4
+schema-lock 5
 package scalardemo
 
-fixed table SimState layout=0x8ed3667ea95da031
+fixed table SimState layout=0x9ae957a466e9876a
     field tilt id=0x1e5088ef2e9bafc6 kind=20 width=1 default=0 min=-8 max=7 frac=4
     field angle id=0x401ab8cd06158638 kind=22 width=4 default=0 min=-180 max=180 frac=16
     field position id=0x4cbf3a26fca1d74a kind=23 width=8 default=0 min=-30000 max=30000 frac=16
@@ -18,7 +18,7 @@ fixed table SimState layout=0x8ed3667ea95da031
     field scale id=0x6aacb9fbb71a1d91 kind=22 width=4 default=65536 min=-8 max=8 frac=16
     field samples id=0xe3b1ca6a3b48dddc kind=14 width=12 default=born:0 min=-8 max=8 frac=16 elem=22/4
     field weights id=0xb1494b6ef08a411e kind=14 width=12 default=born:0 min=0 max=100 frac=8 elem=26/2
-    field axes id=0x32969e840d9c67b8 kind=16 width=24 default=born:0 min=-100 max=100 frac=32
+    field axes id=0x32969e840d9c67b8 kind=16 width=24 default=born:0 min=-100 max=100 frac=32 elem=23/8 key=Axis@0x795c3f7739e9c073
     field seeds id=0x5af1ac301b4ae16d kind=14 width=36 default=born:0 elem=19/16
     field pose id=0x8c2fd80da8957064 kind=13 width=24 default=zero held=Pose@0x650bf5ab768f3a23
     field spawn id=0x4328f78ab20e1f98 kind=13 width=25 default=zero held=Pose@0x650bf5ab768f3a23 optional

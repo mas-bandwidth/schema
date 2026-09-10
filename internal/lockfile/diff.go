@@ -127,7 +127,7 @@ func gone(lk *Table) error {
 // CHANGE BEST: which field is at this offset; then the `?`, which is the exact
 // account of a move the width would report vaguely; then the width, the fact
 // that slides every field after it; then the kind, the held type, the array
-// element, the range and the default — the facts that move no byte and change
+// element, the enum a keyed array is keyed by, the range and the default — the facts that move no byte and change
 // what the bytes say.
 func diffTable(lk, lv *Table, policy Policy) error {
 	for i, want := range lk.Entries {
@@ -160,6 +160,10 @@ func diffTable(lk, lv *Table, policy Policy) error {
 		if want.ElemKind != got.ElemKind || want.ElemWidth != got.ElemWidth {
 			return fmt.Errorf("%s, holds %s elements in the lock and %s elements in the declaration — a field already in the lock keeps its element type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
 				where, elemWord(want.ElemKind, want.ElemWidth), elemWord(got.ElemKind, got.ElemWidth))
+		}
+		if want.KeyName != got.KeyName {
+			return fmt.Errorf("%s, is keyed by %s in the lock and %s in the declaration — a field already in the lock keeps the enum it is keyed by: the key's variants ARE the slots, in declared order, so every record already written put its values in the slots the old list numbered (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+				where, heldName(want.KeyName), heldName(got.KeyName))
 		}
 		if !got.sameRange(want) {
 			return fmt.Errorf("%s, is %s in the lock and %s in the declaration — a field already in the lock keeps its range: the bounds and the resolution are the scale a stored value is read back at, so moving them reads every record already written as a different number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",

@@ -31,8 +31,9 @@
 //   - one entry per field, in DECLARED ORDER, carrying the field's wire id,
 //     its kind, its WIDTH in the record, its DEFAULT declared or implicit, its
 //     declared RANGE and resolution, its `?` and its `deprecated` marker,
-//     which named type a slot holds (name and that type's layout hash), and
-//     an array's element kind and width;
+//     which named type a slot holds (name and that type's layout hash), an
+//     array's element kind and width, and the enum an enum-keyed array is
+//     keyed by;
 //   - one block per TYPE the fixed tables reach — a nested `type` record, an
 //     `enum`, a `flags` mask, a `union` — because a fixed record is made of
 //     those and a change inside one moves the root's bytes without moving one
@@ -83,7 +84,11 @@ import (
 // same fact kind 13/15 already carried; an array of enum or flags carries
 // held= beside elem=. v3 locks are deleted and rewritten, the same sentence
 // v1 took.
-const Version = 4
+// 5 finishes that sweep at kind 16: an ENUM-KEYED array records the enum it
+// is keyed by (`key=Hull@0x...`) and its element beside it (`elem=4/4`), the
+// two facts every other array already carried. v4 locks are deleted and
+// rewritten, the same sentence v1 took.
+const Version = 5
 
 // FileName is the lock's name beside the unit's schema files. Unlike the
 // tables baseline, its presence is not what turns the check on for a unit
@@ -198,11 +203,19 @@ type Entry struct {
 	HeldName string
 	HeldHash uint64
 
-	// ElemKind and ElemWidth are a kind-14 (array) slot's element: the
-	// element's table-wire kind and its width in bytes, spelled `elem=4/4`.
-	// Zero on every other kind.
+	// ElemKind and ElemWidth are a kind-14 (array) or kind-16 (enum-keyed
+	// array) slot's element: the element's table-wire kind and its width in
+	// bytes, spelled `elem=4/4`. Zero on every other kind.
 	ElemKind  int
 	ElemWidth int64
+
+	// KeyName and KeyHash are the enum a kind-16 slot is KEYED BY — the
+	// enum's wire name and its values hash, spelled `key=Hull@0x...`. The
+	// key's variants ARE the slots, in declared order, so the list is what
+	// says which slot a stored value was written into. Empty on every other
+	// kind.
+	KeyName string
+	KeyHash uint64
 }
 
 // A ValueList is one enum, flags mask or union a fixed table reaches: its
@@ -448,15 +461,17 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 		if fl := layout.FieldByName(f.Name); fl != nil {
 			e.Width = fl.Size
 		}
-		switch e.Kind {
-		case ir.TableKindTable, ir.TableKindUnion:
-			e.HeldName, e.HeldHash = r.held(f)
-		case ir.TableKindArray:
+		// held= is taken for EVERY kind, so a named type in a slot is never
+		// silent for want of an arm here; held() is what knows which kinds
+		// name one.
+		e.HeldName, e.HeldHash = r.held(f)
+		if e.Kind == ir.TableKindArray || e.Kind == ir.TableKindKeyed {
 			e.ElemKind = ir.TableElemKind(f)
 			e.ElemWidth = elemSize(r.u, f)
-			e.HeldName, e.HeldHash = r.held(f)
-		default:
-			e.HeldName, e.HeldHash = r.held(f)
+		}
+		if f.KeyEnumRef != nil {
+			v := r.enumList(f.KeyEnumRef)
+			e.KeyName, e.KeyHash = v.Name, v.Hash
 		}
 		t.Entries = append(t.Entries, e)
 	}
@@ -735,6 +750,9 @@ func (e Entry) line() string {
 	if e.ElemKind != 0 || e.ElemWidth != 0 {
 		s += fmt.Sprintf(" elem=%d/%d", e.ElemKind, e.ElemWidth)
 	}
+	if e.KeyName != "" {
+		s += " key=" + heldText(e.KeyName, e.KeyHash)
+	}
 	if e.Optional {
 		s += " optional"
 	}
@@ -928,7 +946,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 
 func parseEntry(fields []string) (Entry, error) {
 	if len(fields) < 6 {
-		return Entry{}, fmt.Errorf("a field line is `field <name> id=0x... kind=N width=N default=V [min=V max=V] [res=V] [frac=N] [held=Name@0x...] [elem=K/W] [optional] [deprecated]`")
+		return Entry{}, fmt.Errorf("a field line is `field <name> id=0x... kind=N width=N default=V [min=V max=V] [res=V] [frac=N] [held=Name@0x...] [elem=K/W] [key=Name@0x...] [optional] [deprecated]`")
 	}
 	e := Entry{Name: fields[1], Frac: -1}
 	for _, tok := range fields[2:] {
@@ -973,11 +991,17 @@ func parseEntry(fields []string) (Entry, error) {
 			}
 			e.Frac = n
 		case key == "held":
-			name, hash, err := parseHeld(val)
+			name, hash, err := parseHeld("held", val)
 			if err != nil {
 				return Entry{}, err
 			}
 			e.HeldName, e.HeldHash = name, hash
+		case key == "key":
+			name, hash, err := parseHeld("key", val)
+			if err != nil {
+				return Entry{}, err
+			}
+			e.KeyName, e.KeyHash = name, hash
 		case key == "elem":
 			ks, ws, ok := strings.Cut(val, "/")
 			if !ok {
@@ -1011,14 +1035,16 @@ func parseHex(tok, key string) (uint64, error) {
 	return v, nil
 }
 
-func parseHeld(val string) (string, uint64, error) {
+// parseHeld reads the `Name@0xhash` pair both held= and key= are spelled as,
+// and names the one it was given in the refusal.
+func parseHeld(key, val string) (string, uint64, error) {
 	name, rest, ok := strings.Cut(val, "@")
 	if !ok || name == "" {
-		return "", 0, fmt.Errorf("held=%q is not Name@0x plus a hash", val)
+		return "", 0, fmt.Errorf("%s=%q is not Name@0x plus a hash", key, val)
 	}
 	h, err := strconv.ParseUint(strings.TrimPrefix(rest, "0x"), 16, 64)
 	if err != nil {
-		return "", 0, fmt.Errorf("held=%q is not Name@0x plus a hash", val)
+		return "", 0, fmt.Errorf("%s=%q is not Name@0x plus a hash", key, val)
 	}
 	return name, h, nil
 }

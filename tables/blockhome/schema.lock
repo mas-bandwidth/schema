@@ -1,4 +1,4 @@
-schema-lock 4
+schema-lock 5
 package blockhome
 
 fixed table PartFrame layout=0x01a3a6535b4f1d64

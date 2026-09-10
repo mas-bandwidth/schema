@@ -1,4 +1,4 @@
-schema-lock 4
+schema-lock 5
 package messagedemo
 
 fixed table Edit layout=0xb3ec139d21d17c9a

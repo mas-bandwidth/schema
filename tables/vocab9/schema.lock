@@ -1,4 +1,4 @@
-schema-lock 4
+schema-lock 5
 package vocab9demo
 
 fixed table Wide00 layout=0xb94cf83e0cd8b930

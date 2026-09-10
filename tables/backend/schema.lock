@@ -1,4 +1,4 @@
-schema-lock 4
+schema-lock 5
 package backenddemo
 
 fixed table Envelope layout=0x077ac066017f41c9

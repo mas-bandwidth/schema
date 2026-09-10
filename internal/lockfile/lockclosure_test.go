@@ -5,15 +5,17 @@
 // Order and width were the whole of the old file, and they are not the whole
 // of what a reader stands on. This file is the rest of it — the default, the
 // range, the fixed-point scale, the `?`, which type a nested slot holds, which
-// enum or flags type a slot holds, an array's element, a union arm's payload,
-// and every enum, flags mask, union and nested record a fixed table reaches —
-// and every case is measured three ways:
+// enum or flags type a slot holds, an array's element, the enum a keyed array
+// is keyed by, a union arm's payload, and every enum, flags mask, union and
+// nested record a fixed table reaches — and every case is measured three ways:
 // the edit is REFUSED on the fixed table, the SAME edit on a plain
 // variable-length `table` is not the lock's business, and `schema lock` will
 // not write the break either.
 package lockfile_test
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +67,39 @@ enum Stow
     Liquid
 }
 
+// Bay keys a slot array and Deck is what it is repointed at; Carton and Rack
+// are their twins on Bag's half. No other row edits their variants, so no
+// other row's edit moves the width of the slot array they size — and both
+// halves' pairs sit in Manifest and Invoice, so a repointed key is the ONE
+// thing the swap changes and not a type leaving the closure as well.
+enum Bay
+{
+    Fore
+    Mid
+    Aft
+}
+
+enum Deck
+{
+    Upper
+    Lower
+    Hold
+}
+
+enum Carton
+{
+    Small
+    Medium
+    Large
+}
+
+enum Rack
+{
+    Low
+    High
+    Top
+}
+
 flags Honors { Medal, Star }
 
 flags Tackle { Hook, Line }
@@ -75,6 +110,8 @@ type Manifest
     rank   Rank
     kit    Perks
     medal  Honors
+    bay    Bay
+    deck   Deck
 }
 
 type Invoice
@@ -83,6 +120,8 @@ type Invoice
     stow   Stow
     kit    Rigging
     medal  Tackle
+    carton Carton
+    rack   Rack
 }
 
 type Buff
@@ -130,6 +169,7 @@ table Config
     lanes     [4]int32
     manifest  Manifest
     ranks     [4]Hull
+    slots     [Bay]int32
 }
 
 table Bag
@@ -145,6 +185,7 @@ table Bag
     lanes   [4]int32
     invoice Invoice
     holds   [4]Cargo
+    bins    [Carton]int32
     tail    *Bag
 }
 `
@@ -184,8 +225,8 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 	lk := lockfile.Render(load(t, paths))
 	text := lk.Text()
 
-	if lk.Version != 4 {
-		t.Errorf("the widened rendering is version 4, got %d", lk.Version)
+	if lk.Version != 5 {
+		t.Errorf("the widened rendering is version 5, got %d", lk.Version)
 	}
 	for _, want := range []string{
 		"fixed table Config layout=0x",
@@ -215,6 +256,8 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 		"elem=4/4",                             // kind 14 names its element
 		"held=Hull@",                           // hull, Manifest.kind, ranks
 		"elem=7/1",                             // an array of enums
+		"elem=4/4 key=Bay@",                    // a keyed array's element and its key
+		"enum Bay values=0x",                   // a key is reached like anything else
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the lock must carry %q:\n%s", want, text)
@@ -222,7 +265,7 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 	}
 	for _, absent := range []string{
 		"Bag", "Ballast", "Trim", "Cargo", "Rigging", "Stowage",
-		"Invoice", "Stow", "Tackle",
+		"Invoice", "Stow", "Tackle", "Carton", "Rack",
 	} {
 		if strings.Contains(text, absent) {
 			t.Errorf("a VARIABLE-LENGTH table and what only it reaches are not in the lock, found %q:\n%s", absent, text)
@@ -404,6 +447,27 @@ var closureBreaks = []struct {
 		want: []string{"fixed table Config", "entry 11, field ranks",
 			"held Hull in the lock and Rank in the declaration",
 			"keeps the type it holds",
+			"deprecate this field and append a new one"},
+	},
+	// kind 16 is an array too, and its key is a fact of its own: Hull and
+	// Rank have the same number of variants, so the slot is the same width
+	// and every other line of the entry is unmoved.
+	{
+		name:      "an enum-keyed array keyed by a different enum",
+		fixedFrom: "    slots     [Bay]int32\n", fixed: "    slots     [Deck]int32\n",
+		varFrom: "    bins    [Carton]int32\n", varTo: "    bins    [Rack]int32\n",
+		want: []string{"fixed table Config", "entry 12, field slots",
+			"is keyed by Bay in the lock and Deck in the declaration",
+			"keeps the enum it is keyed by",
+			"deprecate this field and append a new one"},
+	},
+	{
+		name:      "an enum-keyed array's element respelled at the same width",
+		fixedFrom: "    slots     [Bay]int32\n", fixed: "    slots     [Bay]float32\n",
+		varFrom: "    bins    [Carton]int32\n", varTo: "    bins    [Carton]float32\n",
+		want: []string{"fixed table Config", "entry 12, field slots",
+			"holds int32 elements in the lock and float32 elements in the declaration",
+			"keeps its element type",
 			"deprecate this field and append a new one"},
 	},
 }
@@ -700,7 +764,7 @@ func TestALockFromAnOlderRenderingSaysWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	refuses(t, lockfile.Check(load(t, paths), paths),
-		"rendering version 1 and this compiler writes version 4",
+		"rendering version 1 and this compiler writes version 5",
 		"delete it and write it again with `schema lock`")
 	_, rewrote, err := lockfile.Update(load(t, paths), paths)
 	if err == nil || rewrote {
@@ -715,6 +779,60 @@ func TestALockFromAnOlderRenderingSaysWhatToDo(t *testing.T) {
 	}
 	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
 		t.Fatalf("the remedy works: rewrote=%v err=%v", rewrote, err)
+	}
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Errorf("the written lock checks clean: %v", errs)
+	}
+}
+
+// TestALockFromTheRenderingJustBeforeThisOneSaysTheSameThing is the case a
+// person actually meets: not a two-line stub, but a WHOLE well-formed lock
+// this compiler wrote one version ago. The version sits on the first line and
+// is read before any of the body, so a file that parses perfectly still gets
+// the one remedy that works — and `schema lock`, the command that remedy names,
+// must not send the user around a loop by refusing to write it either.
+func TestALockFromTheRenderingJustBeforeThisOneSaysTheSameThing(t *testing.T) {
+	dir, paths := fixture(t, closureBase)
+	path := filepath.Join(dir, lockfile.FileName)
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("lock the unit first: rewrote=%v err=%v", rewrote, err)
+	}
+	current, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := fmt.Sprintf("schema-lock %d\n", lockfile.Version)
+	if !bytes.HasPrefix(current, []byte(head)) {
+		t.Fatalf("the lock opens with %q:\n%s", head, current)
+	}
+	// the same file, one rendering back: every other line still parses
+	previous := append([]byte(fmt.Sprintf("schema-lock %d\n", lockfile.Version-1)), current[len(head):]...)
+	if err := os.WriteFile(path, previous, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refuses(t, lockfile.Check(load(t, paths), paths),
+		fmt.Sprintf("rendering version %d and this compiler writes version %d", lockfile.Version-1, lockfile.Version),
+		"holds nothing a hand can carry forward",
+		"delete it and write it again with `schema lock`")
+	_, rewrote, err := lockfile.Update(load(t, paths), paths)
+	if err == nil || rewrote {
+		t.Fatalf("`schema lock` does not write over a lock it cannot read: rewrote=%v err=%v", rewrote, err)
+	}
+	if !strings.Contains(err.Error(), "delete it and write it again with `schema lock`") {
+		t.Errorf("the one writer names the same remedy: %v", err)
+	}
+	if got, _ := os.ReadFile(path); !bytes.Equal(got, previous) {
+		t.Errorf("a refused lock writes nothing:\n--- was ---\n%s\n--- now ---\n%s", previous, got)
+	}
+	// the remedy works, and it writes THIS rendering back
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("the remedy works: rewrote=%v err=%v", rewrote, err)
+	}
+	if got, _ := os.ReadFile(path); !bytes.Equal(got, current) {
+		t.Errorf("the rewritten lock is this rendering, byte for byte:\n--- want ---\n%s\n--- got ---\n%s", current, got)
 	}
 	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
 		t.Errorf("the written lock checks clean: %v", errs)
