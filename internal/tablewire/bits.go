@@ -49,7 +49,7 @@ func (w *bitWriter) putBig(v *big.Int, n int) {
 }
 
 // bytes writes raw payload bytes, eight bits each, low bit first, which is
-// byte for byte the file form's bytes when the stream happens to be aligned,
+// byte for byte the variable form's bytes when the stream happens to be aligned,
 // and the same bytes shifted when it is not.
 func (w *bitWriter) bytes(p []byte) {
 	for _, by := range p {

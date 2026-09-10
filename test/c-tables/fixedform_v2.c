@@ -4,7 +4,7 @@
    EVERY ANSWER BELOW IS BY NAME. Under ordinals the stored Gold would read
    back as Silver, the stored ward as hex, and the stored Beta as Omega — an
    enum variant, a union arm and an enum key each moved in the middle, and the
-   plan compiled from V1's block is what puts every one of them back. */
+   plan compiled from V1's layout is what puts every one of them back. */
 
 #include <string.h>
 

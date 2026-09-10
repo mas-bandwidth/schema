@@ -120,7 +120,7 @@ land them, one language at a time, with nothing in this data or this contract
 moving as they do.
 
 **Wire-form coverage is separate from storage coverage.** C++, C, C# and the
-independent compiler engine carry the id-table file form and bitpacked message
+independent compiler engine carry the id-table wire (form 1, the variable form) and bitpacked message
 form. C and C# also carry variable regions, builders, retained unknowns and
 canonical cooks. Their pipe drivers compare values, re-saved bytes, measured
 sizes and reports with the independent engine. `make tables-c-wire-fuzz` and
@@ -184,7 +184,7 @@ verbs are PLURAL**, because the form's primitive is a BATCH of bodies of one
 root and a single message is the batch of one, so a `message` case whose batch
 wire holds one body still drives `LoadMessages` and `SaveMessages` with a count
 of one. The C++ reference answers the surface and the eight ports print ABSENT,
-which is the wire form's own absence one grain up: a port carries the FILE form
+which is the wire form's own absence one grain up: a port carries the VARIABLE form
 alone, and its `LoadMessages`, `MeasureMessages` and `SaveMessages` are the
 follow-on PORTING.md M20 already registers.
 

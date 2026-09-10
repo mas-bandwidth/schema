@@ -194,6 +194,8 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/blobs tables/blobs
 	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
+	$(1) generate --lang cpp --out $(2)/ut1 test/tables/UT1.schema
+	$(1) generate --lang cpp --out $(2)/ut2 test/tables/UT2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
 	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema
@@ -244,7 +246,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -3579,7 +3581,7 @@ tables-retain-fixed-class-negative-control: build/tables-generated/.stamp
 	@grep -q "FIXED-class root" build/retain-fixed-class.log || { echo "RETAIN GATE FAILED: the fixed-class refusal was not by name"; cat build/retain-fixed-class.log; exit 1; }
 	@echo "the fixed-class root refuses retention BY NAME (docs/SPEC-TABLES.md §6.6)"
 # AND THE MESSAGE FORM'S TWO ON THE SAME ROOT (§3.3, schema#680). A fixed-class
-# root that declared only the file form's three would answer LoadRetainMessages
+# root that declared only the variable form's three would answer LoadRetainMessages
 # with a missing symbol, which is a compile error with no reason in it, so the
 # row asks for the name and greps for the same sentence.
 	@printf '#include "RT1Table.h"\nint main()\n{\n    const tblrt1::Inner * roots[1] = { NULL };\n    int64_t count = 1;\n    uint8_t storage[ 64 ];\n    tblrt1::TableMessageEntry entries[ 1 ];\n    tblrt1::TableVocabulary vocabulary( entries, 1 );\n    tblrt1::TableRetain retain;\n    retain.bytes = storage;\n    tblrt1::TableReport report;\n    (void) tblrt1::InnerLoadRetainMessages( roots, &count, storage, (int64_t) 64, vocabulary, storage, (int64_t) 0, &retain, &report );\n    return 0;\n}\n' > build/retain-fixed-class-message.cpp
@@ -5636,13 +5638,15 @@ toolchain-negative-control:
 # writer, a newer writer with an unknown field AND an unknown nested type, a
 # rename under `was`, a widened field, an enum variant and a union arm inserted
 # in the middle, a keyed array whose keys moved, an optional against a value,
-# and the NEGATIVE CONTROLS — the wrong plan, a block that is not a block, a
-# form byte this reader does not carry, and a plan that does not fit.
+# and the NEGATIVE CONTROLS — the wrong plan, a form byte this reader does not
+# carry, a plan that does not fit, and ONE CORRUPTED-LAYOUT CASE PER NAMED RULE
+# a reader holds an untrusted peer's layout to.
 build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
@@ -5656,6 +5660,7 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
 tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
@@ -5669,13 +5674,13 @@ test: tables-fixedform
 # THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
 #
 # The C++ backend is the REFERENCE for this form, so the reference is what
-# writes the bytes and every port matches them — Glenn's rule for this class,
-# and the same shape the paired bench already pins. This target writes one
-# form-3 FILE per root into build/fixedform-corpus, with values set by hand so
-# nothing passes by accident, and a port's leg proves itself against them two
-# ways: reading a file and saving it back has to reproduce it BYTE FOR BYTE,
-# and reading a file written under ANOTHER schema's block is the plan path,
-# which is the whole of what §3.4's versioning invariant is worth.
+# writes the bytes and every port matches them — the same shape the paired
+# bench already pins. This target writes one form-3 FILE per root into
+# build/fixedform-corpus, with values set by hand so nothing passes by
+# accident, and a port's leg proves itself against them two ways: reading a
+# file and saving it back has to reproduce it BYTE FOR BYTE, and reading a file
+# written under ANOTHER schema's layout is the plan path, which is the whole of
+# what §3.4's versioning invariant is worth.
 #
 # It lives HERE rather than in a language's own make/<lang>.mk because it is
 # every port's oracle and none of theirs: a corpus one leg owns is a corpus the

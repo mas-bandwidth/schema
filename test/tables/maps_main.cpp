@@ -1510,7 +1510,7 @@ static void test_text_values()
 
         CHECK_EQ( loaded->after, 9 ); // and the parent read on past all three
 
-        // the region's FILE FORM is the builder's, byte for byte
+        // the region's VARIABLE FORM is the builder's, byte for byte
         static uint8_t again[1u << 16];
         CHECK_EQ( TextSave( loaded, again, sizeof( again ) ), n );
         CHECK( memcmp( again, wire, (size_t) n ) == 0 );
@@ -2460,7 +2460,7 @@ static void test_unbounded_pointer_array_values()
 // in ascending key order, each a bitpacked body with no length, and the
 // reader carves the entries from the node's extent read off the framing. The
 // fleet's three depths, its shared node and its signed key all ride: the
-// loaded region's FILE form is the builder's, byte for byte.
+// loaded region's VARIABLE form is the builder's, byte for byte.
 
 static void test_message_form()
 {
@@ -2509,7 +2509,7 @@ static void test_message_form()
         CHECK( nine != NULL && nine->count == 99 );
         const Item * low = fleet->tiers.Find( (int16_t) -3 );
         CHECK( low != NULL && low->count == -3 );
-        // THE LOADED REGION'S FILE FORM IS THE BUILDER'S, byte for byte
+        // THE LOADED REGION'S VARIABLE FORM IS THE BUILDER'S, byte for byte
         static uint8_t again[1u << 16];
         const int64_t file_bytes = FleetSave( fleet, again, sizeof( again ) );
         CHECK( file_bytes == bytes_full && memcmp( again, wire_full, (size_t) bytes_full ) == 0 );

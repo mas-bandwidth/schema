@@ -46,12 +46,88 @@ void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes )
     fixed_check( back.added == 11, "MISSING: a field the writer does not carry takes its declared default" );
     fixed_check( back.extra.x == 0 && back.extra.y == 0, "MISSING: a whole nested type takes its defaults" );
     fixed_check( back.nested.a == 111 && back.nested.b == 222, "older writer: the nesting" );
+    fixed_check( back.blob_length == 4 && back.blob[0] == 0xDE && back.blob[1] == 0xAD &&
+                 back.blob[2] == 0xBE && back.blob[3] == 0xEF,
+                 "BYTES(N): the compiled plan lands the buffer in the buffer and the length in the length" );
+    fixed_check( back.blob[4] == 0 && back.blob[5] == 0, "BYTES(N): the slack past the live length is zero" );
     fixed_check( r.unknown == 1, "older writer: `gone` is the one field this reader cannot name" );
     fixed_check( r.kind_mismatch == 0 && !r.malformed && !r.refused, "older writer: nothing else fired" );
 }
 
+/* THE NEGATIVE CONTROL FOR THE `bytes(N)` ROW. The two columns are swapped
+   back to the TEXT convention on a copy of this build's own rows, the same plan
+   is compiled from the same layout, and the same record comes out WRONG — the
+   count written into the buffer and the bytes written over the length.
+
+   The row is found BY ITS SHAPE and never by its index: stride one and a live
+   count is a `bytes(N)` and nothing else, so the control does not quietly stop
+   pointing at it the day a field moves. The destination is OVERSIZED on
+   purpose: the wrong rows put an element destination where the length field is,
+   and six bytes of elements past a four-byte field is a step outside the
+   storage — the control gives it room to be wrong, so what reports the bug is
+   the value that comes back and not the sanitizer. */
+void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
+{
+    static TableFixedDst swapped[64];
+    static uint64_t storage[ ( sizeof( FxRoot ) / 8 ) + 16 ];
+    TableFixedLayoutView theirs;
+    int why = 0;
+    const uint8_t * body;
+    size_t rows = sizeof( fx_root_fixed_dst ) / sizeof( fx_root_fixed_dst[0] );
+    size_t i, found = rows;
+    uint32_t d;
+    int pass;
+
+    (void) bytes;
+    fixed_check( rows <= 64, "C bytes row: the rows fit the control's copy" );
+    for ( i = 0; i < rows; i++ )
+    {
+        swapped[i] = fx_root_fixed_dst[i];
+        if ( found == rows && swapped[i].stride == 1u && swapped[i].counted != 0u ) { found = i; }
+    }
+    fixed_check( found != rows, "C bytes row: the `bytes(N)` row is the one with stride one and a live count" );
+    d = swapped[found].dst;
+    swapped[found].dst = swapped[found].aux; /* the TEXT convention, as it was */
+    swapped[found].aux = d;
+
+    fixed_check( table_fixed_parse_layout( data + kTableFixedHeaderBytes + 4,
+                                           (int64_t) table_fixed_get32( data + kTableFixedHeaderBytes ),
+                                           &theirs, &why ),
+                 "C bytes row: the writer's layout parses" );
+    body = data + kTableFixedHeaderBytes + 4 + (int64_t) table_fixed_get32( data + kTableFixedHeaderBytes ) + 8;
+
+    for ( pass = 0; pass < 2; pass++ )
+    {
+        const TableFixedDst * rowset = pass == 0 ? fx_root_fixed_dst : swapped;
+        int32_t guarded = 0;
+        int32_t made;
+        FxRoot * back;
+        TableReport r;
+        int right;
+
+        made = table_fixed_compile( &theirs, fx_root_fixed_layout, (int32_t) sizeof( fx_root_fixed_layout ),
+                                    rowset, g_plan, PlanCapacity, &guarded, NULL );
+        fixed_check( made > 0, "C bytes row: the plan compiles either way — the rows are not what refuses" );
+        memset( storage, 0, sizeof( storage ) );
+        back = (FxRoot *) (void *) storage;
+        fx_root_reset( back );
+        memset( &r, 0, sizeof( r ) );
+        table_fixed_run( g_plan, made, guarded, body, (uint8_t *) back, &r );
+        right = back->blob_length == 4 && back->blob[0] == 0xDE && back->blob[1] == 0xAD &&
+                back->blob[2] == 0xBE && back->blob[3] == 0xEF;
+        if ( pass == 0 )
+        {
+            fixed_check( right, "C BYTES(N): the array row lands the buffer in the buffer and the length in the length" );
+        }
+        else
+        {
+            fixed_check( !right, "C NEGATIVE CONTROL: the text row really does write the count into the buffer" );
+        }
+    }
+}
+
 /* A READ THAT CLAIMS NOTHING ABOUT THE VALUES. A form-3 file with one bit
-   flipped is a block whose child sizes may not sum to its parent's, a tree that
+   flipped is a layout whose child sizes may not sum to its parent's, a tree that
    may not close, a chain a thousand deep, or a record count that divides
    wrongly. Every one of those must come out as a refusal by name, a malformed
    read, or a read that lands values — and never as a step outside the buffer,
@@ -63,4 +139,18 @@ void fixed_fx2_probe( const uint8_t * data, int64_t bytes )
     memset( &r, 0, sizeof( r ) );
     fx_root_reset( &back );
     (void) fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
+}
+
+/* THE SAME NUMBERS THROUGH A COMPILED PLAN: the pass runs over STORAGE, so one
+   pass covers the identity plan and a plan compiled from a stranger's layout
+   alike (docs/SPEC-TABLES.md §3.4). */
+void fixed_fx2_bounds( const uint8_t * data, int64_t bytes )
+{
+    FxRoot back;
+    TableReport r;
+    memset( &r, 0, sizeof( r ) );
+    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r ) == 1,
+                 "C bounds, compiled: the record reads" );
+    fixed_check( back.renamed_to == 1000, "C RANGE, compiled: the same clamp through a compiled plan" );
+    fixed_check( r.clamped == 1, "C RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
 }
