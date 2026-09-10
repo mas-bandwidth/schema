@@ -84,7 +84,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema
+build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema $(SCHEMAS_TABLES_SCALARS)
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit: its cook readers are the reason it is here — the two
@@ -105,6 +105,14 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	# had no fixture for, and the one that catches an op borrowing the guard's
 	# own byte (test/tables/UT.schema).
 	./bin/schema generate --lang java --out build/tables-generated-java/ut test/tables/UT.schema
+	# THE WIDE-KIND UNIT (docs/SPEC-TABLES.md §15): its int128, uint128 and
+	# fixed-point fields cost it the two ACCELERATORS, so the FIXED FORM is the
+	# whole of its generated table surface — and that form spells a 128-bit
+	# value `new UInt128(hi, lo)`, so the unit is also where the emitter's
+	# Int128/UInt128 support files have to land or the package does not compile.
+	# The C, C# and Go legs have generated this unit all along; the Java leg is
+	# the one that did not, which is why nothing here said so.
+	./bin/schema generate --lang java --out build/tables-generated-java/scalars tables/scalars
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -260,6 +268,7 @@ build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedf
 		build/tables-generated-java/p1/*.java build/tables-generated-java/p3/*.java \
 		build/tables-generated-java/v1/*.java build/tables-generated-java/v2/*.java \
 		build/tables-generated-java/ut/*.java \
+		build/tables-generated-java/scalars/*.java \
 		build/tables-generated-java/examples/*.java test/java-fixedform/src/Main.java
 	@touch $@
 

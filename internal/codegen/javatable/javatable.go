@@ -212,6 +212,12 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		blocks := ir.Blocks(u)
 		ck := cookUnitOf(u)
 		set := collectRecords(u, blocks, ck)
+		// TableBytes and BuildVersion BELONG TO THE TWO ACCELERATORS and to
+		// nothing else: block.go and cook.go are their only callers, the fixed
+		// form reads its bytes through TableFixed's own accessors and carries
+		// its own layout hash rather than the build version. So they ride in
+		// this branch, where the accelerators are, and a wide-kind unit that
+		// gets only a fixed form is not handed two classes nobody names.
 		out["TableBytes.java"] = tableBytesFile(u)
 		out["BuildVersion.java"] = buildVersionFile(u)
 		maps.Copy(out, emitRowFiles(u, set, blocks, ck))
