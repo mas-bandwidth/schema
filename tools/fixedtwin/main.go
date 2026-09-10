@@ -46,32 +46,32 @@ func main() {
 func compareHeaders(cSrc, cppSrc string) ([]string, error) {
 	cRun, err := extractRuntime(cSrc)
 	if err != nil {
-		return nil, fmt.Errorf("C: %w", err)
+		return nil, fmt.Errorf("c: %w", err)
 	}
 	cppRun, err := extractRuntime(cppSrc)
 	if err != nil {
-		return nil, fmt.Errorf("C++: %w", err)
+		return nil, fmt.Errorf("cpp: %w", err)
 	}
 	var leftover []string
 	leftover = append(leftover, diffLines("runtime", canonicalize(cRun), canonicalize(cppRun))...)
 
 	cPlan, err := extractArray(cSrc, "fixed_table_fixed_plan", "FixedTableFixedPlan")
 	if err != nil {
-		return nil, fmt.Errorf("C plan: %w", err)
+		return nil, fmt.Errorf("c plan: %w", err)
 	}
 	cppPlan, err := extractArray(cppSrc, "fixed_table_fixed_plan", "FixedTableFixedPlan")
 	if err != nil {
-		return nil, fmt.Errorf("C++ plan: %w", err)
+		return nil, fmt.Errorf("cpp plan: %w", err)
 	}
 	leftover = append(leftover, diffLines("plan", canonicalize(cPlan), canonicalize(cppPlan))...)
 
 	cLay, err := extractArray(cSrc, "fixed_table_fixed_layout", "FixedTableFixedLayout")
 	if err != nil {
-		return nil, fmt.Errorf("C layout: %w", err)
+		return nil, fmt.Errorf("c layout: %w", err)
 	}
 	cppLay, err := extractArray(cppSrc, "fixed_table_fixed_layout", "FixedTableFixedLayout")
 	if err != nil {
-		return nil, fmt.Errorf("C++ layout: %w", err)
+		return nil, fmt.Errorf("cpp layout: %w", err)
 	}
 	leftover = append(leftover, diffLines("layout", canonicalize(cLay), canonicalize(cppLay))...)
 
@@ -88,11 +88,12 @@ func diffLines(section string, c, cpp []string) []string {
 	}
 	for i := n - 1; i >= 0; i-- {
 		for j := m - 1; j >= 0; j-- {
-			if c[i] == cpp[j] {
+			switch {
+			case c[i] == cpp[j]:
 				dp[i][j] = dp[i+1][j+1] + 1
-			} else if dp[i+1][j] >= dp[i][j+1] {
+			case dp[i+1][j] >= dp[i][j+1]:
 				dp[i][j] = dp[i+1][j]
-			} else {
+			default:
 				dp[i][j] = dp[i][j+1]
 			}
 		}
