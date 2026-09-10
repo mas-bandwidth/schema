@@ -10646,19 +10646,31 @@ inline void SettingsFixedWriteBody( uint8_t * b, const Settings & value )
 }
 
 // Meta's read-side bounds.
-inline void MetaFixedClampBody( Meta & value, int32_t & clamped )
+inline void MetaFixedClampBody( Meta & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.build < 0 ) { value.build = 0; clamped++; }
-    else if ( value.build > 1000 ) { value.build = 1000; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.build < 0 ) | (int) ( value.build > 1000 );
+    value.build = ( value.build < 0 ) ? 0 : ( ( value.build > 1000 ) ? 1000 : value.build );
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) )
+    {
+        memset( value.tag, 0, sizeof( value.tag ) );
+        value.tag_length = 0;
+        damaged++;
+    }
 }
 
 // Settings's read-side bounds.
-inline void SettingsFixedClampBody( Settings & value, int32_t & clamped )
+inline void SettingsFixedClampBody( Settings & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.quality < 0 ) { value.quality = 0; clamped++; }
-    else if ( value.quality > 4 ) { value.quality = 4; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );
+    value.quality = ( value.quality < 0 ) ? 0 : ( ( value.quality > 4 ) ? 4 : value.quality );
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) )
+    {
+        memset( value.label, 0, sizeof( value.label ) );
+        value.label_length = 0;
+        damaged++;
+    }
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -10670,8 +10682,13 @@ inline void SettingsFixedClampBody( Settings & value, int32_t & clamped )
 inline void MetaFixedClamp( Meta & value, TableReport * report )
 {
     int32_t clamped = 0;
-    MetaFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    MetaFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- Meta, the fixed form ----
@@ -10819,8 +10836,13 @@ inline int64_t MetaFixedLoad( Meta * values, int64_t capacity, const uint8_t * d
 inline void SettingsFixedClamp( Settings & value, TableReport * report )
 {
     int32_t clamped = 0;
-    SettingsFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    SettingsFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- Settings, the fixed form ----

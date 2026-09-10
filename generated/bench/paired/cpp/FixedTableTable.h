@@ -3966,128 +3966,155 @@ inline void FixedTableFixedWriteBody( uint8_t * b, const FixedTable & value )
 }
 
 // MixedEntity's read-side bounds.
-inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped )
+inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.entity_id > 4095ull ) { value.entity_id = 4095ull; clamped++; } // bits(12) width clamp
-    if ( value.pos_x < -16383 ) { value.pos_x = -16383; clamped++; }
-    else if ( value.pos_x > 16383 ) { value.pos_x = 16383; clamped++; }
-    if ( value.pos_y < -16383 ) { value.pos_y = -16383; clamped++; }
-    else if ( value.pos_y > 16383 ) { value.pos_y = 16383; clamped++; }
-    if ( value.pos_z < -16383 ) { value.pos_z = -16383; clamped++; }
-    else if ( value.pos_z > 16383 ) { value.pos_z = 16383; clamped++; }
-    if ( value.yaw > 511ull ) { value.yaw = 511ull; clamped++; } // bits(9) width clamp
-    if ( value.pitch > 511ull ) { value.pitch = 511ull; clamped++; } // bits(9) width clamp
-    if ( value.vel_x < -2048 ) { value.vel_x = -2048; clamped++; }
-    else if ( value.vel_x > 2047 ) { value.vel_x = 2047; clamped++; }
-    if ( value.vel_y < -2048 ) { value.vel_y = -2048; clamped++; }
-    else if ( value.vel_y > 2047 ) { value.vel_y = 2047; clamped++; }
-    if ( value.vel_z < -2048 ) { value.vel_z = -2048; clamped++; }
-    else if ( value.vel_z > 2047 ) { value.vel_z = 2047; clamped++; }
-    if ( value.health < 0 ) { value.health = 0; clamped++; }
-    else if ( value.health > 1000 ) { value.health = 1000; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    // bits(12) width clamp
+    clamped += ( value.entity_id > 4095ull );
+    value.entity_id = ( value.entity_id > 4095ull ) ? 4095ull : value.entity_id;
+    clamped += (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    value.pos_x = ( value.pos_x < -16383 ) ? -16383 : ( ( value.pos_x > 16383 ) ? 16383 : value.pos_x );
+    clamped += (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    value.pos_y = ( value.pos_y < -16383 ) ? -16383 : ( ( value.pos_y > 16383 ) ? 16383 : value.pos_y );
+    clamped += (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    value.pos_z = ( value.pos_z < -16383 ) ? -16383 : ( ( value.pos_z > 16383 ) ? 16383 : value.pos_z );
+    // bits(9) width clamp
+    clamped += ( value.yaw > 511ull );
+    value.yaw = ( value.yaw > 511ull ) ? 511ull : value.yaw;
+    // bits(9) width clamp
+    clamped += ( value.pitch > 511ull );
+    value.pitch = ( value.pitch > 511ull ) ? 511ull : value.pitch;
+    clamped += (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    value.vel_x = ( value.vel_x < -2048 ) ? -2048 : ( ( value.vel_x > 2047 ) ? 2047 : value.vel_x );
+    clamped += (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    value.vel_y = ( value.vel_y < -2048 ) ? -2048 : ( ( value.vel_y > 2047 ) ? 2047 : value.vel_y );
+    clamped += (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    value.vel_z = ( value.vel_z < -2048 ) ? -2048 : ( ( value.vel_z > 2047 ) ? 2047 : value.vel_z );
+    clamped += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    value.health = ( value.health < 0 ) ? 0 : ( ( value.health > 1000 ) ? 1000 : value.health );
     if ( (uint64_t) value.weapon > 15u ) { value.weapon = MixedWeapon::None; clamped++; }
 }
 
 // MixedStat's read-side bounds.
-inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped )
+inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.stat_id > 255ull ) { value.stat_id = 255ull; clamped++; } // bits(8) width clamp
-    if ( value.delta < -512 ) { value.delta = -512; clamped++; }
-    else if ( value.delta > 511 ) { value.delta = 511; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    // bits(8) width clamp
+    clamped += ( value.stat_id > 255ull );
+    value.stat_id = ( value.stat_id > 255ull ) ? 255ull : value.stat_id;
+    clamped += (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    value.delta = ( value.delta < -512 ) ? -512 : ( ( value.delta > 511 ) ? 511 : value.delta );
 }
 
 // MixedHitEvent's read-side bounds.
-inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clamped )
+inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.target_id > 4095ull ) { value.target_id = 4095ull; clamped++; } // bits(12) width clamp
-    if ( value.damage < 0 ) { value.damage = 0; clamped++; }
-    else if ( value.damage > 4095 ) { value.damage = 4095; clamped++; }
-    if ( value.hit_kind < 0 ) { value.hit_kind = 0; clamped++; }
-    else if ( value.hit_kind > 7 ) { value.hit_kind = 7; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    // bits(12) width clamp
+    clamped += ( value.target_id > 4095ull );
+    value.target_id = ( value.target_id > 4095ull ) ? 4095ull : value.target_id;
+    clamped += (int) ( value.damage < 0 ) | (int) ( value.damage > 4095 );
+    value.damage = ( value.damage < 0 ) ? 0 : ( ( value.damage > 4095 ) ? 4095 : value.damage );
+    clamped += (int) ( value.hit_kind < 0 ) | (int) ( value.hit_kind > 7 );
+    value.hit_kind = ( value.hit_kind < 0 ) ? 0 : ( ( value.hit_kind > 7 ) ? 7 : value.hit_kind );
 }
 
 // MixedChatEvent's read-side bounds.
-inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clamped )
+inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.channel < 0 ) { value.channel = 0; clamped++; }
-    else if ( value.channel > 3 ) { value.channel = 3; clamped++; }
-    if ( value.speaker > 4095ull ) { value.speaker = 4095ull; clamped++; } // bits(12) width clamp
+    (void) value; (void) clamped; (void) damaged;
+    clamped += (int) ( value.channel < 0 ) | (int) ( value.channel > 3 );
+    value.channel = ( value.channel < 0 ) ? 0 : ( ( value.channel > 3 ) ? 3 : value.channel );
+    // bits(12) width clamp
+    clamped += ( value.speaker > 4095ull );
+    value.speaker = ( value.speaker > 4095ull ) ? 4095ull : value.speaker;
 }
 
 // MixedPickupEvent's read-side bounds.
-inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & clamped )
+inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.item_id > 1023ull ) { value.item_id = 1023ull; clamped++; } // bits(10) width clamp
-    if ( value.amount < 0 ) { value.amount = 0; clamped++; }
-    else if ( value.amount > 255 ) { value.amount = 255; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    // bits(10) width clamp
+    clamped += ( value.item_id > 1023ull );
+    value.item_id = ( value.item_id > 1023ull ) ? 1023ull : value.item_id;
+    clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 255 );
+    value.amount = ( value.amount < 0 ) ? 0 : ( ( value.amount > 255 ) ? 255 : value.amount );
 }
 
 // BenchMixed's read-side bounds.
-inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped )
+inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.sequence > 65535ull ) { value.sequence = 65535ull; clamped++; } // bits(16) width clamp
-    if ( value.ack_sequence < 0 ) { value.ack_sequence = 0; clamped++; }
-    else if ( value.ack_sequence > 65535 ) { value.ack_sequence = 65535; clamped++; }
-    if ( value.world_time < -1000000000000ll ) { value.world_time = -1000000000000ll; clamped++; }
-    else if ( value.world_time > 1000000000000ll ) { value.world_time = 1000000000000ll; clamped++; }
-    if ( value.frame_tick > 281474976710655ull ) { value.frame_tick = 281474976710655ull; clamped++; } // bits(48) width clamp
-    if ( value.server_time < 0 ) { value.server_time = 0; clamped++; }
-    else if ( value.server_time > 16776960 ) { value.server_time = 16776960; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    // bits(16) width clamp
+    clamped += ( value.sequence > 65535ull );
+    value.sequence = ( value.sequence > 65535ull ) ? 65535ull : value.sequence;
+    clamped += (int) ( value.ack_sequence < 0 ) | (int) ( value.ack_sequence > 65535 );
+    value.ack_sequence = ( value.ack_sequence < 0 ) ? 0 : ( ( value.ack_sequence > 65535 ) ? 65535 : value.ack_sequence );
+    clamped += (int) ( value.world_time < -1000000000000ll ) | (int) ( value.world_time > 1000000000000ll );
+    value.world_time = ( value.world_time < -1000000000000ll ) ? -1000000000000ll : ( ( value.world_time > 1000000000000ll ) ? 1000000000000ll : value.world_time );
+    // bits(48) width clamp
+    clamped += ( value.frame_tick > 281474976710655ull );
+    value.frame_tick = ( value.frame_tick > 281474976710655ull ) ? 281474976710655ull : value.frame_tick;
+    clamped += (int) ( value.server_time < 0 ) | (int) ( value.server_time > 16776960 );
+    value.server_time = ( value.server_time < 0 ) ? 0 : ( ( value.server_time > 16776960 ) ? 16776960 : value.server_time );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
-        MixedEntityFixedClampBody( value.entities[i], clamped );
+        MixedEntityFixedClampBody( value.entities[i], clamped, damaged );
     }
     for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
     {
-        MixedStatFixedClampBody( value.stats[i], clamped );
+        MixedStatFixedClampBody( value.stats[i], clamped, damaged );
     }
     if ( (uint32_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; clamped++; }
     switch ( value.game_event.type )
     {
         case MixedEventType::Hit:
         {
-            MixedHitEventFixedClampBody( value.game_event.hit, clamped );
+            MixedHitEventFixedClampBody( value.game_event.hit, clamped, damaged );
             break;
         }
         case MixedEventType::Chat:
         {
-            MixedChatEventFixedClampBody( value.game_event.chat, clamped );
+            MixedChatEventFixedClampBody( value.game_event.chat, clamped, damaged );
             break;
         }
         case MixedEventType::Pickup:
         {
-            MixedPickupEventFixedClampBody( value.game_event.pickup, clamped );
+            MixedPickupEventFixedClampBody( value.game_event.pickup, clamped, damaged );
             break;
         }
         default: break;
     }
-    if ( value.aim_x < -1.0f ) { value.aim_x = -1.0f; clamped++; }
-    else if ( value.aim_x > 1.0f ) { value.aim_x = 1.0f; clamped++; }
-    if ( value.aim_y < -1.0f ) { value.aim_y = -1.0f; clamped++; }
-    else if ( value.aim_y > 1.0f ) { value.aim_y = 1.0f; clamped++; }
-    if ( value.aim_z < -1.0f ) { value.aim_z = -1.0f; clamped++; }
-    else if ( value.aim_z > 1.0f ) { value.aim_z = 1.0f; clamped++; }
-    if ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
-    else if ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
-    if ( value.ping > 64000 ) { value.ping = 64000; clamped++; }
-    if ( value.crc_hint > 16777215ull ) { value.crc_hint = 16777215ull; clamped++; } // bits(24) width clamp
-    if ( value.extra < 0 ) { value.extra = 0; clamped++; }
-    else if ( value.extra > 255 ) { value.extra = 255; clamped++; }
-    if ( value.idle_ticks < 0 ) { value.idle_ticks = 0; clamped++; }
-    else if ( value.idle_ticks > 15 ) { value.idle_ticks = 15; clamped++; }
+    if ( !TableUtf8Valid( (const uint8_t *) value.player_name, (uint64_t) value.player_name_length ) )
+    {
+        memset( value.player_name, 0, sizeof( value.player_name ) );
+        value.player_name_length = 0;
+        damaged++;
+    }
+    clamped += (int) ( value.aim_x < -1.0f ) | (int) ( value.aim_x > 1.0f );
+    value.aim_x = ( value.aim_x < -1.0f ) ? -1.0f : ( ( value.aim_x > 1.0f ) ? 1.0f : value.aim_x );
+    clamped += (int) ( value.aim_y < -1.0f ) | (int) ( value.aim_y > 1.0f );
+    value.aim_y = ( value.aim_y < -1.0f ) ? -1.0f : ( ( value.aim_y > 1.0f ) ? 1.0f : value.aim_y );
+    clamped += (int) ( value.aim_z < -1.0f ) | (int) ( value.aim_z > 1.0f );
+    value.aim_z = ( value.aim_z < -1.0f ) ? -1.0f : ( ( value.aim_z > 1.0f ) ? 1.0f : value.aim_z );
+    clamped += (int) ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) | (int) ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) );
+    value.flux = ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : ( ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) ? serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) : value.flux );
+    clamped += ( value.ping > 64000 );
+    value.ping = ( value.ping > 64000 ) ? 64000 : value.ping;
+    // bits(24) width clamp
+    clamped += ( value.crc_hint > 16777215ull );
+    value.crc_hint = ( value.crc_hint > 16777215ull ) ? 16777215ull : value.crc_hint;
+    clamped += (int) ( value.extra < 0 ) | (int) ( value.extra > 255 );
+    value.extra = ( value.extra < 0 ) ? 0 : ( ( value.extra > 255 ) ? 255 : value.extra );
+    clamped += (int) ( value.idle_ticks < 0 ) | (int) ( value.idle_ticks > 15 );
+    value.idle_ticks = ( value.idle_ticks < 0 ) ? 0 : ( ( value.idle_ticks > 15 ) ? 15 : value.idle_ticks );
 }
 
 // FixedTable's read-side bounds.
-inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped )
+inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    BenchMixedFixedClampBody( value.value, clamped );
+    (void) value; (void) clamped; (void) damaged;
+    BenchMixedFixedClampBody( value.value, clamped, damaged );
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -4099,8 +4126,13 @@ inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped )
 inline void FixedTableFixedClamp( FixedTable & value, TableReport * report )
 {
     int32_t clamped = 0;
-    FixedTableFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    FixedTableFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- FixedTable, the fixed form ----

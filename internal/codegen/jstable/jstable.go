@@ -185,6 +185,17 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
+	// §15's WIDE-KIND REFUSAL IS THE FORM-1 ACCELERATORS' AND NOT THE WIRE'S
+	// (ir.WideTableKinds). The rule lives in ir because a rule five ports each
+	// spell for themselves is five rules — and the day this backend gained
+	// §3.4's fixed form is the day its answer became `true`: the block form and
+	// the cooked form stand down alone, and the unit is NOT refused whole,
+	// because there is a wire left to emit. The refusal still names every wide
+	// field, and it is stated by name in every module this unit gets.
+	scope := ir.WideTableKinds(u, "JavaScript", true)
+	if scope.Unit {
+		return nil, scope.Refusal
+	}
 	if err := refuseFileCollisions(u); err != nil {
 		return nil, err
 	}
@@ -224,7 +235,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// form to put in their place has nothing to emit, so it is refused whole
 	// and by name, exactly as it was before the form arrived.
 	if len(wide) > 0 && len(fixed) == 0 {
-		return nil, ir.RefuseWideTableKinds(u, "JavaScript")
+		return nil, scope.Refusal
 	}
 	return out, nil
 }

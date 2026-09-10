@@ -8100,36 +8100,44 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
 }
 
 /* TableEntity's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_entity_fixed_clamp_body_( TableEntity * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_entity_fixed_clamp_body_( TableEntity * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->entity_id > 4095ull ) { value->entity_id = 4095ull; (*clamped)++; } /* bits(12) width clamp */
-    if ( value->pos_x < -16383 ) { value->pos_x = -16383; (*clamped)++; }
-    else if ( value->pos_x > 16383 ) { value->pos_x = 16383; (*clamped)++; }
-    if ( value->pos_y < -16383 ) { value->pos_y = -16383; (*clamped)++; }
-    else if ( value->pos_y > 16383 ) { value->pos_y = 16383; (*clamped)++; }
-    if ( value->pos_z < -16383 ) { value->pos_z = -16383; (*clamped)++; }
-    else if ( value->pos_z > 16383 ) { value->pos_z = 16383; (*clamped)++; }
-    if ( value->yaw > 511ull ) { value->yaw = 511ull; (*clamped)++; } /* bits(9) width clamp */
-    if ( value->pitch > 511ull ) { value->pitch = 511ull; (*clamped)++; } /* bits(9) width clamp */
-    if ( value->vel_x < -2048 ) { value->vel_x = -2048; (*clamped)++; }
-    else if ( value->vel_x > 2047 ) { value->vel_x = 2047; (*clamped)++; }
-    if ( value->vel_y < -2048 ) { value->vel_y = -2048; (*clamped)++; }
-    else if ( value->vel_y > 2047 ) { value->vel_y = 2047; (*clamped)++; }
-    if ( value->vel_z < -2048 ) { value->vel_z = -2048; (*clamped)++; }
-    else if ( value->vel_z > 2047 ) { value->vel_z = 2047; (*clamped)++; }
-    if ( value->health < 0 ) { value->health = 0; (*clamped)++; }
-    else if ( value->health > 1000 ) { value->health = 1000; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(12) width clamp */
+    (*clamped) += ( value->entity_id > 4095ull );
+    value->entity_id = ( value->entity_id > 4095ull ) ? 4095ull : value->entity_id;
+    (*clamped) += (int) ( value->pos_x < -16383 ) | (int) ( value->pos_x > 16383 );
+    value->pos_x = ( value->pos_x < -16383 ) ? -16383 : ( ( value->pos_x > 16383 ) ? 16383 : value->pos_x );
+    (*clamped) += (int) ( value->pos_y < -16383 ) | (int) ( value->pos_y > 16383 );
+    value->pos_y = ( value->pos_y < -16383 ) ? -16383 : ( ( value->pos_y > 16383 ) ? 16383 : value->pos_y );
+    (*clamped) += (int) ( value->pos_z < -16383 ) | (int) ( value->pos_z > 16383 );
+    value->pos_z = ( value->pos_z < -16383 ) ? -16383 : ( ( value->pos_z > 16383 ) ? 16383 : value->pos_z );
+    /* bits(9) width clamp */
+    (*clamped) += ( value->yaw > 511ull );
+    value->yaw = ( value->yaw > 511ull ) ? 511ull : value->yaw;
+    /* bits(9) width clamp */
+    (*clamped) += ( value->pitch > 511ull );
+    value->pitch = ( value->pitch > 511ull ) ? 511ull : value->pitch;
+    (*clamped) += (int) ( value->vel_x < -2048 ) | (int) ( value->vel_x > 2047 );
+    value->vel_x = ( value->vel_x < -2048 ) ? -2048 : ( ( value->vel_x > 2047 ) ? 2047 : value->vel_x );
+    (*clamped) += (int) ( value->vel_y < -2048 ) | (int) ( value->vel_y > 2047 );
+    value->vel_y = ( value->vel_y < -2048 ) ? -2048 : ( ( value->vel_y > 2047 ) ? 2047 : value->vel_y );
+    (*clamped) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
+    value->vel_z = ( value->vel_z < -2048 ) ? -2048 : ( ( value->vel_z > 2047 ) ? 2047 : value->vel_z );
+    (*clamped) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
+    value->health = ( value->health < 0 ) ? 0 : ( ( value->health > 1000 ) ? 1000 : value->health );
     if ( (uint64_t) value->weapon > 15u ) { value->weapon = TABLE_WEAPON_NONE; (*clamped)++; }
 }
 
 /* TableStat's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_stat_fixed_clamp_body_( TableStat * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_stat_fixed_clamp_body_( TableStat * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->stat_id > 255ull ) { value->stat_id = 255ull; (*clamped)++; } /* bits(8) width clamp */
-    if ( value->delta < -512 ) { value->delta = -512; (*clamped)++; }
-    else if ( value->delta > 511 ) { value->delta = 511; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(8) width clamp */
+    (*clamped) += ( value->stat_id > 255ull );
+    value->stat_id = ( value->stat_id > 255ull ) ? 255ull : value->stat_id;
+    (*clamped) += (int) ( value->delta < -512 ) | (int) ( value->delta > 511 );
+    value->delta = ( value->delta < -512 ) ? -512 : ( ( value->delta > 511 ) ? 511 : value->delta );
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -8141,8 +8149,13 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
 static SCHEMA_UNUSED void schema_benchtable_table_entity_fixed_clamp_( TableEntity * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_benchtable_table_entity_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_benchtable_table_entity_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- TableEntity, the fixed form ---- */
@@ -8355,8 +8368,13 @@ static SCHEMA_UNUSED int64_t table_entity_fixed_load( TableEntity * values, int6
 static SCHEMA_UNUSED void schema_benchtable_table_stat_fixed_clamp_( TableStat * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_benchtable_table_stat_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_benchtable_table_stat_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- TableStat, the fixed form ---- */

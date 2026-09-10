@@ -11146,6 +11146,7 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
+  FixedClamp  FixedClampBody
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   ```
 
@@ -11171,6 +11172,11 @@ in build version (§20.5).
   has no struct to hang a plan's two numbers on and spells them as two more
   file-scope constants; the whole row is one claim across the ports, spelled
   `<name>_fixed_save` in C and Rust and `<Name>FixedSave` elsewhere.
+  `FixedClamp` and `FixedClampBody` are §3.4's READ-SIDE BOUNDS — the
+  straight-line pass a read makes after the copy — and they are claimed for
+  every closure member on the same rule and not only for the ones that declare
+  a bound today: a field gains a `min` or a `max`, or a union or an enum, as an
+  ordinary edit, and the name has to already be taken when it does.
 
   The set is claimed for EVERY closure member, not only pointer-bearing
   ones: a table gains or loses pointers as an edit, and a name that was

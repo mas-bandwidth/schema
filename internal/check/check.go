@@ -3892,6 +3892,12 @@ var tableGeneratedVerbs = []string{
 	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
 	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
 	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded",
+	// and §3.4's READ-SIDE BOUNDS: the straight-line pass a read makes after
+	// the copy, and the per-type body it calls. Claimed for EVERY closure
+	// member and not only the ones that declare a bound today — a field gains
+	// a `min` or a `max`, or a union or an enum, as an ordinary edit, and the
+	// name has to already be taken when it does.
+	"FixedClamp", "FixedClampBody",
 	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
 	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
 	// it in a canonical body image and then PROJECTS that image into the
