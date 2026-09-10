@@ -2668,8 +2668,12 @@ projection-union-arm-order-negative-control:
 		  cat build/projection-no-arm-names-variants.log; exit 1; }
 	@echo "negative control: without the arm names a same-typed union reorder goes silent, and the variant-order gate stays green"
 
-# Deliberately compiled WITHOUT -I$(SERIALIZE): the generated Table headers
-# carry no serialize dependency, and this build proves it stays that way.
+# tables_includes ENDS in -I$(SERIALIZE), so this build does NOT prove the Table
+# headers stand alone — it has not for some time, and reading the older comment
+# here as though it still held is what sent #840's first diagnosis at the
+# include path rather than at the generator. A header that stands alone is
+# proved by the `#include "serialize.h"` it does or does not carry, not by this
+# command line. Corrected in place rather than left to mislead again.
 #
 # TABLES_INCLUDES is shared with the sanitized twin below, so the two builds
 # can never drift into covering different code.
@@ -2680,10 +2684,33 @@ TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -
 # content (docs/SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
 # compiles the generated <Base>Table.cpp, and one that never does compiles
 # nothing for it. Expanded in the recipe because these are build-time output.
-TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp)
+#
+# km1 is HELD OUT, and it is a GENERATOR BUG held open, not a schema quirk.
+# KM1's `angle` is `fixed(16, 16)`. Every fixed-point kind is one of the WIDE
+# kinds (ir.TableKindWide, kinds 18..29), so the message codec emits
+# `serialize::uint128_t` arithmetic for it (internal/codegen/cpptable/
+# messagecodec.go) — while the `#include "serialize.h"` and the header's own
+# "no serialize dependency" claim are decided by unitHas128
+# (internal/codegen/cpptable/cpptable.go), which asks only whether the closure
+# declares 128-bit STORAGE. KM1 is the first unit in this corpus with a
+# fixed-point field and nothing 128 bits wide, so it is the first header that
+# NAMES serialize:: without including it — and any user schema shaped that way
+# generates the same header. The range on `angle` is not the trigger and
+# cannot be dropped either: `fixed(N, M)` REQUIRES | min, max (SPEC §4.3).
+# The fix belongs in the generator and gets its own change; this hold-out
+# keeps THIS target honest until that lands, and the gate below fails loudly
+# once it does, so the hold-out cannot outlive the bug.
+TABLES_JSON_HELD_OUT := km1
+TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp | grep -v '^build/tables-generated/$(TABLES_JSON_HELD_OUT)/')
 
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
+	@for h in build/tables-generated/$(TABLES_JSON_HELD_OUT)/*Table.h; do \
+		grep -q 'serialize::' $$h || { \
+		  echo "HOLD-OUT STALE: $$h no longer names serialize:: — delete TABLES_JSON_HELD_OUT and let the glob take it back"; exit 1; }; \
+		if grep -q '#include "serialize.h"' $$h; then \
+		  echo "HOLD-OUT STALE: $$h includes serialize.h now — the generator emits it, so delete TABLES_JSON_HELD_OUT and let the glob take it back"; exit 1; fi; \
+	done
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 # The SANITIZED twin (issue #277). The tables leg is where the pointer

@@ -1,7 +1,8 @@
 // The TABLE-wire conformance test (docs/SPEC-TABLES.md). Three generated units in
 // one binary: the tables corpus (tabledemo), and the two-generation evolution
-// pair (tblv1/tblv2) whose schemas disagree on purpose. Compiled WITHOUT the
-// serialize include path — the Table headers must stand alone.
+// pair (tblv1/tblv2) whose schemas disagree on purpose. The Table headers are
+// meant to stand alone, but this build no longer proves it: tables_includes in
+// the Makefile ends in -I$(SERIALIZE). See TABLES_JSON_HELD_OUT there (#840).
 
 #include <cstdio>
 #include <cstdlib>
