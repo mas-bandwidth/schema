@@ -26,6 +26,7 @@
 // of the const measure that reads their length.
 #![allow(unused_imports)]
 #![allow(clippy::large_const_arrays)]
+#![allow(clippy::large_stack_arrays)]
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 
@@ -253,10 +254,11 @@ pub const FIXED_TABLE_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {
     sign: 0,
 }];
 
-/// A FILE: the form byte, the block length, the block, then the records back
-/// to back to the end of it (docs/SPEC-TABLES.md §3.4).
+/// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+/// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+/// then the layout behind its u32 length, then the records to the end of it.
 pub const fn fixed_table_fixed_measure(count: usize) -> usize {
-    1 + 4 + FIXED_TABLE_FIXED_BLOCK.len() + count * FIXED_TABLE_FIXED_RECORD_BYTES
+    TABLE_FIXED_HEADER_BYTES + 4 + FIXED_TABLE_FIXED_BLOCK.len() + count * FIXED_TABLE_FIXED_RECORD_BYTES
 }
 
 /// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or
@@ -266,10 +268,14 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
     if buffer.len() < need {
         return None;
     }
+    buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header
     buffer[0] = TABLE_FIXED_FORM;
-    buffer[1..5].copy_from_slice(&(FIXED_TABLE_FIXED_BLOCK.len() as u32).to_le_bytes());
-    buffer[5..5 + FIXED_TABLE_FIXED_BLOCK.len()].copy_from_slice(&FIXED_TABLE_FIXED_BLOCK);
-    let mut at = 5 + FIXED_TABLE_FIXED_BLOCK.len();
+    buffer[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8].copy_from_slice(&FIXED_TABLE_FIXED_HASH.to_le_bytes());
+    buffer[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]
+        .copy_from_slice(&(FIXED_TABLE_FIXED_BLOCK.len() as u32).to_le_bytes());
+    buffer[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + FIXED_TABLE_FIXED_BLOCK.len()]
+        .copy_from_slice(&FIXED_TABLE_FIXED_BLOCK);
+    let mut at = TABLE_FIXED_HEADER_BYTES + 4 + FIXED_TABLE_FIXED_BLOCK.len();
     for value in values {
         buffer[at..at + 8].copy_from_slice(&FIXED_TABLE_FIXED_HASH.to_le_bytes());
         let body = &mut buffer[at + 8..at + FIXED_TABLE_FIXED_RECORD_BYTES];
@@ -281,15 +287,17 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 }
 
 /// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when
-/// the file's block hashes to this build's own, a plan compiled once from the
-/// writer's block otherwise — SAME LOOP either way, which is the owner's
+/// the file's layout hashes to this build's own, a plan compiled once from the
+/// writer's layout otherwise — SAME LOOP either way, which is the owner's
 /// ruling that this form's cost must not move when a peer ships
 /// (docs/SPEC-TABLES.md §3.4).
 ///
-/// The DEFAULTS prefill belongs to the compiled path alone; see the loop.
+/// The PREFILL copies declared defaults into exactly the dest ranges the plan
+/// that will run does not write. Identity's hole list is empty — one `Copy` of
+/// the whole body — so the same loop is a no-op on that path.
 ///
 /// The plan's storage is the CALLER's, declared by capacity: this codec never
-/// allocates, and a block whose plan does not fit is a refusal by name.
+/// allocates, and a layout whose plan does not fit is a refusal by name.
 /// Returns the records read, or None on a refusal `report` names.
 pub fn fixed_table_fixed_load(
     values: &mut [FixedTableRow],
@@ -298,20 +306,22 @@ pub fn fixed_table_fixed_load(
     remap: &mut [u16],
     report: &mut TableFixedReport,
 ) -> Option<usize> {
-    if data.len() < 5 {
+    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {
         report.malformed = true;
         return None;
     }
     if data[0] != TABLE_FIXED_FORM {
         return report.refuse(TableFixedReason::NewerForm);
     }
-    let block_bytes = u32::from_le_bytes(data[1..5].try_into().expect("four bytes")) as usize;
-    if block_bytes > data.len() - 5 {
+    let layout_bytes = u32::from_le_bytes(
+        data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].try_into().expect("four bytes"),
+    ) as usize;
+    if layout_bytes > data.len() - (TABLE_FIXED_HEADER_BYTES + 4) {
         return report.refuse(TableFixedReason::BlockMalformed);
     }
-    let block = &data[5..5 + block_bytes];
-    let hash = table_fixed_hash(block);
-    let rest = &data[5 + block_bytes..];
+    let layout = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes];
+    let hash = table_fixed_hash(layout);
+    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes..];
 
     // WHICH PLAN, and that is the only thing that differs between reading this
     // build's own record and reading anybody else's.
@@ -319,7 +329,7 @@ pub fn fixed_table_fixed_load(
     let mut record_bytes = FIXED_TABLE_FIXED_RECORD_BYTES;
     let identity = hash == FIXED_TABLE_FIXED_HASH;
     if !identity {
-        let theirs = match TableFixedBlock::parse(block) {
+        let theirs = match TableFixedBlock::parse(layout) {
             Some(b) => b,
             None => return report.refuse(TableFixedReason::BlockMalformed),
         };
@@ -333,6 +343,12 @@ pub fn fixed_table_fixed_load(
         };
         record_bytes = 8 + theirs.entry(0).size as usize;
     }
+    // THE HEADER NAMES THE LAYOUT ONCE. A header whose hash is not the hash of
+    // the layout behind it is refused, after the layout's own rules have had
+    // their say, so a broken layout is never reported as a lying header.
+    if u64::from_le_bytes(data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8].try_into().expect("eight bytes")) != hash {
+        return report.refuse(TableFixedReason::BlockMalformed);
+    }
     if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
         report.malformed = true;
         return None;
@@ -342,20 +358,24 @@ pub fn fixed_table_fixed_load(
         return report.refuse(TableFixedReason::BatchTooLarge);
     }
     let entries: &[TableFixedEntry] = if identity { &FIXED_TABLE_FIXED_PLAN } else { &plan[..compiled] };
-    // THE PREFILL IS THE COMPILED PATH'S ALONE. A compiled plan can leave a
-    // byte of the image UNWRITTEN — a field this build declares that the
-    // writer's block does not carry — and that field's value is the declared
-    // default this lays down. THE IDENTITY PLAN CANNOT: it is one `Copy` over
-    // the whole body, so every byte the prefill wrote is overwritten before
-    // anything reads it. Same loop, same plan, one pass fewer over the body.
+    // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
+    // `Copy` over the whole body, so the hole list is empty and the loop below
+    // is a no-op. A compiled plan that leaves a field out has that field in
+    // the list, and the declared default is what it keeps. Same loop either way.
+    let mut cover = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
+    let mut hole_buf = [TableFixedHole::default(); FIXED_TABLE_FIXED_BODY_BYTES];
+    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);
+    let holes = &hole_buf[..hole_n];
     let mut image = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
     for k in 0..n {
         let record = &rest[k * record_bytes..(k + 1) * record_bytes];
         if u64::from_le_bytes(record[..8].try_into().expect("eight bytes")) != hash {
             return report.refuse(TableFixedReason::NoBlock);
         }
-        if !identity {
-            image.copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS); // the declared defaults
+        for h in holes {
+            let o = h.off as usize;
+            let z = h.size as usize;
+            image[o..o + z].copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS[o..o + z]);
         }
         table_fixed_run(entries, remap, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);

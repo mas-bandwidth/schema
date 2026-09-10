@@ -520,3 +520,69 @@ func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
 		}
 	}
 }
+
+// rustFn is the source of one generated function, from its signature to the
+// matching close brace, so a pin can name the load loop without matching the
+// rest of the module.
+func rustFn(body, name string) string {
+	sig := "pub fn " + name + "("
+	i := strings.Index(body, sig)
+	if i < 0 {
+		return ""
+	}
+	n := 0
+	for j := i; j < len(body); j++ {
+		switch body[j] {
+		case '{':
+			n++
+		case '}':
+			n--
+			if n == 0 {
+				return body[i : j+1]
+			}
+		}
+	}
+	return body[i:]
+}
+
+// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: prefill the bytes
+// the plan does not write. The compiler computes the unwritten ranges; the
+// load copies defaults into exactly those; identity's list is empty because
+// its plan is one Copy of the whole body. There is no identity flag in the
+// record loop — an empty list is what skips the work.
+func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
+	out := generate(t, valueOnly)
+	body := string(out["probe_fixed.rs"])
+	load := rustFn(body, "config_fixed_load")
+	if load == "" {
+		t.Fatal("config_fixed_load was not emitted")
+	}
+	if !strings.Contains(load, "table_fixed_holes") {
+		t.Error("the load does not compute the plan's unwritten ranges")
+	}
+	if !strings.Contains(load, "CONFIG_FIXED_DEFAULTS") {
+		t.Error("the load has no default image to copy into holes")
+	}
+	i := strings.Index(load, "for k in 0..n")
+	if i < 0 {
+		t.Fatal("the load has no record loop")
+	}
+	loop := load[i:]
+	if strings.Contains(loop, "identity") {
+		t.Error("the load loop still branches on identity; an empty hole list is what skips work")
+	}
+	if strings.Contains(loop, "if !identity") {
+		t.Error("the load loop still skips the prefill on the identity path")
+	}
+	runtime := string(out[FixedRuntimeModule+".rs"])
+	for _, want := range []string{
+		"struct TableFixedHole",
+		"fn table_fixed_holes",
+		"TABLE_FIXED_HEADER_BYTES",
+		"TABLE_FIXED_HASH_AT",
+	} {
+		if !strings.Contains(runtime, want) {
+			t.Errorf("the fixed runtime is missing %q", want)
+		}
+	}
+}

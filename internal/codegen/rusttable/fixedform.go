@@ -35,19 +35,14 @@
 //	over ONE plan, then scatter. The identity hash and a stranger's hash differ
 //	only in which plan the loop was handed.
 //
-//	THE PREFILL IS WHAT §3.4 SAYS IT IS — the answer to "absent field" — and
-//	here that makes it the COMPILED path's alone. §3.4's prefill exists so a
-//	field with no plan entry keeps its declared default; the identity plan has
-//	an entry for every byte (it is ONE `Copy` over the whole body, above), so
-//	on that path there is no such field and nothing the prefill writes is ever
-//	read. Doing it anyway is a third pass over a body that gets two.
-//
-//	THAT IS A COST THAT NOW MOVES WHEN A PEER SHIPS, which is the thing §3.4's
-//	"one reader path" ruling was written against, and it is the owner's to
-//	settle rather than this port's. What would settle it in the ruling's own
-//	terms is prefilling, on BOTH paths, exactly the bytes the plan does not
-//	write — one rule, with the identity plan's zero as its limit case — which
-//	is a plan-compiler change and not this one.
+//	THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. §3.4's prefill exists so
+//	a field with no plan entry keeps its declared default. The plan compiler
+//	computes those unwritten ranges — the complement of the unguarded dest
+//	writes — and the load copies defaults into exactly those. Identity's hole
+//	list is empty because its plan is one `Copy` of the whole body, and an
+//	empty list is what skips the work: there is no identity flag in the load
+//	loop. Guaranteed arms stay holes, so an unselected union arm keeps the
+//	default rather than the previous record.
 //
 // Nothing here touches form 1, which this port does not carry at all: Rust's
 // table surface is the two accelerators (§7, §19), and this is the first WIRE
@@ -199,7 +194,7 @@ func tagMax(width int64) int64 {
 // a table VARIABLE (§2.2) — a GUARDED BRANCH is refused because its whole
 // intent is to make the body vary, and a union arm carrying text or an array
 // is the one shape the reference does not lay out. Every port asks
-// ir.FixedSupported and no port answers it twice.
+// ir.TableFixedSupported and no port answers it twice.
 //
 // THE UNION REFUSAL THAT USED TO LIVE HERE IS GONE. It was this port's own —
 // the fixed form's value is the unit's blittable `<Name>Row` and a Rust union
@@ -210,7 +205,7 @@ func tagMax(width int64) int64 {
 // MOVED: the block, the hash and every byte of every record are what they
 // were, and what changed is only where a value lands on the way in and out.
 func fixedSupported(st *ir.Struct, depth int) bool {
-	return ir.FixedSupported(st, depth)
+	return ir.TableFixedSupported(st, depth)
 }
 
 // ---------------------------------------------------------------------------
@@ -580,6 +575,7 @@ func (g *gen) fixedModule() []byte {
 // of the const measure that reads their length.
 #![allow(unused_imports)]
 #![allow(clippy::large_const_arrays)]
+#![allow(clippy::large_stack_arrays)]
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 
@@ -660,11 +656,22 @@ func (g *gen) emitFixedWriteBody(st *ir.Struct) {
 }
 
 func (g *gen) emitFixedWriteField(f *ir.Field, off int64) {
-	base := off
 	if f.Type.Optional {
-		g.pf("    b[%d] = u8::from(value.%s_present);\n", base, f.Name)
-		base += fixedPresentBytes
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
+		// is present, and when the flag is 0 what rides is zero. One `if` here
+		// rather than a rule anywhere else, because the template already put
+		// the zeros there.
+		g.pf("    b[%d] = u8::from(value.%s_present);\n", off, f.Name)
+		g.pf("    if value.%s_present {\n", f.Name)
+		g.emitFixedWritePayload(f, off+fixedPresentBytes)
+		g.pf("    }\n")
+		return
 	}
+	g.emitFixedWritePayload(f, off)
+}
+
+func (g *gen) emitFixedWritePayload(f *ir.Field, base int64) {
 	switch {
 	case f.KeyEnum != "":
 		g.emitFixedWriteSlots(f, base, f.KeyEnumRef.Max)
@@ -1060,20 +1067,25 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    guard: TABLE_FIXED_NO_GUARD,\n    op: TableFixedOp::Copy,\n    arg: 0,\n    dstsize: 0,\n    sign: 0,\n}];\n\n")
 
 	name := ir.RustSnake(st.Name)
-	g.pf("/// A FILE: the form byte, the block length, the block, then the records back\n")
-	g.pf("/// to back to the end of it (docs/SPEC-TABLES.md §3.4).\n")
+	g.pf("/// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)\n")
+	g.pf("/// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
+	g.pf("/// then the layout behind its u32 length, then the records to the end of it.\n")
 	g.pf("pub const fn %s_fixed_measure(count: usize) -> usize {\n", name)
-	g.pf("    1 + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
+	g.pf("    TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
 
 	g.pf("/// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or\n")
 	g.pf("/// None when the buffer is smaller than %s_fixed_measure says.\n", name)
 	g.pf("pub fn %s_fixed_save(values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
 	g.pf("    let need = %s_fixed_measure(values.len());\n", name)
 	g.pf("    if buffer.len() < need {\n        return None;\n    }\n")
+	g.pf("    buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = TABLE_FIXED_FORM;\n")
-	g.pf("    buffer[1..5].copy_from_slice(&(%s_FIXED_BLOCK.len() as u32).to_le_bytes());\n", up)
-	g.pf("    buffer[5..5 + %s_FIXED_BLOCK.len()].copy_from_slice(&%s_FIXED_BLOCK);\n", up, up)
-	g.pf("    let mut at = 5 + %s_FIXED_BLOCK.len();\n", up)
+	g.pf("    buffer[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8].copy_from_slice(&%s_FIXED_HASH.to_le_bytes());\n", up)
+	g.pf("    buffer[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]\n")
+	g.pf("        .copy_from_slice(&(%s_FIXED_BLOCK.len() as u32).to_le_bytes());\n", up)
+	g.pf("    buffer[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len()]\n", up)
+	g.pf("        .copy_from_slice(&%s_FIXED_BLOCK);\n", up)
+	g.pf("    let mut at = TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len();\n", up)
 	g.pf("    for value in values {\n")
 	g.pf("        buffer[at..at + 8].copy_from_slice(&%s_FIXED_HASH.to_le_bytes());\n", up)
 	g.pf("        let body = &mut buffer[at + 8..at + %s_FIXED_RECORD_BYTES];\n", up)
@@ -1083,15 +1095,17 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    Some(need)\n}\n\n")
 
 	g.pf("/// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when\n")
-	g.pf("/// the file's block hashes to this build's own, a plan compiled once from the\n")
-	g.pf("/// writer's block otherwise — SAME LOOP either way, which is the owner's\n")
+	g.pf("/// the file's layout hashes to this build's own, a plan compiled once from the\n")
+	g.pf("/// writer's layout otherwise — SAME LOOP either way, which is the owner's\n")
 	g.pf("/// ruling that this form's cost must not move when a peer ships\n")
 	g.pf("/// (docs/SPEC-TABLES.md §3.4).\n")
 	g.pf("///\n")
-	g.pf("/// The DEFAULTS prefill belongs to the compiled path alone; see the loop.\n")
+	g.pf("/// The PREFILL copies declared defaults into exactly the dest ranges the plan\n")
+	g.pf("/// that will run does not write. Identity's hole list is empty — one `Copy` of\n")
+	g.pf("/// the whole body — so the same loop is a no-op on that path.\n")
 	g.pf("///\n")
 	g.pf("/// The plan's storage is the CALLER's, declared by capacity: this codec never\n")
-	g.pf("/// allocates, and a block whose plan does not fit is a refusal by name.\n")
+	g.pf("/// allocates, and a layout whose plan does not fit is a refusal by name.\n")
 	g.pf("/// Returns the records read, or None on a refusal `report` names.\n")
 	g.pf("pub fn %s_fixed_load(\n", name)
 	g.pf("    values: &mut [%sRow],\n", st.Name)
@@ -1100,20 +1114,23 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    remap: &mut [u16],\n")
 	g.pf("    report: &mut TableFixedReport,\n")
 	g.pf(") -> Option<usize> {\n")
-	g.pf("    if data.len() < 5 {\n        report.malformed = true;\n        return None;\n    }\n")
+	g.pf("    if data.len() < TABLE_FIXED_HEADER_BYTES + 4 {\n        report.malformed = true;\n        return None;\n    }\n")
 	g.pf("    if data[0] != TABLE_FIXED_FORM {\n        return report.refuse(TableFixedReason::NewerForm);\n    }\n")
-	g.pf("    let block_bytes = u32::from_le_bytes(data[1..5].try_into().expect(\"four bytes\")) as usize;\n")
-	g.pf("    if block_bytes > data.len() - 5 {\n        return report.refuse(TableFixedReason::BlockMalformed);\n    }\n")
-	g.pf("    let block = &data[5..5 + block_bytes];\n")
-	g.pf("    let hash = table_fixed_hash(block);\n")
-	g.pf("    let rest = &data[5 + block_bytes..];\n\n")
+	g.pf("    let layout_bytes = u32::from_le_bytes(\n")
+	g.pf("        data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].try_into().expect(\"four bytes\"),\n")
+	g.pf("    ) as usize;\n")
+	g.pf("    if layout_bytes > data.len() - (TABLE_FIXED_HEADER_BYTES + 4) {\n")
+	g.pf("        return report.refuse(TableFixedReason::BlockMalformed);\n    }\n")
+	g.pf("    let layout = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes];\n")
+	g.pf("    let hash = table_fixed_hash(layout);\n")
+	g.pf("    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes..];\n\n")
 	g.pf("    // WHICH PLAN, and that is the only thing that differs between reading this\n")
 	g.pf("    // build's own record and reading anybody else's.\n")
 	g.pf("    let mut compiled = 0usize;\n")
 	g.pf("    let mut record_bytes = %s_FIXED_RECORD_BYTES;\n", up)
 	g.pf("    let identity = hash == %s_FIXED_HASH;\n", up)
 	g.pf("    if !identity {\n")
-	g.pf("        let theirs = match TableFixedBlock::parse(block) {\n")
+	g.pf("        let theirs = match TableFixedBlock::parse(layout) {\n")
 	g.pf("            Some(b) => b,\n")
 	g.pf("            None => return report.refuse(TableFixedReason::BlockMalformed),\n        };\n")
 	g.pf("        let mine = match TableFixedBlock::parse(&%s_FIXED_BLOCK) {\n", up)
@@ -1124,24 +1141,33 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            None => return report.refuse(TableFixedReason::PlanTooLarge),\n        };\n")
 	g.pf("        record_bytes = 8 + theirs.entry(0).size as usize;\n")
 	g.pf("    }\n")
+	g.pf("    // THE HEADER NAMES THE LAYOUT ONCE. A header whose hash is not the hash of\n")
+	g.pf("    // the layout behind it is refused, after the layout's own rules have had\n")
+	g.pf("    // their say, so a broken layout is never reported as a lying header.\n")
+	g.pf("    if u64::from_le_bytes(data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8].try_into().expect(\"eight bytes\")) != hash {\n")
+	g.pf("        return report.refuse(TableFixedReason::BlockMalformed);\n    }\n")
 	g.pf("    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
 	g.pf("        report.malformed = true;\n        return None;\n    }\n")
 	g.pf("    let n = rest.len() / record_bytes;\n")
 	g.pf("    if n > values.len() {\n        return report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")
 	g.pf("    let entries: &[TableFixedEntry] = if identity { &%s_FIXED_PLAN } else { &plan[..compiled] };\n", up)
-	g.pf("    // THE PREFILL IS THE COMPILED PATH'S ALONE. A compiled plan can leave a\n")
-	g.pf("    // byte of the image UNWRITTEN — a field this build declares that the\n")
-	g.pf("    // writer's block does not carry — and that field's value is the declared\n")
-	g.pf("    // default this lays down. THE IDENTITY PLAN CANNOT: it is one `Copy` over\n")
-	g.pf("    // the whole body, so every byte the prefill wrote is overwritten before\n")
-	g.pf("    // anything reads it. Same loop, same plan, one pass fewer over the body.\n")
+	g.pf("    // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one\n")
+	g.pf("    // `Copy` over the whole body, so the hole list is empty and the loop below\n")
+	g.pf("    // is a no-op. A compiled plan that leaves a field out has that field in\n")
+	g.pf("    // the list, and the declared default is what it keeps. Same loop either way.\n")
+	g.pf("    let mut cover = [0u8; %s_FIXED_BODY_BYTES];\n", up)
+	g.pf("    let mut hole_buf = [TableFixedHole::default(); %s_FIXED_BODY_BYTES];\n", up)
+	g.pf("    let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);\n")
+	g.pf("    let holes = &hole_buf[..hole_n];\n")
 	g.pf("    let mut image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
 	g.pf("    for k in 0..n {\n")
 	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
 	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
 	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
-	g.pf("        if !identity {\n")
-	g.pf("            image.copy_from_slice(&%s_FIXED_DEFAULTS); // the declared defaults\n", up)
+	g.pf("        for h in holes {\n")
+	g.pf("            let o = h.off as usize;\n")
+	g.pf("            let z = h.size as usize;\n")
+	g.pf("            image[o..o + z].copy_from_slice(&%s_FIXED_DEFAULTS[o..o + z]);\n", up)
 	g.pf("        }\n")
 	g.pf("        table_fixed_run(entries, remap, &record[8..], &mut image, report);\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))

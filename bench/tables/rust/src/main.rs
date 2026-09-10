@@ -358,7 +358,7 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
         ctx.failed = true;
         return;
     };
-    let Some(vocab) = ctx.read_corpus(&variant_dir, "bench_fixed.vocab") else {
+    let Some(vocab) = ctx.read_corpus(&variant_dir, "bench_fixed.layout") else {
         ctx.failed = true;
         return;
     };

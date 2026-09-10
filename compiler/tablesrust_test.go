@@ -287,12 +287,11 @@ func join(files map[string][]byte) string {
 }
 
 var (
-	// THE REFERENCE SPELLS THE BLOCK `FixedVocab` (internal/codegen/cpptable/
-	// fixedform.go), which is the vocabulary block §3.4 names; Rust spells the
-	// same bytes `<ROOT>_FIXED_BLOCK`. The two spellings are compared, never
-	// assumed equal, because the BYTES are the contract and the identifier is
-	// each target's own.
-	cppFixedBlockRe = regexp.MustCompile(`(?s)constexpr uint8_t (\w+)FixedVocab\[\] = \{(.*?)\};`)
+	// THE REFERENCE SPELLS THE LAYOUT `FixedLayout` (internal/codegen/cpptable/
+	// fixedform.go); Rust spells the same bytes `<ROOT>_FIXED_BLOCK`. The two
+	// spellings are compared, never assumed equal, because the BYTES are the
+	// contract and the identifier is each target's own.
+	cppFixedBlockRe = regexp.MustCompile(`(?s)constexpr uint8_t (\w+)FixedLayout\[\] = \{(.*?)\};`)
 	cppFixedHashRe  = regexp.MustCompile(`constexpr uint64_t (\w+)FixedHash = (0x[0-9a-f]+)ull;`)
 	rsFixedBlockRe  = regexp.MustCompile(`(?s)pub const ([A-Z0-9_]+)_FIXED_BLOCK: \[u8; \d+\] = \[(.*?)\];`)
 	rsFixedHashRe   = regexp.MustCompile(`pub const ([A-Z0-9_]+)_FIXED_HASH: u64 = (0x[0-9a-f]+);`)

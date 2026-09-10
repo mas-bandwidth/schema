@@ -48,6 +48,17 @@ fn slurp(dir: &str, name: &str) -> Vec<u8> {
     }
 }
 
+fn records_at(data: &[u8]) -> usize {
+    let h = tblfx1::TABLE_FIXED_HEADER_BYTES;
+    h + 4 + u32::from_le_bytes(data[h..h + 4].try_into().expect("four bytes")) as usize
+}
+
+fn layout_of(data: &[u8]) -> &[u8] {
+    let h = tblfx1::TABLE_FIXED_HEADER_BYTES;
+    let n = u32::from_le_bytes(data[h..h + 4].try_into().expect("four bytes")) as usize;
+    &data[h + 4..h + 4 + n]
+}
+
 // ---------------------------------------------------------------------------
 // THE WRITE: read the reference's file, save it back, and the bytes must be
 // identical. One macro because the shape is the same for every root and the
@@ -130,8 +141,8 @@ fn the_write(dir: &str) {
     check(v.hulls[0].turrets[0].gunner_present, "keyed: an optional section that is PRESENT");
     check(!v.hulls[0].turrets[1].gunner_present, "keyed: an optional section that is ABSENT");
     check(
-        v.hulls[0].turrets[1].gunner.reaction == 0.3,
-        "keyed: an ABSENT optional's payload rides WHOLE all the same (§3.4)",
+        v.hulls[0].turrets[1].gunner.reaction == 0.0,
+        "keyed: an ABSENT optional's payload is the template's zeros (§3.4)",
     );
 
     // the packed corpus's root: COUNTED arrays, an enum with a declared
@@ -188,9 +199,7 @@ macro_rules! compiled_self_plan {
         let n = $krate::$load(&mut want, &golden, &mut plan, &mut remap, &mut report).unwrap_or(0);
 
         // and what a plan COMPILED from the same block lands
-        let block_bytes =
-            u32::from_le_bytes(golden[1..5].try_into().expect("four bytes")) as usize;
-        let theirs = $krate::TableFixedBlock::parse(&golden[5..5 + block_bytes]);
+        let theirs = $krate::TableFixedBlock::parse(layout_of(&golden));
         let mine = $krate::TableFixedBlock::parse(&$krate::$block);
         check(
             theirs.is_some() && mine.is_some(),
@@ -215,7 +224,7 @@ macro_rules! compiled_self_plan {
             compiled > 1,
             concat!($file, ": the compiled plan is a REAL plan — text, count, ordinal and the keyed walk break the runs"),
         );
-        let rest = &golden[5 + block_bytes..];
+        let rest = &golden[records_at(&golden)..];
         let record = $krate::$body + 8;
         let mut got = [$krate::$row::default(); $cap];
         for k in 0..n {
@@ -341,9 +350,7 @@ fn the_negative_controls(dir: &str) {
     //    must.
     {
         let fx2 = slurp(dir, "fx2.bin");
-        let block_bytes =
-            u32::from_le_bytes(fx2[1..5].try_into().expect("four bytes")) as usize;
-        let body = &fx2[5 + block_bytes + 8..];
+        let body = &fx2[records_at(&fx2) + 8..];
         let mut wrong = [0u8; tblfx1::FX_ROOT_FIXED_BODY_BYTES];
         wrong.copy_from_slice(&tblfx1::FX_ROOT_FIXED_DEFAULTS);
         let mut report = tblfx1::TableFixedReport::default();
@@ -360,7 +367,7 @@ fn the_negative_controls(dir: &str) {
     //    by name: nothing decoded, no counter moved.
     {
         let mut damaged = slurp(dir, "fx1.bin");
-        damaged[5] ^= 0xFF; // the entry count, so the tree cannot close
+        damaged[tblfx1::TABLE_FIXED_HEADER_BYTES + 4] ^= 0xFF; // the layout's entry count, so the tree cannot close
         let mut values = [tblfx1::FxRootRow::default(); 8];
         let mut plan = [tblfx1::TableFixedEntry::default(); 512];
         let mut remap = [0u16; 512];
@@ -472,7 +479,7 @@ fn u32_at(b: &[u8], at: usize) -> u32 {
 
 fn the_bench_corpus(dir: &str) {
     let golden = slurp(dir, "bench_fixed.bin");
-    let vocab = slurp(dir, "bench_fixed.vocab");
+    let vocab = slurp(dir, "bench_fixed.layout");
 
     // THE BLOCK IS THE CORPUS'S BLOCK, and that one comparison is what says
     // this leg speaks the form and not a near miss: the positions, the ids, the
@@ -531,8 +538,7 @@ fn the_bench_corpus(dir: &str) {
     // AND THE VALUES. The straight-line decode below reads the golden's own
     // bytes at the reference's offsets; the loop compares every record's union
     // against it.
-    let block_bytes = u32_at(&golden, 1) as usize;
-    let rest = &golden[5 + block_bytes..];
+    let rest = &golden[records_at(&golden)..];
     let record = benchfixed::FIXED_TABLE_FIXED_RECORD_BYTES;
     let mut hits = 0;
     for k in 0..n {
@@ -698,8 +704,7 @@ fn the_union_controls(dir: &str) {
     // the tag verbatim out of a stranger's record, so the scatter is where the
     // range is closed — the same place a count's bound is closed.
     let golden = slurp(dir, "bench_fixed.bin");
-    let block_bytes = u32_at(&golden, 1) as usize;
-    let head = 5 + block_bytes;
+    let head = records_at(&golden);
     let record = benchfixed::FIXED_TABLE_FIXED_RECORD_BYTES;
     let mut forged = golden[..head + record].to_vec();
     forged[head + 8 + EVENT_TAG] = 250; // no arm of this build is the 250th
@@ -753,8 +758,7 @@ fn the_union_controls(dir: &str) {
         tblfe1::fe_root_fixed_save(&older, &mut file);
         // FE1's body is `grade`, then the union, then `tail`: the tag leads the
         // union storage, so it is the byte after `grade`.
-        let block_bytes = u32_at(&file, 1) as usize;
-        let tag_at = 5 + block_bytes + 8 + 1;
+        let tag_at = records_at(&file) + 8 + 1;
         file[tag_at] = 250; // no arm of FE1's is the 250th either
 
         let mut values = [tblfe2::FeRootRow::default(); 4];
@@ -938,7 +942,7 @@ fn the_text_under_an_arm() {
     // of a stranger's record, and the compiled plan copies it verbatim too,
     // so the scatter is the one place the ruling can live.
     // ---------------------------------------------------------------------
-    let body0 = 5 + u32_at(&file, 1) as usize + 8;
+    let body0 = records_at(&file) + 8;
     let mut forged = file.clone();
     forged[body0] = 2; // `flag`, spelled true the way a stranger spelled it
     forged[body0 + 1] = 7; // `note`'s present byte, likewise
@@ -1011,8 +1015,7 @@ fn the_enum_extent() {
     }];
     let mut file = vec![0u8; tblfe1::fe_root_fixed_measure(1)];
     tblfe1::fe_root_fixed_save(&older, &mut file);
-    let block_bytes = u32_at(&file, 1) as usize;
-    let grade_at = 5 + block_bytes + 8; // FE1's body leads with `grade`
+    let grade_at = records_at(&file) + 8; // FE1's body leads with `grade`
     let mut forged = file.clone();
     forged[grade_at] = 99; // FE1 declares three variants; nothing is the 99th
 
@@ -1072,6 +1075,113 @@ fn the_enum_extent() {
 }
 
 // ---------------------------------------------------------------------------
+// THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE.
+//
+// Identity's hole list is empty because the identity plan is one Copy of the
+// whole body; a compiled plan that leaves a field out has that field in the
+// list. There is no identity flag in the load loop. The negative control
+// sabotages the identity plan so it leaves a hole: if that hole did not take
+// the declared default, the empty-list claim would be false.
+// ---------------------------------------------------------------------------
+
+fn the_prefill_holes(dir: &str) {
+    const BODY: usize = tblfx1::FX_ROOT_FIXED_BODY_BYTES;
+    let mut cover = [0u8; BODY];
+    let mut hole_buf = [tblfx1::TableFixedHole::default(); BODY];
+
+    let n = tblfx1::table_fixed_holes(&tblfx1::FX_ROOT_FIXED_PLAN, &mut cover, &mut hole_buf);
+    check(n == 0, "identity: the hole list is empty — the plan writes every byte");
+
+    // IDENTITY DIRTY DEST STILL ROUND-TRIPS. Holes empty means the plan
+    // overwrites the whole image, then the scatter overwrites the whole value.
+    {
+        let golden = slurp(dir, "fx1.bin");
+        let mut values = [tblfx1::FxRootRow::default(); 8];
+        for v in &mut values {
+            v.keep = 0xFFFF_FFFF;
+            v.gone = 12345;
+            v.renamed = -99;
+            v.narrow = 0xFFFF;
+        }
+        let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+        let mut remap = [0u16; 512];
+        let mut report = tblfx1::TableFixedReport::default();
+        let n = tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report)
+            .unwrap_or(0);
+        check(n == 2, "identity dirty dest: both records load");
+        let mut out = vec![0u8; tblfx1::fx_root_fixed_measure(n)];
+        tblfx1::fx_root_fixed_save(&values[..n], &mut out);
+        check(out == golden, "identity dirty dest: holes empty, so the plan overwrites everything");
+    }
+
+    // COMPILED MISSING FIELD KEEPS THE DECLARED DEFAULT, and the dest was
+    // poisoned so leftover dest cannot stand in for the hole.
+    {
+        let golden = slurp(dir, "fx1.bin");
+        let mut values = [tblfx2::FxRootRow::default(); 8];
+        for v in &mut values {
+            v.added = 999;
+            v.extra.x = 77;
+            v.extra.y = 88;
+        }
+        let mut plan = [tblfx2::TableFixedEntry::default(); 512];
+        let mut remap = [0u16; 512];
+        let mut report = tblfx2::TableFixedReport::default();
+        let n = tblfx2::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
+        check(n == Some(2), "compiled missing field: both records load");
+        check(
+            values[0].added == 11,
+            "compiled missing field: a field the writer does not carry keeps its declared default",
+        );
+        check(
+            values[0].extra.x == 0 && values[0].extra.y == 0,
+            "compiled missing field: a whole nested type the writer does not carry keeps its defaults",
+        );
+        check(values[0].keep == 4242, "compiled missing field: an unmoved field still lands");
+    }
+
+    // NEGATIVE CONTROL: a sabotaged identity plan that leaves a hole must take
+    // the default, or the empty-list claim is false.
+    {
+        let mut sab = tblfx1::FX_ROOT_FIXED_PLAN;
+        check(
+            sab[0].size as usize == BODY && sab[0].size >= 4,
+            "NEGATIVE CONTROL: the identity plan is one Copy of the whole body",
+        );
+        sab[0].size -= 4;
+        let n = tblfx1::table_fixed_holes(&sab, &mut cover, &mut hole_buf);
+        check(n == 1, "NEGATIVE CONTROL: a sabotaged identity plan that leaves a hole has a non-empty list");
+        check(
+            hole_buf[0].off == BODY as u32 - 4 && hole_buf[0].size == 4,
+            "NEGATIVE CONTROL: the hole is exactly the four bytes the sabotaged Copy no longer writes",
+        );
+
+        let golden = slurp(dir, "fx1.bin");
+        let rec = records_at(&golden);
+        let body = &golden[rec + 8..rec + 8 + BODY];
+        check(
+            body[BODY - 4..] != tblfx1::FX_ROOT_FIXED_DEFAULTS[BODY - 4..],
+            "NEGATIVE CONTROL: the fixture's last four bytes are not already the default",
+        );
+
+        let mut image = [0xAAu8; BODY];
+        for h in &hole_buf[..n] {
+            let o = h.off as usize;
+            let z = h.size as usize;
+            image[o..o + z].copy_from_slice(&tblfx1::FX_ROOT_FIXED_DEFAULTS[o..o + z]);
+        }
+        let mut report = tblfx1::TableFixedReport::default();
+        tblfx1::table_fixed_run(&sab, &[], body, &mut image, &mut report);
+        check(
+            image[BODY - 4..] == tblfx1::FX_ROOT_FIXED_DEFAULTS[BODY - 4..],
+            "NEGATIVE CONTROL: the hole takes the declared default, not the dirty dest and not the record",
+        );
+        check(
+            image[BODY - 4..] != [0xAA, 0xAA, 0xAA, 0xAA],
+            "NEGATIVE CONTROL: the dirty dest did not survive in the hole",
+        );
+    }
+}
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -1091,6 +1201,7 @@ fn main() {
     };
     the_write(&dir);
     the_compiled_plan(&dir);
+    the_prefill_holes(&dir);
     an_older_writer(&dir);
     a_newer_writer(&dir);
     an_optional(&dir);

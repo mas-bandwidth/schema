@@ -103,6 +103,15 @@ type Loose
 			u := unitFromSource(t, src)
 			for _, target := range []string{"rust", "java", "js", "dart", "elixir"} {
 				_, err := New().Generate(u, target, Options{})
+				// Rust's form-3 prefill carries string/bytes/flags defaults on a
+				// unit of fixed roots. A variable table, a union arm of text, a
+				// pointer or a map still has nowhere to put them.
+				if target == "rust" && (tc.name == "direct" || tc.name == "nested_type" || tc.name == "fixed_array" || tc.name == "counted_array" || tc.name == "union_arm") {
+					if err != nil {
+						t.Fatalf("rust form 3 refused table defaults on a unit of fixed roots: %v", err)
+					}
+					continue
+				}
 				if err == nil {
 					t.Fatal("table-closure defaults accepted without table reset and elision support")
 				}
