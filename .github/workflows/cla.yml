@@ -132,8 +132,13 @@ jobs:
           branch: cla-signatures
           path-to-signatures: signatures/caa.json
           path-to-document: https://github.com/mas-bandwidth/.github/blob/main/CAA.md
-          # our own accounts and bots never need to sign
-          allowlist: gafferongames,rowan-claude,*[bot]
+          # our own accounts and bots never need to sign. The family's lines
+          # commit under their own names with unlinked addresses (the bot then
+          # reports "X seems not to be a GitHub user"), and this action matches an
+          # unlinked committer by the commit author name, so the names are listed
+          # beside the logins. Added 2026-09-10 on Glenn's word ("Please add the
+          # family to CAA" / "You have my permission").
+          allowlist: gafferongames,rowan-claude,Rowan,Johnny,Johnny Grok,Emma,Emma Gemini,Stella,Stella Codex,Freddy,Freddy Mercury,*[bot]
           custom-notsigned-prcomment: 'Thanks for the contribution. Before it can be merged, please read the [Contributor Assignment Agreement](https://github.com/mas-bandwidth/.github/blob/main/CAA.md) and sign it by posting the exact sentence below as a comment on this PR.'
           custom-pr-sign-comment: 'I have read the CAA and I hereby sign it, assigning copyright in my contributions to Más Bandwidth LLC.'
           custom-allsigned-prcomment: 'All contributors have signed the CAA. Thank you.'
