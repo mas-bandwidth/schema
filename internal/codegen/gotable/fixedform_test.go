@@ -67,11 +67,17 @@ table Point {
 	if !strings.Contains(fixedLoad, "identity") || !strings.Contains(fixedLoad, "tableFixedHoles") {
 		t.Error("compiled FixedLoad does not prefill the plan's holes")
 	}
-	if !strings.Contains(fixedLoad, "PointReset(&values[k])") {
-		t.Error("identity FixedLoad dropped Reset; padding and unselected arms would be the previous record")
+	if strings.Contains(fixedLoad, "if identity {") {
+		t.Error("identity flag still forks the record loop")
+	}
+	if strings.Contains(fixedLoad, "PointReset(&values[k])") {
+		t.Error("identity still Reset's each record; prefill is the hole list")
 	}
 	if !strings.Contains(fixedLoad, "PointReset(&def)") {
-		t.Error("compiled holes have no default image")
+		t.Error("holes have no default image")
+	}
+	if !strings.Contains(fixedLoad, "tableFixedRun(") {
+		t.Error("FixedLoad does not walk the winning plan")
 	}
 	if strings.Contains(body, "PointFixedClamp") {
 		t.Error("a type that declares nothing bounded must not emit a clamp pass")

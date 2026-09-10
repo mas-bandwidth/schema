@@ -758,26 +758,22 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
-	// Compiled prefill is the dst ranges the plan does not land, copied from
-	// one Reset image. Identity keeps Reset: the Go ABI is not the wire, so
-	// the identity plan does not land padding or unselected union arms.
+	// Prefill is the dest ranges the winning plan does not land, copied from
+	// one Reset image. Identity's list on Go is the ABI padding and unselected
+	// arms. There is no identity flag in the record loop.
 	g.pf("\tvar def %s\n", st.Name)
 	g.pf("\tvar defBytes []byte\n")
 	g.pf("\tvar holes []tableFixedHole\n")
-	g.pf("\tif !identity && n > 0 {\n")
+	g.pf("\tif n > 0 {\n")
 	g.pf("\t\t%sReset(&def)\n", st.Name)
 	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
 	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
 	g.pf("\t}\n")
 	g.pf("\tfor k := int64(0); k < n; k++ {\n")
 	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
-	g.pf("\t\tif identity {\n")
-	g.pf("\t\t\t%sReset(&values[k])\n", st.Name)
-	g.pf("\t\t} else {\n")
-	g.pf("\t\t\tfor i := range holes {\n")
-	g.pf("\t\t\t\th := holes[i]\n")
-	g.pf("\t\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")
-	g.pf("\t\t\t}\n")
+	g.pf("\t\tfor i := range holes {\n")
+	g.pf("\t\t\th := holes[i]\n")
+	g.pf("\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
 	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:], dst, report)\n")

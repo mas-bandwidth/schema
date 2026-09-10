@@ -2114,8 +2114,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	return out
 }
 
-// tableFixedHole is one dst range the plan does not land. Compiled Load copies
-// declared defaults into exactly these; identity does not use the list.
+// tableFixedHole is one dst range the winning plan does not land. Load copies
+// declared defaults into exactly these, from one Reset image. Identity's list
+// on Go is ABI padding and unselected union arms.
 type tableFixedHole struct {
 	Off, Size uint32
 }

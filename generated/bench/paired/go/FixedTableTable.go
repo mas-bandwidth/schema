@@ -8,7 +8,10 @@
 
 package bench
 
-import "unsafe"
+import (
+	"github.com/mas-bandwidth/serialize.go"
+	"unsafe"
+)
 
 // FixedTable — TABLE-wire storage: exported fields, every buffer inside the value,
 // declared defaults restored by FixedTableReset (docs/SPEC-TABLES.md).
@@ -657,7 +660,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	{
 		es := src + 1108
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.GameEvent))
-		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(MixedEvent{}.Type)), Size: 1, Aux: 3, Guard: tableFixedNoGuard, Op: tableFixedTag} // the tag
+		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(MixedEvent{}.Type)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
 		n++
 		{ // arm hit, ordinal 1
 			guardAt := n
@@ -835,6 +838,269 @@ func FixedTableFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 
 func FixedTableFixedWriteBody(b []byte, value *FixedTable) {
 	BenchMixedFixedWriteBody(b[0:], &value.Value)
+}
+
+// MixedEntity's read-side bounds.
+func MixedEntityFixedClampBody(value *MixedEntity, clamped *int32) {
+	_, _ = value, clamped
+	if value.EntityId > 4095 {
+		value.EntityId = 4095
+		(*clamped)++
+	}
+	if value.PosX < -16383 {
+		value.PosX = -16383
+		(*clamped)++
+	} else if value.PosX > 16383 {
+		value.PosX = 16383
+		(*clamped)++
+	}
+	if value.PosY < -16383 {
+		value.PosY = -16383
+		(*clamped)++
+	} else if value.PosY > 16383 {
+		value.PosY = 16383
+		(*clamped)++
+	}
+	if value.PosZ < -16383 {
+		value.PosZ = -16383
+		(*clamped)++
+	} else if value.PosZ > 16383 {
+		value.PosZ = 16383
+		(*clamped)++
+	}
+	if value.Yaw > 511 {
+		value.Yaw = 511
+		(*clamped)++
+	}
+	if value.Pitch > 511 {
+		value.Pitch = 511
+		(*clamped)++
+	}
+	if value.VelX < -2048 {
+		value.VelX = -2048
+		(*clamped)++
+	} else if value.VelX > 2047 {
+		value.VelX = 2047
+		(*clamped)++
+	}
+	if value.VelY < -2048 {
+		value.VelY = -2048
+		(*clamped)++
+	} else if value.VelY > 2047 {
+		value.VelY = 2047
+		(*clamped)++
+	}
+	if value.VelZ < -2048 {
+		value.VelZ = -2048
+		(*clamped)++
+	} else if value.VelZ > 2047 {
+		value.VelZ = 2047
+		(*clamped)++
+	}
+	if value.Health < 0 {
+		value.Health = 0
+		(*clamped)++
+	} else if value.Health > 1000 {
+		value.Health = 1000
+		(*clamped)++
+	}
+	if uint64(value.Weapon) > 15 {
+		value.Weapon = MixedWeaponNone
+		(*clamped)++
+	}
+}
+
+// MixedStat's read-side bounds.
+func MixedStatFixedClampBody(value *MixedStat, clamped *int32) {
+	_, _ = value, clamped
+	if value.StatId > 255 {
+		value.StatId = 255
+		(*clamped)++
+	}
+	if value.Delta < -512 {
+		value.Delta = -512
+		(*clamped)++
+	} else if value.Delta > 511 {
+		value.Delta = 511
+		(*clamped)++
+	}
+}
+
+// MixedHitEvent's read-side bounds.
+func MixedHitEventFixedClampBody(value *MixedHitEvent, clamped *int32) {
+	_, _ = value, clamped
+	if value.TargetId > 4095 {
+		value.TargetId = 4095
+		(*clamped)++
+	}
+	if value.Damage < 0 {
+		value.Damage = 0
+		(*clamped)++
+	} else if value.Damage > 4095 {
+		value.Damage = 4095
+		(*clamped)++
+	}
+	if value.HitKind < 0 {
+		value.HitKind = 0
+		(*clamped)++
+	} else if value.HitKind > 7 {
+		value.HitKind = 7
+		(*clamped)++
+	}
+}
+
+// MixedChatEvent's read-side bounds.
+func MixedChatEventFixedClampBody(value *MixedChatEvent, clamped *int32) {
+	_, _ = value, clamped
+	if value.Channel < 0 {
+		value.Channel = 0
+		(*clamped)++
+	} else if value.Channel > 3 {
+		value.Channel = 3
+		(*clamped)++
+	}
+	if value.Speaker > 4095 {
+		value.Speaker = 4095
+		(*clamped)++
+	}
+}
+
+// MixedPickupEvent's read-side bounds.
+func MixedPickupEventFixedClampBody(value *MixedPickupEvent, clamped *int32) {
+	_, _ = value, clamped
+	if value.ItemId > 1023 {
+		value.ItemId = 1023
+		(*clamped)++
+	}
+	if value.Amount < 0 {
+		value.Amount = 0
+		(*clamped)++
+	} else if value.Amount > 255 {
+		value.Amount = 255
+		(*clamped)++
+	}
+}
+
+// BenchMixed's read-side bounds.
+func BenchMixedFixedClampBody(value *BenchMixed, clamped *int32) {
+	_, _ = value, clamped
+	if value.Sequence > 65535 {
+		value.Sequence = 65535
+		(*clamped)++
+	}
+	if value.AckSequence < 0 {
+		value.AckSequence = 0
+		(*clamped)++
+	} else if value.AckSequence > 65535 {
+		value.AckSequence = 65535
+		(*clamped)++
+	}
+	if value.WorldTime < -1000000000000 {
+		value.WorldTime = -1000000000000
+		(*clamped)++
+	} else if value.WorldTime > 1000000000000 {
+		value.WorldTime = 1000000000000
+		(*clamped)++
+	}
+	if value.FrameTick > 281474976710655 {
+		value.FrameTick = 281474976710655
+		(*clamped)++
+	}
+	if value.ServerTime < 0 {
+		value.ServerTime = 0
+		(*clamped)++
+	} else if value.ServerTime > 16776960 {
+		value.ServerTime = 16776960
+		(*clamped)++
+	}
+	for i := int64(0); i < int64(value.EntitiesCount); i++ {
+		MixedEntityFixedClampBody(&value.Entities[i], clamped)
+	}
+	for i := int64(0); i < int64(value.StatsCount); i++ {
+		MixedStatFixedClampBody(&value.Stats[i], clamped)
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		value.GameEvent.Type = MixedEventTypeNone
+		(*clamped)++
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		MixedHitEventFixedClampBody(&value.GameEvent.Hit, clamped)
+	case MixedEventTypeChat:
+		MixedChatEventFixedClampBody(&value.GameEvent.Chat, clamped)
+	case MixedEventTypePickup:
+		MixedPickupEventFixedClampBody(&value.GameEvent.Pickup, clamped)
+	}
+	if value.AimX < -1.0 {
+		value.AimX = -1.0
+		(*clamped)++
+	} else if value.AimX > 1.0 {
+		value.AimX = 1.0
+		(*clamped)++
+	}
+	if value.AimY < -1.0 {
+		value.AimY = -1.0
+		(*clamped)++
+	} else if value.AimY > 1.0 {
+		value.AimY = 1.0
+		(*clamped)++
+	}
+	if value.AimZ < -1.0 {
+		value.AimZ = -1.0
+		(*clamped)++
+	} else if value.AimZ > 1.0 {
+		value.AimZ = 1.0
+		(*clamped)++
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 {
+		value.Flux = (serialize.Int128{Lo: 0, Hi: 18446744004990074880})
+		(*clamped)++
+	} else if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		value.Flux = (serialize.Int128{Lo: 0, Hi: 68719476736})
+		(*clamped)++
+	}
+	if value.Ping > 64000 {
+		value.Ping = 64000
+		(*clamped)++
+	}
+	if value.CrcHint > 16777215 {
+		value.CrcHint = 16777215
+		(*clamped)++
+	}
+	if value.Extra < 0 {
+		value.Extra = 0
+		(*clamped)++
+	} else if value.Extra > 255 {
+		value.Extra = 255
+		(*clamped)++
+	}
+	if value.IdleTicks < 0 {
+		value.IdleTicks = 0
+		(*clamped)++
+	} else if value.IdleTicks > 15 {
+		value.IdleTicks = 15
+		(*clamped)++
+	}
+}
+
+// FixedTable's read-side bounds.
+func FixedTableFixedClampBody(value *FixedTable, clamped *int32) {
+	_, _ = value, clamped
+	BenchMixedFixedClampBody(&value.Value, clamped)
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
+// count, not its slack; an optional's payload only when present; a union's
+// set arm, not the others.
+func FixedTableFixedClamp(value *FixedTable, report *TableReport) {
+	clamped := int32(0)
+	FixedTableFixedClampBody(value, &clamped)
+	report.Clamped += clamped
 }
 
 // ---- FixedTable, the fixed form ----
@@ -1089,25 +1355,24 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	var def FixedTable
 	var defBytes []byte
 	var holes []tableFixedHole
-	if !identity && n > 0 {
+	if n > 0 {
 		FixedTableReset(&def)
 		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
 		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
 	}
 	for k := int64(0); k < n; k++ {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
-		if identity {
-			FixedTableReset(&values[k])
-		} else {
-			for i := range holes {
-				h := holes[i]
-				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-			}
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4).
+		FixedTableFixedClamp(&values[k], report)
 		at = at[recordBytes:]
 	}
 	return n
