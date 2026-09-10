@@ -645,6 +645,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// counts.
 			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
 				ind, expr, r.Max, expr, f.Type.Name)
+			if !ir.TableFixedClampNeededUnionArm(r) {
+				return
+			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
 				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
