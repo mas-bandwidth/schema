@@ -201,3 +201,15 @@ func TestOnlyTheAnsweringPairedLanguagesEnterThePairedPass(t *testing.T) {
 		t.Fatal(passes)
 	}
 }
+
+func TestACorpusMismatchReadsAsOneLine(t *testing.T) {
+	// Exactly the shape Go's tolerant-form leg emits on this branch.
+	row := "go,bench_table,write,64,2082.96875,1,446254,446254,446254,886.47,0.00,4474bf709286a97d,table,pkg,contract,default,unknown"
+	id, bench, ok := firstRowIdentity([]byte("lang,bench,path\n" + row + "\n"))
+	if !ok || id != "4474bf709286a97d" || bench != "bench_table" {
+		t.Fatal(id, bench, ok)
+	}
+	if _, _, ok := firstRowIdentity([]byte("lang,bench,path\n# a comment\n")); ok {
+		t.Fatal("a CSV with no data row has no identity to report")
+	}
+}

@@ -106,10 +106,29 @@ func answers(lang string, info buildInfo) error {
 			return fmt.Errorf("%s/%s did not run: %w", lang, wire, err)
 		}
 		if _, err := parseRowsForIterations(data, lang, wire, info.CorpusIDs[wire], probeRotation, 0); err != nil {
+			// The overwhelmingly common refusal, and the one worth reading in
+			// a pasted table, is a leg answering to a different corpus. Say
+			// that in a line instead of the parser's whole CSV row.
+			if id, bench, ok := firstRowIdentity(data); ok && id != info.CorpusIDs[wire] {
+				return fmt.Errorf("%s/%s measures `%s` against corpus `%s`, not this sitting's `%s`", lang, wire, bench, id, info.CorpusIDs[wire])
+			}
 			return err
 		}
 	}
 	return nil
+}
+
+// firstRowIdentity reads the bench name and corpus id off the first data row
+// of a runner's CSV, without judging it.
+func firstRowIdentity(data []byte) (id, bench string, ok bool) {
+	for line := range strings.SplitSeq(string(data), "\n") {
+		cols := strings.Split(strings.TrimSpace(line), ",")
+		if len(cols) != 17 || cols[0] == "lang" || strings.HasPrefix(cols[0], "#") {
+			continue
+		}
+		return cols[11], cols[1], true
+	}
+	return "", "", false
 }
 
 // tableRow is one language's line of the published table.
