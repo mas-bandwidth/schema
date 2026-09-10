@@ -157,6 +157,25 @@ public final class TableMain {
         }
         fixedFile = slurp(variantDir + "/bench_fixed.bin", "bench_fixed.bin");
         final byte[] layout = slurp(variantDir + "/bench_fixed.layout", "bench_fixed.layout");
+        // THE TABLE WIRE HAS TWO FORMS AND ONE CORPUS (docs/SPEC-TABLES.md
+        // §3.4): the tolerant form's three files carry the same sixty-four
+        // logical records, so they ride this leg's corpus id too — a row
+        // measured against these files is not divisible against a row measured
+        // before they existed — and their framing is checked, though this leg
+        // has no form-1 wire to time them through.
+        final byte[] tolerant = slurp(variantDir + "/bench_table.bin", "bench_table.bin");
+        final byte[] index = slurp(variantDir + "/bench_table.lengths", "bench_table.lengths");
+        final byte[] variants = slurp(variantDir + "/bench_table.variants.bin", "bench_table.variants.bin");
+        if (index.length != NUM_RECORDS * 4) {
+            fail(name, "the tolerant corpus index is not 64 little-endian uint32 lengths");
+        }
+        long total = 0;
+        for (int k = 0; k < NUM_RECORDS; k++) {
+            total += bench.TableFixed.get32(index, k * 4) & 0xFFFFFFFFL;
+        }
+        if (total != variants.length || tolerant.length == 0) {
+            fail(name, "the tolerant corpus lengths do not sum to its size");
+        }
         if (fixedFile.length == 0) {
             fail(name, "empty fixed corpus in " + variantDir);
         }
