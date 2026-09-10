@@ -398,7 +398,17 @@ and the Row family needs one that has: the twin IS ir.UnionLayout, the same
 model the C++ reference's storage struct meets, and the const asserts hold
 this build to it arm by arm. Rust says out loud what the C reference leaves
 unsaid: READING an arm is `unsafe` and every such read is guarded by the tag,
-while WRITING one is safe. What is still a named follow-on is narrower than
+while WRITING one is safe. THE TAG AND THE OVERLAY ARE THE CRATE'S AND NOT THE
+CALLER'S, for exactly that reason: a public tag beside a public overlay, with
+safe functions reading the arm the tag names, is undefined behaviour with no
+`unsafe` anywhere near the caller — nothing would stop the tag moving without
+its arm, and the next safe read would build a `bool` out of a byte that is
+neither 0 nor 1. The public surface is a CHECKED ACCESSOR PAIR per arm —
+`x() -> Option<XRow>` hands the arm back only when the tag names it, and
+`set_x()` is the only way the tag moves at all — so tag and arm cannot
+disagree, and the generated codecs inside the crate still read the overlay
+under `unsafe` guarded by the tag they just matched, exactly as the C
+reference's `switch` is. What is still a named follow-on is narrower than
 the twin was: an arm whose storage needs a COMPANION beside it — text, or an
 array with its count — is two pieces in one slot of the overlay that C++
 spells as an unnamed struct and no port lays out (§3.4 refuses those arms
