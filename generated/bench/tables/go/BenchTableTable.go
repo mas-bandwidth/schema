@@ -2184,8 +2184,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	return out
 }
 
-// tableFixedHole is one dst range the plan does not land. Compiled Load copies
-// declared defaults into exactly these; identity does not use the list.
+// tableFixedHole is one dst range the winning plan does not land. Load copies
+// declared defaults into exactly these, from one Reset image. Identity's list
+// on Go is ABI padding and unselected union arms.
 type tableFixedHole struct {
 	Off, Size uint32
 }
@@ -9523,6 +9524,106 @@ func TableStatFixedWriteBody(b []byte, value *TableStat) {
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
+// TableEntity's read-side bounds.
+func TableEntityFixedClampBody(value *TableEntity, clamped *int32) {
+	_, _ = value, clamped
+	if value.EntityId > 4095 {
+		value.EntityId = 4095
+		(*clamped)++
+	}
+	if value.PosX < -16383 {
+		value.PosX = -16383
+		(*clamped)++
+	} else if value.PosX > 16383 {
+		value.PosX = 16383
+		(*clamped)++
+	}
+	if value.PosY < -16383 {
+		value.PosY = -16383
+		(*clamped)++
+	} else if value.PosY > 16383 {
+		value.PosY = 16383
+		(*clamped)++
+	}
+	if value.PosZ < -16383 {
+		value.PosZ = -16383
+		(*clamped)++
+	} else if value.PosZ > 16383 {
+		value.PosZ = 16383
+		(*clamped)++
+	}
+	if value.Yaw > 511 {
+		value.Yaw = 511
+		(*clamped)++
+	}
+	if value.Pitch > 511 {
+		value.Pitch = 511
+		(*clamped)++
+	}
+	if value.VelX < -2048 {
+		value.VelX = -2048
+		(*clamped)++
+	} else if value.VelX > 2047 {
+		value.VelX = 2047
+		(*clamped)++
+	}
+	if value.VelY < -2048 {
+		value.VelY = -2048
+		(*clamped)++
+	} else if value.VelY > 2047 {
+		value.VelY = 2047
+		(*clamped)++
+	}
+	if value.VelZ < -2048 {
+		value.VelZ = -2048
+		(*clamped)++
+	} else if value.VelZ > 2047 {
+		value.VelZ = 2047
+		(*clamped)++
+	}
+	if value.Health < 0 {
+		value.Health = 0
+		(*clamped)++
+	} else if value.Health > 1000 {
+		value.Health = 1000
+		(*clamped)++
+	}
+	if uint64(value.Weapon) > 15 {
+		value.Weapon = TableWeaponNone
+		(*clamped)++
+	}
+}
+
+// TableStat's read-side bounds.
+func TableStatFixedClampBody(value *TableStat, clamped *int32) {
+	_, _ = value, clamped
+	if value.StatId > 255 {
+		value.StatId = 255
+		(*clamped)++
+	}
+	if value.Delta < -512 {
+		value.Delta = -512
+		(*clamped)++
+	} else if value.Delta > 511 {
+		value.Delta = 511
+		(*clamped)++
+	}
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
+// count, not its slack; an optional's payload only when present; a union's
+// set arm, not the others.
+func TableEntityFixedClamp(value *TableEntity, report *TableReport) {
+	clamped := int32(0)
+	TableEntityFixedClampBody(value, &clamped)
+	report.Clamped += clamped
+}
+
 // ---- TableEntity, the fixed form ----
 
 const TableEntityFixedBodyBytes = 51
@@ -9683,28 +9784,41 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	var def TableEntity
 	var defBytes []byte
 	var holes []tableFixedHole
-	if !identity && n > 0 {
+	if n > 0 {
 		TableEntityReset(&def)
 		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
 		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
 	}
 	for k := int64(0); k < n; k++ {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
-		if identity {
-			TableEntityReset(&values[k])
-		} else {
-			for i := range holes {
-				h := holes[i]
-				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-			}
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4).
+		TableEntityFixedClamp(&values[k], report)
 		at = at[recordBytes:]
 	}
 	return n
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
+// count, not its slack; an optional's payload only when present; a union's
+// set arm, not the others.
+func TableStatFixedClamp(value *TableStat, report *TableReport) {
+	clamped := int32(0)
+	TableStatFixedClampBody(value, &clamped)
+	report.Clamped += clamped
 }
 
 // ---- TableStat, the fixed form ----
@@ -9811,25 +9925,24 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	var def TableStat
 	var defBytes []byte
 	var holes []tableFixedHole
-	if !identity && n > 0 {
+	if n > 0 {
 		TableStatReset(&def)
 		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
 		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
 	}
 	for k := int64(0); k < n; k++ {
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
-		if identity {
-			TableStatReset(&values[k])
-		} else {
-			for i := range holes {
-				h := holes[i]
-				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-			}
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4).
+		TableStatFixedClamp(&values[k], report)
 		at = at[recordBytes:]
 	}
 	return n
