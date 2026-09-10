@@ -836,13 +836,48 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 		raw := fixedRawUint(width)
 		g.pf("%s    let raw = %s::from_le_bytes(b[at..at + %d].try_into().expect(\"the declared width\"));\n",
 			ind, raw, width)
-		if slot := g.fixedSlotType(f); slot == raw {
-			g.pf("%s    %s = raw;\n", ind, dst)
+		slot := g.fixedSlotType(f)
+		held := "raw"
+		if slot != raw {
+			held = "raw as " + slot
+		}
+		if extent, ranged := fixedEnumExtent(f, width); ranged {
+			// AN ORDINAL PAST THE DECLARED EXTENT IS OUT OF RANGE, exactly as a
+			// union tag past the arm count is (see the union's scatter below):
+			// it lands as None and counts one clamped rather than arriving as a
+			// number this build has no variant for. The identity plan copies
+			// the ordinal verbatim out of a stranger's record, so the scatter is
+			// where the range is closed — the same place a count's bound is.
+			g.pf("%s    if raw > %d {\n", ind, extent)
+			g.pf("%s        report.clamped += 1;\n", ind)
+			g.pf("%s        %s = 0;\n", ind, dst)
+			g.pf("%s    } else {\n", ind)
+			g.pf("%s        %s = %s;\n", ind, dst, held)
+			g.pf("%s    }\n", ind)
 		} else {
-			g.pf("%s    %s = raw as %s;\n", ind, dst, slot)
+			g.pf("%s    %s = %s;\n", ind, dst, held)
 		}
 	}
 	g.pf("%s}\n", ind)
+}
+
+// fixedEnumExtent answers an ENUM leaf's top wire value and whether a range
+// check on it is worth emitting at all: an enum whose extent is every value its
+// storage width holds has no out-of-range ordinal to close, and a comparison
+// there would be one the type's own limits make useless — which rustc says out
+// loud.
+func fixedEnumExtent(f *ir.Field, width int64) (int64, bool) {
+	if f == nil || f.Type.Kind != ir.TNamed {
+		return 0, false
+	}
+	en, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return 0, false
+	}
+	if en.Max >= tagMax(width) {
+		return 0, false
+	}
+	return en.Max, true
 }
 
 // fixedSlotType is ONE slot's Rust type in the Row — the cooked spelling,

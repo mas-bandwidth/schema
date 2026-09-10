@@ -551,7 +551,7 @@ fn the_bench_corpus(dir: &str) {
         // what set both.
         let hit = unsafe { event.arms.hit };
         check(
-            u32::from(hit.target_id) == u32_at(body, EVENT_ARM)
+            hit.target_id == u32_at(body, EVENT_ARM)
                 && hit.damage == u32_at(body, EVENT_ARM + 4) as i32
                 && hit.hit_kind == u32_at(body, EVENT_ARM + 8) as i32
                 && hit.crit == (body[EVENT_ARM + 12] != 0),
@@ -795,6 +795,283 @@ fn the_union_controls(dir: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// TEXT UNDER A UNION ARM (docs/SPEC-TABLES.md §3.4, §15) — test/tables/FU1 and
+// FU2, and the hole they were written for.
+//
+// A PLAN ENTRY FOR A TEXT FIELD INSIDE A UNION ARM HAS TO CARRY TWO FACTS AT
+// ONCE: which arm's tag it is guarded by, and which flavour of text it moves.
+// A port that spends ONE LANE on both loses whichever it wrote second, and the
+// loss is silent — a `string(N)` in a union's SECOND arm read as '' through a
+// compiled plan while the identity read landed the text, with no counter and
+// no refusal (reference-fix 12, found on the Dart leg). Nothing else in the
+// corpus puts text inside an arm, so nothing else could have caught it.
+//
+// THIS PORT SPENDS TWO: the flavour is settled at COMPILE time out of the
+// layout's own kind — 12 utf8, 33 wide, 34 bytes — into the entry's `size` and
+// `aux`, and `arg` carries the arm ordinal and nothing else. The check below is
+// what holds it there, and it is the one shape that would go red if a later
+// refactor folded the two back into one lane: the two reads have to agree
+// FIELD FOR FIELD, and the text is a field.
+// ---------------------------------------------------------------------------
+
+fn the_text_under_an_arm() {
+    // FU1 writes: the LABELLED arm — the union's SECOND — with a scalar either
+    // side of the text, and the `plain` arm beside it so both are exercised.
+    let older = [
+        tblfu1::FuRootRow {
+            flag: true,
+            note: 44,
+            note_present: true,
+            pick: tblfu1::PickRow {
+                tag: 2, // labelled
+                arms: tblfu1::PickRowArms {
+                    labelled: tblfu1::LabelledRow {
+                        lead: 101,
+                        label: *b"hello\0\0\0\0",
+                        label_length: 5,
+                        trail: 202,
+                    },
+                },
+            },
+            tail: 11,
+        },
+        tblfu1::FuRootRow {
+            flag: false,
+            note: 0,
+            note_present: false,
+            pick: tblfu1::PickRow {
+                tag: 1, // plain
+                arms: tblfu1::PickRowArms {
+                    plain: tblfu1::PlainRow { n: 303 },
+                },
+            },
+            tail: 12,
+        },
+    ];
+    let mut file = vec![0u8; tblfu1::fu_root_fixed_measure(older.len())];
+    check(
+        tblfu1::fu_root_fixed_save(&older, &mut file) == Some(file.len()),
+        "text under an arm: FU1 writes its two records",
+    );
+
+    // THE IDENTITY READ, which is the one that was right all along.
+    let mut mine = [tblfu1::FuRootRow::default(); 4];
+    let mut plan = [tblfu1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfu1::TableFixedReport::default();
+    let n = tblfu1::fu_root_fixed_load(&mut mine, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(2), "text under an arm: the identity read takes both records");
+    check(
+        report == tblfu1::TableFixedReport::default(),
+        "text under an arm: its own layout is the identity plan, and it moves no counter",
+    );
+    // SAFETY: the tag is 2, which names `labelled`; the scatter set both.
+    let id_arm = unsafe { mine[0].pick.arms.labelled };
+    check(
+        mine[0].pick.tag == 2 && id_arm.label_length == 5 && &id_arm.label[..5] == b"hello",
+        "text under an arm: the IDENTITY read lands the text",
+    );
+    check(
+        mine[0].flag && mine[0].note_present && mine[0].note == 44,
+        "text under an arm: and the bool and the optional that lead the body",
+    );
+
+    // AND THE COMPILED READ, of the same bytes through a peer whose layout hash
+    // differs — which is the only thing that changes.
+    let mut theirs = [tblfu2::FuRootRow::default(); 4];
+    let mut plan2 = [tblfu2::TableFixedEntry::default(); 512];
+    let mut remap2 = [0u16; 512];
+    let mut report2 = tblfu2::TableFixedReport::default();
+    let n2 = tblfu2::fu_root_fixed_load(&mut theirs, &file, &mut plan2, &mut remap2, &mut report2);
+    check(n2 == Some(2), "text under an arm: the compiled read takes both records");
+    check(
+        !report2.malformed && !report2.refused && report2.clamped == 0
+            && report2.kind_mismatch == 0,
+        "text under an arm: and nothing was damaged, clamped or refused",
+    );
+
+    // FIELD FOR FIELD, which is the check the bug walked through: a compiled
+    // read that landed '' while the identity read landed 'hello' passed every
+    // other assertion in this file.
+    // SAFETY: both tags are 2, which names `labelled` in both builds.
+    let arm = unsafe { theirs[0].pick.arms.labelled };
+    check(theirs[0].pick.tag == 2, "text under an arm: the tag agrees");
+    check(arm.lead == id_arm.lead && arm.lead == 101, "text under an arm: the scalar BEFORE the text agrees");
+    check(
+        arm.label_length == id_arm.label_length && arm.label_length == 5,
+        "text under an arm: the LENGTH agrees",
+    );
+    check(
+        arm.label == id_arm.label && &arm.label[..5] == b"hello",
+        "text under an arm: THE TEXT ITSELF agrees — every byte of the buffer",
+    );
+    check(
+        arm.trail == id_arm.trail && arm.trail == 202,
+        "text under an arm: the scalar AFTER the text agrees",
+    );
+    check(theirs[0].tail == mine[0].tail && theirs[0].tail == 11, "text under an arm: the field past the union agrees");
+    check(
+        theirs[0].extra == 11,
+        "text under an arm: the field FU1 does not carry took its declared default",
+    );
+
+    // THE FIRST ARM TOO, because a lane that holds the arm ordinal is right by
+    // accident for ordinal 1 and wrong from 2 up.
+    // SAFETY: both tags are 1, which names `plain`.
+    check(
+        theirs[1].pick.tag == 1
+            && unsafe { theirs[1].pick.arms.plain }.n == unsafe { mine[1].pick.arms.plain }.n
+            && unsafe { theirs[1].pick.arms.plain }.n == 303,
+        "text under an arm: the FIRST arm agrees as well",
+    );
+    check(theirs[1].tail == 12, "text under an arm: and its tail");
+
+    // ---------------------------------------------------------------------
+    // AND THE TWO BYTES THAT ARE TRUE WHEN THEY ARE NOT ZERO (§3.4).
+    //
+    // A `bool` and an optional's PRESENCE each ride as one byte, and the
+    // ruling on both is `!= 0` and not `== 1`: a writer that spells `true` 2,
+    // or presence 7, is a writer this reader still understands, and neither
+    // is damage, a clamp or a refusal. FU1's body leads with those two bytes
+    // exactly so the forgery below is at a known offset, and both reader
+    // paths answer for them — the identity plan copies the byte verbatim out
+    // of a stranger's record, and the compiled plan copies it verbatim too,
+    // so the scatter is the one place the ruling can live.
+    // ---------------------------------------------------------------------
+    let body0 = 5 + u32_at(&file, 1) as usize + 8;
+    let mut forged = file.clone();
+    forged[body0] = 2; // `flag`, spelled true the way a stranger spelled it
+    forged[body0 + 1] = 7; // `note`'s present byte, likewise
+
+    let mut mine2 = [tblfu1::FuRootRow::default(); 4];
+    let mut r3 = tblfu1::TableFixedReport::default();
+    let n3 = tblfu1::fu_root_fixed_load(&mut mine2, &forged, &mut plan, &mut remap, &mut r3);
+    check(n3 == Some(2), "stray true bytes: the identity read still takes both records");
+    check(mine2[0].flag, "stray true bytes: a bool byte of 2 lands TRUE on the identity path");
+    check(
+        mine2[0].note_present && mine2[0].note == 44,
+        "stray true bytes: a present byte of 7 lands PRESENT, and the payload with it",
+    );
+    check(
+        r3 == tblfu1::TableFixedReport::default(),
+        "stray true bytes: and neither is damage, a clamp or a refusal",
+    );
+
+    let mut theirs2 = [tblfu2::FuRootRow::default(); 4];
+    let mut r4 = tblfu2::TableFixedReport::default();
+    let n4 = tblfu2::fu_root_fixed_load(&mut theirs2, &forged, &mut plan2, &mut remap2, &mut r4);
+    check(n4 == Some(2), "stray true bytes: the compiled read still takes both records");
+    check(theirs2[0].flag, "stray true bytes: a bool byte of 2 lands TRUE on the COMPILED path too");
+    check(
+        theirs2[0].note_present && theirs2[0].note == 44,
+        "stray true bytes: and a present byte of 7 lands PRESENT there as well",
+    );
+    check(
+        !r4.malformed && !r4.refused && r4.clamped == 0 && r4.kind_mismatch == 0,
+        "stray true bytes: the compiled path calls neither of them an event either",
+    );
+
+    // NEGATIVE CONTROL FOR THE CONTROL: the SAME bytes with those two zeroed
+    // land false and absent, so the reads above are the forgery answering and
+    // not a reader that says `true` to everything.
+    let mut off = file.clone();
+    off[body0] = 0;
+    off[body0 + 1] = 0;
+    let mut mine3 = [tblfu1::FuRootRow::default(); 4];
+    let mut r5 = tblfu1::TableFixedReport::default();
+    tblfu1::fu_root_fixed_load(&mut mine3, &off, &mut plan, &mut remap, &mut r5);
+    check(
+        !mine3[0].flag && !mine3[0].note_present,
+        "NEGATIVE CONTROL: a zero byte is still false, and a zero present byte still absent",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// AN ENUM ORDINAL PAST THE DECLARED EXTENT (docs/SPEC-TABLES.md §3.4, §4.2).
+//
+// The ruling is the union tag's, and for the same reason: an ordinal out of
+// range LANDS AS NONE AND COUNTS ONE CLAMPED rather than arriving as a number
+// this build has no variant for. Both reader paths answer it, by the two
+// mechanisms this form has — the scatter closes the range on the identity path,
+// where the plan copies the ordinal verbatim out of a stranger's record, and the
+// `ordinal` op closes it on the compiled path, where the number is resolved
+// through the plan's own table.
+// ---------------------------------------------------------------------------
+
+fn the_enum_extent() {
+    let older = [tblfe1::FeRootRow {
+        grade: 3, // Gold
+        effect: tblfe1::EffectRow {
+            tag: 1, // boost
+            arms: tblfe1::EffectRowArms {
+                boost: tblfe1::BoostRow { power: 17 },
+            },
+        },
+        tail: 55,
+    }];
+    let mut file = vec![0u8; tblfe1::fe_root_fixed_measure(1)];
+    tblfe1::fe_root_fixed_save(&older, &mut file);
+    let block_bytes = u32_at(&file, 1) as usize;
+    let grade_at = 5 + block_bytes + 8; // FE1's body leads with `grade`
+    let mut forged = file.clone();
+    forged[grade_at] = 99; // FE1 declares three variants; nothing is the 99th
+
+    // THE IDENTITY PATH.
+    let mut values = [tblfe1::FeRootRow::default(); 4];
+    let mut plan = [tblfe1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfe1::TableFixedReport::default();
+    let n = tblfe1::fe_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "a forged ordinal: the record still reads");
+    check(
+        values[0].grade == 0,
+        "a forged ordinal: an ordinal past the last variant lands as None",
+    );
+    check(report.clamped == 1, "a forged ordinal: and it counts ONE clamped");
+    check(
+        !report.malformed && !report.refused && report.kind_mismatch == 0,
+        "a forged ordinal: nothing else fired — an out-of-range ordinal is not damage",
+    );
+    check(
+        values[0].tail == 55 && values[0].effect.tag == 1,
+        "a forged ordinal: every field beside it still landed",
+    );
+
+    // THE COMPILED PATH, over the same forged bytes.
+    let mut theirs = [tblfe2::FeRootRow::default(); 4];
+    let mut plan2 = [tblfe2::TableFixedEntry::default(); 512];
+    let mut remap2 = [0u16; 512];
+    let mut report2 = tblfe2::TableFixedReport::default();
+    let n2 = tblfe2::fe_root_fixed_load(&mut theirs, &forged, &mut plan2, &mut remap2, &mut report2);
+    check(n2 == Some(1), "a forged ordinal, compiled plan: the record still reads");
+    check(
+        theirs[0].grade == 0,
+        "a forged ordinal, compiled plan: it lands as None there too",
+    );
+    check(
+        report2.clamped == 1,
+        "a forged ordinal, compiled plan: and counts ONE clamped, not two",
+    );
+    check(
+        theirs[0].tail == 55,
+        "a forged ordinal, compiled plan: the field past it still lands",
+    );
+
+    // AND THE NEGATIVE CONTROL FOR THE CONTROL: the same record UNFORGED reads
+    // Gold and clamps nothing, so the clamp above is the forgery and not the
+    // reader. A variant this reader cannot name is a DIFFERENT event — it
+    // resolves to None through the table and counts nothing, which
+    // `the_ordinal_slide` above pins coming back from FE2.
+    let mut clean = tblfe1::TableFixedReport::default();
+    let mut back = [tblfe1::FeRootRow::default(); 4];
+    tblfe1::fe_root_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut clean);
+    check(
+        back[0].grade == 3 && clean.clamped == 0,
+        "NEGATIVE CONTROL: the same record unforged lands Gold and clamps nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -819,6 +1096,8 @@ fn main() {
     an_optional(&dir);
     the_bench_corpus(&bench);
     the_ordinal_slide();
+    the_text_under_an_arm();
+    the_enum_extent();
     the_negative_controls(&dir);
     the_union_controls(&bench);
     let failures = FAILURES.load(Ordering::Relaxed);
