@@ -5701,7 +5701,7 @@ tables-was-negative-control: build/tables-generated/.stamp test/tables/was_contr
 	@cat build/tables-was-nc/with-was.log
 	@grep -q '^unknown=0 kind_mismatch=0 malformed=0 flagship=Aurora escorts=2 home_name=untitled$$' build/tables-was-nc/with-was.log || \
 		{ echo "CONTROL FAILED: with was, the W1 fleet did not read in silence under W2"; exit 1; }
-	@sed -e 's/^table Ship | was = "Vessel"$$/table Ship/' test/tables/W2.schema > build/tables-was-nc/W2.schema
+	@sed -e 's/^fixed table Ship | was = "Vessel"$$/fixed table Ship/' test/tables/W2.schema > build/tables-was-nc/W2.schema
 	@cmp -s test/tables/W2.schema build/tables-was-nc/W2.schema && \
 		{ echo "NEGATIVE CONTROL: the was sabotage patched nothing"; exit 1; } || true
 	@rm -rf build/tables-was-nc/w2 && ./bin/schema generate --lang cpp --out build/tables-was-nc/w2 build/tables-was-nc/W2.schema
