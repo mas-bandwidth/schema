@@ -10,11 +10,12 @@
 //	of the type, so there is no measuring pass, no id interning, no trailer
 //	and no second walk.
 //
-//	THE READER IS ONE PLAN-DRIVEN PATH. A read is a prefill and one loop over
-//	one plan: the IDENTITY PLAN when the record's hash is this build's own,
-//	and a plan compiled ONCE from the writer's own layout otherwise. There is
-//	no second reader and no fast/slow cliff — the owner's own ruling, which
-//	§3.4 quotes him on.
+//	THE READER IS ONE PLAN-DRIVEN PATH. A read prefills the bytes the plan
+//	does not write (identity's hole list is empty) and loops over one plan:
+//	the IDENTITY PLAN when the record's hash is this build's own, and a plan
+//	compiled ONCE from the writer's own layout otherwise. There is no second
+//	reader and no fast/slow cliff — the owner's own ruling, which §3.4 quotes
+//	him on.
 //
 // THIS IS THE PACKET CODEC'S SHAPE AND NOT THE VARIABLE FORM'S. Java's packet
 // wire is a value class of public fields beside static `write`/`read`/`measure`
@@ -32,6 +33,12 @@
 // image into the value. The identity plan is then ONE copy of the whole body,
 // which is exactly what §3.4's coalescing promises, and the same loop and the
 // same scatter run for every writer.
+//
+// A `bytes(N)` DESTINATION ROW IS AN ARRAY'S — dest the buffer, aux the live
+// count, counted=1, stride=1 — because the TEXT row is the other way round
+// (dest the length, aux the buffer). Identity lands the field with one copy
+// of the body and never reads those columns; a plan compiled from this row
+// is what compileEntry walks.
 package javatable
 
 import (
@@ -57,6 +64,13 @@ const fixedKindOptional = ir.TableKindOptional
 const (
 	fixedCountBytes   = ir.TableFixedCountBytes
 	fixedPresentBytes = ir.TableFixedPresentBytes
+)
+
+// the text flavours, which say how a `text` plan entry lands its units.
+const (
+	fixedTextUtf8  = 1
+	fixedTextWide  = 2
+	fixedTextBytes = 3
 )
 
 func fixedStorageBytes(t ir.FieldType) int64 { return ir.TableFixedStorageBytes(t) }
@@ -115,89 +129,138 @@ type fixedLayoutEntry struct {
 	kind     int
 	size     int64
 	children int
-	counted  bool   // MY side: does a live count ride in front of this array
 	note     string // a comment on the emitted array; never a wire byte
 }
 
-type fixedWalk struct{ entries []fixedLayoutEntry }
+// fixedDst is MY side of the walk, one row per layout entry: the storage facts
+// a layout entry cannot carry, which is what a plan compiled from another
+// writer's layout lands values through.
+//
+// THE READER'S OWN STORAGE IN THIS LANGUAGE IS THE CANONICAL BODY IMAGE — this
+// build's declared order at this build's own widths, which is exactly the
+// wire's layout. Java has no struct layout to take an offsetof of, so where
+// the C++ reference's rows carry offsetof these carry the field's own offset
+// inside the body.
+//
+// A `bytes(N)` DESTINATION ROW IS AN ARRAY'S — dest the buffer, aux the live
+// count — because the TEXT row is the other way round (dest the length, aux
+// the buffer). Identity lands `bytes(N)` with one copy of the body and reads
+// neither column; a plan compiled from this row is what compileEntry walks.
+type fixedDst struct {
+	dst     int64 // this entry's byte offset inside its parent's image
+	stride  int64 // an array entry's element stride
+	aux     int64 // a text field's buffer offset, a counted array's count, a present flag
+	counted int   // an array that carries a live count
+	arg     int   // a text field's flavour
+}
 
-func (w *fixedWalk) push(e fixedLayoutEntry) { w.entries = append(w.entries, e) }
+type fixedWalk struct {
+	entries []fixedLayoutEntry
+	dst     []fixedDst
+}
+
+func (w *fixedWalk) push(e fixedLayoutEntry, d fixedDst) {
+	w.entries = append(w.entries, e)
+	w.dst = append(w.dst, d)
+}
 
 func fixedWalkRoot(st *ir.Struct) *fixedWalk {
 	w := &fixedWalk{}
 	w.push(fixedLayoutEntry{id: ir.TableWireId(st.WireName()), kind: ir.TableKindTable,
-		size: fixedTypeBytes(st), children: len(st.Fields), note: st.Name})
+		size: fixedTypeBytes(st), children: len(st.Fields), note: st.Name}, fixedDst{})
+	var at int64
 	for _, f := range st.Fields {
-		fixedWalkField(w, f)
+		fixedWalkField(w, f, at)
+		at += fixedFieldBytes(f)
 	}
 	return w
 }
 
-func fixedWalkField(w *fixedWalk, f *ir.Field) {
+func fixedWalkField(w *fixedWalk, f *ir.Field, at int64) {
 	id := ir.TableFieldWireId(f)
 	size := fixedFieldBytes(f)
 	if f.Type.Optional {
-		w.push(fixedLayoutEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"})
-		fixedWalkPayload(w, f, id, size-fixedPresentBytes)
+		w.push(fixedLayoutEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
+			fixedDst{aux: at})
+		fixedWalkPayload(w, f, id, size-fixedPresentBytes, at+fixedPresentBytes)
 		return
 	}
-	fixedWalkPayload(w, f, id, size)
+	fixedWalkPayload(w, f, id, size, at)
 }
 
-func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size int64) {
+func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 	switch {
 	case f.KeyEnum != "":
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name})
-		fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum)
-		fixedWalkElement(w, f, 0, "element")
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name},
+			fixedDst{dst: at, stride: fixedElementBytes(f)})
+		fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum, 0)
+		fixedWalkElement(w, f, 0, "element", 0)
 	case f.Array != ir.ArrayNone:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1,
-			counted: f.Array == ir.ArrayCounted, note: f.Name})
-		fixedWalkElement(w, f, 0, "element")
+		counted, aux, base := 0, int64(0), at
+		if f.Array == ir.ArrayCounted {
+			counted, aux, base = 1, at, at+fixedCountBytes
+		}
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
+			fixedDst{dst: base, stride: fixedElementBytes(f), aux: aux, counted: counted})
+		fixedWalkElement(w, f, 0, "element", 0)
 	case f.Type.Kind == ir.TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, and a
-		// LIVE COUNT rides in front of it: the used length.
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, counted: true, note: f.Name})
-		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"})
+		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, so its
+		// destination row is an ARRAY's: dest is the buffer the elements land
+		// in and aux is the live count beside it. The TEXT row is the other
+		// way round (dest the length, aux the buffer), and a `bytes(N)` written
+		// under that convention hands compileEntry a count destination that is
+		// the buffer's first four bytes. Identity lands this field with one
+		// copy of the body and never reads those columns.
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
+			fixedDst{dst: at + fixedCountBytes, stride: 1, aux: at, counted: 1, arg: fixedTextBytes})
+		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, fixedDst{})
 	case f.Type.Kind == ir.TString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name})
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
+			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextUtf8})
 	case f.Type.Kind == ir.TWString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name})
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
+			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextWide})
 	default:
-		fixedWalkElement(w, f, id, f.Name)
+		fixedWalkElement(w, f, id, f.Name, at)
 	}
 }
 
-func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string) {
+func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int64) {
 	size := fixedElementBytes(f)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note})
-			for _, sub := range r.Fields {
-				fixedWalkField(w, sub)
+			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note},
+				fixedDst{dst: at})
+			var sub int64
+			for _, sf := range r.Fields {
+				fixedWalkField(w, sf, sub)
+				sub += fixedFieldBytes(sf)
 			}
 			return
 		case *ir.Union:
-			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note})
+			tag := int64(ir.StorageBitsFor(r.Max) / 8)
+			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
+				fixedDst{dst: at, aux: at})
 			for _, v := range r.Variants {
-				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name)
+				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
 			}
 			return
 		case *ir.Enum:
-			fixedWalkEnum(w, r, id, note)
+			fixedWalkEnum(w, r, id, note, at)
 			return
 		}
 	}
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note})
+	w.push(fixedLayoutEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note},
+		fixedDst{dst: at})
 }
 
-func fixedWalkEnum(w *fixedWalk, e *ir.Enum, id uint64, note string) {
+func fixedWalkEnum(w *fixedWalk, e *ir.Enum, id uint64, note string, at int64) {
 	w.push(fixedLayoutEntry{id: id, kind: ir.TableKindEnum, size: int64(e.StorageBits / 8),
-		children: len(e.Variants), note: note})
+		children: len(e.Variants), note: note}, fixedDst{dst: at})
 	for i := range e.Variants {
 		w.push(fixedLayoutEntry{id: ir.TableWireId(e.VariantWireName(i)), kind: ir.TableKindNoPayload,
-			size: 0, children: 0, note: e.Variants[i]})
+			size: 0, children: 0, note: e.Variants[i]}, fixedDst{})
 	}
 }
 
@@ -899,12 +962,13 @@ func (g *fixedGen) emitWriteField(f *ir.Field, off int64, buf, at, val string, i
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitWriteLoop(f, base, f.KeyEnumRef.Max, buf, at, val+"."+name, indent)
+		g.emitWriteLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, indent)
 	case f.Array == ir.ArrayFixed:
-		g.emitWriteLoop(f, base, f.ArrayBound, buf, at, val+"."+name, indent)
+		g.emitWriteLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, indent)
 	case f.Array == ir.ArrayCounted:
 		g.pf("%sTableFixed.put32(%s, %s + %d, %s.%sCount);\n", ind, buf, at, base, val, name)
-		g.emitWriteLoop(f, base+fixedCountBytes, f.ArrayBound, buf, at, val+"."+name, indent)
+		// the bound, matching this SHA's C++ oracle. Scatter walks Count.
+		g.emitWriteLoop(f, base+fixedCountBytes, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		// TEXT WRITES ITS LENGTH UNITS onto the zeroed template: the slack past
 		// the used bytes is already zero and the writer never touches it.
@@ -920,10 +984,10 @@ func (g *fixedGen) emitWriteField(f *ir.Field, off int64, buf, at, val string, i
 	}
 }
 
-func (g *fixedGen) emitWriteLoop(f *ir.Field, base, count int64, buf, at, expr string, indent int) {
+func (g *fixedGen) emitWriteLoop(f *ir.Field, base int64, count, buf, at, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (int i = 0; i < %d; i++) {\n", ind, count)
+	g.pf("%sfor (int i = 0; i < %s; i++) {\n", ind, count)
 	g.emitWriteElement(f, 0, buf, fmt.Sprintf("%s + %d + i * %d", at, base, elem), expr+"[i]", indent+4)
 	g.pf("%s}\n", ind)
 }
@@ -1012,20 +1076,25 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitScatterLoop(f, base, f.KeyEnumRef.Max, buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, rep, indent)
 	case f.Array == ir.ArrayFixed:
-		g.emitScatterLoop(f, base, f.ArrayBound, buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, indent)
 	case f.Array == ir.ArrayCounted:
 		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, indent)
-		g.emitScatterLoop(f, base+fixedCountBytes, f.ArrayBound, buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base+fixedCountBytes, val+"."+name+"Count", buf, at, val+"."+name, rep, indent)
+		g.emitScatterSlack(f, val+"."+name, val+"."+name+"Count", indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
+		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (byte) 0); }\n",
+			ind, val, name, val, name, val, name, val, name, val, name)
 	case f.Type.Kind == ir.TWString:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
 		g.pf("%sfor (int i = 0; i < %s.%sLength; i++) {\n", ind, val, name)
 		g.pf("%s    %s.%s[i] = (char) TableFixed.get16(%s, %s + %d + i * 2);\n", ind, val, name, buf, at, base+4)
 		g.pf("%s}\n", ind)
+		g.pf("%sif (%s.%sLength < %s.%s.length) { java.util.Arrays.fill(%s.%s, %s.%sLength, %s.%s.length, (char) 0); }\n",
+			ind, val, name, val, name, val, name, val, name, val, name)
 	default:
 		g.emitScatterElement(f, base, buf, at, val+"."+name, rep, indent, f)
 	}
@@ -1046,12 +1115,45 @@ func (g *fixedGen) emitScatterCount(dst, buf, at string, off, bound int64, rep s
 	g.pf("%s}\n", ind)
 }
 
-func (g *fixedGen) emitScatterLoop(f *ir.Field, base, count int64, buf, at, expr, rep string, indent int) {
+func (g *fixedGen) emitScatterLoop(f *ir.Field, base int64, count, buf, at, expr, rep string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (int i = 0; i < %d; i++) {\n", ind, count)
+	g.pf("%sfor (int i = 0; i < %s; i++) {\n", ind, count)
 	g.emitScatterElement(f, 0, buf, fmt.Sprintf("%s + %d + i * %d", at, base, elem), expr+"[i]", rep, indent+4, f)
 	g.pf("%s}\n", ind)
+}
+
+// emitScatterSlack zeros the unused slots of a counted array. Scatter walks
+// Count, never the bound; a reused value's slack would otherwise keep what
+// it held. Primitive arrays fill; object slots keep their constructor instances.
+func (g *fixedGen) emitScatterSlack(f *ir.Field, expr, live string, indent int) {
+	zero := slackZero(fixedScalarType(f.Type))
+	if zero == "" {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	g.pf("%sif (%s < %s.length) { java.util.Arrays.fill(%s, %s, %s.length, %s); }\n",
+		ind, live, expr, expr, live, expr, zero)
+}
+
+func slackZero(typ string) string {
+	switch typ {
+	case "byte":
+		return "(byte) 0"
+	case "short":
+		return "(short) 0"
+	case "int":
+		return "0"
+	case "long":
+		return "0L"
+	case "boolean":
+		return "false"
+	case "float":
+		return "0f"
+	case "double":
+		return "0d"
+	}
+	return ""
 }
 
 func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep string, indent int, owner *ir.Field) {
@@ -1264,12 +1366,12 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("     *  scatter reads there is what this put there. */\n")
 	g.emitByteConstant("defaults", defaults, nil)
 
-	g.pf("    /** MY side of the layout, one byte per entry: does a LIVE COUNT ride in\n")
-	g.pf("     *  front of this array. It is the one storage fact a layout entry cannot\n")
-	g.pf("     *  state and the plan compiler needs — a bare `[N]T` and a counted\n")
-	g.pf("     *  `[..N]T` are otherwise the same shape. */\n")
-	g.pf("    public static final byte[] counted = {\n")
-	g.emitCountedArray(w.entries)
+	g.pf("    /** MY side of the layout, five lanes per entry: dest, stride, aux,\n")
+	g.pf("     *  counted, arg. A layout entry cannot carry these; the plan compiler\n")
+	g.pf("     *  lands values through them. A `bytes(N)` row is an ARRAY's: dest the\n")
+	g.pf("     *  buffer, aux the live count. */\n")
+	g.pf("    public static final int[] dest = {\n")
+	g.emitDestArray(w)
 	g.pf("    };\n\n")
 
 	g.pf("    /** everything a FILE carries once, in front of the records: §3's own\n")
@@ -1344,10 +1446,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("     *  rests on: EVERY BUFFER IS THE CALLER'S — the plan, the ordinal\n")
 	g.pf("     *  remap scratch and the record image — and the loop below only\n")
 	g.pf("     *  fills them. What this DOES make is a fixed handful of cursors,\n")
-	g.pf("     *  once per call: the header below, and on the compiled path the two\n")
-	g.pf("     *  Layout views (a byte[] reference and two ints each, over the\n")
-	g.pf("     *  caller's own bytes) that TableFixed.parse returns. None escapes\n")
-	g.pf("     *  this method, and none is per record. */\n")
+	g.pf("     *  once per call: the header below, the hole list (cover and the packed\n")
+	g.pf("     *  ranges), and on the compiled path the two Layout views (a byte[]\n")
+	g.pf("     *  reference and two ints each, over the caller's own bytes) that\n")
+	g.pf("     *  TableFixed.parse returns. None escapes this method, and none is\n")
+	g.pf("     *  per record. */\n")
 	g.pf("    public static int load(Value[] values, int count, byte[] data,\n")
 	g.pf("                           TableFixed.Entry[] plan, short[] remap, byte[] image,\n")
 	g.pf("                           TableFixed.Report report) {\n")
@@ -1367,7 +1470,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            if (theirs == null) { return -1; }\n")
 	g.pf("            final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);\n")
 	g.pf("            if (mine == null) { return -1; }\n")
-	g.pf("            final int made = TableFixed.compile(theirs, mine, counted, plan, remap, report);\n")
+	g.pf("            final int made = TableFixed.compile(theirs, mine, dest, plan, remap, report);\n")
 	g.pf("            if (made < 0) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }\n")
 	g.pf("            entries = plan;\n")
 	g.pf("            entryCount = made;\n")
@@ -1381,13 +1484,23 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        if (recordSize <= 8 || rest %% recordSize != 0) { report.malformed = true; return -1; }\n")
 	g.pf("        final long n = rest / recordSize;\n")
 	g.pf("        if (n > count || n > values.length) { report.refuse(TableFixed.Reason.batchTooLarge); return -1; }\n")
+	g.pf("        // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's hole\n")
+	g.pf("        // list is empty — its one copy covers the body — so the loop below\n")
+	g.pf("        // is a no-op on that path, not a skip of the prefill.\n")
+	g.pf("        final byte[] cover = new byte[bodyBytes];\n")
+	g.pf("        final int[] hole = new int[Math.max(2, bodyBytes * 2)];\n")
+	g.pf("        final int holeN = TableFixed.holes(entries, entryCount, cover, hole);\n")
 	g.pf("        int at = head.recordsAt;\n")
 	g.pf("        final int bodySize = (int) (recordSize - 8);\n")
 	g.pf("        for (int k = 0; k < (int) n; k++) {\n")
 	g.pf("            // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A\n")
 	g.pf("            // REFUSAL BY NAME, never a guess and never damage.\n")
 	g.pf("            if (TableFixed.get64(data, at) != head.hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
-	g.pf("            System.arraycopy(defaults, 0, image, 0, bodyBytes); // the declared defaults, one prefill\n")
+	g.pf("            for (int h = 0; h < holeN; h++) {\n")
+	g.pf("                final int off = hole[h * 2];\n")
+	g.pf("                final int hn = hole[h * 2 + 1];\n")
+	g.pf("                System.arraycopy(defaults, off, image, off, hn);\n")
+	g.pf("            }\n")
 	g.pf("            TableFixed.run(entries, entryCount, remap, data, at + 8, bodySize, image, report);\n")
 	g.pf("            scatter(image, 0, values[k], report);\n")
 	g.pf("            at += bodySize + 8;\n")
@@ -1479,24 +1592,12 @@ func fixedBytesLine(b []byte) string {
 	return sb.String()
 }
 
-func (g *fixedGen) emitCountedArray(entries []fixedLayoutEntry) {
-	var sb strings.Builder
-	for i, e := range entries {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		if e.counted {
-			sb.WriteString("1")
-		} else {
-			sb.WriteString("0")
-		}
-		if (i+1)%32 == 0 && i+1 < len(entries) {
-			sb.WriteString("\n       ")
-		}
-	}
-	if len(entries) == 0 {
+func (g *fixedGen) emitDestArray(w *fixedWalk) {
+	if len(w.dst) == 0 {
 		g.pf("        // no entries\n")
 		return
 	}
-	g.pf("        %s\n", sb.String())
+	for i, d := range w.dst {
+		g.pf("        %d, %d, %d, %d, %d, // %d %s\n", d.dst, d.stride, d.aux, d.counted, d.arg, i, w.entries[i].note)
+	}
 }

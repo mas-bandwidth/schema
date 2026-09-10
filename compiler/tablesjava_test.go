@@ -528,7 +528,7 @@ func TestJavaFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		"public static final long hash = 0x",
 		"public static final byte[] layout = {",
 		"public static final byte[] defaults = {",
-		"public static final byte[] counted = {",
+		"public static final int[] dest = {",
 		"public static int save(Value[] values, int count, byte[] buffer)",
 		"public static int load(Value[] values, int count, byte[] data,",
 		"public static void writeBody(byte[] b, int at, Value v)",

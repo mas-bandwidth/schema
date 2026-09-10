@@ -203,7 +203,7 @@ public final class Main {
         if (theirs == null || mine == null) { return; }
         final tabledemo.TableFixed.Entry[] plan = tabledemo.TableFixed.plan(4096);
         final short[] remap = new short[4096];
-        final int made = tabledemo.TableFixed.compile(theirs, mine, tabledemo.PackConfigFixed.counted, plan, remap, r);
+        final int made = tabledemo.TableFixed.compile(theirs, mine, tabledemo.PackConfigFixed.dest, plan, remap, r);
         check(made > 0, "self plan: a plan compiles from my own layout");
         check(r.unknown == 0 && r.kindMismatch == 0, "self plan: a plan over MY OWN layout names nothing unknown");
         // A REAL PLAN, not one run: the text, the counts, the ordinals and the
@@ -276,7 +276,7 @@ public final class Main {
         if (theirs == null || mine == null) { return out; }
         final tblut.TableFixed.Entry[] plan = tblut.TableFixed.plan(512);
         final short[] remap = new short[512];
-        final int made = tblut.TableFixed.compile(theirs, mine, tblut.UtRootFixed.counted, plan, remap, r);
+        final int made = tblut.TableFixed.compile(theirs, mine, tblut.UtRootFixed.dest, plan, remap, r);
         check(made > 0, "arm text: a plan compiles from my own layout");
         final byte[] image = tblut.UtRootFixed.image();
         System.arraycopy(tblut.UtRootFixed.defaults, 0, image, 0, tblut.UtRootFixed.bodyBytes);
