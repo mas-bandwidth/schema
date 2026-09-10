@@ -542,23 +542,13 @@ func (g *tableGen) wireScalarWrite(f *ir.Field, expr, ind string) {
 // bytes are emitted in this mode. Save probes with that same measure
 // before writing the prefix, so recursive frames never double recursively.
 func (g *tableGen) wireFrame(call, ind string) {
-	g.wireFrameWithProbeIDs(call, ind, false)
-}
-
-// A successful ordinary array probe already interns its riding IDs in first-use
-// order. Its identical write can keep that vocabulary and reuse every reference.
-func (g *tableGen) wireFrameWithProbeIDs(call, ind string, keepProbeIDs bool) {
 	g.pf("%sif ( w->buffer == NULL )\n%s{\n", ind, ind)
 	g.pf("%s    int64_t frame_begin = w->offset;\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n", ind, call)
 	g.pf("%s    table_writer_leb( w, (uint64_t)(w->offset - frame_begin) );\n%s}\n%selse\n%s{\n", ind, ind, ind, ind)
 	g.pf("%s    TableWriter probe = table_writer_probe( w );\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n", ind, strings.ReplaceAll(call, "( w,", "( &probe,"))
-	if keepProbeIDs {
-		g.pf("%s    table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
-	} else {
-		g.pf("%s    table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
-	}
+	g.pf("%s    table_writer_rewind(&probe); table_writer_leb( w, (uint64_t) probe.offset );\n", ind)
 	g.pf("%s    if ( !%s ) { return 0; }\n%s}\n", ind, call, ind)
 }
 
@@ -583,30 +573,10 @@ func (g *tableGen) wireFieldHelper(st *ir.Struct, f *ir.Field) string {
 	return g.sym(st.Name, "wire_"+f.Name)
 }
 
-// Keep the same bounded per-array sizing scratch as C++: the first 64 plain
-// table elements can reuse their measured length when the array is written.
-// Retained and variable tables keep their existing traversal unchanged.
-func (g *tableGen) wireElementCacheSlots(st *ir.Struct, f *ir.Field) int64 {
-	if g.retain || g.isVar(st.Name) || f.IsList() || f.IsMap() ||
-		f.Array == ir.ArrayNone || f.KeyEnum != "" || f.Type.Pointer ||
-		ir.TableWireScalarKind(f) != tkTable || g.isVar(f.Type.Name) {
-		return 0
-	}
-	if f.ArrayBound < 64 {
-		return f.ArrayBound
-	}
-	return 64
-}
-
 func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	expr := "value->" + f.Name
 	kind := ir.TableWireScalarKind(f)
-	cacheSlots := g.wireElementCacheSlots(st, f)
-	cacheArg := ""
-	if cacheSlots > 0 {
-		cacheArg = ", int64_t * element_sizes"
-	}
-	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value%s )\n{\n", g.wireFieldHelper(st, f), st.Name, cacheArg)
+	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.wireFieldHelper(st, f), st.Name)
 	if (f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
 		g.pf("    if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
 	} else if f.Array == ir.ArrayCounted {
@@ -650,17 +620,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		g.pf("    int32_t i;\n    table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t) %s );\n", kind, n)
 		g.pf("    for ( i = 0; i < %s; i++ )\n    {\n", n)
 		g.retainIndex(f, "i", "        ")
-		if cacheSlots > 0 {
-			g.pf("        if ( element_sizes != NULL && i < %d )\n        {\n", cacheSlots)
-			g.pf("            if ( w->buffer == NULL )\n            {\n                int64_t begin = w->offset;\n")
-			g.pf("                if ( !%s( w, &%s[i] ) ) { return 0; }\n", g.api(f.Type.Name, "save_body"), expr)
-			g.pf("                element_sizes[i] = w->offset - begin;\n                table_writer_leb( w, (uint64_t) element_sizes[i] );\n            }\n            else\n            {\n")
-			g.pf("                table_writer_leb( w, (uint64_t) element_sizes[i] );\n                if ( !%s( w, &%s[i] ) ) { return 0; }\n            }\n        }\n        else\n        {\n", g.api(f.Type.Name, "save_body"), expr)
-			g.wirePayload(f, expr+"[i]", "            ")
-			g.pf("        }\n")
-		} else {
-			g.wirePayload(f, expr+"[i]", "        ")
-		}
+		g.wirePayload(f, expr+"[i]", "        ")
 		g.pf("    }\n")
 	default:
 		panic("wire field helper on unframed field")
@@ -680,41 +640,6 @@ func (g *tableGen) wireKeyedRides(f *ir.Field, ind string) {
 	}
 }
 
-// A plain scalar leaf has no nested frames or value-dependent payload widths.
-// Its measure walk still interns riding field ids in order, but only counts the
-// kind and payload bytes. Default probes retain their existing early exit.
-func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
-	if g.retain || g.isVar(st.Name) || st.IsMapEntry() || len(st.Fields) == 0 {
-		return
-	}
-	for _, f := range st.Fields {
-		if f.Array != ir.ArrayNone || f.IsList() || f.IsMap() || f.KeyEnum != "" ||
-			f.Type.Optional || f.Type.Pointer || enumRef(f) != nil || tableKindWidth(ir.TableWireScalarKind(f)) == 0 {
-			return
-		}
-	}
-	if g.canProbe(st) {
-		g.pf("    if ( w->buffer == NULL && !w->check_default )\n    {\n")
-	} else {
-		g.pf("    if ( w->buffer == NULL )\n    {\n")
-	}
-	g.pf("        int64_t payload_bytes = 1; /* the zero reference ending this body */\n")
-	guards := tableGuardExprs(st)
-	for _, f := range st.Fields {
-		condition := "!( " + g.wireDefaultEquals(f, "value->"+f.Name) + " )"
-		if guard := guards[f.Name]; guard != "" {
-			condition = "( " + guard + " ) && " + condition
-		}
-		g.pf("        if ( %s )\n        {\n", condition)
-		g.pf("            %s\n", g.wireIdCall(ir.TableFieldWireId(f)))
-		g.pf("            payload_bytes += %d; /* kind and fixed-width payload */\n        }\n", 1+tableKindWidth(ir.TableWireScalarKind(f)))
-	}
-	// This branch only measures. Advance with the same overflow check as raw
-	// without exposing a null source to fortified memcpy after inlining.
-	g.pf("        if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }\n")
-	g.pf("        else { w->offset += payload_bytes; }\n        return !w->overflow;\n    }\n")
-}
-
 func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	for _, f := range st.Fields {
 		if f.IsMap() || f.Array != ir.ArrayNone || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString) {
@@ -723,7 +648,6 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 	}
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value )\n{\n", g.api(st.Name, "save_body"), st.Name)
 	g.pf("    (void) value;\n")
-	g.emitWireScalarLeafMeasure(st)
 	if g.retain {
 		g.pf("    TableRetainWalk body_keep=retention;\n")
 	}
@@ -789,15 +713,7 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		g.pf("            %s\n", g.wireHeaderCall(ir.TableFieldWireId(f), wireKind))
 		switch {
 		case framed:
-			if slots := g.wireElementCacheSlots(st, f); slots > 0 {
-				g.pf("            int64_t element_sizes[%d]; /* bounded sizing-to-write cache */\n", slots)
-				// Fixed children also serve graph saves in mixed units. Keep their
-				// existing graph traversal unchanged in this first, bounded pass.
-				g.wireFrameWithProbeIDs(fmt.Sprintf("%s( w, value, w->buffer != NULL ? element_sizes : NULL )", g.wireFieldHelper(st, f)), "            ", !g.anyVariable)
-			} else {
-				g.wireFrame(fmt.Sprintf("%s( w, value )", g.wireFieldHelper(st, f)), "            ")
-			}
-
+			g.wireFrame(fmt.Sprintf("%s( w, value )", g.wireFieldHelper(st, f)), "            ")
 		default:
 			g.wirePayload(f, expr, "            ")
 		}
