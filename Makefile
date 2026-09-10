@@ -4367,6 +4367,31 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 
 test: tables-fixed-matched
 
+# THE C / C++ FIXED RUNTIME TWIN GATE (bench/paired/TWIN.md). Emit both
+# paired headers, normalise the fixed runtimes through the documented token
+# map, and diff the rest. Any leftover line that is not one of the three
+# named differences is a failure. The negative control plants an extra
+# enumerator so a map that swallowed every divergence has no blade.
+tables-fixed-twin: generated/bench/paired/c/.stamp generated/bench/paired/cpp/.stamp
+	go test ./tools/fixedtwin -count=1
+	go run ./tools/fixedtwin generated/bench/paired/c/FixedTableTable.h generated/bench/paired/cpp/FixedTableTable.h
+	$(MAKE) tables-fixed-twin-negative-control
+
+.PHONY: tables-fixed-twin
+
+test: tables-fixed-twin
+
+.PHONY: tables-fixed-twin-negative-control
+tables-fixed-twin-negative-control: generated/bench/paired/c/.stamp generated/bench/paired/cpp/.stamp
+	@mkdir -p build/fixed-twin-nc
+	@sed 's/kTableFixedCopy    = 0/kTableFixedCopy    = 99/' generated/bench/paired/c/FixedTableTable.h > build/fixed-twin-nc/FixedTableTable.h
+	@cmp -s generated/bench/paired/c/FixedTableTable.h build/fixed-twin-nc/FixedTableTable.h && { echo 'NEGATIVE CONTROL: the planted op patched nothing'; exit 1; } || true
+	@if go run ./tools/fixedtwin build/fixed-twin-nc/FixedTableTable.h generated/bench/paired/cpp/FixedTableTable.h; then \
+		echo 'NEGATIVE CONTROL FAILED: planted leftover line passed the twin gate'; \
+		exit 1; \
+	fi
+	@echo 'fixed twin negative control: planted leftover line reds'
+
 # THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
 # path is a design decision with a price, and this is the price: the
 # plan-driven reader running its identity plan against straight-line

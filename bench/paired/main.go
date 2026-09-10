@@ -111,6 +111,10 @@ func onlyTableLanguages(langs []string) bool {
 	return len(langs) > 0
 }
 
+// twinTolerance is the C vs C++ paired-row band (percent). Rows within it
+// do not fail the twin check. 0 disables. Flag --twin-tolerance.
+var twinTolerance = 10.0
+
 // unpublishedAlone reports the DIAGNOSTIC shape: one leg that no published
 // pass carries, asked for on its own. It seals nothing and enters no board.
 func unpublishedAlone(langs []string) bool {
@@ -1161,6 +1165,29 @@ func measure(langs []string, out string, rounds int, info buildInfo, receipt str
 	fmt.Fprintln(os.Stderr, "completed paired pass:", out)
 	return nil
 }
+func checkTwinTolerance(best map[string]float64) error {
+	if twinTolerance <= 0 {
+		return nil
+	}
+	for _, wire := range []string{"packet", "table"} {
+		for _, path := range []string{"write", "round_trip"} {
+			c, cpp := best["c/"+wire+"/"+path], best["cpp/"+wire+"/"+path]
+			if c <= 0 || cpp <= 0 {
+				continue
+			}
+			hi, lo := c, cpp
+			if cpp > hi {
+				hi, lo = cpp, c
+			}
+			dev := (hi/lo - 1) * 100
+			if dev > twinTolerance {
+				return fmt.Errorf("c and cpp %s/%s differ by %.1f%% > twin-tolerance %.0f%%", wire, path, dev, twinTolerance)
+			}
+		}
+	}
+	return nil
+}
+
 func render(dir string) error {
 	if err := verifyPass(dir); err != nil {
 		return err
@@ -1311,6 +1338,9 @@ func renderReport(dir string, writeOutputs bool) error {
 	fmt.Fprintln(&readme, "\nFastest table = 100%. Each language’s packet wire = 100%; below 100% beats packet. Lower is better.")
 	fmt.Fprintln(&readme, "\n"+checksCaption)
 	text := fmt.Sprintf("# Fixed Table details\n\n%s / %s, %s. Revision `%s` (dirty: %t). %d interleaved rounds, one discarded warmup per path per round. Separate standard packet storage and table closure storage carry the same 64 logical records. Table byte counts are exact averages; record padding is not serialized.\n\nHeadline percentages use the best measured round-trip rate, following packet README convention. Seven rounds intentionally follow that convention, with a 4/3 wire-order imbalance; no additional attempts are selected from the separate bracketing controls. Each per-path warmup uses the full 4,000,000 packet or 400,000 table iterations. Public table Load restores declared defaults inside the clock; the runner adds no separate reset. Packet round trips do not require that reset. Before timing, two complete corpus rotations load into one reused target without caller resets and must re-save the exact expected bytes, including the last-to-first transition. Round trip includes read and write; dividing both by two leaves both ratios unchanged. Fixed Table %% = fastest table rate / this table rate × 100; vs Packet Wire %% = this packet rate / this table rate × 100.\n\n| Language | Wire | Path | Best µs/op | Median µs/op | Spread | Mean bytes/op |\n|---|---|---|---:|---:|---:|---:|\n", info.OS, info.Arch, info.Host, info.Revision, info.Dirty, roundCount) + details.String() + "\n" + checksDetails + "\n\n`build.json` records compiler/runtime and binary/corpus identity. `round-*.csv` contains every measured sample; `load.json` records load. `window.json` records the operator READY/START receipt, process names/PIDs/CPU, periodic and boundary samples, and the complete OK verdict. Known foreign build/benchmark processes refuse the sitting; ordinary desktop load is recorded without a universal threshold. Process sampling can miss brief or unusually named work, so the receipt and bracketing controls remain necessary. The shared producer verified packet -> table -> packet identity for all 64 records before any clock. `completion.json` binds the complete raw evidence by SHA-256; rendering verifies it without requiring old local binaries. This detects changed evidence, not a deliberately dishonest operator.\n"
+	if err := checkTwinTolerance(best); err != nil {
+		return err
+	}
 	if !writeOutputs {
 		return nil
 	}
@@ -1333,6 +1363,7 @@ func main() {
 	tableIters := flag.Int64("table-iters", 200000, "initial Table iterations per warmup/sample, fast mode only")
 	fastTimeout := flag.Duration("fast-timeout", 5*time.Minute, "whole fast-mode deadline, at most 5m including gates")
 	noise := flag.String("noise-note", "uncontrolled diagnostic; no quiet-window claim", "operator context recorded by fast mode")
+	flag.Float64Var(&twinTolerance, "twin-tolerance", 10, "C and C++ rows of the same wire/path must agree within this percent; 0 disables")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {

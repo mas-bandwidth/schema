@@ -104,6 +104,42 @@ func makePass(t *testing.T) string {
 	return dir
 }
 
+func TestTwinToleranceWithinBand(t *testing.T) {
+	dir := makePass(t)
+	twinTolerance = 10
+	if e := render(dir); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestTwinToleranceRefusesWideGap(t *testing.T) {
+	dir := makePass(t)
+	twinTolerance = 10
+	for round := range 7 {
+		p := filepath.Join(dir, fmt.Sprintf("round-%d-c-table.csv", round))
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e := os.WriteFile(p, []byte(strings.ReplaceAll(string(b), "980000", "500000")), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if err := os.Remove(filepath.Join(dir, completionFile)); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if err := sealPassWithVerifier(dir, func(buildInfo) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	err := render(dir)
+	if err == nil {
+		t.Fatal("C at half C++ passed twin-tolerance 10%")
+	}
+	if !strings.Contains(err.Error(), "twin-tolerance") {
+		t.Fatalf("wrong refusal: %v", err)
+	}
+}
+
 func TestPairedPercentages(t *testing.T) {
 	dir := makePass(t)
 	if e := render(dir); e != nil {
