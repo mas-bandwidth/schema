@@ -251,18 +251,22 @@ namespace Bench
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), (long)value.WorldTime);
             BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(40), (ulong)value.FrameTick);
             BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(48), (uint)value.ServerTime);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), value.EntitiesCount);
+            int count_entities = value.EntitiesCount;
+            System.Diagnostics.Debug.Assert(count_entities >= 0 && count_entities <= 8); // the declared count is the bound (§3.4)
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), count_entities);
             if (value.Entities != null)
             {
-                for (int i = 0; i < 8 && i < value.Entities.Length; ++i)
+                for (int i = 0; i < count_entities && i < value.Entities.Length; ++i)
                 {
                     MixedEntityFixedWriteBody(b.Slice(56 + i * 51), value.Entities[i]);
                 }
             }
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(464), value.StatsCount);
+            int count_stats = value.StatsCount;
+            System.Diagnostics.Debug.Assert(count_stats >= 0 && count_stats <= 80); // the declared count is the bound (§3.4)
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(464), count_stats);
             if (value.Stats != null)
             {
-                for (int i = 0; i < 80 && i < value.Stats.Length; ++i)
+                for (int i = 0; i < count_stats && i < value.Stats.Length; ++i)
                 {
                     MixedStatFixedWriteBody(b.Slice(468 + i * 8), value.Stats[i]);
                 }

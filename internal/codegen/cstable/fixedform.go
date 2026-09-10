@@ -1238,10 +1238,15 @@ func (g *tableGen) emitFixedWriteField(owner *ir.Struct, f *ir.Field, off int64,
 	case f.KeyEnum != "":
 		g.emitFixedWriteKeyedLoop(owner, f, base, f.KeyEnumRef.Max, buf, val+"."+prop, indent)
 	case f.Array == ir.ArrayFixed:
-		g.emitFixedWriteLoop(f, base, f.ArrayBound, buf, val+"."+prop, indent)
+		g.emitFixedWriteLoop(f, base, f.ArrayBound, "", buf, val+"."+prop, indent)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), %s.%sCount);\n", ind, buf, base, val, prop)
-		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, buf, val+"."+prop, indent)
+		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
+		// slots' STORAGE on the wire.
+		g.pf("%sint count_%s = %s.%sCount;\n", ind, f.Name, val, prop)
+		g.pf("%sSystem.Diagnostics.Debug.Assert(count_%s >= 0 && count_%s <= %d); // the declared count is the bound (§3.4)\n", ind, f.Name, f.Name, f.ArrayBound)
+		g.pf("%sBinaryPrimitives.WriteInt32LittleEndian(%s.Slice(%d), count_%s);\n", ind, buf, base, f.Name)
+		g.emitFixedWriteLoop(f, base+fixedCountBytes, f.ArrayBound, "count_"+f.Name, buf, val+"."+prop, indent)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sint len_%s = %s.%s != null ? %s.%sLength : 0;\n", ind, f.Name, val, prop, val, prop)
 		g.pf("%sSystem.Diagnostics.Debug.Assert(len_%s <= %d);\n", ind, f.Name, f.Type.Size)
@@ -1288,9 +1293,13 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 	g.pf("%s    }\n%s}\n", ind, ind)
 }
 
-func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, count int64, buf, expr string, indent int) {
+func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := fixedElementBytes(f)
+	nExpr := fmt.Sprintf("%d", bound)
+	if live != "" {
+		nExpr = live
+	}
 	if g.fixedFlatElem(f) {
 		elemType := csFieldType(f.Type)
 		slice := fmt.Sprintf("%s.Slice(%d)", buf, base)
@@ -1298,14 +1307,14 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, count int64, buf, expr 
 			slice = buf
 		}
 		if elemType == "byte" {
-			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %d)).CopyTo(%s); }\n", ind, expr, expr, expr, count, slice)
+			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %s)).CopyTo(%s); }\n", ind, expr, expr, expr, nExpr, slice)
 		} else {
-			g.pf("%sif (%s != null) { MemoryMarshal.AsBytes(%s.AsSpan(0, Math.Min(%s.Length, %d))).CopyTo(%s); }\n", ind, expr, expr, expr, count, slice)
+			g.pf("%sif (%s != null) { MemoryMarshal.AsBytes(%s.AsSpan(0, Math.Min(%s.Length, %s))).CopyTo(%s); }\n", ind, expr, expr, expr, nExpr, slice)
 		}
 		return
 	}
 	g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
-	g.pf("%s    for (int i = 0; i < %d && i < %s.Length; ++i)\n%s    {\n", ind, count, expr, ind)
+	g.pf("%s    for (int i = 0; i < %s && i < %s.Length; ++i)\n%s    {\n", ind, nExpr, expr, ind)
 	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s.Slice(%d + i * %d)", buf, base, elem), fmt.Sprintf("%s[i]", expr), indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
 }

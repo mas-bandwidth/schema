@@ -24,6 +24,7 @@ static partial class Program
         TestFixedWide128Case();
         TestFixedFoldedArraysCase();
         TestFixedArmTextCase();
+        TestFixedSlackCase();
         TestFixedNegativeControl();
         TestFixedLayoutValidation();
         TestFixedHostileBoolCase();
@@ -560,6 +561,62 @@ static partial class Program
                   "ordinal past the last variant: and the plan's ordinal op counts it");
             Check(UtSame(bent, v),
                   "ordinal past the last variant: the two paths land ONE record");
+        }
+    }
+
+    // THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4). A string(N) shorter than N
+    // and a [..N]T with unused slots are declared bytes carrying no value, and
+    // what rides in them is the template's zeros — never the writer's leftovers
+    // past the used length or the live count.
+    static void TestFixedSlackCase()
+    {
+        FX1.FxRoot v = new FX1.FxRoot();
+        FX1.Schema.TableReset(v);
+        v.Keep = 11u;
+        v.Narrow = 22;
+        v.Renamed = 33;
+        v.Gone = 44;
+        v.Nested.A = 55;
+        v.Nested.B = 66;
+        Array.Fill(v.Label, (byte)0xAA);
+        v.Label[0] = (byte)'h';
+        v.Label[1] = (byte)'i';
+        v.LabelLength = 2;
+        for (int k = 0; k < 4; ++k) { v.Marks[k] = unchecked((int)0x5A5A5A5A); }
+        v.Marks[0] = 7;
+        v.MarksCount = 1;
+
+        Check(v.Label[2] == 0xAA, "CONTROL: the text slack really is stained in storage");
+        Check(v.Marks[1] == unchecked((int)0x5A5A5A5A), "CONTROL: the array slack really is stained in storage");
+
+        byte[] file = new byte[FX1.Schema.FxRootFixedMeasure(1)];
+        Check(FX1.Schema.FxRootFixedSave(v, file) == file.Length, "slack: the record saves");
+        int bodyAt = FX1.Schema.TableFixedWire.HeaderBytes + 4 + (int)FX1.Schema.FxRootFixedLayoutBytes + 8;
+        ReadOnlySpan<byte> body = file.AsSpan(bodyAt, (int)FX1.Schema.FxRootFixedBodyBytes);
+        Check(body.IndexOf((byte)0xAA) < 0, "SLACK IS ZERO: not one stained TEXT byte reached the wire");
+        Check(body.IndexOf((byte)0x5A) < 0, "SLACK IS ZERO: not one stained ARRAY byte reached the wire");
+
+        {
+            byte[] whole = new byte[v.Label.Length];
+            v.Label.AsSpan().CopyTo(whole);
+            Check(whole.AsSpan().IndexOf((byte)0xAA) >= 0,
+                  "NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain");
+            int[] marks = (int[])v.Marks.Clone();
+            Check(marks[3] == unchecked((int)0x5A5A5A5A),
+                  "NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain");
+        }
+
+        {
+            FX1.FxRoot back = new FX1.FxRoot();
+            FX1.TableReport r = new FX1.TableReport();
+            FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
+            Check(FX1.Schema.FxRootFixedLoad(back, file, plan, r) == 1, "slack: the record reads");
+            Check(back.LabelLength == 2 && back.Label[0] == (byte)'h' && back.Label[1] == (byte)'i' && back.Label[2] == 0,
+                  "slack: the used length reads, and the buffer terminates at it");
+            Check(back.MarksCount == 1 && back.Marks[0] == 7, "slack: the live count reads");
+            Check(back.Marks[1] == 0 && back.Marks[2] == 0 && back.Marks[3] == 0,
+                  "slack: an unused slot lands as the wire's zero and not as some writer's leftover");
+            Check(r.Clamped == 0 && !r.Malformed && !r.Refused, "slack: a clean read moves no counter");
         }
     }
 
