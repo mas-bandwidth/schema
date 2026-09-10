@@ -444,6 +444,75 @@ tables-go-bench-gate: generated/bench/tables/go/.stamp
 	bench/tables/go/leg run --gate
 test-go: tables-go-clean tables-go-bench-gate
 
+# ---------------------------------------------------------------------------
+# THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) — THE GO LEG
+# ---------------------------------------------------------------------------
+#
+# THE BYTES ARE THE C++ REFERENCE'S, and that is the whole point of this gate.
+# bench/paired/corpus/bench_fixed.bin and .vocab are what the reference's own
+# form-3 writer put down over the paired bench's sixty-four logical records
+# (test/bench/paired_main.cpp, `bench-paired-check`), committed. This target
+# runs the GO leg over them in the runner's no-clock `--gate` mode, which:
+#
+#   1. compares this build's LAYOUT against the corpus's, byte for byte and
+#      before anything else — the record's positions, ids, kinds, size and the
+#      hash every record carries are all in those bytes, so a leg that matches
+#      them is speaking the form and not a near miss;
+#   2. checks Measure against the file's own length;
+#   3. loads all sixty-four records out of the reference's file;
+#   4. writes them back and compares the WHOLE FILE, byte for byte, twice more
+#      into reused storage.
+#
+# It is the twin of `tables-fixed-matched` for the two legs that already carry
+# the form, and it is a correctness gate: it starts no clock, so it belongs in
+# `make test-go` where `go run ./bench/paired` does not. The VERSIONING half —
+# the FX1/FX2 pair the C++ leg reads in test/tables/fixedform_main.cpp — is
+# held on this leg by TestFixedFormPlanPath in tables-go-fixedform.
+build/schema_tables_bench_go_matched: generated/bench/paired/go/.stamp bench/tables/go/table_main.go bench/tables/go/shape_matched.go bench/paired/go/go.mod
+	@mkdir -p build
+	cd bench/paired/go && go build -tags matched -o $(CURDIR)/$@ ../../tables/go/table_main.go ../../tables/go/shape_matched.go
+
+.PHONY: tables-go-fixed-form
+tables-go-fixed-form: build/schema_tables_bench_go_matched build/schema_test_bench_paired
+	./build/schema_test_bench_paired verify
+	./build/schema_tables_bench_go_matched --gate --indexed --wire-dir bench/paired/corpus --variant-dir bench/paired/corpus
+	@echo 'tables Go fixed form: the layout and the whole 80900-byte file match the C++ reference, byte for byte'
+
+test-go: tables-go-fixed-form
+
+# ITS NEGATIVE CONTROL: move one byte of the WRITE TEMPLATE and the leg must go
+# red against the reference's corpus. Without this the byte comparison could be
+# comparing a file with itself and nobody would know. The sabotage adds one to
+# every text length the form-3 writer lays down — through `go build -overlay`,
+# so no tracked file moves — and the gate must fail with the round-trip's own
+# words and not for some other reason.
+.PHONY: tables-go-fixed-form-negative-control
+tables-go-fixed-form-negative-control: bin/schema build/schema_test_bench_paired
+	@rm -rf build/go-fixed-sabotage && mkdir -p build/go-fixed-sabotage
+	@sed 's|uint32(%s.%sLength))|uint32(%s.%sLength+1)) // SABOTAGED|' \
+		internal/codegen/gotable/fixedform.go > build/go-fixed-sabotage/fixedform.gotext
+	@grep -q SABOTAGED build/go-fixed-sabotage/fixedform.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/gotable/fixedform.go":"%s/build/go-fixed-sabotage/fixedform.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/go-fixed-sabotage/overlay.json
+	@go build -overlay=build/go-fixed-sabotage/overlay.json -o build/go-fixed-sabotage/schema ./cmd/schema
+	@./build/go-fixed-sabotage/schema generate --lang go --out build/go-fixed-sabotage/gen bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@printf 'module benchtable\n\ngo 1.24\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\n\nreplace github.com/mas-bandwidth/serialize.go => $(CURDIR)/$(SERIALIZE_GO)\n' > build/go-fixed-sabotage/gen/go.mod
+	@cp bench/paired/go/go.mod build/go-fixed-sabotage/table.mod
+	@cd bench/paired/go && go mod edit -modfile $(CURDIR)/build/go-fixed-sabotage/table.mod \
+		-replace benchtable=$(CURDIR)/build/go-fixed-sabotage/gen \
+		-replace github.com/mas-bandwidth/serialize.go=$(CURDIR)/$(SERIALIZE_GO)
+	@cd bench/paired/go && go build -modfile $(CURDIR)/build/go-fixed-sabotage/table.mod -tags matched \
+		-o $(CURDIR)/build/go-fixed-sabotage/leg ../../tables/go/table_main.go ../../tables/go/shape_matched.go
+	@if ./build/go-fixed-sabotage/leg --gate --indexed --wire-dir bench/paired/corpus \
+			--variant-dir bench/paired/corpus > build/go-fixed-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a text length one byte off left the fixed form green"; \
+		cat build/go-fixed-sabotage/log; exit 1; \
+	fi
+	@grep -Fq 'round-trip bytes differ' build/go-fixed-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; cat build/go-fixed-sabotage/log; exit 1; }
+	@echo 'tables Go fixed form negative control: one byte off the write template reds the reference byte match'
+
 .PHONY: tables-go-usage
 tables-go-usage: build/tables-generated-go/.stamp
 	cd test/go-tables && go test -run '^TestUsage$$' -count=1
