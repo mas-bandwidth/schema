@@ -76,7 +76,7 @@ func TestFastSummaryUsesOnlyCompleteAdequatePairs(t *testing.T) {
 		}
 	}
 	dir := t.TempDir()
-	if err := writeFastSummary(dir, e); err != nil {
+	if err := writeFastSummary(dir, languages, e); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "README.md"))

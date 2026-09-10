@@ -386,7 +386,7 @@ func fastMeasure(langs []string, out string, info buildInfo, config fastConfig) 
 	if len(langs) == 4 && gitValue(".", statusArgs...) != "" {
 		return errors.New("source changed during fast diagnostic")
 	}
-	if err := writeFastSummary(tmp, f.evidence); err != nil {
+	if err := writeFastSummary(tmp, langs, f.evidence); err != nil {
 		return err
 	}
 	f.evidence.Artifacts = map[string]string{}
@@ -422,7 +422,10 @@ func grouped(n int64) string {
 	return b.String()
 }
 
-func writeFastSummary(dir string, e fastEvidence) error {
+// langs is the set actually measured, which is not always every paired
+// language: a leg whose rows do not answer to this sitting's corpus is left
+// out before the first clock rather than refused after it.
+func writeFastSummary(dir string, langs []string, e fastEvidence) error {
 	costs := map[string][]float64{}
 	for _, attempt := range e.Attempts {
 		// Only the final uniform count supplies rows; a superseded attempt is
@@ -437,18 +440,6 @@ func writeFastSummary(dir string, e fastEvidence) error {
 	}
 	median := map[string]float64{}
 	var text strings.Builder
-	var langs []string
-	for _, lang := range languages {
-		for _, attempt := range e.Attempts {
-			if attempt.Language == lang {
-				langs = append(langs, lang)
-				break
-			}
-		}
-	}
-	if len(langs) == 0 {
-		langs = languages
-	}
 	fmt.Fprintf(&text, "# Fast iteration diagnostic — not certified\n\n%s\n\nOperator context: %s\n\n%d observed noise warnings; see fast.json and process-samples.jsonl. Every accepted sample is at least 200ms. Short attempts are retained but excluded below. Costs use the median of the adequate rounds; one round does not establish stability.\n\nOne iteration count per wire, identical across all four languages and every round (BENCH-STANDARD §2.1): %s Packet and %s Table operations per warmup and per measured sample. A short leg raised the count for its whole group, never for itself alone. At one round the Range column is degenerate — the single value is its own minimum and maximum — so it reads as zero variance by construction, not as measured stability.\n\n| Language | Wire | Path | Median µs/op | Range µs/op |\n|---|---|---|---:|---:|\n", e.Qualification, e.Config.Noise, len(e.Noise), grouped(e.FinalCounts["packet"]), grouped(e.FinalCounts["table"]))
 	for _, lang := range langs {
 		for _, wire := range []string{"packet", "table"} {
