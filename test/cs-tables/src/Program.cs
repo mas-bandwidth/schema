@@ -629,23 +629,30 @@ static partial class Program
     }
 
     // ---- guarded fields stay off the wire when the guard says so ----
+    //
+    // On Guarded.schema's Patrol, a plain `table`, and not on Tables.schema's
+    // ProfileConfig, which is a `fixed table`: a lookback conditional exists to
+    // make a body vary in size, and that is "a disqualifying thing for a fixed
+    // table. not supported. only variable." (docs/SPEC-TABLES.md §2.2, §3.4).
 
     static void TestGuard()
     {
-        Demo.ProfileConfig p = new Demo.ProfileConfig();
-        p.HasLoadout = false;
-        p.Loadout.Grade = Demo.Grade.Gold; // junk behind an untaken guard
+        Demo.Patrol p = new Demo.Patrol();
+        p.Active = false;
+        p.Speed = 9.5f;     // junk behind an untaken guard
+        p.HasTarget = true; // likewise: has_target rides only under active
 
         byte[] buffer = new byte[512];
-        long wrote = Demo.Schema.ProfileConfigSave(p, buffer);
+        long wrote = Demo.Schema.PatrolSave(p, buffer);
         Check(wrote == 10, "guard: guard false + everything else default: all elides");
-        Check(Demo.Schema.ProfileConfigMeasure(p) == wrote, "guard: measure == save");
+        Check(Demo.Schema.PatrolMeasure(p) == wrote, "guard: measure == save");
 
         Demo.TableReport report = new Demo.TableReport();
-        Demo.ProfileConfig outProfile = new Demo.ProfileConfig();
-        Check(Demo.Schema.ProfileConfigLoad(outProfile, new ReadOnlySpan<byte>(buffer, 0, (int)wrote), report),
+        Demo.Patrol outPatrol = new Demo.Patrol();
+        Check(Demo.Schema.PatrolLoad(outPatrol, new ReadOnlySpan<byte>(buffer, 0, (int)wrote), report),
             "guard: load");
-        Check(outProfile.Loadout.Grade == Demo.Grade.Silver, "guard: untaken side decodes to defaults");
+        Check(outPatrol.Speed == 1.0f, "guard: untaken side decodes to defaults");
+        Check(!outPatrol.HasTarget, "guard: the untaken side's bool defaults too");
     }
 
     // ---- evolution, both directions (any reader x any data) ----
@@ -1080,8 +1087,16 @@ static partial class Program
         Check(profiles.ArrayBound == 4, "reflection: array bound");
         Check(ReferenceEquals(profiles.Table, Demo.Schema.ProfileConfigTableType()), "reflection: descriptors chain");
 
+        // guards surface machine-usable, and they surface on Patrol, a plain
+        // `table` — a guarded branch disqualifies a `fixed table` (§2.2, §3.4)
+        Demo.TableFieldInfo patrolSpeed = DemoField(Demo.Schema.PatrolTableType(), "speed");
+        Check(patrolSpeed != null && patrolSpeed.Guard == "active", "reflection: guards surface machine-usable");
+        Demo.TableFieldInfo patrolTarget = DemoField(Demo.Schema.PatrolTableType(), "target_id");
+        Check(patrolTarget != null && patrolTarget.Guard == "active && has_target", "reflection: a composed guard surfaces whole");
+
+        // and the complement: every field of a FIXED table is unguarded, by class
         Demo.TableFieldInfo loadout = DemoField(Demo.Schema.ProfileConfigTableType(), "loadout");
-        Check(loadout != null && loadout.Guard == "has_loadout", "reflection: guards surface machine-usable");
+        Check(loadout != null && loadout.Guard == "", "reflection: a fixed table's field carries no guard");
 
         Demo.TableTypeInfo profileType = Demo.Schema.ProfileConfigTableType();
         string[] scalarFields = { "tilt", "heading", "timestamp", "badge", "port", "experience", "epoch", "precision" };

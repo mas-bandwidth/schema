@@ -339,13 +339,7 @@ namespace Benchtable
         public float Ping;
         public uint CrcHint;
         public bool HasExtra;
-
-        // has_extra — guarded fields stay off the wire when the guard says so;
-        // a read's restored defaults stand in for the untaken side
         public int Extra;
-
-        // !has_extra — guarded fields stay off the wire when the guard says so;
-        // a read's restored defaults stand in for the untaken side
         public int IdleTicks;
 
         public TableMixed()
@@ -5415,19 +5409,320 @@ namespace Benchtable
             value.IdleTicks = 0;
         }
 
-        public static long TableMixedLoadMeasure(ReadOnlySpan<byte> bytes) { return TableWire.LoadMeasure(TableMixedTableType(), bytes, out _); }
+        public static bool TableMixedCollectTyped(TableMixed v, ref TableWire.Ids ids)
+        {
+            TableFieldInfo[] fields = TableMixedTableType().Fields;
+            if (v.ProtocolMagic != 0 && !ids.Add(0x6a5a70d91aa115fdul)) return false;
+            if (v.Sequence != 0 && !ids.Add(0xaa38aca481f528a8ul)) return false;
+            if (v.AckSequence != 0 && !ids.Add(0x0dbe005c56697c3eul)) return false;
+            if (v.AckBits != 0 && !ids.Add(0x9bae0da8b829ee03ul)) return false;
+            if (v.SessionId != 0 && !ids.Add(0xb7d7b5650a590b05ul)) return false;
+            if (v.ClientId != 0 && !ids.Add(0x6d7b98e2d095967eul)) return false;
+            if (v.Nonce != 1ul && !ids.Add(0x73a94c71d60dc0d8ul)) return false;
+            if (v.WorldTime != 0 && !ids.Add(0x3eee6b51be54fc85ul)) return false;
+            if (v.FrameTick != 0 && !ids.Add(0x7bbc035f7b6d0112ul)) return false;
+            if (v.ServerTime != 0.0f && !ids.Add(0x3c460475f9be69c6ul)) return false;
+            if (!TableWire.CollectField(v, fields[10], ref ids)) return false;
+            int count_11 = v.StatsCount;
+            if (count_11 < 0 || count_11 > 80) return false;
+            if (count_11 > 0)
+            {
+                if (!ids.Add(0xee639cad45b1994cul)) return false;
+                for (int i_11 = 0; i_11 < count_11; i_11++)
+                {
+                    if (!TableStatCollectTyped(v.Stats[i_11], ref ids)) return false;
+                }
+            }
+            if (!TableWire.CollectField(v, fields[12], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[13], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[14], ref ids)) return false;
+            if (!TableWire.CollectField(v, fields[15], ref ids)) return false;
+            if (v.AimX != 0.0f && !ids.Add(0xdbaf7be5e24296c9ul)) return false;
+            if (v.AimY != 0.0f && !ids.Add(0xdbaf7ae5e2429516ul)) return false;
+            if (v.AimZ != 0.0f && !ids.Add(0xdbaf79e5e2429363ul)) return false;
+            if (v.Recoil != 0.0f && !ids.Add(0x9cef31fff7e2e457ul)) return false;
+            if (v.Drift != 0.0 && !ids.Add(0x5ab3f9c9341f6c04ul)) return false;
+            if (v.WideKey != 0 && !ids.Add(0xa3348580461faf16ul)) return false;
+            if (v.Flux != 0 && !ids.Add(0xd61bdd7908af2642ul)) return false;
+            if (v.Ping != 0.0f && !ids.Add(0xbf30e00dc53307a9ul)) return false;
+            if (v.CrcHint != 0 && !ids.Add(0x560d6527ccd8515ful)) return false;
+            if (v.HasExtra != false && !ids.Add(0xc08292176cfd8672ul)) return false;
+            if (v.Extra != 0 && !ids.Add(0xfd29ee12a979cb69ul)) return false;
+            if (v.IdleTicks != 0 && !ids.Add(0x78101ac0aa8cbcfeul)) return false;
+            return true;
+        }
 
-        public static long TableMixedLoadMeasure(ReadOnlySpan<byte> bytes, out TableRefuseReason reason) { long size = TableWire.LoadMeasure(TableMixedTableType(), bytes, out string why); reason = why == null ? TableRefuseReason.ok : Enum.Parse<TableRefuseReason>(why); return size; }
+        public static long TableMixedBodySizeTyped(TableMixed v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
+        {
+            long n = 1;
+            TableFieldInfo[] fields = TableMixedTableType().Fields;
+            int elemOffset = 0;
+            if (v.ProtocolMagic != 0) { n += TableWire.VarSize(ids.RefAt(28, 0x6a5a70d91aa115fdul)) + 3; }
+            if (v.Sequence != 0) { n += TableWire.VarSize(ids.RefAt(58, 0xaa38aca481f528a8ul)) + 3; }
+            if (v.AckSequence != 0) { n += TableWire.VarSize(ids.RefAt(4, 0x0dbe005c56697c3eul)) + 5; }
+            if (v.AckBits != 0) { n += TableWire.VarSize(ids.RefAt(49, 0x9bae0da8b829ee03ul)) + 5; }
+            if (v.SessionId != 0) { n += TableWire.VarSize(ids.RefAt(61, 0xb7d7b5650a590b05ul)) + 9; }
+            if (v.ClientId != 0) { n += TableWire.VarSize(ids.RefAt(32, 0x6d7b98e2d095967eul)) + 5; }
+            if (v.Nonce != 1ul) { n += TableWire.VarSize(ids.RefAt(34, 0x73a94c71d60dc0d8ul)) + 9; }
+            if (v.WorldTime != 0) { n += TableWire.VarSize(ids.RefAt(21, 0x3eee6b51be54fc85ul)) + 9; }
+            if (v.FrameTick != 0) { n += TableWire.VarSize(ids.RefAt(39, 0x7bbc035f7b6d0112ul)) + 9; }
+            if (v.ServerTime != 0.0f) { n += TableWire.VarSize(ids.RefAt(20, 0x3c460475f9be69c6ul)) + 5; }
+            scoped Span<long> elemCache_10 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[10]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_10 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            n += TableWire.BodySizeField(v, fields[10], ref ids, elemCache_10, out long payload_10);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[10] = payload_10; }
+            int count_11 = v.StatsCount;
+            if (count_11 > 0)
+            {
+                scoped Span<long> elemCache_11 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_11, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_11 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long nChild_11 = 0;
+                for (int i_11 = 0; i_11 < count_11; i_11++)
+                {
+                    long childBody = TableStatBodySizeTyped(v.Stats[i_11], ref ids);
+                    if (!elemCache_11.IsEmpty && i_11 < elemCache_11.Length) { elemCache_11[i_11] = childBody; }
+                    nChild_11 += TableWire.VarSize((ulong)childBody) + childBody;
+                }
+                long payload_11 = 1 + TableWire.VarSize((ulong)count_11) + nChild_11;
+                n += TableWire.VarSize(ids.RefAt(73, 0xee639cad45b1994cul)) + 1 + TableWire.VarSize((ulong)payload_11) + payload_11;
+                if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[11] = payload_11; }
+            }
+            n += TableWire.BodySizeField(v, fields[12], ref ids);
+            n += TableWire.BodySizeField(v, fields[13], ref ids, default, out long payload_13);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[13] = payload_13; }
+            n += TableWire.BodySizeField(v, fields[14], ref ids, default, out long payload_14);
+            if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[14] = payload_14; }
+            n += TableWire.BodySizeField(v, fields[15], ref ids);
+            if (v.AimX != 0.0f) { n += TableWire.VarSize(ids.RefAt(72, 0xdbaf7be5e24296c9ul)) + 5; }
+            if (v.AimY != 0.0f) { n += TableWire.VarSize(ids.RefAt(71, 0xdbaf7ae5e2429516ul)) + 5; }
+            if (v.AimZ != 0.0f) { n += TableWire.VarSize(ids.RefAt(70, 0xdbaf79e5e2429363ul)) + 5; }
+            if (v.Recoil != 0.0f) { n += TableWire.VarSize(ids.RefAt(50, 0x9cef31fff7e2e457ul)) + 5; }
+            if (v.Drift != 0.0) { n += TableWire.VarSize(ids.RefAt(27, 0x5ab3f9c9341f6c04ul)) + 9; }
+            if (v.WideKey != 0) { n += TableWire.VarSize(ids.RefAt(55, 0xa3348580461faf16ul)) + 9; }
+            if (v.Flux != 0) { n += TableWire.VarSize(ids.RefAt(68, 0xd61bdd7908af2642ul)) + 9; }
+            if (v.Ping != 0.0f) { n += TableWire.VarSize(ids.RefAt(62, 0xbf30e00dc53307a9ul)) + 5; }
+            if (v.CrcHint != 0) { n += TableWire.VarSize(ids.RefAt(25, 0x560d6527ccd8515ful)) + 5; }
+            if (v.HasExtra != false) { n += TableWire.VarSize(ids.RefAt(63, 0xc08292176cfd8672ul)) + 2; }
+            if (v.Extra != 0) { n += TableWire.VarSize(ids.RefAt(76, 0xfd29ee12a979cb69ul)) + 5; }
+            if (v.IdleTicks != 0) { n += TableWire.VarSize(ids.RefAt(37, 0x78101ac0aa8cbcfeul)) + 5; }
+            return n;
+        }
+
+        public static void TableMixedWriteBodyTyped(ref TableWire.Writer w, TableMixed v, ref TableWire.Ids ids, scoped ReadOnlySpan<long> rootPayloadSizes = default, scoped ReadOnlySpan<long> rootElemSizes = default)
+        {
+            TableFieldInfo[] fields = TableMixedTableType().Fields;
+            int elemOffset = 0;
+            if (v.ProtocolMagic != 0)
+            {
+                w.HeaderAt(28, 0x6a5a70d91aa115fdul, 7, ref ids);
+                w.Fixed((ulong)v.ProtocolMagic, 2);
+            }
+            if (v.Sequence != 0)
+            {
+                w.HeaderAt(58, 0xaa38aca481f528a8ul, 7, ref ids);
+                w.Fixed((ulong)v.Sequence, 2);
+            }
+            if (v.AckSequence != 0)
+            {
+                w.HeaderAt(4, 0x0dbe005c56697c3eul, 4, ref ids);
+                w.Fixed((ulong)(long)v.AckSequence, 4);
+            }
+            if (v.AckBits != 0)
+            {
+                w.HeaderAt(49, 0x9bae0da8b829ee03ul, 8, ref ids);
+                w.Fixed((ulong)v.AckBits, 4);
+            }
+            if (v.SessionId != 0)
+            {
+                w.HeaderAt(61, 0xb7d7b5650a590b05ul, 9, ref ids);
+                w.Fixed((ulong)v.SessionId, 8);
+            }
+            if (v.ClientId != 0)
+            {
+                w.HeaderAt(32, 0x6d7b98e2d095967eul, 8, ref ids);
+                w.Fixed((ulong)v.ClientId, 4);
+            }
+            if (v.Nonce != 1ul)
+            {
+                w.HeaderAt(34, 0x73a94c71d60dc0d8ul, 9, ref ids);
+                w.Fixed((ulong)v.Nonce, 8);
+            }
+            if (v.WorldTime != 0)
+            {
+                w.HeaderAt(21, 0x3eee6b51be54fc85ul, 5, ref ids);
+                w.Fixed((ulong)(long)v.WorldTime, 8);
+            }
+            if (v.FrameTick != 0)
+            {
+                w.HeaderAt(39, 0x7bbc035f7b6d0112ul, 9, ref ids);
+                w.Fixed((ulong)v.FrameTick, 8);
+            }
+            if (v.ServerTime != 0.0f)
+            {
+                w.HeaderAt(20, 0x3c460475f9be69c6ul, 10, ref ids);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.ServerTime)), 4);
+            }
+            scoped ReadOnlySpan<long> elemCache_10 = default;
+            if (!rootElemSizes.IsEmpty)
+            {
+                int c = TableWire.Count(v, fields[10]);
+                int take = System.Math.Min(c, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                elemCache_10 = rootElemSizes.Slice(elemOffset, take);
+                elemOffset += take;
+            }
+            long payload_10 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[10] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[10], ref ids, elemCache_10, payload_10);
+            int count_11 = v.StatsCount;
+            if (count_11 > 0)
+            {
+                w.HeaderAt(73, 0xee639cad45b1994cul, 14, ref ids);
+                scoped ReadOnlySpan<long> elemCache_11 = default;
+                if (!rootElemSizes.IsEmpty)
+                {
+                    int take = System.Math.Min(count_11, System.Math.Max(0, rootElemSizes.Length - elemOffset));
+                    elemCache_11 = rootElemSizes.Slice(elemOffset, take);
+                    elemOffset += take;
+                }
+                long payload_11 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[11] : -1;
+                if (payload_11 < 0)
+                {
+                    long nChild_11 = 0;
+                    for (int i_11 = 0; i_11 < count_11; i_11++)
+                    {
+                        long childBody = (!elemCache_11.IsEmpty && i_11 < elemCache_11.Length) ? elemCache_11[i_11] : TableStatBodySizeTyped(v.Stats[i_11], ref ids);
+                        nChild_11 += TableWire.VarSize((ulong)childBody) + childBody;
+                    }
+                    payload_11 = 1 + TableWire.VarSize((ulong)count_11) + nChild_11;
+                }
+                w.Var((ulong)payload_11);
+                w.Byte(13);
+                w.Var((ulong)count_11);
+                for (int i_11 = 0; i_11 < count_11; i_11++)
+                {
+                    long childBody = (!elemCache_11.IsEmpty && i_11 < elemCache_11.Length) ? elemCache_11[i_11] : TableStatBodySizeTyped(v.Stats[i_11], ref ids);
+                    w.Var((ulong)childBody);
+                    TableStatWriteBodyTyped(ref w, v.Stats[i_11], ref ids);
+                }
+            }
+            TableWire.WriteBodyField(ref w, v, fields[12], ref ids);
+            long payload_13 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[13] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[13], ref ids, default, payload_13);
+            long payload_14 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[14] : -1;
+            TableWire.WriteBodyField(ref w, v, fields[14], ref ids, default, payload_14);
+            TableWire.WriteBodyField(ref w, v, fields[15], ref ids);
+            if (v.AimX != 0.0f)
+            {
+                w.HeaderAt(72, 0xdbaf7be5e24296c9ul, 10, ref ids);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimX)), 4);
+            }
+            if (v.AimY != 0.0f)
+            {
+                w.HeaderAt(71, 0xdbaf7ae5e2429516ul, 10, ref ids);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimY)), 4);
+            }
+            if (v.AimZ != 0.0f)
+            {
+                w.HeaderAt(70, 0xdbaf79e5e2429363ul, 10, ref ids);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.AimZ)), 4);
+            }
+            if (v.Recoil != 0.0f)
+            {
+                w.HeaderAt(50, 0x9cef31fff7e2e457ul, 10, ref ids);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Recoil)), 4);
+            }
+            if (v.Drift != 0.0)
+            {
+                w.HeaderAt(27, 0x5ab3f9c9341f6c04ul, 11, ref ids);
+                w.Fixed(unchecked((ulong)BitConverter.DoubleToInt64Bits(v.Drift)), 8);
+            }
+            if (v.WideKey != 0)
+            {
+                w.HeaderAt(55, 0xa3348580461faf16ul, 9, ref ids);
+                w.Fixed((ulong)v.WideKey, 8);
+            }
+            if (v.Flux != 0)
+            {
+                w.HeaderAt(68, 0xd61bdd7908af2642ul, 5, ref ids);
+                w.Fixed((ulong)(long)v.Flux, 8);
+            }
+            if (v.Ping != 0.0f)
+            {
+                w.HeaderAt(62, 0xbf30e00dc53307a9ul, 10, ref ids);
+                w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Ping)), 4);
+            }
+            if (v.CrcHint != 0)
+            {
+                w.HeaderAt(25, 0x560d6527ccd8515ful, 8, ref ids);
+                w.Fixed((ulong)v.CrcHint, 4);
+            }
+            if (v.HasExtra != false)
+            {
+                w.HeaderAt(63, 0xc08292176cfd8672ul, 1, ref ids);
+                w.Fixed(v.HasExtra ? 1ul : 0ul, 1);
+            }
+            if (v.Extra != 0)
+            {
+                w.HeaderAt(76, 0xfd29ee12a979cb69ul, 4, ref ids);
+                w.Fixed((ulong)(long)v.Extra, 4);
+            }
+            if (v.IdleTicks != 0)
+            {
+                w.HeaderAt(37, 0x78101ac0aa8cbcfeul, 4, ref ids);
+                w.Fixed((ulong)(long)v.IdleTicks, 4);
+            }
+            w.Var(0);
+        }
+
+        public static long TableMixedSaveTyped(TableMixed value, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
+        {
+            TableTypeInfo type = TableMixedTableType();
+            int slots = 0;
+            if (vocabulary.Length <= 1024)
+            {
+                slots = 1;
+                while (slots < vocabulary.Length * 2) { slots <<= 1; }
+            }
+            Span<int> index = stackalloc int[slots];
+            Span<uint> ordinalSlots = vocabulary.Length <= 1024 ? stackalloc uint[vocabulary.Length] : default;
+            Span<int> ordinalOf = vocabulary.Length <= 1024 ? stackalloc int[vocabulary.Length] : default;
+            TableWire.Ids ids = new TableWire.Ids(vocabulary, index, ordinalSlots, ordinalOf);
+            if (!TableMixedCollectTyped(value, ref ids)) { return -1; }
+            int cachedFields = !measure && type.Fields.Length <= 256 ? type.Fields.Length : 0;
+            Span<long> rootPayloadSizes = stackalloc long[cachedFields];
+            int cachedElemSlots = !measure ? type.RootElemSlots : 0;
+            Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
+            long n = 1 + TableMixedBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (measure) { return n; }
+            if (n > buffer.Length) { return -1; }
+            scoped TableWire.Writer w = new TableWire.Writer(buffer);
+            w.Byte(1);
+            TableMixedWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
+            for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
+            w.Fixed((ulong)ids.Count, 8);
+            return w.Offset;
+        }
+
         public static long TableMixedMeasure(TableMixed value)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableWire.Save(value, TableMixedTableType(), Span<byte>.Empty, ids, true);
+            return TableMixedSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long TableMixedSave(TableMixed value, Span<byte> buffer)
         {
             Span<ulong> ids = stackalloc ulong[78];
-            return TableWire.Save(value, TableMixedTableType(), buffer, ids, false);
+            return TableMixedSaveTyped(value, buffer, ids, false);
         }
 
         public static TableWire.Verdict TableMixedLoadVerdict(TableMixed value, ReadOnlySpan<byte> bytes, TableReport report)
@@ -5440,7 +5735,6 @@ namespace Benchtable
             return TableMixedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
-        public static long TableMixedLoadMeasure(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes) { return TableWire.MessageLoadMeasure(TableMixedTableType(), bytes, vocabulary); }
         public static long TableMixedMeasureMessages(TableMixed[] values) { return TableWire.MessageSave(values, TableMixedTableType(), Span<byte>.Empty, true); }
         public static long TableMixedSaveMessages(TableMixed[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableMixedTableType(), bytes, false); }
         public static TableWire.Verdict TableMixedLoadMessages(TableMixed[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableMixedTableType(), bytes, vocabulary, report, out count); }
@@ -5850,7 +6144,7 @@ namespace Benchtable
                 info.NumFields = 28;
                 info.Create = delegate { return new global::Benchtable.TableMixed(); };
                 info.StorageSize = 1352; info.StorageAlign = 8; info.RegionAlign = 8;
-                info.Variable = true;
+                info.Variable = false;
                 info.RootElemSlots = 88;
                 info.PointerType = delegate(ulong id) { switch(id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -5883,8 +6177,8 @@ namespace Benchtable
                     new TableFieldInfo { Name = "ping", Json = "ping", TypeName = "float32", Id = 0xbf30e00dc53307a9, Kind = 10, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 250.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Benchtable.TableMixed)o).Ping)); }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).Ping = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 44, Ordinal = 23, NativeOffset = 1328, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.Ping = 0.0f; }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), ClampRaw = delegate(ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); if (v < 0.0f) { r.Clamped++; v = 0.0f; } else if (v > 250.0f) { r.Clamped++; v = 250.0f; } return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                     new TableFieldInfo { Name = "crc_hint", Json = "crc_hint", TypeName = "bits(24)", Id = 0x560d6527ccd8515f, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 1.6777215e+07, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)((global::Benchtable.TableMixed)o).CrcHint; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).CrcHint = unchecked((uint)r); }, MessageSlot = 45, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfffffful)), Ordinal = 24, NativeOffset = 1332, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.CrcHint = 0; }, DefaultRaw = (ulong)0, ClampRaw = delegate(ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v > 16777215ul) { r.Clamped++; v = 16777215; } return (ulong)v; } },
                     new TableFieldInfo { Name = "has_extra", Json = "has_extra", TypeName = "bool", Id = 0xc08292176cfd8672, Kind = 1, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 1, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return ((global::Benchtable.TableMixed)o).HasExtra ? 1ul : 0ul; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).HasExtra = r != 0; }, MessageSlot = 46, Ordinal = 25, NativeOffset = 1336, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.HasExtra = false; }, DefaultRaw = false ? 1ul : 0ul },
-                    new TableFieldInfo { Name = "extra", Json = "extra", TypeName = "int32", Id = 0xfd29ee12a979cb69, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "has_extra", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Benchtable.TableMixed)o).Extra; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).Extra = unchecked((int)(long)r); }, MessageSlot = 47, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 26, NativeOffset = 1340, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, NativeGuardOffsets = new int[] {1336}, NativeGuardValues = new bool[] {true}, WireGuard = delegate(object o) { var value = (global::Benchtable.TableMixed)o; return value.HasExtra; }, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.Extra = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 255) { r.Clamped++; v = 255; } return (ulong)(long)v; } },
-                    new TableFieldInfo { Name = "idle_ticks", Json = "idle_ticks", TypeName = "int32", Id = 0x78101ac0aa8cbcfe, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 15.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "!has_extra", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Benchtable.TableMixed)o).IdleTicks; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).IdleTicks = unchecked((int)(long)r); }, MessageSlot = 48, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xful)), Ordinal = 27, NativeOffset = 1344, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, NativeGuardOffsets = new int[] {1336}, NativeGuardValues = new bool[] {false}, WireGuard = delegate(object o) { var value = (global::Benchtable.TableMixed)o; return !value.HasExtra; }, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.IdleTicks = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 15) { r.Clamped++; v = 15; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "extra", Json = "extra", TypeName = "int32", Id = 0xfd29ee12a979cb69, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 255.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Benchtable.TableMixed)o).Extra; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).Extra = unchecked((int)(long)r); }, MessageSlot = 47, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xfful)), Ordinal = 26, NativeOffset = 1340, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.Extra = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 255) { r.Clamped++; v = 255; } return (ulong)(long)v; } },
+                    new TableFieldInfo { Name = "idle_ticks", Json = "idle_ticks", TypeName = "int32", Id = 0x78101ac0aa8cbcfe, Kind = 4, IsArray = false, Counted = false, Optional = false, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 0.0, RangeMax = 15.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate(object o, int i) { return (ulong)(long)((global::Benchtable.TableMixed)o).IdleTicks; }, SetRaw = delegate(object o, int i, ulong r) { ((global::Benchtable.TableMixed)o).IdleTicks = unchecked((int)(long)r); }, MessageSlot = 48, MessageBounded = true, MessageSigned = true, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x0ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xful)), Ordinal = 27, NativeOffset = 1344, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate(object o) { var value = (global::Benchtable.TableMixed)o; value.IdleTicks = 0; }, DefaultRaw = (ulong)(long)0, ClampRaw = delegate(ulong raw, TableReport r) { int v = unchecked((int)(long)raw); if (v < 0) { r.Clamped++; v = 0; } if (v > 15) { r.Clamped++; v = 15; } return (ulong)(long)v; } },
                 };
                 info.Reset = delegate(object o) { TableReset((global::Benchtable.TableMixed)o); };
                 info.Doc = TableDocNone;

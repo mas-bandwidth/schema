@@ -508,10 +508,7 @@ func (cook *TableEntityCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func TableEntityAt(slot *int64, arena ...*TableArena) *TableEntityRow {
-	if len(arena) > 0 && arena[0] != nil {
-		return (*TableEntityRow)(arena[0].At(*slot))
-	}
+func TableEntityAt(slot *int64) *TableEntityRow {
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -611,10 +608,7 @@ func (cook *TableStatCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func TableStatAt(slot *int64, arena ...*TableArena) *TableStatRow {
-	if len(arena) > 0 && arena[0] != nil {
-		return (*TableStatRow)(arena[0].At(*slot))
-	}
+func TableStatAt(slot *int64) *TableStatRow {
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -714,10 +708,7 @@ func (cook *TableMixedCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func TableMixedAt(slot *int64, arena ...*TableArena) *TableMixedRow {
-	if len(arena) > 0 && arena[0] != nil {
-		return (*TableMixedRow)(arena[0].At(*slot))
-	}
+func TableMixedAt(slot *int64) *TableMixedRow {
 	delta := *slot
 	if delta == 0 {
 		return nil
