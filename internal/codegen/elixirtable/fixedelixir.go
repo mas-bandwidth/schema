@@ -881,7 +881,7 @@ func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live, liveFast
 		d := g.leafDec(f, "e")
 		if d.count == nil {
 			var names []string
-			for i := int64(0); i < bound; i++ {
+			for i := range bound {
 				name := fmt.Sprintf("f_%s_%d", v, i)
 				seg := strings.Replace(d.spec, "f_e", name, 1)
 				segFast := strings.Replace(d.specFast, "f_e", name, 1)
@@ -1220,7 +1220,7 @@ func (g *fixedGen) emitUnrolledFlatList(st *ir.Struct, snake string, r rseg, k i
 	var segs []string
 	guards := []string{fmt.Sprintf("n >= %d", k)}
 	elems := make([]rseg, k)
-	for i := 0; i < k; i++ {
+	for i := range k {
 		elems[i] = suffixRseg(r, strconv.Itoa(i))
 		segs = append(segs, elems[i].matchFast...)
 		guards = append(guards, elems[i].guards...)
@@ -1240,7 +1240,7 @@ func (g *fixedGen) emitUnrolledLeafList(l leafList, k int) {
 	segs := make([]string, k)
 	guards := []string{fmt.Sprintf("n >= %d", k)}
 	wraps := make([]string, k)
-	for i := 0; i < k; i++ {
+	for i := range k {
 		suf := strconv.Itoa(i)
 		segs[i] = suffixIdent(l.spec, suf)
 		guards = append(guards, suffixAll(l.guards, suf)...)
