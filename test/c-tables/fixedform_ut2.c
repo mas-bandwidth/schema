@@ -33,7 +33,7 @@ void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes )
     UtRoot back;
     TableReport r;
     memset( &r, 0, sizeof( r ) );
-    fixed_check( ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r ) == 1,
+    fixed_check( ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C two lanes, compiled: the record reads" );
     fixed_check( back.pick.type == PICK_TYPE_B,
                  "C two lanes, compiled: the arm is remapped by NAME, not by ordinal" );
