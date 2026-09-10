@@ -280,11 +280,13 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
     Some(need)
 }
 
-/// THE READ: a prefill and ONE loop over ONE plan, then the scatter. The
-/// identity plan when the file's block hashes to this build's own, a plan
-/// compiled once from the writer's block otherwise — SAME LOOP either way,
-/// which is the owner's ruling that this form's cost must not move when a
-/// peer ships (docs/SPEC-TABLES.md §3.4).
+/// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when
+/// the file's block hashes to this build's own, a plan compiled once from the
+/// writer's block otherwise — SAME LOOP either way, which is the owner's
+/// ruling that this form's cost must not move when a peer ships
+/// (docs/SPEC-TABLES.md §3.4).
+///
+/// The DEFAULTS prefill belongs to the compiled path alone; see the loop.
 ///
 /// The plan's storage is the CALLER's, declared by capacity: this codec never
 /// allocates, and a block whose plan does not fit is a refusal by name.
@@ -340,13 +342,21 @@ pub fn fixed_table_fixed_load(
         return report.refuse(TableFixedReason::BatchTooLarge);
     }
     let entries: &[TableFixedEntry] = if identity { &FIXED_TABLE_FIXED_PLAN } else { &plan[..compiled] };
+    // THE PREFILL IS THE COMPILED PATH'S ALONE. A compiled plan can leave a
+    // byte of the image UNWRITTEN — a field this build declares that the
+    // writer's block does not carry — and that field's value is the declared
+    // default this lays down. THE IDENTITY PLAN CANNOT: it is one `Copy` over
+    // the whole body, so every byte the prefill wrote is overwritten before
+    // anything reads it. Same loop, same plan, one pass fewer over the body.
     let mut image = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
     for k in 0..n {
         let record = &rest[k * record_bytes..(k + 1) * record_bytes];
         if u64::from_le_bytes(record[..8].try_into().expect("eight bytes")) != hash {
             return report.refuse(TableFixedReason::NoBlock);
         }
-        image.copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS); // the declared defaults, one prefill
+        if !identity {
+            image.copy_from_slice(&FIXED_TABLE_FIXED_DEFAULTS); // the declared defaults
+        }
         table_fixed_run(entries, remap, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);
     }

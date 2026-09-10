@@ -31,10 +31,23 @@
 //	  * there is no `unsafe` and no `offset_of!` anywhere on this path, where
 //	    the two accelerators need both.
 //
-//	ONE READER PATH, and it is one for the same reason §3.4 gives: prefill the
-//	image with the declared defaults, run ONE loop over ONE plan, scatter. The
-//	identity hash and a stranger's hash differ only in which plan the loop was
-//	handed, and they cost the same.
+//	ONE READER PATH, and it is one for the same reason §3.4 gives: run ONE loop
+//	over ONE plan, then scatter. The identity hash and a stranger's hash differ
+//	only in which plan the loop was handed.
+//
+//	THE PREFILL IS WHAT §3.4 SAYS IT IS — the answer to "absent field" — and
+//	here that makes it the COMPILED path's alone. §3.4's prefill exists so a
+//	field with no plan entry keeps its declared default; the identity plan has
+//	an entry for every byte (it is ONE `Copy` over the whole body, above), so
+//	on that path there is no such field and nothing the prefill writes is ever
+//	read. Doing it anyway is a third pass over a body that gets two.
+//
+//	THAT IS A COST THAT NOW MOVES WHEN A PEER SHIPS, which is the thing §3.4's
+//	"one reader path" ruling was written against, and it is the owner's to
+//	settle rather than this port's. What would settle it in the ruling's own
+//	terms is prefilling, on BOTH paths, exactly the bytes the plan does not
+//	write — one rule, with the identity plan's zero as its limit case — which
+//	is a plan-compiler change and not this one.
 //
 // Nothing here touches form 1, which this port does not carry at all: Rust's
 // table surface is the two accelerators (§7, §19), and this is the first WIRE
@@ -1069,11 +1082,13 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        at += %s_FIXED_RECORD_BYTES;\n    }\n", up)
 	g.pf("    Some(need)\n}\n\n")
 
-	g.pf("/// THE READ: a prefill and ONE loop over ONE plan, then the scatter. The\n")
-	g.pf("/// identity plan when the file's block hashes to this build's own, a plan\n")
-	g.pf("/// compiled once from the writer's block otherwise — SAME LOOP either way,\n")
-	g.pf("/// which is the owner's ruling that this form's cost must not move when a\n")
-	g.pf("/// peer ships (docs/SPEC-TABLES.md §3.4).\n")
+	g.pf("/// THE READ: ONE loop over ONE plan, then the scatter. The identity plan when\n")
+	g.pf("/// the file's block hashes to this build's own, a plan compiled once from the\n")
+	g.pf("/// writer's block otherwise — SAME LOOP either way, which is the owner's\n")
+	g.pf("/// ruling that this form's cost must not move when a peer ships\n")
+	g.pf("/// (docs/SPEC-TABLES.md §3.4).\n")
+	g.pf("///\n")
+	g.pf("/// The DEFAULTS prefill belongs to the compiled path alone; see the loop.\n")
 	g.pf("///\n")
 	g.pf("/// The plan's storage is the CALLER's, declared by capacity: this codec never\n")
 	g.pf("/// allocates, and a block whose plan does not fit is a refusal by name.\n")
@@ -1114,12 +1129,20 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    let n = rest.len() / record_bytes;\n")
 	g.pf("    if n > values.len() {\n        return report.refuse(TableFixedReason::BatchTooLarge);\n    }\n")
 	g.pf("    let entries: &[TableFixedEntry] = if identity { &%s_FIXED_PLAN } else { &plan[..compiled] };\n", up)
+	g.pf("    // THE PREFILL IS THE COMPILED PATH'S ALONE. A compiled plan can leave a\n")
+	g.pf("    // byte of the image UNWRITTEN — a field this build declares that the\n")
+	g.pf("    // writer's block does not carry — and that field's value is the declared\n")
+	g.pf("    // default this lays down. THE IDENTITY PLAN CANNOT: it is one `Copy` over\n")
+	g.pf("    // the whole body, so every byte the prefill wrote is overwritten before\n")
+	g.pf("    // anything reads it. Same loop, same plan, one pass fewer over the body.\n")
 	g.pf("    let mut image = [0u8; %s_FIXED_BODY_BYTES];\n", up)
 	g.pf("    for k in 0..n {\n")
 	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
 	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
 	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
-	g.pf("        image.copy_from_slice(&%s_FIXED_DEFAULTS); // the declared defaults, one prefill\n", up)
+	g.pf("        if !identity {\n")
+	g.pf("            image.copy_from_slice(&%s_FIXED_DEFAULTS); // the declared defaults\n", up)
+	g.pf("        }\n")
 	g.pf("        table_fixed_run(entries, remap, &record[8..], &mut image, report);\n")
 	g.pf("        %s(&image, &mut values[k], report);\n", fn(st.Name, "fixed_scatter"))
 	g.pf("    }\n    Some(n)\n}\n\n")
