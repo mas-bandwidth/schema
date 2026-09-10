@@ -39,12 +39,20 @@ bench/paired/nine.sh --lane 7     # Space, on that line's isolated core
 ```
 
 It asks the TREE which `bench/tables/<lang>/` runners this checkout carries
-(`-mode table-langs` prints that list on its own), builds and gates exactly
-those, measures them with `-fast-rounds 3`, and renders ONE markdown table
-into `NINE.md` beside `nine.json`: per language the fixed form's save and
-round trip in ns/record and its bytes, `% of own packet` and `% of C++ form
-3`. Languages this tree has no runner for are named under the table and never
-estimated.
+(`-mode table-langs` prints that list on its own, before any build), builds
+and gates exactly those, then probes each over ONE rotation of the 64 records
+and keeps the ones whose rows this sitting's parser accepts. It measures those
+with `-fast-rounds 3` and renders ONE markdown table into `NINE.md` beside
+`nine.json`: per language the fixed form's save and round trip in ns/record
+and its bytes, `% of own packet` and `% of C++ form 3`.
+
+The probe is the corpus id. A leg whose fixed-form port has not landed loads a
+different set of goldens and answers to a different `corpus_id`, which the
+driver already refuses to divide against a paired packet row. Learning that in
+a second beats learning it three minutes into a pass, and the language is
+NAMED under the table with its refusal rather than dropped silently — "no
+runner on this tree" and "runner present, but its rows do not belong to this
+sitting" are different facts about the merge. Neither is ever estimated.
 
 It adds no measurement and relaxes no gate. Every number is a row
 `parseRowsForIterations` already accepted, at the one uniform iteration count

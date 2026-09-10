@@ -554,14 +554,23 @@ runner the driver forks onto it. Space's lanes are 1..15 and each line owns
 one; there is no coordinator in the loop.
 
 **The tree decides the rows, not the script.** `-mode table` asks the
-filesystem which `bench/tables/<lang>/` runners this checkout carries,
-measures exactly those, and NAMES the ones it has none for under the table —
-never estimates them, never carries a row in from another sitting. So the same
-unedited line runs on a leg branch, on the integration branch and on main, and
-each prints the truth about the tree it ran on. The driver measures the four
-paired languages together (the only shape that yields a packet ratio) and each
-table-only language alone; a table refuses to combine passes that disagree
-about build, host, corpus id, round count or iteration count.
+filesystem which `bench/tables/<lang>/` runners this checkout carries, then —
+before any clock — runs each of them over ONE rotation of the 64 records and
+hands the output to the same parser that will accept or refuse the measured
+rows. That probe is what catches a leg whose fixed-form port has not landed:
+it loads a different set of goldens, reports a different `corpus_id`, and is
+not divisible against a paired packet row. Such a leg is NAMED under the table
+with its refusal, exactly as a leg with no runner at all is named with that.
+Neither is ever estimated, and no row is ever carried in from another sitting.
+
+So the same unedited line runs on a leg branch, on the integration branch and
+on main, each printing the truth about the tree it ran on — and a leg's row
+appears on its own the day that leg lands, with nothing here to edit.
+
+The driver measures the paired languages together (the only shape that yields
+a packet ratio) and each table-only language alone; a table refuses to combine
+passes that disagree about build, host, architecture, corpus id, round count
+or iteration count per wire.
 
 ### The reading rule
 

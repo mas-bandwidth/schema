@@ -44,7 +44,7 @@ func TestPassShapeIsPairedThenEachTableOnlyLanguageAlone(t *testing.T) {
 	if len(passes) != 3 {
 		t.Fatal(len(passes))
 	}
-	if passes[0].name != "paired" || strings.Join(passes[0].langs, ",") != strings.Join(languages, ",") {
+	if passes[0].name != "paired" || strings.Join(passes[0].langs, ",") != "cpp,c,go,cs" {
 		t.Fatal(passes[0])
 	}
 	for _, p := range passes[1:] {
@@ -115,7 +115,10 @@ func sampleTable() nineTable {
 			{Language: "go", Form: tableForms["bench_table"], SaveNs: 300, TripNs: 600, Bytes: 70, PacketTripNs: 600},
 			{Language: "rust", Form: tableForms["bench_fixed"], SaveNs: 150, TripNs: 300, Bytes: 64},
 		},
-		Absent: []string{"java", "dart"},
+		Absent: []skipped{
+			{Language: "cs", Reason: "runner present, but its rows do not belong to this sitting: wrong or duplicate cs/table row identity"},
+			{Language: "java", Reason: "no runner on this tree (bench/tables/java)"},
+		},
 	}
 }
 
@@ -127,7 +130,9 @@ func TestTableRendersBothRatiosAndRefusesToInventTheMissingOne(t *testing.T) {
 		// Rust has no packet leg: the own-packet column says so and no other
 		// language's packet stands in for it.
 		"| Rust | form 3 (fixed) | 150.0 | 300.0 | 64.0 | — | 150% |",
-		"No runner on this tree, so not measured and not estimated: Java, Dart.",
+		"Not measured on this tree, and not estimated:",
+		"- **C#** — runner present, but its rows do not belong to this sitting:",
+		"- **Java** — no runner on this tree (bench/tables/java)",
 		"`studio` (darwin/arm64, Apple M2 Ultra) · `abc123` · 3 rounds × 2 pass(es) · load1 1.00–2.00",
 		"packet `p0`, table `t0`",
 		"2,000,000 packet, 200,000 table",
@@ -179,5 +184,20 @@ func TestEveryNineLanguageHasAName(t *testing.T) {
 		if !contains(nineLanguages, lang) {
 			t.Fatal("a paired language is missing from the published row order:", lang)
 		}
+	}
+}
+
+func TestOnlyTheAnsweringPairedLanguagesEnterThePairedPass(t *testing.T) {
+	// The state of this branch: two paired legs answer to the fixed corpus and
+	// the other two do not, so the paired pass carries the two and the table
+	// names the rest. Nothing is measured that the table cannot print.
+	passes := ninePasses("out", []string{"cpp", "c"})
+	if len(passes) != 1 || strings.Join(passes[0].langs, ",") != "cpp,c" {
+		t.Fatal(passes)
+	}
+	// A tree where only a table-only leg answers has no paired pass at all.
+	passes = ninePasses("out", []string{"rust"})
+	if len(passes) != 1 || passes[0].name != "rust" || strings.Join(passes[0].langs, ",") != "rust" {
+		t.Fatal(passes)
 	}
 }

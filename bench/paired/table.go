@@ -22,6 +22,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,6 +71,47 @@ func discoverTableLanguages() (present, absent []string) {
 	return present, absent
 }
 
+// skipped is a language the table does not carry, and WHY. Naming the reason
+// is the point: "no runner on this tree" and "present, but its rows do not
+// answer to this corpus" are different facts about the merge, and a reader
+// deciding whether a leg is done needs to tell them apart.
+type skipped struct {
+	Language string `json:"language"`
+	Reason   string `json:"reason"`
+}
+
+// probeRotation is ONE whole rotation of the 64 records — the smallest run
+// that exercises a leg's real corpus load and emits real rows.
+const probeRotation = 64
+
+// answers asks whether LANG's legs actually belong to this sitting. It runs
+// each of its wires over one rotation and hands the output to the ordinary
+// parser, which is the same code that will accept or refuse the measured
+// rows: identity, family, CORPUS ID, checks axis and iteration count.
+//
+// The corpus id is what this catches. A leg whose fixed-form port has not
+// landed loads a different set of goldens and reports a different id, and the
+// driver already refuses to divide such a row against a paired packet row —
+// correctly, because it is a different corpus. Learning that in a second here
+// beats learning it three minutes into a pass, and it means the row appears
+// on its own the day that leg lands, with nothing here to edit.
+func answers(lang string, info buildInfo) error {
+	wires := []string{"packet", "table"}
+	if !contains(languages, lang) {
+		wires = []string{"table"}
+	}
+	for _, wire := range wires {
+		data, err := capture(fastCommand(wire, lang, 0, probeRotation))
+		if err != nil {
+			return fmt.Errorf("%s/%s did not run: %w", lang, wire, err)
+		}
+		if _, err := parseRowsForIterations(data, lang, wire, info.CorpusIDs[wire], probeRotation, 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // tableRow is one language's line of the published table.
 type tableRow struct {
 	Language string  `json:"language"`
@@ -100,7 +142,7 @@ type nineTable struct {
 	Note      string            `json:"noise_note"`
 	Lane      string            `json:"lane,omitempty"`
 	Rows      []tableRow        `json:"rows"`
-	Absent    []string          `json:"skipped_no_runner"`
+	Absent    []skipped         `json:"skipped"`
 	Passes    int               `json:"passes"`
 }
 
@@ -265,7 +307,7 @@ func agree(first, next fastEvidence) error {
 	return nil
 }
 
-func buildNineTable(passes []ninePass, absent []string, lane string) (nineTable, error) {
+func buildNineTable(passes []ninePass, absent []skipped, lane string) (nineTable, error) {
 	m := newMeasurement()
 	first := passes[0].evidence
 	t := nineTable{
@@ -373,11 +415,10 @@ func (t nineTable) markdown() string {
 		b.WriteString("\nThis sitting measured no C++ fixed form, so the last column is unavailable rather than re-based on another language.\n")
 	}
 	if len(t.Absent) > 0 {
-		absent := make([]string, 0, len(t.Absent))
-		for _, lang := range t.Absent {
-			absent = append(absent, displayName(lang))
+		b.WriteString("\nNot measured on this tree, and not estimated:\n\n")
+		for _, s := range t.Absent {
+			fmt.Fprintf(&b, "- **%s** — %s\n", displayName(s.Language), s.Reason)
 		}
-		fmt.Fprintf(&b, "\nNo runner on this tree, so not measured and not estimated: %s.\n", strings.Join(absent, ", "))
 	}
 	fmt.Fprintf(&b, "\n%s\n", checksCaption)
 	fmt.Fprintf(&b, "\n%s\n", nineQualification)
@@ -389,12 +430,21 @@ func (t nineTable) markdown() string {
 
 // ninePasses is the sitting's shape: the paired four together, then each
 // table-only language on its own, in publication order.
-func ninePasses(out string, present []string) []ninePass {
-	passes := []ninePass{{name: "paired", dir: filepath.Join(out, "paired"), langs: languages}}
-	for _, lang := range present {
-		if !contains(languages, lang) {
-			passes = append(passes, ninePass{name: lang, dir: filepath.Join(out, lang), langs: []string{lang}})
+func ninePasses(out string, measured []string) []ninePass {
+	var paired, only []string
+	for _, lang := range measured {
+		if contains(languages, lang) {
+			paired = append(paired, lang)
+		} else {
+			only = append(only, lang)
 		}
+	}
+	var passes []ninePass
+	if len(paired) > 0 {
+		passes = append(passes, ninePass{name: "paired", dir: filepath.Join(out, "paired"), langs: paired})
+	}
+	for _, lang := range only {
+		passes = append(passes, ninePass{name: lang, dir: filepath.Join(out, lang), langs: []string{lang}})
 	}
 	return passes
 }
@@ -415,28 +465,37 @@ func reportTableLanguages() error {
 	return nil
 }
 
-// tablePass is the whole of `-mode table`: discover, measure, render.
+// tablePass is the whole of `-mode table`: discover, probe, measure, render.
 func tablePass(out string, info buildInfo, config fastConfig, lane string) error {
 	if out == "" {
 		return errors.New("table requires -out (a new report directory)")
 	}
-	present, absent := discoverTableLanguages()
-	if len(present) == 0 {
-		return errors.New("this tree carries no bench/tables/<lang> runner")
+	present, missing := discoverTableLanguages()
+	absent := make([]skipped, 0, len(nineLanguages))
+	for _, lang := range missing {
+		absent = append(absent, skipped{Language: lang, Reason: "no runner on this tree (" + tableRunnerDir(lang) + ")"})
 	}
-	// The paired four are the packet column and the C++ reference, so a tree
-	// missing one of their table runners cannot produce this table at all.
-	// Say so here rather than failing deep inside a pass.
-	for _, lang := range languages {
-		if !contains(present, lang) {
-			return fmt.Errorf("this tree pairs %s but carries no %s", lang, tableRunnerDir(lang))
+	// One rotation each, before any clock. A leg that is here but does not
+	// answer to this corpus is named with its refusal rather than measured.
+	measured := make([]string, 0, len(present))
+	for _, lang := range present {
+		if err := answers(lang, info); err != nil {
+			absent = append(absent, skipped{Language: lang, Reason: "runner present, but its rows do not belong to this sitting: " + err.Error()})
+			continue
 		}
+		measured = append(measured, lang)
 	}
-	fmt.Fprintln(os.Stderr, "measuring:", strings.Join(present, ", "))
-	if len(absent) > 0 {
-		fmt.Fprintln(os.Stderr, "no runner on this tree, skipped:", strings.Join(absent, ", "))
+	sort.Slice(absent, func(i, j int) bool {
+		return slices.Index(nineLanguages, absent[i].Language) < slices.Index(nineLanguages, absent[j].Language)
+	})
+	if len(measured) == 0 {
+		return errors.New("no leg on this tree answers to this corpus")
 	}
-	passes := ninePasses(out, present)
+	fmt.Fprintln(os.Stderr, "measuring:", strings.Join(measured, ", "))
+	for _, s := range absent {
+		fmt.Fprintf(os.Stderr, "skipped %s: %s\n", s.Language, s.Reason)
+	}
+	passes := ninePasses(out, measured)
 	for i := range passes {
 		p := &passes[i]
 		fmt.Fprintf(os.Stderr, "pass %d/%d: %s\n", i+1, len(passes), p.name)
