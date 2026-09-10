@@ -2164,9 +2164,9 @@ constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the rest are what a plan compiled from another writer's layout adds. clamp
-// is compiled-only: a ranged integer is a copy on the identity path and the
-// generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
+// the other four are what a plan compiled from another writer's layout adds.
+// NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
+// after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2176,7 +2176,6 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
-    kTableFixedClamp   = 7, // a ranged integer, in place on the destination the copy landed
 };
 
 // meta on a kTableFixedText entry
@@ -2465,39 +2464,6 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
-            break;
-        }
-        case kTableFixedClamp:
-        {
-            // IN PLACE ON THE DESTINATION the copy or widen just landed. src is
-            // unused: this op does not read the record. meta bit 0 is the low
-            // end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
-            // OF THE TWO ENDS, the same select-and-add the identity pass emits.
-            uint64_t lo = 0, hi = 0, raw = 0;
-            memcpy( &lo, base + p.aux, 8 );
-            memcpy( &hi, base + p.aux + 8, 8 );
-            memcpy( &raw, dst + p.dst, p.size );
-            if ( p.sign != 0 && p.size < 8 )
-            {
-                const unsigned bits = p.size * 8u;
-                const uint64_t top = 1ull << ( bits - 1 );
-                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            }
-            int32_t under = 0, over = 0;
-            if ( p.sign != 0 )
-            {
-                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
-                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
-                raw = under ? lo : ( over ? hi : raw );
-            }
-            else
-            {
-                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
-                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
-                raw = under ? lo : ( over ? hi : raw );
-            }
-            clamped += under | over;
-            memcpy( dst + p.dst, &raw, p.size );
             break;
         }
         default: break;
@@ -2869,10 +2835,6 @@ struct TableFixedDst
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
     uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
-    uint64_t lo = 0;     // a compiled clamp's low end, bit pattern of the slot
-    uint64_t hi = 0;     // a compiled clamp's high end
-    uint8_t clamp = 0;   // bit 0 = low, bit 1 = high, bit 2 = signed
-    uint8_t width = 0;   // the slot's bytes; 0 = this row is not a compiled clamp
 };
 
 struct TableFixedCompiler
@@ -2887,7 +2849,6 @@ struct TableFixedCompiler
     bool overflow = false;
     bool hostile = false;
     uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
-    bool skip_clamp = false; // counted-array elements: the live count, never slack
     TableReport * report = NULL;
 };
 
@@ -2906,18 +2867,8 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
         const uint8_t gw = e.argw == 0 ? 1u : e.argw;
         const bool guard_out = e.guard != kTableFixedNoGuard &&
             ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record );
-        // A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
-        // already landed. src+size is not a wire reach.
-        if ( e.op != kTableFixedClamp )
-        {
-            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-            if ( reach > (uint64_t) c.record || guard_out )
-            {
-                c.hostile = true;
-                return;
-            }
-        }
-        else if ( guard_out )
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
             return;
@@ -2942,39 +2893,6 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
     dst[0] = (uint16_t) n;
     for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
     return at;
-}
-
-// TableFixedLayBounds lays a compiled clamp's two ends above the entries, the
-// same pool the ordinal remap tables use, and answers the byte offset from the
-// plan's base. memcpy, not a typed store: the pool is not 8-aligned.
-inline uint32_t TableFixedLayBounds( TableFixedCompiler & c, uint64_t lo, uint64_t hi )
-{
-    const int32_t bytes = 16;
-    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
-    c.pool += bytes;
-    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
-    const uint32_t at = (uint32_t) ( total - c.pool );
-    uint8_t * dst = (uint8_t *) (void *) ( (uint8_t *) c.plan + at );
-    memcpy( dst, &lo, 8 );
-    memcpy( dst + 8, &hi, 8 );
-    return at;
-}
-
-// TableFixedPushClamp is ONE ranged scalar after the copy or widen that landed
-// it. Counted-array elements skip: the live count is a value the plan cannot
-// name, and clamping slack would count a clamp on a byte nobody wrote.
-inline void TableFixedPushClamp( TableFixedCompiler & c, const TableFixedDst & d,
-                                 uint32_t at, uint32_t guard, uint8_t arg )
-{
-    if ( c.skip_clamp || d.width == 0 ) { return; }
-    TableFixedEntry e;
-    e.src = 0; e.dst = at; e.size = d.width;
-    e.aux = TableFixedLayBounds( c, d.lo, d.hi );
-    e.guard = guard; e.op = kTableFixedClamp; e.arg = arg;
-    e.meta = (uint8_t) ( d.clamp & 3u );
-    e.dstsize = 0;
-    e.sign = ( d.clamp & 4u ) ? 1u : 0u;
-    TableFixedPush( c, e );
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
@@ -3057,7 +2975,6 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
             e.sign = TableFixedSignedKind( te.kind ) ? 1u : 0u;
             TableFixedPush( c, e );
-            TableFixedPushClamp( c, d, at, guard, arg );
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
@@ -3094,14 +3011,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;
-            const bool prev_skip = c.skip_clamp;
-            if ( d.counted ) { c.skip_clamp = true; }
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
                                         mine, mi + 1, dst, at + i * d.stride, guard, arg );
             }
-            c.skip_clamp = prev_skip;
             break;
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
@@ -3196,13 +3110,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size; e.op = kTableFixedCopy;
                 TableFixedPush( c, e );
-                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( te.size < me.size && me.size <= 8 )
             {
                 e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
-                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( c.report != NULL )
             {
@@ -4425,81 +4337,81 @@ constexpr int64_t FixedTableFixedLayoutBytes = (int64_t) sizeof( FixedTableFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst FixedTableFixedDst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // FixedTable
-    { (uint32_t) __builtin_offsetof( FixedTable, value ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // value
-    { (uint32_t) __builtin_offsetof( BenchMixed, sequence ), 0, 0, 0, 0, 0ull, 65535ull, 2, 4 }, // sequence
-    { (uint32_t) __builtin_offsetof( BenchMixed, ack_sequence ), 0, 0, 0, 0, 0ull, 65535ull, 7, 4 }, // ack_sequence
-    { (uint32_t) __builtin_offsetof( BenchMixed, ack_bits ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // ack_bits
-    { (uint32_t) __builtin_offsetof( BenchMixed, session_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // session_id
-    { (uint32_t) __builtin_offsetof( BenchMixed, client_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // client_id
-    { (uint32_t) __builtin_offsetof( BenchMixed, nonce ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // nonce
-    { (uint32_t) __builtin_offsetof( BenchMixed, world_time ), 0, 0, 0, 0, 18446743073709551616ull, 1000000000000ull, 7, 8 }, // world_time
-    { (uint32_t) __builtin_offsetof( BenchMixed, frame_tick ), 0, 0, 0, 0, 0ull, 281474976710655ull, 2, 8 }, // frame_tick
-    { (uint32_t) __builtin_offsetof( BenchMixed, server_time ), 0, 0, 0, 0, 0ull, 16776960ull, 7, 4 }, // server_time
-    { (uint32_t) __builtin_offsetof( BenchMixed, entities ), (uint32_t) sizeof( MixedEntity ), (uint32_t) __builtin_offsetof( BenchMixed, entities_count ), 1, 0, 0ull, 0ull, 0, 0 }, // entities
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( MixedEntity, entity_id ), 0, 0, 0, 0, 0ull, 4095ull, 2, 4 }, // entity_id
-    { (uint32_t) __builtin_offsetof( MixedEntity, pos_x ), 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, // pos_x
-    { (uint32_t) __builtin_offsetof( MixedEntity, pos_y ), 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, // pos_y
-    { (uint32_t) __builtin_offsetof( MixedEntity, pos_z ), 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, // pos_z
-    { (uint32_t) __builtin_offsetof( MixedEntity, yaw ), 0, 0, 0, 0, 0ull, 511ull, 2, 4 }, // yaw
-    { (uint32_t) __builtin_offsetof( MixedEntity, pitch ), 0, 0, 0, 0, 0ull, 511ull, 2, 4 }, // pitch
-    { (uint32_t) __builtin_offsetof( MixedEntity, vel_x ), 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, // vel_x
-    { (uint32_t) __builtin_offsetof( MixedEntity, vel_y ), 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, // vel_y
-    { (uint32_t) __builtin_offsetof( MixedEntity, vel_z ), 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, // vel_z
-    { (uint32_t) __builtin_offsetof( MixedEntity, health ), 0, 0, 0, 0, 0ull, 1000ull, 7, 4 }, // health
-    { (uint32_t) __builtin_offsetof( MixedEntity, weapon ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // weapon
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Fists
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Pistol
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Shotgun
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Rifle
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Sniper
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Smg
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Rocket
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Grenade
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Plasma
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Railgun
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Flamer
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Mine
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Turret
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Drone
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Repair
-    { (uint32_t) __builtin_offsetof( MixedEntity, damage ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // damage
-    { (uint32_t) __builtin_offsetof( MixedEntity, moving ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // moving
-    { (uint32_t) __builtin_offsetof( MixedEntity, firing ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // firing
-    { (uint32_t) __builtin_offsetof( BenchMixed, stats ), (uint32_t) sizeof( MixedStat ), (uint32_t) __builtin_offsetof( BenchMixed, stats_count ), 1, 0, 0ull, 0ull, 0, 0 }, // stats
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( MixedStat, stat_id ), 0, 0, 0, 0, 0ull, 255ull, 2, 4 }, // stat_id
-    { (uint32_t) __builtin_offsetof( MixedStat, delta ), 0, 0, 0, 0, 18446744073709551104ull, 511ull, 7, 4 }, // delta
-    { (uint32_t) __builtin_offsetof( BenchMixed, game_event ), 0, (uint32_t) __builtin_offsetof( BenchMixed, game_event ) + (uint32_t) __builtin_offsetof( MixedEvent, type ), 0, 0, 0ull, 0ull, 0, 0 }, // game_event
-    { (uint32_t) __builtin_offsetof( MixedEvent, hit ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // hit
-    { (uint32_t) __builtin_offsetof( MixedHitEvent, target_id ), 0, 0, 0, 0, 0ull, 4095ull, 2, 4 }, // target_id
-    { (uint32_t) __builtin_offsetof( MixedHitEvent, damage ), 0, 0, 0, 0, 0ull, 4095ull, 7, 4 }, // damage
-    { (uint32_t) __builtin_offsetof( MixedHitEvent, hit_kind ), 0, 0, 0, 0, 0ull, 7ull, 7, 4 }, // hit_kind
-    { (uint32_t) __builtin_offsetof( MixedHitEvent, crit ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // crit
-    { (uint32_t) __builtin_offsetof( MixedEvent, chat ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // chat
-    { (uint32_t) __builtin_offsetof( MixedChatEvent, channel ), 0, 0, 0, 0, 0ull, 3ull, 7, 4 }, // channel
-    { (uint32_t) __builtin_offsetof( MixedChatEvent, speaker ), 0, 0, 0, 0, 0ull, 4095ull, 2, 4 }, // speaker
-    { (uint32_t) __builtin_offsetof( MixedEvent, pickup ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // pickup
-    { (uint32_t) __builtin_offsetof( MixedPickupEvent, item_id ), 0, 0, 0, 0, 0ull, 1023ull, 2, 4 }, // item_id
-    { (uint32_t) __builtin_offsetof( MixedPickupEvent, amount ), 0, 0, 0, 0, 0ull, 255ull, 7, 4 }, // amount
-    { (uint32_t) __builtin_offsetof( BenchMixed, loadout ), (uint32_t) sizeof( uint8_t ), 0, 0, 0, 0ull, 0ull, 0, 0 }, // loadout
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( BenchMixed, player_name_length ), 0, (uint32_t) __builtin_offsetof( BenchMixed, player_name ), 0, 1, 0ull, 0ull, 0, 0 }, // player_name
-    { (uint32_t) __builtin_offsetof( BenchMixed, payload ), 1, (uint32_t) __builtin_offsetof( BenchMixed, payload_length ), 1, 3, 0ull, 0ull, 0, 0 }, // payload
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // u8
-    { (uint32_t) __builtin_offsetof( BenchMixed, aim_x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // aim_x
-    { (uint32_t) __builtin_offsetof( BenchMixed, aim_y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // aim_y
-    { (uint32_t) __builtin_offsetof( BenchMixed, aim_z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // aim_z
-    { (uint32_t) __builtin_offsetof( BenchMixed, recoil ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // recoil
-    { (uint32_t) __builtin_offsetof( BenchMixed, drift ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // drift
-    { (uint32_t) __builtin_offsetof( BenchMixed, wide_key ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // wide_key
-    { (uint32_t) __builtin_offsetof( BenchMixed, flux ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // flux
-    { (uint32_t) __builtin_offsetof( BenchMixed, ping ), 0, 0, 0, 0, 0ull, 64000ull, 2, 2 }, // ping
-    { (uint32_t) __builtin_offsetof( BenchMixed, crc_hint ), 0, 0, 0, 0, 0ull, 16777215ull, 2, 4 }, // crc_hint
-    { (uint32_t) __builtin_offsetof( BenchMixed, has_extra ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // has_extra
-    { (uint32_t) __builtin_offsetof( BenchMixed, extra ), 0, 0, 0, 0, 0ull, 255ull, 7, 4 }, // extra
-    { (uint32_t) __builtin_offsetof( BenchMixed, idle_ticks ), 0, 0, 0, 0, 0ull, 15ull, 7, 4 }, // idle_ticks
+    { 0, 0, 0, 0, 0 }, // FixedTable
+    { (uint32_t) __builtin_offsetof( FixedTable, value ), 0, 0, 0, 0 }, // value
+    { (uint32_t) __builtin_offsetof( BenchMixed, sequence ), 0, 0, 0, 0 }, // sequence
+    { (uint32_t) __builtin_offsetof( BenchMixed, ack_sequence ), 0, 0, 0, 0 }, // ack_sequence
+    { (uint32_t) __builtin_offsetof( BenchMixed, ack_bits ), 0, 0, 0, 0 }, // ack_bits
+    { (uint32_t) __builtin_offsetof( BenchMixed, session_id ), 0, 0, 0, 0 }, // session_id
+    { (uint32_t) __builtin_offsetof( BenchMixed, client_id ), 0, 0, 0, 0 }, // client_id
+    { (uint32_t) __builtin_offsetof( BenchMixed, nonce ), 0, 0, 0, 0 }, // nonce
+    { (uint32_t) __builtin_offsetof( BenchMixed, world_time ), 0, 0, 0, 0 }, // world_time
+    { (uint32_t) __builtin_offsetof( BenchMixed, frame_tick ), 0, 0, 0, 0 }, // frame_tick
+    { (uint32_t) __builtin_offsetof( BenchMixed, server_time ), 0, 0, 0, 0 }, // server_time
+    { (uint32_t) __builtin_offsetof( BenchMixed, entities ), (uint32_t) sizeof( MixedEntity ), (uint32_t) __builtin_offsetof( BenchMixed, entities_count ), 1, 0 }, // entities
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( MixedEntity, entity_id ), 0, 0, 0, 0 }, // entity_id
+    { (uint32_t) __builtin_offsetof( MixedEntity, pos_x ), 0, 0, 0, 0 }, // pos_x
+    { (uint32_t) __builtin_offsetof( MixedEntity, pos_y ), 0, 0, 0, 0 }, // pos_y
+    { (uint32_t) __builtin_offsetof( MixedEntity, pos_z ), 0, 0, 0, 0 }, // pos_z
+    { (uint32_t) __builtin_offsetof( MixedEntity, yaw ), 0, 0, 0, 0 }, // yaw
+    { (uint32_t) __builtin_offsetof( MixedEntity, pitch ), 0, 0, 0, 0 }, // pitch
+    { (uint32_t) __builtin_offsetof( MixedEntity, vel_x ), 0, 0, 0, 0 }, // vel_x
+    { (uint32_t) __builtin_offsetof( MixedEntity, vel_y ), 0, 0, 0, 0 }, // vel_y
+    { (uint32_t) __builtin_offsetof( MixedEntity, vel_z ), 0, 0, 0, 0 }, // vel_z
+    { (uint32_t) __builtin_offsetof( MixedEntity, health ), 0, 0, 0, 0 }, // health
+    { (uint32_t) __builtin_offsetof( MixedEntity, weapon ), 0, 0, 0, 0 }, // weapon
+    { 0, 0, 0, 0, 0 }, // Fists
+    { 0, 0, 0, 0, 0 }, // Pistol
+    { 0, 0, 0, 0, 0 }, // Shotgun
+    { 0, 0, 0, 0, 0 }, // Rifle
+    { 0, 0, 0, 0, 0 }, // Sniper
+    { 0, 0, 0, 0, 0 }, // Smg
+    { 0, 0, 0, 0, 0 }, // Rocket
+    { 0, 0, 0, 0, 0 }, // Grenade
+    { 0, 0, 0, 0, 0 }, // Plasma
+    { 0, 0, 0, 0, 0 }, // Railgun
+    { 0, 0, 0, 0, 0 }, // Flamer
+    { 0, 0, 0, 0, 0 }, // Mine
+    { 0, 0, 0, 0, 0 }, // Turret
+    { 0, 0, 0, 0, 0 }, // Drone
+    { 0, 0, 0, 0, 0 }, // Repair
+    { (uint32_t) __builtin_offsetof( MixedEntity, damage ), 0, 0, 0, 0 }, // damage
+    { (uint32_t) __builtin_offsetof( MixedEntity, moving ), 0, 0, 0, 0 }, // moving
+    { (uint32_t) __builtin_offsetof( MixedEntity, firing ), 0, 0, 0, 0 }, // firing
+    { (uint32_t) __builtin_offsetof( BenchMixed, stats ), (uint32_t) sizeof( MixedStat ), (uint32_t) __builtin_offsetof( BenchMixed, stats_count ), 1, 0 }, // stats
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( MixedStat, stat_id ), 0, 0, 0, 0 }, // stat_id
+    { (uint32_t) __builtin_offsetof( MixedStat, delta ), 0, 0, 0, 0 }, // delta
+    { (uint32_t) __builtin_offsetof( BenchMixed, game_event ), 0, (uint32_t) __builtin_offsetof( BenchMixed, game_event ) + (uint32_t) __builtin_offsetof( MixedEvent, type ), 0, 0 }, // game_event
+    { (uint32_t) __builtin_offsetof( MixedEvent, hit ), 0, 0, 0, 0 }, // hit
+    { (uint32_t) __builtin_offsetof( MixedHitEvent, target_id ), 0, 0, 0, 0 }, // target_id
+    { (uint32_t) __builtin_offsetof( MixedHitEvent, damage ), 0, 0, 0, 0 }, // damage
+    { (uint32_t) __builtin_offsetof( MixedHitEvent, hit_kind ), 0, 0, 0, 0 }, // hit_kind
+    { (uint32_t) __builtin_offsetof( MixedHitEvent, crit ), 0, 0, 0, 0 }, // crit
+    { (uint32_t) __builtin_offsetof( MixedEvent, chat ), 0, 0, 0, 0 }, // chat
+    { (uint32_t) __builtin_offsetof( MixedChatEvent, channel ), 0, 0, 0, 0 }, // channel
+    { (uint32_t) __builtin_offsetof( MixedChatEvent, speaker ), 0, 0, 0, 0 }, // speaker
+    { (uint32_t) __builtin_offsetof( MixedEvent, pickup ), 0, 0, 0, 0 }, // pickup
+    { (uint32_t) __builtin_offsetof( MixedPickupEvent, item_id ), 0, 0, 0, 0 }, // item_id
+    { (uint32_t) __builtin_offsetof( MixedPickupEvent, amount ), 0, 0, 0, 0 }, // amount
+    { (uint32_t) __builtin_offsetof( BenchMixed, loadout ), (uint32_t) sizeof( uint8_t ), 0, 0, 0 }, // loadout
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( BenchMixed, player_name_length ), 0, (uint32_t) __builtin_offsetof( BenchMixed, player_name ), 0, 1 }, // player_name
+    { (uint32_t) __builtin_offsetof( BenchMixed, payload ), 1, (uint32_t) __builtin_offsetof( BenchMixed, payload_length ), 1, 3 }, // payload
+    { 0, 0, 0, 0, 0 }, // u8
+    { (uint32_t) __builtin_offsetof( BenchMixed, aim_x ), 0, 0, 0, 0 }, // aim_x
+    { (uint32_t) __builtin_offsetof( BenchMixed, aim_y ), 0, 0, 0, 0 }, // aim_y
+    { (uint32_t) __builtin_offsetof( BenchMixed, aim_z ), 0, 0, 0, 0 }, // aim_z
+    { (uint32_t) __builtin_offsetof( BenchMixed, recoil ), 0, 0, 0, 0 }, // recoil
+    { (uint32_t) __builtin_offsetof( BenchMixed, drift ), 0, 0, 0, 0 }, // drift
+    { (uint32_t) __builtin_offsetof( BenchMixed, wide_key ), 0, 0, 0, 0 }, // wide_key
+    { (uint32_t) __builtin_offsetof( BenchMixed, flux ), 0, 0, 0, 0 }, // flux
+    { (uint32_t) __builtin_offsetof( BenchMixed, ping ), 0, 0, 0, 0 }, // ping
+    { (uint32_t) __builtin_offsetof( BenchMixed, crc_hint ), 0, 0, 0, 0 }, // crc_hint
+    { (uint32_t) __builtin_offsetof( BenchMixed, has_extra ), 0, 0, 0, 0 }, // has_extra
+    { (uint32_t) __builtin_offsetof( BenchMixed, extra ), 0, 0, 0, 0 }, // extra
+    { (uint32_t) __builtin_offsetof( BenchMixed, idle_ticks ), 0, 0, 0, 0 }, // idle_ticks
 };
 
 // THE IDENTITY PLAN, coalesced out of 148 leaves by the schema compiler —
