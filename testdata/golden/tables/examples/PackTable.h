@@ -6710,8 +6710,8 @@ inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped )
     (void) value; (void) clamped;
     for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
     {
-        if ( value.hardpoints[i] < 0 ) { value.hardpoints[i] = 0; clamped++; }
-        else if ( value.hardpoints[i] > 8 ) { value.hardpoints[i] = 8; clamped++; }
+        clamped += (int) ( value.hardpoints[i] < 0 ) | (int) ( value.hardpoints[i] > 8 );
+        value.hardpoints[i] = ( value.hardpoints[i] < 0 ) ? 0 : ( ( value.hardpoints[i] > 8 ) ? 8 : value.hardpoints[i] );
     }
 }
 
@@ -6719,8 +6719,8 @@ inline void ShipEntryFixedClampBody( ShipEntry & value, int32_t & clamped )
 inline void GlobalSettingsFixedClampBody( GlobalSettings & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.tick_rate < 1 ) { value.tick_rate = 1; clamped++; }
-    else if ( value.tick_rate > 240 ) { value.tick_rate = 240; clamped++; }
+    clamped += (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
+    value.tick_rate = ( value.tick_rate < 1 ) ? 1 : ( ( value.tick_rate > 240 ) ? 240 : value.tick_rate );
     if ( (uint64_t) value.difficulty > 3u ) { value.difficulty = Difficulty::None; clamped++; }
 }
 
@@ -6735,8 +6735,8 @@ inline void PackConfigFixedClampBody( PackConfig & value, int32_t & clamped )
     }
     for ( int64_t i = 0; i < 3; ++i )
     {
-        if ( value.thresholds.slots[i] < 0 ) { value.thresholds.slots[i] = 0; clamped++; }
-        else if ( value.thresholds.slots[i] > 1000 ) { value.thresholds.slots[i] = 1000; clamped++; }
+        clamped += (int) ( value.thresholds.slots[i] < 0 ) | (int) ( value.thresholds.slots[i] > 1000 );
+        value.thresholds.slots[i] = ( value.thresholds.slots[i] < 0 ) ? 0 : ( ( value.thresholds.slots[i] > 1000 ) ? 1000 : value.thresholds.slots[i] );
     }
     for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
     {
