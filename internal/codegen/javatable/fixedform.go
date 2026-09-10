@@ -222,7 +222,7 @@ func appendFixedU32(b []byte, v uint32) []byte {
 }
 
 func appendFixedU64(b []byte, v uint64) []byte {
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		b = append(b, byte(v>>(8*i)))
 	}
 	return b
@@ -292,7 +292,7 @@ func fixedDefaultField(out []byte, f *ir.Field) {
 
 func fixedDefaultSlots(out []byte, f *ir.Field, count int64) {
 	elem := fixedElementBytes(f)
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		fixedDefaultElement(out[i*elem:(i+1)*elem], f)
 	}
 }
@@ -1426,10 +1426,7 @@ func (g *fixedGen) emitByteConstant(name string, b []byte, entries []fixedLayout
 // read as anything but the byte it is.
 func (g *fixedGen) emitByteChunks(b []byte) {
 	for at := 0; at < len(b); at += fixedChunkBytes {
-		end := at + fixedChunkBytes
-		if end > len(b) {
-			end = len(b)
-		}
+		end := min(at+fixedChunkBytes, len(b))
 		var sb strings.Builder
 		for _, v := range b[at:end] {
 			fmt.Fprintf(&sb, "\\%03o", v)
@@ -1456,10 +1453,7 @@ func (g *fixedGen) emitByteArray(b []byte, entries []fixedLayoutEntry) {
 		return
 	}
 	for i := 0; i < len(b); i += 16 {
-		end := i + 16
-		if end > len(b) {
-			end = len(b)
-		}
+		end := min(i+16, len(b))
 		g.pf("        %s,\n", fixedBytesLine(b[i:end]))
 	}
 	if len(b) == 0 {
