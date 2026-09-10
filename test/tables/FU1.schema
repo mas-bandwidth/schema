@@ -1,0 +1,63 @@
+// FU1.schema — THE UNION-ARM SIDE of the fixed form's conformance set
+// (docs/SPEC-TABLES.md §3.4). FX1/FX2 hold the scalar edits and V1/V2 hold the
+// enum, the keyed array and one union arm inserted in the middle. Neither of
+// them puts a TEXT field, a COUNTED ARRAY or a nested TYPE under a union arm,
+// and a plan entry carries the arm's ordinal and a text field's flavour in the
+// SAME LANE, so an arm's text is the one shape whose plan entry a leg can get
+// wrong while every other case stays green.
+//
+// The arms are nested TYPES rather than field lines of their own, because a
+// text arm spelled directly makes its holder VARIABLE (§2.2) and this form's
+// conformance set is fixed roots only. One arm per text flavour, in ordinal
+// order, so the ordinal and the flavour DISAGREE at every arm but the first:
+//
+//   1 wide    wstring(4)      ordinal 1, flavour 2
+//   2 narrow  string(6)       ordinal 2, flavour 1
+//   3 raw     bytes(4)        ordinal 3, flavour 3 — the one that agrees
+//   4 list    a COUNTED ARRAY under an arm, and a scalar behind it
+//
+// FU2 inserts an arm in the middle, so every ordinal past the first moves and
+// the two sides read each other through a COMPILED plan.
+package tblfu1
+
+type MarkWide
+{
+    w wstring(4)
+    n int32 = 0 | min = 0, max = 1000
+}
+
+type MarkNarrow
+{
+    s string(6)
+    n int32 = 0 | min = 0, max = 1000
+}
+
+type MarkRaw
+{
+    d bytes(4)
+    n int32 = 0 | min = 0, max = 1000
+}
+
+// A COUNTED ARRAY UNDER AN ARM: the count entry and the elements behind it are
+// all guarded, so the arm's ordinal has to survive the count as well as the
+// text beside it.
+type MarkList
+{
+    items [..2]int32 | min = 0, max = 1000
+    n     int32 = 0      | min = 0, max = 1000
+}
+
+union Mark
+{
+    wide   MarkWide
+    narrow MarkNarrow
+    raw    MarkRaw
+    list   MarkList
+}
+
+table MarkRoot
+{
+    id    uint32 = 0
+    mark  Mark
+    after int32 = 7 | min = 0, max = 1000
+}

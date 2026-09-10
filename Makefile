@@ -222,6 +222,18 @@ define tables_generate
 	# nested TYPE the older side has no name for
 	$(1) generate --lang cpp --out $(2)/fx1 test/tables/FX1.schema
 	$(1) generate --lang cpp --out $(2)/fx2 test/tables/FX2.schema
+	# THE FIXED FORM'S UNION-ARM PAIR (docs/SPEC-TABLES.md §3.4,
+	# docs/FIXED-FORM-COVERAGE.md): a TEXT field of each flavour and a COUNTED
+	# ARRAY under a union arm, and one arm inserted in the middle so both sides
+	# read the other through a compiled plan
+	$(1) generate --lang cpp --out $(2)/fu1 test/tables/FU1.schema
+	$(1) generate --lang cpp --out $(2)/fu2 test/tables/FU2.schema
+	# THE FIXED FORM'S SHAPE PAIR (docs/SPEC-TABLES.md §3.4,
+	# docs/FIXED-FORM-COVERAGE.md): a bool, an OPTIONAL, an enum whose ordinal
+	# can run past its last variant, an ARRAY OF UNIONS, a THREE-DEEP nesting,
+	# and an arm holding an array — the six rows nothing else in the set reaches
+	$(1) generate --lang cpp --out $(2)/fn1 test/tables/FN1.schema
+	$(1) generate --lang cpp --out $(2)/fn2 test/tables/FN2.schema
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -244,7 +256,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FN1.schema test/tables/FN2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -5642,8 +5654,14 @@ toolchain-negative-control:
 build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/fn1 -Ibuild/tables-generated/fn2 \
+	    -Ibuild/tables-generated/wide -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 \
+	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 \
+	    -Ibuild/tables-generated/f1 -Ibuild/tables-generated/f2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
@@ -5653,17 +5671,95 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
-	    -fno-omit-frame-pointer -g \
+	    -fno-omit-frame-pointer -g -DSCHEMA_FIXEDFORM_SANITIZED \
 	    -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/fn1 -Ibuild/tables-generated/fn2 \
+	    -Ibuild/tables-generated/wide -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 \
+	    -Ibuild/tables-generated/examples \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 \
+	    -Ibuild/tables-generated/f1 -Ibuild/tables-generated/f2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+
+# THE FIXED FORM'S ORACLE BYTES (docs/SPEC-TABLES.md §3.4,
+# docs/FIXED-FORM-COVERAGE.md). Every other wire in this project has pinned
+# bytes and this one had none: the versioning conformance set holds that a
+# READER makes the right values, and nothing held that the WRITER made the
+# right bytes. A leg whose writer and reader are wrong in the same direction
+# passes every round trip there is and cannot exchange one record with anybody.
+FIXEDFORM_ORACLE := testdata/conformance/tables/fixedform/records.dump
+
+build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/tables/fixedform_fixtures.h
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/fn1 -Ibuild/tables-generated/fn2 \
+	    -Ibuild/tables-generated/wide -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 \
+	    -Ibuild/tables-generated/examples \
+	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/p1 \
+	    -Ibuild/tables-generated/scalars -Ibuild/tables-generated/f1 \
+	    -Itest/tables -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
+
+# THE GATE, and it is held from both ends. The oracle is REGENERATED and
+# byte-compared against the pinned file, and then regenerated a SECOND TIME and
+# compared against the first — because a dump that is merely equal to its pin is
+# a dump that could still be picking up a clock, an address or a map iteration
+# order, and the pin would then move on somebody else's machine and not on the
+# author's. Determinism is a property of the generator and it is checked here
+# rather than assumed.
+#
+# A byte that MOVES under an unchanged schema is stop-the-line and never a quiet
+# repin (testdata/conformance/tables/FORMAT.md). `make tables-fixedform-pin`
+# rewrites it deliberately, and the diff is the review.
+tables-fixedform-corpus: build/schema_test_fixedform_dump
+	@mkdir -p build/fixedform
+	./build/schema_test_fixedform_dump > build/fixedform/records.dump
+	./build/schema_test_fixedform_dump > build/fixedform/records.again
+	@cmp -s build/fixedform/records.dump build/fixedform/records.again || { \
+		echo "FIXED FORM ORACLE: the generator is NOT deterministic — two runs differ"; \
+		diff build/fixedform/records.dump build/fixedform/records.again | head -40; exit 1; }
+	@test -f $(FIXEDFORM_ORACLE) || { \
+		echo "FIXED FORM ORACLE: $(FIXEDFORM_ORACLE) is missing — run 'make tables-fixedform-pin'"; exit 1; }
+	@cmp -s build/fixedform/records.dump $(FIXEDFORM_ORACLE) || { \
+		echo "FIXED FORM ORACLE: the bytes MOVED under an unchanged schema — stop the line, never a quiet repin"; \
+		diff $(FIXEDFORM_ORACLE) build/fixedform/records.dump | head -60; exit 1; }
+	@echo "fixed form oracle: $$(grep -c '^case ' $(FIXEDFORM_ORACLE)) cases, byte-identical to the pin and to a second run of the generator"
+
+tables-fixedform-pin: build/schema_test_fixedform_dump
+	@mkdir -p $(dir $(FIXEDFORM_ORACLE))
+	./build/schema_test_fixedform_dump > $(FIXEDFORM_ORACLE)
+	@echo "fixed form oracle: PINNED to $(FIXEDFORM_ORACLE) — the diff is the review"
+
+.PHONY: tables-fixedform-corpus tables-fixedform-pin
 
 tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
 	./build/schema_test_fixedform
 	./build/schema_test_fixedform_asan
+	@# THE KNOWN FAULT, WATCHED (docs/FIXED-FORM-COVERAGE.md). The sanitized
+	@# twin skips ONE fixture, because the defect it carries is an OUT-OF-BOUNDS
+	@# READ and a halted process reports nothing behind it. So the fixture is put
+	@# back here and the sanitizer is REQUIRED to name the overflow: a skip
+	@# nobody watches fail is a skip that has quietly become a hole.
+	@#
+	@# THE DAY THE RUN COPY IS FIXED THIS LINE GOES RED, and that is deliberate:
+	@# the skip in test/tables/fixedform_main.cpp and this gate are deleted
+	@# together, as part of landing the fix.
+	@mkdir -p build/fixedform
+	@if SCHEMA_FIXEDFORM_FAULT=1 ./build/schema_test_fixedform_asan > build/fixedform/fault.log 2>&1; then \
+		echo "KNOWN FAULT GONE: the run copy no longer reads past the record body — delete the sanitized skip in test/tables/fixedform_main.cpp and this gate together"; \
+		exit 1; \
+	fi
+	@grep -q "heap-buffer-overflow" build/fixedform/fault.log || { \
+		echo "KNOWN FAULT CHANGED: the sanitized run failed, but not with the heap-buffer-overflow this skip is for"; \
+		tail -20 build/fixedform/fault.log; exit 1; }
+	@grep -q "TableFixedRun" build/fixedform/fault.log || { \
+		echo "KNOWN FAULT MOVED: the overflow is no longer inside TableFixedRun"; \
+		tail -20 build/fixedform/fault.log; exit 1; }
+	@echo "known fault: the run copy's 17..31-byte branch still reads past the record body, named by the sanitizer inside TableFixedRun"
 
-test: tables-fixedform
+test: tables-fixedform tables-fixedform-corpus
 
 .PHONY: tables-fixedform
 

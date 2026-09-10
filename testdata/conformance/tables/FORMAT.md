@@ -17,6 +17,7 @@ MANIFEST.txt          the registry: every case, by kind
 reports.txt           the read report of every evolution case  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
+fixedform/records.dump  the fixed form's record oracle          (pinned)
 cook/<case>.dump      the canonical node dump of every cook    (pinned)
 cook-write/<name>     the cooked file the tool wrote, per order (generated)
 block/<name>.dump     the canonical row dump of every block    (pinned)
@@ -212,6 +213,55 @@ DATA: the harness's `json-hostile` surface and `test/tables/hostile_main.cpp`
 read the same `json-hostile` rows of MANIFEST.txt, and so does the engine's own
 test. One corpus, one set of expectations, three gates asking different things
 of it.
+
+## fixedform/records.dump
+
+The bytes the FIXED FORM's writer produces (docs/SPEC-TABLES.md §3.4), one
+block per fixture, and the only pinned bytes this form has. Every other wire
+here has some — `testdata/wire/tables/` for §3, `cook-write/` for §7, the block
+images for §19 — and until this file the fixed form had none: what the
+versioning conformance set holds is that a READER makes the right values, and
+nothing held that a WRITER made the right bytes. **A leg whose writer and
+reader are wrong in the same direction passes every round trip there is and
+cannot exchange one record with anybody.**
+
+```
+case <name>
+  unit <package> root <TypeName>
+  form <n> reserved <7 bytes>
+  layout <n> bytes hash <16 hex>
+  layout length field <n>
+  file <n> bytes, record <n> = hash 8 + body <n>
+  hash <16 hex>
+  <offset>  <up to 16 bytes>
+```
+
+- **THE LAYOUT'S OWN BYTES ARE NOT HERE AND ITS HASH IS.** The hash is
+  `fnv1a64` over exactly those bytes (§3.4), so a hash that matches is a layout
+  that matches, and pinning both would be one golden with two homes. The
+  layout's LENGTH rides beside it because it is what a reader indexes the
+  records off, and it is the one layout fact a hash could not be made to hide.
+- **BOTH HASHES ARE PRINTED**, the header's and the record's, because they
+  answer two different questions (§3.4): the header's says *which layout is in
+  this file* and a record's says *which layout stamped this record*. A port
+  that wrote one and not the other is visible here rather than at a peer.
+- **THE BODY IS HEX AND NOT A VALUE DUMP**, which the cook's and the block's
+  are. §3.4's claim is about BYTES — a field "rides as its DECLARED STORAGE
+  IMAGE, LITTLE-ENDIAN, at its DECLARED STORAGE WIDTH, and nothing is padded
+  between fields" — and a dump printing `tilt = 112` would pass on a port that
+  put the byte in the wrong place. **The declared slack is in the hex too**:
+  §3.4 says a writer ZERO-FILLS it, and zeros nobody looked at are zeros
+  nobody has.
+- Every number is little-endian, and offsets are from the start of the BODY,
+  which is the record's own hash plus eight.
+
+Generated from `test/tables/fixedform_fixtures.h` — the same fixtures
+`test/tables/fixedform_main.cpp` reads, so the bytes pinned here and the values
+asserted there cannot drift apart. `make tables-fixedform-corpus` regenerates
+and compares, TWICE, because a dump merely equal to its pin could still be
+picking up a clock or an address and the pin would then move on somebody
+else's machine rather than on the author's. `make tables-fixedform-pin`
+rewrites it deliberately, and the diff is the review.
 
 ## cook/&lt;case&gt;.dump
 
