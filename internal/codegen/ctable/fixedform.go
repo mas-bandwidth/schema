@@ -375,10 +375,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	g.pf("/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
 	g.pf("   the layout's hash is this build's own, and a plan compiled once from the\n")
-	g.pf("   writer's layout otherwise. Same loop either way (§3.4). */\n")
+	g.pf("   writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4). */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
 		g.api(st.Name, "fixed_load"), st.Name)
-	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )\n{\n")
+	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n")
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
 	g.pf("    uint64_t hash;\n    int64_t rest, record_bytes, count, k;\n")
@@ -405,15 +405,40 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
 	g.pf("    record_bytes = 8 + %d;\n", body)
 	g.pf("    if ( hash != %s_fixed_hash )\n    {\n", n)
-	g.pf("        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.\n")
+	g.pf("        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout\n")
+	g.pf("           and CACHED BY HASH, so the compile is paid once per peer, not per record.\n")
 	g.pf("           THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
 	g.pf("           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */\n")
+	g.pf("        const TableFixedPlanCacheSlot * hit = NULL;\n")
+	g.pf("        TableFixedEntry * dest;\n        int32_t dest_capacity;\n        int storing;\n        int32_t i;\n")
 	g.pf("        TableFixedLayoutView parsed;\n        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;\n        int32_t compiled_guarded = 0;\n        int32_t made;\n")
-	g.pf("        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }\n")
-	g.pf("        made = table_fixed_compile( &parsed, %s_fixed_layout, (int32_t) sizeof( %s_fixed_layout ), %s_fixed_dst, plan, plan_capacity, &compiled_guarded, report );\n", n, n, n)
-	g.pf("        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n")
-	g.pf("        entries = plan;\n        entry_count = made;\n        entry_guarded = compiled_guarded;\n")
-	g.pf("        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;\n")
+	g.pf("        if ( cache != NULL )\n        {\n")
+	g.pf("            for ( i = 0; i < cache->used; ++i )\n            {\n")
+	g.pf("                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }\n")
+	g.pf("            }\n        }\n")
+	g.pf("        if ( hit != NULL )\n        {\n")
+	g.pf("            entries = hit->plan;\n            entry_count = hit->count;\n            entry_guarded = hit->guarded;\n")
+	g.pf("            record_bytes = hit->record_bytes;\n")
+	g.pf("        }\n        else\n        {\n")
+	g.pf("            if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }\n")
+	g.pf("            dest = plan;\n            dest_capacity = plan_capacity;\n            storing = 0;\n")
+	g.pf("            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )\n")
+	g.pf("            {\n                dest = cache->storage + cache->used * cache->stride;\n                dest_capacity = cache->stride;\n                storing = 1;\n            }\n")
+	g.pf("            made = table_fixed_compile( &parsed, %s_fixed_layout, (int32_t) sizeof( %s_fixed_layout ), %s_fixed_dst, dest, dest_capacity, &compiled_guarded, report );\n", n, n, n)
+	g.pf("            if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }\n")
+	g.pf("            record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;\n")
+	g.pf("            if ( cache != NULL ) { cache->compiles++; }\n")
+	g.pf("            if ( storing )\n            {\n")
+	g.pf("                cache->slots[cache->used].hash = hash;\n")
+	g.pf("                cache->slots[cache->used].plan = dest;\n")
+	g.pf("                cache->slots[cache->used].count = made;\n")
+	g.pf("                cache->slots[cache->used].guarded = compiled_guarded;\n")
+	g.pf("                cache->slots[cache->used].record_bytes = record_bytes;\n")
+	g.pf("                cache->slots[cache->used].made = 1;\n")
+	g.pf("                cache->used++;\n")
+	g.pf("            }\n")
+	g.pf("            entries = dest;\n            entry_count = made;\n            entry_guarded = compiled_guarded;\n")
+	g.pf("        }\n")
 	g.pf("    }\n")
 	g.pf("    /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:\n")
 	g.pf("       the layout's own rules each refuse under their own name first, so a\n")
@@ -463,7 +488,8 @@ func (g *tableGen) fixedDstRow(e ir.TableFixedLayoutEntry) string {
 		// and the tag leads that storage, so the two offsets are the same byte
 		aux = dst + g.fixedTerms(d.Aux)
 	}
-	return fmt.Sprintf("{ %d, %d, %d, %d, %d }", dst, stride, aux, d.Counted, d.Meta)
+	return fmt.Sprintf("{ %d, %d, %d, %d, %d, %dull, %dull, %d, %d }",
+		dst, stride, aux, d.Counted, d.Meta, d.ClampLo, d.ClampHi, d.ClampFlags, d.ClampWidth)
 }
 
 // fixedTerms sums a destination's offsetof terms.
@@ -517,10 +543,13 @@ func (g *tableGen) emitFixedByteArray(b []byte) {
 /* ---- the read-side bounds --------------------------------------------------
 
 A fixed record is a positional image, so the ONE read loop moves bytes and asks
-nothing about what they mean. What a declaration bounds is held HERE, as
-straight-line code in the generated decode, after the copy — never as plan
-entries, which would be a test per bounded field on every read of every record
-and is the cost the identity plan exists to avoid.
+nothing about what they mean. What a declaration bounds is held HERE on the
+identity path, as straight-line code in the generated decode, after the copy —
+never as identity-plan entries, which would be a test per bounded field on
+every read of every record and is the cost the identity plan exists to avoid.
+A compiled plan emits a clamp op per ranged scalar (not per counted-array
+slot: live count, slack never). This pass still runs after either plan. It is
+idempotent.
 
 THE PASS RUNS OVER STORAGE, so ONE pass covers both plans. It walks only what a
 read can have written: a counted array's LIVE elements and never its slack, an

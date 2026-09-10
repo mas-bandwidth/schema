@@ -41,6 +41,7 @@ void fixed_fx1_slack( void );
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes );
 void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes );
 void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes );
+void fixed_fx2_plan_cache( const uint8_t * fx1, int64_t fx1_bytes );
 void fixed_v2_read_v1( const uint8_t * data, int64_t bytes );
 
 /* TWO LANES, BECAUSE THEY ARE TWO FACTS: the guard's ordinal and the text op's

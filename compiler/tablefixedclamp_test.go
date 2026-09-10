@@ -95,6 +95,59 @@ func TestCppTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	deadCppCompile(t, files)
 }
 
+func TestCppIdentityPlanHasNoClampOp(t *testing.T) {
+	src, _ := deadCppHeader(t, clampTagOnlySrc)
+	plan := extractFn(src, "CfgFixedPlan")
+	if plan == "" {
+		// the plan is an array, not a function
+		i := strings.Index(src, "constexpr TableFixedEntry CfgFixedPlan[]")
+		if i < 0 {
+			t.Fatal("the identity plan was not emitted")
+		}
+		plan = src[i:]
+		if end := strings.Index(plan, "constexpr int32_t CfgFixedPlanCount"); end > 0 {
+			plan = plan[:end]
+		}
+	}
+	if strings.Contains(plan, "kTableFixedClamp") {
+		t.Error("the identity plan must not carry a clamp op: ranged integers are copies, held after the copy")
+	}
+	if !strings.Contains(src, "kTableFixedClamp   = 7") {
+		t.Error("the compiled path must still have a clamp op")
+	}
+	if !strings.Contains(src, "case kTableFixedClamp:") {
+		t.Error("the read loop must apply a compiled clamp")
+	}
+	// a is int32 | min = 0, max = 1000: both ends fire, signed. flags 1|2|4 = 7, width 4.
+	if !strings.Contains(src, "0ull, 1000ull, 7, 4 }") {
+		t.Error("the destination row for a ranged scalar must carry the compiled clamp's ends")
+	}
+}
+
+func TestCIdentityPlanHasNoClampOp(t *testing.T) {
+	src, _ := deadCHeader(t, clampTagOnlySrc)
+	i := strings.Index(src, "static SCHEMA_UNUSED const TableFixedEntry cfg_fixed_plan[]")
+	if i < 0 {
+		t.Fatal("the identity plan was not emitted")
+	}
+	plan := src[i:]
+	if end := strings.Index(plan, "cfg_fixed_plan_count"); end > 0 {
+		plan = plan[:end]
+	}
+	if strings.Contains(plan, "kTableFixedClamp") {
+		t.Error("the identity plan must not carry a clamp op: ranged integers are copies, held after the copy")
+	}
+	if !strings.Contains(src, "kTableFixedClamp   = 7") {
+		t.Error("the compiled path must still have a clamp op")
+	}
+	if !strings.Contains(src, "case kTableFixedClamp:") {
+		t.Error("the read loop must apply a compiled clamp")
+	}
+	if !strings.Contains(src, "0ull, 1000ull, 7, 4 }") {
+		t.Error("the destination row for a ranged scalar must carry the compiled clamp's ends")
+	}
+}
+
 func TestCTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	without, _ := deadCHeader(t, clampTagOnlySrc)
 	body := extractFn(without, "cfg_fixed_clamp_body_")
