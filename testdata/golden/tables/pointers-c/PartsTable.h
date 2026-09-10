@@ -804,7 +804,7 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
-    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the tag at guard
        must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
        entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
        shared one, and a string(N) under a union's arm then had to be either
@@ -813,6 +813,13 @@ typedef struct TableFixedEntry
     uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
+    /* argw IS THE GUARD'S WIDTH IN BYTES. A union tag is one, two, four or
+       eight, and comparing only the FIRST of them fires arm 1 on a foreign
+       tag of 0x0101 — an ordinal no arm of this build names. Zero is read as
+       one, which is the width a tag had when this field did not exist. It
+       sits last so a ten-value aggregate still names op, arg, meta, dstsize
+       and sign in that order. */
+    uint8_t argw;
 } TableFixedEntry;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -825,6 +832,7 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
     TableFixedEntry e;
     memset( &e, 0, sizeof( e ) );
     e.guard = SCHEMA_TABLE_FIXED_NO_GUARD;
+    e.argw = 1;
     return e;
 }
 
@@ -901,6 +909,22 @@ static SCHEMA_UNUSED uint64_t table_fixed_get64( const uint8_t * b )
     return v;
 }
 
+/* THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+   byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+   for, and reading only the first byte let 0x0101 run arm 1's entries over
+   a stranger's record. */
+static SCHEMA_UNUSED uint64_t table_fixed_tag_at( const uint8_t * src, uint32_t guard, uint8_t argw )
+{
+    const uint8_t w = argw == 0 ? (uint8_t) 1 : ( argw > 8u ? (uint8_t) 8 : argw );
+    uint64_t v = 0;
+    uint8_t i;
+    for ( i = 0; i < w; ++i )
+    {
+        v |= ( (uint64_t) src[guard + i] ) << ( 8 * i );
+    }
+    return v;
+}
+
 /* THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4). */
 static SCHEMA_UNUSED uint64_t table_fixed_hash_of( const uint8_t * layout, int64_t bytes )
 {
@@ -921,7 +945,12 @@ static SCHEMA_UNUSED uint64_t table_fixed_hash_of( const uint8_t * layout, int64
    the form and not an optimization a port may skip: the ruling that there is
    ONE reader path rests on a measurement, and with a runtime-length memcpy per
    entry that same measurement is 3.1x instead of 1.3x
-   (test/bench/fixedform_measure.cpp). */
+   (test/bench/fixedform_measure.cpp).
+
+   AND EVERY MOVE STAYS WITHIN [ run start, run end ). Overlapping moves are the
+   technique; a move anchored OUTSIDE the run is not the technique, it is a
+   defect — it clobbers whatever field sits in front of the destination and it
+   reads past the record body. */
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_fixed_copy_run( uint8_t * d, const uint8_t * s, uint32_t n )
 {
     if ( n <= 16 )
@@ -944,8 +973,25 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void table_fixed_copy_run( ui
         }
         return;
     }
+    /* EVERY MOVE IS ANCHORED INSIDE [ s, s + n ), AND THAT IS THE INVARIANT THIS
+       BRANCH EXISTS TO STATE. A run of 17..31 bytes has no room for a sixteen,
+       a second sixteen and a thirty-two, so it takes TWO SIXTEENS that OVERLAP
+       in the middle: one at the run's start and one at end - 16, both wholly
+       within the run because n >= 16. Anchoring the tail move at n - 32
+       instead would put it 32 - n bytes IN FRONT of the run — reading and
+       writing a neighbour's bytes, and reading past the record body, which for
+       a file's last record is past the buffer. */
+    if ( n <= 32 )
+    {
+        uint64_t w[2];
+        memcpy( w, s, 16 ); memcpy( d, w, 16 );
+        memcpy( w, s + n - 16, 16 ); memcpy( d + n - 16, w, 16 );
+        return;
+    }
     if ( n <= 64 )
     {
+        /* n >= 33 here, so n - 32 is at least 1 and the tail move begins
+           inside the run, exactly as the two moves in front of it do. */
         uint64_t w[4];
         memcpy( w, s, 16 ); memcpy( d, w, 16 );
         memcpy( w, s + 16, 16 ); memcpy( d + 16, w, 16 );
@@ -1079,7 +1125,7 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
-        if ( src[p->guard] != p->arg ) { continue; }
+        if ( table_fixed_tag_at( src, p->guard, p->argw ) != (uint64_t) p->arg ) { continue; }
         table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
     }
     report->clamped += clamped;
@@ -1475,6 +1521,7 @@ typedef struct TableFixedCompiler
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
+    uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     TableReport * report;
 } TableFixedCompiler;
 
@@ -1485,6 +1532,7 @@ static SCHEMA_UNUSED void table_fixed_compiler_init( TableFixedCompiler * c )
     memset( c, 0, sizeof( *c ) );
     c->plan = NULL;
     c->report = NULL;
+    c->argw = 1;
 }
 
 static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEntry e )
@@ -1498,9 +1546,12 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
     {
+        if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) { e.argw = c->argw ? c->argw : (uint8_t) 1; }
+        const uint8_t gw = e.argw == 0 ? (uint8_t) 1 : e.argw;
+        const int guard_out = e.guard != SCHEMA_TABLE_FIXED_NO_GUARD &&
+            ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record );
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c->record ||
-             ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
+        if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
             return;
@@ -1687,8 +1738,10 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             {
                 const uint32_t their_tag = table_fixed_tag_bytes( theirs, ti );
                 const uint32_t my_tag = table_fixed_tag_bytes( mine, mi );
+                const uint8_t saved_argw = c->argw;
                 int32_t my_arm = mi + 1;
                 uint32_t k;
+                c->argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : (uint8_t) 1;
                 for ( k = 0; k < me.children && my_arm < mine->count; ++k )
                 {
                     const TableFixedLayoutEntry ma = table_fixed_entry_at( mine, my_arm );
@@ -1703,6 +1756,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                             TableFixedEntry tag = table_fixed_entry_zero();
                             tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
                             tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint8_t) ( j + 1 );
+                            tag.argw = c->argw;
                             table_fixed_push( c, tag );
                             table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
                                                        mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 ) );
@@ -1712,6 +1766,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     }
                     my_arm += table_fixed_subtree( mine, my_arm );
                 }
+                c->argw = saved_argw;
                 break;
             }
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
@@ -1814,6 +1869,7 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
         if ( i == plain ) { split = out; }
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
+             plan[out-1].argw == plan[i].argw &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -5017,8 +5073,8 @@ static SCHEMA_UNUSED const TableFixedDst stamp_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry stamp_fixed_plan[] = {
-    { 0u, 12u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* tag */
-    { 12u, 16u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* seq */
+    { 0u, 12u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* tag */
+    { 12u, 16u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* seq */
 };
 static SCHEMA_UNUSED const int32_t stamp_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t stamp_fixed_plan_guarded = 2;

@@ -3,7 +3,7 @@
     {
       "name": "base",
       "when": "pull-request",
-      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, and the float-NaN widening control beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
+      "why": "the front-end and projection checks, the doc, view and rename controls, the JSON and block refusers, the id table's ordinal-slot controls in C and C++, the float-NaN widening control and the fixed form's run-copy bound in both systems legs beside them: Go, the host C and C++ compilers and the C/C++ serialize siblings, and nothing else. Measured 28 s over 24 controls, plus 16 s for the two C++ ordinal-slot controls and the C rewind control beside them.",
       "targets": [
         "check-enum-bound-negative-control",
         "check-zero-range-negative-control",
@@ -16,6 +16,7 @@
         "tables-c-ref-ordinal-negative-control",
         "tables-clamp-limits-negative-control",
         "tables-doctags-negative-controls",
+        "tables-fixedform-run-copy-negative-control",
         "tables-float-nan-negative-control",
         "tables-json-clamp-prefix-negative-control",
         "tables-json-keyed-dup-negative-control",
@@ -406,6 +407,7 @@
         "tables-cs-retain-negative-control",
         "tables-cs-pack-negative-control",
         "tables-cs-message-blob-endian-negative-control",
+        "tables-cs-fixedform-arm-negative-control",
         "packet-arm-defaults-cs-negative-control",
         "packet-defaults-cs-negative-control",
         "packet-utf8-cs-negative-control",
@@ -494,7 +496,7 @@
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 6 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Java port's controls and its four packet families: eight controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "conformance-negative-control-java-block",
         "packet-arm-defaults-java-negative-control",
@@ -502,6 +504,8 @@
         "packet-utf8-java-negative-control",
         "packet-wide-java-negative-control",
         "tables-java-cook-extent-negative-control",
+        "tables-java-fixedform-arm-negative-control",
+        "tables-java-fixedform-negative-control",
         "tables-java-fuzz-negative-control"
       ],
       "java": "21"

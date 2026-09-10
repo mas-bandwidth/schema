@@ -538,6 +538,7 @@ func init() {
 		Name{Name: "table_fixed_ordinal_width", What: "the fixed form's layout validation: a tag or ordinal's admitted widths"},
 		Name{Name: "table_fixed_parse_layout", What: "the fixed form's layout reader, and the whole of what a reader trusts a layout on"},
 		Name{Name: "table_fixed_subtree", What: "the fixed form's layout reader"},
+		Name{Name: "table_fixed_tag_at", What: "the fixed form: the plan guard compared at the tag's width"},
 		Name{Name: "table_fixed_tag_bytes", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_union_arm_bytes", What: "the fixed form's layout reader"},
 		Name{Name: "table_fixed_widens", What: "the fixed form's widening rungs"},

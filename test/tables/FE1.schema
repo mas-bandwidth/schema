@@ -1,0 +1,43 @@
+// FE1.schema — the OLDER side of the fixed form's ORDINAL SLIDE pair
+// (docs/SPEC-TABLES.md §3.4). The FX1/FX2 pair holds the field edits §4's
+// evolution table names; this one holds the two edits that move an ORDINAL
+// rather than a field, and neither is visible in a record's bytes at all:
+//
+//   an ENUM gains a variant IN THE MIDDLE   — every later variant's ordinal
+//                                             SLIDES, and a reader that read
+//                                             the number as its own would read
+//                                             Gold as Silver
+//   a UNION gains an ARM in the middle      — the tag ordinal slides the same
+//                                             way, and the arm behind it moves
+//
+// §3.4's answer to both is that AN ORDINAL IS A POSITION IN THE LAYOUT and the
+// plan REMAPS it: the `ordinal` op resolves a variant through the plan's own
+// table, and a union's tag is written as MY ordinal under THEIR tag's guard.
+// Nothing about that is checkable without a pair that actually slides, so here
+// it is.
+package tblfe1
+
+enum Grade { Bronze, Silver, Gold }
+
+type Boost
+{
+    power int32 = 1
+}
+
+type Ward
+{
+    charge int32 = 2
+}
+
+union Effect
+{
+    boost Boost
+    ward  Ward
+}
+
+table FeRoot
+{
+    grade  Grade = Silver
+    effect Effect
+    tail   int32 = 7
+}

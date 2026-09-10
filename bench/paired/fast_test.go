@@ -32,10 +32,22 @@ func TestFastCommandsKeepCompleteCorpusAndWarmup(t *testing.T) {
 			}
 		}
 	}
-	for index := range languages {
-		first, second := fastWires(0, index), fastWires(1, index)
+	for index, lang := range languages {
+		first, second := fastWires(0, index, lang), fastWires(1, index, lang)
 		if first[0] != second[1] || first[1] != second[0] {
 			t.Fatal("wire order did not alternate")
+		}
+	}
+	// A TABLE-ONLY LANGUAGE HAS ONE WIRE, so there is no order to alternate
+	// and the schedule must ask for the table leg in every round.
+	for _, lang := range tableOnlyLanguages {
+		for round := range 2 {
+			if got := fastWires(round, 0, lang); !reflect.DeepEqual(got, []string{"table"}) {
+				t.Fatal(lang, round, got)
+			}
+		}
+		if got := fastCommand("table", lang, 0, 6400); contains(got.args, "--quick") || !contains(got.args, "--indexed") {
+			t.Fatal(got.args)
 		}
 	}
 }
@@ -76,7 +88,7 @@ func TestFastSummaryUsesOnlyCompleteAdequatePairs(t *testing.T) {
 		}
 	}
 	dir := t.TempDir()
-	if err := writeFastSummary(dir, e); err != nil {
+	if err := writeFastSummary(dir, languages, e); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(dir, "README.md"))
@@ -159,5 +171,38 @@ func TestFastScheduleRefusesAPermanentlyShortLeg(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "packet") || passes != fastPasses {
 		t.Fatalf("%v after %d passes", err, passes)
+	}
+}
+
+// A TABLE-ONLY DIAGNOSTIC PRINTS NO RATIO. It has one wire, so there is
+// nothing to divide, and a summary that quietly showed 100% for the only leg
+// present would read as a comparison that was never made.
+func TestFastSummaryOfATableOnlyLanguagePrintsNoRatio(t *testing.T) {
+	// EVERY table-only language, not the first one: rust and java each arrived
+	// with their own reason for having one wire, and the claim under test is
+	// the summary's, so it is made once per language that can reach it.
+	for _, lang := range tableOnlyLanguages {
+		t.Run(lang, func(t *testing.T) {
+			e := fastEvidence{Config: fastConfig{Rounds: 1, Noise: "background recorded"}, Qualification: "Non-certified diagnostic", FinalCounts: map[string]int64{"table": 6400}}
+			e.Attempts = append(e.Attempts, fastAttempt{Language: lang, Wire: "table", Iterations: 6400, Adequate: true, Metrics: []fastMetric{{Path: "write", Rate: 21333333}, {Path: "round_trip", Rate: 6411220}}})
+			dir := t.TempDir()
+			if err := writeFastSummary(dir, []string{lang}, e); err != nil {
+				t.Fatal(err)
+			}
+			b, err := os.ReadFile(filepath.Join(dir, "README.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(b)
+			if !strings.Contains(text, "| "+names[lang]+" | table | round_trip |") {
+				t.Fatal(text)
+			}
+			if strings.Contains(text, "vs Packet Wire %") || strings.Contains(text, "Packet and") {
+				t.Fatal("a table-only diagnostic claimed a packet leg:", text)
+			}
+			if !strings.Contains(text, "NO RATIO.") || !strings.Contains(text, "no Packet leg and 6,400 Table") {
+				t.Fatal(text)
+			}
+		})
 	}
 }

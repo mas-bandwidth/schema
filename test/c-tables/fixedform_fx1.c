@@ -327,3 +327,46 @@ void fixed_fx1_text_content( void )
         fixed_check( !r.malformed && r.clamped == 0, "C TEXT CONTENT: and moves no counter" );
     }
 }
+
+/* THE GUARD IS COMPARED AT THE TAG'S WIDTH (docs/SPEC-TABLES.md §3.4). A
+   union tag can be two bytes, and comparing only the first of them fires
+   arm 1 on a foreign tag of 0x0101. Hand-built so the one-byte compare and
+   the whole-width compare meet the same record. */
+void fixed_guard_width( void )
+{
+    uint8_t src[4];
+    uint8_t dst[4];
+    TableFixedEntry plan[2];
+    TableReport r;
+
+    src[0] = 0x01; src[1] = 0x01; src[2] = 0xAA; src[3] = 0x00;
+
+    plan[0] = table_fixed_entry_zero();
+    plan[0].src = 0; plan[0].dst = 0; plan[0].size = 2;
+    plan[0].op = kTableFixedCopy;
+
+    plan[1] = table_fixed_entry_zero();
+    plan[1].src = 2; plan[1].dst = 2; plan[1].size = 1;
+    plan[1].guard = 0;
+    plan[1].op = kTableFixedCopy;
+    plan[1].arg = 1;
+    plan[1].argw = 2;
+
+    memset( dst, 0, sizeof( dst ) );
+    memset( &r, 0, sizeof( r ) );
+    table_fixed_run( plan, 2, 1, src, dst, &r );
+    fixed_check( dst[2] == 0, "C GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
+
+    src[1] = 0x00;
+    memset( dst, 0, sizeof( dst ) );
+    memset( &r, 0, sizeof( r ) );
+    table_fixed_run( plan, 2, 1, src, dst, &r );
+    fixed_check( dst[2] == 0xAA, "C GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
+
+    src[1] = 0x01;
+    plan[1].argw = 1;
+    memset( dst, 0, sizeof( dst ) );
+    memset( &r, 0, sizeof( r ) );
+    table_fixed_run( plan, 2, 1, src, dst, &r );
+    fixed_check( dst[2] == 0xAA, "C NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
+}
