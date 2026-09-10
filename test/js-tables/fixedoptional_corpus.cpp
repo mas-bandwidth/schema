@@ -71,7 +71,7 @@ int main( int argc, char ** argv )
         tblp1::Chain back;
         tblp1::TableReport r;
         std::vector<tblp1::TableFixedEntry> plan( 1024 );
-        if ( tblp1::ChainFixedLoad( &back, 1, out.data(), (int64_t) out.size(), plan.data(), 1024, &r ) != 1 )
+        if ( tblp1::ChainFixedLoad( &back, 1, out.data(), (int64_t) out.size(), plan.data(), 1024, NULL, &r ) != 1 )
         { std::fprintf( stderr, "P1 read back failed\n" ); return 1; }
         if ( std::strcmp( back.name, "chain" ) != 0 || back.link.value != 500 )
         { std::fprintf( stderr, "P1 round trip disagrees with itself\n" ); return 1; }
@@ -107,7 +107,7 @@ int main( int argc, char ** argv )
         tblp3::Chain back[2];
         tblp3::TableReport r;
         std::vector<tblp3::TableFixedEntry> plan( 1024 );
-        if ( tblp3::ChainFixedLoad( back, 2, out.data(), (int64_t) out.size(), plan.data(), 1024, &r ) != 2 )
+        if ( tblp3::ChainFixedLoad( back, 2, out.data(), (int64_t) out.size(), plan.data(), 1024, NULL, &r ) != 2 )
         { std::fprintf( stderr, "P3 read back failed\n" ); return 1; }
         if ( !back[0].link_present || back[0].link.value != 500 || back[1].link_present )
         { std::fprintf( stderr, "P3 round trip disagrees with itself\n" ); return 1; }
@@ -196,7 +196,7 @@ int main( int argc, char ** argv )
         OptRoot back[4];
         TableReport r;
         std::vector<TableFixedEntry> plan( 1024 );
-        if ( OptRootFixedLoad( back, 4, out.data(), (int64_t) out.size(), plan.data(), 1024, &r ) != 4 )
+        if ( OptRootFixedLoad( back, 4, out.data(), (int64_t) out.size(), plan.data(), 1024, NULL, &r ) != 4 )
         { std::fprintf( stderr, "FO1 read back failed\n" ); return 1; }
         if ( !back[0].opt_present || back[0].opt.v != 11 || back[1].opt_present ||
              !back[2].wrap.leaf_present || back[2].wrap.leaf.v != -304 || back[3].wrap.leaf_present )

@@ -80,7 +80,7 @@ static void fx_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, &r );
+        const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, NULL, &r );
         check( n == 1, "same schema: one record" );
         check( back.keep == 4242u && back.narrow == 40000u && back.renamed == 321 && back.gone == 654, "same schema: the scalars" );
         check( back.nested.a == 111 && back.nested.b == 222, "same schema: the nesting" );
@@ -93,7 +93,7 @@ static void fx_case()
         tblfx2::FxRoot back;
         tblfx2::TableReport r;
         std::vector<tblfx2::TableFixedEntry> plan( 1024 );
-        const int64_t n = tblfx2::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, &r );
+        const int64_t n = tblfx2::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, NULL, &r );
         check( n == 1, "older writer: one record" );
         check( back.keep == 4242u, "older writer: an unmoved field" );
         check( back.narrow == 40000u, "WIDENED: uint16 into uint32, exactly" );
@@ -128,7 +128,7 @@ static void fx_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &r );
+        const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r );
         check( n == 1, "newer writer: one record" );
         check( back.keep == 5150u, "newer writer: an unmoved field lands past the unknowns" );
         check( back.renamed == 808, "newer writer: `was =` reads the other way too" );
@@ -167,7 +167,7 @@ static void v_case()
     tblv2::Cfg back;
     tblv2::TableReport r;
     std::vector<tblv2::TableFixedEntry> plan( 8192 );
-    const int64_t n = tblv2::CfgFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 8192, &r );
+    const int64_t n = tblv2::CfgFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 8192, NULL, &r );
     check( n == 1, "V2 reads V1: one record" );
     check( back.grade == tblv2::Grade::Gold, "ENUM: a variant inserted in the middle is remapped by NAME" );
     check( back.effect.type == tblv2::EffectType::Ward, "UNION: an arm inserted in the middle is remapped by NAME" );
@@ -205,7 +205,7 @@ static void p_case()
     tblp3::Chain back;
     tblp3::TableReport r;
     std::vector<tblp3::TableFixedEntry> plan( 1024 );
-    const int64_t n = tblp3::ChainFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r );
+    const int64_t n = tblp3::ChainFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r );
     check( n == 1, "P3 reads P1: one record" );
     check( std::strcmp( back.name, "chain" ) == 0, "P3 reads P1: the plain field lands" );
     check( r.kind_mismatch == 1, "OPTIONAL vs VALUE is a reported kind on this form, never a silent reread" );
@@ -244,7 +244,7 @@ static void negative_control()
     tblfx1::FxRoot right;
     tblfx1::TableReport r2;
     std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-    const int64_t n = tblfx1::FxRootFixedLoad( &right, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &r2 );
+    const int64_t n = tblfx1::FxRootFixedLoad( &right, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r2 );
     check( n == 1 && right.nested.a == 33 && right.nested.b == 44,
            "NEGATIVE CONTROL: the loader compiles a plan from the layout and gets it right" );
 
@@ -259,7 +259,7 @@ static void negative_control()
         broken[tblfx1::kTableFixedHeaderBytes + 4] ^= 0xFFu;
         tblfx1::FxRoot v;
         tblfx1::TableReport r3;
-        const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, &r3 );
+        const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, NULL, &r3 );
         check( bad < 0 && r3.refused && r3.reason == tblfx1::layout_count_mismatch, "REFUSED BY NAME: layout_count_mismatch" );
         check( r3.unknown == 0 && r3.kind_mismatch == 0 && !r3.malformed, "REFUSED BY NAME: a refusal moves no counter" );
     }
@@ -283,7 +283,7 @@ static void negative_control()
             other[0] = rows[i].form;
             tblfx1::FxRoot v;
             tblfx1::TableReport r4;
-            const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, other.data(), (int64_t) other.size(), plan.data(), 1024, &r4 );
+            const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, other.data(), (int64_t) other.size(), plan.data(), 1024, NULL, &r4 );
             check( bad < 0 && r4.refused && r4.reason == rows[i].want, rows[i].what );
             check( !r4.malformed, "REFUSED BY NAME: never damage" );
             check( r4.unknown == 0 && r4.kind_mismatch == 0 && r4.widened == 0 && r4.clamped == 0,
@@ -300,7 +300,7 @@ static void negative_control()
         lying[tblfx1::kTableFixedHashAt] ^= 0xFFu;
         tblfx1::FxRoot v;
         tblfx1::TableReport r6;
-        const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, lying.data(), (int64_t) lying.size(), plan.data(), 1024, &r6 );
+        const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, lying.data(), (int64_t) lying.size(), plan.data(), 1024, NULL, &r6 );
         check( bad < 0 && r6.refused && r6.reason == tblfx1::layout_malformed,
                "REFUSED BY NAME: a header hash that is not the layout's" );
         check( !r6.malformed, "REFUSED BY NAME: never damage" );
@@ -312,7 +312,7 @@ static void negative_control()
         tblfx1::FxRoot v;
         tblfx1::TableReport r5;
         tblfx1::TableFixedEntry tiny[1];
-        const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, w2.data(), (int64_t) w2.size(), tiny, 1, &r5 );
+        const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, w2.data(), (int64_t) w2.size(), tiny, 1, NULL, &r5 );
         check( bad < 0 && r5.refused && r5.reason == tblfx1::plan_too_large, "REFUSED BY NAME: plan_too_large" );
     }
 }
@@ -368,7 +368,7 @@ static void refuses( std::vector<uint8_t> & broken, tblfx1::TableMessageReason w
     tblfx1::FxRootReset( v );
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-    const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, &r );
+    const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, NULL, &r );
     check( n < 0 && r.refused && r.reason == want, what );
     // NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
     // record would be the damage the refusal exists to prevent.
@@ -389,7 +389,7 @@ static void layout_validation()
         tblfx1::FxRoot v;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &v, 1, good.data(), (int64_t) good.size(), plan.data(), 1024, &r ) == 1 && !r.refused,
+        check( tblfx1::FxRootFixedLoad( &v, 1, good.data(), (int64_t) good.size(), plan.data(), 1024, NULL, &r ) == 1 && !r.refused,
                "layout validation: the unbroken file reads, so the breaks below are the breaks" );
     }
 
@@ -545,7 +545,7 @@ static void fuzz_case()
             tblfx1::FxRoot v;
             tblfx1::TableReport r;
             const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, hit.data(), (int64_t) hit.size(),
-                                                       plan.data(), (int32_t) plan.size(), &r );
+                                                       plan.data(), (int32_t) plan.size(), NULL, &r );
             if ( n < 0 )
             {
                 if ( r.refused ) { refused++; check( !r.malformed, "fuzz: a refusal is never damage" ); }
@@ -632,7 +632,7 @@ static void slack_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, &r ) == 1,
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
                "slack: the record reads" );
         check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
                "slack: the used length reads, and the buffer terminates at it" );
@@ -753,7 +753,7 @@ static void union_text_case()
         tblut1::UtRoot back;
         tblut1::TableReport r;
         std::vector<tblut1::TableFixedEntry> plan( 1024 );
-        check( tblut1::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+        check( tblut1::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "two lanes: the record reads" );
         check( back.pick.type == tblut1::PickType::B, "two lanes: the arm" );
         check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
@@ -789,7 +789,7 @@ static void union_text_case()
         tblut2::UtRoot back;
         tblut2::TableReport r;
         std::vector<tblut2::TableFixedEntry> plan( 1024 );
-        check( tblut2::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+        check( tblut2::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "two lanes, compiled: the record reads" );
         check( back.pick.type == tblut2::PickType::B, "two lanes, compiled: the arm is remapped by NAME, not by ordinal" );
         check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
@@ -815,7 +815,7 @@ static void union_text_case()
         tblut1::UtRoot back;
         tblut1::TableReport r;
         std::vector<tblut1::TableFixedEntry> plan( 1024 );
-        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &r ) == 1,
+        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r ) == 1,
                "two lanes, back: the record reads" );
         check( back.pick.type == tblut1::PickType::B, "two lanes, back: arm 3 lands as arm 2, by name" );
         check( back.pick.b.label_length == 5 && std::strcmp( back.pick.b.label, "third" ) == 0,
@@ -859,7 +859,7 @@ static void bounds_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "bounds: the record reads" );
         check( back.renamed == 1000, "RANGE: a value past max lands at max" );
         check( back.gone == 0, "RANGE: a value under min lands at min" );
@@ -883,13 +883,46 @@ static void bounds_case()
         check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
     }
 
+    // 1b. A COMPILED PLAN FROM THIS BUILD'S OWN LAYOUT. The identity plan
+    // copies; a compiled plan clamps. The loop alone, without the storage
+    // pass, must already hold the range — which is what says the clamp is a
+    // plan entry on this path, and only on this path.
+    {
+        tblfx1::TableFixedLayoutView parsed;
+        tblfx1::TableMessageReason why = tblfx1::layout_malformed;
+        check( tblfx1::TableFixedParseLayout( tblfx1::FxRootFixedLayout, tblfx1::FxRootFixedLayoutBytes, parsed, why ),
+               "bounds, compiled-own: this build's layout parses" );
+        std::vector<tblfx1::TableFixedEntry> compiled( 1024 );
+        int32_t guarded = 0;
+        tblfx1::TableReport cr;
+        const int32_t made = tblfx1::TableFixedCompile( parsed, tblfx1::FxRootFixedLayout, (int32_t) tblfx1::FxRootFixedLayoutBytes,
+                                                        tblfx1::FxRootFixedDst, compiled.data(), 1024, &guarded, &cr );
+        check( made > 0, "bounds, compiled-own: the plan compiles" );
+        int32_t clamp_ops = 0;
+        for ( int32_t i = 0; i < made; ++i )
+        {
+            if ( compiled[(size_t) i].op == tblfx1::kTableFixedClamp ) { clamp_ops++; }
+        }
+        check( clamp_ops >= 2, "bounds, compiled-own: ranged scalars are clamp ops" );
+
+        tblfx1::FxRoot held;
+        tblfx1::FxRootReset( held );
+        tblfx1::TableReport r;
+        const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+        tblfx1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        check( held.renamed == 1000 && held.gone == 0,
+               "COMPILED CLAMP: the loop alone holds a ranged integer" );
+        check( r.clamped == 2, "COMPILED CLAMP: and counts the same two" );
+        check( held.nested.a == 111 && held.nested.b == 222, "COMPILED CLAMP: an in-range neighbour is untouched" );
+    }
+
     // 2. THE SAME NUMBERS THROUGH A COMPILED PLAN. FX2 reads the same record
     // through a plan compiled from FX1's layout, and the bound is the same one.
     {
         tblfx2::FxRoot back;
         tblfx2::TableReport r;
         std::vector<tblfx2::TableFixedEntry> plan( 2048 );
-        check( tblfx2::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 2048, &r ) == 1,
+        check( tblfx2::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 2048, NULL, &r ) == 1,
                "bounds, compiled: the record reads" );
         check( back.renamed_to == 1000, "RANGE, compiled: the same clamp through a compiled plan" );
         check( r.clamped == 1, "RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
@@ -908,7 +941,7 @@ static void bounds_case()
         tblut1::UtRoot back;
         tblut1::TableReport r;
         std::vector<tblut1::TableFixedEntry> plan( 1024 );
-        check( tblut1::UtRootFixedLoad( &back, 1, uw.data(), (int64_t) uw.size(), plan.data(), 1024, &r ) == 1,
+        check( tblut1::UtRootFixedLoad( &back, 1, uw.data(), (int64_t) uw.size(), plan.data(), 1024, NULL, &r ) == 1,
                "bounds: the union record reads" );
         check( back.pick.type == tblut1::PickType::None, "ORDINAL: a tag past the arm count lands None" );
         check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
@@ -926,10 +959,62 @@ static void bounds_case()
         tblv1::Cfg back;
         tblv1::TableReport r;
         std::vector<tblv1::TableFixedEntry> plan( 8192 );
-        check( tblv1::CfgFixedLoad( &back, 1, vw.data(), (int64_t) vw.size(), plan.data(), 8192, &r ) == 1,
+        check( tblv1::CfgFixedLoad( &back, 1, vw.data(), (int64_t) vw.size(), plan.data(), 8192, NULL, &r ) == 1,
                "bounds: the enum record reads" );
         check( back.grade == tblv1::Grade::None, "ORDINAL: an ordinal past the enum's top value lands None" );
         check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
+    }
+
+    // 5. LIVE COUNT, NEVER SLACK. A counted array of ranged integers: the
+    // compiled plan must not emit one clamp per declared slot (Go #852), and
+    // the loop alone must leave a live out-of-range element standing so the
+    // storage pass can count it. Identity and compiled-own then match.
+    {
+        tblv1::Cfg v;
+        tblv1::CfgReset( v );
+        v.a = 5000;           // | min = 0, max = 1000
+        v.items_count = 1;
+        v.items[0] = 300;     // | min = 0, max = 255
+        std::vector<uint8_t> vw( (size_t) tblv1::CfgFixedMeasure( 1 ) );
+        check( tblv1::CfgFixedSave( &v, 1, vw.data(), (int64_t) vw.size() ) == (int64_t) vw.size(), "live-count: V1 save" );
+
+        tblv1::Cfg identity;
+        tblv1::TableReport ir;
+        std::vector<tblv1::TableFixedEntry> iplan( 8192 );
+        check( tblv1::CfgFixedLoad( &identity, 1, vw.data(), (int64_t) vw.size(), iplan.data(), 8192, NULL, &ir ) == 1,
+               "live-count: identity reads" );
+        check( identity.a == 1000 && identity.items[0] == 255, "live-count, identity: both live values clamp" );
+        check( ir.clamped == 2, "live-count, identity: two clamps, slack never" );
+
+        tblv1::TableFixedLayoutView parsed;
+        tblv1::TableMessageReason why = tblv1::layout_malformed;
+        check( tblv1::TableFixedParseLayout( tblv1::CfgFixedLayout, tblv1::CfgFixedLayoutBytes, parsed, why ),
+               "live-count: this build's layout parses" );
+        std::vector<tblv1::TableFixedEntry> compiled( 8192 );
+        int32_t guarded = 0;
+        tblv1::TableReport cr;
+        const int32_t made = tblv1::TableFixedCompile( parsed, tblv1::CfgFixedLayout, (int32_t) tblv1::CfgFixedLayoutBytes,
+                                                       tblv1::CfgFixedDst, compiled.data(), 8192, &guarded, &cr );
+        check( made > 0, "live-count: the plan compiles" );
+        int32_t clamp_ops = 0;
+        for ( int32_t i = 0; i < made; ++i )
+        {
+            if ( compiled[(size_t) i].op == tblv1::kTableFixedClamp ) { clamp_ops++; }
+        }
+        check( clamp_ops >= 1 && clamp_ops < 8,
+               "live-count: compiled plan does not emit one clamp per counted-array slot" );
+
+        tblv1::Cfg held;
+        tblv1::CfgReset( held );
+        tblv1::TableReport r;
+        const uint8_t * body = vw.data() + tblv1::kTableFixedHeaderBytes + 4 + tblv1::CfgFixedLayoutBytes + 8;
+        tblv1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        check( held.a == 1000, "live-count, compiled loop: the scalar clamp op fired" );
+        check( held.items[0] == 300, "live-count, compiled loop: the live array element is not a plan clamp" );
+        check( r.clamped == 1, "live-count, compiled loop: one clamp, the scalar's" );
+        tblv1::CfgFixedClamp( held, &r );
+        check( held.items[0] == 255, "live-count, compiled pass: the live element clamps after the copy" );
+        check( r.clamped == 2, "live-count: identity and compiled count the same two" );
     }
 }
 
@@ -972,7 +1057,7 @@ static void absent_optional_case()
         tblp3::Chain back;
         tblp3::TableReport r;
         std::vector<tblp3::TableFixedEntry> plan( 1024 );
-        check( tblp3::ChainFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+        check( tblp3::ChainFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "absent optional: the record reads" );
         check( !back.link_present, "absent optional: the flag" );
         check( back.link.value == 0 && back.link.tag_length == 0, "absent optional: the payload reads as the wire's zeros" );
@@ -1038,7 +1123,7 @@ static void text_content_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "text content: the record reads" );
         check( r.malformed, cases[k].what );
         check( back.label_length == 2 && std::strcmp( back.label, "fx" ) == 0,
@@ -1077,12 +1162,69 @@ static void text_content_case()
         tblfx1::FxRoot back;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
-        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "text content: the well-formed record reads" );
         check( back.label_length == 5 && std::memcmp( back.label, "\xC3\xA9t\xC3\xA9", 5 ) == 0,
                "TEXT CONTENT: well-formed multi-byte UTF-8 rides whole" );
         check( !r.malformed && r.clamped == 0, "TEXT CONTENT: and moves no counter" );
     }
+}
+
+// THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
+// the same foreign layout compile once; a third load with a different hash
+// compiles once more; identity never increments the counter.
+static void cache_case()
+{
+    tblfx1::FxRoot one;
+    tblfx1::FxRootReset( one );
+    one.keep = 4242u;
+    one.narrow = 40000u;
+    one.renamed = 321;
+    one.gone = 654;
+    one.nested.a = 111;
+    one.nested.b = 222;
+    std::vector<uint8_t> w1( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &one, 1, w1.data(), (int64_t) w1.size() ) == (int64_t) w1.size(), "cache: FX1 save" );
+
+    std::vector<tblfx2::TableFixedEntry> plan( 1024 );
+    std::vector<tblfx2::TableFixedEntry> slab( (size_t) tblfx2::kTableFixedPlanCacheCapacity * 1024 );
+    tblfx2::TableFixedPlanCache cache;
+    tblfx2::TableFixedPlanCacheInit( cache, slab.data(), 1024 );
+
+    tblfx2::FxRoot back;
+    tblfx2::TableReport r;
+    check( tblfx2::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, &cache, &r ) == 1,
+           "cache: first foreign load" );
+    check( cache.compiles == 1, "cache: first foreign load compiled once" );
+    check( cache.used == 1 && cache.slots[0].made == 1, "cache: the slot is marked made" );
+
+    tblfx2::TableReport r2;
+    check( tblfx2::FxRootFixedLoad( &back, 1, w1.data(), (int64_t) w1.size(), plan.data(), 1024, &cache, &r2 ) == 1,
+           "cache: second foreign load" );
+    check( cache.compiles == 1, "cache: two loads of the same layout compiled once" );
+
+    std::vector<uint8_t> wB = w1;
+    const uint32_t layout_bytes = tblfx2::TableFixedGet32( wB.data() + tblfx2::kTableFixedHeaderBytes );
+    // the layout is a u32 count then the entries; flip a byte of entry 0's id
+    wB[(size_t) tblfx2::kTableFixedHeaderBytes + 4 + 4] ^= 0x01;
+    const uint64_t hashB = tblfx2::TableFixedHashOf( wB.data() + tblfx2::kTableFixedHeaderBytes + 4, layout_bytes );
+    tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHashAt, hashB );
+    tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHeaderBytes + 4 + layout_bytes, hashB );
+    tblfx2::TableReport r3;
+    check( tblfx2::FxRootFixedLoad( &back, 1, wB.data(), (int64_t) wB.size(), plan.data(), 1024, &cache, &r3 ) == 1,
+           "cache: a different hash compiles once more" );
+    check( cache.compiles == 2, "cache: the third load compiled once more" );
+    check( cache.used == 2 && cache.slots[1].made == 1, "cache: the second slot is marked made" );
+
+    tblfx2::FxRoot two;
+    tblfx2::FxRootReset( two );
+    two.keep = 1;
+    std::vector<uint8_t> w2( (size_t) tblfx2::FxRootFixedMeasure( 1 ) );
+    check( tblfx2::FxRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "cache: FX2 save" );
+    tblfx2::TableReport r4;
+    check( tblfx2::FxRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &cache, &r4 ) == 1,
+           "cache: identity load" );
+    check( cache.compiles == 2, "cache: identity never increments the compile counter" );
 }
 
 int main()
@@ -1100,6 +1242,7 @@ int main()
     bounds_case();
     absent_optional_case();
     text_content_case();
+    cache_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
