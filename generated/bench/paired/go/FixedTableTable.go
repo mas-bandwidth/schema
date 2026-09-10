@@ -356,96 +356,8 @@ func FixedTableLoadMessages(values []FixedTable, vocabulary *TableVocabulary, da
 //
 // A record is an eight-byte hash of the writer's layout and then the values
 // in declared order, every field at its declared storage width. The writer is
-// constant-offset stores; the reader is ONE loop over ONE plan.
-
-func MixedEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
-	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.EntityId))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosX))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 8
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosY))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 12
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosZ))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 16
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Yaw))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 20
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Pitch))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 24
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelX))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 28
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelY))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 32
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelZ))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 36
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Health))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 40
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Weapon))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 41
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Damage))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 49
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Moving))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
-		n++
-	}
-	{
-		es := src + 50
-		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Firing))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
-		n++
-	}
-	return n
-}
+// constant-offset stores; the reader is ONE loop over ONE plan into the
+// packed record image, then a scatter into the public struct.
 
 func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	tableFixedPut32(b[0:], uint32(value.EntityId))
@@ -476,21 +388,28 @@ func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
 	}
 }
 
-func MixedStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
+func MixedEntityFixedScatter(b []byte, value *MixedEntity, report *TableReport) {
+	_ = report
+	value.EntityId = uint32(uint64(tableFixedGet32(b[0:])))
+	value.PosX = int32(uint64(tableFixedGet32(b[4:])))
+	value.PosY = int32(uint64(tableFixedGet32(b[8:])))
+	value.PosZ = int32(uint64(tableFixedGet32(b[12:])))
+	value.Yaw = uint32(uint64(tableFixedGet32(b[16:])))
+	value.Pitch = uint32(uint64(tableFixedGet32(b[20:])))
+	value.VelX = int32(uint64(tableFixedGet32(b[24:])))
+	value.VelY = int32(uint64(tableFixedGet32(b[28:])))
+	value.VelZ = int32(uint64(tableFixedGet32(b[32:])))
+	value.Health = int32(uint64(tableFixedGet32(b[36:])))
 	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedStat{}.StatId))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
+		q := uint64(tableFixedGet8(b[40:]))
+		if q > 15 {
+			q = 0
+		}
+		value.Weapon = MixedWeapon(q)
 	}
-	{
-		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(MixedStat{}.Delta))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	return n
+	value.Damage = MixedDamage(tableFixedGet64(b[41:]))
+	value.Moving = b[49] != 0
+	value.Firing = b[50] != 0
 }
 
 func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
@@ -498,33 +417,10 @@ func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
 	tableFixedPut32(b[4:], uint32(value.Delta))
 }
 
-func MixedHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
-	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.Damage))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 8
-		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 12
-		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.Crit))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
-		n++
-	}
-	return n
+func MixedStatFixedScatter(b []byte, value *MixedStat, report *TableReport) {
+	_ = report
+	value.StatId = uint32(uint64(tableFixedGet32(b[0:])))
+	value.Delta = int32(uint64(tableFixedGet32(b[4:])))
 }
 
 func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
@@ -540,21 +436,12 @@ func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
 	}
 }
 
-func MixedChatEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
-	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedChatEvent{}.Channel))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	return n
+func MixedHitEventFixedScatter(b []byte, value *MixedHitEvent, report *TableReport) {
+	_ = report
+	value.TargetId = uint32(uint64(tableFixedGet32(b[0:])))
+	value.Damage = int32(uint64(tableFixedGet32(b[4:])))
+	value.HitKind = int32(uint64(tableFixedGet32(b[8:])))
+	value.Crit = b[12] != 0
 }
 
 func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
@@ -562,21 +449,10 @@ func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
 	tableFixedPut32(b[4:], uint32(value.Speaker))
 }
 
-func MixedPickupEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
-	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	return n
+func MixedChatEventFixedScatter(b []byte, value *MixedChatEvent, report *TableReport) {
+	_ = report
+	value.Channel = int32(uint64(tableFixedGet32(b[0:])))
+	value.Speaker = uint32(uint64(tableFixedGet32(b[4:])))
 }
 
 func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
@@ -584,189 +460,10 @@ func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
 	tableFixedPut32(b[4:], uint32(value.Amount))
 }
 
-func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
-	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Sequence))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AckSequence))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 8
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AckBits))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 12
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.SessionId))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 20
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.ClientId))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 24
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Nonce))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 32
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.WorldTime))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 40
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.FrameTick))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 48
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.ServerTime))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	out[n] = TableFixedEntry{Src: src + 52, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
-	n++
-	for i := uint32(0); i < 8; i++ {
-		es := src + 56 + i*51
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
-		n += MixedEntityFixedLeaves(out[n:], es, ed)
-	}
-	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
-	n++
-	for i := uint32(0); i < 80; i++ {
-		es := src + 468 + i*8
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Stats)) + i*uint32(unsafe.Sizeof(MixedStat{}))
-		n += MixedStatFixedLeaves(out[n:], es, ed)
-	}
-	{
-		es := src + 1108
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.GameEvent))
-		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(MixedEvent{}.Type)), Size: 1, Aux: 3, Guard: tableFixedNoGuard, Op: tableFixedTag} // the tag
-		n++
-		{ // arm hit, ordinal 1
-			guardAt := n
-			n += MixedHitEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
-			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 1
-			}
-		}
-		{ // arm chat, ordinal 2
-			guardAt := n
-			n += MixedChatEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
-			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 2
-			}
-		}
-		{ // arm pickup, ordinal 3
-			guardAt := n
-			n += MixedPickupEventFixedLeaves(out[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
-			for q := guardAt; q < n; q++ {
-				out[q].Guard = es
-				out[q].Arg = 3
-			}
-		}
-	}
-	for i := uint32(0); i < 4; i++ {
-		es := src + 1122 + i*1
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Loadout)) + i*uint32(unsafe.Sizeof(uint8(0)))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	out[n] = TableFixedEntry{Src: src + 1126, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), Size: 15, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // player_name
-	n++
-	out[n] = TableFixedEntry{Src: src + 1145, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.Payload)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 3} // payload
-	n++
-	{
-		es := src + 1165
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimX))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1169
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimY))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1173
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimZ))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1177
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Recoil))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1181
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Drift))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1189
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.WideKey))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 16, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1205
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Flux))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 16, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1221
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Ping))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 2, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1223
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.CrcHint))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1227
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.HasExtra))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
-		n++
-	}
-	{
-		es := src + 1228
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Extra))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 1232
-		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	return n
+func MixedPickupEventFixedScatter(b []byte, value *MixedPickupEvent, report *TableReport) {
+	_ = report
+	value.ItemId = uint32(uint64(tableFixedGet32(b[0:])))
+	value.Amount = int32(uint64(tableFixedGet32(b[4:])))
 }
 
 func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
@@ -823,18 +520,114 @@ func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
 	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
 }
 
-func FixedTableFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
+func BenchMixedFixedScatter(b []byte, value *BenchMixed, report *TableReport) {
+	_ = report
+	value.Sequence = uint32(uint64(tableFixedGet32(b[0:])))
+	value.AckSequence = int32(uint64(tableFixedGet32(b[4:])))
+	value.AckBits = uint32(uint64(tableFixedGet32(b[8:])))
+	value.SessionId = uint64(tableFixedGet64(b[12:]))
+	value.ClientId = uint32(uint64(tableFixedGet32(b[20:])))
+	value.Nonce = uint64(tableFixedGet64(b[24:]))
+	value.WorldTime = int64(tableFixedGet64(b[32:]))
+	value.FrameTick = uint64(tableFixedGet64(b[40:]))
+	value.ServerTime = int32(uint64(tableFixedGet32(b[48:])))
 	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(FixedTable{}.Value))
-		n += BenchMixedFixedLeaves(out[n:], es, ed)
+		n := int32(tableFixedGet32(b[52:]))
+		if n < 0 {
+			n = 0
+			report.Clamped++
+		} else if n > 8 {
+			n = 8
+			report.Clamped++
+		}
+		value.EntitiesCount = n
 	}
-	return n
+	for i := int64(0); i < 8; i++ {
+		MixedEntityFixedScatter(b[56+i*51:], &value.Entities[i], report)
+	}
+	{
+		n := int32(tableFixedGet32(b[464:]))
+		if n < 0 {
+			n = 0
+			report.Clamped++
+		} else if n > 80 {
+			n = 80
+			report.Clamped++
+		}
+		value.StatsCount = n
+	}
+	for i := int64(0); i < 80; i++ {
+		MixedStatFixedScatter(b[468+i*8:], &value.Stats[i], report)
+	}
+	{
+		var tag uint64
+		for k := int64(0); k < 1; k++ {
+			tag |= uint64(b[1108+k]) << (8 * uint64(k))
+		}
+		if tag > 3 {
+			tag = 0
+			report.Unknown++
+		}
+		value.GameEvent.Type = MixedEventType(tag)
+		switch value.GameEvent.Type {
+		case MixedEventTypeHit:
+			MixedHitEventFixedScatter(b[1108+1:], &value.GameEvent.Hit, report)
+		case MixedEventTypeChat:
+			MixedChatEventFixedScatter(b[1108+1:], &value.GameEvent.Chat, report)
+		case MixedEventTypePickup:
+			MixedPickupEventFixedScatter(b[1108+1:], &value.GameEvent.Pickup, report)
+		}
+	}
+	for i := int64(0); i < 4; i++ {
+		value.Loadout[i] = uint8(uint64(tableFixedGet8(b[1122+i*1:])))
+	}
+	{
+		n := int32(tableFixedGet32(b[1126:]))
+		if n < 0 {
+			n = 0
+			report.Clamped++
+		} else if n > 15 {
+			n = 15
+			report.Clamped++
+		}
+		value.PlayerNameLength = n
+	}
+	copy(value.PlayerName[:], b[1130:1145])
+	{
+		n := int32(tableFixedGet32(b[1145:]))
+		if n < 0 {
+			n = 0
+			report.Clamped++
+		} else if n > 16 {
+			n = 16
+			report.Clamped++
+		}
+		value.PayloadLength = n
+	}
+	copy(value.Payload[:], b[1149:1165])
+	value.AimX = tableFixedGetF32(b[1165:])
+	value.AimY = tableFixedGetF32(b[1169:])
+	value.AimZ = tableFixedGetF32(b[1173:])
+	value.Recoil = tableFixedGetF32(b[1177:])
+	value.Drift = tableFixedGetF64(b[1181:])
+	value.WideKey.Lo = tableFixedGet64(b[1189:])
+	value.WideKey.Hi = tableFixedGet64(b[1189:][8:])
+	value.Flux.Lo = tableFixedGet64(b[1205:])
+	value.Flux.Hi = tableFixedGet64(b[1205:][8:])
+	value.Ping = uint16(uint64(tableFixedGet16(b[1221:])))
+	value.CrcHint = uint32(uint64(tableFixedGet32(b[1223:])))
+	value.HasExtra = b[1227] != 0
+	value.Extra = int32(uint64(tableFixedGet32(b[1228:])))
+	value.IdleTicks = int32(uint64(tableFixedGet32(b[1232:])))
 }
 
 func FixedTableFixedWriteBody(b []byte, value *FixedTable) {
 	BenchMixedFixedWriteBody(b[0:], &value.Value)
+}
+
+func FixedTableFixedScatter(b []byte, value *FixedTable, report *TableReport) {
+	_ = report
+	BenchMixedFixedScatter(b[0:], &value.Value, report)
 }
 
 // ---- FixedTable, the fixed form ----
@@ -927,84 +720,171 @@ var FixedTableFixedLayout = []byte{
 }
 
 var FixedTableFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // FixedTable
-	{uint32(unsafe.Offsetof(FixedTable{}.Value)), 0, 0, 0, 0, 0},                                                                                         // value
-	{uint32(unsafe.Offsetof(BenchMixed{}.Sequence)), 0, 0, 0, 0, 0},                                                                                      // sequence
-	{uint32(unsafe.Offsetof(BenchMixed{}.AckSequence)), 0, 0, 0, 0, 0},                                                                                   // ack_sequence
-	{uint32(unsafe.Offsetof(BenchMixed{}.AckBits)), 0, 0, 0, 0, 0},                                                                                       // ack_bits
-	{uint32(unsafe.Offsetof(BenchMixed{}.SessionId)), 0, 0, 0, 0, 0},                                                                                     // session_id
-	{uint32(unsafe.Offsetof(BenchMixed{}.ClientId)), 0, 0, 0, 0, 0},                                                                                      // client_id
-	{uint32(unsafe.Offsetof(BenchMixed{}.Nonce)), 0, 0, 0, 0, 0},                                                                                         // nonce
-	{uint32(unsafe.Offsetof(BenchMixed{}.WorldTime)), 0, 0, 0, 0, 0},                                                                                     // world_time
-	{uint32(unsafe.Offsetof(BenchMixed{}.FrameTick)), 0, 0, 0, 0, 0},                                                                                     // frame_tick
-	{uint32(unsafe.Offsetof(BenchMixed{}.ServerTime)), 0, 0, 0, 0, 0},                                                                                    // server_time
-	{uint32(unsafe.Offsetof(BenchMixed{}.Entities)), uint32(unsafe.Sizeof(MixedEntity{})), uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), 1, 0, 0}, // entities
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(MixedEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(MixedEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(MixedEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(MixedEntity{}.Health)), 0, 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(MixedEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(MixedEntity{}.Damage)), 0, 0, 0, 0, 0},                                                                               // damage
-	{uint32(unsafe.Offsetof(MixedEntity{}.Moving)), 0, 0, 0, 0, 0},                                                                               // moving
-	{uint32(unsafe.Offsetof(MixedEntity{}.Firing)), 0, 0, 0, 0, 0},                                                                               // firing
-	{uint32(unsafe.Offsetof(BenchMixed{}.Stats)), uint32(unsafe.Sizeof(MixedStat{})), uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), 1, 0, 0}, // stats
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(MixedStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(MixedStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
-	{uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)) + uint32(unsafe.Offsetof(MixedEvent{}.Type)), 0, 0, 0}, // game_event
-	{uint32(unsafe.Offsetof(MixedEvent{}.Hit)), 0, 0, 0, 0, 0},                                   // hit
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId)), 0, 0, 0, 0, 0},                           // target_id
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.Damage)), 0, 0, 0, 0, 0},                             // damage
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind)), 0, 0, 0, 0, 0},                            // hit_kind
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.Crit)), 0, 0, 0, 0, 0},                               // crit
-	{uint32(unsafe.Offsetof(MixedEvent{}.Chat)), 0, 0, 0, 0, 0},                                  // chat
-	{uint32(unsafe.Offsetof(MixedChatEvent{}.Channel)), 0, 0, 0, 0, 0},                           // channel
-	{uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker)), 0, 0, 0, 0, 0},                           // speaker
-	{uint32(unsafe.Offsetof(MixedEvent{}.Pickup)), 0, 0, 0, 0, 0},                                // pickup
-	{uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId)), 0, 0, 0, 0, 0},                          // item_id
-	{uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount)), 0, 0, 0, 0, 0},                          // amount
-	{uint32(unsafe.Offsetof(BenchMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0}, // loadout
-	{0, 0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), 0, 1, 1}, // player_name
-	{uint32(unsafe.Offsetof(BenchMixed{}.Payload)), 1, uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), 1, 3, 3},       // payload
-	{0, 0, 0, 0, 0, 0}, // u8
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimX)), 0, 0, 0, 0, 0},      // aim_x
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimY)), 0, 0, 0, 0, 0},      // aim_y
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimZ)), 0, 0, 0, 0, 0},      // aim_z
-	{uint32(unsafe.Offsetof(BenchMixed{}.Recoil)), 0, 0, 0, 0, 0},    // recoil
-	{uint32(unsafe.Offsetof(BenchMixed{}.Drift)), 0, 0, 0, 0, 0},     // drift
-	{uint32(unsafe.Offsetof(BenchMixed{}.WideKey)), 0, 0, 0, 0, 0},   // wide_key
-	{uint32(unsafe.Offsetof(BenchMixed{}.Flux)), 0, 0, 0, 0, 0},      // flux
-	{uint32(unsafe.Offsetof(BenchMixed{}.Ping)), 0, 0, 0, 0, 0},      // ping
-	{uint32(unsafe.Offsetof(BenchMixed{}.CrcHint)), 0, 0, 0, 0, 0},   // crc_hint
-	{uint32(unsafe.Offsetof(BenchMixed{}.HasExtra)), 0, 0, 0, 0, 0},  // has_extra
-	{uint32(unsafe.Offsetof(BenchMixed{}.Extra)), 0, 0, 0, 0, 0},     // extra
-	{uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), 0, 0, 0, 0, 0}, // idle_ticks
+	{0, 0, 0, 0, 0, 0},       // FixedTable
+	{0, 0, 0, 0, 0, 0},       // value
+	{0, 0, 0, 0, 0, 0},       // sequence
+	{4, 0, 0, 0, 0, 0},       // ack_sequence
+	{8, 0, 0, 0, 0, 0},       // ack_bits
+	{12, 0, 0, 0, 0, 0},      // session_id
+	{20, 0, 0, 0, 0, 0},      // client_id
+	{24, 0, 0, 0, 0, 0},      // nonce
+	{32, 0, 0, 0, 0, 0},      // world_time
+	{40, 0, 0, 0, 0, 0},      // frame_tick
+	{48, 0, 0, 0, 0, 0},      // server_time
+	{56, 51, 52, 1, 0, 0},    // entities
+	{0, 0, 0, 0, 0, 0},       // element
+	{0, 0, 0, 0, 0, 0},       // entity_id
+	{4, 0, 0, 0, 0, 0},       // pos_x
+	{8, 0, 0, 0, 0, 0},       // pos_y
+	{12, 0, 0, 0, 0, 0},      // pos_z
+	{16, 0, 0, 0, 0, 0},      // yaw
+	{20, 0, 0, 0, 0, 0},      // pitch
+	{24, 0, 0, 0, 0, 0},      // vel_x
+	{28, 0, 0, 0, 0, 0},      // vel_y
+	{32, 0, 0, 0, 0, 0},      // vel_z
+	{36, 0, 0, 0, 0, 0},      // health
+	{40, 0, 0, 0, 0, 0},      // weapon
+	{0, 0, 0, 0, 0, 0},       // Fists
+	{0, 0, 0, 0, 0, 0},       // Pistol
+	{0, 0, 0, 0, 0, 0},       // Shotgun
+	{0, 0, 0, 0, 0, 0},       // Rifle
+	{0, 0, 0, 0, 0, 0},       // Sniper
+	{0, 0, 0, 0, 0, 0},       // Smg
+	{0, 0, 0, 0, 0, 0},       // Rocket
+	{0, 0, 0, 0, 0, 0},       // Grenade
+	{0, 0, 0, 0, 0, 0},       // Plasma
+	{0, 0, 0, 0, 0, 0},       // Railgun
+	{0, 0, 0, 0, 0, 0},       // Flamer
+	{0, 0, 0, 0, 0, 0},       // Mine
+	{0, 0, 0, 0, 0, 0},       // Turret
+	{0, 0, 0, 0, 0, 0},       // Drone
+	{0, 0, 0, 0, 0, 0},       // Repair
+	{41, 0, 0, 0, 0, 0},      // damage
+	{49, 0, 0, 0, 0, 0},      // moving
+	{50, 0, 0, 0, 0, 0},      // firing
+	{468, 8, 464, 1, 0, 0},   // stats
+	{0, 0, 0, 0, 0, 0},       // element
+	{0, 0, 0, 0, 0, 0},       // stat_id
+	{4, 0, 0, 0, 0, 0},       // delta
+	{1108, 0, 1108, 0, 0, 0}, // game_event
+	{1, 0, 0, 0, 0, 0},       // hit
+	{0, 0, 0, 0, 0, 0},       // target_id
+	{4, 0, 0, 0, 0, 0},       // damage
+	{8, 0, 0, 0, 0, 0},       // hit_kind
+	{12, 0, 0, 0, 0, 0},      // crit
+	{1, 0, 0, 0, 0, 0},       // chat
+	{0, 0, 0, 0, 0, 0},       // channel
+	{4, 0, 0, 0, 0, 0},       // speaker
+	{1, 0, 0, 0, 0, 0},       // pickup
+	{0, 0, 0, 0, 0, 0},       // item_id
+	{4, 0, 0, 0, 0, 0},       // amount
+	{1122, 1, 0, 0, 0, 0},    // loadout
+	{0, 0, 0, 0, 0, 0},       // element
+	{1126, 0, 1130, 0, 1, 1}, // player_name
+	{1149, 1, 1145, 1, 3, 3}, // payload
+	{0, 0, 0, 0, 0, 0},       // u8
+	{1165, 0, 0, 0, 0, 0},    // aim_x
+	{1169, 0, 0, 0, 0, 0},    // aim_y
+	{1173, 0, 0, 0, 0, 0},    // aim_z
+	{1177, 0, 0, 0, 0, 0},    // recoil
+	{1181, 0, 0, 0, 0, 0},    // drift
+	{1189, 0, 0, 0, 0, 0},    // wide_key
+	{1205, 0, 0, 0, 0, 0},    // flux
+	{1221, 0, 0, 0, 0, 0},    // ping
+	{1223, 0, 0, 0, 0, 0},    // crc_hint
+	{1227, 0, 0, 0, 0, 0},    // has_extra
+	{1228, 0, 0, 0, 0, 0},    // extra
+	{1232, 0, 0, 0, 0, 0},    // idle_ticks
 }
 
-var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)
+// THE PREFILL: declared defaults as a packed body. A field a compiled plan
+// does not land has no dest write, so what the scatter reads there is this.
+var FixedTableFixedDefaults = []byte{
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+}
+
+// Identity is one Copy of the packed body. The public struct is not the
+// wire, so dest is the record image and scatter lands the value.
+var FixedTableFixedPlan = tableFixedPlan{Entries: []TableFixedEntry{{
+	Src: 0, Dst: 0, Size: FixedTableFixedBodyBytes, Guard: tableFixedNoGuard, Op: tableFixedCopy,
+}}, Count: 1}
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -1086,28 +966,18 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, "batch_too_large")
 	}
-	var def FixedTable
-	var defBytes []byte
-	var holes []tableFixedHole
-	if !identity && n > 0 {
-		FixedTableReset(&def)
-		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
-		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
-	}
+	var image [FixedTableFixedBodyBytes]byte
+	holes := tableFixedHoles(entries, entryCount, FixedTableFixedBodyBytes)
 	for k := int64(0); k < n; k++ {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
-		if identity {
-			FixedTableReset(&values[k])
-		} else {
-			for i := range holes {
-				h := holes[i]
-				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-			}
+		for i := range holes {
+			h := holes[i]
+			copy(image[h.Off:h.Off+h.Size], FixedTableFixedDefaults[h.Off:h.Off+h.Size])
 		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
-		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		tableFixedRun(entries, entryCount, at[8:], image[:], report)
+		FixedTableFixedScatter(image[:], &values[k], report)
 		at = at[recordBytes:]
 	}
 	return n

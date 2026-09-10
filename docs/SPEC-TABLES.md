@@ -11128,9 +11128,9 @@ in build version (§20.5).
   LoadRetain LoadRetainBuilder  MeasureRetain  SaveRetain  LoadRetainMessages  SaveRetainMessages
   LoadBodyRetain LoadMessageBodyRetain  MeasureBodyRetain  SaveBodyRetain  SaveBodyFieldsRetain
   MeasureWireRetain  SaveWireRetain  NodeBodyRetain
-  FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
+  FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves  FixedScatter
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
-  FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
+  FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedDefaults
   ```
 
   The `Fixed` row is §3.4's, and it is claimed on this list's own rule:

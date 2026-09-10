@@ -40,6 +40,8 @@ table Point {
 		"tableFixedHoles",
 		"PointFixedLayout",
 		"PointFixedPlan",
+		"PointFixedScatter",
+		"PointFixedDefaults",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("fixed form is missing %q", want)
@@ -67,11 +69,17 @@ table Point {
 	if !strings.Contains(fixedLoad, "identity") || !strings.Contains(fixedLoad, "tableFixedHoles") {
 		t.Error("compiled FixedLoad does not prefill the plan's holes")
 	}
-	if !strings.Contains(fixedLoad, "PointReset(&values[k])") {
-		t.Error("identity FixedLoad dropped Reset; padding and unselected arms would be the previous record")
+	if strings.Contains(fixedLoad, "PointReset(") {
+		t.Error("identity FixedLoad still Reset; dest is the packed image")
 	}
-	if !strings.Contains(fixedLoad, "PointReset(&def)") {
-		t.Error("compiled holes have no default image")
+	if !strings.Contains(fixedLoad, "PointFixedScatter") {
+		t.Error("FixedLoad does not scatter the packed image into the value")
+	}
+	if !strings.Contains(body, "PointFixedDefaults") {
+		t.Error("compiled holes have no packed default image")
+	}
+	if !strings.Contains(body, "Size: PointFixedBodyBytes") || !strings.Contains(body, "Count: 1") {
+		t.Error("identity plan is not one Copy of the packed body")
 	}
 }
 
@@ -577,50 +585,36 @@ func TestHostileBoolOnThePlanPath(t *testing.T) {
 		t.Fatalf("compile made %d", made)
 	}
 	var v Host
-	HostReset(&v)
-	v.Tail = 0
+	var image [HostFixedBodyBytes]byte
+	copy(image[:], HostFixedDefaults)
 	record := buf[len(buf)-HostFixedRecordBytes:]
-	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &r)
+	tableFixedRun(plan, made, record[8:], image[:], &r)
+	HostFixedScatter(image[:], &v, &r)
 	wantHostile(t, "compiled plan", v, r)
 }
 
-// THE NEGATIVE CONTROL, in the same file: sabotage tableFixedBool to a copy
-// (the op it replaced) and require the dest BYTE to stay the planted 2, not
-// the normalised 1. if v and v == true are both TESTB (nonzero) on linux
-// amd64, so a planted 2 reads as a Go true there and a truthiness check
-// falsely claims the op was never needed (c4eec5b9, CI red on ffa5da4b).
+// THE NEGATIVE CONTROL: identity is one Copy of the packed body, so a hostile
+// 2 survives in the IMAGE. Scatter is what normalises it to a Go true. If the
+// identity plan still had tableFixedBool, Count would not be 1 and the image
+// byte would already be 1 before scatter.
 func TestHostileBoolNegativeControl(t *testing.T) {
 	buf := hostileRecord(t)
 	record := buf[len(buf)-HostFixedRecordBytes:]
-	if HostFixedPlan.Count <= 0 {
-		t.Fatal("NEGATIVE CONTROL FAILED: no identity plan")
+	if HostFixedPlan.Count != 1 || HostFixedPlan.Entries[0].Op != tableFixedCopy || HostFixedPlan.Entries[0].Size != HostFixedBodyBytes {
+		t.Fatalf("NEGATIVE CONTROL FAILED: identity plan is not one Copy of the body: count=%d op=%d size=%d",
+			HostFixedPlan.Count, HostFixedPlan.Entries[0].Op, HostFixedPlan.Entries[0].Size)
 	}
-	plan := make([]TableFixedEntry, HostFixedPlan.Count)
-	copy(plan, HostFixedPlan.Entries[:HostFixedPlan.Count])
-	n := 0
-	for i := range plan {
-		if plan[i].Op == tableFixedBool {
-			plan[i].Op = tableFixedCopy
-			n++
-		}
-	}
-	if n == 0 {
-		t.Fatal("NEGATIVE CONTROL FAILED: identity plan has no tableFixedBool to sabotage")
+	var image [HostFixedBodyBytes]byte
+	var r TableReport
+	tableFixedRun(HostFixedPlan.Entries, HostFixedPlan.Count, record[8:], image[:], &r)
+	if image[bodyOn] != 2 {
+		t.Fatalf("NEGATIVE CONTROL FAILED: identity Copy did not preserve the planted 2 in the image, dest=%d", image[bodyOn])
 	}
 	var v Host
-	HostReset(&v)
-	var r TableReport
-	dst := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
-	tableFixedRun(plan, int32(len(plan)), record[8:], dst, &r)
-	if dst[unsafe.Offsetof(v.On)] == 1 {
-		t.Fatal("NEGATIVE CONTROL FAILED: sabotaged copy still wrote a Go true (1); the bool op was not what ran")
-	}
-	if dst[unsafe.Offsetof(v.On)] != 2 {
-		t.Fatalf("NEGATIVE CONTROL FAILED: planted 2, dest byte is %d", dst[unsafe.Offsetof(v.On)])
-	}
-	dst[unsafe.Offsetof(v.On)] = record[8+bodyOn] // the copy the op replaced
-	if dst[unsafe.Offsetof(v.On)] != 2 {
-		t.Fatal("NEGATIVE CONTROL FAILED: the planted 2 did not survive a raw store")
+	HostFixedScatter(image[:], &v, &r)
+	raw := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
+	if raw[unsafe.Offsetof(v.On)] != 1 || v.On != true {
+		t.Fatal("NEGATIVE CONTROL FAILED: scatter did not normalise the image's 2 to a Go true")
 	}
 }
 `)
@@ -828,7 +822,6 @@ table Reader {
 `, `package probe
 import (
 	"testing"
-	"unsafe"
 )
 
 func TestOldArgLaneControl(t *testing.T) {
@@ -856,9 +849,11 @@ func TestOldArgLaneControl(t *testing.T) {
 	}
 
 	var got Reader
-	ReaderReset(&got)
+	var image [ReaderFixedBodyBytes]byte
+	copy(image[:], ReaderFixedDefaults)
 	record := buf[len(buf)-WriterFixedRecordBytes:]
-	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
+	tableFixedRun(plan, made, record[8:], image[:], &r)
+	ReaderFixedScatter(image[:], &got, &r)
 	if got.Pick.Type != PickTypeB || string(got.Pick.B.S[:got.Pick.B.SLength]) != "hi" {
 		t.Fatalf("split itself is not in: arm %d %q %+v", got.Pick.Type, got.Pick.B.S[:got.Pick.B.SLength], r)
 	}
@@ -881,9 +876,10 @@ func TestOldArgLaneControl(t *testing.T) {
 	}
 
 	got = Reader{}
-	ReaderReset(&got)
+	copy(image[:], ReaderFixedDefaults)
 	r = TableReport{}
-	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
+	tableFixedRun(plan, made, record[8:], image[:], &r)
+	ReaderFixedScatter(image[:], &got, &r)
 	landed := string(got.Pick.B.S[:got.Pick.B.SLength])
 	if landed == "hi" {
 		t.Fatal("NEGATIVE CONTROL FAILED: flavour in Arg, Meta unused still landed the string under union arm 2; the old lane stayed green")

@@ -1682,25 +1682,6 @@ func tableFixedKindKnown(kind uint8) bool  { return kind <= 33 || kind == 35 }
 // time, which is the whole of what lets two adjacent entries become one.
 func tableFixedRuns(op uint8) bool { return op == tableFixedCopy || op == tableFixedBool }
 
-func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
-	raw := make([]TableFixedEntry, n)
-	written := emit(raw, 0, 0)
-	out := 0
-	for i := 0; i < written; i++ {
-		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
-			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
-			raw[out-1].Meta == raw[i].Meta &&
-			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
-			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
-			raw[out-1].Size += raw[i].Size
-			continue
-		}
-		raw[out] = raw[i]
-		out++
-	}
-	return tableFixedPlan{Entries: raw[:out], Count: int32(out)}
-}
-
 func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
 func tableFixedPut16(b []byte, v uint16)       { binary.LittleEndian.PutUint16(b, v) }
 func tableFixedPut32(b []byte, v uint32)       { binary.LittleEndian.PutUint32(b, v) }
@@ -1708,8 +1689,12 @@ func tableFixedPut64(b []byte, v uint64)       { binary.LittleEndian.PutUint64(b
 func tableFixedPutF32(b []byte, v float32)     { tableFixedPut32(b, math.Float32bits(v)) }
 func tableFixedPutF64(b []byte, v float64)     { tableFixedPut64(b, math.Float64bits(v)) }
 func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFixedPut64(b[8:], hi) }
+func tableFixedGet8(b []byte) uint8            { return b[0] }
+func tableFixedGet16(b []byte) uint16          { return binary.LittleEndian.Uint16(b) }
 func tableFixedGet32(b []byte) uint32          { return binary.LittleEndian.Uint32(b) }
 func tableFixedGet64(b []byte) uint64          { return binary.LittleEndian.Uint64(b) }
+func tableFixedGetF32(b []byte) float32        { return math.Float32frombits(tableFixedGet32(b)) }
+func tableFixedGetF64(b []byte) float64        { return math.Float64frombits(tableFixedGet64(b)) }
 
 func tableFixedHashOf(layout []byte) uint64 {
 	h := uint64(0xcbf29ce484222325)
@@ -2184,8 +2169,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	return out
 }
 
-// tableFixedHole is one dst range the plan does not land. Compiled Load copies
-// declared defaults into exactly these; identity does not use the list.
+// tableFixedHole is one dst range the plan does not land. Load copies declared
+// defaults into exactly these. Identity's plan is one Copy of the packed body,
+// so the list is empty and the copy is a no-op.
 type tableFixedHole struct {
 	Off, Size uint32
 }
@@ -9381,96 +9367,8 @@ func TablePickupEventLoadMessages(values []TablePickupEvent, vocabulary *TableVo
 //
 // A record is an eight-byte hash of the writer's layout and then the values
 // in declared order, every field at its declared storage width. The writer is
-// constant-offset stores; the reader is ONE loop over ONE plan.
-
-func TableEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
-	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.EntityId))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.PosX))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 8
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.PosY))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 12
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.PosZ))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 16
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Yaw))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 20
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Pitch))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 24
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.VelX))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 28
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.VelY))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 32
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.VelZ))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 36
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Health))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 40
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Weapon))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 41
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Damage))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	{
-		es := src + 49
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Moving))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
-		n++
-	}
-	{
-		es := src + 50
-		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Firing))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
-		n++
-	}
-	return n
-}
+// constant-offset stores; the reader is ONE loop over ONE plan into the
+// packed record image, then a scatter into the public struct.
 
 func TableEntityFixedWriteBody(b []byte, value *TableEntity) {
 	tableFixedPut32(b[0:], uint32(value.EntityId))
@@ -9501,26 +9399,39 @@ func TableEntityFixedWriteBody(b []byte, value *TableEntity) {
 	}
 }
 
-func TableStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
-	n := 0
+func TableEntityFixedScatter(b []byte, value *TableEntity, report *TableReport) {
+	_ = report
+	value.EntityId = uint32(uint64(tableFixedGet32(b[0:])))
+	value.PosX = int32(uint64(tableFixedGet32(b[4:])))
+	value.PosY = int32(uint64(tableFixedGet32(b[8:])))
+	value.PosZ = int32(uint64(tableFixedGet32(b[12:])))
+	value.Yaw = uint32(uint64(tableFixedGet32(b[16:])))
+	value.Pitch = uint32(uint64(tableFixedGet32(b[20:])))
+	value.VelX = int32(uint64(tableFixedGet32(b[24:])))
+	value.VelY = int32(uint64(tableFixedGet32(b[28:])))
+	value.VelZ = int32(uint64(tableFixedGet32(b[32:])))
+	value.Health = int32(uint64(tableFixedGet32(b[36:])))
 	{
-		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TableStat{}.StatId))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
+		q := uint64(tableFixedGet8(b[40:]))
+		if q > 15 {
+			q = 0
+		}
+		value.Weapon = TableWeapon(q)
 	}
-	{
-		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(TableStat{}.Delta))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
-		n++
-	}
-	return n
+	value.Damage = TableDamage(tableFixedGet64(b[41:]))
+	value.Moving = b[49] != 0
+	value.Firing = b[50] != 0
 }
 
 func TableStatFixedWriteBody(b []byte, value *TableStat) {
 	tableFixedPut32(b[0:], uint32(value.StatId))
 	tableFixedPut32(b[4:], uint32(value.Delta))
+}
+
+func TableStatFixedScatter(b []byte, value *TableStat, report *TableReport) {
+	_ = report
+	value.StatId = uint32(uint64(tableFixedGet32(b[0:])))
+	value.Delta = int32(uint64(tableFixedGet32(b[4:])))
 }
 
 // ---- TableEntity, the fixed form ----
@@ -9566,39 +9477,52 @@ var TableEntityFixedLayout = []byte{
 }
 
 var TableEntityFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0, 0}, // TableEntity
-	{uint32(unsafe.Offsetof(TableEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0}, // damage
-	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0}, // moving
-	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0}, // firing
+	{0, 0, 0, 0, 0, 0},  // TableEntity
+	{0, 0, 0, 0, 0, 0},  // entity_id
+	{4, 0, 0, 0, 0, 0},  // pos_x
+	{8, 0, 0, 0, 0, 0},  // pos_y
+	{12, 0, 0, 0, 0, 0}, // pos_z
+	{16, 0, 0, 0, 0, 0}, // yaw
+	{20, 0, 0, 0, 0, 0}, // pitch
+	{24, 0, 0, 0, 0, 0}, // vel_x
+	{28, 0, 0, 0, 0, 0}, // vel_y
+	{32, 0, 0, 0, 0, 0}, // vel_z
+	{36, 0, 0, 0, 0, 0}, // health
+	{40, 0, 0, 0, 0, 0}, // weapon
+	{0, 0, 0, 0, 0, 0},  // Fists
+	{0, 0, 0, 0, 0, 0},  // Pistol
+	{0, 0, 0, 0, 0, 0},  // Shotgun
+	{0, 0, 0, 0, 0, 0},  // Rifle
+	{0, 0, 0, 0, 0, 0},  // Sniper
+	{0, 0, 0, 0, 0, 0},  // Smg
+	{0, 0, 0, 0, 0, 0},  // Rocket
+	{0, 0, 0, 0, 0, 0},  // Grenade
+	{0, 0, 0, 0, 0, 0},  // Plasma
+	{0, 0, 0, 0, 0, 0},  // Railgun
+	{0, 0, 0, 0, 0, 0},  // Flamer
+	{0, 0, 0, 0, 0, 0},  // Mine
+	{0, 0, 0, 0, 0, 0},  // Turret
+	{0, 0, 0, 0, 0, 0},  // Drone
+	{0, 0, 0, 0, 0, 0},  // Repair
+	{41, 0, 0, 0, 0, 0}, // damage
+	{49, 0, 0, 0, 0, 0}, // moving
+	{50, 0, 0, 0, 0, 0}, // firing
 }
 
-var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
+// THE PREFILL: declared defaults as a packed body. A field a compiled plan
+// does not land has no dest write, so what the scatter reads there is this.
+var TableEntityFixedDefaults = []byte{
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00,
+}
+
+// Identity is one Copy of the packed body. The public struct is not the
+// wire, so dest is the record image and scatter lands the value.
+var TableEntityFixedPlan = tableFixedPlan{Entries: []TableFixedEntry{{
+	Src: 0, Dst: 0, Size: TableEntityFixedBodyBytes, Guard: tableFixedNoGuard, Op: tableFixedCopy,
+}}, Count: 1}
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -9680,28 +9604,18 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, "batch_too_large")
 	}
-	var def TableEntity
-	var defBytes []byte
-	var holes []tableFixedHole
-	if !identity && n > 0 {
-		TableEntityReset(&def)
-		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
-		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
-	}
+	var image [TableEntityFixedBodyBytes]byte
+	holes := tableFixedHoles(entries, entryCount, TableEntityFixedBodyBytes)
 	for k := int64(0); k < n; k++ {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
-		if identity {
-			TableEntityReset(&values[k])
-		} else {
-			for i := range holes {
-				h := holes[i]
-				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-			}
+		for i := range holes {
+			h := holes[i]
+			copy(image[h.Off:h.Off+h.Size], TableEntityFixedDefaults[h.Off:h.Off+h.Size])
 		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
-		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		tableFixedRun(entries, entryCount, at[8:], image[:], report)
+		TableEntityFixedScatter(image[:], &values[k], report)
 		at = at[recordBytes:]
 	}
 	return n
@@ -9722,11 +9636,21 @@ var TableStatFixedLayout = []byte{
 
 var TableStatFixedDst = []TableFixedDst{
 	{0, 0, 0, 0, 0, 0}, // TableStat
-	{uint32(unsafe.Offsetof(TableStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
+	{0, 0, 0, 0, 0, 0}, // stat_id
+	{4, 0, 0, 0, 0, 0}, // delta
 }
 
-var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
+// THE PREFILL: declared defaults as a packed body. A field a compiled plan
+// does not land has no dest write, so what the scatter reads there is this.
+var TableStatFixedDefaults = []byte{
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+// Identity is one Copy of the packed body. The public struct is not the
+// wire, so dest is the record image and scatter lands the value.
+var TableStatFixedPlan = tableFixedPlan{Entries: []TableFixedEntry{{
+	Src: 0, Dst: 0, Size: TableStatFixedBodyBytes, Guard: tableFixedNoGuard, Op: tableFixedCopy,
+}}, Count: 1}
 
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
@@ -9808,28 +9732,18 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, "batch_too_large")
 	}
-	var def TableStat
-	var defBytes []byte
-	var holes []tableFixedHole
-	if !identity && n > 0 {
-		TableStatReset(&def)
-		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
-		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
-	}
+	var image [TableStatFixedBodyBytes]byte
+	holes := tableFixedHoles(entries, entryCount, TableStatFixedBodyBytes)
 	for k := int64(0); k < n; k++ {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
-		if identity {
-			TableStatReset(&values[k])
-		} else {
-			for i := range holes {
-				h := holes[i]
-				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
-			}
+		for i := range holes {
+			h := holes[i]
+			copy(image[h.Off:h.Off+h.Size], TableStatFixedDefaults[h.Off:h.Off+h.Size])
 		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
-		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		tableFixedRun(entries, entryCount, at[8:], image[:], report)
+		TableStatFixedScatter(image[:], &values[k], report)
 		at = at[recordBytes:]
 	}
 	return n

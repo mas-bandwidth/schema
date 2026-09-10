@@ -8,6 +8,14 @@
 // ONE plan-driven path. There is no version byte inside the layout; the form
 // byte versions it. The word is LAYOUT, not block.
 //
+// THE PLAN'S DESTINATION IS THE RECORD IMAGE, not the public struct. Go's ABI
+// is not the wire (FixedTable is 1384 bytes where the body is 1236): there is
+// no packed struct, counts sit after arrays, and a union is tag-plus-arms.
+// So the identity plan is ONE Copy of the whole body, defaults prefill only
+// the holes a compiled plan will not write (identity's list is empty), and a
+// generated scatter lands the image in the value. No Reset on the load, and
+// no double write of the body.
+//
 // FILE HEADER (docs/SPEC-TABLES.md §3.4, WHAT A FILE CARRIES): form byte 3,
 // the layout's length as a u32 LE, the layout, then the records back to back
 // to the end of the file. Five bytes before the layout, and THE HASH IS PER
@@ -28,6 +36,8 @@ package gotable
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -181,82 +191,89 @@ func dstGo(dst, stride, aux string, counted, arg int) string {
 	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d}", dst, stride, aux, counted, arg, arg)
 }
 
-func offGo(owner, field string) string {
-	return fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", owner, field)
-}
+func packedOff(n int64) string { return fmt.Sprintf("%d", n) }
 
 func (g *tableGen) fixedWalkRoot(st *ir.Struct) *fixedWalk {
 	w := &fixedWalk{}
 	w.push(fixedLayoutEntry{id: ir.TableWireId(st.WireName()), kind: ir.TableKindTable, size: fixedTypeBytes(st), children: len(st.Fields), note: st.Name}, dstGo("0", "", "", 0, 0))
+	off := int64(0)
 	for _, f := range st.Fields {
-		g.fixedWalkField(w, st.Name, f)
+		g.fixedWalkField(w, f, off)
+		off += fixedFieldBytes(f)
 	}
 	return w
 }
 
-func (g *tableGen) fixedWalkField(w *fixedWalk, owner string, f *ir.Field) {
+func (g *tableGen) fixedWalkField(w *fixedWalk, f *ir.Field, off int64) {
 	id := ir.TableFieldWireId(f)
 	size := fixedFieldBytes(f)
 	if f.Type.Optional {
 		w.push(fixedLayoutEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
-			dstGo("0", "", offGo(owner, member(f)+"Present"), 0, 0))
-		g.fixedWalkPayload(w, owner, f, id, size-fixedPresentBytes)
+			dstGo("0", "", packedOff(off), 0, 0))
+		g.fixedWalkPayload(w, f, id, size-fixedPresentBytes, off+fixedPresentBytes)
 		return
 	}
-	g.fixedWalkPayload(w, owner, f, id, size)
+	g.fixedWalkPayload(w, f, id, size, off)
 }
 
-func (g *tableGen) fixedWalkPayload(w *fixedWalk, owner string, f *ir.Field, id uint64, size int64) {
+func (g *tableGen) fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, off int64) {
+	elem := packedOff(fixedElementBytes(f))
 	switch {
 	case f.KeyEnum != "":
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name},
-			dstGo(offGo(owner, member(f)), g.sizeofGo(f), "", 0, 0))
+			dstGo(packedOff(off), elem, "", 0, 0))
 		g.fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum, "0")
-		g.fixedWalkElement(w, f, 0, "element", "0")
+		g.fixedWalkElement(w, f, 0, "element", 0)
 	case f.Array != ir.ArrayNone:
-		counted, aux := 0, ""
+		counted, aux, payload := 0, "", off
 		if f.Array == ir.ArrayCounted {
-			counted, aux = 1, offGo(owner, member(f)+"Count")
+			counted, aux, payload = 1, packedOff(off), off+fixedCountBytes
 		}
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(offGo(owner, member(f)), g.sizeofGo(f), aux, counted, 0))
-		g.fixedWalkElement(w, f, 0, "element", "0")
+			dstGo(packedOff(payload), elem, aux, counted, 0))
+		g.fixedWalkElement(w, f, 0, "element", 0)
 	case f.Type.Kind == ir.TBytes:
 		// `bytes(N)` is an ARRAY of u8 on this wire (ir/fixedform.go, the
 		// TBytes row of tableFixedWalkPayload). Dst is the buffer, Aux is the
 		// live length, Counted is 1, stride is 1: the same columns a counted
-		// array uses. The identity plan still lands the field with the TEXT op
-		// and reads neither column; only the compiled path reads these.
+		// array uses. Identity is one Copy of the body and reads neither
+		// column; only the compiled path reads these.
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(offGo(owner, member(f)), "1", offGo(owner, member(f)+"Length"), 1, 3))
+			dstGo(packedOff(off+fixedCountBytes), "1", packedOff(off), 1, 3))
 		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, dstGo("0", "", "", 0, 0))
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
-			dstGo(offGo(owner, member(f)+"Length"), "", offGo(owner, member(f)), 0, 1))
+			dstGo(packedOff(off), "", packedOff(off+fixedCountBytes), 0, 1))
 	case f.Type.Kind == ir.TWString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			dstGo(offGo(owner, member(f)+"Length"), "", offGo(owner, member(f)), 0, 2))
+			dstGo(packedOff(off), "", packedOff(off+fixedCountBytes), 0, 2))
 	default:
-		g.fixedWalkElement(w, f, id, f.Name, offGo(owner, member(f)))
+		g.fixedWalkElement(w, f, id, f.Name, off)
 	}
 }
 
-func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note, dst string) {
+func (g *tableGen) fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, off int64) {
 	size := fixedElementBytes(f)
+	dst := packedOff(off)
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note}, dstGo(dst, "", "", 0, 0))
+			nested := int64(0)
 			for _, sub := range r.Fields {
-				g.fixedWalkField(w, r.Name, sub)
+				g.fixedWalkField(w, sub, nested)
+				nested += fixedFieldBytes(sub)
 			}
 			return
 		case *ir.Union:
+			// Aux is the tag. On the packed image the tag leads the union, so
+			// Aux and Dst are the same offset; every arm overlays at tag width.
 			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
-				dstGo(dst, "", dst+" + "+offGo(f.Type.Name, "Type"), 0, 0))
+				dstGo(dst, "", dst, 0, 0))
+			tag := int64(ir.StorageBitsFor(r.Max) / 8)
 			for _, v := range r.Variants {
 				armID := ir.TableWireId(v.WireName())
-				g.fixedWalkElement(w, v.F, armID, v.Name, offGo(f.Type.Name, ir.GoExportName(v.Name)))
+				g.fixedWalkElement(w, v.F, armID, v.Name, tag)
 			}
 			return
 		case *ir.Enum:
@@ -350,20 +367,20 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	if len(roots) == 0 {
 		return
 	}
-	g.needsUnsafe()
 	g.pf("// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----\n")
 	g.pf("//\n")
 	g.pf("// A record is an eight-byte hash of the writer's layout and then the values\n")
 	g.pf("// in declared order, every field at its declared storage width. The writer is\n")
-	g.pf("// constant-offset stores; the reader is ONE loop over ONE plan.\n\n")
+	g.pf("// constant-offset stores; the reader is ONE loop over ONE plan into the\n")
+	g.pf("// packed record image, then a scatter into the public struct.\n\n")
 	seen := map[string]bool{}
 	var order []*ir.Struct
 	for _, st := range roots {
 		fixedCollectTypes(st, seen, &order)
 	}
 	for _, st := range order {
-		g.emitFixedLeafWalk(st)
 		g.emitFixedWriteBody(st)
+		g.emitFixedScatter(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
@@ -434,128 +451,6 @@ func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
 		}
 	}
 	return 1
-}
-
-func (g *tableGen) emitFixedLeafWalk(st *ir.Struct) {
-	g.pf("func %sFixedLeaves(out []TableFixedEntry, src, dst uint32) int {\n", st.Name)
-	g.pf("\tn := 0\n")
-	off := int64(0)
-	for _, f := range st.Fields {
-		g.emitFixedFieldLeaves(st, f, off)
-		off += fixedFieldBytes(f)
-	}
-	g.pf("\treturn n\n}\n\n")
-}
-
-func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
-	base := off
-	if f.Type.Optional {
-		// the PRESENT byte lands in a Go bool, so it is normalised, not copied
-		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // %s present\n",
-			base, offGo(st.Name, member(f)+"Present"), f.Name)
-		g.pf("\tn++\n")
-		base += fixedPresentBytes
-	}
-	switch {
-	case f.KeyEnum != "":
-		g.emitFixedElementLoop(st, f, base, f.KeyEnumRef.Max)
-	case f.Array == ir.ArrayFixed:
-		g.emitFixedElementLoop(st, f, base, f.ArrayBound)
-	case f.Array == ir.ArrayCounted:
-		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			base, offGo(st.Name, member(f)+"Count"), f.ArrayBound, f.Name)
-		g.pf("\tn++\n")
-		g.emitFixedElementLoop(st, f, base+fixedCountBytes, f.ArrayBound)
-	case f.Type.Kind == ir.TString:
-		g.emitFixedTextLeaf(st, f, base, f.Type.Size, 1)
-	case f.Type.Kind == ir.TWString:
-		g.emitFixedTextLeaf(st, f, base, 2*f.Type.Size, 2)
-	case f.Type.Kind == ir.TBytes:
-		g.emitFixedTextLeaf(st, f, base, f.Type.Size, 3)
-	default:
-		g.pf("\t{\n\t\tes := src + %d\n\t\ted := dst + %s\n", base, offGo(st.Name, member(f)))
-		g.emitFixedElementLeavesAt(f, "es", "ed", 2)
-		g.pf("\t}\n")
-	}
-}
-
-func (g *tableGen) emitFixedTextLeaf(st *ir.Struct, f *ir.Field, base, units int64, flavour int) {
-	g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Aux: dst + %s, Guard: tableFixedNoGuard, Op: tableFixedText, Meta: %d} // %s\n",
-		base, offGo(st.Name, member(f)+"Length"), units, offGo(st.Name, member(f)), flavour, f.Name)
-	g.pf("\tn++\n")
-}
-
-func (g *tableGen) emitFixedElementLoop(st *ir.Struct, f *ir.Field, base, count int64) {
-	elem := fixedElementBytes(f)
-	g.pf("\tfor i := uint32(0); i < %d; i++ {\n", count)
-	g.pf("\t\tes := src + %d + i*%d\n", base, elem)
-	g.pf("\t\ted := dst + %s + i*%s\n", offGo(st.Name, member(f)), g.sizeofGo(f))
-	g.emitFixedElementLeavesAt(f, "es", "ed", 2)
-	g.pf("\t}\n")
-}
-
-func (g *tableGen) sizeofGo(f *ir.Field) string {
-	if f.Type.Kind == ir.TNamed {
-		switch f.Type.Ref.(type) {
-		case *ir.Enum, *ir.Flags:
-			return fmt.Sprintf("uint32(unsafe.Sizeof(%s(0)))", f.Type.Name)
-		default:
-			return fmt.Sprintf("uint32(unsafe.Sizeof(%s{}))", f.Type.Name)
-		}
-	}
-	t := goFieldType(f.Type)
-	switch t {
-	case "bool":
-		return "uint32(unsafe.Sizeof(false))"
-	case "float32":
-		return "uint32(unsafe.Sizeof(float32(0)))"
-	case "float64":
-		return "uint32(unsafe.Sizeof(float64(0)))"
-	}
-	if strings.HasPrefix(t, "int") || strings.HasPrefix(t, "uint") {
-		return fmt.Sprintf("uint32(unsafe.Sizeof(%s(0)))", t)
-	}
-	return fmt.Sprintf("uint32(unsafe.Sizeof(%s{}))", t)
-}
-
-func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs int) {
-	ind := strings.Repeat("\t", tabs)
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			g.pf("%sn += %sFixedLeaves(out[n:], %s, %s)\n", ind, r.Name, src, dst)
-			return
-		case *ir.Union:
-			tag := int64(ir.StorageBitsFor(r.Max) / 8)
-			// THE TAG IS NOT A COPY: a tag naming no arm of this reader lands
-			// as None and counts `unknown`, the way form 1 answers an arm id
-			// it does not know (docs/SPEC-TABLES.md §4). Aux carries this
-			// reader's own arm count.
-			g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s + %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedTag} // the tag\n",
-				ind, src, dst, offGo(f.Type.Name, "Type"), tag, len(r.Variants))
-			g.pf("%sn++\n", ind)
-			for i, v := range r.Variants {
-				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
-				g.emitFixedElementLeavesAt(v.F, fmt.Sprintf("%s+%d", src, tag),
-					fmt.Sprintf("%s+%s", dst, offGo(f.Type.Name, ir.GoExportName(v.Name))), tabs+1)
-				g.pf("%s\tfor q := guardAt; q < n; q++ {\n%s\t\tout[q].Guard = %s\n%s\t\tout[q].Arg = %d\n%s\t}\n", ind, ind, src, ind, i+1, ind)
-				g.pf("%s}\n", ind)
-			}
-			return
-		}
-	}
-	// A GO bool IS NOT A BYTE. A Go true is the byte 1 (`== true`, array
-	// equality); `if v` is not portable (TESTB on amd64, TBZ bit 0 on arm64).
-	// The wire and the reference both say nonzero is true; tableFixedBool
-	// normalises (byte != 0 → 1) instead of copying, and being its own op it
-	// never coalesces into a neighbouring copy run.
-	op := "tableFixedCopy"
-	if f.Type.Kind == ir.TBool {
-		op = "tableFixedBool"
-	}
-	g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Guard: tableFixedNoGuard, Op: %s}\n",
-		ind, src, dst, fixedElementBytes(f), op)
-	g.pf("%sn++\n", ind)
 }
 
 func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
@@ -668,12 +563,143 @@ func (g *tableGen) emitFixedPutInt(ind, dest string, width int64, expr string) {
 	}
 }
 
+// emitFixedScatter lands ONE packed record image in the public struct. It is
+// the only place this port's storage spelling meets the wire's, which is what
+// lets the identity plan be one Copy of the body.
+func (g *tableGen) emitFixedScatter(st *ir.Struct) {
+	g.pf("func %sFixedScatter(b []byte, value *%s, report *TableReport) {\n", st.Name, st.Name)
+	g.pf("\t_ = report\n")
+	if len(st.Fields) == 0 {
+		g.pf("\t_, _ = b, value\n")
+	}
+	off := int64(0)
+	for _, f := range st.Fields {
+		g.emitFixedScatterField(f, off, "b", "value", 1)
+		off += fixedFieldBytes(f)
+	}
+	g.pf("}\n\n")
+}
+
+func (g *tableGen) emitFixedScatterField(f *ir.Field, off int64, buf, val string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	base := off
+	if f.Type.Optional {
+		g.pf("%s%s.%sPresent = %s[%d] != 0\n", ind, val, member(f), buf, base)
+		base += fixedPresentBytes
+	}
+	switch {
+	case f.KeyEnum != "":
+		g.emitFixedScatterLoop(f, buf, packedOff(base), f.KeyEnumRef.Max, val+"."+member(f), tabs)
+	case f.Array == ir.ArrayFixed:
+		g.emitFixedScatterLoop(f, buf, packedOff(base), f.ArrayBound, val+"."+member(f), tabs)
+	case f.Array == ir.ArrayCounted:
+		g.emitFixedScatterCount(ind, fmt.Sprintf("%s.%sCount", val, member(f)), buf, packedOff(base), f.ArrayBound)
+		g.emitFixedScatterLoop(f, buf, packedOff(base+fixedCountBytes), f.ArrayBound, val+"."+member(f), tabs)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		g.emitFixedScatterCount(ind, fmt.Sprintf("%s.%sLength", val, member(f)), buf, packedOff(base), f.Type.Size)
+		g.pf("%scopy(%s.%s[:], %s[%d:%d])\n", ind, val, member(f), buf, base+4, base+4+f.Type.Size)
+	case f.Type.Kind == ir.TWString:
+		g.emitFixedScatterCount(ind, fmt.Sprintf("%s.%sLength", val, member(f)), buf, packedOff(base), f.Type.Size)
+		g.pf("%sfor i := 0; i < %d; i++ {\n%s\t%s.%s[i] = tableFixedGet16(%s[%d+i*2:])\n%s}\n",
+			ind, f.Type.Size, ind, val, member(f), buf, base+4, ind)
+	default:
+		g.emitFixedScatterElement(f, buf, packedOff(base), val+"."+member(f), tabs)
+	}
+}
+
+func (g *tableGen) emitFixedScatterCount(ind, dst, buf, at string, bound int64) {
+	g.pf("%s{\n", ind)
+	g.pf("%s\tn := int32(tableFixedGet32(%s[%s:]))\n", ind, buf, at)
+	g.pf("%s\tif n < 0 {\n%s\t\tn = 0\n%s\t\treport.Clamped++\n%s\t} else if n > %d {\n%s\t\tn = %d\n%s\t\treport.Clamped++\n%s\t}\n",
+		ind, ind, ind, ind, bound, ind, bound, ind, ind)
+	g.pf("%s\t%s = n\n", ind, dst)
+	g.pf("%s}\n", ind)
+}
+
+func (g *tableGen) emitFixedScatterLoop(f *ir.Field, buf, base string, count int64, expr string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	elem := fixedElementBytes(f)
+	g.pf("%sfor i := int64(0); i < %d; i++ {\n", ind, count)
+	g.emitFixedScatterElement(f, buf, fmt.Sprintf("%s+i*%d", base, elem), expr+"[i]", tabs+1)
+	g.pf("%s}\n", ind)
+}
+
+func (g *tableGen) emitFixedScatterElement(f *ir.Field, buf, at, expr string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	slice := fmt.Sprintf("%s[%s:]", buf, at)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.pf("%s%sFixedScatter(%s, &%s, report)\n", ind, r.Name, slice, expr)
+			return
+		case *ir.Union:
+			tag := int64(ir.StorageBitsFor(r.Max) / 8)
+			g.pf("%s{\n", ind)
+			g.pf("%s\tvar tag uint64\n", ind)
+			g.pf("%s\tfor k := int64(0); k < %d; k++ {\n%s\t\ttag |= uint64(%s[%s+k]) << (8 * uint64(k))\n%s\t}\n",
+				ind, tag, ind, buf, at, ind)
+			g.pf("%s\tif tag > %d {\n%s\t\ttag = 0\n%s\t\treport.Unknown++\n%s\t}\n",
+				ind, len(r.Variants), ind, ind, ind)
+			g.pf("%s\t%s.Type = %sType(tag)\n", ind, expr, f.Type.Name)
+			g.pf("%s\tswitch %s.Type {\n", ind, expr)
+			for _, v := range r.Variants {
+				g.pf("%s\tcase %sType%s:\n", ind, f.Type.Name, ir.GoExportName(v.Name))
+				g.emitFixedScatterElement(v.F, buf, fmt.Sprintf("%s+%d", at, tag), expr+"."+ir.GoExportName(v.Name), tabs+2)
+			}
+			g.pf("%s\t}\n%s}\n", ind, ind)
+			return
+		case *ir.Enum:
+			w := int64(r.StorageBits / 8)
+			g.pf("%s{\n", ind)
+			g.pf("%s\tq := %s\n", ind, fixedGetUint(slice, w))
+			g.pf("%s\tif q > %d {\n%s\t\tq = 0\n%s\t}\n", ind, len(r.Variants), ind, ind)
+			g.pf("%s\t%s = %s(q)\n", ind, expr, f.Type.Name)
+			g.pf("%s}\n", ind)
+			return
+		case *ir.Flags:
+			g.pf("%s%s = %s(tableFixedGet64(%s))\n", ind, expr, f.Type.Name, slice)
+			return
+		}
+	}
+	w := fixedStorageBytes(f.Type)
+	switch f.Type.Kind {
+	case ir.TBool:
+		g.pf("%s%s = %s[%s] != 0\n", ind, expr, buf, at)
+		return
+	case ir.TFloat32:
+		g.pf("%s%s = tableFixedGetF32(%s)\n", ind, expr, slice)
+		return
+	case ir.TFloat64:
+		g.pf("%s%s = tableFixedGetF64(%s)\n", ind, expr, slice)
+		return
+	}
+	if w == 16 {
+		g.pf("%s%s.Lo = tableFixedGet64(%s)\n", ind, expr, slice)
+		g.pf("%s%s.Hi = tableFixedGet64(%s[8:])\n", ind, expr, slice)
+		return
+	}
+	typ := goFieldType(f.Type)
+	g.pf("%s%s = %s(%s)\n", ind, expr, typ, fixedGetUint(slice, w))
+}
+
+func fixedGetUint(at string, width int64) string {
+	switch width {
+	case 1:
+		return "uint64(tableFixedGet8(" + at + "))"
+	case 2:
+		return "uint64(tableFixedGet16(" + at + "))"
+	case 4:
+		return "uint64(tableFixedGet32(" + at + "))"
+	}
+	return "tableFixedGet64(" + at + ")"
+}
+
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	w := g.fixedWalkRoot(st)
 	layout := fixedLayoutBytes(w.entries)
 	hash := fixedLayoutHash(layout)
 	body := fixedTypeBytes(st)
-	leaves := g.fixedLeafCount(st)
+	defaults := fixedDefaultImage(st)
 
 	g.pf("// ---- %s, the fixed form ----\n\n", st.Name)
 	g.pf("const %sFixedBodyBytes = %d\n", st.Name, body)
@@ -690,7 +716,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("}\n\n")
 
-	g.pf("var %sFixedPlan = tableFixedBuildPlan(%sFixedLeaves, %d)\n\n", st.Name, st.Name, leaves)
+	g.pf("// THE PREFILL: declared defaults as a packed body. A field a compiled plan\n")
+	g.pf("// does not land has no dest write, so what the scatter reads there is this.\n")
+	g.pf("var %sFixedDefaults = []byte{\n", st.Name)
+	g.emitByteArray(defaults)
+	g.pf("}\n\n")
+
+	g.pf("// Identity is one Copy of the packed body. The public struct is not the\n")
+	g.pf("// wire, so dest is the record image and scatter lands the value.\n")
+	g.pf("var %sFixedPlan = tableFixedPlan{Entries: []TableFixedEntry{{\n", st.Name)
+	g.pf("\tSrc: 0, Dst: 0, Size: %sFixedBodyBytes, Guard: tableFixedNoGuard, Op: tableFixedCopy,\n", st.Name)
+	g.pf("}}, Count: 1}\n\n")
 
 	g.pf("// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,\n")
 	g.pf("// then the layout behind its u32 length, then the records to the end of it.\n")
@@ -752,29 +788,20 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")
-	// Compiled prefill is the dst ranges the plan does not land, copied from
-	// one Reset image. Identity keeps Reset: the Go ABI is not the wire, so
-	// the identity plan does not land padding or unselected union arms.
-	g.pf("\tvar def %s\n", st.Name)
-	g.pf("\tvar defBytes []byte\n")
-	g.pf("\tvar holes []tableFixedHole\n")
-	g.pf("\tif !identity && n > 0 {\n")
-	g.pf("\t\t%sReset(&def)\n", st.Name)
-	g.pf("\t\tdefBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
-	g.pf("\t\tholes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))\n")
-	g.pf("\t}\n")
+	// Prefill is the dest ranges the plan does not land, copied from the
+	// packed defaults image. Identity's plan is one Copy of the whole body,
+	// so the hole list is empty and the copy below is a no-op. Scatter lands
+	// the image in the public struct. There is no Reset.
+	g.pf("\tvar image [%sFixedBodyBytes]byte\n", st.Name)
+	g.pf("\tholes := tableFixedHoles(entries, entryCount, %sFixedBodyBytes)\n", st.Name)
 	g.pf("\tfor k := int64(0); k < n; k++ {\n")
-	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
-	g.pf("\t\tif identity {\n")
-	g.pf("\t\t\t%sReset(&values[k])\n", st.Name)
-	g.pf("\t\t} else {\n")
-	g.pf("\t\t\tfor i := range holes {\n")
-	g.pf("\t\t\t\th := holes[i]\n")
-	g.pf("\t\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")
-	g.pf("\t\t\t}\n")
+	g.pf("\t\tfor i := range holes {\n")
+	g.pf("\t\t\th := holes[i]\n")
+	g.pf("\t\t\tcopy(image[h.Off:h.Off+h.Size], %sFixedDefaults[h.Off:h.Off+h.Size])\n", st.Name)
 	g.pf("\t\t}\n")
 	g.pf("\t\tif tableFixedGet64(at) != hash {\n\t\t\treturn tableFixedRefuse(report, \"no_layout\")\n\t\t}\n")
-	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:], dst, report)\n")
+	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:], image[:], report)\n")
+	g.pf("\t\t%sFixedScatter(image[:], &values[k], report)\n", st.Name)
 	g.pf("\t\tat = at[recordBytes:]\n")
 	g.pf("\t}\n\treturn n\n}\n\n")
 }
@@ -800,6 +827,10 @@ func (g *tableGen) emitFixedForm1Load(st *ir.Struct) {
 }
 
 func (g *tableGen) emitByteArray(b []byte) {
+	if len(b) == 0 {
+		g.pf("\t// empty body\n")
+		return
+	}
 	for i := 0; i < len(b); i += 16 {
 		end := min(i+16, len(b))
 		var sb strings.Builder
@@ -808,5 +839,112 @@ func (g *tableGen) emitByteArray(b []byte) {
 			fmt.Fprintf(&sb, "0x%02x, ", v)
 		}
 		g.pf("%s\n", sb.String())
+	}
+}
+
+func fixedDefaultImage(st *ir.Struct) []byte {
+	out := make([]byte, fixedTypeBytes(st))
+	fixedDefaultType(out, st)
+	return out
+}
+
+func fixedDefaultType(out []byte, st *ir.Struct) {
+	at := int64(0)
+	for _, f := range st.Fields {
+		n := fixedFieldBytes(f)
+		fixedDefaultField(out[at:at+n], f)
+		at += n
+	}
+}
+
+func fixedDefaultField(out []byte, f *ir.Field) {
+	if f.Type.Optional {
+		out = out[fixedPresentBytes:]
+	}
+	switch {
+	case f.KeyEnum != "":
+		fixedDefaultSlots(out, f, f.KeyEnumRef.Max)
+	case f.Array == ir.ArrayFixed:
+		fixedDefaultSlots(out, f, f.ArrayBound)
+	case f.Array == ir.ArrayCounted:
+		fixedPutU32(out, uint32(f.BornCount()))
+		fixedDefaultSlots(out[fixedCountBytes:], f, f.ArrayBound)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		fixedPutU32(out, uint32(len(f.DefBytes)))
+		copy(out[fixedCountBytes:], f.DefBytes)
+	case f.Type.Kind == ir.TWString:
+		fixedPutU32(out, uint32(len(f.DefBytes)))
+	default:
+		fixedDefaultElement(out, f)
+	}
+}
+
+func fixedDefaultSlots(out []byte, f *ir.Field, count int64) {
+	elem := fixedElementBytes(f)
+	for i := int64(0); i < count; i++ {
+		fixedDefaultElement(out[i*elem:(i+1)*elem], f)
+	}
+}
+
+func fixedDefaultElement(out []byte, f *ir.Field) {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			fixedDefaultType(out, r)
+			return
+		case *ir.Enum:
+			if f.HasDefault && f.DefVariant != "" {
+				for i, v := range r.Variants {
+					if v == f.DefVariant {
+						fixedPutUint(out, uint64(i+1), fixedStorageBytes(f.Type))
+						break
+					}
+				}
+			}
+			return
+		case *ir.Union:
+			return
+		}
+	}
+	if !f.HasDefault {
+		return
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		if f.DefBool {
+			out[0] = 1
+		}
+	case ir.TFloat32:
+		fixedPutUint(out, uint64(math.Float32bits(float32(f.DefFloat))), 4)
+	case ir.TFloat64:
+		fixedPutUint(out, math.Float64bits(f.DefFloat), 8)
+	default:
+		if f.DefInt == nil {
+			return
+		}
+		fixedPutBig(out, f.DefInt, fixedStorageBytes(f.Type))
+	}
+}
+
+func fixedPutU32(out []byte, v uint32) { fixedPutUint(out, uint64(v), 4) }
+
+func fixedPutUint(out []byte, v uint64, width int64) {
+	for i := int64(0); i < width && i < 8; i++ {
+		out[i] = byte(v >> (8 * i))
+	}
+}
+
+func fixedPutBig(out []byte, v *big.Int, width int64) {
+	if width <= 0 {
+		return
+	}
+	n := new(big.Int).Set(v)
+	if n.Sign() < 0 {
+		mod := new(big.Int).Lsh(big.NewInt(1), uint(width*8))
+		n.Add(n, mod)
+	}
+	raw := n.Bytes()
+	for i := 0; i < len(raw) && int64(i) < width; i++ {
+		out[i] = raw[len(raw)-1-i]
 	}
 }

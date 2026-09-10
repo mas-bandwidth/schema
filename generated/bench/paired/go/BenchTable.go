@@ -1612,25 +1612,6 @@ func tableFixedKindKnown(kind uint8) bool  { return kind <= 33 || kind == 35 }
 // time, which is the whole of what lets two adjacent entries become one.
 func tableFixedRuns(op uint8) bool { return op == tableFixedCopy || op == tableFixedBool }
 
-func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
-	raw := make([]TableFixedEntry, n)
-	written := emit(raw, 0, 0)
-	out := 0
-	for i := 0; i < written; i++ {
-		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
-			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
-			raw[out-1].Meta == raw[i].Meta &&
-			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
-			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
-			raw[out-1].Size += raw[i].Size
-			continue
-		}
-		raw[out] = raw[i]
-		out++
-	}
-	return tableFixedPlan{Entries: raw[:out], Count: int32(out)}
-}
-
 func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
 func tableFixedPut16(b []byte, v uint16)       { binary.LittleEndian.PutUint16(b, v) }
 func tableFixedPut32(b []byte, v uint32)       { binary.LittleEndian.PutUint32(b, v) }
@@ -1638,8 +1619,12 @@ func tableFixedPut64(b []byte, v uint64)       { binary.LittleEndian.PutUint64(b
 func tableFixedPutF32(b []byte, v float32)     { tableFixedPut32(b, math.Float32bits(v)) }
 func tableFixedPutF64(b []byte, v float64)     { tableFixedPut64(b, math.Float64bits(v)) }
 func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFixedPut64(b[8:], hi) }
+func tableFixedGet8(b []byte) uint8            { return b[0] }
+func tableFixedGet16(b []byte) uint16          { return binary.LittleEndian.Uint16(b) }
 func tableFixedGet32(b []byte) uint32          { return binary.LittleEndian.Uint32(b) }
 func tableFixedGet64(b []byte) uint64          { return binary.LittleEndian.Uint64(b) }
+func tableFixedGetF32(b []byte) float32        { return math.Float32frombits(tableFixedGet32(b)) }
+func tableFixedGetF64(b []byte) float64        { return math.Float64frombits(tableFixedGet64(b)) }
 
 func tableFixedHashOf(layout []byte) uint64 {
 	h := uint64(0xcbf29ce484222325)
@@ -2114,8 +2099,9 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	return out
 }
 
-// tableFixedHole is one dst range the plan does not land. Compiled Load copies
-// declared defaults into exactly these; identity does not use the list.
+// tableFixedHole is one dst range the plan does not land. Load copies declared
+// defaults into exactly these. Identity's plan is one Copy of the packed body,
+// so the list is empty and the copy is a no-op.
 type tableFixedHole struct {
 	Off, Size uint32
 }

@@ -3878,9 +3878,9 @@ var tableGeneratedVerbs = []string{
 	// name that is free today becomes a collision the day a field of the type
 	// changes — which is this list's own rule. The C backend spells the same
 	// set in snake_case (<name>_fixed_save) and the two are one claim.
-	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
+	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves", "FixedScatter",
 	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
-	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded",
+	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded", "FixedDefaults",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a
 	// block type's Type — and a member function claims nothing. C has no
