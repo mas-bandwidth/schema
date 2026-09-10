@@ -243,6 +243,77 @@ case bits/widths
   0000  FF 00 00 00 FF FF 00 00 FF FF FF FF FF FF FF FF
   0010  FF FF FF FF FF 0F 00 00 FF FF FF FF FF FF 00 00
 
+case rw2/widths
+  unit tblrw2 root RangedWidths
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 157 bytes hash 3C9049A0239195D5
+  layout length field 157
+  file 225 bytes, record 48 = hash 8 + body 40
+  hash D5959123A049903C
+  0000  FF 00 00 00 FF FF 00 00 FF FF FF FF FF FF FF FF
+  0010  FF FF FF FF FF 0F 00 00 FF FF FF FF FF FF 00 00
+  0020  FF FF FF 00 08 00 00 00
+
+case nk1/narrow
+  unit tblnk1 root Narrow
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 157 bytes hash BDFAF2244D0D8430
+  layout length field 157
+  file 201 bytes, record 24 = hash 8 + body 16
+  hash 30840D4D24F2FABD
+  0000  80 FF 7F FF 01 00 FF FF FF FF FF FF FF FF 2A 09
+
+case nk2/narrow
+  unit tblnk2 root Narrow
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 157 bytes hash F7FBA4568C01187B
+  layout length field 157
+  file 201 bytes, record 24 = hash 8 + body 16
+  hash 7B18018C56A4FBF7
+  0000  7F 00 80 01 FF FF 01 00 00 00 00 00 00 00 63 06
+
+case fc1/probe
+  unit tblfc1 root Probe
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 89 bytes hash 394861FAC297B05E
+  layout length field 89
+  file 133 bytes, record 24 = hash 8 + body 16
+  hash 5EB097C2FA614839
+  0000  00 00 60 40 00 00 20 40 B6 F3 9D 3F 09 00 00 00
+
+case fc2/probe
+  unit tblfc2 root Probe
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 123 bytes hash 93E5E158BBC85403
+  layout length field 123
+  file 175 bytes, record 32 = hash 8 + body 24
+  hash 0354C8BB58E1E593
+  0000  00 00 88 C0 0A D7 23 3C E7 FB 1F 41 00 00 C0 BF
+  0010  06 00 00 00 08 00 00 00
+
+case w2/ship
+  unit tblw2 root Ship
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 140 bytes hash BCC9862B21130A06
+  layout length field 140
+  file 236 bytes, record 76 = hash 8 + body 68
+  hash 060A13212B86C9BC
+  0000  09 00 00 00 64 69 73 63 6F 76 65 72 79 00 00 00
+  0010  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0020  00 00 00 00 04 00 00 00 11 22 33 44 01 00 00 00
+  0030  00 00 00 00 04 00 00 00 69 72 6F 6E 00 00 00 00
+  0040  90 01 00 00
+
+case fu2/raw
+  unit tblfu2 root MarkRoot
+  form 3 reserved 00 00 00 00 00 00 00
+  layout 361 bytes hash 72F61588B7620AD7
+  layout length field 361
+  file 418 bytes, record 37 = hash 8 + body 29
+  hash D70A62B78815F672
+  0000  D4 07 00 00 04 04 00 00 00 CA FE BA BE 58 00 00
+  0010  00 00 00 00 00 05 00 00 00 08 00 00 00
+
 case p1/empty
   unit tblp1 root Chain
   form 3 reserved 00 00 00 00 00 00 00

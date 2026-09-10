@@ -36,6 +36,12 @@
 //                            bit patterns across the f32 -> f64 rung
 //  12. THE FRAME             a file of zero records, of many, one with bytes
 //                            left over, and one cut short
+//  13. THE NARROW KINDS      int8/int16/uint8/uint16 spelled as themselves
+//                            (NK1/NK2)
+//  14. A COMPRESSED FLOAT    IEEE-754 bytes, not a quantized index (FC1/FC2)
+//  15. bits(N) ACROSS        a second generation of RangedWidths (RW2)
+//      GENERATIONS
+//  16. THE PLAN'S SHAPE      partitioned, adjacent copies coalesced
 //
 // The whole matrix these cases fill, cell by cell, is docs/FIXED-FORM-COVERAGE.md.
 //
@@ -63,6 +69,9 @@
 #include "W2Table.h"
 #include "UT1Table.h"
 #include "UT2Table.h"
+#include "NK2Table.h"
+#include "FC2Table.h"
+#include "RW2Table.h"
 
 static int failures = 0;
 
@@ -181,6 +190,12 @@ static KnownRed known_red[] = {
     // too, and until one of them lands neither can be blamed alone.
     { "kind-mismatch/compiled/a-moved-kind-is-decoded-anyway", "the run copy's branch first, then a re-read: `angle` is inside the window that branch clobbers and the two cannot be told apart until it is fixed", 0, 0 },
     { "ordinal-bound/paths-disagree/union-tag-past-the-last-arm", "a ruling: §3.4 does not say what a tag naming no arm means, and the identity and compiled plans answer differently", 0, 0 },
+    // bytes(N) UNDER A COMPILED PLAN. The identity plan emits a `text` op with
+    // flavour 3. A compiled plan sees layout kind 14 (array) and walks case 14,
+    // whose dst/aux convention is the counted-array's — and TableFixedDst for
+    // bytes(N) has those two lanes swapped (reference-fix 10). Identity of the
+    // raw arm is green; both compiled directions are this row.
+    { "bytes-compiled/dst-aux-swap/kind-14-walks-bytes-as-an-array", "TableFixedDst for bytes(N) vs the array compile path (reference-fix 10)", 0, 0 },
 };
 
 // ---------------------------------------------------------------------------
@@ -635,6 +650,43 @@ static void fu_case()
         check( back.mark.type == tblfu1::MarkType::List, "ARM/compiled/list: ordinal 5 lands on ordinal 4, by name" );
         check( back.mark.list.items_count == 2 && back.mark.list.items[0] == 71 && back.mark.list.items[1] == 72 &&
                back.mark.list.n == 13, "ARM/compiled/list: a COUNTED ARRAY under an arm survives the plan compile" );
+    }
+    {
+        // bytes(N) UNDER A COMPILED PLAN, BOTH DIRECTIONS (GAP-5 was the
+        // newer-writer half). The raw arm is flavour 3; FU2 inserted skip so
+        // its ordinal moved from 3 to 4.
+        tblfu1::MarkRoot one;
+        FillFu1Raw( one );
+        std::vector<uint8_t> f = fu_file( one, tblfu1::MarkRootFixedMeasure, tblfu1::MarkRootFixedSave, "FU1 save: raw for FU2" );
+        tblfu2::MarkRoot back;
+        tblfu2::TableReport rep;
+        std::vector<tblfu2::TableFixedEntry> plan( 4096 );
+        check( tblfu2::MarkRootFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 4096, &rep ) == 1,
+               "ARM/compiled/raw/older writer: one record" );
+        check( back.mark.type == tblfu2::MarkType::Raw, "ARM/compiled/raw: ordinal 3 lands on ordinal 4, by name" );
+        check( back.tail == 3 && !rep.malformed && !rep.refused,
+               "ARM/compiled/raw/older writer: the field behind the arm, no damage" );
+        check_red( back.mark.raw.d_length == 4 && back.mark.raw.d[0] == 0xDEu && back.mark.raw.d[3] == 0xEFu &&
+                   back.mark.raw.n == 77,
+                   "bytes-compiled/dst-aux-swap/kind-14-walks-bytes-as-an-array",
+                   "ARM/compiled/raw: a compiled plan walks bytes(N) as kind 14, dst/aux swapped" );
+    }
+    {
+        tblfu2::MarkRoot two;
+        FillFu2Raw( two );
+        std::vector<uint8_t> f = fu_file( two, tblfu2::MarkRootFixedMeasure, tblfu2::MarkRootFixedSave, "FU2 save: raw" );
+        tblfu1::MarkRoot back;
+        tblfu1::TableReport rep;
+        std::vector<tblfu1::TableFixedEntry> plan( 4096 );
+        check( tblfu1::MarkRootFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 4096, &rep ) == 1,
+               "ARM/compiled/raw/newer writer: one record" );
+        check( back.mark.type == tblfu1::MarkType::Raw, "ARM/compiled/raw/newer: ordinal 4 lands on ordinal 3, by name" );
+        check( back.after == 5 && !rep.malformed && !rep.refused,
+               "ARM/compiled/raw/newer writer: the field behind the arm, no damage" );
+        check_red( back.mark.raw.d_length == 4 && back.mark.raw.d[0] == 0xCAu && back.mark.raw.d[3] == 0xBEu &&
+                   back.mark.raw.n == 88,
+                   "bytes-compiled/dst-aux-swap/kind-14-walks-bytes-as-an-array",
+                   "bytes(N) ACROSS GENERATIONS: the compiled plan's kind-14 walk does not land the used bytes" );
     }
 }
 
@@ -1482,6 +1534,25 @@ static void w_case()
                "TABLE RENAMED: `was` on a TABLE is not an evolution event at all" );
     }
     {
+        // THE OTHER DIRECTION (GAP-4): a W2 Ship read as a W1 Vessel. The
+        // flags field is the same kind; the table's `was` keeps the hash.
+        tblw2::Ship two;
+        FillW2( two );
+        std::vector<uint8_t> f2( (size_t) tblw2::ShipFixedMeasure( 1 ) );
+        check( tblw2::ShipFixedSave( &two, 1, f2.data(), (int64_t) f2.size() ) == (int64_t) f2.size(), "W2 save" );
+        tblw1::Vessel back;
+        tblw1::TableReport r;
+        std::vector<tblw1::TableFixedEntry> plan( 1024 );
+        check( tblw1::VesselFixedLoad( &back, 1, f2.data(), (int64_t) f2.size(), plan.data(), 1024, &r ) == 1,
+               "FLAGS/compiled/newer writer: a W2 Ship reads into a W1 Vessel" );
+        check( back.caps == (tblw1::Caps) tblw1::Caps_Jump && back.hull == 400,
+               "FLAGS/compiled/newer writer: the raw mask and the field beside it" );
+        check( back.name_length == 9 && std::strcmp( back.name, "discovery" ) == 0,
+               "FLAGS/compiled/newer writer: the string beside the mask" );
+        check( r.unknown == 0 && !r.malformed && !r.refused,
+               "FLAGS/compiled/newer writer: a table rename is not an evolution event in this direction either" );
+    }
+    {
         // AND THE DEFAULTS THEMSELVES: a reader's prefill is what an absent
         // field lands on, and for these three kinds the declared default is not
         // zero. Nothing on the wire is consulted, which is exactly the claim.
@@ -1531,6 +1602,37 @@ static void bits_case()
     check( back.b12 == 0x0FFFu && back.b48 == 0x0000FFFFFFFFFFFFull,
            "BITS: the two widths that do NOT fill their storage ride in the whole of it anyway" );
     check( r.clamped == 0 && !r.malformed && !r.refused, "BITS: a value at the width's own bound is not a clamp" );
+
+    {
+        // A SECOND GENERATION (GAP-2). Storage width is fixed by N, so there
+        // is no widened-bits rung; RW2 adds a bits(24) and a tail, which is
+        // the edit a compiled plan can get wrong.
+        tblrw2::RangedWidths newer;
+        tblrw2::TableReport rn;
+        std::vector<tblrw2::TableFixedEntry> plan2( 1024 );
+        check( tblrw2::RangedWidthsFixedLoad( &newer, 1, f.data(), (int64_t) f.size(), plan2.data(), 1024, &rn ) == 1,
+               "BITS/compiled/older writer: one record" );
+        check( newer.b8 == 0xFFu && newer.b12 == 0x0FFFu && newer.b48 == 0x0000FFFFFFFFFFFFull,
+               "BITS/compiled/older writer: every width of the first generation lands" );
+        check( newer.b24 == 0u && newer.tail == 3,
+               "BITS/compiled/older writer: the added bits field and the tail take their declared defaults" );
+        check( rn.unknown == 0 && !rn.malformed && !rn.refused, "BITS/compiled/older writer: no damage" );
+    }
+    {
+        tblrw2::RangedWidths two;
+        FillBits2( two );
+        std::vector<uint8_t> f2( (size_t) tblrw2::RangedWidthsFixedMeasure( 1 ) );
+        check( tblrw2::RangedWidthsFixedSave( &two, 1, f2.data(), (int64_t) f2.size() ) == (int64_t) f2.size(), "RW2 save" );
+        tabledemo::RangedWidths older;
+        tabledemo::TableReport ro;
+        std::vector<tabledemo::TableFixedEntry> plan3( 1024 );
+        check( tabledemo::RangedWidthsFixedLoad( &older, 1, f2.data(), (int64_t) f2.size(), plan3.data(), 1024, &ro ) == 1,
+               "BITS/compiled/newer writer: one record" );
+        check( older.b8 == 0xFFu && older.b12 == 0x0FFFu && older.b64 == 0xFFFFFFFFFFFFFFFFull,
+               "BITS/compiled/newer writer: the first generation's widths still land" );
+        check( ro.unknown == 2 && !ro.malformed && !ro.refused,
+               "BITS/compiled/newer writer: `b24` and `tail` are the two names this reader has not got" );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2069,6 +2171,193 @@ static void union_text_case()
     }
 }
 
+// THE PLAIN NARROW INTEGER KINDS SPELLED AS THEMSELVES (GAP-1). The C++ ABI
+// pads an int8 in front of an int16; the wire does not. C is 1+2+1+2+4+4+4+4
+// = 22, and a port that stored the record as the struct would spend 24.
+
+static void nk_case()
+{
+    check( tblnk1::NarrowFixedBodyBytes == 1 + 2 + 1 + 2 + 4 + 4 + 1 + 1,
+           "NARROW: C is the declared storage width, nothing padded between fields" );
+
+    tblnk1::Narrow one;
+    FillNk1( one );
+    std::vector<uint8_t> f( (size_t) tblnk1::NarrowFixedMeasure( 1 ) );
+    check( tblnk1::NarrowFixedSave( &one, 1, f.data(), (int64_t) f.size() ) == (int64_t) f.size(), "NK1 save" );
+
+    {
+        tblnk1::Narrow back;
+        tblnk1::TableReport r;
+        std::vector<tblnk1::TableFixedEntry> plan( 1024 );
+        check( tblnk1::NarrowFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, &r ) == 1,
+               "NARROW/identity: one record" );
+        check( back.i8 == (int8_t) -128 && back.i16 == (int16_t) 32767 && back.u8 == 255u && back.u16 == 1u,
+               "NARROW/identity: int8, int16, uint8, uint16 spelled as themselves" );
+        check( back.i32 == -1 && back.u32 == 0xFFFFFFFFu && back.gone == (int8_t) 42 && back.after == (int8_t) 9,
+               "NARROW/identity: the 32-bit kinds beside them, and the field behind" );
+        check( r.unknown == 0 && !r.malformed && !r.refused, "NARROW/identity: a clean read moves no counter" );
+    }
+    {
+        tblnk2::Narrow back;
+        tblnk2::TableReport r;
+        std::vector<tblnk2::TableFixedEntry> plan( 1024 );
+        check( tblnk2::NarrowFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, &r ) == 1,
+               "NARROW/compiled/older writer: one record" );
+        check( back.i8 == (int8_t) -128 && back.u16 == 1u && back.u32 == 0xFFFFFFFFu && back.after == (int8_t) 9,
+               "NARROW/compiled/older writer: every kind this side still has, lands" );
+        check( back.extra == (int8_t) 11, "NARROW/compiled/older writer: the appended field takes its declared default" );
+        check( r.unknown == 1 && !r.malformed && !r.refused,
+               "NARROW/compiled/older writer: `gone` is the one name this reader has not got" );
+    }
+    {
+        tblnk2::Narrow two;
+        FillNk2( two );
+        std::vector<uint8_t> f2( (size_t) tblnk2::NarrowFixedMeasure( 1 ) );
+        check( tblnk2::NarrowFixedSave( &two, 1, f2.data(), (int64_t) f2.size() ) == (int64_t) f2.size(), "NK2 save" );
+        tblnk1::Narrow back;
+        tblnk1::TableReport r;
+        std::vector<tblnk1::TableFixedEntry> plan( 1024 );
+        check( tblnk1::NarrowFixedLoad( &back, 1, f2.data(), (int64_t) f2.size(), plan.data(), 1024, &r ) == 1,
+               "NARROW/compiled/newer writer: one record" );
+        check( back.i8 == (int8_t) 127 && back.i16 == (int16_t) -32768 && back.u8 == 1u && back.after == (int8_t) 6,
+               "NARROW/compiled/newer writer: the kinds both sides share" );
+        check( back.gone == (int8_t) 9, "NARROW/compiled/newer writer: a field the writer does not carry takes its declared default" );
+        check( r.unknown == 1 && !r.malformed && !r.refused,
+               "NARROW/compiled/newer writer: `extra` is the one name this reader has not got" );
+    }
+}
+
+// A COMPRESSED FLOAT RIDES AS THE IEEE FLOAT, NOT AS A QUANTIZED INDEX (GAP-3).
+// 2.5 on a [0, 10] @ 0.01 grid is integer 250 on the packet wire; here it is
+// four IEEE bytes. 1.234 is off the grid: a quantizing port would snap it.
+
+static void cf_case()
+{
+    check( tblfc1::ProbeFixedBodyBytes == 4 + 4 + 4 + 4,
+           "COMPRESSED: C is 4, the float, not the quantized index's width" );
+
+    tblfc1::Probe one;
+    FillFc1( one );
+    std::vector<uint8_t> f( (size_t) tblfc1::ProbeFixedMeasure( 1 ) );
+    check( tblfc1::ProbeFixedSave( &one, 1, f.data(), (int64_t) f.size() ) == (int64_t) f.size(), "FC1 save" );
+
+    {
+        tblfc1::Probe back;
+        tblfc1::TableReport r;
+        std::vector<tblfc1::TableFixedEntry> plan( 1024 );
+        check( tblfc1::ProbeFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, &r ) == 1,
+               "COMPRESSED/identity: one record" );
+        check( bits_of_float( back.plain ) == bits_of_float( 3.5f ),
+               "COMPRESSED/identity: the plain float32 beside it is IEEE" );
+        check( bits_of_float( back.on_grid ) == bits_of_float( 2.5f ),
+               "COMPRESSED/identity: an ON-GRID value rides as the float, not as integer 250" );
+        check( bits_of_float( back.off_grid ) == bits_of_float( 1.234f ),
+               "COMPRESSED/identity: an OFF-GRID value is not snapped to the 0.01 grid" );
+        check( back.after == 9 && r.unknown == 0 && !r.malformed && !r.refused,
+               "COMPRESSED/identity: the field behind, and a clean read" );
+    }
+    {
+        tblfc2::Probe back;
+        tblfc2::TableReport r;
+        std::vector<tblfc2::TableFixedEntry> plan( 1024 );
+        check( tblfc2::ProbeFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, &r ) == 1,
+               "COMPRESSED/compiled/older writer: one record" );
+        check( bits_of_float( back.on_grid ) == bits_of_float( 2.5f ) &&
+               bits_of_float( back.off_grid ) == bits_of_float( 1.234f ),
+               "COMPRESSED/compiled/older writer: both compressed fields land as IEEE" );
+        check( back.extra == 0.0f && back.tail == 3 && back.after == 9,
+               "COMPRESSED/compiled/older writer: the appended fields take their declared defaults" );
+        check( r.unknown == 0 && !r.malformed && !r.refused, "COMPRESSED/compiled/older writer: no damage" );
+    }
+    {
+        tblfc2::Probe two;
+        FillFc2( two );
+        std::vector<uint8_t> f2( (size_t) tblfc2::ProbeFixedMeasure( 1 ) );
+        check( tblfc2::ProbeFixedSave( &two, 1, f2.data(), (int64_t) f2.size() ) == (int64_t) f2.size(), "FC2 save" );
+        tblfc1::Probe back;
+        tblfc1::TableReport r;
+        std::vector<tblfc1::TableFixedEntry> plan( 1024 );
+        check( tblfc1::ProbeFixedLoad( &back, 1, f2.data(), (int64_t) f2.size(), plan.data(), 1024, &r ) == 1,
+               "COMPRESSED/compiled/newer writer: one record" );
+        check( bits_of_float( back.plain ) == bits_of_float( -4.25f ) &&
+               bits_of_float( back.on_grid ) == bits_of_float( 0.01f ) &&
+               bits_of_float( back.off_grid ) == bits_of_float( 9.999f ) && back.after == 6,
+               "COMPRESSED/compiled/newer writer: the fields this reader has, as IEEE" );
+        check( r.unknown == 2 && !r.malformed && !r.refused,
+               "COMPRESSED/compiled/newer writer: `extra` and `tail` are the two names this reader has not got" );
+    }
+}
+
+// THE PLAN IS PARTITIONED AND ADJACENT COPIES ARE COALESCED (GAP-13, GAP-14).
+// §3.4 calls the partition "a requirement and not an optimization". A broken
+// partition is also a wrong value, which the value assertions catch; this is
+// the assertion against the plan itself. Neighbours are never merged across
+// the split.
+
+static void check_plan_shape( const tblfn1::TableFixedEntry * plan, int32_t count, int32_t guarded, const char * what )
+{
+    check( guarded >= 0 && guarded <= count, what );
+    for ( int32_t i = 0; i < guarded; ++i )
+    {
+        check( plan[i].guard == tblfn1::kTableFixedNoGuard, what );
+    }
+    for ( int32_t i = guarded; i < count; ++i )
+    {
+        check( plan[i].guard != tblfn1::kTableFixedNoGuard, what );
+    }
+    for ( int32_t i = 0; i + 1 < count; ++i )
+    {
+        if ( i + 1 == guarded ) { continue; } // the split: coalescing never crosses it
+        const tblfn1::TableFixedEntry & a = plan[i];
+        const tblfn1::TableFixedEntry & b = plan[i + 1];
+        const bool would_merge = a.op == tblfn1::kTableFixedCopy && b.op == tblfn1::kTableFixedCopy &&
+                                 a.guard == b.guard && a.arg == b.arg &&
+                                 a.src + a.size == b.src && a.dst + a.size == b.dst;
+        check( !would_merge, what );
+    }
+}
+
+static void plan_case()
+{
+    check( tblfn1::FnRootFixedPlanGuarded < tblfn1::FnRootFixedPlanCount && tblfn1::FnRootFixedPlanGuarded > 0,
+           "PLAN/identity: FN1 has unguarded entries AND guarded ones, so the split is a real boundary" );
+    check_plan_shape( tblfn1::FnRootFixedPlan, tblfn1::FnRootFixedPlanCount, tblfn1::FnRootFixedPlanGuarded,
+                      "PLAN/identity: unguarded first, then the arms; adjacent copies coalesced inside each half" );
+
+    tblfn1::TableFixedLayoutView parsed;
+    tblfn1::TableMessageReason why = tblfn1::layout_malformed;
+    check( tblfn1::TableFixedParseLayout( tblfn2::FnRootFixedLayout, tblfn2::FnRootFixedLayoutBytes, parsed, why ),
+           "PLAN/compiled: FN2's layout parses as a peer" );
+    std::vector<tblfn1::TableFixedEntry> plan( 4096 );
+    int32_t guarded = 0;
+    tblfn1::TableReport r;
+    const int32_t made = tblfn1::TableFixedCompile( parsed, tblfn1::FnRootFixedLayout,
+                                                    (int32_t) tblfn1::FnRootFixedLayoutBytes, tblfn1::FnRootFixedDst,
+                                                    plan.data(), 4096, &guarded, &r );
+    check( made > 0 && guarded >= 0 && guarded <= made,
+           "PLAN/compiled: a plan compiled from FN2 for an FN1 reader" );
+    check_plan_shape( plan.data(), made, guarded,
+                      "PLAN/compiled/newer writer: partitioned and coalesced" );
+
+    // THE OTHER DIRECTION. The runtime is the first header's (FN1's); FN2's
+    // destination rows are the same struct, so they cast.
+    tblfn1::TableFixedLayoutView parsed1;
+    tblfn1::TableMessageReason why1 = tblfn1::layout_malformed;
+    check( tblfn1::TableFixedParseLayout( tblfn1::FnRootFixedLayout, tblfn1::FnRootFixedLayoutBytes, parsed1, why1 ),
+           "PLAN/compiled/older writer: FN1's layout parses" );
+    std::vector<tblfn1::TableFixedEntry> plan2( 4096 );
+    int32_t guarded2 = 0;
+    tblfn1::TableReport r2;
+    const int32_t made2 = tblfn1::TableFixedCompile( parsed1, tblfn2::FnRootFixedLayout,
+                                                     (int32_t) tblfn2::FnRootFixedLayoutBytes,
+                                                     reinterpret_cast<const tblfn1::TableFixedDst *>( tblfn2::FnRootFixedDst ),
+                                                     plan2.data(), 4096, &guarded2, &r2 );
+    check( made2 > 0 && guarded2 >= 0 && guarded2 <= made2,
+           "PLAN/compiled/older writer: a plan compiled from FN1 for an FN2 reader" );
+    check_plan_shape( plan2.data(), made2, guarded2,
+                      "PLAN/compiled/older writer: partitioned and coalesced" );
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -2080,6 +2369,9 @@ int main()
     wstring_case();
     w_case();
     bits_case();
+    nk_case();
+    cf_case();
+    plan_case();
     v_case();
     s_case();
     fl_case();

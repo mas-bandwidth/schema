@@ -1,0 +1,23 @@
+// NK1.schema — THE PLAIN NARROW INTEGER KINDS SPELLED AS THEMSELVES
+// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-COVERAGE.md GAP-1).
+//
+// FX1 rides uint16/uint32, Scalars rides a `fixed(4,4)` whose STORAGE is an
+// int8, and `bits(16)` sits in a uint32. What none of them declare is the
+// KIND as itself: `int8`, `int16`, `uint8`, `uint16` written on the line.
+// A coalesced copy of 17..31 bytes is RED-3, so the tail fields stay one
+// byte: the identity plan's runs stay outside that window.
+//
+// NK2 drops `gone` and appends `extra`, so both compiled directions exist.
+package tblnk1
+
+table Narrow
+{
+    i8  int8
+    i16 int16
+    u8  uint8
+    u16 uint16
+    i32 int32
+    u32 uint32
+    gone  int8 = 9
+    after int8 = 7
+}

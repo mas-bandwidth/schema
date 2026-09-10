@@ -38,8 +38,8 @@ hole this page was written to find.
 
 ## The legend
 
-- **`fx`** `fu` `fn` `wstr` `w` `bits` `s` `fl` `text` `frame` `p` `v` `neg`
-  `layout` `fuzz` — the case functions of `test/tables/fixedform_main.cpp`.
+- **`fx`** `fu` `fn` `wstr` `w` `bits` `nk` `cf` `plan` `s` `fl` `text` `frame`
+  `p` `v` `neg` `layout` `fuzz` — the case functions of `test/tables/fixedform_main.cpp`.
 - **`oracle`** — a pinned block of `testdata/conformance/tables/fixedform/records.dump`,
   written by `test/tables/fixedform_pin.cpp`.
 - **`RED-n`** — covered by a fixture that is a NAMED KNOWN-RED: the fixture is in
@@ -51,10 +51,13 @@ hole this page was written to find.
 
 **THE SCHEMA PAIRS.** `FX1/FX2` the scalar edits; `FU1/FU2` text and a counted
 array under a UNION ARM; `FN1/FN2` the bool, the optional, the enum ordinal, an
-ARRAY OF UNIONS and a THREE-DEEP nesting; `V1/V2` the enum and keyed-array
-edits; `W1/W2` `flags`, the text family's declared defaults and a TABLE renamed;
-`Scalars/Scalars2` the widths; `F1/F2` the float bit patterns; `P1/P3` `?T`
-against a plain nesting; `examples/Ranges` the `bits(N)` family.
+ARRAY OF UNIONS and a THREE-DEEP nesting; `NK1/NK2` the plain narrow integer
+kinds spelled as themselves; `FC1/FC2` a compressed float as IEEE, not as a
+quantized index; `RW2` a second generation of `examples/Ranges` `RangedWidths`;
+`V1/V2` the enum and keyed-array edits; `W1/W2` `flags`, the text family's
+declared defaults and a TABLE renamed; `Scalars/Scalars2` the widths; `F1/F2`
+the float bit patterns; `P1/P3` `?T` against a plain nesting; `examples/Ranges`
+the `bits(N)` family.
 
 ---
 
@@ -64,14 +67,14 @@ against a plain nesting; `examples/Ranges` the `bits(N)` family.
 |---|---|---|---|---|
 | `bool` | `fn` + **RED-5** | `fn` | `fn` | `oracle fn1/full` |
 | `int8`/`uint8` … `int64`/`uint64` | `fx`, `s` | `fx` | `fx` | `oracle fx1/root` |
-| — the plain narrow kinds, spelled as themselves | **GAP-1** | **GAP-1** | **GAP-1** | **GAP-1** |
-| `bits(N)`, N ≤ 32 and above | `bits` | **GAP-2** | **GAP-2** | `oracle bits/widths` |
+| — the plain narrow kinds, spelled as themselves | `nk` | `nk` | `nk` | `oracle nk1/narrow` |
+| `bits(N)`, N ≤ 32 and above | `bits` | `bits` | `bits` | `oracle bits/widths` |
 | a RANGED integer | `fx`, `s` | `s` + **RED-1** | `s` | `oracle scalars/simstate` |
 | `float32`, `float64` | `fl` | `fl` (widened) | `fl` | `oracle f1/floats` |
-| a COMPRESSED float | **GAP-3** | **GAP-3** | **GAP-3** | **GAP-3** |
+| a COMPRESSED float | `cf` | `cf` | `cf` | `oracle fc1/probe` |
 | `int128`/`uint128` | `s` | `s` | `s` | `oracle scalars/simstate` |
 | `fixed(I,F)`, `ufixed(I,F)` | `s` + **RED-3** | `s` + **RED-3** | `s` | `oracle scalars/simstate` |
-| `flags` | `w` | `w` (table renamed) | **GAP-4** | `oracle w1/vessel` |
+| `flags` | `w` | `w` (table renamed) | `w` | `oracle w1/vessel`, `w2/ship` |
 | an ENUM, ordinal from `1`, `0` is `None` | `fn`, `v` | `fn`, `v` | `fn`, `v` (unknown variant) | `oracle fn1/full`, `v1/cfg` |
 | — an ordinal PAST the last variant | **RED-6** | **RED-6** | **RED-6** | — |
 | a nested `table`/`type`, INLINE | `fx`, `fn` | `fx`, `fn` | `fx` (unknown type), `fn` | `oracle fn1/full` |
@@ -81,7 +84,7 @@ against a plain nesting; `examples/Ranges` the `bits(N)` family.
 | — a count PAST the reader's `Max`, and a negative one | `fn` | `fn` | — | — |
 | `string(N)`, length in BYTES | `text`, `v`, `fn` | `v`, `fn` (`was`) | `v`, `fn` | `oracle p1/{empty,short,full}` |
 | `wstring(N)`, length in CODE UNITS, `2N` payload | `wstr`, `fu` | `fu` | `fu` | `oracle wide/stamp`, `fu1/wide` |
-| `bytes(N)`, length in BYTES | `w`, `fu` | `fu` | **GAP-5** | `oracle fu1/raw`, `w1/vessel` |
+| `bytes(N)`, length in BYTES | `w`, `fu` | `fu` + **RED-9** | `fu` + **RED-9** | `oracle fu1/raw`, `fu2/raw`, `w1/vessel` |
 | — TEXT OF ANY FLAVOUR UNDER A UNION ARM | `fu` | `fu` | `fu` | `oracle fu1/{wide,narrow,raw}` |
 | a UNION: tag then the WIDEST ARM | `fu`, `fn`, `v` | `fu`, `fn`, `v` | `fu`, `fn` (unknown arm) | `oracle fu1/*`, `fn1/full` |
 | — tag `0` is `None` | `fu` | `fu` | `fu` | `oracle fu1/none` |
@@ -127,11 +130,11 @@ against a plain nesting; `examples/Ranges` the `bits(N)` family.
 | **op `clamp`** | — | **RED-1** (the op does not exist) | — | — |
 | **op `ordinal`** | **RED-6** | `v`, `fn` | `v`, `fn` | — |
 | a kind that MOVED is skipped and never misdecoded | `p` | `v`, `s` + **RED-8** | `s` | — |
-| **the plan is PARTITIONED**: unguarded first, then the arms' | **GAP-13** | **GAP-13** | **GAP-13** | — |
+| **the plan is PARTITIONED**: unguarded first, then the arms' | `plan` | `plan` | `plan` | — |
 | **the PREFILL answers "absent field"** | — | `fx`, `fn`, `v`, `w` | — | — |
 | **the ABSENCE of an entry answers "unknown field"** | — | — | `fx`, `fn`, `s`, `fu` | — |
 | an unknown NESTED TYPE stepped over by its whole size | — | — | `fx` | — |
-| **the identity plan is a static constant, with ADJACENT RUNS COALESCED** | **RED-3**, **GAP-14** | — | — | — |
+| **the identity plan is a static constant, with ADJACENT RUNS COALESCED** | `plan` + **RED-3** | — | — | — |
 | a compiled plan is CACHED BY HASH | **GAP-15** | **GAP-15** | **GAP-15** | — |
 | the plan's storage is the CALLER's; `plan_too_large` | `neg` | `neg` | `neg` | — |
 | **the write is a TEMPLATE `memcpy` then constant stores**; `MeasureBody` is `constexpr` | — | — | — | `bits`, `oracle` |
@@ -177,28 +180,32 @@ first build. A rule whose breach is a wrong value in a clean read is not.
 | `flags`, AND THE TEXT FAMILY'S DECLARED DEFAULTS | §3.4's `flags` row had no fixture, and neither did a `string`/`bytes`/`flags` default that is not zero | `W1/W2`, `w` + `oracle w1/vessel` |
 | `bits(N)` AT ITS DECLARED STORAGE WIDTH | the row where this form spends bytes on purpose | `bits` + `oracle bits/widths` |
 | A TABLE RENAMED UNDER `was` | the field-level pairs cannot reach a rename at the table's own level | `w` (a W1 `Vessel` read into a W2 `Ship`) |
+| THE PLAIN NARROW KINDS SPELLED AS THEMSELVES | storage image was exercised (`fixed(4,4)` is an int8) and the DECLARATION was not | `NK1/NK2`, `nk` + `oracle nk1/narrow` — C is 22 with no pad; the C++ ABI of the same fields is 24 |
+| A `bits(N)` EDIT ACROSS GENERATIONS | `examples/Ranges` had one generation; N cannot move without moving the kind | `RW2`, `bits` — a `bits(24)` and a tail appended, so both compiled directions skip or default |
+| A COMPRESSED FLOAT | §3.4: "rides as the float, not as a quantized index". The one silent-class gap the first pass left | `FC1/FC2`, `cf` + `oracle fc1/probe` — 2.5 is IEEE `00 00 20 40`, not integer 250; 1.234 is not snapped |
+| A `flags` FIELD UNDER A NEWER WRITER | W2 renamed the table and the first pass only ran W1→W2 | `w` — a W2 `Ship` read as a W1 `Vessel`. Gaining a bit is still not a wire event (the mask is raw) |
+| `bytes(N)` UNDER A COMPILED PLAN | identity of the raw arm is green; both compiled directions walk kind 14 | `fu` + **RED-9** — FU1↔FU2 `raw`. The identity plan is a `text` op; a compiled plan sees layout kind 14 and the dst/aux lanes are the counted-array's, swapped for `bytes(N)` (reference-fix 10) |
+| THE PLAN'S PARTITION | `FnRootFixedPlanGuarded` was emitted and unasserted | `plan` — unguarded entries first, then the arms, on the identity plan and on a plan compiled in each direction |
+| ADJACENT RUNS COALESCED | only RED-3 was watching, and it is the copy implementation | `plan` — no two adjacent copy entries inside one half would still merge. **RED-3** still watches the 17..31-byte copy |
 
-### Open, and why
+### Open, and why a fixture cannot be written
 
-| gap | why it is open |
+A GAP IS LEFT OPEN HERE ONLY IF A SHARED C++ ORACLE FIXTURE CANNOT HOLD IT.
+The first pass left some of these as "low value" or "the batch ran out"; those
+are filled above. What remains cannot be a fixture of this set today.
+
+| gap | why a fixture cannot be written |
 |---|---|
-| **GAP-1** the plain narrow integer kinds (`int8`, `int16`, `uint8`) spelled as themselves | Their STORAGE IMAGE is exercised — a `fixed(4,4)` is an `int8` and a `bits(16)` sits in a `uint32` — so what is missing is the DECLARATION and not the wire. Low value beside the cost of a tenth schema pair. |
-| **GAP-2** a `bits(N)` edit across generations | `examples/Ranges` has one generation. A second would be a new pair for a kind whose storage width is fixed by the declaration and cannot move without moving the kind. |
-| **GAP-3** a COMPRESSED float | §3.4 says it "rides as the float, not as a quantized index". No fixed-form unit in the tree declares one, so this needs a schema. **A leg could get this wrong silently** — it is the one open gap that meets the bar, and it is open only because the batch ran out. |
-| **GAP-4** a `flags` edit across generations | W2 renames the TABLE and leaves `caps` alone. A flags field gaining a bit is not a wire event — the mask is raw — so the silent-wrongness bar is not met. |
-| **GAP-5** a `bytes(N)` edit across generations | `bytes(N)` against `*bytes` is a kind mismatch §4 already covers on form 1; on this form the bound is the only thing that can move and a bound is not wire identity. |
-| **GAP-6/7/8** the 65536 COMPILE refusal, the 4096 warning, `--fixed-record-limit` | All three are COMPILER verdicts and none exists in this tree yet: there is no `fixed table` keyword (§3.4 names #823) and no flag. The READ side's own 65536 bound is covered by `layout`. A missing compile refusal is loud on first build, not silent. |
-| **GAP-9** a DEPRECATED slot | §3.4 names #823 and #825 as the marker and its baseline lock; the compiler has no `deprecated` at all today. Nothing to write a fixture against. |
-| **GAP-10** what a fixed table cannot carry | Four compile refusals by name. Loud, not silent. |
-| **GAP-11/12** selection by the keyword, and the read side accepting both forms | Both wait on #823. Until then the compiler selects by the DERIVED mode, which §3.4 says in as many words. |
-| **GAP-13** the plan's PARTITION | `FnRootFixedPlanGuarded` is emitted and nothing asserts it is the boundary it claims. §3.4 calls the partition "A REQUIREMENT AND NOT AN OPTIMIZATION", so an unasserted requirement is exactly the shape of a rule that quietly stops holding — **but a broken partition is a wrong VALUE, which the value assertions already catch**, and its cost is a benchmark's job. |
-| **GAP-14** ADJACENT RUNS COALESCED | Nothing asserts the identity plan's entry count is the coalesced one. **RED-3** is a consequence of coalescing and is the only thing watching it. Worth an assertion against `FixedPlanCount` once the run copy is fixed. |
-| **GAP-15** a compiled plan CACHED BY HASH | The C++ reference's `FixedLoad` compiles per call from the caller's plan storage; there is no cache to test. A cache is a performance property, and the measurement gate is where it belongs. |
-| **GAP-16/17** the STREAM and MESSAGE carriers | §3.4's framing table has three carriers and every fixture here is a FILE. Both are real gaps with real silent failure modes — an announcement sent twice, a batch whose bodies carry a hash the announcement never named — and both need §3.3's machinery wired to form `3` first. **The largest open gap on this page.** |
-| **GAP-18** a caller capacity below the file's record count | §3.4 states NOTHING about it. The reference refuses `batch_too_large` by precedent from §3.3, and `frame` now pins that — but a pin is not a rule, and §3.3 also requires the reader to hand the caller the count it was short by, which `FixedLoad` has no way to do. **A question for the spec, not a bug.** |
-| **GAP-19** the GENERATOR BOUND on the identity plan | §3.4 names it as the generator's and not the wire's: a type whose leaves do not fit one plan does not carry the form. No fixture reaches the bound, and reaching it means a large array of a type carrying text, a count, a union or an optional. |
-| **A `was =` CHAIN** | `ir.Field.WasName` is a SINGLE name, so a field renamed twice — `label` → `caption` → `title` — carries the SECOND name's hash and a first-generation record no longer resolves. One hop is covered (`fx`, `fn`, `w`); a chain **cannot be expressed**, and that is a declaration-side answer rather than a missing test. Worth a ruling: it is not fixed-form-specific, but the fixed form is where losing a field costs a whole positional slot. |
-| **A TABLE EXACTLY AT 65536** | The READ side's bound is covered (`layout` refuses 65537 and a size that would wrap). Exactly-at-the-bound on the WRITE side needs the compile refusal of GAP-6. |
+| **GAP-6/7/8** the 65536 COMPILE refusal, the 4096 warning, `--fixed-record-limit` | All three are COMPILER verdicts and none exists in this tree yet: there is no `fixed table` keyword (§3.4 names #823) and no flag. The READ side's own 65536 bound is covered by `layout`. A missing compile refusal is loud on first build. **Cannot: no keyword, no flag, nothing to compile-fail against.** |
+| **GAP-9** a DEPRECATED slot | §3.4 names #823 and #825 as the marker and its baseline lock; the compiler has no `deprecated` at all today. **Cannot: nothing to write a fixture against.** |
+| **GAP-10** what a fixed table cannot carry | Four compile refusals by name (pointer, map, `[]T`, a guarded branch). **Cannot: a shared C++ oracle fixture is a value on the wire; a compile refusal is a compiler test, and it is loud.** |
+| **GAP-11/12** selection by the keyword, and the read side accepting both forms | Both wait on #823. Until then the compiler selects by the DERIVED mode, which §3.4 says in as many words. **Cannot: the keyword is on `fixed-table-keyword` and is not merged.** |
+| **GAP-15** a compiled plan CACHED BY HASH | The C++ reference's `FixedLoad` compiles per call from the caller's plan storage; there is no cache to test. **Cannot: there is no cache. A cache is a performance property; the measurement gate is where it belongs, when one exists.** |
+| **GAP-16/17** the STREAM and MESSAGE carriers | §3.4's framing table has three carriers and every fixture here is a FILE. Both need §3.3's machinery wired to form `3` first — an announcement sent twice, a batch whose bodies carry a hash the announcement never named. **Cannot: form 3 has no stream or message writer. The largest remaining hole, and it is the message form's first card, not this set's.** |
+| **GAP-18** a caller capacity below the file's record count | §3.4 states NOTHING about it. The reference refuses `batch_too_large` by precedent from §3.3, and `frame` now pins that — but a pin is not a rule, and §3.3 also requires the reader to hand the caller the count it was short by, which `FixedLoad` has no way to do. **Cannot: a question for the spec, not a missing test of a stated rule.** |
+| **GAP-19** the GENERATOR BOUND on the identity plan | §3.4 names it as the generator's and not the wire's: a type whose leaves do not fit one plan does not carry the form. Reaching it means a large array of a type carrying text, a count, a union or an optional, which then does not emit the form. **Cannot: a fixture that does not compile is not an oracle of the form.** |
+| **A `was =` CHAIN** | `ir.Field.WasName` is a SINGLE name, so a field renamed twice — `label` → `caption` → `title` — carries the SECOND name's hash and a first-generation record no longer resolves. One hop is covered (`fx`, `fn`, `w`); a chain **cannot be expressed**. |
+| **A TABLE EXACTLY AT 65536** | The READ side's bound is covered (`layout` refuses 65537 and a size that would wrap). Exactly-at-the-bound on the WRITE side needs the compile refusal of GAP-6. **Cannot: waits on GAP-6.** |
 
 ---
 
@@ -221,6 +228,7 @@ of landing the fix.
 | **RED-6** | `ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant` | a ruling: §3.4 does not say what an ordinal naming no variant means, and the two plans answer differently |
 | **RED-7** | `ordinal-bound/paths-disagree/union-tag-past-the-last-arm` | the same ruling, for a tag naming no arm |
 | **RED-8** | `kind-mismatch/compiled/a-moved-kind-is-decoded-anyway` | the run copy first, then a re-read — `angle` sits inside the window RED-3 clobbers and the two cannot be told apart until it is fixed |
+| **RED-9** | `bytes-compiled/dst-aux-swap/kind-14-walks-bytes-as-an-array` | TableFixedDst for `bytes(N)` vs the array compile path (reference-fix 10) |
 
 ### RED-3 is not like the others
 
@@ -258,12 +266,13 @@ nobody watches fail is a skip that has quietly become a hole.
 
 | | |
 |---|---|
-| cells COVERED | 123 |
-| cells filled by this pass | 47, in 17 gaps |
-| cells still open | 24, in 19 gaps — 1 of which meets the silent-wrongness bar (**GAP-3**) and 2 of which are the largest thing left (**GAP-16/17**, the stream and message carriers) |
-| KNOWN-REDS | 8, each named and printed on a green run — 2 more were DELETED when fix 12 landed on the branch, which is exactly what the both-ends check is for |
+| cells COVERED | 139 |
+| cells filled by the first pass | 47, in 17 gaps |
+| cells filled by this pass | 16, in 7 gaps (**GAP-1, 2, 3, 4, 5, 13, 14**) |
+| cells still open | 8, in 12 gaps — none of which can take a shared C++ oracle fixture today. 2 of them are the largest thing left (**GAP-16/17**, the stream and message carriers) |
+| KNOWN-REDS | 9, each named and printed on a green run — 2 were DELETED when fix 12 landed on the branch; **RED-9** is new, the compiled `bytes(N)` walk |
 | KNOWN-FAULTS | 1, watched by a gate that goes red when it stops happening |
-| oracle cases pinned | 22 |
+| oracle cases pinned | 29 |
 
 ---
 

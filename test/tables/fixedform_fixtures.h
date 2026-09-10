@@ -32,7 +32,13 @@
 #include "F1Table.h"
 #include "CaptionTable.h"
 #include "W1Table.h"
+#include "W2Table.h"
 #include "RangesTable.h"
+#include "NK1Table.h"
+#include "NK2Table.h"
+#include "FC1Table.h"
+#include "FC2Table.h"
+#include "RW2Table.h"
 #include "floatnan.h"
 
 // ---------------------------------------------------------------------------
@@ -192,6 +198,21 @@ inline void FillFu2Narrow( tblfu2::MarkRoot & r )
     std::strcpy( r.mark.narrow.s, "world" );
     r.mark.narrow.s_length = 5;
     r.mark.narrow.n = 66;
+}
+
+// A `bytes(N)` UNDER A NEWER WRITER (docs/FIXED-FORM-COVERAGE.md GAP-5): FU1
+// reads this through a compiled plan. The raw arm slid from ordinal 3 to 4.
+inline void FillFu2Raw( tblfu2::MarkRoot & r )
+{
+    tblfu2::MarkRootReset( r );
+    r.id = 2004u;
+    r.after = 5;
+    r.tail = 8;
+    SELECT_ARM( r.mark, raw, tblfu2::MarkRaw, tblfu2::MarkType::Raw );
+    r.mark.raw.d[0] = 0xCAu; r.mark.raw.d[1] = 0xFEu;
+    r.mark.raw.d[2] = 0xBAu; r.mark.raw.d[3] = 0xBEu;
+    r.mark.raw.d_length = 4;
+    r.mark.raw.n = 88;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,6 +396,22 @@ inline void FillW1( tblw1::Vessel & v )
     v.hull = 250;
 }
 
+// W2 written, W1 read: the COMPILED-NEWER column for `flags` (GAP-4). The
+// table is renamed; the mask is the same kind. A flags field gaining a bit
+// is not a wire event — this is the direction the existing pair had not run.
+inline void FillW2( tblw2::Ship & v )
+{
+    tblw2::ShipReset( v );
+    std::strcpy( v.name, "discovery" );
+    v.name_length = 9;
+    v.tag[0] = 0x11u; v.tag[1] = 0x22u; v.tag[2] = 0x33u; v.tag[3] = 0x44u;
+    v.tag_length = 4;
+    v.caps = (tblw2::Caps) ( tblw2::Caps_Jump );
+    std::strcpy( v.badge.label, "iron" );
+    v.badge.label_length = 4;
+    v.hull = 400;
+}
+
 // ---------------------------------------------------------------------------
 // THE `bits(N)` FAMILY (docs/SPEC-TABLES.md §3.4: "the declared storage width,
 // 4 for N <= 32 and 8 above").
@@ -395,6 +432,77 @@ inline void FillBits( tabledemo::RangedWidths & v )
     v.b64 = 0xFFFFFFFFFFFFFFFFull;    // full at 64, in a uint64
     v.b12 = 0x0FFFu;                  // full at 12, in a uint32 — the row §3.4 names
     v.b48 = 0x0000FFFFFFFFFFFFull;    // full at 48, in a uint64
+}
+
+inline void FillBits2( tblrw2::RangedWidths & v )
+{
+    tblrw2::RangedWidthsReset( v );
+    v.b8  = 0xFFu;
+    v.b16 = 0xFFFFu;
+    v.b32 = 0xFFFFFFFFu;
+    v.b64 = 0xFFFFFFFFFFFFFFFFull;
+    v.b12 = 0x0FFFu;
+    v.b48 = 0x0000FFFFFFFFFFFFull;
+    v.b24 = 0x00FFFFFFu;              // a bits field the first generation cannot name
+    v.tail = 8;
+}
+
+// ---------------------------------------------------------------------------
+// NK1/NK2: the plain narrow integer kinds spelled as themselves (GAP-1).
+//
+// The C++ ABI pads an int8 in front of an int16; the wire does not. A port
+// that memcpy'd the whole body would still round-trip against itself and
+// would fail the oracle, which is the whole of this pair.
+
+inline void FillNk1( tblnk1::Narrow & v )
+{
+    tblnk1::NarrowReset( v );
+    v.i8  = (int8_t) -128;
+    v.i16 = (int16_t) 32767;
+    v.u8  = 255u;
+    v.u16 = 1u;
+    v.i32 = -1;
+    v.u32 = 0xFFFFFFFFu;
+    v.gone = (int8_t) 42;
+    v.after = (int8_t) 9;
+}
+
+inline void FillNk2( tblnk2::Narrow & v )
+{
+    tblnk2::NarrowReset( v );
+    v.i8  = (int8_t) 127;
+    v.i16 = (int16_t) -32768;
+    v.u8  = 1u;
+    v.u16 = 65535u;
+    v.i32 = 1;
+    v.u32 = 0u;
+    v.extra = (int8_t) 99;
+    v.after = (int8_t) 6;
+}
+
+// ---------------------------------------------------------------------------
+// FC1/FC2: a compressed float rides as the IEEE float, not as a quantized
+// index (GAP-3). `on_grid` is a value the packet wire would spend a small
+// integer on; `off_grid` is a value a quantizing port would snap.
+
+inline void FillFc1( tblfc1::Probe & v )
+{
+    tblfc1::ProbeReset( v );
+    v.plain = 3.5f;
+    v.on_grid = 2.5f;
+    v.off_grid = 1.234f;
+    v.after = 9;
+}
+
+inline void FillFc2( tblfc2::Probe & v )
+{
+    tblfc2::ProbeReset( v );
+    v.plain = -4.25f;
+    v.on_grid = 0.01f;
+    v.off_grid = 9.999f;
+    v.extra = -1.5f;
+    v.after = 6;
+    v.tail = 8;
 }
 
 #endif // SCHEMA_TEST_FIXEDFORM_FIXTURES_H

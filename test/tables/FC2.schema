@@ -1,0 +1,16 @@
+// FC2.schema — FC1 one generation on (docs/FIXED-FORM-COVERAGE.md GAP-3).
+// A compressed float's min/max/resolution do not ride, so changing them is
+// not a wire event; the edit that is a wire event is a field this side has
+// and that side does not. `extra` is another compressed float, appended,
+// and `tail` sits behind it.
+package tblfc2
+
+table Probe
+{
+    plain    float32
+    on_grid  float32 | min = 0, max = 10, resolution = 0.01
+    off_grid float32 | min = 0, max = 10, resolution = 0.01
+    extra    float32 | min = -5, max = 5, resolution = 0.001
+    after    int32 = 7 | min = 0, max = 1000
+    tail     int32 = 3 | min = 0, max = 1000
+}

@@ -169,6 +169,21 @@ int main()
 
     // ---- the `bits(N)` family at its DECLARED storage widths -------------
     { tabledemo::RangedWidths v; FillBits( v ); DUMP( "bits/widths", tabledemo, RangedWidths, v ); }
+    { tblrw2::RangedWidths v; FillBits2( v ); DUMP( "rw2/widths", tblrw2, RangedWidths, v ); }
+
+    // ---- the plain narrow kinds spelled as themselves (GAP-1) ------------
+    { tblnk1::Narrow v; FillNk1( v ); DUMP( "nk1/narrow", tblnk1, Narrow, v ); }
+    { tblnk2::Narrow v; FillNk2( v ); DUMP( "nk2/narrow", tblnk2, Narrow, v ); }
+
+    // ---- a compressed float rides as the IEEE float (GAP-3) --------------
+    { tblfc1::Probe v; FillFc1( v ); DUMP( "fc1/probe", tblfc1, Probe, v ); }
+    { tblfc2::Probe v; FillFc2( v ); DUMP( "fc2/probe", tblfc2, Probe, v ); }
+
+    // ---- flags, compiled-newer (GAP-4) -----------------------------------
+    { tblw2::Ship v; FillW2( v ); DUMP( "w2/ship", tblw2, Ship, v ); }
+
+    // ---- bytes(N) under a newer writer (GAP-5) ---------------------------
+    { tblfu2::MarkRoot v; FillFu2Raw( v ); DUMP( "fu2/raw", tblfu2, MarkRoot, v ); }
 
     // ---- the text-content proving ground, at three used extents ----------
     { tblp1::Chain v; FillP1( v, "", 0 );                 DUMP( "p1/empty", tblp1, Chain, v ); }
