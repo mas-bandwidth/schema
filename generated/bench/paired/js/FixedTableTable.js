@@ -333,23 +333,57 @@ export function FixedTableFixedSave(values, count, bytes) {
   view.setUint32(TableFixedHeaderBytes, FixedTableFixedLayoutBytes, true);
   bytes.set(FixedTableFixedLayout, TableFixedHeaderBytes + TableFixedLayoutHeaderBytes);
   let at = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + FixedTableFixedLayoutBytes;
+  bytes.fill(0, at, need); // the records' template zeros
   for (let k = 0; k < count; k++) {
     view.setUint32(at, FixedTableFixedHashLo, true);
     view.setUint32(at + 4, FixedTableFixedHashHi, true);
-    bytes.fill(0, at + 8, at + FixedTableFixedRecordBytes); // the template's zeros
     FixedTableFixedWriteBody(view, at + 8, values[k]);
     at += FixedTableFixedRecordBytes;
   }
   return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict
-// flag, no fast path and no second reader to keep honest against the first,
-// which is the owner's own ruling — a form whose cost moved when a peer
-// shipped would be a cliff at exactly the moment a deployment cannot afford
-// one. Answers the records read, or -1 with the reason named in the report.
+// THE FOREIGN READ: a prefill and the compiled plan run for records from
+// another writer. Split out so the hot identity loop stays straight-line and
+// JIT-friendly without plan interpreter overhead.
+function _FixedTableFixedLoadForeign(values, capacity, bytes, byteLength, plan, report, srcView, layoutAt, layoutBytes, hashLo, hashHi) {
+  if (plan === null) { report.refused = TableFixedRefusal.NoLayout; return -1; }
+  if (!plan.ready || (plan.hashLo >>> 0) !== hashLo || (plan.hashHi >>> 0) !== hashHi) {
+    const theirs = new TableFixedLayoutView();
+    if (!TableFixedParseLayout(bytes, layoutAt, layoutBytes, theirs)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+    const made = TableFixedCompile(theirs, FixedTableFixedLayout, FixedTableFixedDst, plan, report);
+    if (made < 0) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
+    plan.recordBytes = 8 + TableFixedSize(theirs, 0);
+    plan.hashLo = hashLo | 0; plan.hashHi = hashHi | 0; plan.ready = true;
+  }
+  const entries = plan.entries, entryCount = plan.count, remap = plan.remap;
+  const recordBytes = plan.recordBytes;
+  if (srcView.getUint32(TableFixedHashAt, true) !== hashLo ||
+      srcView.getUint32(TableFixedHashAt + 4, true) !== hashHi) {
+    report.refused = TableFixedRefusal.LayoutMalformed; return -1;
+  }
+  const rest = byteLength - layoutAt - layoutBytes;
+  if (recordBytes <= 8 || rest % recordBytes !== 0) { report.malformed = true; return -1; }
+  const n = (rest / recordBytes) | 0;
+  if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
+  const image = plan.image, imageView = plan.view;
+  let at = layoutAt + layoutBytes;
+  for (let k = 0; k < n; k++) {
+    if (srcView.getUint32(at, true) !== hashLo ||
+        srcView.getUint32(at + 4, true) !== hashHi) {
+      report.refused = TableFixedRefusal.NoLayout; return -1;
+    }
+    image.set(FixedTableFixedPrefill);            // the declared defaults, one prefill
+    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);
+    FixedTableFixedDecode(values[k], imageView, 0, report);
+    at += recordBytes;
+  }
+  return n;
+}
+
+// THE READ: straight-line direct DataView identity load when the layout's
+// hash matches this build's own (Glenn's ruling: learn from how the packet
+// wire is read/written), and a plan compiled once for foreign layouts.
 export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
   if (bytes === null || byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.malformed = true; return -1; }
@@ -369,57 +403,27 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   const h = TableFixedHashOf(bytes, layoutAt, layoutBytes);
   const hashLo = h[0] >>> 0, hashHi = h[1] >>> 0;
   report.hashLo = hashLo | 0; report.hashHi = hashHi | 0;
-  if (plan === null) { report.refused = TableFixedRefusal.NoLayout; return -1; }
-  let entries = FixedTableFixedIdentity, entryCount = 1, remap = null;
-  let recordBytes = FixedTableFixedRecordBytes;
-  if (hashLo !== (FixedTableFixedHashLo >>> 0) || hashHi !== (FixedTableFixedHashHi >>> 0)) {
-    // ANOTHER WRITER: the same loop, over a plan compiled from its layout and
-    // CACHED BY HASH, so the compile is paid once per peer, not per record.
-    if (!plan.ready || (plan.hashLo >>> 0) !== hashLo || (plan.hashHi >>> 0) !== hashHi) {
-      const theirs = new TableFixedLayoutView();
-      if (!TableFixedParseLayout(bytes, layoutAt, layoutBytes, theirs)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
-      const made = TableFixedCompile(theirs, FixedTableFixedLayout, FixedTableFixedDst, plan, report);
-      if (made < 0) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
-      plan.recordBytes = 8 + TableFixedSize(theirs, 0);
-      plan.hashLo = hashLo | 0; plan.hashHi = hashHi | 0; plan.ready = true;
-    }
-    entries = plan.entries; entryCount = plan.count; remap = plan.remap;
-    recordBytes = plan.recordBytes;
-  }
-  // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-  // the layout's own rules each refuse under their own name first, so a
-  // broken layout is never reported as a lying header. A header whose hash
-  // is not the hash of the layout behind it is refused (§3).
-  if (((bytes[TableFixedHashAt] | (bytes[TableFixedHashAt + 1] << 8) |
-        (bytes[TableFixedHashAt + 2] << 16) | (bytes[TableFixedHashAt + 3] << 24)) >>> 0) !== hashLo ||
-      ((bytes[TableFixedHashAt + 4] | (bytes[TableFixedHashAt + 5] << 8) |
-        (bytes[TableFixedHashAt + 6] << 16) | (bytes[TableFixedHashAt + 7] << 24)) >>> 0) !== hashHi) {
-    report.refused = TableFixedRefusal.LayoutMalformed; return -1;
-  }
-  const rest = byteLength - layoutAt - layoutBytes;
-  // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes !== 0) { report.malformed = true; return -1; }
-  const n = (rest / recordBytes) | 0;
-  if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
-  const image = plan.image, imageView = plan.view;
-  // ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the
-  // read loop moves a run in 32-bit lanes and a DataView is what has an
-  // unaligned word move in this language (§3.4).
   const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
-  let at = layoutAt + layoutBytes;
-  for (let k = 0; k < n; k++) {
-    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
-    // NAME, never a guess and never damage: nothing is decoded, no counter moves.
-    if (((bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0) !== hashLo ||
-        ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {
-      report.refused = TableFixedRefusal.NoLayout; return -1;
+  if (hashLo === (FixedTableFixedHashLo >>> 0) && hashHi === (FixedTableFixedHashHi >>> 0)) {
+    if (srcView.getUint32(TableFixedHashAt, true) !== hashLo ||
+        srcView.getUint32(TableFixedHashAt + 4, true) !== hashHi) {
+      report.refused = TableFixedRefusal.LayoutMalformed; return -1;
     }
-    image.set(FixedTableFixedPrefill);            // the declared defaults, one prefill
-    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);
-    FixedTableFixedDecode(values[k], imageView, 0, report);
-    at += recordBytes;
+    const rest = byteLength - layoutAt - layoutBytes;
+    if (FixedTableFixedRecordBytes <= 8 || rest % FixedTableFixedRecordBytes !== 0) { report.malformed = true; return -1; }
+    const n = (rest / FixedTableFixedRecordBytes) | 0;
+    if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
+    let at = layoutAt + layoutBytes;
+    for (let k = 0; k < n; k++) {
+      if (srcView.getUint32(at, true) !== hashLo ||
+          srcView.getUint32(at + 4, true) !== hashHi) {
+        report.refused = TableFixedRefusal.NoLayout; return -1;
+      }
+      FixedTableFixedDecode(values[k], srcView, at + 8, report);
+      at += FixedTableFixedRecordBytes;
+    }
+    return n;
   }
-  return n;
+  return _FixedTableFixedLoadForeign(values, capacity, bytes, byteLength, plan, report, srcView, layoutAt, layoutBytes, hashLo, hashHi);
 }
 
