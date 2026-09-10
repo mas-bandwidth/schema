@@ -5464,7 +5464,7 @@ namespace Blockhome
                             {
                                 uint units = Math.Min(me.Size - 4u, te.Size - 4u);
                                 TableFixedEntry e = new TableFixedEntry(
-                                    their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);
+                                    their_at, aux_at, units, at, guard, Text, arg, 0, 0, d.Arg);
                                 c.Push(e);
                                 break;
                             }
