@@ -6837,6 +6837,24 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
     }
 }
 
+/* COUNT AND TEXT CLAMPS, straight-line after the identity copy. A record
+   under this build's own hash can still carry a count this build does not
+   admit; the plan no longer names those ops, so this is what holds them. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void loadout_config_fixed_identity_clamps( LoadoutConfig * value, TableReport * report )
+{
+    (void) report;
+    {
+        int32_t n = value->grades_count;
+        if ( n < 0 ) { n = 0; report->clamped++; } else if ( n > 4 ) { n = 4; report->clamped++; }
+        value->grades_count = n;
+    }
+    {
+        int32_t n = value->attachments_count;
+        if ( n < 0 ) { n = 0; report->clamped++; } else if ( n > 8 ) { n = 8; report->clamped++; }
+        value->attachments_count = n;
+    }
+}
+
 /* ---- WeaponConfig, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -6884,9 +6902,10 @@ static SCHEMA_UNUSED const TableFixedDst weapon_config_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 8 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. COUNT AND TEXT ARE COPIES:
+   their clamps run straight-line after, so adjacent runs coalesce without
+   those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
+   that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry weapon_config_fixed_plan[] = {
     { 0u, 0u, 17u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
     { 17u, 20u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* effect tag */
@@ -6926,9 +6945,11 @@ static SCHEMA_UNUSED int64_t weapon_config_fixed_save( const WeaponConfig * valu
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+/* THE READ: ONE loop over ONE plan — the identity plan when the layout's
+   hash is this build's own, and a plan compiled once from the writer's
+   layout otherwise. The identity path does not prefill defaults (this hash
+   wrote every field) and clamps count and text after the copy. Where the C
+   ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t weapon_config_fixed_load( WeaponConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
@@ -6938,6 +6959,7 @@ static SCHEMA_UNUSED int64_t weapon_config_fixed_load( WeaponConfig * values, in
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = weapon_config_fixed_plan;
     int32_t entry_count = weapon_config_fixed_plan_count;
     int32_t entry_guarded = weapon_config_fixed_plan_guarded;
@@ -6962,7 +6984,8 @@ static SCHEMA_UNUSED int64_t weapon_config_fixed_load( WeaponConfig * values, in
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 22;
-    if ( hash != weapon_config_fixed_hash )
+    identity = ( hash == weapon_config_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -6989,9 +7012,16 @@ static SCHEMA_UNUSED int64_t weapon_config_fixed_load( WeaponConfig * values, in
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
     for ( k = 0; k < count; ++k )
     {
-        weapon_config_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        if ( identity )
+        {
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        }
+        else
+        {
+            weapon_config_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        }
         at += record_bytes;
     }
     return count;
@@ -7110,12 +7140,13 @@ static SCHEMA_UNUSED const TableFixedDst loadout_config_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 31 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. COUNT AND TEXT ARE COPIES:
+   their clamps run straight-line after, so adjacent runs coalesce without
+   those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
+   that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry loadout_config_fixed_plan[] = {
     { 0u, 0u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* grade */
-    { 1u, 8u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0 }, /* grades count */
+    { 1u, 8u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* grades count */
     { 5u, 1u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* grades, whole */
     { 9u, 12u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* podium, whole */
     { 12u, 16u, 25u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* perks */
@@ -7124,7 +7155,7 @@ static SCHEMA_UNUSED const TableFixedEntry loadout_config_fixed_plan[] = {
     { 59u, 72u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* effect tag */
     { 64u, 80u, 17u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
     { 81u, 100u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* effect tag */
-    { 86u, 172u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0 }, /* attachments count */
+    { 86u, 172u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* attachments count */
     { 90u, 108u, 64u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* attachments, whole */
     { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 1, 0, 0 }, /* multiplier */
     { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 2, 0, 0 }, /* amount */
@@ -7166,9 +7197,11 @@ static SCHEMA_UNUSED int64_t loadout_config_fixed_save( const LoadoutConfig * va
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+/* THE READ: ONE loop over ONE plan — the identity plan when the layout's
+   hash is this build's own, and a plan compiled once from the writer's
+   layout otherwise. The identity path does not prefill defaults (this hash
+   wrote every field) and clamps count and text after the copy. Where the C
+   ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t loadout_config_fixed_load( LoadoutConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
@@ -7178,6 +7211,7 @@ static SCHEMA_UNUSED int64_t loadout_config_fixed_load( LoadoutConfig * values, 
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = loadout_config_fixed_plan;
     int32_t entry_count = loadout_config_fixed_plan_count;
     int32_t entry_guarded = loadout_config_fixed_plan_guarded;
@@ -7202,7 +7236,8 @@ static SCHEMA_UNUSED int64_t loadout_config_fixed_load( LoadoutConfig * values, 
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 154;
-    if ( hash != loadout_config_fixed_hash )
+    identity = ( hash == loadout_config_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -7229,9 +7264,17 @@ static SCHEMA_UNUSED int64_t loadout_config_fixed_load( LoadoutConfig * values, 
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
     for ( k = 0; k < count; ++k )
     {
-        loadout_config_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        if ( identity )
+        {
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+            loadout_config_fixed_identity_clamps( values + k, report ); /* count and text clamps, after the copy */
+        }
+        else
+        {
+            loadout_config_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        }
         at += record_bytes;
     }
     return count;

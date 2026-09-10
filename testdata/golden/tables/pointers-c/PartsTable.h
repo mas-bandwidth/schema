@@ -4893,6 +4893,20 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
     table_fixed_put32( b + 12, (uint32_t) value->seq );
 }
 
+/* COUNT AND TEXT CLAMPS, straight-line after the identity copy. A record
+   under this build's own hash can still carry a count this build does not
+   admit; the plan no longer names those ops, so this is what holds them. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void stamp_fixed_identity_clamps( Stamp * value, TableReport * report )
+{
+    (void) report;
+    {
+        int32_t n = value->tag_length;
+        if ( n < 0 ) { n = 0; report->clamped++; } else if ( n > 8 ) { n = 8; report->clamped++; }
+        value->tag_length = n;
+    }
+    value->tag[value->tag_length] = 0;
+}
+
 /* ---- Stamp, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -4924,15 +4938,17 @@ static SCHEMA_UNUSED const TableFixedDst stamp_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. COUNT AND TEXT ARE COPIES:
+   their clamps run straight-line after, so adjacent runs coalesce without
+   those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
+   that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry stamp_fixed_plan[] = {
-    { 0u, 12u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* tag */
+    { 0u, 12u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* tag length */
+    { 4u, 0u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* tag */
     { 12u, 16u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* seq */
 };
-static SCHEMA_UNUSED const int32_t stamp_fixed_plan_count = 2;
-static SCHEMA_UNUSED const int32_t stamp_fixed_plan_guarded = 2;
+static SCHEMA_UNUSED const int32_t stamp_fixed_plan_count = 3;
+static SCHEMA_UNUSED const int32_t stamp_fixed_plan_guarded = 3;
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -4964,9 +4980,11 @@ static SCHEMA_UNUSED int64_t stamp_fixed_save( const Stamp * values, int64_t cou
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+/* THE READ: ONE loop over ONE plan — the identity plan when the layout's
+   hash is this build's own, and a plan compiled once from the writer's
+   layout otherwise. The identity path does not prefill defaults (this hash
+   wrote every field) and clamps count and text after the copy. Where the C
+   ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t stamp_fixed_load( Stamp * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
@@ -4976,6 +4994,7 @@ static SCHEMA_UNUSED int64_t stamp_fixed_load( Stamp * values, int64_t capacity,
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = stamp_fixed_plan;
     int32_t entry_count = stamp_fixed_plan_count;
     int32_t entry_guarded = stamp_fixed_plan_guarded;
@@ -5000,7 +5019,8 @@ static SCHEMA_UNUSED int64_t stamp_fixed_load( Stamp * values, int64_t capacity,
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 16;
-    if ( hash != stamp_fixed_hash )
+    identity = ( hash == stamp_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -5027,9 +5047,17 @@ static SCHEMA_UNUSED int64_t stamp_fixed_load( Stamp * values, int64_t capacity,
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
     for ( k = 0; k < count; ++k )
     {
-        stamp_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        if ( identity )
+        {
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+            stamp_fixed_identity_clamps( values + k, report ); /* count and text clamps, after the copy */
+        }
+        else
+        {
+            stamp_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        }
         at += record_bytes;
     }
     return count;

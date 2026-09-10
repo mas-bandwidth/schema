@@ -4827,9 +4827,10 @@ static SCHEMA_UNUSED const TableFixedDst tally_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 1 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. COUNT AND TEXT ARE COPIES:
+   their clamps run straight-line after, so adjacent runs coalesce without
+   those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
+   that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry tally_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* hits */
 };
@@ -4866,9 +4867,11 @@ static SCHEMA_UNUSED int64_t tally_fixed_save( const Tally * values, int64_t cou
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+/* THE READ: ONE loop over ONE plan — the identity plan when the layout's
+   hash is this build's own, and a plan compiled once from the writer's
+   layout otherwise. The identity path does not prefill defaults (this hash
+   wrote every field) and clamps count and text after the copy. Where the C
+   ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t tally_fixed_load( Tally * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
@@ -4878,6 +4881,7 @@ static SCHEMA_UNUSED int64_t tally_fixed_load( Tally * values, int64_t capacity,
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = tally_fixed_plan;
     int32_t entry_count = tally_fixed_plan_count;
     int32_t entry_guarded = tally_fixed_plan_guarded;
@@ -4902,7 +4906,8 @@ static SCHEMA_UNUSED int64_t tally_fixed_load( Tally * values, int64_t capacity,
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 4;
-    if ( hash != tally_fixed_hash )
+    identity = ( hash == tally_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -4929,9 +4934,17 @@ static SCHEMA_UNUSED int64_t tally_fixed_load( Tally * values, int64_t capacity,
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
     for ( k = 0; k < count; ++k )
     {
-        tally_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        if ( identity )
+        {
+            /* THE C ABI IS THE WIRE: one memcpy, empty scatter. Packed layout is not forced. */
+            memcpy( values + k, at + 8, sizeof( values[k] ) );
+        }
+        else
+        {
+            tally_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        }
         at += record_bytes;
     }
     return count;

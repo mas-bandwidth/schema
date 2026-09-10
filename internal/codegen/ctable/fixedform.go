@@ -104,6 +104,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range order {
 		g.emitFixedWriteBody(st)
 	}
+	for _, st := range order {
+		if fixedTypeNeedsIdentityClamps(g.unit, st) {
+			g.emitFixedIdentityClamps(st)
+		}
+	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
 	}
@@ -307,13 +312,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
+	raw, _ := ir.TableFixedBuildPlan(g.unit, st)
+	plan, guarded := tableFixedIdentityCopies(raw)
 	g.pf("/* THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("   the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
 	g.pf("   can disagree about what the coalescer did; the asserts above tie every\n")
-	g.pf("   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,\n")
-	g.pf("   then the arms: the entries that are nearly all of a plan never test a\n")
-	g.pf("   guard at all. */\n")
+	g.pf("   destination in it to this compiler's own ABI. COUNT AND TEXT ARE COPIES:\n")
+	g.pf("   their clamps run straight-line after, so adjacent runs coalesce without\n")
+	g.pf("   those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries\n")
+	g.pf("   that are nearly all of a plan never test a guard at all. */\n")
 	g.pf("static SCHEMA_UNUSED const TableFixedEntry %s_fixed_plan[] = {\n", n)
 	for _, e := range plan {
 		guard := "SCHEMA_TABLE_FIXED_NO_GUARD"
@@ -350,15 +357,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        %s( at + 8, values + k );\n", g.sym(st.Name, "fixed_write_body"))
 	g.pf("        at += 8 + %d;\n    }\n    return need;\n}\n\n", body)
 
-	g.pf("/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
-	g.pf("   the layout's hash is this build's own, and a plan compiled once from the\n")
-	g.pf("   writer's layout otherwise. Same loop either way (§3.4). */\n")
+	g.pf("/* THE READ: ONE loop over ONE plan — the identity plan when the layout's\n")
+	g.pf("   hash is this build's own, and a plan compiled once from the writer's\n")
+	g.pf("   layout otherwise. The identity path does not prefill defaults (this hash\n")
+	g.pf("   wrote every field) and clamps count and text after the copy. Where the C\n")
+	g.pf("   ABI is the wire, the identity read is memcpy and the scatter is empty. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n",
 		g.api(st.Name, "fixed_load"), st.Name)
 	g.pf("                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n")
 	g.pf("    uint32_t layout_bytes;\n    const uint8_t * layout;\n    const uint8_t * at;\n")
 	g.pf("    uint64_t hash;\n    int64_t rest, record_bytes, count, k;\n")
+	g.pf("    int identity;\n")
 	g.pf("    const TableFixedEntry * entries = %s_fixed_plan;\n", n)
 	g.pf("    int32_t entry_count = %s_fixed_plan_count;\n", n)
 	g.pf("    int32_t entry_guarded = %s_fixed_plan_guarded;\n", n)
@@ -381,7 +391,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    at = layout + layout_bytes;\n")
 	g.pf("    rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;\n")
 	g.pf("    record_bytes = 8 + %d;\n", body)
-	g.pf("    if ( hash != %s_fixed_hash )\n    {\n", n)
+	g.pf("    identity = ( hash == %s_fixed_hash );\n", n)
+	g.pf("    if ( !identity )\n    {\n")
 	g.pf("        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.\n")
 	g.pf("           THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
 	g.pf("           every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */\n")
@@ -401,9 +412,22 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    count = rest / record_bytes;\n")
 	g.pf("    if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }\n")
 	g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
-	g.pf("        %s( values + k ); /* the declared defaults, one prefill */\n", g.api(st.Name, "reset"))
 	g.pf("        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }\n")
-	g.pf("        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
+	g.pf("        if ( identity )\n        {\n")
+	if ir.TableFixedFlatType(g.unit, st) {
+		g.pf("            /* THE C ABI IS THE WIRE: one memcpy, empty scatter. Packed layout is not forced. */\n")
+		g.pf("            memcpy( values + k, at + 8, sizeof( values[k] ) );\n")
+	} else {
+		g.pf("            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
+		if fixedTypeNeedsIdentityClamps(g.unit, st) {
+			g.pf("            %s( values + k, report ); /* count and text clamps, after the copy */\n",
+				g.api(st.Name, "fixed_identity_clamps"))
+		}
+	}
+	g.pf("        }\n        else\n        {\n")
+	g.pf("            %s( values + k ); /* the declared defaults, one prefill — compiled path only */\n", g.api(st.Name, "reset"))
+	g.pf("            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );\n")
+	g.pf("        }\n")
 	g.pf("        at += record_bytes;\n    }\n    return count;\n}\n\n")
 }
 

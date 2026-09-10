@@ -7418,6 +7418,34 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
     memcpy( b + 8, value->label, (size_t) ( value->label_length ) );
 }
 
+/* COUNT AND TEXT CLAMPS, straight-line after the identity copy. A record
+   under this build's own hash can still carry a count this build does not
+   admit; the plan no longer names those ops, so this is what holds them. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void meta_fixed_identity_clamps( Meta * value, TableReport * report )
+{
+    (void) report;
+    {
+        int32_t n = value->tag_length;
+        if ( n < 0 ) { n = 0; report->clamped++; } else if ( n > 8 ) { n = 8; report->clamped++; }
+        value->tag_length = n;
+    }
+    value->tag[value->tag_length] = 0;
+}
+
+/* COUNT AND TEXT CLAMPS, straight-line after the identity copy. A record
+   under this build's own hash can still carry a count this build does not
+   admit; the plan no longer names those ops, so this is what holds them. */
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void settings_fixed_identity_clamps( Settings * value, TableReport * report )
+{
+    (void) report;
+    {
+        int32_t n = value->label_length;
+        if ( n < 0 ) { n = 0; report->clamped++; } else if ( n > 16 ) { n = 16; report->clamped++; }
+        value->label_length = n;
+    }
+    value->label[value->label_length] = 0;
+}
+
 /* ---- Meta, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -7449,15 +7477,17 @@ static SCHEMA_UNUSED const TableFixedDst meta_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. COUNT AND TEXT ARE COPIES:
+   their clamps run straight-line after, so adjacent runs coalesce without
+   those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
+   that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry meta_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* build */
-    { 4u, 16u, 8u, 4u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* tag */
+    { 4u, 16u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* tag length */
+    { 8u, 4u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* tag */
 };
-static SCHEMA_UNUSED const int32_t meta_fixed_plan_count = 2;
-static SCHEMA_UNUSED const int32_t meta_fixed_plan_guarded = 2;
+static SCHEMA_UNUSED const int32_t meta_fixed_plan_count = 3;
+static SCHEMA_UNUSED const int32_t meta_fixed_plan_guarded = 3;
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -7489,9 +7519,11 @@ static SCHEMA_UNUSED int64_t meta_fixed_save( const Meta * values, int64_t count
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+/* THE READ: ONE loop over ONE plan — the identity plan when the layout's
+   hash is this build's own, and a plan compiled once from the writer's
+   layout otherwise. The identity path does not prefill defaults (this hash
+   wrote every field) and clamps count and text after the copy. Where the C
+   ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t meta_fixed_load( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
@@ -7501,6 +7533,7 @@ static SCHEMA_UNUSED int64_t meta_fixed_load( Meta * values, int64_t capacity, c
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = meta_fixed_plan;
     int32_t entry_count = meta_fixed_plan_count;
     int32_t entry_guarded = meta_fixed_plan_guarded;
@@ -7525,7 +7558,8 @@ static SCHEMA_UNUSED int64_t meta_fixed_load( Meta * values, int64_t capacity, c
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 16;
-    if ( hash != meta_fixed_hash )
+    identity = ( hash == meta_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -7552,9 +7586,17 @@ static SCHEMA_UNUSED int64_t meta_fixed_load( Meta * values, int64_t capacity, c
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
     for ( k = 0; k < count; ++k )
     {
-        meta_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        if ( identity )
+        {
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+            meta_fixed_identity_clamps( values + k, report ); /* count and text clamps, after the copy */
+        }
+        else
+        {
+            meta_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        }
         at += record_bytes;
     }
     return count;
@@ -7591,15 +7633,17 @@ static SCHEMA_UNUSED const TableFixedDst settings_fixed_dst[] = {
 /* THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
-   destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
-   then the arms: the entries that are nearly all of a plan never test a
-   guard at all. */
+   destination in it to this compiler's own ABI. COUNT AND TEXT ARE COPIES:
+   their clamps run straight-line after, so adjacent runs coalesce without
+   those ops in the way. UNGUARDED ENTRIES FIRST, then the arms: the entries
+   that are nearly all of a plan never test a guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry settings_fixed_plan[] = {
     { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* quality */
-    { 4u, 24u, 16u, 4u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* label */
+    { 4u, 24u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* label length */
+    { 8u, 4u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* label */
 };
-static SCHEMA_UNUSED const int32_t settings_fixed_plan_count = 2;
-static SCHEMA_UNUSED const int32_t settings_fixed_plan_guarded = 2;
+static SCHEMA_UNUSED const int32_t settings_fixed_plan_count = 3;
+static SCHEMA_UNUSED const int32_t settings_fixed_plan_guarded = 3;
 
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
@@ -7631,9 +7675,11 @@ static SCHEMA_UNUSED int64_t settings_fixed_save( const Settings * values, int64
     return need;
 }
 
-/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-   the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+/* THE READ: ONE loop over ONE plan — the identity plan when the layout's
+   hash is this build's own, and a plan compiled once from the writer's
+   layout otherwise. The identity path does not prefill defaults (this hash
+   wrote every field) and clamps count and text after the copy. Where the C
+   ABI is the wire, the identity read is memcpy and the scatter is empty. */
 static SCHEMA_UNUSED int64_t settings_fixed_load( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
 {
@@ -7643,6 +7689,7 @@ static SCHEMA_UNUSED int64_t settings_fixed_load( Settings * values, int64_t cap
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    int identity;
     const TableFixedEntry * entries = settings_fixed_plan;
     int32_t entry_count = settings_fixed_plan_count;
     int32_t entry_guarded = settings_fixed_plan_guarded;
@@ -7667,7 +7714,8 @@ static SCHEMA_UNUSED int64_t settings_fixed_load( Settings * values, int64_t cap
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 24;
-    if ( hash != settings_fixed_hash )
+    identity = ( hash == settings_fixed_hash );
+    if ( !identity )
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
@@ -7694,9 +7742,17 @@ static SCHEMA_UNUSED int64_t settings_fixed_load( Settings * values, int64_t cap
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
     for ( k = 0; k < count; ++k )
     {
-        settings_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        if ( identity )
+        {
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+            settings_fixed_identity_clamps( values + k, report ); /* count and text clamps, after the copy */
+        }
+        else
+        {
+            settings_reset( values + k ); /* the declared defaults, one prefill — compiled path only */
+            table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        }
         at += record_bytes;
     }
     return count;
