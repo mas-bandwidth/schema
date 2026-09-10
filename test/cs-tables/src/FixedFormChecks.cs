@@ -2,6 +2,7 @@
 // Held by test: docs/SPEC-TABLES.md §3.4.
 
 using System;
+using System.Buffers.Binary;
 using System.Text;
 using FX1 = Tblfx1;
 using FX2 = Tblfx2;
@@ -24,6 +25,7 @@ static partial class Program
         TestFixedFoldedArraysCase();
         TestFixedArmTextCase();
         TestFixedNegativeControl();
+        TestFixedLayoutValidation();
     }
 
     static void TestFixedFxCase()
@@ -198,7 +200,7 @@ static partial class Program
         // A BLOCK THAT IS NOT A BLOCK IS REFUSED BY NAME, whole, and never damage.
         {
             byte[] broken = (byte[])w2.Clone();
-            broken[FX1.Schema.TableFixedWire.HeaderBytes] ^= 0xFF; // the layout length at 16
+            broken[FX1.Schema.TableFixedWire.HeaderBytes + 3] = 0x7F; // layout length exceeds buffer
             FX1.FxRoot v = new FX1.FxRoot();
             FX1.TableReport r3 = new FX1.TableReport();
             long bad = FX1.Schema.FxRootFixedLoad(v, broken, plan, r3);
@@ -208,11 +210,11 @@ static partial class Program
 
         {
             byte[] unknownKind = (byte[])w2.Clone();
-            unknownKind[FX1.Schema.TableFixedWire.HeaderBytes + 4 + 4 + 8] = 99; // byte 32: 20 header+len + 4 count + 8 id = kind
+            unknownKind[FX1.Schema.TableFixedWire.HeaderBytes + 4 + 4 + 17 + 8] = 99; // entry 1's kind byte
             FX1.FxRoot v = new FX1.FxRoot();
             FX1.TableReport rKind = new FX1.TableReport();
             long bad = FX1.Schema.FxRootFixedLoad(v, unknownKind, plan, rKind);
-            Check(bad < 0 && rKind.Refused && rKind.Reason == "layout_malformed", "REFUSED BY NAME: unknown wire kind refuses as layout_malformed");
+            Check(bad < 0 && rKind.Refused && rKind.Reason == "layout_kind_unknown", "REFUSED BY NAME: unknown wire kind refuses as layout_kind_unknown");
             Check(rKind.Unknown == 0 && rKind.KindMismatch == 0 && !rKind.Malformed, "REFUSED BY NAME: unknown kind refusal moves no counter");
         }
 
@@ -414,6 +416,7 @@ static partial class Program
         }
     }
 
+<<<<<<< HEAD
     static byte[] UtRecord(string label, UT.UtGrade grade, int m, int tail)
     {
         UT.UtRoot root = new UT.UtRoot();
@@ -557,6 +560,137 @@ static partial class Program
                   "ordinal past the last variant: and the plan's ordinal op counts it");
             Check(UtSame(bent, v),
                   "ordinal past the last variant: the two paths land ONE record");
+        }
+    }
+
+    static byte[] LayoutFileOf(byte[] layout)
+    {
+        byte[] f = new byte[FX1.Schema.TableFixedWire.HeaderBytes + 4 + layout.Length];
+        f[0] = 3;
+        BinaryPrimitives.WriteUInt64LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HashAt), FX1.Schema.TableFixedWire.HashOf(layout));
+        BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(FX1.Schema.TableFixedWire.HeaderBytes), (uint)layout.Length);
+        layout.CopyTo(f, FX1.Schema.TableFixedWire.HeaderBytes + 4);
+        return f;
+    }
+
+    static void LayoutRefuses(byte[] broken, string want, string what)
+    {
+        FX1.FxRoot v = new FX1.FxRoot();
+        FX1.TableReport r = new FX1.TableReport();
+        FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
+        long n = FX1.Schema.FxRootFixedLoad(v, broken, plan, r);
+        Check(n < 0 && r.Refused && r.Reason == want, what);
+        Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed,
+              "a layout refusal sets nothing and counts nothing");
+    }
+
+    static void PutLayoutEntry(byte[] layout, int at, ulong id, byte kind, uint size, uint children)
+    {
+        BinaryPrimitives.WriteUInt64LittleEndian(layout.AsSpan(at), id);
+        layout[at + 8] = kind;
+        BinaryPrimitives.WriteUInt32LittleEndian(layout.AsSpan(at + 9), size);
+        BinaryPrimitives.WriteUInt32LittleEndian(layout.AsSpan(at + 13), children);
+    }
+
+    static void TestFixedLayoutValidation()
+    {
+        // the layout this reader ACCEPTS, which every case below breaks once
+        FX2.FxRoot two = new FX2.FxRoot();
+        FX2.Schema.TableReset(two);
+        byte[] good = new byte[FX2.Schema.FxRootFixedMeasure(1)];
+        Check(FX2.Schema.FxRootFixedSave(two, good) == good.Length, "layout validation: the unbroken file saves");
+
+        int layoutAt = FX1.Schema.TableFixedWire.HeaderBytes + 4;
+        int entry0 = layoutAt + 4;
+
+        // 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
+        {
+            byte[] f = (byte[])good.Clone();
+            uint count = BinaryPrimitives.ReadUInt32LittleEndian(f.AsSpan(layoutAt));
+            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(layoutAt), count + 1);
+            LayoutRefuses(f, "layout_count_mismatch", "RULE: the entry count fits the layout length exactly");
+        }
+        {
+            byte[] f = (byte[])good.Clone();
+            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(layoutAt), 0);
+            LayoutRefuses(f, "layout_count_mismatch", "RULE: an entry count of zero is not a layout");
+        }
+
+        // 2. EVERY KIND IS IN THE CLOSED SET
+        {
+            byte[] f = (byte[])good.Clone();
+            f[entry0 + 1 * 17 + 8] = 200; // a kind no form byte defines
+            LayoutRefuses(f, "layout_kind_unknown", "RULE: a kind outside the closed set is REFUSED, not skipped");
+        }
+
+        // 3. A KIND IS USED AS ITS DEFINITION ALLOWS — here, the ROOT is a table
+        {
+            byte[] f = (byte[])good.Clone();
+            f[entry0 + 0 * 17 + 8] = 14; // an array as the root of a record
+            LayoutRefuses(f, "layout_kind_invalid", "RULE: the root entry is a TABLE");
+        }
+
+        // 4. A CONSTANT SIZE MATCHES ITS KIND
+        {
+            byte[] f = (byte[])good.Clone();
+            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 1 * 17 + 9), 5); // a uint32 leaf in five bytes
+            LayoutRefuses(f, "layout_size_mismatch", "RULE: a constant size its kind does not admit");
+        }
+        {
+            byte[] f = (byte[])good.Clone();
+            uint body = BinaryPrimitives.ReadUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 9));
+            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 9), body + 4);
+            LayoutRefuses(f, "layout_size_mismatch", "RULE: a table's size is the sum of its fields'");
+        }
+
+        // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
+        {
+            byte[] f = (byte[])good.Clone();
+            uint kids = BinaryPrimitives.ReadUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 13));
+            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 13), kids + 1);
+            LayoutRefuses(f, "layout_tree_unclosed", "RULE: the tree runs out of layout");
+        }
+        {
+            byte[] layout = new byte[4 + 4 * 17];
+            BinaryPrimitives.WriteUInt32LittleEndian(layout, 4);
+            PutLayoutEntry(layout, 4, 1, 13, 4, 1); // a table of one field
+            PutLayoutEntry(layout, 4 + 17, 2, 30, 4, 0); // an enum, its TWO variants unreached
+            PutLayoutEntry(layout, 4 + 34, 3, 32, 0, 0);
+            PutLayoutEntry(layout, 4 + 51, 4, 32, 0, 0);
+            byte[] f = LayoutFileOf(layout);
+            LayoutRefuses(f, "layout_tree_unclosed", "RULE: the layout outlasts the tree");
+        }
+
+        // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
+        {
+            byte[] f = (byte[])good.Clone();
+            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 0 * 17 + 9), 65537);
+            LayoutRefuses(f, "layout_record_too_large", "RULE: a record size past 65536");
+        }
+        {
+            byte[] f = (byte[])good.Clone();
+            BinaryPrimitives.WriteUInt32LittleEndian(f.AsSpan(entry0 + 1 * 17 + 9), 0xFFFFFFFF);
+            LayoutRefuses(f, "layout_record_too_large", "RULE: a size that would overflow the sum");
+        }
+
+        // 7. NOTHING NESTED PAST THE READER'S WALK BOUND
+        {
+            uint depth = 64; // MaxDepth is 32
+            byte[] layout = new byte[4 + (depth + 1) * 17];
+            BinaryPrimitives.WriteUInt32LittleEndian(layout, depth + 1);
+            for (uint i = 0; i < depth; ++i)
+            {
+                PutLayoutEntry(layout, (int)(4 + i * 17), 1, (byte)(i == 0 ? 13 : 35), depth - i, 1);
+            }
+            PutLayoutEntry(layout, (int)(4 + depth * 17), 2, 1, 1, 0); // a bool at the bottom
+            byte[] f = LayoutFileOf(layout);
+            LayoutRefuses(f, "layout_too_deep", "RULE: a nesting depth past the walk's own bound");
+        }
+
+        // RESIDUE: fewer bytes than a header is layout_malformed
+        {
+            byte[] f = LayoutFileOf(new byte[2]);
+            LayoutRefuses(f, "layout_malformed", "RULE: fewer bytes than a header is layout_malformed");
         }
     }
 }
