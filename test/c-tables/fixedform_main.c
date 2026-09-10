@@ -31,6 +31,8 @@ int main( void )
     fixed_check( n == fixed_fx1_bytes(), "FX1 save" );
     fixed_fx1_read_own( g_buffer, n );
     fixed_fx2_read_fx1( g_buffer, n );
+    fixed_fx2_plan_cache( g_buffer, n );
+    fixed_fx2_bytes_row_control( g_buffer, n );
     fixed_fx1_slack();
 
     n = fixed_fx2_write( g_buffer, BufferBytes );
@@ -40,6 +42,25 @@ int main( void )
     n = fixed_v1_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_v1_bytes(), "V1 save" );
     fixed_v2_read_v1( g_buffer, n );
+
+    n = fixed_ut1_write( g_buffer, BufferBytes );
+    fixed_check( n == fixed_ut1_bytes(), "UT1 save" );
+    fixed_ut1_read_own( g_buffer, n );
+    fixed_ut1_shared_lane_control( g_buffer, n );
+    fixed_ut2_read_ut1( g_buffer, n );
+
+    n = fixed_fx1_write_out_of_range( g_buffer, BufferBytes );
+    fixed_check( n == fixed_fx1_bytes(), "FX1 out-of-range save" );
+    fixed_fx1_bounds( g_buffer, n );
+    fixed_fx2_bounds( g_buffer, n );
+    fixed_ut1_bounds();
+    fixed_v1_bounds();
+    fixed_v1_absent_optional();
+    fixed_fx1_text_content();
+
+    n = fixed_ut2_write( g_buffer, BufferBytes );
+    fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
+    fixed_ut1_read_ut2( g_buffer, n );
 
     /* THE BYTE-FLIP FUZZ, and §3.4 says it is not optional. Every byte of a
        form-3 file, one bit at a time, handed to a reader of the other

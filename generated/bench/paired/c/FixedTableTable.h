@@ -675,7 +675,9 @@ enum { kTableFixedForm = 3 };
 enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 
 /* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-   the other two are what a plan compiled from another writer's layout adds.
+   the rest are what a plan compiled from another writer's layout adds. clamp
+   is compiled-only: a ranged integer is a copy on the identity path and the
+   generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
 
    C HAS NO ENUM BASE TYPE, so where C++ writes enum : uint8_t these are plain
    anonymous enumerators — ints, stored into the uint8_t op and arg columns at
@@ -688,10 +690,11 @@ enum
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
-    kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
+    kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
+    kTableFixedClamp   = 7  /* a ranged integer, in place on the destination the copy landed */
 };
 
-/* arg on a kTableFixedText entry */
+/* meta on a kTableFixedText entry */
 enum
 {
     kTableFixedTextUtf8  = 1,
@@ -793,7 +796,13 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+       must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+       entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+       shared one, and a string(N) under a union's arm then had to be either
+       guarded correctly or read with the right flavour and could not be both. */
     uint8_t arg;
+    uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
 } TableFixedEntry;
@@ -970,14 +979,14 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const Tab
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p->arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
-            if ( p->arg != kTableFixedTextBytes )
+            if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
                    unit longer than the bound for exactly this. A store, not a
@@ -1030,6 +1039,39 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const Tab
         case kTableFixedConst:
         {
             memcpy( dst + p->dst, &p->aux, p->size );
+            break;
+        }
+        case kTableFixedClamp:
+        {
+            /* IN PLACE ON THE DESTINATION the copy or widen just landed. src is
+               unused: this op does not read the record. meta bit 0 is the low
+               end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
+               OF THE TWO ENDS, the same select-and-add the identity pass emits. */
+            uint64_t lo = 0, hi = 0, raw = 0;
+            int32_t under = 0, over = 0;
+            memcpy( &lo, base + p->aux, 8 );
+            memcpy( &hi, base + p->aux + 8, 8 );
+            memcpy( &raw, dst + p->dst, p->size );
+            if ( p->sign != 0 && p->size < 8 )
+            {
+                const unsigned bits = p->size * 8u;
+                const uint64_t top = 1ull << ( bits - 1 );
+                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            }
+            if ( p->sign != 0 )
+            {
+                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
+                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            else
+            {
+                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
+                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            (*clamped) += under | over;
+            memcpy( dst + p->dst, &raw, p->size );
             break;
         }
         default: break;
@@ -1440,7 +1482,11 @@ typedef struct TableFixedDst
     uint32_t stride; /* an array entry's storage stride */
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
-    uint8_t arg;     /* a text field's flavour */
+    uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
+    uint64_t lo;     /* a compiled clamp's low end, bit pattern of the slot */
+    uint64_t hi;     /* a compiled clamp's high end */
+    uint8_t clamp;   /* bit 0 = low, bit 1 = high, bit 2 = signed */
+    uint8_t width;   /* the slot's bytes; 0 = this row is not a compiled clamp */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1458,6 +1504,7 @@ typedef struct TableFixedCompiler
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
+    int skip_clamp;    /* counted-array elements: the live count, never slack */
     TableReport * report;
 } TableFixedCompiler;
 
@@ -1481,9 +1528,19 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
     {
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c->record ||
-             ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
+        /* A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
+           already landed. src+size is not a wire reach. */
+        if ( e.op != kTableFixedClamp )
+        {
+            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+            if ( reach > (uint64_t) c->record ||
+                 ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
+            {
+                c->hostile = 1;
+                return;
+            }
+        }
+        else if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record )
         {
             c->hostile = 1;
             return;
@@ -1509,6 +1566,39 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_table( TableFixedCompiler * c, con
     slots[0] = (uint16_t) n;
     for ( i = 0; i < n; ++i ) { slots[1 + i] = values[i]; }
     return at;
+}
+
+/* table_fixed_lay_bounds lays a compiled clamp's two ends above the entries,
+   the same pool the ordinal remap tables use, and answers the byte offset from
+   the plan's base. memcpy, not a typed store: the pool is not 8-aligned. */
+static SCHEMA_UNUSED uint32_t table_fixed_lay_bounds( TableFixedCompiler * c, uint64_t lo, uint64_t hi )
+{
+    const int32_t bytes = 16;
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c->capacity;
+    uint8_t * at;
+    c->pool += bytes;
+    if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
+    at = (uint8_t *) (void *) ( (uint8_t *) c->plan + (uint32_t) ( total - c->pool ) );
+    memcpy( at, &lo, 8 );
+    memcpy( at + 8, &hi, 8 );
+    return (uint32_t) ( total - c->pool );
+}
+
+/* table_fixed_push_clamp is ONE ranged scalar after the copy or widen that
+   landed it. Counted-array elements skip: the live count is a value the plan
+   cannot name, and clamping slack would count a clamp on a byte nobody wrote. */
+static SCHEMA_UNUSED void table_fixed_push_clamp( TableFixedCompiler * c, const TableFixedDst * d,
+                                                  uint32_t at, uint32_t guard, uint8_t arg )
+{
+    TableFixedEntry e;
+    if ( c->skip_clamp || d->width == 0 ) { return; }
+    e = table_fixed_entry_zero();
+    e.src = 0; e.dst = at; e.size = d->width;
+    e.aux = table_fixed_lay_bounds( c, d->lo, d->hi );
+    e.guard = guard; e.op = (uint8_t) kTableFixedClamp; e.arg = arg;
+    e.meta = (uint8_t) ( d->clamp & 3u );
+    e.sign = ( d->clamp & 4u ) ? (uint8_t) 1 : (uint8_t) 0;
+    table_fixed_push( c, e );
 }
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
@@ -1599,6 +1689,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.op = ( te.kind == 10 ) ? (uint8_t) kTableFixedWidenF : (uint8_t) kTableFixedWiden;
                 e.sign = table_fixed_signed_kind( te.kind ) ? (uint8_t) 1 : (uint8_t) 0;
                 table_fixed_push( c, e );
+                table_fixed_push_clamp( c, d, at, guard, arg );
                 break;
             }
             /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
@@ -1637,10 +1728,15 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     table_fixed_push( c, e );
                 }
                 n = their_n < my_n ? their_n : my_n;
-                for ( i = 0; i < n; ++i )
                 {
-                    table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
-                                               mine, mi + 1, dst, at + i * d->stride, guard, arg );
+                    const int prev_skip = c->skip_clamp;
+                    if ( d->counted ) { c->skip_clamp = 1; }
+                    for ( i = 0; i < n; ++i )
+                    {
+                        table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
+                                                   mine, mi + 1, dst, at + i * d->stride, guard, arg );
+                    }
+                    c->skip_clamp = prev_skip;
                 }
                 break;
             }
@@ -1727,7 +1823,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-                e.op = kTableFixedText; e.arg = d->arg;
+                e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
                 table_fixed_push( c, e );
                 break;
             }
@@ -1739,11 +1835,13 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 {
                     e.size = me.size; e.op = kTableFixedCopy;
                     table_fixed_push( c, e );
+                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
                 {
                     e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                     table_fixed_push( c, e );
+                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( c->report != NULL )
                 {
@@ -1810,6 +1908,55 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     return out;
 }
 
+/* ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+
+   THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+   table of 64, the plan bytes they point at are a slab the caller hands
+   init, and overflow is a miss — compile into the caller's plan buffer and
+   do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+   hash never consults it. compiles counts successful compiles through this
+   cache, which is the pin; made is 1 on a slot after the compile that
+   filled it. */
+
+enum { kTableFixedPlanCacheCapacity = 64 };
+
+typedef struct TableFixedPlanCacheSlot
+{
+    uint64_t hash;
+    TableFixedEntry * plan;
+    int32_t count;
+    int32_t guarded;
+    int64_t record_bytes;
+    uint8_t made;
+} TableFixedPlanCacheSlot;
+
+typedef struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage; /* capacity * stride entries, caller-owned */
+    int32_t stride;            /* entries per slot, the plan capacity */
+    int32_t used;
+    int32_t compiles;
+} TableFixedPlanCache;
+
+static SCHEMA_UNUSED void table_fixed_plan_cache_init( TableFixedPlanCache * cache, TableFixedEntry * storage, int32_t stride )
+{
+    int32_t i;
+    cache->storage = storage;
+    cache->stride = stride;
+    cache->used = 0;
+    cache->compiles = 0;
+    for ( i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache->slots[i].hash = 0;
+        cache->slots[i].plan = NULL;
+        cache->slots[i].count = 0;
+        cache->slots[i].guarded = 0;
+        cache->slots[i].record_bytes = 0;
+        cache->slots[i].made = 0;
+    }
+}
+
 /* ---- the 128-bit moves, ONLY where serialize.h is present ------------------
 
    C++ SPELLS THIS AS ONE TEMPLATE over a builtin 128-bit integer, and C has
@@ -1834,6 +1981,29 @@ static SCHEMA_UNUSED void table_fixed_put128_i( uint8_t * b, serialize_int128_t 
        know that (docs/SPEC-TABLES.md §3.4's constant-size table). */
     table_fixed_put64( b, (uint64_t) v.lo );
     table_fixed_put64( b + 8, (uint64_t) v.hi );
+}
+
+/* ---- the 128-bit COMPARE, for the read-side bounds -------------------------
+
+   The straight-line bounds pass (docs/SPEC-TABLES.md §3.4) compares a value
+   against its declared min and max. C++ writes that as < and >, because
+   serialize's 128-bit types carry the operators; C's are STRUCTS, so the same
+   two lines are these two functions. Each answers -1, 0 or 1, the high half
+   deciding first, and the SIGNED twin reads its high half as two's complement
+   — which is the whole difference between them. */
+static SCHEMA_UNUSED int table_fixed_cmp128_u( serialize_uint128_t a, uint64_t bhi, uint64_t blo )
+{
+    if ( (uint64_t) a.hi != bhi ) { return (uint64_t) a.hi < bhi ? -1 : 1; }
+    if ( (uint64_t) a.lo != blo ) { return (uint64_t) a.lo < blo ? -1 : 1; }
+    return 0;
+}
+static SCHEMA_UNUSED int table_fixed_cmp128_i( serialize_int128_t a, uint64_t bhi, uint64_t blo )
+{
+    const int64_t ah = (int64_t) a.hi;
+    const int64_t bh = (int64_t) bhi;
+    if ( ah != bh ) { return ah < bh ? -1 : 1; }
+    if ( (uint64_t) a.lo != blo ) { return (uint64_t) a.lo < blo ? -1 : 1; }
+    return 0;
 }
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -3087,6 +3257,182 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
     schema_bench_bench_mixed_fixed_write_body_( b + 0, &value->value );
 }
 
+/* MixedEntity's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_clamp_body_( MixedEntity * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(12) width clamp */
+    (*clamped) += ( value->entity_id > 4095ull );
+    value->entity_id = ( value->entity_id > 4095ull ) ? 4095ull : value->entity_id;
+    (*clamped) += (int) ( value->pos_x < -16383 ) | (int) ( value->pos_x > 16383 );
+    value->pos_x = ( value->pos_x < -16383 ) ? -16383 : ( ( value->pos_x > 16383 ) ? 16383 : value->pos_x );
+    (*clamped) += (int) ( value->pos_y < -16383 ) | (int) ( value->pos_y > 16383 );
+    value->pos_y = ( value->pos_y < -16383 ) ? -16383 : ( ( value->pos_y > 16383 ) ? 16383 : value->pos_y );
+    (*clamped) += (int) ( value->pos_z < -16383 ) | (int) ( value->pos_z > 16383 );
+    value->pos_z = ( value->pos_z < -16383 ) ? -16383 : ( ( value->pos_z > 16383 ) ? 16383 : value->pos_z );
+    /* bits(9) width clamp */
+    (*clamped) += ( value->yaw > 511ull );
+    value->yaw = ( value->yaw > 511ull ) ? 511ull : value->yaw;
+    /* bits(9) width clamp */
+    (*clamped) += ( value->pitch > 511ull );
+    value->pitch = ( value->pitch > 511ull ) ? 511ull : value->pitch;
+    (*clamped) += (int) ( value->vel_x < -2048 ) | (int) ( value->vel_x > 2047 );
+    value->vel_x = ( value->vel_x < -2048 ) ? -2048 : ( ( value->vel_x > 2047 ) ? 2047 : value->vel_x );
+    (*clamped) += (int) ( value->vel_y < -2048 ) | (int) ( value->vel_y > 2047 );
+    value->vel_y = ( value->vel_y < -2048 ) ? -2048 : ( ( value->vel_y > 2047 ) ? 2047 : value->vel_y );
+    (*clamped) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
+    value->vel_z = ( value->vel_z < -2048 ) ? -2048 : ( ( value->vel_z > 2047 ) ? 2047 : value->vel_z );
+    (*clamped) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
+    value->health = ( value->health < 0 ) ? 0 : ( ( value->health > 1000 ) ? 1000 : value->health );
+    if ( (uint64_t) value->weapon > 15u ) { value->weapon = MIXED_WEAPON_NONE; (*clamped)++; }
+}
+
+/* MixedStat's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_clamp_body_( MixedStat * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(8) width clamp */
+    (*clamped) += ( value->stat_id > 255ull );
+    value->stat_id = ( value->stat_id > 255ull ) ? 255ull : value->stat_id;
+    (*clamped) += (int) ( value->delta < -512 ) | (int) ( value->delta > 511 );
+    value->delta = ( value->delta < -512 ) ? -512 : ( ( value->delta > 511 ) ? 511 : value->delta );
+}
+
+/* MixedHitEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_clamp_body_( MixedHitEvent * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(12) width clamp */
+    (*clamped) += ( value->target_id > 4095ull );
+    value->target_id = ( value->target_id > 4095ull ) ? 4095ull : value->target_id;
+    (*clamped) += (int) ( value->damage < 0 ) | (int) ( value->damage > 4095 );
+    value->damage = ( value->damage < 0 ) ? 0 : ( ( value->damage > 4095 ) ? 4095 : value->damage );
+    (*clamped) += (int) ( value->hit_kind < 0 ) | (int) ( value->hit_kind > 7 );
+    value->hit_kind = ( value->hit_kind < 0 ) ? 0 : ( ( value->hit_kind > 7 ) ? 7 : value->hit_kind );
+}
+
+/* MixedChatEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_clamp_body_( MixedChatEvent * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += (int) ( value->channel < 0 ) | (int) ( value->channel > 3 );
+    value->channel = ( value->channel < 0 ) ? 0 : ( ( value->channel > 3 ) ? 3 : value->channel );
+    /* bits(12) width clamp */
+    (*clamped) += ( value->speaker > 4095ull );
+    value->speaker = ( value->speaker > 4095ull ) ? 4095ull : value->speaker;
+}
+
+/* MixedPickupEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_clamp_body_( MixedPickupEvent * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(10) width clamp */
+    (*clamped) += ( value->item_id > 1023ull );
+    value->item_id = ( value->item_id > 1023ull ) ? 1023ull : value->item_id;
+    (*clamped) += (int) ( value->amount < 0 ) | (int) ( value->amount > 255 );
+    value->amount = ( value->amount < 0 ) ? 0 : ( ( value->amount > 255 ) ? 255 : value->amount );
+}
+
+/* BenchMixed's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_clamp_body_( BenchMixed * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(16) width clamp */
+    (*clamped) += ( value->sequence > 65535ull );
+    value->sequence = ( value->sequence > 65535ull ) ? 65535ull : value->sequence;
+    (*clamped) += (int) ( value->ack_sequence < 0 ) | (int) ( value->ack_sequence > 65535 );
+    value->ack_sequence = ( value->ack_sequence < 0 ) ? 0 : ( ( value->ack_sequence > 65535 ) ? 65535 : value->ack_sequence );
+    (*clamped) += (int) ( value->world_time < -1000000000000ll ) | (int) ( value->world_time > 1000000000000ll );
+    value->world_time = ( value->world_time < -1000000000000ll ) ? -1000000000000ll : ( ( value->world_time > 1000000000000ll ) ? 1000000000000ll : value->world_time );
+    /* bits(48) width clamp */
+    (*clamped) += ( value->frame_tick > 281474976710655ull );
+    value->frame_tick = ( value->frame_tick > 281474976710655ull ) ? 281474976710655ull : value->frame_tick;
+    (*clamped) += (int) ( value->server_time < 0 ) | (int) ( value->server_time > 16776960 );
+    value->server_time = ( value->server_time < 0 ) ? 0 : ( ( value->server_time > 16776960 ) ? 16776960 : value->server_time );
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->entities_count; ++i )
+        {
+            schema_bench_mixed_entity_fixed_clamp_body_( &value->entities[i], clamped, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->stats_count; ++i )
+        {
+            schema_bench_mixed_stat_fixed_clamp_body_( &value->stats[i], clamped, damaged );
+        }
+    }
+    if ( (uint32_t) value->game_event.type > 3u ) { value->game_event.type = MIXED_EVENT_TYPE_NONE; (*clamped)++; }
+    switch ( value->game_event.type )
+    {
+        case MIXED_EVENT_TYPE_HIT:
+        {
+            schema_bench_mixed_hit_event_fixed_clamp_body_( &value->game_event.as.hit, clamped, damaged );
+            break;
+        }
+        case MIXED_EVENT_TYPE_CHAT:
+        {
+            schema_bench_mixed_chat_event_fixed_clamp_body_( &value->game_event.as.chat, clamped, damaged );
+            break;
+        }
+        case MIXED_EVENT_TYPE_PICKUP:
+        {
+            schema_bench_mixed_pickup_event_fixed_clamp_body_( &value->game_event.as.pickup, clamped, damaged );
+            break;
+        }
+        default: break;
+    }
+    if ( !table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) )
+    {
+        memset( value->player_name, 0, sizeof( value->player_name ) );
+        value->player_name_length = 0;
+        (*damaged)++;
+    }
+    (*clamped) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
+    value->aim_x = ( value->aim_x < -1.0f ) ? -1.0f : ( ( value->aim_x > 1.0f ) ? 1.0f : value->aim_x );
+    (*clamped) += (int) ( value->aim_y < -1.0f ) | (int) ( value->aim_y > 1.0f );
+    value->aim_y = ( value->aim_y < -1.0f ) ? -1.0f : ( ( value->aim_y > 1.0f ) ? 1.0f : value->aim_y );
+    (*clamped) += (int) ( value->aim_z < -1.0f ) | (int) ( value->aim_z > 1.0f );
+    value->aim_z = ( value->aim_z < -1.0f ) ? -1.0f : ( ( value->aim_z > 1.0f ) ? 1.0f : value->aim_z );
+    (*clamped) += (int) ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
+    value->flux = ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) ? serialize_int128_make( 18446744004990074880ull, 0ull ) : ( ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 ) ? serialize_int128_make( 68719476736ull, 0ull ) : value->flux );
+    (*clamped) += ( value->ping > 64000 );
+    value->ping = ( value->ping > 64000 ) ? 64000 : value->ping;
+    /* bits(24) width clamp */
+    (*clamped) += ( value->crc_hint > 16777215ull );
+    value->crc_hint = ( value->crc_hint > 16777215ull ) ? 16777215ull : value->crc_hint;
+    (*clamped) += (int) ( value->extra < 0 ) | (int) ( value->extra > 255 );
+    value->extra = ( value->extra < 0 ) ? 0 : ( ( value->extra > 255 ) ? 255 : value->extra );
+    (*clamped) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
+    value->idle_ticks = ( value->idle_ticks < 0 ) ? 0 : ( ( value->idle_ticks > 15 ) ? 15 : value->idle_ticks );
+}
+
+/* FixedTable's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fixed_clamp_body_( FixedTable * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    schema_bench_bench_mixed_fixed_clamp_body_( &value->value, clamped, damaged );
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_bench_fixed_table_fixed_clamp_( FixedTable * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    schema_bench_fixed_table_fixed_clamp_body_( value, &clamped, &damaged );
+    report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
+}
+
 /* ---- FixedTable, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -3186,81 +3532,81 @@ static SCHEMA_UNUSED const int64_t fixed_table_fixed_layout_bytes = (int64_t) si
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst fixed_table_fixed_dst[] = {
-    { 0, 0, 0, 0, 0 }, /* FixedTable */
-    { 0, 0, 0, 0, 0 }, /* value */
-    { 0, 0, 0, 0, 0 }, /* sequence */
-    { 4, 0, 0, 0, 0 }, /* ack_sequence */
-    { 8, 0, 0, 0, 0 }, /* ack_bits */
-    { 16, 0, 0, 0, 0 }, /* session_id */
-    { 24, 0, 0, 0, 0 }, /* client_id */
-    { 32, 0, 0, 0, 0 }, /* nonce */
-    { 40, 0, 0, 0, 0 }, /* world_time */
-    { 48, 0, 0, 0, 0 }, /* frame_tick */
-    { 56, 0, 0, 0, 0 }, /* server_time */
-    { 64, 64, 576, 1, 0 }, /* entities */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 0, 0, 0, 0, 0 }, /* entity_id */
-    { 4, 0, 0, 0, 0 }, /* pos_x */
-    { 8, 0, 0, 0, 0 }, /* pos_y */
-    { 12, 0, 0, 0, 0 }, /* pos_z */
-    { 16, 0, 0, 0, 0 }, /* yaw */
-    { 20, 0, 0, 0, 0 }, /* pitch */
-    { 24, 0, 0, 0, 0 }, /* vel_x */
-    { 28, 0, 0, 0, 0 }, /* vel_y */
-    { 32, 0, 0, 0, 0 }, /* vel_z */
-    { 36, 0, 0, 0, 0 }, /* health */
-    { 40, 0, 0, 0, 0 }, /* weapon */
-    { 0, 0, 0, 0, 0 }, /* Fists */
-    { 0, 0, 0, 0, 0 }, /* Pistol */
-    { 0, 0, 0, 0, 0 }, /* Shotgun */
-    { 0, 0, 0, 0, 0 }, /* Rifle */
-    { 0, 0, 0, 0, 0 }, /* Sniper */
-    { 0, 0, 0, 0, 0 }, /* Smg */
-    { 0, 0, 0, 0, 0 }, /* Rocket */
-    { 0, 0, 0, 0, 0 }, /* Grenade */
-    { 0, 0, 0, 0, 0 }, /* Plasma */
-    { 0, 0, 0, 0, 0 }, /* Railgun */
-    { 0, 0, 0, 0, 0 }, /* Flamer */
-    { 0, 0, 0, 0, 0 }, /* Mine */
-    { 0, 0, 0, 0, 0 }, /* Turret */
-    { 0, 0, 0, 0, 0 }, /* Drone */
-    { 0, 0, 0, 0, 0 }, /* Repair */
-    { 48, 0, 0, 0, 0 }, /* damage */
-    { 56, 0, 0, 0, 0 }, /* moving */
-    { 57, 0, 0, 0, 0 }, /* firing */
-    { 580, 8, 1220, 1, 0 }, /* stats */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 0, 0, 0, 0, 0 }, /* stat_id */
-    { 4, 0, 0, 0, 0 }, /* delta */
-    { 1224, 0, 1224, 0, 0 }, /* game_event */
-    { 4, 0, 0, 0, 0 }, /* hit */
-    { 0, 0, 0, 0, 0 }, /* target_id */
-    { 4, 0, 0, 0, 0 }, /* damage */
-    { 8, 0, 0, 0, 0 }, /* hit_kind */
-    { 12, 0, 0, 0, 0 }, /* crit */
-    { 4, 0, 0, 0, 0 }, /* chat */
-    { 0, 0, 0, 0, 0 }, /* channel */
-    { 4, 0, 0, 0, 0 }, /* speaker */
-    { 4, 0, 0, 0, 0 }, /* pickup */
-    { 0, 0, 0, 0, 0 }, /* item_id */
-    { 4, 0, 0, 0, 0 }, /* amount */
-    { 1244, 1, 0, 0, 0 }, /* loadout */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 1264, 0, 1248, 0, 1 }, /* player_name */
-    { 1284, 1, 1268, 1, 3 }, /* payload */
-    { 0, 0, 0, 0, 0 }, /* u8 */
-    { 1288, 0, 0, 0, 0 }, /* aim_x */
-    { 1292, 0, 0, 0, 0 }, /* aim_y */
-    { 1296, 0, 0, 0, 0 }, /* aim_z */
-    { 1300, 0, 0, 0, 0 }, /* recoil */
-    { 1304, 0, 0, 0, 0 }, /* drift */
-    { 1312, 0, 0, 0, 0 }, /* wide_key */
-    { 1328, 0, 0, 0, 0 }, /* flux */
-    { 1344, 0, 0, 0, 0 }, /* ping */
-    { 1348, 0, 0, 0, 0 }, /* crc_hint */
-    { 1352, 0, 0, 0, 0 }, /* has_extra */
-    { 1356, 0, 0, 0, 0 }, /* extra */
-    { 1360, 0, 0, 0, 0 }, /* idle_ticks */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* FixedTable */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* value */
+    { 0, 0, 0, 0, 0, 0ull, 65535ull, 2, 4 }, /* sequence */
+    { 4, 0, 0, 0, 0, 0ull, 65535ull, 7, 4 }, /* ack_sequence */
+    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* ack_bits */
+    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* session_id */
+    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* client_id */
+    { 32, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* nonce */
+    { 40, 0, 0, 0, 0, 18446743073709551616ull, 1000000000000ull, 7, 8 }, /* world_time */
+    { 48, 0, 0, 0, 0, 0ull, 281474976710655ull, 2, 8 }, /* frame_tick */
+    { 56, 0, 0, 0, 0, 0ull, 16776960ull, 7, 4 }, /* server_time */
+    { 64, 64, 576, 1, 0, 0ull, 0ull, 0, 0 }, /* entities */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
+    { 0, 0, 0, 0, 0, 0ull, 4095ull, 2, 4 }, /* entity_id */
+    { 4, 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, /* pos_x */
+    { 8, 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, /* pos_y */
+    { 12, 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, /* pos_z */
+    { 16, 0, 0, 0, 0, 0ull, 511ull, 2, 4 }, /* yaw */
+    { 20, 0, 0, 0, 0, 0ull, 511ull, 2, 4 }, /* pitch */
+    { 24, 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, /* vel_x */
+    { 28, 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, /* vel_y */
+    { 32, 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, /* vel_z */
+    { 36, 0, 0, 0, 0, 0ull, 1000ull, 7, 4 }, /* health */
+    { 40, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* weapon */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Fists */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Pistol */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Shotgun */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Rifle */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Sniper */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Smg */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Rocket */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Grenade */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Plasma */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Railgun */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Flamer */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Mine */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Turret */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Drone */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Repair */
+    { 48, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* damage */
+    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* moving */
+    { 57, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* firing */
+    { 580, 8, 1220, 1, 0, 0ull, 0ull, 0, 0 }, /* stats */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
+    { 0, 0, 0, 0, 0, 0ull, 255ull, 2, 4 }, /* stat_id */
+    { 4, 0, 0, 0, 0, 18446744073709551104ull, 511ull, 7, 4 }, /* delta */
+    { 1224, 0, 1224, 0, 0, 0ull, 0ull, 0, 0 }, /* game_event */
+    { 4, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* hit */
+    { 0, 0, 0, 0, 0, 0ull, 4095ull, 2, 4 }, /* target_id */
+    { 4, 0, 0, 0, 0, 0ull, 4095ull, 7, 4 }, /* damage */
+    { 8, 0, 0, 0, 0, 0ull, 7ull, 7, 4 }, /* hit_kind */
+    { 12, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* crit */
+    { 4, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* chat */
+    { 0, 0, 0, 0, 0, 0ull, 3ull, 7, 4 }, /* channel */
+    { 4, 0, 0, 0, 0, 0ull, 4095ull, 2, 4 }, /* speaker */
+    { 4, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* pickup */
+    { 0, 0, 0, 0, 0, 0ull, 1023ull, 2, 4 }, /* item_id */
+    { 4, 0, 0, 0, 0, 0ull, 255ull, 7, 4 }, /* amount */
+    { 1244, 1, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* loadout */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
+    { 1264, 0, 1248, 0, 1, 0ull, 0ull, 0, 0 }, /* player_name */
+    { 1268, 1, 1284, 1, 3, 0ull, 0ull, 0, 0 }, /* payload */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* u8 */
+    { 1288, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* aim_x */
+    { 1292, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* aim_y */
+    { 1296, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* aim_z */
+    { 1300, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* recoil */
+    { 1304, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* drift */
+    { 1312, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* wide_key */
+    { 1328, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flux */
+    { 1344, 0, 0, 0, 0, 0ull, 64000ull, 2, 2 }, /* ping */
+    { 1348, 0, 0, 0, 0, 0ull, 16777215ull, 2, 4 }, /* crc_hint */
+    { 1352, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* has_extra */
+    { 1356, 0, 0, 0, 0, 0ull, 255ull, 7, 4 }, /* extra */
+    { 1360, 0, 0, 0, 0, 0ull, 15ull, 7, 4 }, /* idle_ticks */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 148 leaves by the schema compiler —
@@ -3270,38 +3616,38 @@ static SCHEMA_UNUSED const TableFixedDst fixed_table_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry fixed_table_fixed_plan[] = {
-    { 0u, 0u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* sequence */
-    { 12u, 16u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* session_id */
-    { 24u, 32u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* nonce */
-    { 52u, 576u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0 }, /* entities count */
-    { 56u, 64u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 97u, 112u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 107u, 128u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 148u, 176u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 158u, 192u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 199u, 240u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 209u, 256u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 250u, 304u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 260u, 320u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 301u, 368u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 311u, 384u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 352u, 432u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 362u, 448u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 403u, 496u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 413u, 512u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* entity_id */
-    { 454u, 560u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 464u, 1220u, 80u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0 }, /* stats count */
-    { 468u, 580u, 640u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* stats, whole */
-    { 1108u, 1224u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* game_event tag */
-    { 1122u, 1244u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* loadout, whole */
-    { 1126u, 1264u, 15u, 1248u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* player_name */
-    { 1145u, 1284u, 16u, 1268u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 3, 0, 0 }, /* payload */
-    { 1165u, 1288u, 58u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* aim_x */
-    { 1223u, 1348u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* crc_hint */
-    { 1228u, 1356u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* extra */
-    { 1109u, 1228u, 13u, 0u, 1108u, kTableFixedCopy, 1, 0, 0 }, /* target_id */
-    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 2, 0, 0 }, /* channel */
-    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 3, 0, 0 }, /* item_id */
+    { 0u, 0u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* sequence */
+    { 12u, 16u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* session_id */
+    { 24u, 32u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* nonce */
+    { 52u, 576u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* entities count */
+    { 56u, 64u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 97u, 112u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 107u, 128u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 148u, 176u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 158u, 192u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 199u, 240u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 209u, 256u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 250u, 304u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 260u, 320u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 301u, 368u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 311u, 384u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 352u, 432u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 362u, 448u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 403u, 496u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 413u, 512u, 41u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* entity_id */
+    { 454u, 560u, 10u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 464u, 1220u, 80u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* stats count */
+    { 468u, 580u, 640u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* stats, whole */
+    { 1108u, 1224u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* game_event tag */
+    { 1122u, 1244u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* loadout, whole */
+    { 1126u, 1264u, 15u, 1248u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* player_name */
+    { 1145u, 1284u, 16u, 1268u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 3, 0, 0 }, /* payload */
+    { 1165u, 1288u, 58u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* aim_x */
+    { 1223u, 1348u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* crc_hint */
+    { 1228u, 1356u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* extra */
+    { 1109u, 1228u, 13u, 0u, 1108u, kTableFixedCopy, 1, 0, 0, 0 }, /* target_id */
+    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 2, 0, 0, 0 }, /* channel */
+    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 3, 0, 0, 0 }, /* item_id */
 };
 static SCHEMA_UNUSED const int32_t fixed_table_fixed_plan_count = 32;
 static SCHEMA_UNUSED const int32_t fixed_table_fixed_plan_guarded = 29;
@@ -3338,9 +3684,9 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_save( const FixedTable * values, 
 
 /* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
    the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+   writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4). */
 static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     uint32_t layout_bytes;
@@ -3374,20 +3720,63 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
     record_bytes = 8 + 1236;
     if ( hash != fixed_table_fixed_hash )
     {
-        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
+           and CACHED BY HASH, so the compile is paid once per peer, not per record.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
            every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        const TableFixedPlanCacheSlot * hit = NULL;
+        TableFixedEntry * dest;
+        int32_t dest_capacity;
+        int storing;
+        int32_t i;
         TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
-        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
-        made = table_fixed_compile( &parsed, fixed_table_fixed_layout, (int32_t) sizeof( fixed_table_fixed_layout ), fixed_table_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+        if ( cache != NULL )
+        {
+            for ( i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
+            dest = plan;
+            dest_capacity = plan_capacity;
+            storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            made = table_fixed_compile( &parsed, fixed_table_fixed_layout, (int32_t) sizeof( fixed_table_fixed_layout ), fixed_table_fixed_dst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+            record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
        the layout's own rules each refuse under their own name first, so a
@@ -3402,6 +3791,9 @@ static SCHEMA_UNUSED int64_t fixed_table_fixed_load( FixedTable * values, int64_
         fixed_table_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_bench_fixed_table_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;

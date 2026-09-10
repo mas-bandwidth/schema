@@ -687,7 +687,9 @@ enum { kTableFixedForm = 3 };
 enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 
 /* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-   the other two are what a plan compiled from another writer's layout adds.
+   the rest are what a plan compiled from another writer's layout adds. clamp
+   is compiled-only: a ranged integer is a copy on the identity path and the
+   generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
 
    C HAS NO ENUM BASE TYPE, so where C++ writes enum : uint8_t these are plain
    anonymous enumerators — ints, stored into the uint8_t op and arg columns at
@@ -700,10 +702,11 @@ enum
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
-    kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
+    kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
+    kTableFixedClamp   = 7  /* a ranged integer, in place on the destination the copy landed */
 };
 
-/* arg on a kTableFixedText entry */
+/* meta on a kTableFixedText entry */
 enum
 {
     kTableFixedTextUtf8  = 1,
@@ -805,7 +808,13 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+       must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+       entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+       shared one, and a string(N) under a union's arm then had to be either
+       guarded correctly or read with the right flavour and could not be both. */
     uint8_t arg;
+    uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
 } TableFixedEntry;
@@ -982,14 +991,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p->arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
-            if ( p->arg != kTableFixedTextBytes )
+            if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
                    unit longer than the bound for exactly this. A store, not a
@@ -1042,6 +1051,39 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
         case kTableFixedConst:
         {
             memcpy( dst + p->dst, &p->aux, p->size );
+            break;
+        }
+        case kTableFixedClamp:
+        {
+            /* IN PLACE ON THE DESTINATION the copy or widen just landed. src is
+               unused: this op does not read the record. meta bit 0 is the low
+               end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
+               OF THE TWO ENDS, the same select-and-add the identity pass emits. */
+            uint64_t lo = 0, hi = 0, raw = 0;
+            int32_t under = 0, over = 0;
+            memcpy( &lo, base + p->aux, 8 );
+            memcpy( &hi, base + p->aux + 8, 8 );
+            memcpy( &raw, dst + p->dst, p->size );
+            if ( p->sign != 0 && p->size < 8 )
+            {
+                const unsigned bits = p->size * 8u;
+                const uint64_t top = 1ull << ( bits - 1 );
+                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            }
+            if ( p->sign != 0 )
+            {
+                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
+                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            else
+            {
+                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
+                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            (*clamped) += under | over;
+            memcpy( dst + p->dst, &raw, p->size );
             break;
         }
         default: break;
@@ -1452,7 +1494,11 @@ typedef struct TableFixedDst
     uint32_t stride; /* an array entry's storage stride */
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
-    uint8_t arg;     /* a text field's flavour */
+    uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
+    uint64_t lo;     /* a compiled clamp's low end, bit pattern of the slot */
+    uint64_t hi;     /* a compiled clamp's high end */
+    uint8_t clamp;   /* bit 0 = low, bit 1 = high, bit 2 = signed */
+    uint8_t width;   /* the slot's bytes; 0 = this row is not a compiled clamp */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1470,6 +1516,7 @@ typedef struct TableFixedCompiler
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
+    int skip_clamp;    /* counted-array elements: the live count, never slack */
     TableReport * report;
 } TableFixedCompiler;
 
@@ -1493,9 +1540,19 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
     {
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c->record ||
-             ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
+        /* A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
+           already landed. src+size is not a wire reach. */
+        if ( e.op != kTableFixedClamp )
+        {
+            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+            if ( reach > (uint64_t) c->record ||
+                 ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
+            {
+                c->hostile = 1;
+                return;
+            }
+        }
+        else if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record )
         {
             c->hostile = 1;
             return;
@@ -1521,6 +1578,39 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_table( TableFixedCompiler * c, con
     slots[0] = (uint16_t) n;
     for ( i = 0; i < n; ++i ) { slots[1 + i] = values[i]; }
     return at;
+}
+
+/* table_fixed_lay_bounds lays a compiled clamp's two ends above the entries,
+   the same pool the ordinal remap tables use, and answers the byte offset from
+   the plan's base. memcpy, not a typed store: the pool is not 8-aligned. */
+static SCHEMA_UNUSED uint32_t table_fixed_lay_bounds( TableFixedCompiler * c, uint64_t lo, uint64_t hi )
+{
+    const int32_t bytes = 16;
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c->capacity;
+    uint8_t * at;
+    c->pool += bytes;
+    if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
+    at = (uint8_t *) (void *) ( (uint8_t *) c->plan + (uint32_t) ( total - c->pool ) );
+    memcpy( at, &lo, 8 );
+    memcpy( at + 8, &hi, 8 );
+    return (uint32_t) ( total - c->pool );
+}
+
+/* table_fixed_push_clamp is ONE ranged scalar after the copy or widen that
+   landed it. Counted-array elements skip: the live count is a value the plan
+   cannot name, and clamping slack would count a clamp on a byte nobody wrote. */
+static SCHEMA_UNUSED void table_fixed_push_clamp( TableFixedCompiler * c, const TableFixedDst * d,
+                                                  uint32_t at, uint32_t guard, uint8_t arg )
+{
+    TableFixedEntry e;
+    if ( c->skip_clamp || d->width == 0 ) { return; }
+    e = table_fixed_entry_zero();
+    e.src = 0; e.dst = at; e.size = d->width;
+    e.aux = table_fixed_lay_bounds( c, d->lo, d->hi );
+    e.guard = guard; e.op = (uint8_t) kTableFixedClamp; e.arg = arg;
+    e.meta = (uint8_t) ( d->clamp & 3u );
+    e.sign = ( d->clamp & 4u ) ? (uint8_t) 1 : (uint8_t) 0;
+    table_fixed_push( c, e );
 }
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
@@ -1611,6 +1701,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.op = ( te.kind == 10 ) ? (uint8_t) kTableFixedWidenF : (uint8_t) kTableFixedWiden;
                 e.sign = table_fixed_signed_kind( te.kind ) ? (uint8_t) 1 : (uint8_t) 0;
                 table_fixed_push( c, e );
+                table_fixed_push_clamp( c, d, at, guard, arg );
                 break;
             }
             /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
@@ -1649,10 +1740,15 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     table_fixed_push( c, e );
                 }
                 n = their_n < my_n ? their_n : my_n;
-                for ( i = 0; i < n; ++i )
                 {
-                    table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
-                                               mine, mi + 1, dst, at + i * d->stride, guard, arg );
+                    const int prev_skip = c->skip_clamp;
+                    if ( d->counted ) { c->skip_clamp = 1; }
+                    for ( i = 0; i < n; ++i )
+                    {
+                        table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
+                                                   mine, mi + 1, dst, at + i * d->stride, guard, arg );
+                    }
+                    c->skip_clamp = prev_skip;
                 }
                 break;
             }
@@ -1739,7 +1835,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-                e.op = kTableFixedText; e.arg = d->arg;
+                e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
                 table_fixed_push( c, e );
                 break;
             }
@@ -1751,11 +1847,13 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 {
                     e.size = me.size; e.op = kTableFixedCopy;
                     table_fixed_push( c, e );
+                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
                 {
                     e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                     table_fixed_push( c, e );
+                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( c->report != NULL )
                 {
@@ -1820,6 +1918,55 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     if ( plain == c.count ) { split = out; }
     if ( guarded != NULL ) { *guarded = split; }
     return out;
+}
+
+/* ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+
+   THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+   table of 64, the plan bytes they point at are a slab the caller hands
+   init, and overflow is a miss — compile into the caller's plan buffer and
+   do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+   hash never consults it. compiles counts successful compiles through this
+   cache, which is the pin; made is 1 on a slot after the compile that
+   filled it. */
+
+enum { kTableFixedPlanCacheCapacity = 64 };
+
+typedef struct TableFixedPlanCacheSlot
+{
+    uint64_t hash;
+    TableFixedEntry * plan;
+    int32_t count;
+    int32_t guarded;
+    int64_t record_bytes;
+    uint8_t made;
+} TableFixedPlanCacheSlot;
+
+typedef struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage; /* capacity * stride entries, caller-owned */
+    int32_t stride;            /* entries per slot, the plan capacity */
+    int32_t used;
+    int32_t compiles;
+} TableFixedPlanCache;
+
+static SCHEMA_UNUSED void table_fixed_plan_cache_init( TableFixedPlanCache * cache, TableFixedEntry * storage, int32_t stride )
+{
+    int32_t i;
+    cache->storage = storage;
+    cache->stride = stride;
+    cache->used = 0;
+    cache->compiles = 0;
+    for ( i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache->slots[i].hash = 0;
+        cache->slots[i].plan = NULL;
+        cache->slots[i].count = 0;
+        cache->slots[i].guarded = 0;
+        cache->slots[i].record_bytes = 0;
+        cache->slots[i].made = 0;
+    }
 }
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -6463,6 +6610,114 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
     table_fixed_put64( b + 24, (uint64_t) value->b48 );
 }
 
+/* RangedSigned's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_signed_fixed_clamp_body_( RangedSigned * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += ( value->i8_low > 126 );
+    value->i8_low = ( value->i8_low > 126 ) ? 126 : value->i8_low;
+    (*clamped) += ( value->i8_high < -127 );
+    value->i8_high = ( value->i8_high < -127 ) ? -127 : value->i8_high;
+    (*clamped) += (int) ( value->i8_inside < -127 ) | (int) ( value->i8_inside > 126 );
+    value->i8_inside = ( value->i8_inside < -127 ) ? -127 : ( ( value->i8_inside > 126 ) ? 126 : value->i8_inside );
+    (*clamped) += ( value->i16_low > 32766 );
+    value->i16_low = ( value->i16_low > 32766 ) ? 32766 : value->i16_low;
+    (*clamped) += ( value->i16_high < -32767 );
+    value->i16_high = ( value->i16_high < -32767 ) ? -32767 : value->i16_high;
+    (*clamped) += (int) ( value->i16_inside < -32767 ) | (int) ( value->i16_inside > 32766 );
+    value->i16_inside = ( value->i16_inside < -32767 ) ? -32767 : ( ( value->i16_inside > 32766 ) ? 32766 : value->i16_inside );
+    (*clamped) += ( value->i32_low > 2147483646 );
+    value->i32_low = ( value->i32_low > 2147483646 ) ? 2147483646 : value->i32_low;
+    (*clamped) += ( value->i32_high < -2147483647 );
+    value->i32_high = ( value->i32_high < -2147483647 ) ? -2147483647 : value->i32_high;
+    (*clamped) += (int) ( value->i32_inside < -2147483647 ) | (int) ( value->i32_inside > 2147483646 );
+    value->i32_inside = ( value->i32_inside < -2147483647 ) ? -2147483647 : ( ( value->i32_inside > 2147483646 ) ? 2147483646 : value->i32_inside );
+    (*clamped) += ( value->i64_low > 9223372036854775806ll );
+    value->i64_low = ( value->i64_low > 9223372036854775806ll ) ? 9223372036854775806ll : value->i64_low;
+    (*clamped) += ( value->i64_high < -9223372036854775807ll );
+    value->i64_high = ( value->i64_high < -9223372036854775807ll ) ? -9223372036854775807ll : value->i64_high;
+    (*clamped) += (int) ( value->i64_inside < -9223372036854775807ll ) | (int) ( value->i64_inside > 9223372036854775806ll );
+    value->i64_inside = ( value->i64_inside < -9223372036854775807ll ) ? -9223372036854775807ll : ( ( value->i64_inside > 9223372036854775806ll ) ? 9223372036854775806ll : value->i64_inside );
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->edges_count; ++i )
+        {
+        }
+    }
+}
+
+/* RangedUnsigned's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_unsigned_fixed_clamp_body_( RangedUnsigned * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += ( value->u8_low > 254 );
+    value->u8_low = ( value->u8_low > 254 ) ? 254 : value->u8_low;
+    (*clamped) += ( value->u8_high < 1 );
+    value->u8_high = ( value->u8_high < 1 ) ? 1 : value->u8_high;
+    (*clamped) += (int) ( value->u8_inside < 1 ) | (int) ( value->u8_inside > 254 );
+    value->u8_inside = ( value->u8_inside < 1 ) ? 1 : ( ( value->u8_inside > 254 ) ? 254 : value->u8_inside );
+    (*clamped) += ( value->u16_low > 65534 );
+    value->u16_low = ( value->u16_low > 65534 ) ? 65534 : value->u16_low;
+    (*clamped) += ( value->u16_high < 1 );
+    value->u16_high = ( value->u16_high < 1 ) ? 1 : value->u16_high;
+    (*clamped) += (int) ( value->u16_inside < 1 ) | (int) ( value->u16_inside > 65534 );
+    value->u16_inside = ( value->u16_inside < 1 ) ? 1 : ( ( value->u16_inside > 65534 ) ? 65534 : value->u16_inside );
+    (*clamped) += ( value->u32_low > 4294967294 );
+    value->u32_low = ( value->u32_low > 4294967294 ) ? 4294967294 : value->u32_low;
+    (*clamped) += ( value->u32_high < 1 );
+    value->u32_high = ( value->u32_high < 1 ) ? 1 : value->u32_high;
+    (*clamped) += (int) ( value->u32_inside < 1 ) | (int) ( value->u32_inside > 4294967294 );
+    value->u32_inside = ( value->u32_inside < 1 ) ? 1 : ( ( value->u32_inside > 4294967294 ) ? 4294967294 : value->u32_inside );
+    (*clamped) += ( value->u64_low > 18446744073709551614ull );
+    value->u64_low = ( value->u64_low > 18446744073709551614ull ) ? 18446744073709551614ull : value->u64_low;
+    (*clamped) += ( value->u64_high < 1ull );
+    value->u64_high = ( value->u64_high < 1ull ) ? 1ull : value->u64_high;
+    (*clamped) += (int) ( value->u64_inside < 1ull ) | (int) ( value->u64_inside > 18446744073709551614ull );
+    value->u64_inside = ( value->u64_inside < 1ull ) ? 1ull : ( ( value->u64_inside > 18446744073709551614ull ) ? 18446744073709551614ull : value->u64_inside );
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->counts_count; ++i )
+        {
+        }
+    }
+}
+
+/* RangedWidths's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_widths_fixed_clamp_body_( RangedWidths * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(8) width clamp */
+    (*clamped) += ( value->b8 > 255ull );
+    value->b8 = ( value->b8 > 255ull ) ? 255ull : value->b8;
+    /* bits(16) width clamp */
+    (*clamped) += ( value->b16 > 65535ull );
+    value->b16 = ( value->b16 > 65535ull ) ? 65535ull : value->b16;
+    /* bits(12) width clamp */
+    (*clamped) += ( value->b12 > 4095ull );
+    value->b12 = ( value->b12 > 4095ull ) ? 4095ull : value->b12;
+    /* bits(48) width clamp */
+    (*clamped) += ( value->b48 > 281474976710655ull );
+    value->b48 = ( value->b48 > 281474976710655ull ) ? 281474976710655ull : value->b48;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_tabledemo_ranged_signed_fixed_clamp_( RangedSigned * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_signed_fixed_clamp_body_( value, &clamped, &damaged );
+    report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
+}
+
 /* ---- RangedSigned, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -6503,25 +6758,25 @@ static SCHEMA_UNUSED const int64_t ranged_signed_fixed_layout_bytes = (int64_t) 
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst ranged_signed_fixed_dst[] = {
-    { 0, 0, 0, 0, 0 }, /* RangedSigned */
-    { 0, 0, 0, 0, 0 }, /* i8_span */
-    { 1, 0, 0, 0, 0 }, /* i8_low */
-    { 2, 0, 0, 0, 0 }, /* i8_high */
-    { 3, 0, 0, 0, 0 }, /* i8_inside */
-    { 4, 0, 0, 0, 0 }, /* i16_span */
-    { 6, 0, 0, 0, 0 }, /* i16_low */
-    { 8, 0, 0, 0, 0 }, /* i16_high */
-    { 10, 0, 0, 0, 0 }, /* i16_inside */
-    { 12, 0, 0, 0, 0 }, /* i32_span */
-    { 16, 0, 0, 0, 0 }, /* i32_low */
-    { 20, 0, 0, 0, 0 }, /* i32_high */
-    { 24, 0, 0, 0, 0 }, /* i32_inside */
-    { 32, 0, 0, 0, 0 }, /* i64_span */
-    { 40, 0, 0, 0, 0 }, /* i64_low */
-    { 48, 0, 0, 0, 0 }, /* i64_high */
-    { 56, 0, 0, 0, 0 }, /* i64_inside */
-    { 64, 2, 72, 1, 0 }, /* edges */
-    { 0, 0, 0, 0, 0 }, /* element */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RangedSigned */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* i8_span */
+    { 1, 0, 0, 0, 0, 0ull, 126ull, 6, 1 }, /* i8_low */
+    { 2, 0, 0, 0, 0, 18446744073709551489ull, 0ull, 5, 1 }, /* i8_high */
+    { 3, 0, 0, 0, 0, 18446744073709551489ull, 126ull, 7, 1 }, /* i8_inside */
+    { 4, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* i16_span */
+    { 6, 0, 0, 0, 0, 0ull, 32766ull, 6, 2 }, /* i16_low */
+    { 8, 0, 0, 0, 0, 18446744073709518849ull, 0ull, 5, 2 }, /* i16_high */
+    { 10, 0, 0, 0, 0, 18446744073709518849ull, 32766ull, 7, 2 }, /* i16_inside */
+    { 12, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* i32_span */
+    { 16, 0, 0, 0, 0, 0ull, 2147483646ull, 6, 4 }, /* i32_low */
+    { 20, 0, 0, 0, 0, 18446744071562067969ull, 0ull, 5, 4 }, /* i32_high */
+    { 24, 0, 0, 0, 0, 18446744071562067969ull, 2147483646ull, 7, 4 }, /* i32_inside */
+    { 32, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* i64_span */
+    { 40, 0, 0, 0, 0, 0ull, 9223372036854775806ull, 6, 8 }, /* i64_low */
+    { 48, 0, 0, 0, 0, 9223372036854775809ull, 0ull, 5, 8 }, /* i64_high */
+    { 56, 0, 0, 0, 0, 9223372036854775809ull, 9223372036854775806ull, 7, 8 }, /* i64_inside */
+    { 64, 2, 72, 1, 0, 0ull, 0ull, 0, 0 }, /* edges */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 18 leaves by the schema compiler —
@@ -6531,10 +6786,10 @@ static SCHEMA_UNUSED const TableFixedDst ranged_signed_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry ranged_signed_fixed_plan[] = {
-    { 0u, 0u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* i8_span */
-    { 28u, 32u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* i64_span */
-    { 60u, 72u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0 }, /* edges count */
-    { 64u, 64u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* edges, whole */
+    { 0u, 0u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* i8_span */
+    { 28u, 32u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* i64_span */
+    { 60u, 72u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* edges count */
+    { 64u, 64u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* edges, whole */
 };
 static SCHEMA_UNUSED const int32_t ranged_signed_fixed_plan_count = 4;
 static SCHEMA_UNUSED const int32_t ranged_signed_fixed_plan_guarded = 4;
@@ -6571,9 +6826,9 @@ static SCHEMA_UNUSED int64_t ranged_signed_fixed_save( const RangedSigned * valu
 
 /* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
    the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+   writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4). */
 static SCHEMA_UNUSED int64_t ranged_signed_fixed_load( RangedSigned * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     uint32_t layout_bytes;
@@ -6607,20 +6862,63 @@ static SCHEMA_UNUSED int64_t ranged_signed_fixed_load( RangedSigned * values, in
     record_bytes = 8 + 72;
     if ( hash != ranged_signed_fixed_hash )
     {
-        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
+           and CACHED BY HASH, so the compile is paid once per peer, not per record.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
            every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        const TableFixedPlanCacheSlot * hit = NULL;
+        TableFixedEntry * dest;
+        int32_t dest_capacity;
+        int storing;
+        int32_t i;
         TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
-        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
-        made = table_fixed_compile( &parsed, ranged_signed_fixed_layout, (int32_t) sizeof( ranged_signed_fixed_layout ), ranged_signed_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+        if ( cache != NULL )
+        {
+            for ( i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
+            dest = plan;
+            dest_capacity = plan_capacity;
+            storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            made = table_fixed_compile( &parsed, ranged_signed_fixed_layout, (int32_t) sizeof( ranged_signed_fixed_layout ), ranged_signed_fixed_dst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+            record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
        the layout's own rules each refuse under their own name first, so a
@@ -6635,9 +6933,30 @@ static SCHEMA_UNUSED int64_t ranged_signed_fixed_load( RangedSigned * values, in
         ranged_signed_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_tabledemo_ranged_signed_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_tabledemo_ranged_unsigned_fixed_clamp_( RangedUnsigned * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_unsigned_fixed_clamp_body_( value, &clamped, &damaged );
+    report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RangedUnsigned, the fixed form ---- */
@@ -6680,25 +6999,25 @@ static SCHEMA_UNUSED const int64_t ranged_unsigned_fixed_layout_bytes = (int64_t
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst ranged_unsigned_fixed_dst[] = {
-    { 0, 0, 0, 0, 0 }, /* RangedUnsigned */
-    { 0, 0, 0, 0, 0 }, /* u8_span */
-    { 1, 0, 0, 0, 0 }, /* u8_low */
-    { 2, 0, 0, 0, 0 }, /* u8_high */
-    { 3, 0, 0, 0, 0 }, /* u8_inside */
-    { 4, 0, 0, 0, 0 }, /* u16_span */
-    { 6, 0, 0, 0, 0 }, /* u16_low */
-    { 8, 0, 0, 0, 0 }, /* u16_high */
-    { 10, 0, 0, 0, 0 }, /* u16_inside */
-    { 12, 0, 0, 0, 0 }, /* u32_span */
-    { 16, 0, 0, 0, 0 }, /* u32_low */
-    { 20, 0, 0, 0, 0 }, /* u32_high */
-    { 24, 0, 0, 0, 0 }, /* u32_inside */
-    { 32, 0, 0, 0, 0 }, /* u64_span */
-    { 40, 0, 0, 0, 0 }, /* u64_low */
-    { 48, 0, 0, 0, 0 }, /* u64_high */
-    { 56, 0, 0, 0, 0 }, /* u64_inside */
-    { 64, 8, 96, 1, 0 }, /* counts */
-    { 0, 0, 0, 0, 0 }, /* element */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RangedUnsigned */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* u8_span */
+    { 1, 0, 0, 0, 0, 0ull, 254ull, 2, 1 }, /* u8_low */
+    { 2, 0, 0, 0, 0, 1ull, 0ull, 1, 1 }, /* u8_high */
+    { 3, 0, 0, 0, 0, 1ull, 254ull, 3, 1 }, /* u8_inside */
+    { 4, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* u16_span */
+    { 6, 0, 0, 0, 0, 0ull, 65534ull, 2, 2 }, /* u16_low */
+    { 8, 0, 0, 0, 0, 1ull, 0ull, 1, 2 }, /* u16_high */
+    { 10, 0, 0, 0, 0, 1ull, 65534ull, 3, 2 }, /* u16_inside */
+    { 12, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* u32_span */
+    { 16, 0, 0, 0, 0, 0ull, 4294967294ull, 2, 4 }, /* u32_low */
+    { 20, 0, 0, 0, 0, 1ull, 0ull, 1, 4 }, /* u32_high */
+    { 24, 0, 0, 0, 0, 1ull, 4294967294ull, 3, 4 }, /* u32_inside */
+    { 32, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* u64_span */
+    { 40, 0, 0, 0, 0, 0ull, 18446744073709551614ull, 2, 8 }, /* u64_low */
+    { 48, 0, 0, 0, 0, 1ull, 0ull, 1, 8 }, /* u64_high */
+    { 56, 0, 0, 0, 0, 1ull, 18446744073709551614ull, 3, 8 }, /* u64_inside */
+    { 64, 8, 96, 1, 0, 0ull, 0ull, 0, 0 }, /* counts */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 18 leaves by the schema compiler —
@@ -6708,10 +7027,10 @@ static SCHEMA_UNUSED const TableFixedDst ranged_unsigned_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry ranged_unsigned_fixed_plan[] = {
-    { 0u, 0u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* u8_span */
-    { 28u, 32u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* u64_span */
-    { 60u, 96u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0 }, /* counts count */
-    { 64u, 64u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* counts, whole */
+    { 0u, 0u, 28u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* u8_span */
+    { 28u, 32u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* u64_span */
+    { 60u, 96u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0 }, /* counts count */
+    { 64u, 64u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* counts, whole */
 };
 static SCHEMA_UNUSED const int32_t ranged_unsigned_fixed_plan_count = 4;
 static SCHEMA_UNUSED const int32_t ranged_unsigned_fixed_plan_guarded = 4;
@@ -6748,9 +7067,9 @@ static SCHEMA_UNUSED int64_t ranged_unsigned_fixed_save( const RangedUnsigned * 
 
 /* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
    the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+   writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4). */
 static SCHEMA_UNUSED int64_t ranged_unsigned_fixed_load( RangedUnsigned * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     uint32_t layout_bytes;
@@ -6784,20 +7103,63 @@ static SCHEMA_UNUSED int64_t ranged_unsigned_fixed_load( RangedUnsigned * values
     record_bytes = 8 + 96;
     if ( hash != ranged_unsigned_fixed_hash )
     {
-        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
+           and CACHED BY HASH, so the compile is paid once per peer, not per record.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
            every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        const TableFixedPlanCacheSlot * hit = NULL;
+        TableFixedEntry * dest;
+        int32_t dest_capacity;
+        int storing;
+        int32_t i;
         TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
-        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
-        made = table_fixed_compile( &parsed, ranged_unsigned_fixed_layout, (int32_t) sizeof( ranged_unsigned_fixed_layout ), ranged_unsigned_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+        if ( cache != NULL )
+        {
+            for ( i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
+            dest = plan;
+            dest_capacity = plan_capacity;
+            storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            made = table_fixed_compile( &parsed, ranged_unsigned_fixed_layout, (int32_t) sizeof( ranged_unsigned_fixed_layout ), ranged_unsigned_fixed_dst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+            record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
        the layout's own rules each refuse under their own name first, so a
@@ -6812,9 +7174,30 @@ static SCHEMA_UNUSED int64_t ranged_unsigned_fixed_load( RangedUnsigned * values
         ranged_unsigned_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_tabledemo_ranged_unsigned_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_tabledemo_ranged_widths_fixed_clamp_( RangedWidths * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_ranged_widths_fixed_clamp_body_( value, &clamped, &damaged );
+    report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- RangedWidths, the fixed form ---- */
@@ -6844,13 +7227,13 @@ static SCHEMA_UNUSED const int64_t ranged_widths_fixed_layout_bytes = (int64_t) 
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst ranged_widths_fixed_dst[] = {
-    { 0, 0, 0, 0, 0 }, /* RangedWidths */
-    { 0, 0, 0, 0, 0 }, /* b8 */
-    { 4, 0, 0, 0, 0 }, /* b16 */
-    { 8, 0, 0, 0, 0 }, /* b32 */
-    { 16, 0, 0, 0, 0 }, /* b64 */
-    { 24, 0, 0, 0, 0 }, /* b12 */
-    { 32, 0, 0, 0, 0 }, /* b48 */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RangedWidths */
+    { 0, 0, 0, 0, 0, 0ull, 255ull, 2, 4 }, /* b8 */
+    { 4, 0, 0, 0, 0, 0ull, 65535ull, 2, 4 }, /* b16 */
+    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* b32 */
+    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* b64 */
+    { 24, 0, 0, 0, 0, 0ull, 4095ull, 2, 4 }, /* b12 */
+    { 32, 0, 0, 0, 0, 0ull, 281474976710655ull, 2, 8 }, /* b48 */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 6 leaves by the schema compiler —
@@ -6860,9 +7243,9 @@ static SCHEMA_UNUSED const TableFixedDst ranged_widths_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry ranged_widths_fixed_plan[] = {
-    { 0u, 0u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* b8 */
-    { 12u, 16u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* b64 */
-    { 24u, 32u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* b48 */
+    { 0u, 0u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* b8 */
+    { 12u, 16u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* b64 */
+    { 24u, 32u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* b48 */
 };
 static SCHEMA_UNUSED const int32_t ranged_widths_fixed_plan_count = 3;
 static SCHEMA_UNUSED const int32_t ranged_widths_fixed_plan_guarded = 3;
@@ -6899,9 +7282,9 @@ static SCHEMA_UNUSED int64_t ranged_widths_fixed_save( const RangedWidths * valu
 
 /* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
    the layout's hash is this build's own, and a plan compiled once from the
-   writer's layout otherwise. Same loop either way (§3.4). */
+   writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4). */
 static SCHEMA_UNUSED int64_t ranged_widths_fixed_load( RangedWidths * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     uint32_t layout_bytes;
@@ -6935,20 +7318,63 @@ static SCHEMA_UNUSED int64_t ranged_widths_fixed_load( RangedWidths * values, in
     record_bytes = 8 + 32;
     if ( hash != ranged_widths_fixed_hash )
     {
-        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
+           and CACHED BY HASH, so the compile is paid once per peer, not per record.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
            every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        const TableFixedPlanCacheSlot * hit = NULL;
+        TableFixedEntry * dest;
+        int32_t dest_capacity;
+        int storing;
+        int32_t i;
         TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
-        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
-        made = table_fixed_compile( &parsed, ranged_widths_fixed_layout, (int32_t) sizeof( ranged_widths_fixed_layout ), ranged_widths_fixed_dst, plan, plan_capacity, &compiled_guarded, report );
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+        if ( cache != NULL )
+        {
+            for ( i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+        }
+        else
+        {
+            if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
+            dest = plan;
+            dest_capacity = plan_capacity;
+            storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            made = table_fixed_compile( &parsed, ranged_widths_fixed_layout, (int32_t) sizeof( ranged_widths_fixed_layout ), ranged_widths_fixed_dst, dest, dest_capacity, &compiled_guarded, report );
+            if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+            record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
        the layout's own rules each refuse under their own name first, so a
@@ -6963,6 +7389,9 @@ static SCHEMA_UNUSED int64_t ranged_widths_fixed_load( RangedWidths * values, in
         ranged_widths_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_tabledemo_ranged_widths_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
