@@ -336,6 +336,155 @@ func benchTable[T any](name, golden string, baseIters int64,
 	}
 }
 
+// ---------------------------------------------------------------------------
+// THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
+// ---------------------------------------------------------------------------
+//
+// The same 64 logical records, on the same table wire, in the form that spends
+// no byte on ids, kinds, lengths or terminators. A FILE is the unit here and
+// not a record: the layout rides once, the records follow it to the end, and
+// every one of them is the same size — so the write is one call for all 64 and
+// the read is one call back, and an OP is one RECORD of that call.
+//
+// The gates before the clock are the C++ leg's four in Go's spelling
+// (bench/tables/cpp/table_main.cpp), and the first is the one this form adds:
+// THE LAYOUT THIS BUILD EMITS IS THE CORPUS'S LAYOUT, byte for byte. That is
+// the whole claim a port makes on this form — the record's positions, the ids,
+// the kinds, the record size and the hash every record carries are all in
+// those bytes — so it is checked first and by itself.
+//
+// THIS DRIVER IS SHAPE-BLIND like the one above it: the layout arrives as
+// bytes and the codec as four function values. Nothing here names a field, a
+// pin or a wire size.
+const fixedCount = 64
+
+// the plan storage the caller owns; the identity path never touches it, and a
+// stranger's layout compiles into it (§3.4: this codec never allocates)
+const fixedPlanCapacity = 4096
+
+func benchFixed[T any, E any](name string, baseIters int64, layout []byte,
+	measure func(int64) int64,
+	save func([]T, []byte) int64,
+	load func([]T, []byte, []E) int64) {
+	iters := baseIters
+	if iterations > 0 {
+		iters = iterations
+	}
+
+	file, err := os.ReadFile(variantDir + "/bench_fixed.bin")
+	if err != nil || len(file) == 0 {
+		fmt.Fprintf(os.Stderr, "missing fixed corpus %s/bench_fixed.bin — run from the schema repo root (or pass --variant-dir)\n", variantDir)
+		failed = true
+		return
+	}
+	vocab, err := os.ReadFile(variantDir + "/bench_fixed.vocab")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "missing fixed corpus %s/bench_fixed.vocab — run from the schema repo root (or pass --variant-dir)\n", variantDir)
+		failed = true
+		return
+	}
+	// the two names the C++ and C legs fold, spelled the same way, because the
+	// corpus id the paired driver matches is a hash over these basenames
+	goldensLoaded["bench_fixed.bin"] = file
+	goldensLoaded["bench_fixed.vocab"] = vocab
+	bytesPerOp := float64(len(file)) / fixedCount
+
+	// gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT.
+	if len(vocab) != len(layout) || string(vocab) != string(layout) {
+		fail(name, "this build's layout is not the corpus's, byte for byte")
+		return
+	}
+
+	values := make([]T, fixedCount)
+	out := make([]T, fixedCount)
+	plan := make([]E, fixedPlanCapacity)
+	fixedTwin := make([]byte, len(file))
+
+	// gate 2: the whole file loads clean, and Measure agrees with its length.
+	if measure(fixedCount) != int64(len(file)) {
+		fail(name, "Measure of the corpus's record count is not the corpus's own length")
+		return
+	}
+	if load(values, file, plan) != fixedCount {
+		fail(name, "the fixed corpus did not load")
+		return
+	}
+
+	// gate 3: writing them back reproduces the file, byte for byte.
+	if save(values, fixedTwin) != int64(len(file)) || string(fixedTwin) != string(file) {
+		fail(name, "round-trip bytes differ — refusing to bench a codec that does not reproduce the corpus")
+		return
+	}
+
+	// gate 4: reused storage round-trips too. The load owns the prefill, so
+	// nothing is reset between the two passes.
+	for k := 0; k < 2; k++ {
+		if load(out, file, plan) != fixedCount ||
+			save(out, fixedTwin) != int64(len(file)) || string(fixedTwin) != string(file) {
+			fail(name, "reused target round-trip bytes differ")
+			return
+		}
+	}
+
+	if gateOnly {
+		return
+	}
+
+	writeRates := make([]float64, 0, numRuns)
+	roundTripRates := make([]float64, 0, numRuns)
+
+	// WRITE: one call lays down all 64 records; an op is one record.
+	for run := -1; run < numRuns; run++ {
+		start := time.Now()
+		for i := int64(0); i < iters; i += fixedCount {
+			wrote := save(values, fixedTwin)
+			if wrote != int64(len(file)) {
+				fail(name, "save failed in loop")
+				return
+			}
+			runtime.KeepAlive(&fixedTwin)
+			sink += uint64(wrote)
+		}
+		elapsed := time.Since(start).Seconds()
+		if run >= 0 {
+			writeRates = append(writeRates, float64(iters)/elapsed)
+		}
+	}
+
+	// ROUND-TRIP: read the file back, then write what came out.
+	for run := -1; run < numRuns; run++ {
+		start := time.Now()
+		for i := int64(0); i < iters; i += fixedCount {
+			if load(out, file, plan) != fixedCount {
+				fail(name, "load failed in loop")
+				return
+			}
+			wrote := save(out, fixedTwin)
+			if wrote != int64(len(file)) {
+				fail(name, "re-save failed in loop")
+				return
+			}
+			runtime.KeepAlive(&fixedTwin)
+			sink += uint64(wrote)
+		}
+		elapsed := time.Since(start).Seconds()
+		if run >= 0 {
+			roundTripRates = append(roundTripRates, float64(iters)/elapsed)
+		}
+	}
+
+	w := stats(writeRates)
+	rt := stats(roundTripRates)
+	report(name, "write", iters, bytesPerOp, w)
+	report(name, "round_trip", iters, bytesPerOp, rt)
+
+	readTime := 1.0/rt.median - 1.0/w.median
+	if readTime > 0 {
+		fmt.Fprintf(os.Stderr, "%-18s %-11s %10.3f M msg/s   (DERIVED: round-trip minus write, informational — not a measured row)\n",
+			name, "read", 1e-6/readTime)
+	}
+}
+
 var gateOnly bool
 var indexed bool
 var lengths [numVariants]int64
