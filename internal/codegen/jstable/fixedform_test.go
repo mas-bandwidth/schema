@@ -20,12 +20,12 @@ import (
 // A change to either walk that moves one byte moves the hash, and a hash that
 // moved is two ports that can no longer read each other's records at all —
 // which is why this is an equality on the NUMBER and not a shape check.
-func TestFixedBlockMatchesReference(t *testing.T) {
+func TestFixedLayoutMatchesReference(t *testing.T) {
 	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
 	st := findTable(t, u, "FixedTable")
 
 	w := fixedWalkRoot(st)
-	block := fixedBlockBytes(w.entries)
+	block := fixedLayoutBytes(w.entries)
 
 	// generated/bench/paired/cpp/FixedTableTable.h, emitted by
 	// internal/codegen/cpptable/fixedform.go from these same two schemas
@@ -41,7 +41,7 @@ func TestFixedBlockMatchesReference(t *testing.T) {
 	if len(block) != refBlockLen {
 		t.Fatalf("block bytes = %d, the C++ reference emits %d", len(block), refBlockLen)
 	}
-	if got := fixedBlockHash(block); got != refHash {
+	if got := fixedLayoutHash(block); got != refHash {
 		t.Fatalf("block hash = 0x%016x, the C++ reference emits 0x%016x — the two walks disagree somewhere in the closure", got, refHash)
 	}
 	if got := fixedTypeBytes(st); got != refBodyBytes {
@@ -191,11 +191,11 @@ func TestFixedOptionalRowsMatchReference(t *testing.T) {
 		refBodyBytes = int64(72)
 	)
 	w := fixedWalkRoot(st)
-	block := fixedBlockBytes(w.entries)
+	block := fixedLayoutBytes(w.entries)
 	if len(w.entries) != refEntries {
 		t.Fatalf("block entries = %d, the C++ reference emits %d", len(w.entries), refEntries)
 	}
-	if got := fixedBlockHash(block); got != refHash {
+	if got := fixedLayoutHash(block); got != refHash {
 		t.Fatalf("block hash = 0x%016x, the C++ reference emits 0x%016x", got, refHash)
 	}
 	if got := fixedTypeBytes(st); got != refBodyBytes {
@@ -207,14 +207,14 @@ func TestFixedOptionalRowsMatchReference(t *testing.T) {
 	// its `dst` is unused — the payload's own entry carries the payload's
 	// offset, one byte past the flag. Spelled the other way round the compiled
 	// plan lands the flag where the payload belongs.
-	find := func(note string) (fixedBlockEntry, fixedDst, int) {
+	find := func(note string) (fixedLayoutEntry, fixedDst, int) {
 		for i := range w.entries {
 			if w.entries[i].note == note {
 				return w.entries[i], w.dst[i], i
 			}
 		}
 		t.Fatalf("no block entry noted %q", note)
-		return fixedBlockEntry{}, fixedDst{}, -1
+		return fixedLayoutEntry{}, fixedDst{}, -1
 	}
 	for _, tc := range []struct {
 		note        string

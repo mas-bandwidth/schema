@@ -29,6 +29,20 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+// §3'S HEADER, ONE RULE FOR ALL FIVE FORMS: the form byte at 0, seven reserved
+// bytes that are zero, the LAYOUT HASH at 8, and the body at 16. The fixed
+// form's body opens with the layout behind its own u32 length, so the layout
+// itself starts at 20 and the records follow it.
+//
+// These are SPELLED OUT rather than imported from the generated module on
+// purpose: a driver that read the offsets out of the code under test would
+// agree with whatever header that code happened to write, which is the one
+// thing this file exists to refuse.
+const HEADER_BYTES = 16;
+const HASH_AT = 8;
+const LAYOUT_LENGTH_AT = 16;
+const LAYOUT_AT = 20;
+
 //   4. THE OPTIONALS, whose bytes are the reference's too. `?T` is the ONE
 //      place this form departs from §2.3 — a present byte in front of a
 //      payload that rides whole — so the flag's POSITION is a wire fact, and a
@@ -94,7 +108,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir) {
 // reference's own corpus, one at a time, and the bound is what comes out.
 function forgedCounts(check, bench, fixed, corpusDir) {
   const corpus = new Uint8Array(readFileSync(resolve(corpusDir, "bench_fixed.bin")));
-  const head = 5 + fixed.FixedTableFixedBlockBytes;
+  const head = LAYOUT_AT + fixed.FixedTableFixedLayoutBytes;
 
   // ONE record of the reference's corpus, framed as a file of its own, so the
   // forged byte is the only thing that differs from bytes already proved good.
@@ -176,17 +190,39 @@ async function pairedCorpus(check, bench, fixed, corpusDir) {
 
   // the framing, before anything is decoded
   check(corpus[0] === 3, "fixed form: the file opens with form byte 3");
-  const blockBytes = corpus[1] | (corpus[2] << 8) | (corpus[3] << 16) | (corpus[4] << 24);
-  check(blockBytes === fixed.FixedTableFixedBlockBytes,
-    `fixed form: the file's block length ${blockBytes} is this build's ${fixed.FixedTableFixedBlockBytes}`);
 
-  // THE BLOCK IS THE SAME RUN OF BYTES as the reference's, which is what makes
+  // §3'S HEADER IS ONE RULE FOR ALL FIVE FORMS, and the seven bytes behind the
+  // form byte are RESERVED AND ZERO. A writer that put anything there would
+  // read back perfectly and disagree with every peer the day the registry
+  // spends one of them, so the zeros are checked and not assumed.
+  let reservedZero = true;
+  for (let i = 1; i < HASH_AT; i++) {
+    if (corpus[i] !== 0) { reservedZero = false; break; }
+  }
+  check(reservedZero, "fixed form: the seven reserved header bytes are zero");
+
+  const blockBytes = corpus[LAYOUT_LENGTH_AT] | (corpus[LAYOUT_LENGTH_AT + 1] << 8) |
+    (corpus[LAYOUT_LENGTH_AT + 2] << 16) | (corpus[LAYOUT_LENGTH_AT + 3] << 24);
+  check(blockBytes === fixed.FixedTableFixedLayoutBytes,
+    `fixed form: the file's layout length ${blockBytes} is this build's ${fixed.FixedTableFixedLayoutBytes}`);
+
+  // THE HEADER NAMES THE LAYOUT ONCE (§3): the hash at 8 is the hash of the
+  // layout behind it, and it is the same number every record carries.
+  const headHashLo = (corpus[HASH_AT] | (corpus[HASH_AT + 1] << 8) |
+    (corpus[HASH_AT + 2] << 16) | (corpus[HASH_AT + 3] << 24)) >>> 0;
+  const headHashHi = (corpus[HASH_AT + 4] | (corpus[HASH_AT + 5] << 8) |
+    (corpus[HASH_AT + 6] << 16) | (corpus[HASH_AT + 7] << 24)) >>> 0;
+  check(headHashLo === (fixed.FixedTableFixedHashLo >>> 0) &&
+    headHashHi === (fixed.FixedTableFixedHashHi >>> 0),
+    "fixed form: the header's layout hash at 8 is this build's own");
+
+  // THE LAYOUT IS THE SAME RUN OF BYTES as the reference's, which is what makes
   // the hash the same number and the record positional against the same layout.
   let blockSame = true;
   for (let i = 0; i < blockBytes; i++) {
-    if (corpus[5 + i] !== fixed.FixedTableFixedBlock[i]) { blockSame = false; break; }
+    if (corpus[LAYOUT_AT + i] !== fixed.FixedTableFixedLayout[i]) { blockSame = false; break; }
   }
-  check(blockSame, "fixed form: the vocabulary block is byte-identical to the C++ reference's");
+  check(blockSame, "fixed form: the layout is byte-identical to the C++ reference's");
 
   check(corpus.length === fixed.FixedTableFixedMeasure(Count),
     "fixed form: Measure is a constant and it is the file's own length");
@@ -437,7 +473,7 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     const plan = fx1.FxRootFixedNewPlan();
     const wrong = [new fx1home.FxRoot()];
     const wr = new fx1home.TableFixedReport();
-    const body = w2.subarray(5 + fx2.FxRootFixedBlockBytes + 8);
+    const body = w2.subarray(LAYOUT_AT + fx2.FxRootFixedLayoutBytes + 8);
     plan.image.set(new Uint8Array(plan.image.length)); // the prefill
     fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0]),
       1, body, 0, plan.image, null, wr);
@@ -451,39 +487,71 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
   // nothing is decoded and there is nothing to count.
   const fresh = () => [new fx1home.FxRoot()];
   {
+    // THE FORM BYTE SAYS WHICH DIRECTION (§3). The registry is ORDERED, so a
+    // byte this reader cannot read is named by WHERE IT SITS relative to this
+    // form — and never by one word for all three.
     const bad = Uint8Array.from(w1);
     bad[0] = 4; // §4.2's unknown-form control byte, which is 4 now that 3 is taken
     const r = new fx1home.TableFixedReport();
     check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
       r.refused === fx1home.TableFixedRefusal.NewerForm && !r.malformed,
-      "REFUSAL: a form byte this build does not carry is newer_form, and malformed does not fire");
+      "REFUSAL: a form byte NEWER than this build is newer_form, and malformed does not fire");
   }
   {
     const bad = Uint8Array.from(w1);
-    bad[1] = 0xff; bad[2] = 0xff; // a block length that overruns the file
+    bad[0] = 1; // form 1, the variable form: a form that came BEFORE this one
     const r = new fx1home.TableFixedReport();
     check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.BlockMalformed,
-      "REFUSAL: a block length that overruns the file is block_malformed");
+      r.refused === fx1home.TableFixedRefusal.PreviousForm && !r.malformed,
+      "REFUSAL: form 1, the variable form, is previous_form and NOT newer_form");
   }
   {
-    // a block whose ENTRY COUNT does not close its own tree is refused WHOLE
     const bad = Uint8Array.from(w1);
-    bad[5 + 4 + 13] = 0x7f; // the root's child count, which now closes nothing
+    bad[0] = 2; // form 2, the message form: a WIRE where a FILE was expected
+    const r = new fx1home.TableFixedReport();
+    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
+      r.refused === fx1home.TableFixedRefusal.MessageFormAsFile && !r.malformed,
+      "REFUSAL: form 2 handed to a file reader is message_form_as_file, named apart from both");
+  }
+  {
+    const bad = Uint8Array.from(w1);
+    // a layout length that overruns the file
+    bad[LAYOUT_LENGTH_AT] = 0xff; bad[LAYOUT_LENGTH_AT + 1] = 0xff;
+    const r = new fx1home.TableFixedReport();
+    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
+      r.refused === fx1home.TableFixedRefusal.LayoutMalformed,
+      "REFUSAL: a layout length that overruns the file is layout_malformed");
+  }
+  {
+    // a layout whose ENTRY COUNT does not close its own tree is refused WHOLE
+    const bad = Uint8Array.from(w1);
+    bad[LAYOUT_AT + 4 + 13] = 0x7f; // the root's child count, which now closes nothing
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.refused === fx1home.TableFixedRefusal.BlockMalformed,
-      "REFUSAL: a block whose tree does not close is block_malformed, and it sets nothing");
+    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutMalformed,
+      "REFUSAL: a layout whose tree does not close is layout_malformed, and it sets nothing");
   }
   {
-    // A RECORD WHOSE HASH NAMES NO BLOCK THIS READER HOLDS is a refusal by
-    // name — never a guess and never damage
+    // THE HEADER NAMES THE LAYOUT ONCE, AND IT IS CHECKED LAST (§3): a header
+    // whose hash is not the hash of the layout behind it is a lying header,
+    // and the layout's OWN rules refuse under their own names first so that a
+    // broken layout is never reported as this.
     const bad = Uint8Array.from(w1);
-    bad[5 + fx1.FxRootFixedBlockBytes] ^= 0xff; // the record's own hash
+    bad[HASH_AT] ^= 0xff;
     const r = new fx1home.TableFixedReport();
     check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
-      r.refused === fx1home.TableFixedRefusal.NoBlock,
-      "REFUSAL: a record whose hash is not the block's is no_block");
+      r.refused === fx1home.TableFixedRefusal.LayoutMalformed,
+      "REFUSAL: a header whose hash is not the layout's is layout_malformed");
+  }
+  {
+    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS is a refusal by
+    // name — never a guess and never damage
+    const bad = Uint8Array.from(w1);
+    bad[LAYOUT_AT + fx1.FxRootFixedLayoutBytes] ^= 0xff; // the record's own hash
+    const r = new fx1home.TableFixedReport();
+    check(fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r) === -1 &&
+      r.refused === fx1home.TableFixedRefusal.NoLayout,
+      "REFUSAL: a record whose hash is not the layout's is no_layout");
   }
   {
     // BYTES LEFT OVER ARE malformed — §3's rule, for the same reason
@@ -514,7 +582,7 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     const r = new fx1home.TableFixedReport();
     check(fx1.FxRootFixedLoad(fresh(), 1, w2, w2.length, tiny, r) === -1 &&
       r.refused === fx1home.TableFixedRefusal.PlanTooLarge,
-      "REFUSAL: a block whose compiled plan does not fit the caller's storage is plan_too_large");
+      "REFUSAL: a layout whose compiled plan does not fit the caller's storage is plan_too_large");
   }
   {
     // a write that does not fit answers -1 and touches nothing, exactly as the
@@ -863,7 +931,7 @@ function optionalVersioning(check, o, dir) {
 function optionalControls(check, o, dir) {
   const { fo1, fo1home, fo2, fo2home } = o;
   const corpus = new Uint8Array(readFileSync(resolve(dir, "fo1.bin")));
-  const head = 5 + fo1.OptRootFixedBlockBytes;
+  const head = LAYOUT_AT + fo1.OptRootFixedLayoutBytes;
   const rec = 80; // 8 + 72
 
   // ONE record of the reference's corpus, framed as a file of its own, so a

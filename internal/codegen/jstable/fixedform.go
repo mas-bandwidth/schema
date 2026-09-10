@@ -13,7 +13,7 @@
 // wire kinds are (jstable.go): a port that derived the block from the
 // reference emitter's private helpers would break the day the two files
 // disagree, and this way a disagreement shows up in the SHARED GOLDEN BYTES
-// instead — held by TestFixedBlockMatchesReference, which builds the block for
+// instead — held by TestFixedLayoutMatchesReference, which builds the block for
 // the paired bench's own type and checks it against the reference's constants.
 //
 // Nothing here touches form 1. JavaScript carries no form 1 for tables at all
@@ -175,9 +175,9 @@ func fixedSupported(st *ir.Struct, depth int) bool {
 // THE VOCABULARY BLOCK, and MY SIDE of it
 // ---------------------------------------------------------------------------
 
-// fixedBlockEntry is one seventeen-byte entry: an id, a kind, a constant size
+// fixedLayoutEntry is one seventeen-byte entry: an id, a kind, a constant size
 // and a child count, in the writer's declared order (§3.4).
-type fixedBlockEntry struct {
+type fixedLayoutEntry struct {
 	id       uint64
 	kind     int
 	size     int64
@@ -211,11 +211,11 @@ const (
 )
 
 type fixedWalk struct {
-	entries []fixedBlockEntry
+	entries []fixedLayoutEntry
 	dst     []fixedDst
 }
 
-func (w *fixedWalk) push(e fixedBlockEntry, d fixedDst) {
+func (w *fixedWalk) push(e fixedLayoutEntry, d fixedDst) {
 	w.entries = append(w.entries, e)
 	w.dst = append(w.dst, d)
 }
@@ -225,7 +225,7 @@ func (w *fixedWalk) push(e fixedBlockEntry, d fixedDst) {
 // immediately by its child count children.
 func fixedWalkRoot(st *ir.Struct) *fixedWalk {
 	w := &fixedWalk{}
-	w.push(fixedBlockEntry{
+	w.push(fixedLayoutEntry{
 		id:       ir.TableWireId(st.WireName()),
 		kind:     ir.TableKindTable,
 		size:     fixedTypeBytes(st),
@@ -248,7 +248,7 @@ func fixedWalkField(w *fixedWalk, f *ir.Field, at int64) {
 	if f.Type.Optional {
 		// the OPTIONAL WRAPPER: the present flag rides at the field's own
 		// offset and the payload WHOLE behind it
-		w.push(fixedBlockEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
+		w.push(fixedLayoutEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
 			fixedDst{aux: at})
 		fixedWalkPayload(w, f, id, size-fixedPresentBytes, at+fixedPresentBytes)
 		return
@@ -261,7 +261,7 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 	case f.KeyEnum != "":
 		// every slot is written, in the key enum's declared order, and no key
 		// rides: the field's own offset is the slot base
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name},
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name},
 			fixedDst{dst: at, stride: fixedElementBytes(f)})
 		fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum, 0)
 		fixedWalkElement(w, f, 0, "element", 0)
@@ -271,7 +271,7 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 			// the count, then MAX elements, the slack zero-filled
 			counted, aux, base = 1, at, at+fixedCountBytes
 		}
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
 			fixedDst{dst: base, stride: fixedElementBytes(f), aux: aux, counted: counted})
 		fixedWalkElement(w, f, 0, "element", 0)
 	case f.Type.Kind == ir.TBytes:
@@ -282,14 +282,14 @@ func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
 		// `case 14`). Spelling it the other way round — the text row's
 		// order — landed the count in the buffer and the first four content
 		// bytes in the used length, on every record a compiled plan read.
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
 			fixedDst{dst: at + fixedCountBytes, stride: 1, aux: at, counted: 1, arg: fixedTextBytes})
-		w.push(fixedBlockEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, fixedDst{})
+		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, fixedDst{})
 	case f.Type.Kind == ir.TString:
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
 			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextUtf8})
 	case f.Type.Kind == ir.TWString:
-		w.push(fixedBlockEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
+		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
 			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextWide})
 	default:
 		fixedWalkElement(w, f, id, f.Name, at)
@@ -301,7 +301,7 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			w.push(fixedBlockEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note},
+			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note},
 				fixedDst{dst: at})
 			var sub int64
 			for _, sf := range r.Fields {
@@ -313,7 +313,7 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			// the tag ordinal at its tag type's storage width, then the WIDEST
 			// arm, the slack behind a narrower arm zero-filled
 			tag := fixedUnionTagBytes(r)
-			w.push(fixedBlockEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
+			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
 				fixedDst{dst: at, aux: at})
 			for _, v := range r.Variants {
 				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
@@ -324,7 +324,7 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			return
 		}
 	}
-	w.push(fixedBlockEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note},
+	w.push(fixedLayoutEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note},
 		fixedDst{dst: at})
 }
 
@@ -333,17 +333,17 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 // whose enum gained a variant in the middle be remapped rather than
 // reinterpreted.
 func fixedWalkEnum(w *fixedWalk, e *ir.Enum, id uint64, note string, at int64) {
-	w.push(fixedBlockEntry{id: id, kind: ir.TableKindEnum, size: int64(e.StorageBits / 8), children: len(e.Variants), note: note},
+	w.push(fixedLayoutEntry{id: id, kind: ir.TableKindEnum, size: int64(e.StorageBits / 8), children: len(e.Variants), note: note},
 		fixedDst{dst: at})
 	for i := range e.Variants {
-		w.push(fixedBlockEntry{id: ir.TableWireId(e.VariantWireName(i)), kind: ir.TableKindNoPayload, size: 0, children: 0, note: e.Variants[i]},
+		w.push(fixedLayoutEntry{id: ir.TableWireId(e.VariantWireName(i)), kind: ir.TableKindNoPayload, size: 0, children: 0, note: e.Variants[i]},
 			fixedDst{})
 	}
 }
 
-// fixedBlockBytes is the block exactly as it rides: a u32 entry count and a
+// fixedLayoutBytes is the block exactly as it rides: a u32 entry count and a
 // run of seventeen-byte entries, every number little-endian.
-func fixedBlockBytes(entries []fixedBlockEntry) []byte {
+func fixedLayoutBytes(entries []fixedLayoutEntry) []byte {
 	out := make([]byte, 0, 4+fixedEntryBytes*len(entries))
 	out = appendFixedU32(out, uint32(len(entries)))
 	for _, e := range entries {
@@ -360,16 +360,16 @@ func appendFixedU32(b []byte, v uint32) []byte {
 }
 
 func appendFixedU64(b []byte, v uint64) []byte {
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		b = append(b, byte(v>>(8*i)))
 	}
 	return b
 }
 
-// fixedBlockHash is fnv1a64 over the block's bytes exactly as written, and it
+// fixedLayoutHash is fnv1a64 over the block's bytes exactly as written, and it
 // is the eight bytes every record carries (§3.4). It is a WIRE IDENTITY and
 // not a security claim.
-func fixedBlockHash(block []byte) uint64 {
+func fixedLayoutHash(block []byte) uint64 {
 	h := uint64(0xcbf29ce484222325)
 	for _, b := range block {
 		h ^= uint64(b)

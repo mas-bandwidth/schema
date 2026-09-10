@@ -77,7 +77,7 @@ int main( int argc, char ** argv )
         { std::fprintf( stderr, "P1 round trip disagrees with itself\n" ); return 1; }
         if ( !write_file( argv[1], out ) ) { std::fprintf( stderr, "cannot write %s\n", argv[1] ); return 1; }
         std::printf( "p1.bin: 1 record, block %d bytes, body %d, record %d, hash 0x%016llx\n",
-                     (int) tblp1::ChainFixedVocabBytes, (int) tblp1::ChainFixedBodyBytes,
+                     (int) tblp1::ChainFixedLayoutBytes, (int) tblp1::ChainFixedBodyBytes,
                      (int) tblp1::ChainFixedRecordBytes, (unsigned long long) tblp1::ChainFixedHash );
     }
 
@@ -113,7 +113,7 @@ int main( int argc, char ** argv )
         { std::fprintf( stderr, "P3 round trip disagrees with itself\n" ); return 1; }
         if ( !write_file( argv[2], out ) ) { std::fprintf( stderr, "cannot write %s\n", argv[2] ); return 1; }
         std::printf( "p3.bin: 2 records, block %d bytes, body %d, record %d, hash 0x%016llx\n",
-                     (int) tblp3::ChainFixedVocabBytes, (int) tblp3::ChainFixedBodyBytes,
+                     (int) tblp3::ChainFixedLayoutBytes, (int) tblp3::ChainFixedBodyBytes,
                      (int) tblp3::ChainFixedRecordBytes, (unsigned long long) tblp3::ChainFixedHash );
     }
 
@@ -203,7 +203,7 @@ int main( int argc, char ** argv )
         { std::fprintf( stderr, "FO1 round trip disagrees with itself\n" ); return 1; }
         if ( !write_file( argv[3], out ) ) { std::fprintf( stderr, "cannot write %s\n", argv[3] ); return 1; }
         std::printf( "fo1.bin: 4 records, block %d bytes, body %d, record %d, hash 0x%016llx\n",
-                     (int) OptRootFixedVocabBytes, (int) OptRootFixedBodyBytes,
+                     (int) OptRootFixedLayoutBytes, (int) OptRootFixedBodyBytes,
                      (int) OptRootFixedRecordBytes, (unsigned long long) OptRootFixedHash );
     }
     return 0;

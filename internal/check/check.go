@@ -3739,6 +3739,17 @@ func (c *checker) checkClaimedNames() {
 			// a table generates its storage struct plus the Table codec and
 			// descriptor family — no packet-wire symbols (docs/SPEC-TABLES.md)
 			c.addTableSymbols(add, name, d.DeclPos())
+			// Init IS NOT A SUFFIX, and it is the one generated spelling on
+			// this surface that goes in FRONT of the name. addStructSymbols
+			// has claimed it for a `type` since there were types —
+			// construction defaults applied to existing managed storage — and
+			// a TABLE in a managed language needs the same helper for the same
+			// reason: a fixed-form read resets a value in place rather than
+			// allocating one per record (internal/codegen/jstable). It is
+			// claimed HERE and not in addTableSymbols because a `type` inside
+			// a table's closure goes through both that function and
+			// addStructSymbols, and a name claimed twice collides with itself.
+			add("Init"+name, fmt.Sprintf("table %s's generated in-place reset (docs/SPEC-TABLES.md §11)", name), d.DeclPos())
 			// A BLOCK-FORM table claims two more per out-of-line array,
 			// because its row accessors are named after its fields: <Table>
 			// followed by the PascalCase of the field's name hands back that
@@ -3881,6 +3892,18 @@ var tableGeneratedVerbs = []string{
 	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
 	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
 	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded",
+	// THE READING TIER'S OWN SIX (internal/codegen/jstable). A language with no
+	// struct layout cannot land a plan at `offsetof( T, member )`, so it lands
+	// it in a canonical body image and then PROJECTS that image into the
+	// language's own objects — which is a per-declaration decode function C++
+	// gets for free, because there a struct IS its bytes. The prefill, the
+	// identity plan and the plan constructor are the same story: storage the
+	// reference holds in the type system, a reading tier holds in named module
+	// data. The two hash halves are one more: a sixty-four-bit constant is two
+	// uint32 lanes wherever a BigInt on a per-record compare would be an
+	// allocation per record, and the pair is claimed beside FixedHash rather
+	// than instead of it, because both spellings are emitted somewhere.
+	"FixedDecode", "FixedPrefill", "FixedIdentity", "FixedNewPlan", "FixedHashLo", "FixedHashHi",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a
 	// block type's Type — and a member function claims nothing. C has no

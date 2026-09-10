@@ -11141,9 +11141,24 @@ in build version (§20.5).
   FixedMeasure  FixedSave  FixedLoad  FixedWriteBody  FixedLeaves
   FixedBodyBytes  FixedRecordBytes  FixedHash  FixedLayout  FixedLayoutBytes
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded
+  FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
   ```
 
-  The `Fixed` row is §3.4's, and it is claimed on this list's own rule:
+  The last six of the `Fixed` rows are the READING TIER's, and they are the
+  price a language with no struct layout pays for the same form. Where the
+  reference lands a plan's bytes at `offsetof( T, member )`, a reading tier
+  lands them in a canonical body image and then PROJECTS that image into the
+  language's own objects — `FixedDecode` — because there a struct is not its
+  bytes. `FixedPrefill`, `FixedIdentity` and `FixedNewPlan` are the same story
+  told about storage: the declared defaults, the one-entry identity plan and
+  the plan constructor are module data where the reference has a type. And
+  `FixedHashLo` / `FixedHashHi` are `FixedHash` in two uint32 lanes, claimed
+  BESIDE it rather than instead of it, because a sixty-four-bit constant
+  becomes two wherever a per-record compare through a wide integer would be an
+  allocation per record. All six are claimed on this list's own rule, like
+  every row above them.
+
+  The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
   carries it, and a table gains and loses the form as its closure gains and
   loses a pointer — so a name that is free today must not become a collision

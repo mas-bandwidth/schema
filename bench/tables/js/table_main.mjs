@@ -59,7 +59,7 @@ import { readFileSync } from "node:fs";
 
 import { FixedTable, TableFixedReport } from "../../../generated/bench/paired/js/BenchTable.js";
 import {
-  FixedTableFixedBlock,
+  FixedTableFixedLayout,
   FixedTableFixedLoad,
   FixedTableFixedMeasure,
   FixedTableFixedNewPlan,
@@ -287,17 +287,17 @@ function checkTolerantCorpus(name, golden) {
 function benchFixed(name, baseIters) {
   const iters = gIterations || baseIters;
   const file = readCorpus(gVariantDir, "bench_fixed.bin");
-  const vocab = readCorpus(gVariantDir, "bench_fixed.vocab");
-  if (file === null || vocab === null || file.length === 0) {
+  const layout = readCorpus(gVariantDir, "bench_fixed.layout");
+  if (file === null || layout === null || file.length === 0) {
     failed = true;
     return;
   }
   const bytesPerOp = file.length / NumVariants;
   const twin = new Uint8Array(file.length);
 
-  // gate 1: THE BLOCK IS THE CORPUS'S BLOCK.
-  if (!bytesEqual(vocab, FixedTableFixedBlock)) {
-    fail(name, "this build's vocabulary block is not the corpus's, byte for byte");
+  // gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT.
+  if (!bytesEqual(layout, FixedTableFixedLayout)) {
+    fail(name, "this build's layout is not the corpus's, byte for byte");
     return;
   }
 

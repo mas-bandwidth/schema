@@ -88,7 +88,7 @@ func WireFormLine(data []byte) string {
 var WireFormNone = firstUnassignedForm()
 
 func firstUnassignedForm() uint8 {
-	for b := 0; b < 256; b++ {
+	for b := range 256 {
 		if _, ok := WireFormOf(uint8(b)); !ok {
 			return uint8(b)
 		}

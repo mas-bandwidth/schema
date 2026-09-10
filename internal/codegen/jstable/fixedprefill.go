@@ -60,10 +60,7 @@ func fixedPrefillField(out []byte, at int64, f *ir.Field) {
 		// a string(N) or bytes(N) field's declared default is that default
 		// (SPEC §4.2): the length and the bytes both ride in the prefill
 		if f.HasDefault && len(f.DefBytes) > 0 {
-			n := int64(len(f.DefBytes))
-			if n > f.Type.Size {
-				n = f.Type.Size
-			}
+			n := min(int64(len(f.DefBytes)), f.Type.Size)
 			fixedPutInt(out, at, 4, big.NewInt(n))
 			copy(out[at+fixedCountBytes:at+fixedCountBytes+n], f.DefBytes[:n])
 		}
@@ -78,7 +75,7 @@ func fixedPrefillField(out []byte, at int64, f *ir.Field) {
 
 func fixedPrefillElements(out []byte, at int64, f *ir.Field, count int64) {
 	elem := fixedElementBytes(f)
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		fixedPrefillElement(out, at+i*elem, f)
 	}
 }
@@ -151,7 +148,7 @@ func fixedPutInt(out []byte, at, width int64, v *big.Int) {
 	}
 	mask := big.NewInt(0xff)
 	tmp := new(big.Int)
-	for i := int64(0); i < width; i++ {
+	for i := range width {
 		tmp.Rsh(n, uint(8*i))
 		tmp.And(tmp, mask)
 		out[at+i] = byte(tmp.Uint64())

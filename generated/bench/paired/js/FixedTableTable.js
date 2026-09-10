@@ -4,7 +4,7 @@
 // AGPL-3.0, its output is not.
 // package bench — the FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3.
 //
-// A FIXED-TABLE RECORD IS AN EIGHT-BYTE HASH OF THE WRITER'S VOCABULARY BLOCK,
+// A FIXED-TABLE RECORD IS AN EIGHT-BYTE HASH OF THE WRITER'S LAYOUT (§3.4),
 // AND THEN THE VALUES IN DECLARED ORDER, EVERY FIELD AT ITS BOUND. There is no
 // field reference, no kind byte, no length, no terminator and no trailer: a
 // body's every byte is a value or the declared slack behind one.
@@ -24,11 +24,11 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedBlockView, TableFixedCompile, TableFixedForm, TableFixedHashOf, TableFixedParseBlock, TableFixedPlan, TableFixedRefusal, TableFixedResetReport, TableFixedRun, TableFixedSize } from "./BenchTable.js";
+import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedCompile, TableFixedForm, TableFixedHashAt, TableFixedHashOf, TableFixedHeaderBytes, TableFixedLayoutHeaderBytes, TableFixedLayoutView, TableFixedMessageForm, TableFixedParseLayout, TableFixedPlan, TableFixedRefusal, TableFixedResetReport, TableFixedRun, TableFixedSize, TableFixedVariableForm } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
-// A record is an eight-byte hash of the writer's vocabulary block and then
+// A record is an eight-byte hash of the writer's LAYOUT and then
 // the values in declared order, every field at its declared storage width,
 // little-endian, nothing padded between fields.
 
@@ -37,14 +37,15 @@ import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedT
 export const FixedTableFixedBodyBytes = 1236;
 export const FixedTableFixedRecordBytes = 1244; // the hash and the body
 
-// fnv1a64 over the block's bytes, carried as two uint32 lanes: a hash is
+// fnv1a64 over the layout's bytes, carried as two uint32 lanes: a hash is
 // compared ONCE PER RECORD, and a BigInt there is one allocation per record.
 export const FixedTableFixedHashLo = 0x02a224eb;
 export const FixedTableFixedHashHi = 0x32f1c4a3;
 
-// THE VOCABULARY BLOCK: 75 entries, a PRE-ORDER walk of the closure in the
+// THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
+// PRE-ORDER walk of the closure in the
 // writer's declared order. Every byte is settled by the compiler.
-export const FixedTableFixedBlock = new Uint8Array([
+export const FixedTableFixedLayout = new Uint8Array([
   0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
   0x00, 0x01, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xd4, 0x04,
   0x00, 0x00, 0x1b, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
@@ -126,7 +127,7 @@ export const FixedTableFixedBlock = new Uint8Array([
   0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
   0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ]);
-export const FixedTableFixedBlockBytes = 1279;
+export const FixedTableFixedLayoutBytes = 1279;
 
 // THE PREFILL: the declared defaults as a constant run of bytes, laid down
 // with one set. A field this record does not carry has no plan entry, so it
@@ -212,7 +213,7 @@ const FixedTableFixedPrefill = new Uint8Array([
   0x00, 0x00, 0x00, 0x00,
 ]);
 
-// MY SIDE of the block, five lanes per entry: the storage facts a block
+// MY SIDE of the layout, five lanes per entry: the storage facts a layout
 // entry cannot carry. In C++ these are offsetof rows; the reader's own
 // storage in JavaScript is the canonical image, so they are its offsets.
 const FixedTableFixedDst = new Int32Array([
@@ -301,17 +302,19 @@ const FixedTableFixedDst = new Int32Array([
 const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0]);
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
-// NEVER ALLOCATES. One of these per peer; a block whose plan does not fit is
+// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is
 // a refusal by name.
 export function FixedTableFixedNewPlan(entryCapacity, remapCapacity) {
   return new TableFixedPlan(entryCapacity || 4096, FixedTableFixedBodyBytes, remapCapacity || 4096);
 }
 
-// A FILE: the form byte, the block length, the block, then the records to
-// the end of it. A file ALWAYS carries the block — a file is read by
-// somebody who was not there when it was written.
+// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
+// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
+// then the layout behind its u32 length, then the records to the end of it.
+// A file ALWAYS carries the layout: a file is read by somebody who was not
+// there when it was written.
 export function FixedTableFixedMeasure(count) {
-  return 1 + 4 + FixedTableFixedBlockBytes + count * FixedTableFixedRecordBytes;
+  return TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + FixedTableFixedLayoutBytes + count * FixedTableFixedRecordBytes;
 }
 
 // THE WRITE IS A TEMPLATE: the hash and zeros laid down first — which is
@@ -322,14 +325,14 @@ export function FixedTableFixedMeasure(count) {
 export function FixedTableFixedSave(values, count, bytes) {
   const need = FixedTableFixedMeasure(count);
   if (count < 0 || bytes === null || bytes.length < need) { return -1; }
-  bytes[0] = TableFixedForm;
-  bytes[1] = FixedTableFixedBlockBytes & 0xff;
-  bytes[2] = (FixedTableFixedBlockBytes >>> 8) & 0xff;
-  bytes[3] = (FixedTableFixedBlockBytes >>> 16) & 0xff;
-  bytes[4] = (FixedTableFixedBlockBytes >>> 24) & 0xff;
-  bytes.set(FixedTableFixedBlock, 5);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
-  let at = 5 + FixedTableFixedBlockBytes;
+  bytes.fill(0, 0, TableFixedHeaderBytes); // the seven reserved bytes, and the rest of the header
+  bytes[0] = TableFixedForm;
+  view.setUint32(TableFixedHashAt, FixedTableFixedHashLo, true);
+  view.setUint32(TableFixedHashAt + 4, FixedTableFixedHashHi, true);
+  view.setUint32(TableFixedHeaderBytes, FixedTableFixedLayoutBytes, true);
+  bytes.set(FixedTableFixedLayout, TableFixedHeaderBytes + TableFixedLayoutHeaderBytes);
+  let at = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + FixedTableFixedLayoutBytes;
   for (let k = 0; k < count; k++) {
     view.setUint32(at, FixedTableFixedHashLo, true);
     view.setUint32(at + 4, FixedTableFixedHashHi, true);
@@ -341,31 +344,41 @@ export function FixedTableFixedSave(values, count, bytes) {
 }
 
 // THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the block's hash is this build's own, and a plan compiled once from the
-// writer's block otherwise. THE SAME LOOP EITHER WAY: there is no strict
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict
 // flag, no fast path and no second reader to keep honest against the first,
 // which is the owner's own ruling — a form whose cost moved when a peer
 // shipped would be a cliff at exactly the moment a deployment cannot afford
 // one. Answers the records read, or -1 with the reason named in the report.
 export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
   TableFixedResetReport(report);
-  if (bytes === null || byteLength < 5) { report.malformed = true; return -1; }
-  if (bytes[0] !== TableFixedForm) { report.refused = TableFixedRefusal.NewerForm; return -1; }
-  const blockBytes = (bytes[1] | (bytes[2] << 8) | (bytes[3] << 16) | (bytes[4] << 24)) >>> 0;
-  if (blockBytes + 5 > byteLength) { report.refused = TableFixedRefusal.BlockMalformed; return -1; }
-  const h = TableFixedHashOf(bytes, 5, blockBytes);
+  if (bytes === null || byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.malformed = true; return -1; }
+  // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+  // the registry is ordered, so a byte this reader does not carry is named
+  // by where it sits relative to this form and never by one word for both.
+  if (bytes[0] !== TableFixedForm) {
+    report.refused = bytes[0] === TableFixedVariableForm ? TableFixedRefusal.PreviousForm
+                   : bytes[0] === TableFixedMessageForm ? TableFixedRefusal.MessageFormAsFile
+                   : TableFixedRefusal.NewerForm;
+    return -1;
+  }
+  const layoutAt = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes;
+  const layoutBytes = (bytes[TableFixedHeaderBytes] | (bytes[TableFixedHeaderBytes + 1] << 8) |
+                       (bytes[TableFixedHeaderBytes + 2] << 16) | (bytes[TableFixedHeaderBytes + 3] << 24)) >>> 0;
+  if (layoutBytes + layoutAt > byteLength) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+  const h = TableFixedHashOf(bytes, layoutAt, layoutBytes);
   const hashLo = h[0] >>> 0, hashHi = h[1] >>> 0;
   report.hashLo = hashLo | 0; report.hashHi = hashHi | 0;
-  if (plan === null) { report.refused = TableFixedRefusal.NoBlock; return -1; }
+  if (plan === null) { report.refused = TableFixedRefusal.NoLayout; return -1; }
   let entries = FixedTableFixedIdentity, entryCount = 1, remap = null;
   let recordBytes = FixedTableFixedRecordBytes;
   if (hashLo !== (FixedTableFixedHashLo >>> 0) || hashHi !== (FixedTableFixedHashHi >>> 0)) {
-    // ANOTHER WRITER: the same loop, over a plan compiled from its block and
+    // ANOTHER WRITER: the same loop, over a plan compiled from its layout and
     // CACHED BY HASH, so the compile is paid once per peer, not per record.
     if (!plan.ready || (plan.hashLo >>> 0) !== hashLo || (plan.hashHi >>> 0) !== hashHi) {
-      const theirs = new TableFixedBlockView();
-      if (!TableFixedParseBlock(bytes, 5, blockBytes, theirs)) { report.refused = TableFixedRefusal.BlockMalformed; return -1; }
-      const made = TableFixedCompile(theirs, FixedTableFixedBlock, FixedTableFixedDst, plan, report);
+      const theirs = new TableFixedLayoutView();
+      if (!TableFixedParseLayout(bytes, layoutAt, layoutBytes, theirs)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+      const made = TableFixedCompile(theirs, FixedTableFixedLayout, FixedTableFixedDst, plan, report);
       if (made < 0) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
       plan.recordBytes = 8 + TableFixedSize(theirs, 0);
       plan.hashLo = hashLo | 0; plan.hashHi = hashHi | 0; plan.ready = true;
@@ -373,20 +386,30 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     entries = plan.entries; entryCount = plan.count; remap = plan.remap;
     recordBytes = plan.recordBytes;
   }
-  const rest = byteLength - 5 - blockBytes;
+  // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+  // the layout's own rules each refuse under their own name first, so a
+  // broken layout is never reported as a lying header. A header whose hash
+  // is not the hash of the layout behind it is refused (§3).
+  if (((bytes[TableFixedHashAt] | (bytes[TableFixedHashAt + 1] << 8) |
+        (bytes[TableFixedHashAt + 2] << 16) | (bytes[TableFixedHashAt + 3] << 24)) >>> 0) !== hashLo ||
+      ((bytes[TableFixedHashAt + 4] | (bytes[TableFixedHashAt + 5] << 8) |
+        (bytes[TableFixedHashAt + 6] << 16) | (bytes[TableFixedHashAt + 7] << 24)) >>> 0) !== hashHi) {
+    report.refused = TableFixedRefusal.LayoutMalformed; return -1;
+  }
+  const rest = byteLength - layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
   // the two ends of the file have met.
   if (recordBytes <= 8 || rest % recordBytes !== 0) { report.malformed = true; return -1; }
   const n = (rest / recordBytes) | 0;
   if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
   const image = plan.image, imageView = plan.view;
-  let at = 5 + blockBytes;
+  let at = layoutAt + layoutBytes;
   for (let k = 0; k < n; k++) {
-    // A RECORD WHOSE HASH NAMES NO BLOCK THIS READER HOLDS IS A REFUSAL BY
+    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
     // NAME, never a guess and never damage: nothing is decoded, no counter moves.
     if (((bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0) !== hashLo ||
         ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {
-      report.refused = TableFixedRefusal.NoBlock; return -1;
+      report.refused = TableFixedRefusal.NoLayout; return -1;
     }
     image.set(FixedTableFixedPrefill);            // the declared defaults, one prefill
     TableFixedRun(entries, entryCount, bytes, at + 8, image, remap, report);

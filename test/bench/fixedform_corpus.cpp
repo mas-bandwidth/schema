@@ -66,8 +66,8 @@ int main( int argc, char ** argv )
     const bool ok = std::fwrite( out.data(), 1, out.size(), f ) == out.size();
     if ( std::fclose( f ) != 0 || !ok ) return 1;
 
-    std::printf( "fixed corpus: %zu records, vocab %lld bytes, body %lld, record %lld, total %lld, hash 0x%016llx\n",
-                 Count, (long long) bench::FixedTableFixedVocabBytes,
+    std::printf( "fixed corpus: %zu records, layout %lld bytes, body %lld, record %lld, total %lld, hash 0x%016llx\n",
+                 Count, (long long) bench::FixedTableFixedLayoutBytes,
                  (long long) bench::FixedTableFixedBodyBytes,
                  (long long) bench::FixedTableFixedRecordBytes,
                  (long long) need, (unsigned long long) bench::FixedTableFixedHash );
