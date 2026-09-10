@@ -6273,6 +6273,16 @@ want fixed tables to ever encode as the old way."*
 
 **A PLAN IS A FLAT ARRAY OF ENTRIES, AND A READ IS ONE LOOP OVER IT.**
 
+**A READ IS ONE PREFILL, ONE LOOP OVER THE PLAN THE LAYOUT HASH SELECTED, AND
+THEN ONE BOUNDS PASS OVER THE STORAGE THE LOOP WROTE — the same pass, whichever
+plan ran.** The hash chooses the plan and nothing else: the identity plan when
+the writer's layout is this build's own, a plan compiled from the writer's
+layout when it is not. The identity plan carries `copy`, `count` and `text`; a
+compiled plan adds only the ops that a foreign layout needs — `union`, `widen`,
+`ordinal`, and a constant this reader's storage takes. **NO PLAN OP CLAMPS**,
+and neither plan is a shorter or a longer road than the other: one path, one
+set of cases to test.
+
 ```
 plan entry := src  (u32)   a byte offset into the RECORD's body
               dst  (u32)   a byte offset into the READER's own storage
@@ -6282,7 +6292,8 @@ plan entry := src  (u32)   a byte offset into the RECORD's body
 ```
 
 **THE OPS ARE THE WHOLE SET**, and a plan for a record of plain scalars carries
-only the first:
+only the first. **There is no clamp among them.** A declared range is held by
+the bounds pass that runs after the loop, over storage, for either plan:
 
   | op | what the loop does |
   |---|---|
@@ -6291,14 +6302,14 @@ only the first:
   | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply and a violation is `malformed` |
   | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
   | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
-  | `clamp` | reconstruct against the writer's declared range and apply the reader's own, `clamped` counts if it fired |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
 
-**A READ IS A PREFILL AND A LOOP, AND NOTHING ELSE.**
+**A READ IS A PREFILL, A LOOP, AND THE BOUNDS PASS, AND NOTHING ELSE.**
 
 ```
 Reset( value );                     // the declared defaults, one prefill
 for ( entry : plan ) { … }          // the loop above
+FixedClamp( value, report );        // the bounds pass, after either plan
 ```
 
 **A PLAN IS PARTITIONED: EVERY UNGUARDED ENTRY FIRST, THEN THE UNION ARMS',
