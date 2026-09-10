@@ -2096,9 +2096,9 @@ constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the rest are what a plan compiled from another writer's layout adds. clamp
-// is compiled-only: a ranged integer is a copy on the identity path and the
-// generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
+// the other four are what a plan compiled from another writer's layout adds.
+// NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
+// after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2108,7 +2108,6 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
-    kTableFixedClamp   = 7, // a ranged integer, in place on the destination the copy landed
 };
 
 // meta on a kTableFixedText entry
@@ -2397,39 +2396,6 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
-            break;
-        }
-        case kTableFixedClamp:
-        {
-            // IN PLACE ON THE DESTINATION the copy or widen just landed. src is
-            // unused: this op does not read the record. meta bit 0 is the low
-            // end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
-            // OF THE TWO ENDS, the same select-and-add the identity pass emits.
-            uint64_t lo = 0, hi = 0, raw = 0;
-            memcpy( &lo, base + p.aux, 8 );
-            memcpy( &hi, base + p.aux + 8, 8 );
-            memcpy( &raw, dst + p.dst, p.size );
-            if ( p.sign != 0 && p.size < 8 )
-            {
-                const unsigned bits = p.size * 8u;
-                const uint64_t top = 1ull << ( bits - 1 );
-                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            }
-            int32_t under = 0, over = 0;
-            if ( p.sign != 0 )
-            {
-                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
-                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
-                raw = under ? lo : ( over ? hi : raw );
-            }
-            else
-            {
-                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
-                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
-                raw = under ? lo : ( over ? hi : raw );
-            }
-            clamped += under | over;
-            memcpy( dst + p.dst, &raw, p.size );
             break;
         }
         default: break;
@@ -2912,10 +2878,6 @@ struct TableFixedDst
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
     uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
-    uint64_t lo = 0;     // a compiled clamp's low end, bit pattern of the slot
-    uint64_t hi = 0;     // a compiled clamp's high end
-    uint8_t clamp = 0;   // bit 0 = low, bit 1 = high, bit 2 = signed
-    uint8_t width = 0;   // the slot's bytes; 0 = this row is not a compiled clamp
 };
 
 struct TableFixedCompiler
@@ -2930,7 +2892,6 @@ struct TableFixedCompiler
     bool overflow = false;
     bool hostile = false;
     uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
-    bool skip_clamp = false; // counted-array elements: the live count, never slack
     TableReport * report = NULL;
 };
 
@@ -2949,18 +2910,8 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
         const uint8_t gw = e.argw == 0 ? 1u : e.argw;
         const bool guard_out = e.guard != kTableFixedNoGuard &&
             ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record );
-        // A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
-        // already landed. src+size is not a wire reach.
-        if ( e.op != kTableFixedClamp )
-        {
-            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-            if ( reach > (uint64_t) c.record || guard_out )
-            {
-                c.hostile = true;
-                return;
-            }
-        }
-        else if ( guard_out )
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        if ( reach > (uint64_t) c.record || guard_out )
         {
             c.hostile = true;
             return;
@@ -3002,38 +2953,6 @@ inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
     return (uint32_t) ( total - c.pool );
 }
 
-// TableFixedLayBounds lays a compiled clamp's two ends above the entries, the
-// same pool the ordinal remap tables use, and answers the byte offset from the
-// plan's base. memcpy, not a typed store: the pool is not 8-aligned.
-inline uint32_t TableFixedLayBounds( TableFixedCompiler & c, uint64_t lo, uint64_t hi )
-{
-    const int32_t bytes = 16;
-    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
-    c.pool += bytes;
-    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
-    const uint32_t at = (uint32_t) ( total - c.pool );
-    uint8_t * dst = (uint8_t *) (void *) ( (uint8_t *) c.plan + at );
-    memcpy( dst, &lo, 8 );
-    memcpy( dst + 8, &hi, 8 );
-    return at;
-}
-
-// TableFixedPushClamp is ONE ranged scalar after the copy or widen that landed
-// it. Counted-array elements skip: the live count is a value the plan cannot
-// name, and clamping slack would count a clamp on a byte nobody wrote.
-inline void TableFixedPushClamp( TableFixedCompiler & c, const TableFixedDst & d,
-                                 uint32_t at, uint32_t guard, uint8_t arg )
-{
-    if ( c.skip_clamp || d.width == 0 ) { return; }
-    TableFixedEntry e;
-    e.src = 0; e.dst = at; e.size = d.width;
-    e.aux = TableFixedLayBounds( c, d.lo, d.hi );
-    e.guard = guard; e.op = kTableFixedClamp; e.arg = arg;
-    e.meta = (uint8_t) ( d.clamp & 3u );
-    e.dstsize = 0;
-    e.sign = ( d.clamp & 4u ) ? 1u : 0u;
-    TableFixedPush( c, e );
-}
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
@@ -3115,7 +3034,6 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
             e.sign = TableFixedSignedKind( te.kind ) ? 1u : 0u;
             TableFixedPush( c, e );
-            TableFixedPushClamp( c, d, at, guard, arg );
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
@@ -3152,14 +3070,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;
-            const bool prev_skip = c.skip_clamp;
-            if ( d.counted ) { c.skip_clamp = true; }
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
                                         mine, mi + 1, dst, at + i * d.stride, guard, arg );
             }
-            c.skip_clamp = prev_skip;
             break;
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
@@ -3268,13 +3183,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size; e.op = kTableFixedCopy;
                 TableFixedPush( c, e );
-                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( te.size < me.size && me.size <= 8 )
             {
                 e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
-                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( c.report != NULL )
             {
@@ -4892,31 +4805,31 @@ constexpr int64_t PartRowFixedLayoutBytes = (int64_t) sizeof( PartRowFixedLayout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst PartRowFixedDst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // PartRow
-    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // armor
-    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // front
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rear
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rating
-    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // tier
-    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0, 0ull, 0ull, 0, 0 }, // firing_groups
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0, 0ull, 0ull, 0, 0 }, // missile_groups
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // reload_seconds
-    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner_id
-    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // part_id
-    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // slot
+    { 0, 0, 0, 0, 0 }, // PartRow
+    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0 }, // armor
+    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0 }, // front
+    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
+    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
+    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
+    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0 }, // rear
+    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
+    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
+    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
+    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0 }, // rating
+    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0 }, // tier
+    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0 }, // gunner
+    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0 }, // firing_groups
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
+    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
+    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0 }, // missile_groups
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
+    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
+    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0 }, // reload_seconds
+    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0 }, // gunner_id
+    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0 }, // part_id
+    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0 }, // slot
 };
 
 // THE IDENTITY PLAN, coalesced out of 16 leaves by the schema compiler —
@@ -5160,34 +5073,34 @@ constexpr int64_t PartFrameFixedLayoutBytes = (int64_t) sizeof( PartFrameFixedLa
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst PartFrameFixedDst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // PartFrame
-    { (uint32_t) __builtin_offsetof( PartFrame, version ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // version
-    { (uint32_t) __builtin_offsetof( PartFrame, parts ), (uint32_t) sizeof( PartRow ), (uint32_t) __builtin_offsetof( PartFrame, parts_count ), 1, 0, 0ull, 0ull, 0, 0 }, // parts
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // armor
-    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // front
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rear
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rating
-    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // tier
-    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0, 0ull, 0ull, 0, 0 }, // firing_groups
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0, 0ull, 0ull, 0, 0 }, // missile_groups
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // reload_seconds
-    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner_id
-    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // part_id
-    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // slot
+    { 0, 0, 0, 0, 0 }, // PartFrame
+    { (uint32_t) __builtin_offsetof( PartFrame, version ), 0, 0, 0, 0 }, // version
+    { (uint32_t) __builtin_offsetof( PartFrame, parts ), (uint32_t) sizeof( PartRow ), (uint32_t) __builtin_offsetof( PartFrame, parts_count ), 1, 0 }, // parts
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0 }, // armor
+    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0 }, // front
+    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
+    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
+    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
+    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0 }, // rear
+    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
+    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
+    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
+    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0 }, // rating
+    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0 }, // tier
+    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0 }, // gunner
+    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0 }, // firing_groups
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
+    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
+    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0 }, // missile_groups
+    { 0, 0, 0, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
+    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
+    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0 }, // reload_seconds
+    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0 }, // gunner_id
+    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0 }, // part_id
+    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0 }, // slot
 };
 
 // THE IDENTITY PLAN, coalesced out of 514 leaves by the schema compiler —

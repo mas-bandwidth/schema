@@ -1,0 +1,62 @@
+// FO2.schema — the NEW side of the fixed form's OPTIONAL conformance
+// (docs/SPEC-TABLES.md §3.4). FO1 states the shape; this generation makes the
+// hashes differ so the same records have to land through a COMPILED PLAN
+// instead of the identity one, which is the only way to hold the thing §3.4
+// states first: the form is positional BY PLAN, and the positions are the
+// WRITER's block, never the reader's own layout.
+//
+// Two edits, and both of them move every offset behind an optional:
+//
+//   plain -> plain2   renamed under `was`, so wire identity survives
+//   added             a WHOLE NEW FIELD inserted BEFORE `wrap`, so `wrap`'s
+//                     nested present byte sits four bytes later here than in
+//                     an FO1 record. A reader that landed a present byte at
+//                     its OWN offset instead of following the plan would read
+//                     `wrap.leaf` as absent on every record and never say so.
+//
+// Nothing about the optionals themselves moves: their names, and so their wire
+// ids, are FO1's, which is what makes the present flags and payloads land.
+package tblfo2
+
+enum Grade { Bronze, Gold }
+
+type Leaf
+{
+    v   int32 = 7 | min = -1000, max = 1000
+    tag string(8)
+}
+
+type Boost
+{
+    power int32 = 0 | min = 0, max = 1000
+}
+
+type Ward
+{
+    charge float32 = 0.0
+}
+
+union Effect
+{
+    boost Boost
+    ward  Ward
+}
+
+table Wrap
+{
+    n    int32 = 3 | min = -1000, max = 1000
+    leaf ?Leaf
+}
+
+table OptRoot
+{
+    name   string(12)
+    plain2 int32 = 5 | min = 0, max = 1000, was = "plain"
+    opt    ?Leaf
+    num    ?int32
+    mark   ?Grade
+    added  int32 = 77 | min = 0, max = 1000
+    wrap   Wrap
+    effect Effect
+    tail   uint16 = 9
+}

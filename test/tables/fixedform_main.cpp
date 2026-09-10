@@ -886,10 +886,11 @@ static void bounds_case()
         check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
     }
 
-    // 1b. A COMPILED PLAN FROM THIS BUILD'S OWN LAYOUT. The identity plan
-    // copies; a compiled plan clamps. The loop alone, without the storage
-    // pass, must already hold the range — which is what says the clamp is a
-    // plan entry on this path, and only on this path.
+    // 1b. THE SAME CONTROL ON A COMPILED PLAN. A plan compiled from this
+    // build's OWN layout is the compiled path with nothing else moving, and it
+    // must behave the same way in kind: the loop alone leaves the out-of-range
+    // value standing, because NO PLAN OP CLAMPS — the pass after the loop is
+    // the clamp, and it is the same pass for either plan.
     {
         tblfx1::TableFixedLayoutView parsed;
         tblfx1::TableMessageReason why = tblfx1::layout_malformed;
@@ -904,22 +905,27 @@ static void bounds_case()
                                                         tblfx1::FxRootFixedDst, tblfx1::FxRootFixedCover, tblfx1::FxRootFixedCoverCount,
                                                         compiled.data(), 1024, &guarded, &fill_at, &fill_count, &cr );
         check( made > 0, "bounds, compiled-own: the plan compiles" );
-        int32_t clamp_ops = 0;
+        int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op == tblfx1::kTableFixedClamp ) { clamp_ops++; }
+            if ( compiled[(size_t) i].op > tblfx1::kTableFixedWidenF ) { past_the_set++; }
         }
-        check( clamp_ops >= 2, "bounds, compiled-own: ranged scalars are clamp ops" );
+        check( past_the_set == 0, "bounds, compiled-own: the ops are the whole set and none of them clamps" );
 
         tblfx1::FxRoot held;
         tblfx1::FxRootReset( held );
         tblfx1::TableReport r;
         const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
         tblfx1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        check( held.renamed == 5000 && held.gone == -7,
+               "COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
+        check( r.clamped == 0, "COMPILED, NEGATIVE CONTROL: and counts nothing" );
+
+        tblfx1::FxRootFixedClamp( held, &r );
         check( held.renamed == 1000 && held.gone == 0,
-               "COMPILED CLAMP: the loop alone holds a ranged integer" );
-        check( r.clamped == 2, "COMPILED CLAMP: and counts the same two" );
-        check( held.nested.a == 111 && held.nested.b == 222, "COMPILED CLAMP: an in-range neighbour is untouched" );
+               "COMPILED: THE PASS IS THE CLAMP — the same pass, after the compiled plan" );
+        check( r.clamped == 2, "COMPILED: and it counts the same two the identity path counted" );
+        check( held.nested.a == 111 && held.nested.b == 222, "COMPILED: an in-range neighbour is untouched" );
     }
 
     // 2. THE SAME NUMBERS THROUGH A COMPILED PLAN. FX2 reads the same record
@@ -971,10 +977,12 @@ static void bounds_case()
         check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
     }
 
-    // 5. LIVE COUNT, NEVER SLACK. A counted array of ranged integers: the
-    // compiled plan must not emit one clamp per declared slot (Go #852), and
-    // the loop alone must leave a live out-of-range element standing so the
-    // storage pass can count it. Identity and compiled-own then match.
+    // 5. LIVE COUNT, NEVER SLACK, ON BOTH PATHS. A counted array of ranged
+    // integers, read twice: once through the identity plan and once through a
+    // plan compiled from this build's own layout. Neither plan clamps, so the
+    // loop alone leaves both live values standing on both paths, and the ONE
+    // pass over storage holds both and counts two — the same two, because the
+    // pass walks the LIVE count and never the slack behind it.
     {
         tblv1::Cfg v;
         tblv1::CfgReset( v );
@@ -1005,24 +1013,24 @@ static void bounds_case()
                                                        tblv1::CfgFixedDst, tblv1::CfgFixedCover, tblv1::CfgFixedCoverCount,
                                                        compiled.data(), 8192, &guarded, &fill_at, &fill_count, &cr );
         check( made > 0, "live-count: the plan compiles" );
-        int32_t clamp_ops = 0;
+        int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op == tblv1::kTableFixedClamp ) { clamp_ops++; }
+            if ( compiled[(size_t) i].op > tblv1::kTableFixedWidenF ) { past_the_set++; }
         }
-        check( clamp_ops >= 1 && clamp_ops < 8,
-               "live-count: compiled plan does not emit one clamp per counted-array slot" );
+        check( past_the_set == 0, "live-count: a compiled plan carries no clamp op either" );
 
         tblv1::Cfg held;
         tblv1::CfgReset( held );
         tblv1::TableReport r;
         const uint8_t * body = vw.data() + tblv1::kTableFixedHeaderBytes + 4 + tblv1::CfgFixedLayoutBytes + 8;
         tblv1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
-        check( held.a == 1000, "live-count, compiled loop: the scalar clamp op fired" );
-        check( held.items[0] == 300, "live-count, compiled loop: the live array element is not a plan clamp" );
-        check( r.clamped == 1, "live-count, compiled loop: one clamp, the scalar's" );
+        check( held.a == 5000 && held.items[0] == 300,
+               "live-count, compiled loop: nothing in the plan held either value" );
+        check( r.clamped == 0, "live-count, compiled loop: and it counted nothing" );
+
         tblv1::CfgFixedClamp( held, &r );
-        check( held.items[0] == 255, "live-count, compiled pass: the live element clamps after the copy" );
+        check( held.a == 1000 && held.items[0] == 255, "live-count, compiled pass: both live values clamp" );
         check( r.clamped == 2, "live-count: identity and compiled count the same two" );
     }
 }

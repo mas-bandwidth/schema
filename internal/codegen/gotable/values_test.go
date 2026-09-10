@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/golang"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 func runGenerated(t *testing.T, schema, testSource string) {
@@ -25,7 +26,22 @@ func runGeneratedResult(t *testing.T, schema, testSource string, flags ...string
 
 func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
 	t.Helper()
-	u := unitFrom(t, schema)
+	return runGeneratedUnit(t, unitFrom(t, schema), testSource, edit, flags...)
+}
+
+// runGeneratedFixed is runGenerated for a DECLARED fixed table — the only
+// kind whose <T>Load refuses form 1 (#823, [ir.Struct.FixedDeclared]). Naming
+// no table declares every table of the unit fixed.
+func runGeneratedFixed(t *testing.T, schema, testSource string, names ...string) {
+	t.Helper()
+	out, err := runGeneratedUnit(t, declareFixed(t, unitFrom(t, schema), names...), testSource, nil)
+	if err != nil {
+		t.Fatalf("generated runtime: %v\n%s", err, out)
+	}
+}
+
+func runGeneratedUnit(t *testing.T, u *ir.Unit, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
+	t.Helper()
 	files, err := golang.Generate(u)
 	if err != nil {
 		t.Fatal(err)

@@ -196,6 +196,12 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
 	$(1) generate --lang cpp --out $(2)/ut1 test/tables/UT1.schema
 	$(1) generate --lang cpp --out $(2)/ut2 test/tables/UT2.schema
+	$(1) generate --lang cpp --out $(2)/fn1 test/tables/FN1.schema
+	$(1) generate --lang cpp --out $(2)/fn2 test/tables/FN2.schema
+	$(1) generate --lang cpp --out $(2)/fu1 test/tables/FU1.schema
+	$(1) generate --lang cpp --out $(2)/fu2 test/tables/FU2.schema
+	$(1) generate --lang cpp --out $(2)/fm1 test/tables/FM1.schema
+	$(1) generate --lang cpp --out $(2)/fm2 test/tables/FM2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
 	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema
@@ -246,7 +252,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FM1.schema test/tables/FM2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -5810,11 +5816,22 @@ tables-fixedform-run-copy-negative-control:
 # every port's oracle and none of theirs: a corpus one leg owns is a corpus the
 # next leg re-derives, and a golden a generator has to re-derive is not a
 # golden.
-build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp
+# THE WIDE-TEXT UNIT GETS ITS OWN GENERATION, for the reason examples-wide/
+# already has its own directory: kind 33 in a table closure is C, C++, C#, Dart
+# and Go today, and every SHARED schema list is pinned to targets that refuse
+# it. Naming the unit here rather than in tables_generate keeps it out of the
+# nine negative controls that regenerate that whole corpus.
+build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
+	@rm -rf build/tables-generated-fxw
+	@mkdir -p build/tables-generated-fxw
+	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
+	@touch $@
+
+build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -Ibuild/tables-generated/examples \
+	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
@@ -5827,6 +5844,69 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
 
 .PHONY: tables-fixedform-corpus
+
+# THE FIXED FORM'S BENCH CORPUS, also the C++ reference's (docs/SPEC-TABLES.md
+# §3.4's "held by test": the PAIRED CORPUS, sixty-four logical records on the
+# packet wire and on this one). The reference decodes the canonical packet
+# corpus, saves the same values with its form-3 writer, and states the VALUES
+# beside the bytes in a JSON oracle — because a reader and a writer that share
+# one offset mistake round trip perfectly and are both wrong.
+build/fixedform-bench-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
+	@mkdir -p build/fixedform-bench-corpus
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/fixedform-bench-corpus/corpus
+	./build/fixedform-bench-corpus/corpus bench/corpus/variants/bench_mixed.variants.bin \
+		build/fixedform-bench-corpus/bench_fixed.bin build/fixedform-bench-corpus/bench_fixed.oracle.json
+	@touch $@
+
+tables-fixedform-bench-corpus: build/fixedform-bench-corpus/.stamp
+	@echo "fixed form: the reference's paired bench corpus is in build/fixedform-bench-corpus"
+
+.PHONY: tables-fixedform-bench-corpus
+
+# THE THREE PROPERTIES (docs/SPEC-TABLES.md §3.4). A port that is wrong in both
+# directions at once passes every round-trip the versioning set has, and the
+# coverage matrix's named reds were found one fixture at a time. This binary
+# asks the same three questions of every fixed-form fixture:
+#
+#   P1  identity plan == compiled plan, on every field and every counter
+#   P2  write-read-write is byte-identical
+#   P3  every byte of every record, mutated to {00,01,02,7f,80,ff}, both paths:
+#       every landed field is within its bound or the read is a named refusal,
+#       and a correction moves a counter. Under ASan+UBSan.
+#
+# A KNOWN-RED is printed by name on a green run. A listed case that starts
+# PASSING turns the run red — delete it from known_red[] as part of landing
+# the fix. A new red that is not on the list fails the target.
+FIXEDFORM_PROP_INCLUDES := \
+	-Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 \
+	-Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	-Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
+	-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	-Ibuild/tables-generated/fn1 -Ibuild/tables-generated/fn2 \
+	-Ibuild/tables-generated/fm1 -Ibuild/tables-generated/fm2 \
+	-Ibuild/tables-generated/f1 \
+	-I$(SERIALIZE)
+
+build/schema_test_fixedform_properties: build/tables-generated/.stamp test/tables/fixedform_properties.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_PROP_INCLUDES) \
+	    test/tables/fixedform_properties.cpp -o $@
+
+build/schema_test_fixedform_properties_asan: build/tables-generated/.stamp test/tables/fixedform_properties.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -DSCHEMA_FIXEDFORM_SANITIZED \
+	    $(FIXEDFORM_PROP_INCLUDES) test/tables/fixedform_properties.cpp -o $@
+
+tables-fixed-properties: build/schema_test_fixedform_properties build/schema_test_fixedform_properties_asan
+	./build/schema_test_fixedform_properties
+	./build/schema_test_fixedform_properties_asan
+	@echo "fixed form properties: P1 P2 P3 green, known-reds named"
+
+test: tables-fixed-properties
+
+.PHONY: tables-fixed-properties
 
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc

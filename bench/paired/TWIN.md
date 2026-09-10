@@ -39,11 +39,19 @@ behaviour.
 | `enum { kName = N }` / combined enumerators | `constexpr T kName = N` | `kName = N` |
 | `enum : uint8_t { … }` | `enum { … }` | enumerators |
 | `typedef struct T { … } T` | `struct T { … }` | `struct T` |
-| default-member-initializer-less fields + `table_fixed_*_zero` | `T x = 0` / `= kTableFixedNoGuard` | fields without defaults; drop the C zeroing helpers |
-| `int` 0/1 predicates (`want_guarded`, `overflow`, `hostile`, `named`, `bad`, `is_leaf`, `kids_are_variants`) | `bool` / `true` / `false` | `bool` |
+| default-member-initializer-less fields + `table_fixed_*_zero` | `T x = 0` / `= 1` / `= kTableFixedNoGuard` | fields without defaults; drop the C zeroing helpers |
+| `int` 0/1 predicates (`want_guarded`, `overflow`, `hostile`, `skip_clamp`, `named`, `bad`, `is_leaf`, `kids_are_variants`) | `bool` / `true` / `false` | `bool` |
 | `int why` / `c.reason` | `TableMessageReason why` / `c.why` | `c.why` |
 | `ptr->field` | `ref.field` | `.` |
-| `int32_t * clamped` / `(*clamped)++` | `int32_t & clamped` / `clamped++` | reference spelling |
+| `int32_t * clamped` / `(*clamped)++` / `(*clamped) +=` | `int32_t & clamped` / `clamped++` / `clamped +=` | reference spelling |
+| C90 `{ prev_skip = …; …; skip_clamp = prev_skip; }` around a counted-array walk | the same four statements, no extra braces | no extra block |
+| `table_fixed_lay_bounds` names the pool pointer `at` and returns `total - pool` twice | offset `at`, pointer `dst`, `return at` | C++ form |
+| `e = table_fixed_entry_zero()` then the clamp fields | `e.dstsize = 0` among the field writes | drop the explicit zero; C already memset |
+| `under = 0, over = 0` hoisted at the top of the clamp case | the same zeros declared after the sign-extend | dropped; both assign before use |
+| `TableFixedPlanCache * cache` | `TableFixedPlanCache & cache` | `TableFixedPlanCache REF cache` |
+| `(uint8_t) kTableFixedClamp` | `kTableFixedClamp` | `kTableFixedClamp` |
+| `(uint8_t) 8` in `table_fixed_tag_at` | `8u` | `8u` |
+| union-arm `my_arm = mi + 1` then `c.argw =` | `c.argw =` then `my_arm = mi + 1` | my_arm then argw |
 | `const T * p` in the runtime | `const T & p` | `T REF` |
 | `TableFixedEntryLands( &plan[i] )` | `TableFixedEntryLands( plan[i] )` | `TableFixedEntryLands( plan[i] )` — same pointer/ref as Apply, for the prefill's cover-minus-plan |
 | `int i; for ( i =` | `for ( int i =` | C++ for-init |

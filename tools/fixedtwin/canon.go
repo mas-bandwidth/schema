@@ -56,41 +56,47 @@ var tableFixedSpecial = map[string]string{
 }
 
 var (
-	reTableFixed     = regexp.MustCompile(`\btable_fixed_[a-z0-9_]+\b`)
-	reLineComment    = regexp.MustCompile(`(?m)//.*?$`)
-	reBlockComment   = regexp.MustCompile(`(?s)/\*.*?\*/`)
-	reTrailingComma  = regexp.MustCompile(`,(\s*})`)
-	reEnumTyped      = regexp.MustCompile(`enum\s*:\s*uint8_t`)
-	reConstexpr      = regexp.MustCompile(`constexpr\s+\w+\s+(\w+)\s*=\s*([^;]+);`)
-	reEnumSingle     = regexp.MustCompile(`enum\s*\{\s*(\w+)\s*=\s*([^,}]+)\s*\}\s*;`)
-	reTypedefStruct  = regexp.MustCompile(`typedef struct (\w+)\s*\{`)
-	reStructClose    = regexp.MustCompile(`\}\s*(TableFixed\w+)\s*;`)
-	reFieldDefault   = regexp.MustCompile(`(?m)^(\s*(?:u?int(?:8|16|32|64)_t|bool)\s+\w+)\s*=\s*(?:0u?|false|true|kTableFixedNoGuard|layout_malformed)\s*;`)
-	rePtrDefault     = regexp.MustCompile(`(?m)^(\s*\S+\s*\*\s*\w+)\s*=\s*NULL\s*;`)
-	reForInt         = regexp.MustCompile(`\bint i;\s*for \( i =`)
-	reForI32         = regexp.MustCompile(`\bint32_t i;\s*for \( i =`)
-	reForI64         = regexp.MustCompile(`\bint64_t i;\s*for \( i =`)
-	reForU32k        = regexp.MustCompile(`\buint32_t k;\s*for \( k =`)
-	reForU32j        = regexp.MustCompile(`\buint32_t j;\s*for \( j =`)
-	reForDeclJK      = regexp.MustCompile(`\buint32_t j, k;\s*`)
-	reStarClamped    = regexp.MustCompile(`\(\*(clamped|widened)\)\+\+`)
-	reStarClampedAdd = regexp.MustCompile(`\(\*(clamped|widened)\)\s*\+=`)
-	rePtrApply       = regexp.MustCompile(`(TableFixed(?:Apply|EntryLands)\(\s*)&plan\[i\]`)
-	reAmpCounters    = regexp.MustCompile(`,\s*&clamped,\s*&widened\s*\)`)
-	reStaticAssert   = regexp.MustCompile(`SCHEMA_TABLE_STATIC_ASSERT\s*\(\s*\w+\s*,\s*`)
-	reOffsetof       = regexp.MustCompile(`\boffsetof\s*\(`)
-	reBuiltinOff     = regexp.MustCompile(`\(uint32_t\)\s*__builtin_offsetof\s*\(`)
-	reSpaces         = regexp.MustCompile(`[ \t]+`)
-	reZeroFn         = regexp.MustCompile(`(?s)inline TableFixed(?:Entry|LayoutEntry|LayoutView) TableFixed(?:EntryZero|LayoutEntryZero|LayoutViewZero)\s*\(\s*void\s*\)\s*\{.*?\}`)
-	reInitFn         = regexp.MustCompile(`(?s)inline void TableFixedCompilerInit\s*\([^)]*\)\s*\{.*?\}`)
-	reRAIIcOpen      = regexp.MustCompile(`c(?:->|\.)depth\+\+\s*;\s*do\s*\{`)
-	reRAIIcClose     = regexp.MustCompile(`\}\s*while\s*\(\s*0\s*\)\s*;\s*c(?:->|\.)depth--;`)
-	reZeroCallEntry  = regexp.MustCompile(`TableFixedEntry\s+\w+\s*=\s*TableFixedEntryZero\s*\(\s*\)\s*;`)
-	reZeroCallLayout = regexp.MustCompile(`TableFixedLayoutEntry\s+\w+\s*=\s*TableFixedLayoutEntryZero\s*\(\s*\)\s*;`)
-	reZeroCallView   = regexp.MustCompile(`TableFixedLayoutView\s+\w+\s*=\s*TableFixedLayoutViewZero\s*\(\s*\)\s*;`)
-	reInitCall       = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
-	reCReasons       = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?previous_form\s*=\s*17\s*\}\s*;`)
-	reCMessageGuard  = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
+	reTableFixed      = regexp.MustCompile(`\btable_fixed_[a-z0-9_]+\b`)
+	reLineComment     = regexp.MustCompile(`(?m)//.*?$`)
+	reBlockComment    = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	reTrailingComma   = regexp.MustCompile(`,(\s*})`)
+	reEnumTyped       = regexp.MustCompile(`enum\s*:\s*uint8_t`)
+	reConstexpr       = regexp.MustCompile(`constexpr\s+\w+\s+(\w+)\s*=\s*([^;]+);`)
+	reEnumSingle      = regexp.MustCompile(`enum\s*\{\s*(\w+)\s*=\s*([^,}]+)\s*\}\s*;`)
+	reTypedefStruct   = regexp.MustCompile(`typedef struct (\w+)\s*\{`)
+	reStructClose     = regexp.MustCompile(`\}\s*(TableFixed\w+)\s*;`)
+	reFieldDefault    = regexp.MustCompile(`(?m)^(\s*(?:u?int(?:8|16|32|64)_t|bool)\s+\w+)\s*=\s*(?:0u?|1u?|false|true|kTableFixedNoGuard|layout_malformed)\s*;`)
+	reUint8Lit        = regexp.MustCompile(`\(uint8_t\)\s*(\d+)`)
+	rePtrDefault      = regexp.MustCompile(`(?m)^(\s*\S+\s*\*\s*\w+)\s*=\s*NULL\s*;`)
+	reForInt          = regexp.MustCompile(`\bint i;\s*for \( i =`)
+	reForI32          = regexp.MustCompile(`\bint32_t i;\s*for \( i =`)
+	reForI64          = regexp.MustCompile(`\bint64_t i;\s*for \( i =`)
+	reForU32k         = regexp.MustCompile(`\buint32_t k;\s*for \( k =`)
+	reForU32j         = regexp.MustCompile(`\buint32_t j;\s*for \( j =`)
+	reForDeclJK       = regexp.MustCompile(`\buint32_t j, k;\s*`)
+	reStarClamped     = regexp.MustCompile(`\(\*(clamped|widened)\)\+\+`)
+	reStarClampedAdd  = regexp.MustCompile(`\(\*(clamped|widened)\)\s*\+=`)
+	reSkipBraceOpen   = regexp.MustCompile(`n = their_n < my_n \? their_n : my_n;\s*\{`)
+	reSkipBraceClose  = regexp.MustCompile(`c\.skip_clamp = prev_skip;\s*\}\s*break;`)
+	reCLayBoundsPtr   = regexp.MustCompile(`uint8_t \* at;\s*`)
+	reCLayBoundsBody  = regexp.MustCompile(`at = \(uint8_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ \(uint32_t\) \( total - c\.pool \) \);\s*memcpy\( at, &lo, 8 \);\s*memcpy\( at \+ 8, &hi, 8 \);\s*return \(uint32_t\) \( total - c\.pool \);`)
+	reCppLayBoundsDst = regexp.MustCompile(`uint8_t \* dst = \(uint8_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ at \);`)
+	rePtrApply        = regexp.MustCompile(`(TableFixed(?:Apply|EntryLands)\(\s*)&plan\[i\]`)
+	reAmpCounters     = regexp.MustCompile(`,\s*&clamped,\s*&widened\s*\)`)
+	reStaticAssert    = regexp.MustCompile(`SCHEMA_TABLE_STATIC_ASSERT\s*\(\s*\w+\s*,\s*`)
+	reOffsetof        = regexp.MustCompile(`\boffsetof\s*\(`)
+	reBuiltinOff      = regexp.MustCompile(`\(uint32_t\)\s*__builtin_offsetof\s*\(`)
+	reSpaces          = regexp.MustCompile(`[ \t]+`)
+	reZeroFn          = regexp.MustCompile(`(?s)inline TableFixed(?:Entry|LayoutEntry|LayoutView) TableFixed(?:EntryZero|LayoutEntryZero|LayoutViewZero)\s*\(\s*void\s*\)\s*\{.*?\}`)
+	reInitFn          = regexp.MustCompile(`(?s)inline void TableFixedCompilerInit\s*\([^)]*\)\s*\{.*?\}`)
+	reRAIIcOpen       = regexp.MustCompile(`c(?:->|\.)depth\+\+\s*;\s*do\s*\{`)
+	reRAIIcClose      = regexp.MustCompile(`\}\s*while\s*\(\s*0\s*\)\s*;\s*c(?:->|\.)depth--;`)
+	reZeroCallEntry   = regexp.MustCompile(`TableFixedEntry\s+\w+\s*=\s*TableFixedEntryZero\s*\(\s*\)\s*;`)
+	reZeroCallLayout  = regexp.MustCompile(`TableFixedLayoutEntry\s+\w+\s*=\s*TableFixedLayoutEntryZero\s*\(\s*\)\s*;`)
+	reZeroCallView    = regexp.MustCompile(`TableFixedLayoutView\s+\w+\s*=\s*TableFixedLayoutViewZero\s*\(\s*\)\s*;`)
+	reInitCall        = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
+	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?previous_form\s*=\s*17\s*\}\s*;`)
+	reCMessageGuard   = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
 )
 
 func tableFixedIdent(name string) string {
@@ -319,6 +325,8 @@ func normalizeSyntax(s string) string {
 		{"TableFixedCheck & c", "TableFixedCheck REF c"},
 		{"TableFixedCompiler * c", "TableFixedCompiler REF c"},
 		{"TableFixedCompiler & c", "TableFixedCompiler REF c"},
+		{"TableFixedPlanCache * cache", "TableFixedPlanCache REF cache"},
+		{"TableFixedPlanCache & cache", "TableFixedPlanCache REF cache"},
 		{"TableFixedLayoutView * out", "TableFixedLayoutView REF out"},
 		{"TableFixedLayoutView & out", "TableFixedLayoutView REF out"},
 		{"int * why", "TableMessageReason REF why"},
@@ -332,12 +340,6 @@ func normalizeSyntax(s string) string {
 		{"int overflow;", "bool overflow;"},
 		{"int hostile;", "bool hostile;"},
 		{"int skip_clamp;", "bool skip_clamp;"},
-		{"const int prev_skip =", "const bool prev_skip ="},
-		{"skip_clamp = 1", "skip_clamp = true"},
-		{"skip_clamp = 0", "skip_clamp = false"},
-		{"(uint8_t) kTableFixedClamp", "kTableFixedClamp"},
-		{"TableFixedPlanCache * cache", "TableFixedPlanCache REF cache"},
-		{"TableFixedPlanCache & cache", "TableFixedPlanCache REF cache"},
 		{"int named;", "bool named;"},
 		{"int kids_are_variants;", "bool kids_are_variants;"},
 		{"int is_leaf;", "bool is_leaf;"},
@@ -350,6 +352,8 @@ func normalizeSyntax(s string) string {
 		{"want_guarded = 1", "want_guarded = true"},
 		{"overflow = 1", "overflow = true"},
 		{"hostile = 1", "hostile = true"},
+		{"skip_clamp = 1", "skip_clamp = true"},
+		{"skip_clamp = 0", "skip_clamp = false"},
 		{"named = 1", "named = true"},
 		{"named = 0", "named = false"},
 		{"bad = 1", "bad = true"},
@@ -364,8 +368,10 @@ func normalizeSyntax(s string) string {
 		{"*is_leaf = false", "is_leaf = false"},
 		{"(uint8_t) 1", "1u"},
 		{"(uint8_t) 0", "0u"},
+		{"(uint8_t) 8", "8u"},
 		{"(uint8_t) kTableFixedWidenF", "kTableFixedWidenF"},
 		{"(uint8_t) kTableFixedWiden", "kTableFixedWiden"},
+		{"(uint8_t) kTableFixedClamp", "kTableFixedClamp"},
 		{"const uint16_t * remap", "const uint16_t * table"},
 		{"remap[0]", "table[0]"},
 		{"remap[raw]", "table[raw]"},
@@ -421,6 +427,10 @@ func normalizeSyntax(s string) string {
 		s = strings.ReplaceAll(s, t.from, t.to)
 	}
 	s = normalizeLocals(s)
+	s = rewriteLayBounds(s)
+	s = reUint8Lit.ReplaceAllString(s, "${1}u")
+	s = reSkipBraceOpen.ReplaceAllString(s, "n = their_n < my_n ? their_n : my_n;")
+	s = reSkipBraceClose.ReplaceAllString(s, "c.skip_clamp = prev_skip; break;")
 	s = orderCompileEntry(s)
 	amps := []token{
 		{"&is_leaf", "is_leaf"},
@@ -447,12 +457,30 @@ func normalizeSyntax(s string) string {
 	return s
 }
 
+func rewriteLayBounds(s string) string {
+	// C names the pool pointer `at` and returns the offset expression twice.
+	// C++ names the offset `at` and the pointer `dst`. Same 16 bytes.
+	return rewriteFunc(s, "inline uint32_t TableFixedLayBounds", func(body string) string {
+		body = reCLayBoundsPtr.ReplaceAllString(body, "")
+		body = reCLayBoundsBody.ReplaceAllString(body, "at = (uint32_t) ( total - c.pool ); dst = (uint8_t *) (void *) ( (uint8_t *) c.plan + at ); memcpy( dst, &lo, 8 ); memcpy( dst + 8, &hi, 8 ); return at;")
+		body = reCppLayBoundsDst.ReplaceAllString(body, "dst = (uint8_t *) (void *) ( (uint8_t *) c.plan + at );")
+		return body
+	})
+}
+
 func orderCompileEntry(s string) string {
 	return rewriteFunc(s, "inline void TableFixedCompileEntry", func(body string) string {
 		const aux = "aux_at = my_at + d.aux;"
 		body = strings.ReplaceAll(body, aux, "")
 		const at = "at = my_at + d.dst;"
 		body = strings.Replace(body, at, at+" "+aux, 1)
+		// C hoists my_arm then stamps argw; C++ stamps argw then declares my_arm.
+		const myArm = "my_arm = mi + 1;"
+		const saved = "saved_argw = c.argw;"
+		if strings.Contains(body, saved) && strings.Contains(body, myArm) {
+			body = strings.ReplaceAll(body, myArm, "")
+			body = strings.Replace(body, saved, saved+" "+myArm, 1)
+		}
 		return body
 	})
 }
@@ -565,6 +593,8 @@ func dropCOnlyRestatement(s string) string {
 
 var dropStatements = map[string]bool{
 	"first_size = 0, second_size = 0;":   true,
+	"under = 0, over = 0;":               true,
+	"e.dstsize = 0;":                     true,
 	"kids_are_variants = true;":          true,
 	"is_leaf = false;":                   true,
 	"named = false;":                     true,
@@ -581,8 +611,6 @@ var dropStatements = map[string]bool{
 	"split = 0;":                         true,
 	"DEPTH_GUARD;":                       true,
 	"NAMED_128;":                         true,
-	"under = 0, over = 0;":               true,
-	"int32_t under = 0, over = 0;":       true,
 }
 
 func collapse(s string) []string {

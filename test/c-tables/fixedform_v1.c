@@ -49,10 +49,12 @@ void fixed_v1_bounds( void )
     fixed_check( back.grade == GRADE_NONE, "C ORDINAL: an ordinal past the enum's top value lands None" );
     fixed_check( r.clamped == 1, "C ORDINAL: and counts as a clamp" );
 
-    /* LIVE COUNT, NEVER SLACK. A counted array of ranged integers: the compiled
-       plan must not emit one clamp per declared slot, and the loop alone must
-       leave a live out-of-range element standing so the storage pass can count
-       it. Identity and compiled-own then match. */
+    /* LIVE COUNT, NEVER SLACK, ON BOTH PATHS. A counted array of ranged
+       integers, read twice: once through the identity plan and once through a
+       plan compiled from this build's own layout. Neither plan clamps, so the
+       loop alone leaves both live values standing on both paths, and the ONE
+       pass over storage holds both and counts two — the same two, because the
+       pass walks the LIVE count and never the slack behind it. */
     {
         static uint8_t file2[16384];
         static TableFixedEntry compiled[8192];
@@ -60,7 +62,7 @@ void fixed_v1_bounds( void )
         TableFixedLayoutView parsed;
         TableReport ident_r, compile_r, run_r;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
-        int32_t guarded = 0, made, i, clamp_ops = 0;
+        int32_t guarded = 0, made, i, past_the_set = 0;
         const uint8_t * body;
         int64_t n2;
 
@@ -88,20 +90,20 @@ void fixed_v1_bounds( void )
         fixed_check( made > 0, "C live-count: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op == (uint8_t) kTableFixedClamp ) { clamp_ops++; }
+            if ( compiled[i].op > (uint8_t) kTableFixedWidenF ) { past_the_set++; }
         }
-        fixed_check( clamp_ops >= 1 && clamp_ops < 8,
-                     "C live-count: compiled plan does not emit one clamp per counted-array slot" );
+        fixed_check( past_the_set == 0, "C live-count: a compiled plan carries no clamp op either" );
 
         cfg_reset( &held );
         memset( &run_r, 0, sizeof( run_r ) );
         body = file2 + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( cfg_fixed_layout ) + 8;
         table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &run_r );
-        fixed_check( held.a == 1000, "C live-count, compiled loop: the scalar clamp op fired" );
-        fixed_check( held.items[0] == 300, "C live-count, compiled loop: the live array element is not a plan clamp" );
-        fixed_check( run_r.clamped == 1, "C live-count, compiled loop: one clamp, the scalar's" );
+        fixed_check( held.a == 5000 && held.items[0] == 300,
+                     "C live-count, compiled loop: nothing in the plan held either value" );
+        fixed_check( run_r.clamped == 0, "C live-count, compiled loop: and it counted nothing" );
+
         schema_tblv1_cfg_fixed_clamp_( &held, &run_r );
-        fixed_check( held.items[0] == 255, "C live-count, compiled pass: the live element clamps after the copy" );
+        fixed_check( held.a == 1000 && held.items[0] == 255, "C live-count, compiled pass: both live values clamp" );
         fixed_check( run_r.clamped == 2, "C live-count: identity and compiled count the same two" );
     }
 }

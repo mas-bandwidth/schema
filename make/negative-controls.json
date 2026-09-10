@@ -464,7 +464,7 @@
     {
       "name": "js",
       "when": "pull-request",
-      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families: ten controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the JavaScript port's controls, the packet arm-default oracle's two JS legs, and the three newer packet families, with the FIXED FORM's two beside them \u2014 one byte off the write template, and one off an optional's present byte \u2014 for twelve controls after the previous-form table legs were removed. Measured 9 s over 13 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
       "targets": [
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
@@ -473,21 +473,26 @@
         "packet-wide-js-negative-control",
         "tables-js-accessor-negative-control",
         "tables-js-alloc-negative-control",
+        "tables-js-fixed-form-negative-control",
+        "tables-js-fixed-optional-negative-control",
         "tables-js-fuzz-negative-control",
         "tables-js-runtime-home-negative-control",
-        "tables-js-slot-negative-control"
+        "tables-js-slot-negative-control",
+        "tables-js-fixed-slack-negative-control",
+        "tables-js-union-arm-text-negative-control"
       ],
       "node": "26"
     },
     {
       "name": "dart",
       "when": "pull-request",
-      "why": "the Dart port's controls and its four packet families: seven controls after the previous-form table legs were removed. Measured 5 s over 10 controls before that, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Dart port's controls and its four packet families: eight controls, the fixed form's among them. Measured 5 s over 10 controls before the previous-form legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the fixed form's own control adds 3.7 s, one submake off a corpus the fixed-form gate has already built.",
       "targets": [
         "packet-arm-defaults-dart-negative-control",
         "packet-defaults-dart-negative-control",
         "packet-utf8-dart-negative-control",
         "packet-wide-dart-negative-control",
+        "tables-dart-fixed-form-negative-control",
         "tables-dart-fuzz-negative-control",
         "tables-dart-names-negative-control",
         "tables-dart-standalone-negative-control"
@@ -537,7 +542,7 @@
     {
       "name": "go-containers",
       "when": "pull-request",
-      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, and bounded retention.",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",
       "targets": [
         "tables-go-containers-negative-controls",
         "tables-go-block-race-negative-control",
@@ -546,7 +551,8 @@
         "tables-go-allocator-runtime-negative-control",
         "tables-go-retain-negative-controls",
         "tables-go-builders-negative-control",
-        "tables-go-measure-negative-controls"
+        "tables-go-measure-negative-controls",
+        "tables-go-fixed-form-negative-control"
       ]
     },
     {

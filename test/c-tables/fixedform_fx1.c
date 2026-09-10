@@ -203,18 +203,20 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
                  "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
     fixed_check( r.clamped == 0, "C NEGATIVE CONTROL: and counts nothing" );
 
-    /* A COMPILED PLAN FROM THIS BUILD'S OWN LAYOUT. The identity plan copies;
-       a compiled plan clamps. The loop alone, without the storage pass, must
-       already hold the range. */
+    /* THE SAME CONTROL ON A COMPILED PLAN. A plan compiled from this build's
+       OWN layout is the compiled path with nothing else moving, and it behaves
+       the same way in kind: the loop alone leaves the out-of-range value
+       standing, because NO PLAN OP CLAMPS. The pass after the loop is the
+       clamp, and it is the same pass for either plan. */
     {
         TableFixedLayoutView parsed;
-        TableFixedEntry compiled[1024];
+        static TableFixedEntry compiled[1024];
         TableReport cr;
         FxRoot held;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t guarded = 0;
         int32_t made;
-        int32_t i, clamp_ops = 0;
+        int32_t i, past_the_set = 0;
 
         fixed_check( table_fixed_parse_layout( fx_root_fixed_layout, (int64_t) sizeof( fx_root_fixed_layout ), &parsed, &why ) != 0,
                      "C bounds, compiled-own: this build's layout parses" );
@@ -227,17 +229,22 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
         fixed_check( made > 0, "C bounds, compiled-own: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op == (uint8_t) kTableFixedClamp ) { clamp_ops++; }
+            if ( compiled[i].op > (uint8_t) kTableFixedWidenF ) { past_the_set++; }
         }
-        fixed_check( clamp_ops >= 2, "C bounds, compiled-own: ranged scalars are clamp ops" );
+        fixed_check( past_the_set == 0, "C bounds, compiled-own: the ops are the whole set and none of them clamps" );
 
         fx_root_reset( &held );
         memset( &r, 0, sizeof( r ) );
         table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r );
+        fixed_check( held.renamed == 5000 && held.gone == -7,
+                     "C COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
+        fixed_check( r.clamped == 0, "C COMPILED, NEGATIVE CONTROL: and counts nothing" );
+
+        schema_tblfx1_fx_root_fixed_clamp_( &held, &r );
         fixed_check( held.renamed == 1000 && held.gone == 0,
-                     "C COMPILED CLAMP: the loop alone holds a ranged integer" );
-        fixed_check( r.clamped == 2, "C COMPILED CLAMP: and counts the same two" );
-        fixed_check( held.nested.a == 111 && held.nested.b == 222, "C COMPILED CLAMP: an in-range neighbour is untouched" );
+                     "C COMPILED: THE PASS IS THE CLAMP — the same pass, after the compiled plan" );
+        fixed_check( r.clamped == 2, "C COMPILED: and it counts the same two the identity path counted" );
+        fixed_check( held.nested.a == 111 && held.nested.b == 222, "C COMPILED: an in-range neighbour is untouched" );
     }
 }
 

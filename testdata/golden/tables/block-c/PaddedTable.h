@@ -688,9 +688,9 @@ enum { kTableFixedForm = 3 };
 enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 
 /* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-   the rest are what a plan compiled from another writer's layout adds. clamp
-   is compiled-only: a ranged integer is a copy on the identity path and the
-   generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
+   the other four are what a plan compiled from another writer's layout adds.
+   NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
+   after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
 
    C HAS NO ENUM BASE TYPE, so where C++ writes enum : uint8_t these are plain
    anonymous enumerators — ints, stored into the uint8_t op and arg columns at
@@ -703,8 +703,7 @@ enum
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
-    kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
-    kTableFixedClamp   = 7  /* a ranged integer, in place on the destination the copy landed */
+    kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1098,39 +1097,6 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_apply( const
         case kTableFixedConst:
         {
             memcpy( dst + p->dst, &p->aux, p->size );
-            break;
-        }
-        case kTableFixedClamp:
-        {
-            /* IN PLACE ON THE DESTINATION the copy or widen just landed. src is
-               unused: this op does not read the record. meta bit 0 is the low
-               end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
-               OF THE TWO ENDS, the same select-and-add the identity pass emits. */
-            uint64_t lo = 0, hi = 0, raw = 0;
-            int32_t under = 0, over = 0;
-            memcpy( &lo, base + p->aux, 8 );
-            memcpy( &hi, base + p->aux + 8, 8 );
-            memcpy( &raw, dst + p->dst, p->size );
-            if ( p->sign != 0 && p->size < 8 )
-            {
-                const unsigned bits = p->size * 8u;
-                const uint64_t top = 1ull << ( bits - 1 );
-                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            }
-            if ( p->sign != 0 )
-            {
-                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
-                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
-                raw = under ? lo : ( over ? hi : raw );
-            }
-            else
-            {
-                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
-                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
-                raw = under ? lo : ( over ? hi : raw );
-            }
-            (*clamped) += under | over;
-            memcpy( dst + p->dst, &raw, p->size );
             break;
         }
         default: break;
@@ -1658,10 +1624,6 @@ typedef struct TableFixedDst
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
     uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
-    uint64_t lo;     /* a compiled clamp's low end, bit pattern of the slot */
-    uint64_t hi;     /* a compiled clamp's high end */
-    uint8_t clamp;   /* bit 0 = low, bit 1 = high, bit 2 = signed */
-    uint8_t width;   /* the slot's bytes; 0 = this row is not a compiled clamp */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1680,7 +1642,6 @@ typedef struct TableFixedCompiler
     int overflow;
     int hostile;
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
-    int skip_clamp;    /* counted-array elements: the live count, never slack */
     TableReport * report;
 } TableFixedCompiler;
 
@@ -1709,18 +1670,8 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
         const uint8_t gw = e.argw == 0 ? (uint8_t) 1 : e.argw;
         const int guard_out = e.guard != SCHEMA_TABLE_FIXED_NO_GUARD &&
             ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record );
-        /* A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
-           already landed. src+size is not a wire reach. */
-        if ( e.op != kTableFixedClamp )
-        {
-            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-            if ( reach > (uint64_t) c->record || guard_out )
-            {
-                c->hostile = 1;
-                return;
-            }
-        }
-        else if ( guard_out )
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
             return;
@@ -1761,40 +1712,6 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_fills( TableFixedCompiler * c, int
     c->pool = ( c->pool + n * (int32_t) sizeof( TableFixedFill ) + 3 ) & ~3;
     if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
     return (uint32_t) ( total - c->pool );
-}
-
-/* table_fixed_lay_bounds lays a compiled clamp's two ends above the entries,
-   the same pool the ordinal remap tables use, and answers the byte offset from
-   the plan's base. memcpy, not a typed store: the pool is not 8-aligned. */
-static SCHEMA_UNUSED uint32_t table_fixed_lay_bounds( TableFixedCompiler * c, uint64_t lo, uint64_t hi )
-{
-    const int32_t bytes = 16;
-    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c->capacity;
-    c->pool += bytes;
-    if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
-    const uint32_t at = (uint32_t) ( total - c->pool );
-    uint8_t * dst = (uint8_t *) (void *) ( (uint8_t *) c->plan + at );
-    memcpy( dst, &lo, 8 );
-    memcpy( dst + 8, &hi, 8 );
-    return at;
-}
-
-/* table_fixed_push_clamp is ONE ranged scalar after the copy or widen that
-   landed it. Counted-array elements skip: the live count is a value the plan
-   cannot name, and clamping slack would count a clamp on a byte nobody wrote. */
-static SCHEMA_UNUSED void table_fixed_push_clamp( TableFixedCompiler * c, const TableFixedDst * d,
-                                                  uint32_t at, uint32_t guard, uint8_t arg )
-{
-    TableFixedEntry e;
-    if ( c->skip_clamp || d->width == 0 ) { return; }
-    e = table_fixed_entry_zero();
-    e.src = 0; e.dst = at; e.size = d->width;
-    e.aux = table_fixed_lay_bounds( c, d->lo, d->hi );
-    e.guard = guard; e.op = (uint8_t) kTableFixedClamp; e.arg = arg;
-    e.meta = (uint8_t) ( d->clamp & 3u );
-    e.dstsize = 0;
-    e.sign = ( d->clamp & 4u ) ? (uint8_t) 1 : (uint8_t) 0;
-    table_fixed_push( c, e );
 }
 
 
@@ -1886,7 +1803,6 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.op = ( te.kind == 10 ) ? (uint8_t) kTableFixedWidenF : (uint8_t) kTableFixedWiden;
                 e.sign = table_fixed_signed_kind( te.kind ) ? (uint8_t) 1 : (uint8_t) 0;
                 table_fixed_push( c, e );
-                table_fixed_push_clamp( c, d, at, guard, arg );
                 break;
             }
             /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
@@ -1925,14 +1841,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     table_fixed_push( c, e );
                 }
                 n = their_n < my_n ? their_n : my_n;
-                const int prev_skip = c->skip_clamp;
-                if ( d->counted ) { c->skip_clamp = 1; }
                 for ( i = 0; i < n; ++i )
                 {
                     table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
                                                mine, mi + 1, dst, at + i * d->stride, guard, arg );
                 }
-                c->skip_clamp = prev_skip;
                 break;
             }
             case 16: /* an enum-keyed array: every slot, matched by the KEY's id */
@@ -2048,13 +1961,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 {
                     e.size = me.size; e.op = kTableFixedCopy;
                     table_fixed_push( c, e );
-                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
                 {
                     e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                     table_fixed_push( c, e );
-                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( c->report != NULL )
                 {
@@ -4579,23 +4490,23 @@ static SCHEMA_UNUSED const int64_t padded_row_fixed_layout_bytes = (int64_t) siz
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst padded_row_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* PaddedRow */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* tag */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* value */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flag */
-    { 20, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* id */
-    { 40, 0, 24, 0, 1, 0ull, 0ull, 0, 0 }, /* label */
-    { 44, 2, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* slots */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
-    { 52, 1, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* teams */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
-    { 0, 0, 60, 0, 0, 0ull, 0ull, 0, 0 }, /* counter ? */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* counter */
+    { 0, 0, 0, 0, 0 }, /* PaddedRow */
+    { 0, 0, 0, 0, 0 }, /* tag */
+    { 8, 0, 0, 0, 0 }, /* value */
+    { 16, 0, 0, 0, 0 }, /* flag */
+    { 20, 0, 0, 0, 0 }, /* id */
+    { 40, 0, 24, 0, 1 }, /* label */
+    { 44, 2, 0, 0, 0 }, /* slots */
+    { 0, 0, 0, 0, 0 }, /* element */
+    { 52, 1, 0, 0, 0 }, /* teams */
+    { 0, 0, 0, 0, 0 }, /* Team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0 }, /* element */
+    { 0, 0, 60, 0, 0 }, /* counter ? */
+    { 56, 0, 0, 0, 0 }, /* counter */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 9 leaves by the schema compiler —
@@ -4869,29 +4780,29 @@ static SCHEMA_UNUSED const int64_t padded_frame_fixed_layout_bytes = (int64_t) s
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst padded_frame_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* PaddedFrame */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* marker */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* stamp */
-    { 16, 64, 4112, 1, 0, 0ull, 0ull, 0, 0 }, /* rows */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* tag */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* value */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flag */
-    { 20, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* id */
-    { 40, 0, 24, 0, 1, 0ull, 0ull, 0, 0 }, /* label */
-    { 44, 2, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* slots */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
-    { 52, 1, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* teams */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
-    { 0, 0, 60, 0, 0, 0ull, 0ull, 0, 0 }, /* counter ? */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* counter */
-    { 4116, 1, 4128, 1, 3, 0ull, 0ull, 0, 0 }, /* blob */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* u8 */
+    { 0, 0, 0, 0, 0 }, /* PaddedFrame */
+    { 0, 0, 0, 0, 0 }, /* marker */
+    { 8, 0, 0, 0, 0 }, /* stamp */
+    { 16, 64, 4112, 1, 0 }, /* rows */
+    { 0, 0, 0, 0, 0 }, /* element */
+    { 0, 0, 0, 0, 0 }, /* tag */
+    { 8, 0, 0, 0, 0 }, /* value */
+    { 16, 0, 0, 0, 0 }, /* flag */
+    { 20, 0, 0, 0, 0 }, /* id */
+    { 40, 0, 24, 0, 1 }, /* label */
+    { 44, 2, 0, 0, 0 }, /* slots */
+    { 0, 0, 0, 0, 0 }, /* element */
+    { 52, 1, 0, 0, 0 }, /* teams */
+    { 0, 0, 0, 0, 0 }, /* Team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0 }, /* element */
+    { 0, 0, 60, 0, 0 }, /* counter ? */
+    { 56, 0, 0, 0, 0 }, /* counter */
+    { 4116, 1, 4128, 1, 3 }, /* blob */
+    { 0, 0, 0, 0, 0 }, /* u8 */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 580 leaves by the schema compiler —
