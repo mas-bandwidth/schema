@@ -1,180 +1,230 @@
-// fixedform_dump.cpp — THE FIXED FORM'S ORACLE BYTES (docs/SPEC-TABLES.md §3.4,
-// docs/FIXED-FORM-COVERAGE.md).
+// THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
 //
-// WHY THIS EXISTS AT ALL. Every other wire in this project has pinned bytes —
-// `testdata/wire/tables/` for §3, `cook-write/` for §7, `block/` for §19 — and
-// the fixed form had NONE. What the versioning conformance set holds is that a
-// reader of one generation makes the right VALUES out of a writer of another;
-// what nothing held is that the writer produced the right BYTES. Those are two
-// different claims, and only the second one is what a second port has to match.
-// A leg whose writer and reader are wrong in the same direction passes every
-// round-trip test there is and cannot exchange one record with anybody.
+// The C++ backend is the REFERENCE for this form, so the reference is what
+// writes the bytes and every port matches them. This binary writes one form-3
+// FILE per root, with values set by hand so nothing passes by accident, and a
+// port's leg proves itself against those files two ways:
 //
-// So this program writes, for every fixture of `fixedform_fixtures.h`, the
-// FILE the reference's writer produces: its header, its layout hash, its layout
-// LENGTH, and the record's hash and body as hex. That file is pinned under
-// `testdata/conformance/tables/fixedform/` and every leg byte-compares it, on
-// the same terms as the cook's dump and the block's.
+//   THE WRITE   read the file, save the values back, and the bytes must be
+//               identical. That reaches every field: a byte a port encodes
+//               differently is a byte that does not come back.
+//   THE READ    read a file written under ANOTHER schema's block, which is the
+//               plan path and the whole of what §3.4's versioning invariant is
+//               worth.
 //
-// WHAT IS PINNED AND WHAT IS NOT. The LAYOUT's own bytes are NOT dumped and its
-// HASH is: the layout is hundreds of bytes of ids and sizes, the hash is
-// fnv1a64 over exactly those bytes (§3.4), and a hash that matches is a layout
-// that matches — so pinning the hash pins the layout and pinning both would be
-// one golden with two homes. The layout's LENGTH rides beside it, because a
-// length is the one layout fact a hash collision could not be made to hide and
-// it is what a reader indexes the records off.
-//
-// THE RECORD BODY IS HEX AND NOT A VALUE DUMP, and that is the point. §3.4's
-// whole claim is that a field "rides as its DECLARED STORAGE IMAGE,
-// LITTLE-ENDIAN, at its DECLARED STORAGE WIDTH, and nothing is padded between
-// fields" — a claim about BYTES. A dump that printed `tilt = 112` would pass on
-// a port that put the byte in the wrong place, which is the one thing this
-// file is for. The declared slack is in the hex too: §3.4 says a writer
-// ZERO-FILLS it, and zeros nobody looked at are zeros nobody has.
-//
-// The output is DETERMINISTIC — every value is a constant of
-// `fixedform_fixtures.h` and nothing here reads a clock, a pointer or an
-// environment — so `make tables-fixedform-corpus` regenerating it twice
-// produces the same bytes twice, and the gate says so.
-
-#include <cstdio>
+// It writes and says nothing else, so a port's leg can diff the files without
+// parsing a word of output.
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <vector>
 
-#include "fixedform_fixtures.h"
+#include "FX1Table.h"
+#include "FX2Table.h"
+#include "P1Table.h"
+#include "P3Table.h"
+#include "KeyedTable.h"
+#include "PackTable.h"
 
-static int failures = 0;
-
-// ---------------------------------------------------------------------------
-
-// ONE CASE, WRITTEN THE WAY A CALLER WRITES ONE. The measure, the save, and the
-// save's own return checked against the buffer — a short write that nobody
-// checked would dump a tail of uninitialised bytes and pin them.
-template <typename Value, typename Measure, typename Save>
-static void dump_case( const char * name, const char * unit, const char * root,
-                       const Value & v, Measure measure, Save save,
-                       int64_t layout_bytes, uint64_t layout_hash, int64_t body_bytes )
+static bool spill( const char * dir, const char * name, const std::vector<uint8_t> & data )
 {
-    const int64_t want = measure( 1 );
-    std::vector<uint8_t> f( (size_t) want );
-    const int64_t wrote = save( &v, 1, f.data(), (int64_t) f.size() );
-    if ( wrote != want )
-    {
-        std::printf( "# FAIL %s: save wrote %lld of %lld\n", name, (long long) wrote, (long long) want );
-        failures++;
-        return;
-    }
-
-    // THE HEADER IS §3'S AND THE OFFSETS ARE §3.4'S: form byte, six reserved
-    // zeros, the LAYOUT HASH at 8, the layout LENGTH at 16, then the layout,
-    // then the records back to back to the end of the file.
-    const size_t layout_at = 16 + 4;
-    const size_t record_at = layout_at + (size_t) layout_bytes;
-
-    std::printf( "case %s\n", name );
-    std::printf( "  unit %s root %s\n", unit, root );
-    std::printf( "  form %u reserved", (unsigned) f[0] );
-    for ( int i = 1; i < 8; ++i ) { std::printf( " %02X", f[i] ); }
-    std::printf( "\n" );
-    std::printf( "  layout %lld bytes hash %016llX\n",
-                 (long long) layout_bytes, (unsigned long long) layout_hash );
-    std::printf( "  layout length field %u\n", (unsigned) ( (uint32_t) f[16] | ( (uint32_t) f[17] << 8 ) |
-                                                            ( (uint32_t) f[18] << 16 ) | ( (uint32_t) f[19] << 24 ) ) );
-    std::printf( "  file %lld bytes, record %lld = hash 8 + body %lld\n",
-                 (long long) f.size(), (long long) ( 8 + body_bytes ), (long long) body_bytes );
-
-    // THE RECORD'S OWN HASH, which is not the header's question. The header's
-    // eight bytes say WHICH LAYOUT IS IN THIS FILE and a record's say WHICH
-    // LAYOUT STAMPED THIS RECORD (§3.4), so both are printed and a port that
-    // wrote one and not the other is visible here rather than at a peer.
-    std::printf( "  hash " );
-    for ( int i = 0; i < 8; ++i ) { std::printf( "%02X", f[record_at + (size_t) i] ); }
-    std::printf( "\n" );
-
-    // THE BODY, SIXTEEN BYTES A LINE, offset-labelled. A diff that moves says
-    // WHICH FIELD moved rather than that something did.
-    for ( int64_t at = 0; at < body_bytes; at += 16 )
-    {
-        std::printf( "  %04llX ", (unsigned long long) at );
-        for ( int64_t i = 0; i < 16 && at + i < body_bytes; ++i )
-        {
-            std::printf( " %02X", f[record_at + 8 + (size_t) ( at + i )] );
-        }
-        std::printf( "\n" );
-    }
-    std::printf( "\n" );
+    char path[1024];
+    std::snprintf( path, sizeof( path ), "%s/%s", dir, name );
+    FILE * f = std::fopen( path, "wb" );
+    if ( !f ) { std::fprintf( stderr, "cannot write %s\n", path ); return false; }
+    const bool ok = std::fwrite( data.data(), 1, data.size(), f ) == data.size();
+    return std::fclose( f ) == 0 && ok;
 }
 
-#define DUMP( name, ns, Root, value ) \
-    dump_case( name, #ns, #Root, value, ns::Root##FixedMeasure, ns::Root##FixedSave, \
-               ns::Root##FixedLayoutBytes, ns::Root##FixedHash, ns::Root##FixedBodyBytes )
-
-int main()
+template <typename T, typename Measure, typename Save>
+static bool emit( const char * dir, const char * name, const std::vector<T> & values, Measure measure, Save save )
 {
-    std::printf( "# THE FIXED FORM'S RECORD ORACLE (docs/SPEC-TABLES.md §3.4)\n" );
-    std::printf( "#\n" );
-    std::printf( "# Generated by test/tables/fixedform_dump.cpp from the fixtures of\n" );
-    std::printf( "# test/tables/fixedform_fixtures.h, which is the same file\n" );
-    std::printf( "# test/tables/fixedform_main.cpp reads. Regenerate with\n" );
-    std::printf( "# `make tables-fixedform-corpus`; a byte that MOVES under an unchanged\n" );
-    std::printf( "# schema is stop-the-line and never a quiet repin, exactly as a wire\n" );
-    std::printf( "# golden is (testdata/conformance/tables/FORMAT.md).\n" );
-    std::printf( "#\n" );
-    std::printf( "# Every number is LITTLE-ENDIAN and the body's declared slack is zero,\n" );
-    std::printf( "# which is §3.4's write rule and is pinned here as bytes rather than\n" );
-    std::printf( "# asserted as a property.\n" );
-    std::printf( "\n" );
+    std::vector<uint8_t> out( (size_t) measure( (int64_t) values.size() ) );
+    if ( save( values.data(), (int64_t) values.size(), out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+    {
+        std::fprintf( stderr, "%s: save refused\n", name );
+        return false;
+    }
+    return spill( dir, name, out );
+}
 
-    // ---- the scalar edits, both generations ------------------------------
-    { tblfx1::FxRoot v; FillFx1( v ); DUMP( "fx1/root", tblfx1, FxRoot, v ); }
-    { tblfx2::FxRoot v; FillFx2( v ); DUMP( "fx2/root", tblfx2, FxRoot, v ); }
+// ---- FX1 / FX2: the versioning pair ---------------------------------------
+//
+// The five edits FX1.schema names, and the values are the ones a port's leg
+// asserts on the other side of the plan.
 
-    // ---- TEXT OF EACH FLAVOUR UNDER A UNION ARM --------------------------
-    //
-    // `fu1/wide` is where FLAVOUR 2 GETS ORACLE BYTES: a length in CODE UNITS
-    // and two bytes per unit, one of which has a non-zero high byte.
-    { tblfu1::MarkRoot v; FillFu1Wide( v );   DUMP( "fu1/wide",   tblfu1, MarkRoot, v ); }
-    { tblfu1::MarkRoot v; FillFu1Narrow( v ); DUMP( "fu1/narrow", tblfu1, MarkRoot, v ); }
-    { tblfu1::MarkRoot v; FillFu1Raw( v );    DUMP( "fu1/raw",    tblfu1, MarkRoot, v ); }
-    { tblfu1::MarkRoot v; FillFu1List( v );   DUMP( "fu1/list",   tblfu1, MarkRoot, v ); }
-    // TAG 0: the arm extent is declared slack and every byte of it is zero
-    { tblfu1::MarkRoot v; FillFu1None( v );   DUMP( "fu1/none",   tblfu1, MarkRoot, v ); }
-    { tblfu2::MarkRoot v; FillFu2Skip( v );   DUMP( "fu2/skip",   tblfu2, MarkRoot, v ); }
-    { tblfu2::MarkRoot v; FillFu2List( v );   DUMP( "fu2/list",   tblfu2, MarkRoot, v ); }
-    { tblfu2::MarkRoot v; FillFu2Narrow( v ); DUMP( "fu2/narrow", tblfu2, MarkRoot, v ); }
+static bool fx1_file( const char * dir )
+{
+    std::vector<tblfx1::FxRoot> v( 2 );
+    tblfx1::FxRootReset( v[0] );
+    v[0].keep = 4242u;
+    v[0].narrow = 40000u; // a uint16 value FX2's WIDENED read must reproduce
+    v[0].renamed = 321;
+    v[0].gone = 654;
+    v[0].nested.a = 111;
+    v[0].nested.b = 222;
+    // A SHORT STRING AND A PARTLY-USED ARRAY, which is where §3.4's "the slack
+    // is zero" is worth pinning: the bytes past the used length and past the
+    // live count are the template's zeros in every port or they are not the
+    // same bytes.
+    std::strcpy( v[0].label, "fx1" );
+    v[0].label_length = 3;
+    v[0].marks[0] = 101;
+    v[0].marks[1] = 202;
+    v[0].marks_count = 2;
+    tblfx1::FxRootReset( v[1] );
+    v[1].keep = 1u;
+    v[1].narrow = 2u;
+    v[1].renamed = 3;
+    v[1].gone = 4;
+    v[1].nested.a = 5;
+    v[1].nested.b = 6;
+    v[1].label_length = 0; // nothing used at all: the WHOLE span is slack
+    v[1].marks_count = 0;
+    return emit( dir, "fx1.bin", v, tblfx1::FxRootFixedMeasure, tblfx1::FxRootFixedSave );
+}
 
-    // ---- the bool, the optional, the array of unions, the three-deep ------
-    { tblfn1::FnRoot v; FillFn1( v );       DUMP( "fn1/full",   tblfn1, FnRoot, v ); }
-    // THE ABSENT OPTIONAL: the present byte zero and the payload ZERO-FILLED,
-    // which is the byte picture §3.4's slack rule states and the one the
-    // residue case in fixedform_main.cpp then damages.
-    { tblfn1::FnRoot v; FillFn1Absent( v ); DUMP( "fn1/absent", tblfn1, FnRoot, v ); }
-    { tblfn2::FnRoot v; FillFn2( v );       DUMP( "fn2/full",   tblfn2, FnRoot, v ); }
+static bool fx2_file( const char * dir )
+{
+    std::vector<tblfx2::FxRoot> v( 1 );
+    tblfx2::FxRootReset( v[0] );
+    v[0].keep = 5150u;
+    v[0].narrow = 70000u; // wider than FX1 holds: a kind that MOVED, not a widening
+    v[0].renamed_to = 808;
+    v[0].added = 909;
+    v[0].nested.a = 33;
+    v[0].nested.b = 44;
+    v[0].extra.x = 55;
+    v[0].extra.y = 66;
+    std::strcpy( v[0].label, "fx2" );
+    v[0].label_length = 3;
+    v[0].marks[0] = 303;
+    v[0].marks_count = 1;
+    return emit( dir, "fx2.bin", v, tblfx2::FxRootFixedMeasure, tblfx2::FxRootFixedSave );
+}
 
-    // ---- A TOP-LEVEL wstring(N) ------------------------------------------
-    { wide::Stamp v; FillWideStamp( v ); DUMP( "wide/stamp", wide, Stamp, v ); }
+// ---- P1 / P3: a value against an optional ----------------------------------
 
-    // ---- the widths, the 128-bit integers and the containers --------------
-    { scalardemo::SimState v; FillScalars( v ); DUMP( "scalars/simstate", scalardemo, SimState, v ); }
+static bool p1_file( const char * dir )
+{
+    std::vector<tblp1::Chain> v( 1 );
+    tblp1::ChainReset( v[0] );
+    std::strcpy( v[0].name, "chain-one" );
+    v[0].name_length = 9;
+    v[0].link.value = 77;
+    std::strcpy( v[0].link.tag, "tagged" );
+    v[0].link.tag_length = 6;
+    return emit( dir, "p1.bin", v, tblp1::ChainFixedMeasure, tblp1::ChainFixedSave );
+}
 
-    // ---- the IEEE-754 bit patterns ---------------------------------------
-    { tblf1::Floats v; FillFloats( v ); DUMP( "f1/floats", tblf1, Floats, v ); }
+static bool p3_file( const char * dir )
+{
+    std::vector<tblp3::Chain> v( 2 );
+    tblp3::ChainReset( v[0] );
+    std::strcpy( v[0].name, "present" );
+    v[0].name_length = 7;
+    v[0].link_present = true;
+    v[0].link.value = 88;
+    std::strcpy( v[0].link.tag, "here" );
+    v[0].link.tag_length = 4;
+    tblp3::ChainReset( v[1] );
+    std::strcpy( v[1].name, "absent" );
+    v[1].name_length = 6;
+    v[1].link_present = false;
+    // the payload rides WHOLE whether or not it is present (§3.4)
+    v[1].link.value = 99;
+    std::strcpy( v[1].link.tag, "still" );
+    v[1].link.tag_length = 5;
+    return emit( dir, "p3.bin", v, tblp3::ChainFixedMeasure, tblp3::ChainFixedSave );
+}
 
-    // ---- the enum, the counted enum array and the text -------------------
-    { tblv1::Cfg v; FillV1( v ); DUMP( "v1/cfg", tblv1, Cfg, v ); }
+// ---- the rich shape: keyed arrays nesting keyed arrays, and an optional ----
 
-    // ---- `flags`, the declared defaults, and a table renamed -------------
-    { tblw1::Vessel v; FillW1( v ); DUMP( "w1/vessel", tblw1, Vessel, v ); }
+static bool keyed_file( const char * dir )
+{
+    std::vector<tabledemo::KeyedConfig> v( 2 );
+    for ( int k = 0; k < 2; ++k )
+    {
+        tabledemo::KeyedConfigReset( v[k] );
+        for ( int t = 0; t < 3; ++t )
+        {
+            v[k].teams.slots[t].spawn_count = 4 + t + k * 10;
+            const char * names[3] = { "red", "blue", "green" };
+            std::strcpy( v[k].teams.slots[t].banner, names[t] );
+            v[k].teams.slots[t].banner_length = (int32_t) std::strlen( names[t] );
+            v[k].scores.per_team[t] = 1000 * ( t + 1 ) + k;
+        }
+        for ( int h = 0; h < 3; ++h )
+        {
+            v[k].hulls.slots[h].health = 100.0f + (float) h + (float) k;
+            v[k].hulls.slots[h].mass = 1.5f * (float) ( h + 1 );
+            for ( int w = 0; w < 3; ++w )
+            {
+                v[k].hulls.slots[h].turrets.slots[w].damage = 10.0f + (float) ( h * 3 + w );
+                v[k].hulls.slots[h].turrets.slots[w].cooldown = 0.25f * (float) ( w + 1 );
+                v[k].hulls.slots[h].turrets.slots[w].gunner_present = ( ( h + w ) % 2 ) == 0;
+                v[k].hulls.slots[h].turrets.slots[w].gunner.reaction = 0.2f + 0.1f * (float) w;
+                v[k].hulls.slots[h].turrets.slots[w].gunner.tracking = ( w % 2 ) == 1;
+            }
+        }
+    }
+    return emit( dir, "keyed.bin", v, tabledemo::KeyedConfigFixedMeasure, tabledemo::KeyedConfigFixedSave );
+}
 
-    // ---- the `bits(N)` family at its DECLARED storage widths -------------
-    { tabledemo::RangedWidths v; FillBits( v ); DUMP( "bits/widths", tabledemo, RangedWidths, v ); }
+// ---- the packed corpus's root: counted arrays, an enum with a declared
+// default, a fixed array of floats, and an optional section inside a record ---
 
-    // ---- the text-content proving ground, at three used extents ----------
-    { tblp1::Chain v; FillP1( v, "", 0 );                 DUMP( "p1/empty", tblp1, Chain, v ); }
-    { tblp1::Chain v; FillP1( v, "chain", 5 );            DUMP( "p1/short", tblp1, Chain, v ); }
-    { tblp1::Chain v; FillP1( v, "0123456789abcdef", 16 ); DUMP( "p1/full",  tblp1, Chain, v ); }
+static bool pack_file( const char * dir )
+{
+    std::vector<tabledemo::PackConfig> v( 2 );
+    for ( int k = 0; k < 2; ++k )
+    {
+        tabledemo::PackConfigReset( v[k] );
+        v[k].version = 7u + (uint32_t) k;
+        v[k].global.tick_rate = 120u - (uint32_t) k;
+        v[k].global.difficulty = k == 0 ? tabledemo::Difficulty::Hard : tabledemo::Difficulty::Easy;
+        const char * note = k == 0 ? "first build" : "second build";
+        std::strcpy( v[k].global.build_note, note );
+        v[k].global.build_note_length = (int32_t) std::strlen( note );
+        for ( int i = 0; i < 3; ++i ) { v[k].global.spawn_delays[i] = 0.5f * (float) ( i + 1 + k ); }
+        for ( int s = 0; s < 3; ++s )
+        {
+            const char * names[3] = { "fighter", "bomber", "scout" };
+            std::strcpy( v[k].ships.slots[s].display_name, names[s] );
+            v[k].ships.slots[s].display_name_length = (int32_t) std::strlen( names[s] );
+            v[k].ships.slots[s].health = 100.0f + (float) ( s * 10 + k );
+            v[k].ships.slots[s].mass = 1.0f + 0.25f * (float) s;
+            v[k].ships.slots[s].hardpoints_count = s + 1;
+            for ( int h = 0; h < s + 1; ++h ) { v[k].ships.slots[s].hardpoints[h] = h + 1; }
+            v[k].ships.slots[s].gunner_present = ( s % 2 ) == 0;
+            v[k].ships.slots[s].gunner.reaction = 0.2f + 0.05f * (float) s;
+            v[k].ships.slots[s].gunner.tracking = ( s % 2 ) == 1;
+            const char * calls[3] = { "ace", "hammer", "ghost" };
+            std::strcpy( v[k].ships.slots[s].gunner.callsign, calls[s] );
+            v[k].ships.slots[s].gunner.callsign_length = (int32_t) std::strlen( calls[s] );
+            v[k].thresholds.slots[s] = 100 * ( s + 1 ) + k;
+        }
+        v[k].reserves_count = 2;
+        for ( int r = 0; r < 2; ++r )
+        {
+            const char * names[2] = { "spare-a", "spare-b" };
+            std::strcpy( v[k].reserves[r].display_name, names[r] );
+            v[k].reserves[r].display_name_length = (int32_t) std::strlen( names[r] );
+            v[k].reserves[r].health = 50.0f + (float) r;
+            v[k].reserves[r].mass = 2.0f;
+            v[k].reserves[r].hardpoints_count = 1;
+            v[k].reserves[r].hardpoints[0] = 8;
+            v[k].reserves[r].gunner_present = false;
+        }
+    }
+    return emit( dir, "pack.bin", v, tabledemo::PackConfigFixedMeasure, tabledemo::PackConfigFixedSave );
+}
 
-    if ( failures != 0 ) { std::printf( "# %d failure(s)\n", failures ); return 1; }
+int main( int argc, char ** argv )
+{
+    if ( argc != 2 ) { std::fprintf( stderr, "usage: %s <outdir>\n", argv[0] ); return 1; }
+    const char * dir = argv[1];
+    if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
+         !keyed_file( dir ) || !pack_file( dir ) ) { return 1; }
     return 0;
 }

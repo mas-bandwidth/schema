@@ -194,6 +194,8 @@ define tables_generate
 	$(1) generate --lang cpp --out $(2)/blobs tables/blobs
 	$(1) generate --lang cpp --out $(2)/v1 test/tables/V1.schema
 	$(1) generate --lang cpp --out $(2)/v2 test/tables/V2.schema
+	$(1) generate --lang cpp --out $(2)/ut1 test/tables/UT1.schema
+	$(1) generate --lang cpp --out $(2)/ut2 test/tables/UT2.schema
 	$(1) generate --lang cpp --out $(2)/p1 test/tables/P1.schema
 	$(1) generate --lang cpp --out $(2)/p2 test/tables/P2.schema
 	$(1) generate --lang cpp --out $(2)/p3 test/tables/P3.schema
@@ -256,7 +258,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FN1.schema test/tables/FN2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/UT1.schema test/tables/UT2.schema
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -5662,6 +5664,7 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 \
 	    -Ibuild/tables-generated/f1 -Ibuild/tables-generated/f2 \
+	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
@@ -5681,58 +5684,9 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 \
 	    -Ibuild/tables-generated/f1 -Ibuild/tables-generated/f2 \
+	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
-# THE FIXED FORM'S ORACLE BYTES (docs/SPEC-TABLES.md §3.4,
-# docs/FIXED-FORM-COVERAGE.md). Every other wire in this project has pinned
-# bytes and this one had none: the versioning conformance set holds that a
-# READER makes the right values, and nothing held that the WRITER made the
-# right bytes. A leg whose writer and reader are wrong in the same direction
-# passes every round trip there is and cannot exchange one record with anybody.
-FIXEDFORM_ORACLE := testdata/conformance/tables/fixedform/records.dump
-
-build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp test/tables/fixedform_fixtures.h
-	@mkdir -p build
-	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
-	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
-	    -Ibuild/tables-generated/fn1 -Ibuild/tables-generated/fn2 \
-	    -Ibuild/tables-generated/wide -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 \
-	    -Ibuild/tables-generated/examples \
-	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/p1 \
-	    -Ibuild/tables-generated/scalars -Ibuild/tables-generated/f1 \
-	    -Itest/tables -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
-
-# THE GATE, and it is held from both ends. The oracle is REGENERATED and
-# byte-compared against the pinned file, and then regenerated a SECOND TIME and
-# compared against the first — because a dump that is merely equal to its pin is
-# a dump that could still be picking up a clock, an address or a map iteration
-# order, and the pin would then move on somebody else's machine and not on the
-# author's. Determinism is a property of the generator and it is checked here
-# rather than assumed.
-#
-# A byte that MOVES under an unchanged schema is stop-the-line and never a quiet
-# repin (testdata/conformance/tables/FORMAT.md). `make tables-fixedform-pin`
-# rewrites it deliberately, and the diff is the review.
-tables-fixedform-corpus: build/schema_test_fixedform_dump
-	@mkdir -p build/fixedform
-	./build/schema_test_fixedform_dump > build/fixedform/records.dump
-	./build/schema_test_fixedform_dump > build/fixedform/records.again
-	@cmp -s build/fixedform/records.dump build/fixedform/records.again || { \
-		echo "FIXED FORM ORACLE: the generator is NOT deterministic — two runs differ"; \
-		diff build/fixedform/records.dump build/fixedform/records.again | head -40; exit 1; }
-	@test -f $(FIXEDFORM_ORACLE) || { \
-		echo "FIXED FORM ORACLE: $(FIXEDFORM_ORACLE) is missing — run 'make tables-fixedform-pin'"; exit 1; }
-	@cmp -s build/fixedform/records.dump $(FIXEDFORM_ORACLE) || { \
-		echo "FIXED FORM ORACLE: the bytes MOVED under an unchanged schema — stop the line, never a quiet repin"; \
-		diff $(FIXEDFORM_ORACLE) build/fixedform/records.dump | head -60; exit 1; }
-	@echo "fixed form oracle: $$(grep -c '^case ' $(FIXEDFORM_ORACLE)) cases, byte-identical to the pin and to a second run of the generator"
-
-tables-fixedform-pin: build/schema_test_fixedform_dump
-	@mkdir -p $(dir $(FIXEDFORM_ORACLE))
-	./build/schema_test_fixedform_dump > $(FIXEDFORM_ORACLE)
-	@echo "fixed form oracle: PINNED to $(FIXEDFORM_ORACLE) — the diff is the review"
-
-.PHONY: tables-fixedform-corpus tables-fixedform-pin
 
 tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
 	./build/schema_test_fixedform
@@ -5762,6 +5716,94 @@ tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
 test: tables-fixedform tables-fixedform-corpus
 
 .PHONY: tables-fixedform
+
+# THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
+#
+# The C++ backend is the REFERENCE for this form, so the reference is what
+# writes the bytes and every port matches them — the same shape the paired
+# bench already pins. This target writes one form-3 FILE per root into
+# build/fixedform-corpus, with values set by hand so nothing passes by
+# accident, and a port's leg proves itself against them two ways: reading a
+# file and saving it back has to reproduce it BYTE FOR BYTE, and reading a file
+# written under ANOTHER schema's layout is the plan path, which is the whole of
+# what §3.4's versioning invariant is worth.
+#
+# It lives HERE rather than in a language's own make/<lang>.mk because it is
+# every port's oracle and none of theirs: a corpus one leg owns is a corpus the
+# next leg re-derives, and a golden a generator has to re-derive is not a
+# golden.
+# THE FIXED FORM'S ORACLE BYTES (docs/SPEC-TABLES.md §3.4,
+# docs/FIXED-FORM-COVERAGE.md). Every other wire in this project has pinned
+# bytes and this one had none: the versioning conformance set holds that a
+# READER makes the right values, and nothing held that the WRITER made the
+# right bytes. A leg whose writer and reader are wrong in the same direction
+# passes every round trip there is and cannot exchange one record with anybody.
+FIXEDFORM_ORACLE := testdata/conformance/tables/fixedform/records.dump
+
+build/schema_test_fixedform_pin: build/tables-generated/.stamp test/tables/fixedform_pin.cpp test/tables/fixedform_fixtures.h
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
+	    -Ibuild/tables-generated/fn1 -Ibuild/tables-generated/fn2 \
+	    -Ibuild/tables-generated/wide -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 \
+	    -Ibuild/tables-generated/examples \
+	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/p1 \
+	    -Ibuild/tables-generated/scalars -Ibuild/tables-generated/f1 \
+	    -Itest/tables -I$(SERIALIZE) test/tables/fixedform_pin.cpp -o $@
+
+# THE GATE, and it is held from both ends. The oracle is REGENERATED and
+# byte-compared against the pinned file, and then regenerated a SECOND TIME and
+# compared against the first — because a dump that is merely equal to its pin is
+# a dump that could still be picking up a clock, an address or a map iteration
+# order, and the pin would then move on somebody else's machine and not on the
+# author's. Determinism is a property of the generator and it is checked here
+# rather than assumed.
+#
+# A byte that MOVES under an unchanged schema is stop-the-line and never a quiet
+# repin (testdata/conformance/tables/FORMAT.md). `make tables-fixedform-pin`
+# rewrites it deliberately, and the diff is the review.
+tables-fixedform-oracle: build/schema_test_fixedform_pin
+	@mkdir -p build/fixedform
+	./build/schema_test_fixedform_pin > build/fixedform/records.dump
+	./build/schema_test_fixedform_pin > build/fixedform/records.again
+	@cmp -s build/fixedform/records.dump build/fixedform/records.again || { \
+		echo "FIXED FORM ORACLE: the generator is NOT deterministic — two runs differ"; \
+		diff build/fixedform/records.dump build/fixedform/records.again | head -40; exit 1; }
+	@test -f $(FIXEDFORM_ORACLE) || { \
+		echo "FIXED FORM ORACLE: $(FIXEDFORM_ORACLE) is missing — run 'make tables-fixedform-pin'"; exit 1; }
+	@cmp -s build/fixedform/records.dump $(FIXEDFORM_ORACLE) || { \
+		echo "FIXED FORM ORACLE: the bytes MOVED under an unchanged schema — stop the line, never a quiet repin"; \
+		diff $(FIXEDFORM_ORACLE) build/fixedform/records.dump | head -60; exit 1; }
+	@echo "fixed form oracle: $$(grep -c '^case ' $(FIXEDFORM_ORACLE)) cases, byte-identical to the pin and to a second run of the generator"
+
+# AND THE CORPUS RUNS THE PIN. One name for "check the bytes", so a leg or a
+# reviewer types one target and gets both halves.
+tables-fixedform-corpus: tables-fixedform-oracle
+
+tables-fixedform-pin: build/schema_test_fixedform_pin
+	@mkdir -p $(dir $(FIXEDFORM_ORACLE))
+	./build/schema_test_fixedform_pin > $(FIXEDFORM_ORACLE)
+	@echo "fixed form oracle: PINNED to $(FIXEDFORM_ORACLE) — the diff is the review"
+
+.PHONY: tables-fixedform-oracle tables-fixedform-pin
+
+build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/examples \
+	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
+
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
+	@rm -rf build/fixedform-corpus
+	@mkdir -p build/fixedform-corpus
+	./build/schema_test_fixedform_dump build/fixedform-corpus
+	@touch $@
+
+tables-fixedform-corpus: build/fixedform-corpus/.stamp
+	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
+
+.PHONY: tables-fixedform-corpus
 
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc

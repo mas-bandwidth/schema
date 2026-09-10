@@ -45,7 +45,7 @@ func TestCheckReportsTheFormByteFirst(t *testing.T) {
 	} {
 		p := formFile(t, "saved.bin", row.byte, 0, 0, 0)
 		out := run(t, bin, "check", p)
-		first := strings.SplitN(strings.TrimSpace(out), "\n", 2)[0]
+		first, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
 		if !strings.Contains(first, row.want) {
 			t.Errorf("check over a form-%d file printed %q first, want a line carrying %q", row.byte, first, row.want)
 		}

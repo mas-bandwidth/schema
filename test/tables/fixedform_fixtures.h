@@ -59,6 +59,11 @@
 // ---------------------------------------------------------------------------
 // FX1/FX2: the scalar edits (docs/SPEC-TABLES.md §3.4's versioning conformance)
 
+// `label` and `marks` are left AT THEIR DECLARED DEFAULTS on purpose, and the
+// oracle pins them so: a `string(N)` riding its non-empty declared default and
+// a counted array at a count of ZERO, whose whole bound is slack. The corpus
+// binary beside this one (test/tables/fixedform_pin.cpp) fills both, so the
+// two ends of the same rows are pinned rather than one of them twice.
 inline void FillFx1( tblfx1::FxRoot & v )
 {
     tblfx1::FxRootReset( v );

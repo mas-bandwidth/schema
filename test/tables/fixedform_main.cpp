@@ -61,6 +61,8 @@
 #include "Scalars2Table.h"
 #include "F2Table.h"
 #include "W2Table.h"
+#include "UT1Table.h"
+#include "UT2Table.h"
 
 static int failures = 0;
 
@@ -93,25 +95,14 @@ struct KnownRed
 };
 
 static KnownRed known_red[] = {
-    // THE PLAN ENTRY'S `arg` LANE CARRIES TWO THINGS (docs/SPEC-TABLES.md §3.4,
-    // "THE ONE READER PATH: A PLAN"). A guarded entry's `arg` is the union
-    // ARM ORDINAL the read loop tests the tag against; a `text` entry's `arg`
-    // is the field's FLAVOUR — utf8, wide, or bytes. They are one byte, so a
-    // text field under a union arm cannot carry both:
-    //
-    //   the IDENTITY plan stamps the arm ordinal over the flavour, so a
-    //   `string(N)` under arm 2 is read as WIDE text: its capacity halves and
-    //   its length is clamped, silently;
-    //
-    //   the COMPILED plan writes the flavour over the arm ordinal, so the
-    //   guard test compares the tag against a flavour and the entry is SKIPPED
-    //   whenever the two numbers differ — the field is dropped and nothing
-    //   counts.
-    //
-    // Both are silent, both are wrong values out of a clean read, and neither
-    // is reachable by any fixture that has no text under an arm.
-    { "arg-lane/identity/text-flavour-under-an-arm", "reference fix 12 (the plan entry's arg lane)", 0, 0 },
-    { "arg-lane/compiled/text-dropped-under-an-arm", "reference fix 12 (the plan entry's arg lane)", 0, 0 },
+    // THE PLAN ENTRY'S `arg` LANE ONCE CARRIED TWO THINGS AND NOW CARRIES ONE.
+    // A guarded entry's `arg` was the union ARM ORDINAL the read loop tests the
+    // tag against and a `text` entry's `arg` was the field's FLAVOUR, and they
+    // were one byte — so a text field under a union arm could not carry both,
+    // and the two plans lost opposite halves of it in silence. FU1/FU2 is the
+    // pair that made it reachable and the two entries that named it here are
+    // DELETED, which is what landing a fix costs: `tables: the guard's ordinal
+    // and the text op's flavour are two lanes`.
     // §3.4's op table names a `clamp` op — "reconstruct against the writer's
     // declared range and apply the reader's own, `clamped` counts if it fired"
     // — and the reference's op set has no such op: a ranged field whose reader
@@ -456,11 +447,10 @@ static void fu_case()
         check( n == 1, "ARM/identity/wide: one record" );
         check( back.mark.type == tblfu1::MarkType::Wide, "ARM/identity/wide: the tag" );
         check( back.mark.wide.n == 31 && back.id == 1001u && back.after == 9, "ARM/identity/wide: the scalars beside the text" );
-        check_red( back.mark.wide.w_length == 3 && back.mark.wide.w[0] == (char16_t) 0x0041 &&
-                   back.mark.wide.w[1] == (char16_t) 0x0142 && back.mark.wide.w[2] == (char16_t) 0x0043 &&
-                   back.mark.wide.w[3] == (char16_t) 0,
-                   "arg-lane/identity/text-flavour-under-an-arm",
-                   "wstring(4) under ARM 1 read as narrow text: the terminator lands at the length instead of twice it" );
+        check( back.mark.wide.w_length == 3 && back.mark.wide.w[0] == (char16_t) 0x0041 &&
+               back.mark.wide.w[1] == (char16_t) 0x0142 && back.mark.wide.w[2] == (char16_t) 0x0043 &&
+               back.mark.wide.w[3] == (char16_t) 0,
+               "ARM/identity/wide: a wstring(4) under ARM 1 keeps its FLAVOUR, so the terminator lands at TWICE the length" );
         check( rep.unknown == 0 && rep.kind_mismatch == 0 && !rep.malformed && !rep.refused,
                "ARM/identity/wide: a clean read moves no counter" );
     }
@@ -475,9 +465,8 @@ static void fu_case()
         check( n == 1, "ARM/identity/narrow: one record" );
         check( back.mark.type == tblfu1::MarkType::Narrow, "ARM/identity/narrow: the tag" );
         check( back.mark.narrow.n == 55, "ARM/identity/narrow: the scalar beside the text" );
-        check_red( back.mark.narrow.s_length == 5 && std::strcmp( back.mark.narrow.s, "hello" ) == 0 && rep.clamped == 0,
-                   "arg-lane/identity/text-flavour-under-an-arm",
-                   "string(6) under ARM 2 read as WIDE text: the bound halves and the length is clamped to 3" );
+        check( back.mark.narrow.s_length == 5 && std::strcmp( back.mark.narrow.s, "hello" ) == 0 && rep.clamped == 0,
+               "ARM/identity/narrow: a string(6) under ARM 2 keeps its own bound, so five used bytes are not clamped to three" );
     }
     {
         tblfu1::MarkRoot r;
@@ -581,9 +570,8 @@ static void fu_case()
                "ARM/compiled: an arm is resolved BY NAME, so ordinal 2 lands on ordinal 3" );
         check( back.mark.narrow.n == 55, "ARM/compiled: the scalar beside the text lands under the arm's own guard" );
         check( back.tail == 3, "ARM/compiled: a field the writer does not carry takes its declared default" );
-        check_red( back.mark.narrow.s_length == 5 && std::strcmp( back.mark.narrow.s, "hello" ) == 0,
-                   "arg-lane/compiled/text-dropped-under-an-arm",
-                   "string(6) under an arm: the compiled entry's guard tests the tag against the FLAVOUR, so the text is dropped" );
+        check( back.mark.narrow.s_length == 5 && std::strcmp( back.mark.narrow.s, "hello" ) == 0,
+               "ARM/compiled: an arm's text lands, because the guard tests the tag against the ARM ORDINAL and not against the flavour" );
         check( !rep.malformed && !rep.refused, "ARM/compiled/older writer: no damage and no refusal" );
     }
     {
@@ -596,9 +584,8 @@ static void fu_case()
         check( tblfu2::MarkRootFixedLoad( &back, 1, f.data(), (int64_t) f.size(), plan.data(), 4096, &rep ) == 1,
                "ARM/compiled/wide: one record" );
         check( back.mark.type == tblfu2::MarkType::Wide, "ARM/compiled/wide: an UNMOVED arm's tag" );
-        check_red( back.mark.wide.w_length == 3 && back.mark.wide.w[1] == (char16_t) 0x0142,
-                   "arg-lane/compiled/text-dropped-under-an-arm",
-                   "wstring(4) under ARM 1: the guard tests the tag against flavour 2, so an arm at ordinal 1 drops its text" );
+        check( back.mark.wide.w_length == 3 && back.mark.wide.w[1] == (char16_t) 0x0142,
+               "ARM/compiled/wide: an UNMOVED arm's text lands, ordinal and flavour both intact" );
     }
     {
         // AN ARM THIS READER HAS NO NAME FOR. FU2 selects `skip`; FU1 has no
@@ -1892,6 +1879,196 @@ static void fuzz_case()
                  clean.size(), (long long) refused, (long long) damaged, (long long) read );
 }
 
+// ---------------------------------------------------------------------------
+
+// THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4). A `string(N)` shorter than N
+// and a `[..N]T` with unused slots are DECLARED bytes carrying no value, and
+// what rides in them is the TEMPLATE'S ZEROS — never whatever the writer's own
+// storage happened to hold past the used length or the live count.
+//
+// Copying the whole span instead is not a cosmetic difference: for an array of
+// a type with declared defaults, the unused slots put the ELEMENT'S DEFAULT
+// IMAGE on the wire, so a value nobody wrote rides as if somebody had; and for
+// text, a field written twice with two different values does not compare equal
+// on the second write. The Elixir port found both.
+//
+// THE CONTROL IS THE STAIN. The storage past the used length and the live count
+// is filled with a byte that appears nowhere else in a clean record; the test
+// first proves the stain IS there in the storage (or it would be checking
+// nothing), then proves the WIRE carries none of it, and then proves that a
+// whole-span copy of the same storage WOULD have carried it — which is the
+// wrong behaviour, watched failing.
+static void slack_case()
+{
+    tblfx1::FxRoot v;
+    tblfx1::FxRootReset( v );
+    v.keep = 11u;
+    v.narrow = 22u;
+    v.renamed = 33;
+    v.gone = 44;
+    v.nested.a = 55;
+    v.nested.b = 66;
+    std::memset( v.label, 0xAA, sizeof( v.label ) );
+    v.label[0] = 'h';
+    v.label[1] = 'i';
+    v.label_length = 2;
+    for ( int k = 0; k < 4; ++k ) { v.marks[k] = 0x5A5A5A5A; }
+    v.marks[0] = 7;
+    v.marks_count = 1;
+
+    // the stain is really in the storage, so nothing below is vacuous
+    check( (uint8_t) v.label[2] == 0xAAu, "CONTROL: the text slack really is stained in storage" );
+    check( v.marks[1] == 0x5A5A5A5A, "CONTROL: the array slack really is stained in storage" );
+
+    std::vector<uint8_t> file( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &v, 1, file.data(), (int64_t) file.size() ) == (int64_t) file.size(),
+           "slack: the record saves" );
+    const uint8_t * body = file.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+    const size_t body_bytes = (size_t) tblfx1::FxRootFixedBodyBytes;
+    check( std::memchr( body, 0xAA, body_bytes ) == NULL,
+           "SLACK IS ZERO: not one stained TEXT byte reached the wire" );
+    check( std::memchr( body, 0x5A, body_bytes ) == NULL,
+           "SLACK IS ZERO: not one stained ARRAY byte reached the wire" );
+
+    // NEGATIVE CONTROL: the same storage copied WHOLE — which is what the
+    // writer did before this fix — carries the stain, so the two checks above
+    // discriminate and are not passing for some other reason.
+    {
+        uint8_t whole[sizeof( v.label )];
+        std::memcpy( whole, v.label, sizeof( v.label ) );
+        check( std::memchr( whole, 0xAA, sizeof( whole ) ) != NULL,
+               "NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain" );
+        int32_t marks[4];
+        std::memcpy( marks, v.marks, sizeof( marks ) );
+        check( marks[3] == 0x5A5A5A5A,
+               "NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
+    }
+
+    // and the record still reads back as itself: the used length and the live
+    // count are what the reader validates, and both are inside the bound, so
+    // nothing clamps.
+    {
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, &r ) == 1,
+               "slack: the record reads" );
+        check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
+               "slack: the used length reads, and the buffer terminates at it" );
+        check( back.marks_count == 1 && back.marks[0] == 7, "slack: the live count reads" );
+        check( back.marks[1] == 0 && back.marks[2] == 0 && back.marks[3] == 0,
+               "slack: an unused slot lands as the wire's zero and not as some writer's leftover" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "slack: a clean read moves no counter" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// TWO LANES, BECAUSE THEY ARE TWO FACTS (docs/SPEC-TABLES.md §3.4). A plan
+// entry carries the ordinal the GUARD byte must hold for the entry to run, and
+// the argument the entry's OWN OP takes — for a text entry, its flavour. They
+// had one lane between them, and a `string(N)` under a union's arm could be
+// guarded correctly or read with the right flavour and could not be both.
+//
+// UT1's string sits under the SECOND arm on purpose: a `string(N)`'s flavour is
+// 1 and the second arm's ordinal is 2, so the collision does not merely lose a
+// fact — it turns a byte string into a WIDE one, halving the bound and
+// terminating two bytes at a time.
+static void union_text_case()
+{
+    tblut1::UtRoot one;
+    tblut1::UtRootReset( one );
+    one.head = 42;
+    one.tail = 99;
+    one.pick.type = tblut1::PickType::B;   // the SECOND arm
+    std::strcpy( one.pick.b.label, "seven77" ); // seven characters, so the slack is real
+    one.pick.b.label_length = 7;
+    one.pick.b.m = 1234;
+
+    std::vector<uint8_t> w( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+    check( tblut1::UtRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "UT1 save" );
+
+    // THE IDENTITY PLAN: the guard holds the arm ordinal, the flavour is the
+    // text op's own, and the two are read out of different lanes.
+    {
+        check( tblut1::UtRootFixedPlan[3].op == tblut1::kTableFixedText, "two lanes: the plan's fourth entry is the text" );
+        check( tblut1::UtRootFixedPlan[3].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
+        check( tblut1::UtRootFixedPlan[3].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes: the record reads" );
+        check( back.pick.type == tblut1::PickType::B, "two lanes: the arm" );
+        check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
+               "two lanes: the arm's string(8), whole" );
+        check( back.pick.b.m == 1234 && back.head == 42 && back.tail == 99, "two lanes: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes: a clean read moves no counter" );
+    }
+
+    // THE NEGATIVE CONTROL — the bug itself, watched failing. The flavour is
+    // put back into the guard's lane, which is exactly what the one shared lane
+    // did, and the SAME record read by the SAME loop comes out wrong: the arm's
+    // ordinal 2 reads as kTableFixedTextWide, so the length is halved and the
+    // terminator lands two bytes early.
+    {
+        std::vector<tblut1::TableFixedEntry> shared( tblut1::UtRootFixedPlan,
+                                                     tblut1::UtRootFixedPlan + tblut1::UtRootFixedPlanCount );
+        shared[3].meta = shared[3].arg; // ONE LANE, as it was
+        tblut1::UtRoot wrong;
+        tblut1::UtRootReset( wrong );
+        tblut1::TableReport r;
+        const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
+        tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
+                               body, (uint8_t *) &wrong, &r );
+        check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
+               "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
+    }
+
+    // A COMPILED PLAN: UT2 inserted an arm IN THE MIDDLE, so the same string is
+    // arm 3 here and arm 2 in the record. The guard must hold THEIR ordinal
+    // while the tag this reader stores is MY ordinal, and the flavour is
+    // neither number.
+    {
+        tblut2::UtRoot back;
+        tblut2::TableReport r;
+        std::vector<tblut2::TableFixedEntry> plan( 1024 );
+        check( tblut2::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes, compiled: the record reads" );
+        check( back.pick.type == tblut2::PickType::B, "two lanes, compiled: the arm is remapped by NAME, not by ordinal" );
+        check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
+               "two lanes, compiled: the arm's string(8), whole" );
+        check( back.pick.b.m == 1234 && back.head == 42 && back.tail == 99, "two lanes, compiled: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes, compiled: a clean read moves no counter" );
+    }
+
+    // and the other direction: UT1 reads a UT2 record whose arm is `b`, which
+    // in that record is ordinal 3.
+    {
+        tblut2::UtRoot two;
+        tblut2::UtRootReset( two );
+        two.head = 7;
+        two.tail = 8;
+        two.pick.type = tblut2::PickType::B;
+        std::strcpy( two.pick.b.label, "third" );
+        two.pick.b.label_length = 5;
+        two.pick.b.m = 555;
+        std::vector<uint8_t> w2( (size_t) tblut2::UtRootFixedMeasure( 1 ) );
+        check( tblut2::UtRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "UT2 save" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes, back: the record reads" );
+        check( back.pick.type == tblut1::PickType::B, "two lanes, back: arm 3 lands as arm 2, by name" );
+        check( back.pick.b.label_length == 5 && std::strcmp( back.pick.b.label, "third" ) == 0,
+               "two lanes, back: the arm's string(8), whole" );
+        check( back.pick.b.m == 555, "two lanes, back: the arm's other field" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -1910,6 +2087,8 @@ int main()
     frame_case();
     p_case();
     negative_control();
+    slack_case();
+    union_text_case();
     layout_validation();
     fuzz_case();
     failures += known_red_report();

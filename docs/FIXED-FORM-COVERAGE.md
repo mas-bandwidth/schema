@@ -17,6 +17,14 @@ of them is not covered in the others:
 | **COMPILED (newer)** | a record written by a LATER generation — the direction where a name this reader does not have has to be stepped over rather than guessed |
 | **WRITE** | the BYTES this build produces, pinned, so a second port can be held to them |
 
+**THERE ARE TWO ORACLES AND NEITHER IS THE OTHER'S COPY.**
+`test/tables/fixedform_dump.cpp` writes one form-3 FILE per root into `build/`,
+which is what a PORT diffs against at test time; `make tables-fixedform-oracle`
+checks a REVIEWABLE TEXT pin, committed, which is what a PERSON diffs when a
+byte moves. A binary corpus nobody committed cannot say a byte changed between
+two builds of the reference; a text pin no leg reads cannot say a port
+disagrees. Both run under `tables-fixedform-corpus`, from the same writer.
+
 **THE WRITE COLUMN IS THE ONE THAT DID NOT EXIST.** Until
 `testdata/conformance/tables/fixedform/records.dump` the fixed form had no pinned
 bytes anywhere, while every other wire in this project has some. What the
@@ -33,7 +41,7 @@ hole this page was written to find.
 - **`fx`** `fu` `fn` `wstr` `w` `bits` `s` `fl` `text` `frame` `p` `v` `neg`
   `layout` `fuzz` — the case functions of `test/tables/fixedform_main.cpp`.
 - **`oracle`** — a pinned block of `testdata/conformance/tables/fixedform/records.dump`,
-  written by `test/tables/fixedform_dump.cpp`.
+  written by `test/tables/fixedform_pin.cpp`.
 - **`RED-n`** — covered by a fixture that is a NAMED KNOWN-RED: the fixture is in
   the shared set today, it fails today, and the fix it waits on is named. The
   make target prints every one of them on a green run. See *The known-red list*.
@@ -54,35 +62,35 @@ against a plain nesting; `examples/Ranges` the `bits(N)` family.
 
 | shape (`C`) | IDENTITY | COMPILED (older) | COMPILED (newer) | WRITE |
 |---|---|---|---|---|
-| `bool` | `fn` + **RED-7** | `fn` | `fn` | `oracle fn1/full` |
+| `bool` | `fn` + **RED-5** | `fn` | `fn` | `oracle fn1/full` |
 | `int8`/`uint8` … `int64`/`uint64` | `fx`, `s` | `fx` | `fx` | `oracle fx1/root` |
 | — the plain narrow kinds, spelled as themselves | **GAP-1** | **GAP-1** | **GAP-1** | **GAP-1** |
 | `bits(N)`, N ≤ 32 and above | `bits` | **GAP-2** | **GAP-2** | `oracle bits/widths` |
-| a RANGED integer | `fx`, `s` | `s` + **RED-3** | `s` | `oracle scalars/simstate` |
+| a RANGED integer | `fx`, `s` | `s` + **RED-1** | `s` | `oracle scalars/simstate` |
 | `float32`, `float64` | `fl` | `fl` (widened) | `fl` | `oracle f1/floats` |
 | a COMPRESSED float | **GAP-3** | **GAP-3** | **GAP-3** | **GAP-3** |
 | `int128`/`uint128` | `s` | `s` | `s` | `oracle scalars/simstate` |
-| `fixed(I,F)`, `ufixed(I,F)` | `s` + **RED-5** | `s` + **RED-5** | `s` | `oracle scalars/simstate` |
+| `fixed(I,F)`, `ufixed(I,F)` | `s` + **RED-3** | `s` + **RED-3** | `s` | `oracle scalars/simstate` |
 | `flags` | `w` | `w` (table renamed) | **GAP-4** | `oracle w1/vessel` |
 | an ENUM, ordinal from `1`, `0` is `None` | `fn`, `v` | `fn`, `v` | `fn`, `v` (unknown variant) | `oracle fn1/full`, `v1/cfg` |
-| — an ordinal PAST the last variant | **RED-8** | **RED-8** | **RED-8** | — |
+| — an ordinal PAST the last variant | **RED-6** | **RED-6** | **RED-6** | — |
 | a nested `table`/`type`, INLINE | `fx`, `fn` | `fx`, `fn` | `fx` (unknown type), `fn` | `oracle fn1/full` |
 | — nested THREE DEEP | `fn` | `fn` | `fn` | `oracle fn1/full` |
 | `[N]T` | `s`, `fn` | `s`, `fn` | `s`, `fn` | `oracle scalars/simstate` |
-| `[Min..Max]T`, count then MAX elements | `fu`, `fn`, `s` + **RED-5** | `fu`, `fn` | `fu`, `fn` | `oracle fu1/list`, `fn1/full` |
+| `[Min..Max]T`, count then MAX elements | `fu`, `fn`, `s` + **RED-3** | `fu`, `fn` | `fu`, `fn` | `oracle fu1/list`, `fn1/full` |
 | — a count PAST the reader's `Max`, and a negative one | `fn` | `fn` | — | — |
 | `string(N)`, length in BYTES | `text`, `v`, `fn` | `v`, `fn` (`was`) | `v`, `fn` | `oracle p1/{empty,short,full}` |
-| `wstring(N)`, length in CODE UNITS, `2N` payload | `wstr` | **RED-1** | **RED-2** | `oracle wide/stamp`, `fu1/wide` |
-| `bytes(N)`, length in BYTES | `w`, `fu` | `fu` + **RED-1** | **GAP-5** | `oracle fu1/raw`, `w1/vessel` |
-| — TEXT OF ANY FLAVOUR UNDER A UNION ARM | **RED-1** | **RED-2** | **RED-2** | `oracle fu1/{wide,narrow,raw}` |
+| `wstring(N)`, length in CODE UNITS, `2N` payload | `wstr`, `fu` | `fu` | `fu` | `oracle wide/stamp`, `fu1/wide` |
+| `bytes(N)`, length in BYTES | `w`, `fu` | `fu` | **GAP-5** | `oracle fu1/raw`, `w1/vessel` |
+| — TEXT OF ANY FLAVOUR UNDER A UNION ARM | `fu` | `fu` | `fu` | `oracle fu1/{wide,narrow,raw}` |
 | a UNION: tag then the WIDEST ARM | `fu`, `fn`, `v` | `fu`, `fn`, `v` | `fu`, `fn` (unknown arm) | `oracle fu1/*`, `fn1/full` |
 | — tag `0` is `None` | `fu` | `fu` | `fu` | `oracle fu1/none` |
-| — a tag PAST the last arm | **RED-9** | **RED-9** | **RED-9** | — |
+| — a tag PAST the last arm | **RED-7** | **RED-7** | **RED-7** | — |
 | — an ARRAY of unions, the guard re-tested per element | `fn` | `fn` | `fn` | `oracle fn1/full` |
 | — an arm holding an ARRAY, and a narrower arm's slack | `fu`, `fn` | `fu`, `fn` | `fu`, `fn` | `oracle fn1/full` |
 | `?T`: present flag + the payload WHOLE | `s`, `fn`, `v`, `p` | `fn`, `s` | `fn` | `oracle fn1/{full,absent}` |
-| — an ABSENT optional over NON-ZERO residue | **RED-6** | **RED-6** | — | `oracle fn1/absent` |
-| — a present byte that is neither `0` nor `1` | **RED-7** | **RED-7** | — | — |
+| — an ABSENT optional over NON-ZERO residue | **RED-4** | **RED-4** | — | `oracle fn1/absent` |
+| — a present byte that is neither `0` nor `1` | **RED-5** | **RED-5** | — | — |
 | `[Enum]T`: every slot, no key rides | `s`, `v` | `v` (a key that SLID) | `v` (a key with no name here) | `oracle scalars/simstate`, `v1/cfg` |
 | `const`, `reserved`, `align` | — | — | — | refused in a table body already (§11) |
 
@@ -105,7 +113,7 @@ against a plain nesting; `examples/Ranges` the `bits(N)` family.
 | **the declared STORAGE IMAGE, LE, declared width, nothing padded** | `bits`, `s`, `wstr` | — | — | `oracle` |
 | **slack: ZERO ON WRITE** | — | — | — | `oracle fu1/none`, `fn1/absent` |
 | **slack: UNSPECIFIED ON READ**, not `malformed`, no counter | `text` | — | — | — |
-| **content rules over the USED UNITS and nothing else** | `text` + **RED-4**, `wstr` | — | — | — |
+| **content rules over the USED UNITS and nothing else** | `text` + **RED-2**, `wstr` | — | — | — |
 | a length PAST the field's own bound | `text`, `wstr`, `fn` | `fn` | — | — |
 | **a DEPRECATED field keeps its slot forever** | **GAP-9** | **GAP-9** | **GAP-9** | **GAP-9** |
 | what a fixed table CANNOT carry: pointer, map, `[]T`, a guarded branch | — | — | — | **GAP-10** |
@@ -116,14 +124,14 @@ against a plain nesting; `examples/Ranges` the `bits(N)` family.
 | **op `text`** | `text`, `wstr`, `fu` | `fu` | `fu` | — |
 | **op `union`** | `fu`, `fn`, `v` | `fu`, `fn`, `v` | `fu`, `fn` | — |
 | **op `widen`** | — | `fx` (u16→u32), `fl` (f32→f64) | — | — |
-| **op `clamp`** | — | **RED-3** (the op does not exist) | — | — |
-| **op `ordinal`** | **RED-8** | `v`, `fn` | `v`, `fn` | — |
-| a kind that MOVED is skipped and never misdecoded | `p` | `v`, `s` + **RED-10** | `s` | — |
+| **op `clamp`** | — | **RED-1** (the op does not exist) | — | — |
+| **op `ordinal`** | **RED-6** | `v`, `fn` | `v`, `fn` | — |
+| a kind that MOVED is skipped and never misdecoded | `p` | `v`, `s` + **RED-8** | `s` | — |
 | **the plan is PARTITIONED**: unguarded first, then the arms' | **GAP-13** | **GAP-13** | **GAP-13** | — |
 | **the PREFILL answers "absent field"** | — | `fx`, `fn`, `v`, `w` | — | — |
 | **the ABSENCE of an entry answers "unknown field"** | — | — | `fx`, `fn`, `s`, `fu` | — |
 | an unknown NESTED TYPE stepped over by its whole size | — | — | `fx` | — |
-| **the identity plan is a static constant, with ADJACENT RUNS COALESCED** | **RED-5**, **GAP-14** | — | — | — |
+| **the identity plan is a static constant, with ADJACENT RUNS COALESCED** | **RED-3**, **GAP-14** | — | — | — |
 | a compiled plan is CACHED BY HASH | **GAP-15** | **GAP-15** | **GAP-15** | — |
 | the plan's storage is the CALLER's; `plan_too_large` | `neg` | `neg` | `neg` | — |
 | **the write is a TEMPLATE `memcpy` then constant stores**; `MeasureBody` is `constexpr` | — | — | — | `bits`, `oracle` |
@@ -152,16 +160,16 @@ first build. A rule whose breach is a wrong value in a clean read is not.
 
 | gap | what it was | what fills it |
 |---|---|---|
-| TEXT UNDER A UNION ARM | the plan entry's `arg` lane carries an arm ORDINAL for a guarded entry and a text FLAVOUR for a text entry — and a text field under an arm needs both. No fixture in the set had text under an arm, so neither half was reachable. | `FU1/FU2`, `fu` — one arm per flavour in ordinal order, so ordinal and flavour disagree at every arm but the first. **RED-1**, **RED-2** |
+| TEXT UNDER A UNION ARM | the plan entry's `arg` lane carries an arm ORDINAL for a guarded entry and a text FLAVOUR for a text entry — and a text field under an arm needs both. No fixture in the set had text under an arm, so neither half was reachable. | `FU1/FU2`, `fu` — one arm per flavour in ordinal order, so ordinal and flavour disagree at every arm but the first. **FIXED ON THE BRANCH** by `tables: the guard's ordinal and the text op's flavour are two lanes`, and the two reds that named it were deleted in the same commit as these rows |
 | `wstring` HAS NO ORACLE BYTES ANYWHERE | flavour 2's length is in CODE UNITS and its payload is `2N` bytes — the one text row whose two numbers differ — and nothing pinned a byte of it | `wstr` + `oracle wide/stamp` (at the root) and `oracle fu1/wide` (under an arm), including a lone surrogate |
 | `bytes(N)` UNDER A COMPILED PLAN | — | `fu` (the `raw` arm, read by both generations) |
-| A TAG PAST THE LAST ARM | — | `fu`, `fn` (per element of an array). **RED-9** |
-| AN ENUM ORDINAL PAST THE LAST VARIANT | — | `fn`. **RED-8** |
-| A PRESENT BYTE OF `7` | — | `fn`. **RED-7** |
-| A BOOL BYTE OF `2` | nothing in the set had a `bool` in a fixed root at all | `fn`. **RED-7** |
+| A TAG PAST THE LAST ARM | — | `fu`, `fn` (per element of an array). **RED-7** |
+| AN ENUM ORDINAL PAST THE LAST VARIANT | — | `fn`. **RED-6** |
+| A PRESENT BYTE OF `7` | — | `fn`. **RED-5** |
+| A BOOL BYTE OF `2` | nothing in the set had a `bool` in a fixed root at all | `fn`. **RED-5** |
 | OVER-`Max` COUNTS AND LENGTHS | — | `fn` (a count of 99 and a negative one), `text`, `wstr` |
-| TEXT CONTENT VIOLATIONS | — | `text` (ill-formed UTF-8 and an interior zero, inside the USED bytes). **RED-4** |
-| AN ABSENT OPTIONAL WITH NON-ZERO RESIDUE | — | `fn`. **RED-6** |
+| TEXT CONTENT VIOLATIONS | — | `text` (ill-formed UTF-8 and an interior zero, inside the USED bytes). **RED-2** |
+| AN ABSENT OPTIONAL WITH NON-ZERO RESIDUE | — | `fn`. **RED-4** |
 | AN ARRAY OF UNIONS | the arm guard has to be re-tested PER ELEMENT | `FN1/FN2`, `fn` |
 | AN ARM THAT IS A NESTED TYPE WITH AN ARRAY | — | `FU1` `MarkList`, `FN1` `CellB` |
 | THREE-DEEP NESTING | two deep was the deepest anything reached | `FN1/FN2`, `fn`, with the INNERMOST type resized in FN2 |
@@ -184,7 +192,7 @@ first build. A rule whose breach is a wrong value in a clean read is not.
 | **GAP-10** what a fixed table cannot carry | Four compile refusals by name. Loud, not silent. |
 | **GAP-11/12** selection by the keyword, and the read side accepting both forms | Both wait on #823. Until then the compiler selects by the DERIVED mode, which §3.4 says in as many words. |
 | **GAP-13** the plan's PARTITION | `FnRootFixedPlanGuarded` is emitted and nothing asserts it is the boundary it claims. §3.4 calls the partition "A REQUIREMENT AND NOT AN OPTIMIZATION", so an unasserted requirement is exactly the shape of a rule that quietly stops holding — **but a broken partition is a wrong VALUE, which the value assertions already catch**, and its cost is a benchmark's job. |
-| **GAP-14** ADJACENT RUNS COALESCED | Nothing asserts the identity plan's entry count is the coalesced one. **RED-5** is a consequence of coalescing and is the only thing watching it. Worth an assertion against `FixedPlanCount` once the run copy is fixed. |
+| **GAP-14** ADJACENT RUNS COALESCED | Nothing asserts the identity plan's entry count is the coalesced one. **RED-3** is a consequence of coalescing and is the only thing watching it. Worth an assertion against `FixedPlanCount` once the run copy is fixed. |
 | **GAP-15** a compiled plan CACHED BY HASH | The C++ reference's `FixedLoad` compiles per call from the caller's plan storage; there is no cache to test. A cache is a performance property, and the measurement gate is where it belongs. |
 | **GAP-16/17** the STREAM and MESSAGE carriers | §3.4's framing table has three carriers and every fixture here is a FILE. Both are real gaps with real silent failure modes — an announcement sent twice, a batch whose bodies carry a hash the announcement never named — and both need §3.3's machinery wired to form `3` first. **The largest open gap on this page.** |
 | **GAP-18** a caller capacity below the file's record count | §3.4 states NOTHING about it. The reference refuses `batch_too_large` by precedent from §3.3, and `frame` now pins that — but a pin is not a rule, and §3.3 also requires the reader to hand the caller the count it was short by, which `FixedLoad` has no way to do. **A question for the spec, not a bug.** |
@@ -205,18 +213,16 @@ of landing the fix.
 
 | | key | waits on |
 |---|---|---|
-| **RED-1** | `arg-lane/identity/text-flavour-under-an-arm` | reference fix 12 (the plan entry's `arg` lane) |
-| **RED-2** | `arg-lane/compiled/text-dropped-under-an-arm` | reference fix 12 (the plan entry's `arg` lane) |
-| **RED-3** | `clamp-op/compiled/tightened-bounds-do-not-clamp` | a `clamp` op in the reference's read loop (§3.4's op table names one; the op set has none) |
-| **RED-4** | `text-content/identity/invalid-utf8-is-not-malformed` | UTF-8 validation in the reference's `text` op |
-| **RED-5** | `run-copy/identity/a-17-to-31-byte-run-clobbers-its-neighbours` | the run copy's 17..31-byte branch, `internal/codegen/cpptable/fixedruntime.go` and ctable's twin |
-| **RED-6** | `optional/absent-payload-residue-is-copied` | the `?T` payload gated on the present byte (§3.4: "IGNORED on read") |
-| **RED-7** | `bool-domain/a-byte-outside-0-and-1-lands-in-the-caller-s-bool` | a ruling on what a bool byte outside `{0, 1}` means, and a normalise to match it |
-| **RED-8** | `ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant` | a ruling: §3.4 does not say what an ordinal naming no variant means, and the two plans answer differently |
-| **RED-9** | `ordinal-bound/paths-disagree/union-tag-past-the-last-arm` | the same ruling, for a tag naming no arm |
-| **RED-10** | `kind-mismatch/compiled/a-moved-kind-is-decoded-anyway` | the run copy first, then a re-read — `angle` sits inside the window RED-5 clobbers and the two cannot be told apart until it is fixed |
+| **RED-1** | `clamp-op/compiled/tightened-bounds-do-not-clamp` | a `clamp` op in the reference's read loop (§3.4's op table names one; the op set has none) |
+| **RED-2** | `text-content/identity/invalid-utf8-is-not-malformed` | UTF-8 validation in the reference's `text` op |
+| **RED-3** | `run-copy/identity/a-17-to-31-byte-run-clobbers-its-neighbours` | the run copy's 17..31-byte branch, `internal/codegen/cpptable/fixedruntime.go` and ctable's twin |
+| **RED-4** | `optional/absent-payload-residue-is-copied` | the `?T` payload gated on the present byte (§3.4: "IGNORED on read") |
+| **RED-5** | `bool-domain/a-byte-outside-0-and-1-lands-in-the-caller-s-bool` | a ruling on what a bool byte outside `{0, 1}` means, and a normalise to match it |
+| **RED-6** | `ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant` | a ruling: §3.4 does not say what an ordinal naming no variant means, and the two plans answer differently |
+| **RED-7** | `ordinal-bound/paths-disagree/union-tag-past-the-last-arm` | the same ruling, for a tag naming no arm |
+| **RED-8** | `kind-mismatch/compiled/a-moved-kind-is-decoded-anyway` | the run copy first, then a re-read — `angle` sits inside the window RED-3 clobbers and the two cannot be told apart until it is fixed |
 
-### RED-5 is not like the others
+### RED-3 is not like the others
 
 **IT IS AN OUT-OF-BOUNDS READ, AND IT IS SILENT.** §3.4 requires the run copy to
 be "OVERLAPPING UNALIGNED WORD MOVES AND NOT A CALL", and the reference's branch
@@ -252,10 +258,10 @@ nobody watches fail is a skip that has quietly become a hole.
 
 | | |
 |---|---|
-| cells COVERED | 118 |
+| cells COVERED | 123 |
 | cells filled by this pass | 47, in 17 gaps |
 | cells still open | 24, in 19 gaps — 1 of which meets the silent-wrongness bar (**GAP-3**) and 2 of which are the largest thing left (**GAP-16/17**, the stream and message carriers) |
-| KNOWN-REDS | 10, each named and printed on a green run |
+| KNOWN-REDS | 8, each named and printed on a green run — 2 more were DELETED when fix 12 landed on the branch, which is exactly what the both-ends check is for |
 | KNOWN-FAULTS | 1, watched by a gate that goes red when it stops happening |
 | oracle cases pinned | 22 |
 

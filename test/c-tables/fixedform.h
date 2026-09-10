@@ -30,12 +30,25 @@ int64_t fixed_fx2_write( uint8_t * buffer, int64_t capacity );
 int64_t fixed_fx2_bytes( void );
 int64_t fixed_v1_write( uint8_t * buffer, int64_t capacity );
 int64_t fixed_v1_bytes( void );
+int64_t fixed_ut1_write( uint8_t * buffer, int64_t capacity );
+int64_t fixed_ut1_bytes( void );
+int64_t fixed_ut2_write( uint8_t * buffer, int64_t capacity );
+int64_t fixed_ut2_bytes( void );
 
 /* ...and each reads the other's, through the ONE plan-driven path. */
 void fixed_fx1_read_own( const uint8_t * data, int64_t bytes );
+void fixed_fx1_slack( void );
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes );
 void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes );
 void fixed_v2_read_v1( const uint8_t * data, int64_t bytes );
+
+/* TWO LANES, BECAUSE THEY ARE TWO FACTS: the guard's ordinal and the text op's
+   own flavour (docs/SPEC-TABLES.md §3.4). The control puts them back in one
+   lane and watches the same record read wrong. */
+void fixed_ut1_read_own( const uint8_t * data, int64_t bytes );
+void fixed_ut1_shared_lane_control( const uint8_t * data, int64_t bytes );
+void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes );
+void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes );
 
 /* THE BYTE-FLIP FUZZ's reader (docs/SPEC-TABLES.md §3.4, "held by test"): it
    makes no claim about the values, only that the read answers one of the three

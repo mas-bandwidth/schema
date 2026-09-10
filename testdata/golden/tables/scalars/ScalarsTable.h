@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -2246,7 +2251,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2300,7 +2305,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2422,14 +2433,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2852,7 +2863,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -3108,7 +3119,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -6089,21 +6100,23 @@ inline void SimStateFixedWriteBody( uint8_t * b, const SimState & value )
     TableFixedPut128( b + 82, value.energy );
     TableFixedPut128( b + 98, value.entity_id );
     TableFixedPut32( b + 114, (uint32_t) value.scale );
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut32( b + 118 + i * 4 + 0, (uint32_t) value.samples[i] );
     }
+    schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 130, (uint32_t) value.weights_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.weights_count; ++i )
     {
         TableFixedPut16( b + 134 + i * 2 + 0, (uint16_t) value.weights[i] );
     }
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut64( b + 142 + i * 8 + 0, (uint64_t) value.axes.slots[i] );
     }
+    schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 166, (uint32_t) value.seeds_count );
-    for ( int64_t i = 0; i < 2; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.seeds_count; ++i )
     {
         TableFixedPut128( b + 170 + i * 16 + 0, value.seeds[i] );
     }
@@ -6215,20 +6228,20 @@ constexpr TableFixedDst SimStateFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry SimStateFixedPlan[] = {
-    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // tilt
-    { 1u, 4u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // angle
-    { 34u, 40u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // speed
-    { 38u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // span
-    { 46u, 64u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // mass
-    { 66u, 96u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // flux
-    { 130u, 168u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // weights count
-    { 134u, 160u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // weights, whole
-    { 142u, 176u, 24u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // axes, whole
-    { 166u, 240u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // seeds count
-    { 170u, 208u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // seeds, whole
-    { 202u, 248u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
-    { 222u, 296u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // spawn present
-    { 223u, 272u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // x
+    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // tilt
+    { 1u, 4u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // angle
+    { 34u, 40u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // speed
+    { 38u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // span
+    { 46u, 64u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // mass
+    { 66u, 96u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // flux
+    { 130u, 168u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // weights count
+    { 134u, 160u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // weights, whole
+    { 142u, 176u, 24u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // axes, whole
+    { 166u, 240u, 2u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // seeds count
+    { 170u, 208u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // seeds, whole
+    { 202u, 248u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
+    { 222u, 296u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // spawn present
+    { 223u, 272u, 20u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // x
 };
 constexpr int32_t SimStateFixedPlanCount = 14;
 constexpr int32_t SimStateFixedPlanGuarded = 14;
