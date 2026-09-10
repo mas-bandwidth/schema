@@ -267,3 +267,58 @@ func TestReuseRequiresRecordedHEAD(t *testing.T) {
 		}
 	}
 }
+
+// A TABLE-ONLY LANGUAGE IS A TABLE LEG AND NOTHING ELSE. It parses as one
+// wire, it is invoked through its interpreter, and it cannot reach the
+// confirmation pass, whose every row is half of a ratio.
+func TestTableOnlyLanguageIsTableWireOnly(t *testing.T) {
+	for _, lang := range tableOnlyLanguages {
+		if names[lang] == "" {
+			t.Fatal("a language on the board needs a printed name:", lang)
+		}
+		if got := wiresFor(lang); len(got) != 1 || got[0] != "table" {
+			t.Fatal(lang, got)
+		}
+		if contains(languages, lang) {
+			t.Fatal("a table-only language must not be a paired language:", lang)
+		}
+		if !onlyTableLanguages([]string{lang}) || onlyTableLanguages(append([]string{lang}, languages...)) {
+			t.Fatal("mixed request accepted:", lang)
+		}
+		if expectedChecks(lang, "table") != "contract" {
+			t.Fatal("a table leg keeps wire/API validation:", lang)
+		}
+		args := runner("table", lang, "--gate").args
+		if args[0] != javaExecutable() || !contains(args, javaClassDir) || !contains(args, "TableMain") {
+			t.Fatal(args)
+		}
+		if !contains(args, "--indexed") || !contains(args, "bench/paired/corpus") {
+			t.Fatal(args)
+		}
+	}
+	for _, lang := range languages {
+		if onlyTableLanguages([]string{lang}) {
+			t.Fatal("a paired language read as table-only:", lang)
+		}
+	}
+}
+
+// The FIXED form's row name rides the same corpus id and the same family as
+// the tolerant one, and the Java leg's seventeen columns are the driver's
+// seventeen: a row with a column appended is refused rather than truncated.
+func TestFixedFormRowFromATableOnlyLanguage(t *testing.T) {
+	row := "java,bench_fixed,%s,400000,1264.30,1,%d,%d,%d,0,0,table,table,class,contract,default,unknown\n"
+	data := header + "\n" + fmt.Sprintf(row, "write", 1795168, 1795168, 1795168) + fmt.Sprintf(row, "round_trip", 604972, 604972, 604972)
+	rows, err := parseRows([]byte(data), "java", "table", "table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].cols[1] != "bench_fixed" || rows[1].cols[2] != "round_trip" {
+		t.Fatal(rows)
+	}
+	// The same row with the type board's appended codec column is eighteen
+	// wide and must be refused rather than truncated.
+	if _, err := parseRows([]byte(strings.ReplaceAll(data, ",unknown\n", ",unknown,flat\n")), "java", "table", "table"); err == nil {
+		t.Fatal("an eighteen-column row was accepted")
+	}
+}
