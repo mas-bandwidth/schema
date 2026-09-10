@@ -240,6 +240,54 @@ table LiveRoot
 	}
 }
 
+// A COUNTED ARRAY'S WRITE WALKS THE LIVE COUNT, then the template's zeros
+// for slack (SPEC §3.4). Decode does not fill unused slots, so writing the
+// bound would put constructor defaults on the wire.
+func TestWriteCountedArrayWalksLiveCount(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+enum Grade
+{
+    Bronze
+    Silver
+    Gold
+}
+
+table LiveRoot
+{
+    grades [1..4]Grade
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "void liveRootFixedWriteBody(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no liveRootFixedWriteBody in the generated unit")
+	}
+	body := src
+	if i := strings.Index(src, "void liveRootFixedWriteBody("); i >= 0 {
+		body = src[i:]
+		if j := strings.Index(body[1:], "\nvoid "); j >= 0 {
+			body = body[:j+1]
+		}
+	}
+	if !strings.Contains(body, "i < value.gradesCount") {
+		t.Fatalf("counted-array write must walk the live count, not the bound:\n%s", body)
+	}
+	if strings.Contains(body, "i < 4") {
+		t.Fatalf("counted-array write still walks the declared bound:\n%s", body)
+	}
+}
+
 // THE PREFILL IS THE DECLARED DEFAULTS, and the one this corpus carries is
 // `has_extra bool = true` — the byte that would silently read false if the
 // prefill were a zero fill.

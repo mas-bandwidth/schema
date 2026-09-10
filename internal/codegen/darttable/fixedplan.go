@@ -112,7 +112,7 @@ func fixedPlanElements(p *fixedPlanBuild, f *ir.Field, at, count int64) {
 			guard: fixedNoGuard, note: f.Name + ", whole"})
 		return
 	}
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		fixedPlanElement(p, f, at+i*elem, at+i*elem, fixedNoGuard, 0)
 	}
 }

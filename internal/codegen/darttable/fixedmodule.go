@@ -484,10 +484,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 
 func (g *fixedModule) emitBytes(b []byte) {
 	for i := 0; i < len(b); i += 12 {
-		end := i + 12
-		if end > len(b) {
-			end = len(b)
-		}
+		end := min(i+12, len(b))
 		g.pf(" ")
 		for _, v := range b[i:end] {
 			g.pf(" 0x%02x,", v)

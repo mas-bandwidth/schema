@@ -522,7 +522,7 @@ func (g *fixedGen) emitTextDefaultBytes(f *ir.Field, ind, target string) {
 		return
 	}
 	name := dartName(f.Name)
-	for i := int64(0); i < n; i++ {
+	for i := range n {
 		g.pf("%s%s.%s[%d] = 0x%02x;\n", ind, target, name, i, f.DefBytes[i])
 	}
 }
@@ -536,10 +536,11 @@ func (g *fixedGen) emitTextDefaultBytes(f *ir.Field, ind, target string) {
 // which is also what zero-fills every byte of declared slack without this
 // function touching it.
 //
-// A BOUND IS WRITTEN WHOLE. A string's N bytes and an array's MAX elements
-// ride however much of them is used, which is what makes a read-then-save
-// reproduce a record BYTE FOR BYTE: the read landed the peer's slack in this
-// storage, so writing the storage back writes the peer's slack back.
+// A COUNTED ARRAY WRITES ITS LIVE COUNT. Decode walks Count, so unused
+// slots still hold constructor defaults; writing the bound would put those
+// on the wire. Slack stays the template's zeros (SPEC §3.4). A string's N
+// bytes still ride as the storage holds them: decode copies the whole
+// declared span from the image, so that slack is the peer's.
 //
 // AN ABSENT OPTIONAL'S PAYLOAD IS THE ONE EXCEPTION, and it is §3.4's own:
 // under a present flag of `0` the payload is SLACK, and slack is ZERO ON
@@ -584,16 +585,21 @@ func (g *fixedGen) emitWriteField(f *ir.Field, base string, at int64, val, ind s
 func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, name, ind string) {
 	switch {
 	case f.KeyEnum != "":
-		g.emitWriteLoop(f, base, at, f.KeyEnumRef.Max, val+"."+name, ind)
+		g.emitWriteLoop(f, base, at, fmt.Sprintf("%d", f.KeyEnumRef.Max), val+"."+name, ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitWriteLoop(f, base, at, f.ArrayBound, val+"."+name, ind)
+		g.emitWriteLoop(f, base, at, fmt.Sprintf("%d", f.ArrayBound), val+"."+name, ind)
 	case f.Array == ir.ArrayCounted:
-		// the count, then MAX elements, the slack behind it as the value holds it
+		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put unused
+		// slots' STORAGE on the wire, which for an array of a type with
+		// declared defaults is the element's default image and not zero —
+		// a value nobody wrote, riding as if somebody had. Decode walks
+		// Count, so those slots are never filled from the record.
 		g.pf("%sassert(%s.%sCount >= 0);\n", ind, val, name)
 		g.pf("%sassert(%s.%sCount <= %d);\n", ind, val, name, f.ArrayBound)
 		g.call(ind, "", "view.setInt32",
 			[]string{fixedOff(base, at), val + "." + name + "Count", "Endian.little"}, ";")
-		g.emitWriteLoop(f, base, at+fixedCountBytes, f.ArrayBound, val+"."+name, ind)
+		g.emitWriteLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("%sassert(%s.%sLength >= 0);\n", ind, val, name)
 		g.pf("%sassert(%s.%sLength <= %d);\n", ind, val, name, f.Type.Size)
@@ -619,14 +625,14 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, nam
 	}
 }
 
-func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at, count int64, expr, ind string) {
+func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
 	elem := fixedElementBytes(f)
 	if fixedElementClass(f.Type) == "" && fixedIsByteList(f.Type) {
 		g.call(ind, "", "bytes.setRange",
-			[]string{fixedOff(base, at), fixedOff(base, at+count), expr}, ";")
+			[]string{fixedOff(base, at), fixedOff(base, at) + " + " + count, expr}, ";")
 		return
 	}
-	g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, count)
+	g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
 	g.emitWriteElement(f, fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), 0, expr+"[i]", ind+"  ")
 	g.pf("%s}\n", ind)
 }
