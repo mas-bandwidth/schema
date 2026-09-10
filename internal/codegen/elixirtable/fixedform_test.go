@@ -11,13 +11,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// THE SHARED LAYOUT BYTES (fixedform.go's opening note). This backend's layout
-// walk is duplicated from the C++ reference's on purpose, so the place a
-// disagreement has to show up is here: the layout and its fnv1a64 for the
-// paired bench's own table, against the constants the reference emits for the
-// same type.
+// THE SHARED LAYOUT BYTES (fixedform.go's opening note). The walk is ir's, the
+// same one C and C++ emit from, so a disagreement with the reference is a
+// disagreement in ir — held here against the constants the reference emits for
+// the paired bench's own table.
 //
-// A change to either walk that moves one byte moves the hash, and a hash that
+// A change to the walk that moves one byte moves the hash, and a hash that
 // moved is two ports that can no longer read each other's records at all —
 // silently, as `no_layout`, which looks like a deployment problem and is not
 // one. That is why this is an equality on the NUMBER and not a shape check.
@@ -25,8 +24,9 @@ func TestFixedLayoutMatchesTheCppReference(t *testing.T) {
 	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
 	st := findTable(t, u, "FixedTable")
 
-	w := fixedWalkRoot(st)
-	layout := fixedLayoutBytes(w.entries)
+	entries := ir.TableFixedWalkRoot(st)
+	layout := ir.TableFixedLayoutBytes(entries)
+	dst := imageDstRows(u, entries)
 
 	// generated/bench/paired/cpp/FixedTableTable.h, emitted by
 	// internal/codegen/cpptable/fixedform.go from these same two schemas
@@ -37,13 +37,13 @@ func TestFixedLayoutMatchesTheCppReference(t *testing.T) {
 		refBodyBytes  = int64(1236)
 		refRecordSize = fixedHashBytes + refBodyBytes
 	)
-	if len(w.entries) != refEntries {
-		t.Fatalf("layout entries = %d, the C++ reference emits %d", len(w.entries), refEntries)
+	if len(entries) != refEntries {
+		t.Fatalf("layout entries = %d, the C++ reference emits %d", len(entries), refEntries)
 	}
 	if len(layout) != refLayoutLen {
 		t.Fatalf("layout bytes = %d, the C++ reference emits %d", len(layout), refLayoutLen)
 	}
-	if got := fixedLayoutHash(layout); got != refHash {
+	if got := ir.TableFixedLayoutHash(layout); got != refHash {
 		t.Fatalf("layout hash = 0x%016x, the C++ reference emits 0x%016x — the two walks disagree somewhere in the closure", got, refHash)
 	}
 	if got := fixedTypeBytes(st); got != refBodyBytes {
@@ -54,8 +54,64 @@ func TestFixedLayoutMatchesTheCppReference(t *testing.T) {
 	}
 	// MY SIDE of the layout is one row per entry, or the plan compiler indexes
 	// a row that is not there.
-	if len(w.dst) != len(w.entries) {
-		t.Fatalf("%d destination rows for %d layout entries", len(w.dst), len(w.entries))
+	if len(dst) != len(entries) {
+		t.Fatalf("%d destination rows for %d layout entries", len(dst), len(entries))
+	}
+}
+
+// A `bytes(N)` DESTINATION ROW IS AN ARRAY'S: dest the buffer, aux the live
+// count. The TEXT row is the other way round (dest the length, aux the buffer),
+// and a `bytes(N)` written under that convention hands compile_array a count
+// destination that is the buffer's first four bytes. Identity lands the field
+// with the TEXT op and never reads those columns, so only the compiled path
+// saw it.
+func TestBytesNDstRowIsAnArray(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+table Probe
+{
+    label string(8)
+    blob  bytes(6)
+    wide  wstring(3)
+    marks [..4]int32
+}
+`)
+	st := findTable(t, u, "Probe")
+	entries := ir.TableFixedWalkRoot(st)
+	dst := imageDstRows(u, entries)
+	row := map[string]fixedDst{}
+	for i, e := range entries {
+		row[e.Note] = dst[i]
+	}
+	label, ok := row["label"]
+	if !ok {
+		t.Fatal("no destination row for label")
+	}
+	// TEXT convention: dest the length at the field's start, aux the buffer
+	if label.dst != 0 || label.aux != 4 || label.counted != 0 || label.arg != fixedTextUtf8 {
+		t.Fatalf("label dst row = %+v, want dest=length 0, aux=buffer 4, counted=0, arg=utf8", label)
+	}
+	blob, ok := row["blob"]
+	if !ok {
+		t.Fatal("no destination row for blob")
+	}
+	// ARRAY convention: dest the buffer (after the length), aux the length
+	if blob.dst != 16 || blob.aux != 12 || blob.counted != 1 || blob.stride != 1 || blob.arg != fixedTextBytes {
+		t.Fatalf("blob dst row = %+v, want dest=buffer 16, aux=length 12, counted=1, stride=1, arg=bytes", blob)
+	}
+	wide, ok := row["wide"]
+	if !ok {
+		t.Fatal("no destination row for wide")
+	}
+	if wide.dst != 22 || wide.aux != 26 || wide.counted != 0 || wide.arg != fixedTextWide {
+		t.Fatalf("wide dst row = %+v, want dest=length 22, aux=buffer 26, counted=0, arg=wide", wide)
+	}
+	marks, ok := row["marks"]
+	if !ok {
+		t.Fatal("no destination row for marks")
+	}
+	if marks.dst != 36 || marks.aux != 32 || marks.counted != 1 || marks.stride != 4 {
+		t.Fatalf("marks dst row = %+v, want dest=buffer 36, aux=count 32, counted=1, stride=4", marks)
 	}
 }
 
@@ -167,6 +223,50 @@ table Everything
 	body := string(out["ProbeFixed.ex"])
 	if !strings.Contains(body, "R.clamps(c, ") {
 		t.Fatalf("the projection of Everything counts no clamp, so the fold dropped a check")
+	}
+}
+
+// CLAMP AND ORDINAL COUNT LIVE ELEMENTS ONLY, and on this path that is the
+// PROJECTION's shape rather than a plan op's wrapper. The identity plan here is
+// one run of bytes, so there is no `:live` tuple to hang a guard on; what has to
+// hold instead is that the generated walk stops AT THE COUNT — the zero clause
+// is the whole of it, so a slack slot is never read and so never clamps — and
+// that an absent optional's payload folds its counter away. C++ walks
+// items_count; so does this. The sibling rule on a COMPILED plan is
+// FixedRuntime's, where the interpreter does carry :live and :present.
+func TestIdentityDecodeCountsLiveElementsOnly(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+enum Grade { Bronze, Gold }
+
+table Live
+{
+    marks  [..4]int32 | min = 0, max = 10
+    grades [..4]Grade
+    note   ?int32 | min = 0, max = 10
+}
+`)
+	out, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out["ProbeFixed.ex"])
+	for _, want := range []string{
+		// THE WALK STOPS AT THE COUNT: n reaches zero and the slack behind the
+		// live elements is never matched, so it moves no `clamped`.
+		"defp live_marks_fixed_list(_bin, 0, c, m), do: {[], c, m}",
+		"defp live_grades_fixed_list(_bin, 0, c, m), do: {[], c, m}",
+		// AND THE COUNT IT IS HANDED IS THE CLAMPED ONE, so a hostile count
+		// walks the bound and not itself.
+		"live_marks_fixed_list(b_marks, min(max(n_marks, 0), 4), c, m)",
+		"live_grades_fixed_list(b_grades, min(max(n_grades, 0), 4), c, m)",
+		// AN ABSENT OPTIONAL'S PAYLOAD MOVES NO COUNTER: the payload's clamp
+		// lands in a shadow counter the present flag either keeps or drops.
+		"c = if(p_note != 0, do: c_note, else: c)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("the projection of Live does not carry %q, so a slack slot or an absent payload counts", want)
+		}
 	}
 }
 

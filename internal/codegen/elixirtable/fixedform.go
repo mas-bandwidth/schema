@@ -10,18 +10,12 @@
 // which is the point: two writers whose layouts agree byte for byte agree on
 // every id, kind, size and position in the closure.
 //
-// THE CONSTANT SIZES ARE ir's AND NOT THIS BACKEND'S (ir/tablefixed.go). A
-// record's constant size is WIRE LAW, the compiler warns and refuses out of the
-// same functions the C++ reference emits from, and a port that re-derived them
-// privately would be a port whose disagreement showed up as a wrong byte on a
-// customer's wire rather than as a red test here.
-//
-// THE WALK ITSELF is duplicated from cpptable/fixedform.go on purpose, as the
-// JavaScript port's is: the reference's walk carries C++ storage facts —
-// `offsetof`, `sizeof` — in the same pass, and a port that reached into those
-// private helpers would break the day the two files disagree. This way a
-// disagreement shows up in the SHARED LAYOUT BYTES instead, held by
-// TestFixedLayoutMatchesTheCppReference.
+// THE CONSTANT SIZES, THE WALK, THE LAYOUT AND THE HASH ARE ir's
+// (ir/fixedform.go). A second copy of any of them in a second backend is a
+// second answer waiting to happen, so this port renders rather than recomputes
+// — the same call C and C++ make. What this file spells for itself is Elixir:
+// how a destination is a byte offset into THIS BUILD's own record IMAGE (there
+// is no offsetof here), and the reader's own clamp bounds, which do not ride.
 //
 // Nothing here touches form 1. The Elixir backend carries no form-1 table wire
 // at all (schema#515): this is the first table WIRE this backend has, and it
@@ -44,11 +38,6 @@ const (
 	fixedPresentBytes = ir.TableFixedPresentBytes
 	fixedHashBytes    = int64(8)
 )
-
-// fixedKindOptional is the ONE kind §3.4's layout adds to §3's closed set: the
-// OPTIONAL WRAPPER, one child, whose size is one present byte plus the child's.
-// It is a LAYOUT kind and not a WIRE kind — nothing rides under it in a record.
-const fixedKindOptional = ir.TableKindOptional
 
 // the flavours a `text` plan entry lands its units under.
 const (
@@ -114,19 +103,9 @@ func fixedSupported(st *ir.Struct, depth int) bool {
 // THE LAYOUT, and MY SIDE of it
 // ---------------------------------------------------------------------------
 
-// fixedLayoutEntry is one seventeen-byte entry: an id, a kind, a constant size
-// and a child count, in the writer's declared order (§3.4).
-type fixedLayoutEntry struct {
-	id       uint64
-	kind     int
-	size     int64
-	children int
-	note     string // a comment on the emitted binary; never a wire byte
-}
-
-// fixedDst is MY SIDE of the walk, one row per layout entry: the storage facts
-// a layout entry cannot carry, which is what a plan compiled from another
-// writer's layout lands values through.
+// fixedDst is MY SIDE of one layout entry: the storage facts a layout entry
+// cannot carry, which is what a plan compiled from another writer's layout
+// lands values through.
 //
 // THE READER'S OWN STORAGE IN THIS LANGUAGE IS THE RECORD IMAGE. Elixir has no
 // struct layout to take an offsetof of — a %Struct{} is a map and its fields
@@ -138,6 +117,13 @@ type fixedLayoutEntry struct {
 // a generated straight-line decode then projects the image into the language's
 // own terms in ONE binary pattern match, which is the step C++ gets free
 // because there a struct IS its bytes.
+//
+// THE WALK IS ir.TableFixedWalkRoot. A `bytes(N)` destination row is an
+// ARRAY's — Dst the buffer, Aux the live count — because the TEXT row is the
+// other way round (Dst the length, Aux the buffer). The identity plan lands
+// `bytes(N)` with the TEXT op and reads neither column; a plan compiled from
+// this row is what `compile_array` walks, and a text-convention row handed it
+// a count destination that was the buffer's first four bytes.
 type fixedDst struct {
 	dst     int64 // this entry's byte offset inside its parent's image
 	stride  int64 // an array entry's element stride
@@ -152,174 +138,158 @@ type fixedDst struct {
 	hi string
 }
 
-type fixedWalk struct {
-	entries []fixedLayoutEntry
-	dst     []fixedDst
-}
-
-func (w *fixedWalk) push(e fixedLayoutEntry, d fixedDst) {
-	w.entries = append(w.entries, e)
-	w.dst = append(w.dst, d)
-}
-
-// fixedWalkRoot walks the root's closure PRE-ORDER in the writer's declared
-// order: entry 0 is the ROOT at kind 13, carrying the root's constant size and
-// its field count, and every entry is followed immediately by its `child count`
-// children.
-func fixedWalkRoot(st *ir.Struct) *fixedWalk {
-	w := &fixedWalk{}
-	w.push(fixedLayoutEntry{
-		id:       ir.TableWireId(st.WireName()),
-		kind:     ir.TableKindTable,
-		size:     fixedTypeBytes(st),
-		children: len(st.Fields),
-		note:     st.Name,
-	}, fixedDst{})
-	var at int64
-	for _, f := range st.Fields {
-		fixedWalkField(w, f, at)
-		at += fixedFieldBytes(f)
-	}
-	return w
-}
-
-// fixedWalkField pushes one FIELD of a table, at its byte offset inside the
-// table's own image.
-func fixedWalkField(w *fixedWalk, f *ir.Field, at int64) {
-	id := ir.TableFieldWireId(f)
-	size := fixedFieldBytes(f)
-	if f.Type.Optional {
-		// the OPTIONAL WRAPPER: the present flag rides at the field's own
-		// offset and the payload WHOLE behind it, present or not
-		w.push(fixedLayoutEntry{id: id, kind: fixedKindOptional, size: size, children: 1, note: f.Name + " ?"},
-			fixedDst{aux: at})
-		fixedWalkPayload(w, f, id, size-fixedPresentBytes, at+fixedPresentBytes)
-		return
-	}
-	fixedWalkPayload(w, f, id, size, at)
-}
-
-func fixedWalkPayload(w *fixedWalk, f *ir.Field, id uint64, size, at int64) {
-	switch {
-	case f.KeyEnum != "":
-		// EVERY SLOT IS WRITTEN, in the key enum's declared order, and no key
-		// rides: the field's own offset is the slot base
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindKeyed, size: size, children: 2, note: f.Name},
-			fixedDst{dst: at, stride: fixedElementBytes(f)})
-		fixedWalkEnum(w, f.KeyEnumRef, ir.TableWireId(f.KeyEnum), f.KeyEnum, 0)
-		fixedWalkElement(w, f, 0, "element", 0)
-	case f.Array != ir.ArrayNone:
-		counted, aux, base := 0, int64(0), at
-		if f.Array == ir.ArrayCounted {
-			// the count, then MAX elements, the slack zero-filled
-			counted, aux, base = 1, at, at+fixedCountBytes
-		}
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			fixedDst{dst: base, stride: fixedElementBytes(f), aux: aux, counted: counted})
-		fixedWalkElement(w, f, 0, "element", 0)
-	case f.Type.Kind == ir.TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3: THE LENGTH,
-		// THEN THE UNITS, so its row is a counted array's row — the count at the
-		// field's own offset (`aux`) and the units behind it (`dst`). A row that
-		// put the units first landed a stranger's blob under its own length.
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			fixedDst{dst: at + fixedCountBytes, stride: 1, aux: at, counted: 1, arg: fixedTextBytes})
-		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, fixedDst{})
-	case f.Type.Kind == ir.TString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},
-			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextUtf8})
-	case f.Type.Kind == ir.TWString:
-		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindWstring, size: size, children: 0, note: f.Name},
-			fixedDst{dst: at, aux: at + fixedCountBytes, arg: fixedTextWide})
-	default:
-		fixedWalkElement(w, f, id, f.Name, at)
-	}
-}
-
-func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int64) {
-	size := fixedElementBytes(f)
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindTable, size: size, children: len(r.Fields), note: note},
-				fixedDst{dst: at})
-			var sub int64
-			for _, sf := range r.Fields {
-				fixedWalkField(w, sf, sub)
-				sub += fixedFieldBytes(sf)
-			}
-			return
-		case *ir.Union:
-			// the tag ordinal at its tag type's storage width, then the WIDEST
-			// arm, the slack behind a narrower arm zero-filled
-			tag := fixedUnionTagBytes(r)
-			w.push(fixedLayoutEntry{id: id, kind: ir.TableKindUnion, size: size, children: len(r.Variants), note: note},
-				fixedDst{dst: at, aux: at})
-			for _, v := range r.Variants {
-				fixedWalkElement(w, v.F, ir.TableWireId(v.WireName()), v.Name, tag)
-			}
-			return
-		case *ir.Enum:
-			fixedWalkEnum(w, r, id, note, at)
-			return
-		}
-	}
-	lo, hi := fixedRangeOf(f)
-	if lo == "nil" {
-		lo, hi = "", ""
-	}
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note},
-		fixedDst{dst: at, lo: lo, hi: hi})
-}
-
-// fixedWalkEnum pushes an ENUM and its VARIANTS. A variant's ORDINAL IS ITS
-// POSITION IN THE LAYOUT, from 1, and 0 is None — which is what lets a writer
-// whose enum gained a variant in the middle be REMAPPED rather than
-// reinterpreted.
-func fixedWalkEnum(w *fixedWalk, e *ir.Enum, id uint64, note string, at int64) {
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableKindEnum, size: int64(e.StorageBits / 8), children: len(e.Variants), note: note},
-		fixedDst{dst: at})
-	for i := range e.Variants {
-		w.push(fixedLayoutEntry{id: ir.TableWireId(e.VariantWireName(i)), kind: ir.TableKindNoPayload, size: 0, children: 0, note: e.Variants[i]},
-			fixedDst{})
-	}
-}
-
-// fixedLayoutBytes is the LAYOUT exactly as it rides: a u32 entry count and a
-// run of seventeen-byte entries, every number little-endian.
-func fixedLayoutBytes(entries []fixedLayoutEntry) []byte {
-	out := make([]byte, 0, fixedHeaderBytes+fixedEntryBytes*len(entries))
-	out = appendFixedU32(out, uint32(len(entries)))
-	for _, e := range entries {
-		out = appendFixedU64(out, e.id)
-		out = append(out, byte(e.kind))
-		out = appendFixedU32(out, uint32(e.size))
-		out = appendFixedU32(out, uint32(e.children))
+// imageDstRows renders ir's destination spec into this port's image offsets,
+// one row per layout entry, in the same order TableFixedWalkRoot produced.
+func imageDstRows(u *ir.Unit, entries []ir.TableFixedLayoutEntry) []fixedDst {
+	out := make([]fixedDst, len(entries))
+	for i, e := range entries {
+		out[i] = imageDstRow(u, e)
 	}
 	return out
 }
 
-func appendFixedU32(b []byte, v uint32) []byte {
-	return append(b, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+func imageDstRow(u *ir.Unit, e ir.TableFixedLayoutEntry) fixedDst {
+	d := e.Dst
+	stride := int64(0)
+	switch {
+	case d.Stride1:
+		stride = 1
+	case d.Stride != nil:
+		// THE IMAGE'S STRIDE, not C sizeof: this port's storage is the wire.
+		stride = ir.TableFixedElementBytes(d.Stride)
+	}
+	dst := imageTerms(u, d.Dst)
+	aux := imageTerms(u, d.Aux)
+	if d.AuxExtendsDst {
+		// a union's tag sits INSIDE the storage Dst named, and on this image
+		// the tag leads that storage, so the two offsets are the same byte
+		aux = dst + imageTerms(u, d.Aux)
+	}
+	lo, hi := imageRange(u, e)
+	return fixedDst{dst: dst, stride: stride, aux: aux, counted: d.Counted, arg: d.Meta, lo: lo, hi: hi}
 }
 
-func appendFixedU64(b []byte, v uint64) []byte {
-	for i := range 8 {
-		b = append(b, byte(v>>(8*i)))
+func imageTerms(u *ir.Unit, terms []ir.TableFixedTerm) int64 {
+	var n int64
+	for _, t := range terms {
+		n += imageTermOffset(u, t)
 	}
-	return b
+	return n
 }
 
-// fixedLayoutHash is fnv1a64 over the layout's bytes exactly as written, and it
-// is the eight bytes every record carries (§3.4). It is a WIRE IDENTITY and not
-// a security claim (§5's note on the same function).
-func fixedLayoutHash(layout []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, b := range layout {
-		h ^= uint64(b)
-		h *= 0x100000001b3
+func imageTermOffset(u *ir.Unit, t ir.TableFixedTerm) int64 {
+	if un := fixedNamedUnion(u, t.Type); un != nil {
+		if t.Member == "type" {
+			return 0
+		}
+		// every arm overlays the same byte: the tag's width, no C padding
+		return fixedUnionTagBytes(un)
 	}
-	return h
+	if st := fixedNamedStruct(u, t.Type); st != nil {
+		return imageMemberOffset(st, t.Member)
+	}
+	return 0
+}
+
+func fixedNamedStruct(u *ir.Unit, name string) *ir.Struct {
+	if st := u.Tables[name]; st != nil {
+		return st
+	}
+	return u.Structs[name]
+}
+
+func fixedNamedUnion(u *ir.Unit, name string) *ir.Union {
+	if un := u.Unions[name]; un != nil {
+		return un
+	}
+	return u.TableUnions[name]
+}
+
+// imageMemberOffset is one member's byte offset inside its owner's IMAGE —
+// declared order at declared widths, nothing padded between fields. It is not
+// ir.TableFixedMemberOffset, which answers the C ABI and would hand this port
+// a buffer that sits where the length lives.
+func imageMemberOffset(st *ir.Struct, member string) int64 {
+	var at int64
+	for _, f := range st.Fields {
+		if off, ok := imageFieldMember(f, at, member); ok {
+			return off
+		}
+		at += ir.TableFixedFieldBytes(f)
+	}
+	return 0
+}
+
+func imageFieldMember(f *ir.Field, at int64, member string) (int64, bool) {
+	payload := at
+	if f.Type.Optional {
+		if member == f.Name+"_present" {
+			return at, true
+		}
+		payload = at + ir.TableFixedPresentBytes
+	}
+	switch {
+	case f.KeyEnum != "":
+		if member == f.Name {
+			return payload, true
+		}
+	case f.Array == ir.ArrayCounted:
+		if member == f.Name+"_count" {
+			return payload, true
+		}
+		if member == f.Name {
+			return payload + ir.TableFixedCountBytes, true
+		}
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+		if member == f.Name+"_length" {
+			return payload, true
+		}
+		if member == f.Name {
+			return payload + ir.TableFixedCountBytes, true
+		}
+	default:
+		if member == f.Name {
+			return payload, true
+		}
+	}
+	return 0, false
+}
+
+func imageRange(u *ir.Unit, e ir.TableFixedLayoutEntry) (lo, hi string) {
+	if len(e.Dst.Dst) == 0 {
+		return "", ""
+	}
+	t := e.Dst.Dst[0]
+	if st := fixedNamedStruct(u, t.Type); st != nil {
+		if f := fieldNamed(st, t.Member); f != nil {
+			return rangeOf(f)
+		}
+	}
+	if un := fixedNamedUnion(u, t.Type); un != nil {
+		for _, v := range un.Variants {
+			if v.Name == t.Member && v.F != nil {
+				return rangeOf(v.F)
+			}
+		}
+	}
+	return "", ""
+}
+
+func fieldNamed(st *ir.Struct, name string) *ir.Field {
+	for _, f := range st.Fields {
+		if f.Name == name {
+			return f
+		}
+	}
+	return nil
+}
+
+func rangeOf(f *ir.Field) (string, string) {
+	lo, hi := fixedRangeOf(f)
+	if lo == "nil" {
+		return "", ""
+	}
+	return lo, hi
 }
 
 // fixedRoots is every table of the unit the fixed form is emitted for, in

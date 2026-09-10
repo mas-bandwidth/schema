@@ -832,6 +832,20 @@ const fixedRuntimeBody = `  @moduledoc """
   defp guarded(acc, nil, _tag, entry), do: push(acc, entry)
   defp guarded(acc, guard, tag, entry), do: push(acc, {:guard, guard, tag, entry})
 
+  # COUNTER-MOVING OPS ADDED FOR ONE SLOT wrap so slack and an absent
+  # optional's payload never count. A copy is unspecified on read and stays.
+  defp wrap_new({entries, n}, old_n, fun) do
+    added = n - old_n
+    {new, rest} = Enum.split(entries, added)
+    {Enum.map(new, fun) ++ rest, n}
+  end
+
+  defp live_wrap_entry({:copy, _, _, _} = e, _dst, _i), do: e
+  defp live_wrap_entry(e, dst, i), do: {:live, dst, i, e}
+
+  defp present_wrap_entry({:copy, _, _, _} = e, _src), do: e
+  defp present_wrap_entry(e, src), do: {:present, src, e}
+
   # match_children walks a TABLE's children on both sides, BY ID.
   defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
     their_children = children_at(theirs, ti)
@@ -981,20 +995,24 @@ const fixedRuntimeBody = `  @moduledoc """
       # slide by one.
       35 ->
         acc = guarded(acc, guard, tag, {:copy, their_at, aux_at, 1})
+        {_, old_n} = acc
 
-        compile_entry(
-          theirs,
-          ti + 1,
-          their_at + 1,
-          mine,
-          mi + 1,
-          dst,
-          my_at,
-          guard,
-          tag,
-          acc,
-          report
-        )
+        {acc, report} =
+          compile_entry(
+            theirs,
+            ti + 1,
+            their_at + 1,
+            mine,
+            mi + 1,
+            dst,
+            my_at,
+            guard,
+            tag,
+            acc,
+            report
+          )
+
+        {wrap_new(acc, old_n, &present_wrap_entry(&1, their_at)), report}
 
       # a nested TABLE: match its fields
       13 ->
@@ -1089,21 +1107,55 @@ const fixedRuntimeBody = `  @moduledoc """
 
     their_base = their_at + head
     stride = elem(row, 1)
+    counted = elem(row, 3) == 1
+    n = min(their_n, my_n)
+    lo = elem(row, 5)
+    hi = elem(row, 6)
+    elem_kind = kind_at(mine, mi + 1)
 
-    Enum.reduce(0..(min(their_n, my_n) - 1)//1, {acc, report}, fn i, {acc, report} ->
-      compile_entry(
-        theirs,
-        ti + 1,
-        their_base + i * their_elem,
-        mine,
-        mi + 1,
-        dst,
-        at + i * stride,
-        guard,
-        tag,
-        acc,
-        report
-      )
+    # THE ARRAY ROW CARRIES THE FIELD'S RANGE. The element child has no dest
+    # terms, so compile_entry would COPY a ranged int32. Identity clamps each
+    # LIVE slot; the compiled path has to do the same or the two plans disagree
+    # on the counter and on the landed value.
+    inherit_range =
+      lo != nil and kind_at(theirs, ti + 1) == elem_kind and
+        size_at(theirs, ti + 1) == my_elem and elem_kind >= 2 and elem_kind <= 9
+
+    Enum.reduce(0..(n - 1)//1, {acc, report}, fn i, {acc, report} ->
+      if inherit_range do
+        entry =
+          {:clamp, their_base + i * their_elem, at + i * stride, my_elem, signed_kind?(elem_kind),
+           lo, hi}
+
+        entry = if counted, do: live_wrap_entry(entry, aux_at, i), else: entry
+        {guarded(acc, guard, tag, entry), report}
+      else
+        {_, old_n} = acc
+
+        {acc, report} =
+          compile_entry(
+            theirs,
+            ti + 1,
+            their_base + i * their_elem,
+            mine,
+            mi + 1,
+            dst,
+            at + i * stride,
+            guard,
+            tag,
+            acc,
+            report
+          )
+
+        acc =
+          if counted do
+            wrap_new(acc, old_n, &live_wrap_entry(&1, aux_at, i))
+          else
+            acc
+          end
+
+        {acc, report}
+      end
     end)
   end
 
@@ -1257,6 +1309,29 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   defp step([], _body, writes, report), do: {writes, report}
+
+  defp step([{:live, count_dst, index, inner} | rest], body, writes, report) do
+    # A COUNTED ARRAY'S SLACK MOVES NO COUNTER (§3.4). The live count already
+    # landed through the ` + "`" + `count` + "`" + ` op; slots at and past it are storage nobody
+    # wrote.
+    if index < live_at(writes, count_dst) do
+      step([inner | rest], body, writes, report)
+    else
+      step(rest, body, writes, report)
+    end
+  end
+
+  defp step([{:present, src, inner} | rest], body, writes, report) do
+    # AN ABSENT OPTIONAL'S PAYLOAD IS IGNORED ON READ (§3.4), so it is not
+    # held to a bound either.
+    case body do
+      <<_::binary-size(^src), p, _::binary>> when p != 0 ->
+        step([inner | rest], body, writes, report)
+
+      _ ->
+        step(rest, body, writes, report)
+    end
+  end
 
   defp step([{:guard, gsrc, tag, inner} | rest], body, writes, report) do
     # AN ENTRY BELONGING TO AN ARM RUNS ONLY UNDER ITS OWN TAG.
@@ -1506,6 +1581,13 @@ const fixedRuntimeBody = `  @moduledoc """
       raw < 0 -> {0, bump(report, :clamped)}
       raw > max -> {max, bump(report, :clamped)}
       true -> {raw, report}
+    end
+  end
+
+  defp live_at(writes, dst) do
+    case List.keyfind(writes, dst, 0) do
+      {^dst, <<v::little-signed-32>>} -> v
+      _ -> 0
     end
   end
 

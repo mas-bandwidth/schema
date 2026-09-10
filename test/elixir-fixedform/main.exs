@@ -151,6 +151,8 @@ Leg.eq("fx1[0].narrow", a.narrow, 40000)
 Leg.eq("fx1[0].renamed", a.renamed, 321)
 Leg.eq("fx1[0].gone", a.gone, 654)
 Leg.eq("fx1[0].nested", {a.nested.a, a.nested.b}, {111, 222})
+Leg.eq("fx1[0].blob", a.blob, <<0xDE, 0xAD, 0xBE, 0xEF>>)
+Leg.eq("fx1[1].blob", b.blob, <<>>)
 
 Leg.eq(
   "fx1[1]",
@@ -261,6 +263,8 @@ Leg.eq("newer over older: renamed arrives under `was`", n0.renamed_to, 321)
 Leg.eq("newer over older: added takes its declared default", n0.added, 11)
 Leg.eq("newer over older: an unknown TYPE leaves its default", {n0.extra.x, n0.extra.y}, {0, 0})
 Leg.eq("newer over older: nested", {n0.nested.a, n0.nested.b}, {111, 222})
+Leg.eq("newer over older: blob[0] matches identity", n0.blob, a.blob)
+Leg.eq("newer over older: blob[1] matches identity", n1.blob, b.blob)
 Leg.eq("newer over older: the second record too", {n1.narrow, n1.renamed_to}, {2, 3})
 Leg.eq("newer over older: one `unknown`, counted ONCE per writer", newer.unknown, 1)
 Leg.eq("newer over older: one `widened` per record", newer.widened, 2)
@@ -532,6 +536,10 @@ compiled_is_identity.(
   bodies_of.(read.("keyed.bin"), Tabledemo.KeyedFixed.keyed_config_fixed_body_bytes())
 )
 
+# `bytes(N)` IS AN ARRAY ON THIS WIRE. Identity lands it with the TEXT op and
+# never reads the destination row; a plan compiled from MY OWN layout is what
+# `compile_array` walks, and a text-convention row handed it dest=length /
+# aux=buffer. FX1.blob is the field that would have been silent.
 compiled_is_identity.(
   "fx1",
   Tblfx1.FX1Fixed.fx_root_fixed_layout(),
@@ -783,6 +791,95 @@ Leg.eq("a present byte of 7 LANDS PRESENT — the test is `!= 0`", seven.link_pr
 
 {:ok, [zero], _} = Tblp3.P3Fixed.chain_fixed_load(plant.(present_bytes, present_at, 0))
 Leg.eq("and only 0 is absent", zero.link_present, false)
+
+# LIVE-count: an absent optional's payload is ignored and moves no counter,
+# both paths. C++ skips the payload when the present byte is 0.
+value0 = %{present | link_present: true, link: %{present.link | value: 0}}
+value1 = %{present | link_present: true, link: %{present.link | value: 1}}
+
+value_at =
+  only_diff.(
+    Tblp3.P3Fixed.chain_fixed_save([value0]),
+    Tblp3.P3Fixed.chain_fixed_save([value1])
+  )
+
+hostile_opt =
+  Enum.reduce(0..3//1, absent_bytes, fn i, data -> plant.(data, value_at + i, 0xFF) end)
+
+{:ok, [_], opt_ident} = Tblp3.P3Fixed.chain_fixed_load(hostile_opt)
+Leg.eq("identity: absent optional payload 0xFF moves no counter", opt_ident.clamped, 0)
+
+opt_body =
+  bodies_of.(hostile_opt, Tblp3.P3Fixed.chain_fixed_body_bytes())
+  |> hd()
+
+{:ok, opt_mine} = Tblp3.FixedRuntime.parse_layout(Tblp3.P3Fixed.chain_fixed_layout())
+
+{:ok, opt_compiled, _, _} =
+  Tblp3.FixedRuntime.compile(
+    opt_mine,
+    opt_mine,
+    Tblp3.P3Fixed.chain_fixed_dst(),
+    4096,
+    Tblp3.FixedRuntime.report()
+  )
+
+{_, opt_comp} =
+  Tblp3.FixedRuntime.run(
+    opt_compiled,
+    opt_body,
+    Tblp3.P3Fixed.chain_fixed_prefill(),
+    Tblp3.FixedRuntime.report()
+  )
+
+Leg.eq("compiled: absent optional payload 0xFF moves no counter", opt_comp.clamped, 0)
+
+# Sibling: counted [..4]int32 live=1, slack 0xFF. Pack.ships[0].hardpoints is
+# that shape (| min = 0, max = 8). A live 1 is in range; slack -1 is not.
+# LIVE-only counts nothing; walking ArrayBound would count three clamps.
+fighter = Enum.at(p0.ships, 0)
+
+hp1 =
+  Tabledemo.PackFixed.pack_config_fixed_save([
+    %{p0 | ships: List.replace_at(p0.ships, 0, %{fighter | hardpoints: [1]})}
+  ])
+
+hp2 =
+  Tabledemo.PackFixed.pack_config_fixed_save([
+    %{p0 | ships: List.replace_at(p0.ships, 0, %{fighter | hardpoints: [2]})}
+  ])
+
+hp_at = only_diff.(hp1, hp2)
+
+hostile_hp =
+  Enum.reduce(0..11//1, hp1, fn i, data -> plant.(data, hp_at + 4 + i, 0xFF) end)
+
+{:ok, [_], hp_ident} = Tabledemo.PackFixed.pack_config_fixed_load(hostile_hp)
+Leg.eq("identity: counted-array slack 0xFF moves no counter", hp_ident.clamped, 0)
+
+hp_body = bodies_of.(hostile_hp, Tabledemo.PackFixed.pack_config_fixed_body_bytes()) |> hd()
+
+{:ok, hp_mine} =
+  Tabledemo.FixedRuntime.parse_layout(Tabledemo.PackFixed.pack_config_fixed_layout())
+
+{:ok, hp_compiled, _, _} =
+  Tabledemo.FixedRuntime.compile(
+    hp_mine,
+    hp_mine,
+    Tabledemo.PackFixed.pack_config_fixed_dst(),
+    4096,
+    Tabledemo.FixedRuntime.report()
+  )
+
+{_, hp_comp} =
+  Tabledemo.FixedRuntime.run(
+    hp_compiled,
+    hp_body,
+    Tabledemo.PackFixed.pack_config_fixed_prefill(),
+    Tabledemo.FixedRuntime.report()
+  )
+
+Leg.eq("compiled: counted-array slack 0xFF moves no counter", hp_comp.clamped, 0)
 
 track = fn v, on ->
   ships =
