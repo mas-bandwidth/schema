@@ -9875,23 +9875,29 @@ inline void TableStatFixedWriteBody( uint8_t * b, const TableStat & value )
 inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.entity_id > 4095ull ) { value.entity_id = 4095ull; clamped++; } // bits(12) width clamp
-    if ( value.pos_x < -16383 ) { value.pos_x = -16383; clamped++; }
-    else if ( value.pos_x > 16383 ) { value.pos_x = 16383; clamped++; }
-    if ( value.pos_y < -16383 ) { value.pos_y = -16383; clamped++; }
-    else if ( value.pos_y > 16383 ) { value.pos_y = 16383; clamped++; }
-    if ( value.pos_z < -16383 ) { value.pos_z = -16383; clamped++; }
-    else if ( value.pos_z > 16383 ) { value.pos_z = 16383; clamped++; }
-    if ( value.yaw > 511ull ) { value.yaw = 511ull; clamped++; } // bits(9) width clamp
-    if ( value.pitch > 511ull ) { value.pitch = 511ull; clamped++; } // bits(9) width clamp
-    if ( value.vel_x < -2048 ) { value.vel_x = -2048; clamped++; }
-    else if ( value.vel_x > 2047 ) { value.vel_x = 2047; clamped++; }
-    if ( value.vel_y < -2048 ) { value.vel_y = -2048; clamped++; }
-    else if ( value.vel_y > 2047 ) { value.vel_y = 2047; clamped++; }
-    if ( value.vel_z < -2048 ) { value.vel_z = -2048; clamped++; }
-    else if ( value.vel_z > 2047 ) { value.vel_z = 2047; clamped++; }
-    if ( value.health < 0 ) { value.health = 0; clamped++; }
-    else if ( value.health > 1000 ) { value.health = 1000; clamped++; }
+    // bits(12) width clamp
+    clamped += ( value.entity_id > 4095ull );
+    value.entity_id = ( value.entity_id > 4095ull ) ? 4095ull : value.entity_id;
+    clamped += (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    value.pos_x = ( value.pos_x < -16383 ) ? -16383 : ( ( value.pos_x > 16383 ) ? 16383 : value.pos_x );
+    clamped += (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    value.pos_y = ( value.pos_y < -16383 ) ? -16383 : ( ( value.pos_y > 16383 ) ? 16383 : value.pos_y );
+    clamped += (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    value.pos_z = ( value.pos_z < -16383 ) ? -16383 : ( ( value.pos_z > 16383 ) ? 16383 : value.pos_z );
+    // bits(9) width clamp
+    clamped += ( value.yaw > 511ull );
+    value.yaw = ( value.yaw > 511ull ) ? 511ull : value.yaw;
+    // bits(9) width clamp
+    clamped += ( value.pitch > 511ull );
+    value.pitch = ( value.pitch > 511ull ) ? 511ull : value.pitch;
+    clamped += (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    value.vel_x = ( value.vel_x < -2048 ) ? -2048 : ( ( value.vel_x > 2047 ) ? 2047 : value.vel_x );
+    clamped += (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    value.vel_y = ( value.vel_y < -2048 ) ? -2048 : ( ( value.vel_y > 2047 ) ? 2047 : value.vel_y );
+    clamped += (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    value.vel_z = ( value.vel_z < -2048 ) ? -2048 : ( ( value.vel_z > 2047 ) ? 2047 : value.vel_z );
+    clamped += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    value.health = ( value.health < 0 ) ? 0 : ( ( value.health > 1000 ) ? 1000 : value.health );
     if ( (uint64_t) value.weapon > 15u ) { value.weapon = TableWeapon::None; clamped++; }
 }
 
@@ -9899,9 +9905,11 @@ inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped )
 inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.stat_id > 255ull ) { value.stat_id = 255ull; clamped++; } // bits(8) width clamp
-    if ( value.delta < -512 ) { value.delta = -512; clamped++; }
-    else if ( value.delta > 511 ) { value.delta = 511; clamped++; }
+    // bits(8) width clamp
+    clamped += ( value.stat_id > 255ull );
+    value.stat_id = ( value.stat_id > 255ull ) ? 255ull : value.stat_id;
+    clamped += (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    value.delta = ( value.delta < -512 ) ? -512 : ( ( value.delta > 511 ) ? 511 : value.delta );
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's

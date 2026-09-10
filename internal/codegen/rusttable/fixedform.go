@@ -1241,35 +1241,41 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		if f.Type.Kind == ir.TFloat32 {
 			suffix = "_f32"
 		}
-		lo, hi := fixedFloatLit(f.FMin)+suffix, fixedFloatLit(f.FMax)+suffix
-		g.pf("%sif %s < %s {\n%s    %s = %s;\n%s    *clamped += 1;\n%s} else if %s > %s {\n%s    %s = %s;\n%s    *clamped += 1;\n%s}\n",
-			ind, lhs, lo, ind, lhs, lo, ind, ind, lhs, hi, ind, lhs, hi, ind, ind)
+		g.emitFixedClampSelect(lhs, fixedFloatLit(f.FMin)+suffix, fixedFloatLit(f.FMax)+suffix, true, true, ind, "")
 		return
 	}
 	if low, high := fixedClampEnds(f); low || high {
 		rlo, rhi, _ := ir.TableRawRange(f)
-		// ONE CHAIN, because a value cannot be under the low bound and over the
-		// high one: the second end is an `else if` when both are spelled.
-		lead := "if"
-		if low {
-			lo := fixedClampLit(rlo, slot, wrap)
-			g.pf("%sif %s < %s {\n%s    %s = %s;\n%s    *clamped += 1;\n%s}", ind, lhs, lo, ind, lhs, lo, ind, ind)
-			lead = " else if"
-		}
-		if high {
-			hi := fixedClampLit(rhi, slot, wrap)
-			head := ind + "if"
-			if lead == " else if" {
-				head = " else if"
-			}
-			g.pf("%s %s > %s {\n%s    %s = %s;\n%s    *clamped += 1;\n%s}", head, lhs, hi, ind, lhs, hi, ind, ind)
-		}
-		g.pf("\n")
+		g.emitFixedClampSelect(lhs, fixedClampLit(rlo, slot, wrap), fixedClampLit(rhi, slot, wrap), low, high, ind, "")
 	}
 	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*ir.TableFixedStorageBytes(f.Type) {
 		maxv := (uint64(1) << f.Type.Width) - 1
-		g.pf("%sif %s > %d {\n%s    %s = %d;\n%s    *clamped += 1;\n%s} // bits(%d)'s own width\n",
-			ind, lhs, maxv, ind, lhs, maxv, ind, ind, f.Type.Width)
+		g.emitFixedClampSelect(lhs, "", fmt.Sprintf("%d", maxv), false, true, ind,
+			fmt.Sprintf(" // bits(%d)'s own width", f.Type.Width))
+	}
+}
+
+// emitFixedClampSelect is ONE bounded value, and it is a SELECT AND AN ADD
+// rather than a branch — the reference measured the difference and it is the
+// whole cost of the pass.
+//
+// A bounds pass over a record that is nearly always in range is branches nearly
+// always not taken, and a branch in an array loop's BODY is what stops the loop
+// vectorizing at all. `clamp`/`min`/`max` fold to a select, and the count is a
+// BITWISE OR of the two ends — non-short-circuiting on purpose, so it stays one
+// mask rather than a second branch. The ends are mutually exclusive, so the or
+// is exact.
+func (g *gen) emitFixedClampSelect(lhs, lo, hi string, low, high bool, ind, note string) {
+	switch {
+	case low && high:
+		g.pf("%s*clamped += ((%s < %s) | (%s > %s)) as i32;%s\n", ind, lhs, lo, lhs, hi, note)
+		g.pf("%s%s = %s.clamp(%s, %s);\n", ind, lhs, lhs, lo, hi)
+	case low:
+		g.pf("%s*clamped += (%s < %s) as i32;%s\n", ind, lhs, lo, note)
+		g.pf("%s%s = %s.max(%s);\n", ind, lhs, lhs, lo)
+	case high:
+		g.pf("%s*clamped += (%s > %s) as i32;%s\n", ind, lhs, hi, note)
+		g.pf("%s%s = %s.min(%s);\n", ind, lhs, lhs, hi)
 	}
 }
 

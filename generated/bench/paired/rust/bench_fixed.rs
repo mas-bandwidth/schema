@@ -263,67 +263,26 @@ pub fn mixed_entity_fixed_scatter(b: &[u8], value: &mut MixedEntityRow, report: 
 /// MixedEntity's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 pub fn mixed_entity_fixed_clamp_body(value: &mut MixedEntityRow, clamped: &mut i32) {
-    if value.entity_id > 4095 {
-        value.entity_id = 4095;
-        *clamped += 1;
-    } // bits(12)'s own width
-    if value.pos_x < -16383_i32 {
-        value.pos_x = -16383_i32;
-        *clamped += 1;
-    } else if value.pos_x > 16383_i32 {
-        value.pos_x = 16383_i32;
-        *clamped += 1;
-    }
-    if value.pos_y < -16383_i32 {
-        value.pos_y = -16383_i32;
-        *clamped += 1;
-    } else if value.pos_y > 16383_i32 {
-        value.pos_y = 16383_i32;
-        *clamped += 1;
-    }
-    if value.pos_z < -16383_i32 {
-        value.pos_z = -16383_i32;
-        *clamped += 1;
-    } else if value.pos_z > 16383_i32 {
-        value.pos_z = 16383_i32;
-        *clamped += 1;
-    }
-    if value.yaw > 511 {
-        value.yaw = 511;
-        *clamped += 1;
-    } // bits(9)'s own width
-    if value.pitch > 511 {
-        value.pitch = 511;
-        *clamped += 1;
-    } // bits(9)'s own width
-    if value.vel_x < -2048_i32 {
-        value.vel_x = -2048_i32;
-        *clamped += 1;
-    } else if value.vel_x > 2047_i32 {
-        value.vel_x = 2047_i32;
-        *clamped += 1;
-    }
-    if value.vel_y < -2048_i32 {
-        value.vel_y = -2048_i32;
-        *clamped += 1;
-    } else if value.vel_y > 2047_i32 {
-        value.vel_y = 2047_i32;
-        *clamped += 1;
-    }
-    if value.vel_z < -2048_i32 {
-        value.vel_z = -2048_i32;
-        *clamped += 1;
-    } else if value.vel_z > 2047_i32 {
-        value.vel_z = 2047_i32;
-        *clamped += 1;
-    }
-    if value.health < 0_i32 {
-        value.health = 0_i32;
-        *clamped += 1;
-    } else if value.health > 1000_i32 {
-        value.health = 1000_i32;
-        *clamped += 1;
-    }
+    *clamped += (value.entity_id > 4095) as i32; // bits(12)'s own width
+    value.entity_id = value.entity_id.min(4095);
+    *clamped += ((value.pos_x < -16383_i32) | (value.pos_x > 16383_i32)) as i32;
+    value.pos_x = value.pos_x.clamp(-16383_i32, 16383_i32);
+    *clamped += ((value.pos_y < -16383_i32) | (value.pos_y > 16383_i32)) as i32;
+    value.pos_y = value.pos_y.clamp(-16383_i32, 16383_i32);
+    *clamped += ((value.pos_z < -16383_i32) | (value.pos_z > 16383_i32)) as i32;
+    value.pos_z = value.pos_z.clamp(-16383_i32, 16383_i32);
+    *clamped += (value.yaw > 511) as i32; // bits(9)'s own width
+    value.yaw = value.yaw.min(511);
+    *clamped += (value.pitch > 511) as i32; // bits(9)'s own width
+    value.pitch = value.pitch.min(511);
+    *clamped += ((value.vel_x < -2048_i32) | (value.vel_x > 2047_i32)) as i32;
+    value.vel_x = value.vel_x.clamp(-2048_i32, 2047_i32);
+    *clamped += ((value.vel_y < -2048_i32) | (value.vel_y > 2047_i32)) as i32;
+    value.vel_y = value.vel_y.clamp(-2048_i32, 2047_i32);
+    *clamped += ((value.vel_z < -2048_i32) | (value.vel_z > 2047_i32)) as i32;
+    value.vel_z = value.vel_z.clamp(-2048_i32, 2047_i32);
+    *clamped += ((value.health < 0_i32) | (value.health > 1000_i32)) as i32;
+    value.health = value.health.clamp(0_i32, 1000_i32);
 }
 
 /// MixedStat's stores, at constant offsets into a body the caller zeroed.
@@ -358,17 +317,10 @@ pub fn mixed_stat_fixed_scatter(b: &[u8], value: &mut MixedStatRow, report: &mut
 /// MixedStat's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 pub fn mixed_stat_fixed_clamp_body(value: &mut MixedStatRow, clamped: &mut i32) {
-    if value.stat_id > 255 {
-        value.stat_id = 255;
-        *clamped += 1;
-    } // bits(8)'s own width
-    if value.delta < -512_i32 {
-        value.delta = -512_i32;
-        *clamped += 1;
-    } else if value.delta > 511_i32 {
-        value.delta = 511_i32;
-        *clamped += 1;
-    }
+    *clamped += (value.stat_id > 255) as i32; // bits(8)'s own width
+    value.stat_id = value.stat_id.min(255);
+    *clamped += ((value.delta < -512_i32) | (value.delta > 511_i32)) as i32;
+    value.delta = value.delta.clamp(-512_i32, 511_i32);
 }
 
 /// MixedHitEvent's stores, at constant offsets into a body the caller zeroed.
@@ -416,24 +368,12 @@ pub fn mixed_hit_event_fixed_scatter(b: &[u8], value: &mut MixedHitEventRow, rep
 /// MixedHitEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 pub fn mixed_hit_event_fixed_clamp_body(value: &mut MixedHitEventRow, clamped: &mut i32) {
-    if value.target_id > 4095 {
-        value.target_id = 4095;
-        *clamped += 1;
-    } // bits(12)'s own width
-    if value.damage < 0_i32 {
-        value.damage = 0_i32;
-        *clamped += 1;
-    } else if value.damage > 4095_i32 {
-        value.damage = 4095_i32;
-        *clamped += 1;
-    }
-    if value.hit_kind < 0_i32 {
-        value.hit_kind = 0_i32;
-        *clamped += 1;
-    } else if value.hit_kind > 7_i32 {
-        value.hit_kind = 7_i32;
-        *clamped += 1;
-    }
+    *clamped += (value.target_id > 4095) as i32; // bits(12)'s own width
+    value.target_id = value.target_id.min(4095);
+    *clamped += ((value.damage < 0_i32) | (value.damage > 4095_i32)) as i32;
+    value.damage = value.damage.clamp(0_i32, 4095_i32);
+    *clamped += ((value.hit_kind < 0_i32) | (value.hit_kind > 7_i32)) as i32;
+    value.hit_kind = value.hit_kind.clamp(0_i32, 7_i32);
 }
 
 /// MixedChatEvent's stores, at constant offsets into a body the caller zeroed.
@@ -468,17 +408,10 @@ pub fn mixed_chat_event_fixed_scatter(b: &[u8], value: &mut MixedChatEventRow, r
 /// MixedChatEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 pub fn mixed_chat_event_fixed_clamp_body(value: &mut MixedChatEventRow, clamped: &mut i32) {
-    if value.channel < 0_i32 {
-        value.channel = 0_i32;
-        *clamped += 1;
-    } else if value.channel > 3_i32 {
-        value.channel = 3_i32;
-        *clamped += 1;
-    }
-    if value.speaker > 4095 {
-        value.speaker = 4095;
-        *clamped += 1;
-    } // bits(12)'s own width
+    *clamped += ((value.channel < 0_i32) | (value.channel > 3_i32)) as i32;
+    value.channel = value.channel.clamp(0_i32, 3_i32);
+    *clamped += (value.speaker > 4095) as i32; // bits(12)'s own width
+    value.speaker = value.speaker.min(4095);
 }
 
 /// MixedPickupEvent's stores, at constant offsets into a body the caller zeroed.
@@ -513,17 +446,10 @@ pub fn mixed_pickup_event_fixed_scatter(b: &[u8], value: &mut MixedPickupEventRo
 /// MixedPickupEvent's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 pub fn mixed_pickup_event_fixed_clamp_body(value: &mut MixedPickupEventRow, clamped: &mut i32) {
-    if value.item_id > 1023 {
-        value.item_id = 1023;
-        *clamped += 1;
-    } // bits(10)'s own width
-    if value.amount < 0_i32 {
-        value.amount = 0_i32;
-        *clamped += 1;
-    } else if value.amount > 255_i32 {
-        value.amount = 255_i32;
-        *clamped += 1;
-    }
+    *clamped += (value.item_id > 1023) as i32; // bits(10)'s own width
+    value.item_id = value.item_id.min(1023);
+    *clamped += ((value.amount < 0_i32) | (value.amount > 255_i32)) as i32;
+    value.amount = value.amount.clamp(0_i32, 255_i32);
 }
 
 /// BenchMixed's stores, at constant offsets into a body the caller zeroed.
@@ -786,35 +712,16 @@ pub fn bench_mixed_fixed_scatter(b: &[u8], value: &mut BenchMixedRow, report: &m
 /// BenchMixed's read-side bounds: every RANGED SCALAR held to its declared min
 /// and max, over the storage a read can have written.
 pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, clamped: &mut i32) {
-    if value.sequence > 65535 {
-        value.sequence = 65535;
-        *clamped += 1;
-    } // bits(16)'s own width
-    if value.ack_sequence < 0_i32 {
-        value.ack_sequence = 0_i32;
-        *clamped += 1;
-    } else if value.ack_sequence > 65535_i32 {
-        value.ack_sequence = 65535_i32;
-        *clamped += 1;
-    }
-    if value.world_time < -1000000000000_i64 {
-        value.world_time = -1000000000000_i64;
-        *clamped += 1;
-    } else if value.world_time > 1000000000000_i64 {
-        value.world_time = 1000000000000_i64;
-        *clamped += 1;
-    }
-    if value.frame_tick > 281474976710655 {
-        value.frame_tick = 281474976710655;
-        *clamped += 1;
-    } // bits(48)'s own width
-    if value.server_time < 0_i32 {
-        value.server_time = 0_i32;
-        *clamped += 1;
-    } else if value.server_time > 16776960_i32 {
-        value.server_time = 16776960_i32;
-        *clamped += 1;
-    }
+    *clamped += (value.sequence > 65535) as i32; // bits(16)'s own width
+    value.sequence = value.sequence.min(65535);
+    *clamped += ((value.ack_sequence < 0_i32) | (value.ack_sequence > 65535_i32)) as i32;
+    value.ack_sequence = value.ack_sequence.clamp(0_i32, 65535_i32);
+    *clamped += ((value.world_time < -1000000000000_i64) | (value.world_time > 1000000000000_i64)) as i32;
+    value.world_time = value.world_time.clamp(-1000000000000_i64, 1000000000000_i64);
+    *clamped += (value.frame_tick > 281474976710655) as i32; // bits(48)'s own width
+    value.frame_tick = value.frame_tick.min(281474976710655);
+    *clamped += ((value.server_time < 0_i32) | (value.server_time > 16776960_i32)) as i32;
+    value.server_time = value.server_time.clamp(0_i32, 16776960_i32);
     for i in 0..value.entities_count.clamp(0, 8) as usize {
         mixed_entity_fixed_clamp_body(&mut value.entities[i], clamped);
     }
@@ -822,55 +729,21 @@ pub fn bench_mixed_fixed_clamp_body(value: &mut BenchMixedRow, clamped: &mut i32
         mixed_stat_fixed_clamp_body(&mut value.stats[i], clamped);
     }
     mixed_event_fixed_clamp_body(&mut value.game_event, clamped);
-    if value.aim_x < -1.0_f32 {
-        value.aim_x = -1.0_f32;
-        *clamped += 1;
-    } else if value.aim_x > 1.0_f32 {
-        value.aim_x = 1.0_f32;
-        *clamped += 1;
-    }
-    if value.aim_y < -1.0_f32 {
-        value.aim_y = -1.0_f32;
-        *clamped += 1;
-    } else if value.aim_y > 1.0_f32 {
-        value.aim_y = 1.0_f32;
-        *clamped += 1;
-    }
-    if value.aim_z < -1.0_f32 {
-        value.aim_z = -1.0_f32;
-        *clamped += 1;
-    } else if value.aim_z > 1.0_f32 {
-        value.aim_z = 1.0_f32;
-        *clamped += 1;
-    }
-    if value.flux.0 < -1267650600228229401496703205376_i128 {
-        value.flux.0 = -1267650600228229401496703205376_i128;
-        *clamped += 1;
-    } else if value.flux.0 > 1267650600228229401496703205376_i128 {
-        value.flux.0 = 1267650600228229401496703205376_i128;
-        *clamped += 1;
-    }
-    if value.ping > 64000_u16 {
-        value.ping = 64000_u16;
-        *clamped += 1;
-    }
-    if value.crc_hint > 16777215 {
-        value.crc_hint = 16777215;
-        *clamped += 1;
-    } // bits(24)'s own width
-    if value.extra < 0_i32 {
-        value.extra = 0_i32;
-        *clamped += 1;
-    } else if value.extra > 255_i32 {
-        value.extra = 255_i32;
-        *clamped += 1;
-    }
-    if value.idle_ticks < 0_i32 {
-        value.idle_ticks = 0_i32;
-        *clamped += 1;
-    } else if value.idle_ticks > 15_i32 {
-        value.idle_ticks = 15_i32;
-        *clamped += 1;
-    }
+    *clamped += ((value.aim_x < -1.0_f32) | (value.aim_x > 1.0_f32)) as i32;
+    value.aim_x = value.aim_x.clamp(-1.0_f32, 1.0_f32);
+    *clamped += ((value.aim_y < -1.0_f32) | (value.aim_y > 1.0_f32)) as i32;
+    value.aim_y = value.aim_y.clamp(-1.0_f32, 1.0_f32);
+    *clamped += ((value.aim_z < -1.0_f32) | (value.aim_z > 1.0_f32)) as i32;
+    value.aim_z = value.aim_z.clamp(-1.0_f32, 1.0_f32);
+    *clamped += ((value.flux.0 < -1267650600228229401496703205376_i128) | (value.flux.0 > 1267650600228229401496703205376_i128)) as i32;
+    value.flux.0 = value.flux.0.clamp(-1267650600228229401496703205376_i128, 1267650600228229401496703205376_i128);
+    *clamped += (value.ping > 64000_u16) as i32;
+    value.ping = value.ping.min(64000_u16);
+    *clamped += (value.crc_hint > 16777215) as i32; // bits(24)'s own width
+    value.crc_hint = value.crc_hint.min(16777215);
+    *clamped += ((value.extra < 0_i32) | (value.extra > 255_i32)) as i32;
+    value.extra = value.extra.clamp(0_i32, 255_i32);
+    *clamped += ((value.idle_ticks < 0_i32) | (value.idle_ticks > 15_i32)) as i32;
+    value.idle_ticks = value.idle_ticks.clamp(0_i32, 15_i32);
 }
 
