@@ -837,11 +837,12 @@ func (g *fixedGen) armDecode(f *ir.Field) string {
 
 func (g *fixedGen) rootSurface(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
-	w := fixedWalkRoot(st)
-	layout := fixedLayoutBytes(w.entries)
-	hash := fixedLayoutHash(layout)
+	entries := ir.TableFixedWalkRoot(st)
+	layout := ir.TableFixedLayoutBytes(entries)
+	hash := ir.TableFixedLayoutHash(layout)
 	body := fixedTypeBytes(st)
 	plan := fixedIdentityPlan(st)
+	dst := imageDstRows(g.unit, entries)
 
 	g.pf("  # ---- %s, the fixed form ----\n\n", st.Name)
 	g.pf("  # MEASURE IS A CONSTANT on this form: the body is the same size for every\n")
@@ -850,7 +851,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  @%s_record_bytes %d\n", snake, fixedHashBytes+body)
 	g.pf("  @%s_hash 0x%016X\n\n", snake, hash)
 
-	g.pf("  # THE LAYOUT: %d entries, a PRE-ORDER walk of the closure in the writer's\n", len(w.entries))
+	g.pf("  # THE LAYOUT: %d entries, a PRE-ORDER walk of the closure in the writer's\n", len(entries))
 	g.pf("  # declared order — an id, a kind, a constant size and a child count each,\n")
 	g.pf("  # seventeen bytes, every number little-endian. Every byte is settled by the\n")
 	g.pf("  # compiler, and its fnv1a64 is the eight bytes every record carries.\n")
@@ -859,7 +860,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # MY SIDE of the layout, one row per entry: the storage facts a layout entry\n")
 	g.pf("  # cannot carry. Here they are offsets into THIS BUILD's own record image,\n")
 	g.pf("  # where the C++ reference's rows carry an offsetof into a struct.\n")
-	g.pf("  @%s_dst %s\n\n", snake, g.dstLiteral(w))
+	g.pf("  @%s_dst %s\n\n", snake, g.dstLiteral(dst))
 
 	g.pf("  # THE PREFILL: the DECLARED DEFAULTS as record bytes. A field this record\n")
 	g.pf("  # does not carry has no plan entry at all, so these bytes are what lands\n")
@@ -1025,16 +1026,16 @@ func (g *fixedGen) emitPlanForHead(snake string) {
 }
 
 // dstLiteral spells MY SIDE of the layout: one row per entry.
-func (g *fixedGen) dstLiteral(w *fixedWalk) string {
+func (g *fixedGen) dstLiteral(dst []fixedDst) string {
 	var sb strings.Builder
 	sb.WriteString("{\n")
-	for i, d := range w.dst {
+	for i, d := range dst {
 		lo, hi := "nil", "nil"
 		if d.lo != "" {
 			lo, hi = d.lo, d.hi
 		}
 		sep := ","
-		if i == len(w.dst)-1 {
+		if i == len(dst)-1 {
 			sep = ""
 		}
 		row := tupleNode{items: []string{

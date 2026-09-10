@@ -78,6 +78,10 @@ func fixedPadTo(b []byte, n int64) []byte {
 	return out
 }
 
+func appendFixedU32(b []byte, v uint32) []byte {
+	return append(b, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+}
+
 // fixedElementDefault is ONE element's default bytes.
 func fixedElementDefault(f *ir.Field) []byte {
 	if f.Type.Kind == ir.TNamed {

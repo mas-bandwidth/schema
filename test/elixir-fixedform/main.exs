@@ -151,6 +151,8 @@ Leg.eq("fx1[0].narrow", a.narrow, 40000)
 Leg.eq("fx1[0].renamed", a.renamed, 321)
 Leg.eq("fx1[0].gone", a.gone, 654)
 Leg.eq("fx1[0].nested", {a.nested.a, a.nested.b}, {111, 222})
+Leg.eq("fx1[0].blob", a.blob, <<0xDE, 0xAD, 0xBE, 0xEF>>)
+Leg.eq("fx1[1].blob", b.blob, <<>>)
 
 Leg.eq(
   "fx1[1]",
@@ -261,6 +263,8 @@ Leg.eq("newer over older: renamed arrives under `was`", n0.renamed_to, 321)
 Leg.eq("newer over older: added takes its declared default", n0.added, 11)
 Leg.eq("newer over older: an unknown TYPE leaves its default", {n0.extra.x, n0.extra.y}, {0, 0})
 Leg.eq("newer over older: nested", {n0.nested.a, n0.nested.b}, {111, 222})
+Leg.eq("newer over older: blob[0] matches identity", n0.blob, a.blob)
+Leg.eq("newer over older: blob[1] matches identity", n1.blob, b.blob)
 Leg.eq("newer over older: the second record too", {n1.narrow, n1.renamed_to}, {2, 3})
 Leg.eq("newer over older: one `unknown`, counted ONCE per writer", newer.unknown, 1)
 Leg.eq("newer over older: one `widened` per record", newer.widened, 2)
@@ -497,6 +501,20 @@ compiled_is_identity.(
   Tabledemo.KeyedFixed.keyed_config_fixed_prefill(),
   &Tabledemo.KeyedFixed.keyed_config_fixed_decode/1,
   bodies_of.(read.("keyed.bin"), Tabledemo.KeyedFixed.keyed_config_fixed_body_bytes())
+)
+
+# `bytes(N)` IS AN ARRAY ON THIS WIRE. Identity lands it with the TEXT op and
+# never reads the destination row; a plan compiled from MY OWN layout is what
+# `compile_array` walks, and a text-convention row handed it dest=length /
+# aux=buffer. FX1.blob is the field that would have been silent.
+compiled_is_identity.(
+  "fx1",
+  Tblfx1.FX1Fixed.fx_root_fixed_layout(),
+  Tblfx1.FX1Fixed.fx_root_fixed_dst(),
+  Tblfx1.FX1Fixed.fx_root_fixed_plan(),
+  Tblfx1.FX1Fixed.fx_root_fixed_prefill(),
+  &Tblfx1.FX1Fixed.fx_root_fixed_decode/1,
+  bodies_of.(read.("fx1.bin"), Tblfx1.FX1Fixed.fx_root_fixed_body_bytes())
 )
 
 # AN ORDINAL SLIDE, which is the one edit a record's bytes cannot show.
