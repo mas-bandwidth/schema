@@ -37,8 +37,15 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return nil, nil
 	}
-	if err := ir.RefuseWideTableKinds(u, "Rust"); err != nil {
-		return nil, err
+	// §15's WIDE-KIND REFUSAL IS THE FORM-1 ACCELERATORS' AND NOT THE WIRE'S
+	// (ir.WideTableKinds): the block form and the cooked form are what must
+	// name a kind's storage column and its reflection descriptor, and the fixed
+	// form names no kind at all on its emitted path. This backend carries no
+	// form-3 codec yet, so there is nothing left to emit and the refusal is the
+	// whole answer, BY NAME — the day the fixed form lands here, `false` below
+	// becomes this backend's own answer and the accelerators stand down alone.
+	if scope := ir.WideTableKinds(u, "Rust", false); scope.Unit {
+		return nil, scope.Refusal
 	}
 	out := map[string][]byte{}
 
