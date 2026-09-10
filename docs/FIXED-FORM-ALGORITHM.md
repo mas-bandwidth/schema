@@ -381,6 +381,33 @@ not transliterate.** Then **prove against the oracle, in this order**:
 | 5 | **a byte-flip fuzz over the whole file, under a sanitizer, and it is not optional** — every offset is arithmetic over sizes a stranger wrote down, so every byte, one bit at a time, is answered one of three ways and never a fourth: a refusal by name, a `malformed` read, or a read that lands values |
 | 6 | **the fixtures**, beside the corpus: `test/tables/FX1`/`FX2` (widen, `was =`, unknown field, unknown nested type, slack, `bytes(6)`), `V1`/`V2` (a variant and an arm inserted mid-list, keyed slots sliding, an optional, a moved kind), `P1`/`P3` (value against `?T`), `UT1`/`UT2` (the guard and flavour lanes), and `bench/corpus/FixedTable.schema` |
 
+## 8. Coverage matrix stub
+
+Nine languages, one wire. Fill a cell when that port has proved the construct against the
+fixture in §7; leave it blank until it has. **C++ is the reference writer of the dump corpus,
+not an exemption from the proof.** This table is a stub: the fixtures exist, the per-language
+ticks are the work. It is not a second coverage page; every cell points at a fixture §7
+already names.
+
+| construct | fixture | cpp | c | go | cs | rust | java | js | dart | elixir |
+|---|---|---|---|---|---|---|---|---|---|---|
+| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack` | golden | | | | | | | | |
+| dump plan path, both directions | `fx1`↔`fx2`, `p1` into `p3` | golden | | | | | | | | |
+| widen, `was =`, unknown field, unknown nested type, slack, `bytes(6)` | `test/tables/FX1`/`FX2` | golden | | | | | | | | |
+| variant/arm inserted mid-list, keyed slots sliding, optional, moved kind | `V1`/`V2` | golden | | | | | | | | |
+| `?T` against a plain nesting | `P1`/`P3` | golden | | | | | | | | |
+| guard ordinal and text flavour as two lanes | `UT1`/`UT2` | golden | | | | | | | | |
+| keyed arrays nesting keyed arrays | dump `keyed` | golden | | | | | | | | |
+| counted arrays, enum off default, optionals in elements | dump `pack` | golden | | | | | | | | |
+| `FixedTable` wrapping `BenchMixed` | `bench/corpus/FixedTable.schema` | golden | | | | | | | | |
+| seven layout rules, each by own name | §7 item 3 | golden | | | | | | | | |
+| form bytes `1`/`2`/`6` | `previous_form`, `message_form_as_file`, `newer_form` | golden | | | | | | | | |
+| `plan_too_large` / `no_layout` / ragged tail | §7 item 3 | golden | | | | | | | | |
+| wrong plan, swapped `bytes(N)`, shared `arg`/`meta` | §7 item 4 | golden | | | | | | | | |
+| byte-flip fuzz, sanitizer, three answers never a fourth | §7 item 5 | | | | | | | | | |
+
+A blank cell is not a skip. It is a cell nobody has ticked on this page yet.
+
 ## Reference fixes pending
 
 Where this page and the C++ reference or §3.4 disagree, **this page is the ruling**. Four landed while it was written.
