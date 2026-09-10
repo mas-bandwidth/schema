@@ -101,7 +101,10 @@ type Loose
 			src := "package vdef\nflags Caps { Jump, Crouch }\n" +
 				tc.decl + " Badge {\n" + fields + "}\n" + tc.edge + packet
 			u := unitFromSource(t, src)
-			for _, target := range []string{"rust", "java", "js", "dart", "elixir"} {
+			// JAVA IS NOT ON THIS LIST ANY MORE: it carries the table half
+			// too (compiler/target_java.go), and its own carrier test is
+			// TestTableValueDefaultsCarriers.
+			for _, target := range []string{"rust", "js", "dart", "elixir"} {
 				_, err := New().Generate(u, target, Options{})
 				// JAVA'S REFUSAL IS FORM 1's ALONE (compiler/valuedefaults.go,
 				// fixedFormOnlyClosure): a Badge only a FIXED-FORM root reaches
@@ -133,7 +136,7 @@ type Loose
 						t.Errorf("refusal does not name %q: %v", want, err)
 					}
 				}
-				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs and --lang go, or drop the default") {
+				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs, --lang go and --lang java, or drop the default") {
 					t.Errorf("table refusal includes a supported packet field or names %s as a table carrier: %v", target, err)
 				}
 			}

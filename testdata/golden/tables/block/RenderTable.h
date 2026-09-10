@@ -2271,7 +2271,9 @@ constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other two are what a plan compiled from another writer's layout adds.
+// the rest are what a plan compiled from another writer's layout adds. clamp
+// is compiled-only: a ranged integer is a copy on the identity path and the
+// generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2281,6 +2283,7 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedClamp   = 7, // a ranged integer, in place on the destination the copy landed
 };
 
 // meta on a kTableFixedText entry
@@ -2525,6 +2528,39 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
+            break;
+        }
+        case kTableFixedClamp:
+        {
+            // IN PLACE ON THE DESTINATION the copy or widen just landed. src is
+            // unused: this op does not read the record. meta bit 0 is the low
+            // end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
+            // OF THE TWO ENDS, the same select-and-add the identity pass emits.
+            uint64_t lo = 0, hi = 0, raw = 0;
+            memcpy( &lo, base + p.aux, 8 );
+            memcpy( &hi, base + p.aux + 8, 8 );
+            memcpy( &raw, dst + p.dst, p.size );
+            if ( p.sign != 0 && p.size < 8 )
+            {
+                const unsigned bits = p.size * 8u;
+                const uint64_t top = 1ull << ( bits - 1 );
+                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            }
+            int32_t under = 0, over = 0;
+            if ( p.sign != 0 )
+            {
+                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
+                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            else
+            {
+                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
+                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            clamped += under | over;
+            memcpy( dst + p.dst, &raw, p.size );
             break;
         }
         default: break;
@@ -2896,6 +2932,10 @@ struct TableFixedDst
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
     uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
+    uint64_t lo = 0;     // a compiled clamp's low end, bit pattern of the slot
+    uint64_t hi = 0;     // a compiled clamp's high end
+    uint8_t clamp = 0;   // bit 0 = low, bit 1 = high, bit 2 = signed
+    uint8_t width = 0;   // the slot's bytes; 0 = this row is not a compiled clamp
 };
 
 struct TableFixedCompiler
@@ -2909,6 +2949,7 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    bool skip_clamp = false; // counted-array elements: the live count, never slack
     TableReport * report = NULL;
 };
 
@@ -2923,9 +2964,19 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
     {
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c.record ||
-             ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+        // A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
+        // already landed. src+size is not a wire reach.
+        if ( e.op != kTableFixedClamp )
+        {
+            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+            if ( reach > (uint64_t) c.record ||
+                 ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+            {
+                c.hostile = true;
+                return;
+            }
+        }
+        else if ( e.guard != kTableFixedNoGuard && e.guard >= c.record )
         {
             c.hostile = true;
             return;
@@ -2950,6 +3001,39 @@ inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * val
     dst[0] = (uint16_t) n;
     for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
     return at;
+}
+
+// TableFixedLayBounds lays a compiled clamp's two ends above the entries, the
+// same pool the ordinal remap tables use, and answers the byte offset from the
+// plan's base. memcpy, not a typed store: the pool is not 8-aligned.
+inline uint32_t TableFixedLayBounds( TableFixedCompiler & c, uint64_t lo, uint64_t hi )
+{
+    const int32_t bytes = 16;
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    c.pool += bytes;
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    const uint32_t at = (uint32_t) ( total - c.pool );
+    uint8_t * dst = (uint8_t *) (void *) ( (uint8_t *) c.plan + at );
+    memcpy( dst, &lo, 8 );
+    memcpy( dst + 8, &hi, 8 );
+    return at;
+}
+
+// TableFixedPushClamp is ONE ranged scalar after the copy or widen that landed
+// it. Counted-array elements skip: the live count is a value the plan cannot
+// name, and clamping slack would count a clamp on a byte nobody wrote.
+inline void TableFixedPushClamp( TableFixedCompiler & c, const TableFixedDst & d,
+                                 uint32_t at, uint32_t guard, uint8_t arg )
+{
+    if ( c.skip_clamp || d.width == 0 ) { return; }
+    TableFixedEntry e;
+    e.src = 0; e.dst = at; e.size = d.width;
+    e.aux = TableFixedLayBounds( c, d.lo, d.hi );
+    e.guard = guard; e.op = kTableFixedClamp; e.arg = arg;
+    e.meta = (uint8_t) ( d.clamp & 3u );
+    e.dstsize = 0;
+    e.sign = ( d.clamp & 4u ) ? 1u : 0u;
+    TableFixedPush( c, e );
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
@@ -3032,6 +3116,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
             e.sign = TableFixedSignedKind( te.kind ) ? 1u : 0u;
             TableFixedPush( c, e );
+            TableFixedPushClamp( c, d, at, guard, arg );
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
@@ -3068,11 +3153,14 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;
+            const bool prev_skip = c.skip_clamp;
+            if ( d.counted ) { c.skip_clamp = true; }
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
                                         mine, mi + 1, dst, at + i * d.stride, guard, arg );
             }
+            c.skip_clamp = prev_skip;
             break;
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
@@ -3163,11 +3251,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size; e.op = kTableFixedCopy;
                 TableFixedPush( c, e );
+                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( te.size < me.size && me.size <= 8 )
             {
                 e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
+                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( c.report != NULL )
             {
@@ -14487,20 +14577,20 @@ constexpr int64_t RenderCameraFixedLayoutBytes = (int64_t) sizeof( RenderCameraF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderCameraFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderCamera
-    { (uint32_t) __builtin_offsetof( RenderCamera, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderCamera, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderCamera, camera_id ), 0, 0, 0, 0 }, // camera_id
-    { (uint32_t) __builtin_offsetof( RenderCamera, camera_type ), 0, 0, 0, 0 }, // camera_type
-    { (uint32_t) __builtin_offsetof( RenderCamera, target_object_id ), 0, 0, 0, 0 }, // target_object_id
-    { (uint32_t) __builtin_offsetof( RenderCamera, fov ), 0, 0, 0, 0 }, // fov
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderCamera
+    { (uint32_t) __builtin_offsetof( RenderCamera, position ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // position
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderCamera, rotation ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rotation
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // w
+    { (uint32_t) __builtin_offsetof( RenderCamera, camera_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // camera_id
+    { (uint32_t) __builtin_offsetof( RenderCamera, camera_type ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // camera_type
+    { (uint32_t) __builtin_offsetof( RenderCamera, target_object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // target_object_id
+    { (uint32_t) __builtin_offsetof( RenderCamera, fov ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // fov
 };
 
 // THE IDENTITY PLAN, coalesced out of 11 leaves by the schema compiler —
@@ -14711,32 +14801,32 @@ constexpr int64_t RenderShipFixedLayoutBytes = (int64_t) sizeof( RenderShipFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderShipFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderShip
-    { (uint32_t) __builtin_offsetof( RenderShip, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderShip, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderShip, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderShip, object_id ), 0, 0, 0, 0 }, // object_id
-    { (uint32_t) __builtin_offsetof( RenderShip, target_object_id ), 0, 0, 0, 0 }, // target_object_id
-    { (uint32_t) __builtin_offsetof( RenderShip, thrust ), 0, 0, 0, 0 }, // thrust
-    { (uint32_t) __builtin_offsetof( RenderShip, object_sequence ), 0, 0, 0, 0 }, // object_sequence
-    { (uint32_t) __builtin_offsetof( RenderShip, ship_type ), 0, 0, 0, 0 }, // ship_type
-    { 0, 0, 0, 0, 0 }, // Fighter
-    { 0, 0, 0, 0, 0 }, // Bomber
-    { 0, 0, 0, 0, 0 }, // Freighter
-    { (uint32_t) __builtin_offsetof( RenderShip, team ), 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
-    { (uint32_t) __builtin_offsetof( RenderShip, has_target_lock ), 0, 0, 0, 0 }, // has_target_lock
-    { (uint32_t) __builtin_offsetof( RenderShip, predicted_explode ), 0, 0, 0, 0 }, // predicted_explode
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderShip
+    { (uint32_t) __builtin_offsetof( RenderShip, position ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // position
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderShip, rotation ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rotation
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // w
+    { (uint32_t) __builtin_offsetof( RenderShip, flags ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // flags
+    { (uint32_t) __builtin_offsetof( RenderShip, object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // object_id
+    { (uint32_t) __builtin_offsetof( RenderShip, target_object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // target_object_id
+    { (uint32_t) __builtin_offsetof( RenderShip, thrust ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thrust
+    { (uint32_t) __builtin_offsetof( RenderShip, object_sequence ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // object_sequence
+    { (uint32_t) __builtin_offsetof( RenderShip, ship_type ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // ship_type
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Fighter
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Bomber
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Freighter
+    { (uint32_t) __builtin_offsetof( RenderShip, team ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gold
+    { (uint32_t) __builtin_offsetof( RenderShip, has_target_lock ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // has_target_lock
+    { (uint32_t) __builtin_offsetof( RenderShip, predicted_explode ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // predicted_explode
 };
 
 // THE IDENTITY PLAN, coalesced out of 16 leaves by the schema compiler —
@@ -14942,24 +15032,24 @@ constexpr int64_t RenderTurretFixedLayoutBytes = (int64_t) sizeof( RenderTurretF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderTurretFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderTurret
-    { (uint32_t) __builtin_offsetof( RenderTurret, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderTurret, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderTurret, object_id ), 0, 0, 0, 0 }, // object_id
-    { (uint32_t) __builtin_offsetof( RenderTurret, parent_object_id ), 0, 0, 0, 0 }, // parent_object_id
-    { (uint32_t) __builtin_offsetof( RenderTurret, turret_index ), 0, 0, 0, 0 }, // turret_index
-    { (uint32_t) __builtin_offsetof( RenderTurret, target_object_id ), 0, 0, 0, 0 }, // target_object_id
-    { (uint32_t) __builtin_offsetof( RenderTurret, object_sequence ), 0, 0, 0, 0 }, // object_sequence
-    { (uint32_t) __builtin_offsetof( RenderTurret, team ), 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
-    { (uint32_t) __builtin_offsetof( RenderTurret, has_target_lock ), 0, 0, 0, 0 }, // has_target_lock
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderTurret
+    { (uint32_t) __builtin_offsetof( RenderTurret, rotation ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rotation
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // w
+    { (uint32_t) __builtin_offsetof( RenderTurret, flags ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // flags
+    { (uint32_t) __builtin_offsetof( RenderTurret, object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // object_id
+    { (uint32_t) __builtin_offsetof( RenderTurret, parent_object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // parent_object_id
+    { (uint32_t) __builtin_offsetof( RenderTurret, turret_index ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // turret_index
+    { (uint32_t) __builtin_offsetof( RenderTurret, target_object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // target_object_id
+    { (uint32_t) __builtin_offsetof( RenderTurret, object_sequence ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // object_sequence
+    { (uint32_t) __builtin_offsetof( RenderTurret, team ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gold
+    { (uint32_t) __builtin_offsetof( RenderTurret, has_target_lock ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // has_target_lock
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -15168,27 +15258,27 @@ constexpr int64_t RenderMissileFixedLayoutBytes = (int64_t) sizeof( RenderMissil
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderMissileFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderMissile
-    { (uint32_t) __builtin_offsetof( RenderMissile, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderMissile, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderMissile, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderMissile, object_id ), 0, 0, 0, 0 }, // object_id
-    { (uint32_t) __builtin_offsetof( RenderMissile, object_sequence ), 0, 0, 0, 0 }, // object_sequence
-    { (uint32_t) __builtin_offsetof( RenderMissile, missile_type ), 0, 0, 0, 0 }, // missile_type
-    { 0, 0, 0, 0, 0 }, // Seeker
-    { 0, 0, 0, 0, 0 }, // Dumb
-    { (uint32_t) __builtin_offsetof( RenderMissile, team ), 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderMissile
+    { (uint32_t) __builtin_offsetof( RenderMissile, position ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // position
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderMissile, rotation ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rotation
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // w
+    { (uint32_t) __builtin_offsetof( RenderMissile, flags ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // flags
+    { (uint32_t) __builtin_offsetof( RenderMissile, object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // object_id
+    { (uint32_t) __builtin_offsetof( RenderMissile, object_sequence ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // object_sequence
+    { (uint32_t) __builtin_offsetof( RenderMissile, missile_type ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // missile_type
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Seeker
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Dumb
+    { (uint32_t) __builtin_offsetof( RenderMissile, team ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -15398,28 +15488,28 @@ constexpr int64_t RenderDynamicPropFixedLayoutBytes = (int64_t) sizeof( RenderDy
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderDynamicPropFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderDynamicProp
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, object_id ), 0, 0, 0, 0 }, // object_id
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, object_sequence ), 0, 0, 0, 0 }, // object_sequence
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, prop_type ), 0, 0, 0, 0 }, // prop_type
-    { 0, 0, 0, 0, 0 }, // Rock
-    { 0, 0, 0, 0, 0 }, // Station
-    { 0, 0, 0, 0, 0 }, // Beacon
-    { (uint32_t) __builtin_offsetof( RenderDynamicProp, team ), 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderDynamicProp
+    { (uint32_t) __builtin_offsetof( RenderDynamicProp, position ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // position
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderDynamicProp, rotation ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rotation
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // w
+    { (uint32_t) __builtin_offsetof( RenderDynamicProp, flags ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // flags
+    { (uint32_t) __builtin_offsetof( RenderDynamicProp, object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // object_id
+    { (uint32_t) __builtin_offsetof( RenderDynamicProp, object_sequence ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // object_sequence
+    { (uint32_t) __builtin_offsetof( RenderDynamicProp, prop_type ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Rock
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Station
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Beacon
+    { (uint32_t) __builtin_offsetof( RenderDynamicProp, team ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -15629,28 +15719,28 @@ constexpr int64_t RenderStaticPropFixedLayoutBytes = (int64_t) sizeof( RenderSta
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderStaticPropFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderStaticProp
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, scale ), 0, 0, 0, 0 }, // scale
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, static_prop_id ), 0, 0, 0, 0 }, // static_prop_id
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, prop_type ), 0, 0, 0, 0 }, // prop_type
-    { 0, 0, 0, 0, 0 }, // Rock
-    { 0, 0, 0, 0, 0 }, // Station
-    { 0, 0, 0, 0, 0 }, // Beacon
-    { (uint32_t) __builtin_offsetof( RenderStaticProp, team ), 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderStaticProp
+    { (uint32_t) __builtin_offsetof( RenderStaticProp, position ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // position
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderStaticProp, rotation ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rotation
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // w
+    { (uint32_t) __builtin_offsetof( RenderStaticProp, scale ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // scale
+    { (uint32_t) __builtin_offsetof( RenderStaticProp, flags ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // flags
+    { (uint32_t) __builtin_offsetof( RenderStaticProp, static_prop_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // static_prop_id
+    { (uint32_t) __builtin_offsetof( RenderStaticProp, prop_type ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Rock
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Station
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Beacon
+    { (uint32_t) __builtin_offsetof( RenderStaticProp, team ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -15861,29 +15951,29 @@ constexpr int64_t RenderCosmeticPropFixedLayoutBytes = (int64_t) sizeof( RenderC
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderCosmeticPropFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderCosmeticProp
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, scale ), 0, 0, 0, 0 }, // scale
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, flags ), 0, 0, 0, 0 }, // flags
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, cosmetic_prop_id ), 0, 0, 0, 0 }, // cosmetic_prop_id
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, prop_sequence ), 0, 0, 0, 0 }, // prop_sequence
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, prop_type ), 0, 0, 0, 0 }, // prop_type
-    { 0, 0, 0, 0, 0 }, // Rock
-    { 0, 0, 0, 0, 0 }, // Station
-    { 0, 0, 0, 0, 0 }, // Beacon
-    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, team ), 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderCosmeticProp
+    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, position ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // position
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, rotation ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rotation
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // w
+    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, scale ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // scale
+    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, flags ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // flags
+    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, cosmetic_prop_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cosmetic_prop_id
+    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, prop_sequence ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // prop_sequence
+    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, prop_type ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // prop_type
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Rock
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Station
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Beacon
+    { (uint32_t) __builtin_offsetof( RenderCosmeticProp, team ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 13 leaves by the schema compiler —
@@ -16090,25 +16180,25 @@ constexpr int64_t RenderLaserFixedLayoutBytes = (int64_t) sizeof( RenderLaserFix
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderLaserFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderLaser
-    { (uint32_t) __builtin_offsetof( RenderLaser, start ), 0, 0, 0, 0 }, // start
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderLaser, finish ), 0, 0, 0, 0 }, // finish
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderLaser, t ), 0, 0, 0, 0 }, // t
-    { (uint32_t) __builtin_offsetof( RenderLaser, laser_id ), 0, 0, 0, 0 }, // laser_id
-    { (uint32_t) __builtin_offsetof( RenderLaser, laser_type ), 0, 0, 0, 0 }, // laser_type
-    { 0, 0, 0, 0, 0 }, // Pulse
-    { 0, 0, 0, 0, 0 }, // Beam
-    { (uint32_t) __builtin_offsetof( RenderLaser, team ), 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderLaser
+    { (uint32_t) __builtin_offsetof( RenderLaser, start ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // start
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderLaser, finish ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // finish
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderLaser, t ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // t
+    { (uint32_t) __builtin_offsetof( RenderLaser, laser_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // laser_id
+    { (uint32_t) __builtin_offsetof( RenderLaser, laser_type ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // laser_type
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Pulse
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Beam
+    { (uint32_t) __builtin_offsetof( RenderLaser, team ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 10 leaves by the schema compiler —
@@ -16317,27 +16407,27 @@ constexpr int64_t RenderExplosionFixedLayoutBytes = (int64_t) sizeof( RenderExpl
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RenderExplosionFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RenderExplosion
-    { (uint32_t) __builtin_offsetof( RenderExplosion, position ), 0, 0, 0, 0 }, // position
-    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderExplosion, rotation ), 0, 0, 0, 0 }, // rotation
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0 }, // x
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0 }, // y
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0 }, // z
-    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0 }, // w
-    { (uint32_t) __builtin_offsetof( RenderExplosion, t ), 0, 0, 0, 0 }, // t
-    { (uint32_t) __builtin_offsetof( RenderExplosion, explosion_id ), 0, 0, 0, 0 }, // explosion_id
-    { (uint32_t) __builtin_offsetof( RenderExplosion, parent_object_id ), 0, 0, 0, 0 }, // parent_object_id
-    { (uint32_t) __builtin_offsetof( RenderExplosion, explosion_type ), 0, 0, 0, 0 }, // explosion_type
-    { 0, 0, 0, 0, 0 }, // Small
-    { 0, 0, 0, 0, 0 }, // Large
-    { (uint32_t) __builtin_offsetof( RenderExplosion, team ), 0, 0, 0, 0 }, // team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // RenderExplosion
+    { (uint32_t) __builtin_offsetof( RenderExplosion, position ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // position
+    { (uint32_t) __builtin_offsetof( RenderVector3, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderVector3, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderVector3, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderExplosion, rotation ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rotation
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, x ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // x
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, y ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // y
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, z ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // z
+    { (uint32_t) __builtin_offsetof( RenderQuaternion, w ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // w
+    { (uint32_t) __builtin_offsetof( RenderExplosion, t ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // t
+    { (uint32_t) __builtin_offsetof( RenderExplosion, explosion_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // explosion_id
+    { (uint32_t) __builtin_offsetof( RenderExplosion, parent_object_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // parent_object_id
+    { (uint32_t) __builtin_offsetof( RenderExplosion, explosion_type ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // explosion_type
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Small
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Large
+    { (uint32_t) __builtin_offsetof( RenderExplosion, team ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // team
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Red
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Blue
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Green
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Gold
 };
 
 // THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —

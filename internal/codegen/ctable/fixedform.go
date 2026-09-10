@@ -484,7 +484,8 @@ func (g *tableGen) fixedDstRow(e ir.TableFixedLayoutEntry) string {
 		// and the tag leads that storage, so the two offsets are the same byte
 		aux = dst + g.fixedTerms(d.Aux)
 	}
-	return fmt.Sprintf("{ %d, %d, %d, %d, %d }", dst, stride, aux, d.Counted, d.Meta)
+	return fmt.Sprintf("{ %d, %d, %d, %d, %d, %dull, %dull, %d, %d }",
+		dst, stride, aux, d.Counted, d.Meta, d.ClampLo, d.ClampHi, d.ClampFlags, d.ClampWidth)
 }
 
 // fixedTerms sums a destination's offsetof terms.
@@ -538,10 +539,13 @@ func (g *tableGen) emitFixedByteArray(b []byte) {
 /* ---- the read-side bounds --------------------------------------------------
 
 A fixed record is a positional image, so the ONE read loop moves bytes and asks
-nothing about what they mean. What a declaration bounds is held HERE, as
-straight-line code in the generated decode, after the copy — never as plan
-entries, which would be a test per bounded field on every read of every record
-and is the cost the identity plan exists to avoid.
+nothing about what they mean. What a declaration bounds is held HERE on the
+identity path, as straight-line code in the generated decode, after the copy —
+never as identity-plan entries, which would be a test per bounded field on
+every read of every record and is the cost the identity plan exists to avoid.
+A compiled plan emits a clamp op per ranged scalar (not per counted-array
+slot: live count, slack never). This pass still runs after either plan. It is
+idempotent.
 
 THE PASS RUNS OVER STORAGE, so ONE pass covers both plans. It walks only what a
 read can have written: a counted array's LIVE elements and never its slack, an

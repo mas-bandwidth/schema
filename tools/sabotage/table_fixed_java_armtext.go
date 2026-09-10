@@ -17,10 +17,8 @@ package main
 func init() {
 	sabotages["fixed-form-java-arm-text-flavour"] = []edit{
 		{
-			old: "c.push(theirAt, myAt, units, myAt + 4, guard, opText, arg, (byte) 0, (byte) 0,\n" +
-				"                        myKind == 33 ? textWide : textUtf8);",
-			new: "c.push(theirAt, myAt, units, myAt + 4, guard, opText, // SABOTAGED: the flavour over the arm ordinal\n" +
-				"                        myKind == 33 ? textWide : textUtf8, (byte) 0, (byte) 0);",
+			old: "c.push(theirAt, at, units, auxAt, guard, opText, arg, (byte) 0, (byte) 0, meta);",
+			new: "c.push(theirAt, at, units, auxAt, guard, opText, meta, (byte) 0, (byte) 0, arg); // SABOTAGED: the flavour over the arm ordinal",
 		},
 		{
 			old: "final int unit = (p.meta == textWide) ? 2 : 1;",

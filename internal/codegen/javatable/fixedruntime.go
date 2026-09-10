@@ -31,12 +31,13 @@ const tableFixedRuntime = `// TableFixed — the FIXED FORM's runtime (docs/SPEC
 // the values in declared order, every field at its declared storage width,
 // nothing padded between fields. This class is what reads one:
 //
-//   THE ONE READ PATH is a prefill and a loop over a PLAN. For a record whose
-//   hash is this build's own the plan is the identity plan — one entry, the
-//   whole body — and for anybody else it is a plan compiled ONCE from the
-//   writer's own layout and cached by hash. The same loop runs either way,
-//   which is the owner's own ruling: a form whose cost moved when a peer
-//   shipped would be a performance cliff at the worst possible moment.
+//   THE ONE READ PATH prefills the bytes the plan does not write and loops
+//   over a PLAN. Identity's hole list is empty. For a record whose hash is
+//   this build's own the plan is the identity plan — one entry, the whole
+//   body — and for anybody else it is a plan compiled ONCE from the writer's
+//   own layout and cached by hash. The same loop runs either way, which is
+//   the owner's own ruling: a form whose cost moved when a peer shipped
+//   would be a performance cliff at the worst possible moment.
 //
 //   THE PLAN'S DESTINATION IS A RECORD IMAGE, a byte[] laid out exactly as
 //   THIS reader's own body. The generated scatter then lands that image
@@ -80,6 +81,16 @@ public final class TableFixed {
     public static final byte textUtf8 = 1;
     /** a text entry's flavour: UTF-16 code units, two bytes each. */
     public static final byte textWide = 2;
+    /** a dest-row flavour: bytes(N) as an ARRAY of u8, not a TEXT. */
+    public static final byte textBytes = 3;
+
+    // MY SIDE of the layout, five lanes per entry.
+    public static final int dstLanes = 5;
+    public static final int dstOffset = 0;
+    public static final int dstStride = 1;
+    public static final int dstAux = 2;
+    public static final int dstCounted = 3;
+    public static final int dstArg = 4;
 
     // 64-, 32- and 16-bit little-endian word access into byte[] — the
     // proven-fast JVM form (VarHandle byteArrayViewVarHandle), and the same
@@ -360,9 +371,9 @@ public final class TableFixed {
 
     // ---- THE ONE READ LOOP --------------------------------------------------
     //
-    // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it was
-    // handed is the only thing that differs between reading this build's own
-    // record and reading anybody else's.
+    // A READ IS THE HOLE PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan
+    // it was handed is the only thing that differs between reading this
+    // build's own record and reading anybody else's.
     //
     // EVERY REACH INTO THE RECORD IS BOUNDED. A compiled plan came from a
     // stranger's layout, so an entry that would read past the record body is
@@ -732,7 +743,7 @@ public final class TableFixed {
     private static final class Compiler {
         Entry[] plan;
         short[] remap;
-        byte[] counted; // MY side: one byte per entry of my own layout — does a live count ride here
+        int[] dest; // MY side: five lanes per layout entry — dest, stride, aux, counted, arg
         int count;
         int remapUsed;
         boolean overflow;
@@ -782,20 +793,18 @@ public final class TableFixed {
         final long theirKids = theirs.children(ti);
         final long myKids = mine.children(mi);
         int myChild = mi + 1;
-        int myOff = myAt;
         for (long k = 0; k < myKids; k++) {
             final long myId = mine.id(myChild);
             int theirChild = ti + 1;
             int theirOff = theirAt;
             for (long j = 0; j < theirKids; j++) {
                 if (theirs.id(theirChild) == myId) {
-                    compileEntry(c, theirs, theirChild, theirOff, mine, myChild, myOff, guard, arg);
+                    compileEntry(c, theirs, theirChild, theirOff, mine, myChild, myAt, guard, arg);
                     break;
                 }
                 theirOff += (int) theirs.size(theirChild);
                 theirChild += theirs.subtree(theirChild);
             }
-            myOff += (int) mine.size(myChild);
             myChild += mine.subtree(myChild);
         }
         // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown
@@ -819,9 +828,20 @@ public final class TableFixed {
         final int myKind = mine.kind(mi);
         final int theirSize = (int) theirs.size(ti);
         final int mySize = (int) mine.size(mi);
+        final int row = mi * dstLanes;
+        final int at = (c.dest != null && row + dstAux < c.dest.length)
+                ? myAt + c.dest[row + dstOffset] : myAt;
+        final int auxAt = (c.dest != null && row + dstAux < c.dest.length)
+                ? myAt + c.dest[row + dstAux] : myAt;
+        final int stride = (c.dest != null && row + dstStride < c.dest.length)
+                ? c.dest[row + dstStride] : 0;
+        final boolean live = c.dest != null && row + dstCounted < c.dest.length
+                && c.dest[row + dstCounted] != 0;
+        final byte flavour = (c.dest != null && row + dstArg < c.dest.length)
+                ? (byte) c.dest[row + dstArg] : 0;
         if (theirKind != myKind) {
             if (widens(theirKind, myKind)) {
-                c.push(theirAt, myAt, theirSize, 0, guard,
+                c.push(theirAt, at, theirSize, 0, guard,
                         theirKind == 10 ? opWidenF : opWiden, arg, (byte) mySize,
                         signedKind(theirKind) ? (byte) 1 : (byte) 0);
                 return;
@@ -832,28 +852,28 @@ public final class TableFixed {
         }
         switch (myKind) {
             case 35: { // the OPTIONAL WRAPPER: the present byte, then the payload whole
-                c.push(theirAt, myAt, 1, 0, guard, opCopy, arg, (byte) 0, (byte) 0);
-                compileEntry(c, theirs, ti + 1, theirAt + 1, mine, mi + 1, myAt + 1, guard, arg);
+                c.push(theirAt, auxAt, 1, 0, guard, opCopy, arg, (byte) 0, (byte) 0);
+                compileEntry(c, theirs, ti + 1, theirAt + 1, mine, mi + 1, myAt, guard, arg);
                 break;
             }
             case 13: { // a nested table: match its fields
-                matchChildren(c, theirs, ti, theirAt, mine, mi, myAt, guard, arg);
+                matchChildren(c, theirs, ti, theirAt, mine, mi, at, guard, arg);
                 break;
             }
             case 14: { // an array: the count, then min( their bound, my bound ) elements
                 final int theirElem = (int) theirs.size(ti + 1);
                 final int myElem = (int) mine.size(mi + 1);
-                final boolean live = c.counted != null && mi < c.counted.length && c.counted[mi] != 0;
                 final int head = live ? 4 : 0;
                 final int theirN = theirElem != 0 ? (theirSize - head) / theirElem : 0;
                 final int myN = myElem != 0 ? (mySize - head) / myElem : 0;
                 if (live) {
-                    c.push(theirAt, myAt, myN, 0, guard, opCount, arg, (byte) 0, (byte) 0);
+                    c.push(theirAt, auxAt, myN, 0, guard, opCount, arg, (byte) 0, (byte) 0);
                 }
                 final int n = Math.min(theirN, myN);
+                final int step = stride != 0 ? stride : myElem;
                 for (int i = 0; i < n; i++) {
                     compileEntry(c, theirs, ti + 1, theirAt + head + i * theirElem,
-                            mine, mi + 1, myAt + head + i * myElem, guard, arg);
+                            mine, mi + 1, at + i * step, guard, arg);
                 }
                 break;
             }
@@ -863,13 +883,13 @@ public final class TableFixed {
                 final int theirElemAt = ti + 1 + theirs.subtree(ti + 1);
                 final int myElemAt = mi + 1 + mine.subtree(mi + 1);
                 final int theirElem = (int) theirs.size(theirElemAt);
-                final int myElem = (int) mine.size(myElemAt);
+                final int step = stride != 0 ? stride : (int) mine.size(myElemAt);
                 for (long k = 0; k < myKeys; k++) {
                     final long keyId = mine.id(mi + 2 + (int) k);
                     for (long j = 0; j < theirKeys; j++) {
                         if (theirs.id(ti + 2 + (int) j) != keyId) { continue; }
                         compileEntry(c, theirs, theirElemAt, theirAt + (int) j * theirElem,
-                                mine, myElemAt, myAt + (int) k * myElem, guard, arg);
+                                mine, myElemAt, at + (int) k * step, guard, arg);
                         break;
                     }
                 }
@@ -887,10 +907,10 @@ public final class TableFixed {
                     for (long j = 0; j < theirArms; j++) {
                         if (theirs.id(theirArm) == myId) {
                             // MY tag value, written under THEIR tag's guard
-                            c.push(theirAt, myAt, myTag, (int) (k + 1), theirAt,
+                            c.push(theirAt, auxAt, myTag, (int) (k + 1), theirAt,
                                     opConst, (byte) (j + 1), (byte) 0, (byte) 0);
                             compileEntry(c, theirs, theirArm, theirAt + theirTag,
-                                    mine, myArm, myAt + myTag, theirAt, (byte) (j + 1));
+                                    mine, myArm, at, theirAt, (byte) (j + 1));
                             break;
                         }
                         theirArm += theirs.subtree(theirArm);
@@ -913,7 +933,7 @@ public final class TableFixed {
                     map[j] = landed;
                 }
                 final int table = c.lay(map, n);
-                c.push(theirAt, myAt, theirSize, table, guard, opOrdinal, arg, (byte) mySize, (byte) 0);
+                c.push(theirAt, at, theirSize, table, guard, opOrdinal, arg, (byte) mySize, (byte) 0);
                 break;
             }
             case 12: case 33: { // text: the length, then min( their units, my units )
@@ -923,15 +943,15 @@ public final class TableFixed {
                 // other field in it and the guard compares arg, so a flavour
                 // written over arg is a text field under the SECOND arm that
                 // never lands and never counts.
-                c.push(theirAt, myAt, units, myAt + 4, guard, opText, arg, (byte) 0, (byte) 0,
-                        myKind == 33 ? textWide : textUtf8);
+                final byte meta = flavour != 0 ? flavour : (myKind == 33 ? textWide : textUtf8);
+                c.push(theirAt, at, units, auxAt, guard, opText, arg, (byte) 0, (byte) 0, meta);
                 break;
             }
             default: {
                 if (theirSize == mySize) {
-                    c.push(theirAt, myAt, mySize, 0, guard, opCopy, arg, (byte) 0, (byte) 0);
+                    c.push(theirAt, at, mySize, 0, guard, opCopy, arg, (byte) 0, (byte) 0);
                 } else if (theirSize < mySize && mySize <= 8) {
-                    c.push(theirAt, myAt, theirSize, 0, guard, opWiden, arg, (byte) mySize, (byte) 0);
+                    c.push(theirAt, at, theirSize, 0, guard, opWiden, arg, (byte) mySize, (byte) 0);
                 } else if (c.report != null) {
                     c.report.kindMismatch++;
                 }
@@ -943,14 +963,16 @@ public final class TableFixed {
     /** compile a plan from the writer's layout onto this reader's own, ONCE
      *  per peer. Answers the entry count, or -1 when the plan does not fit the
      *  storage the caller declared — which is a refusal by name, because this
-     *  codec never allocates. */
-    public static int compile(Layout theirs, Layout mine, byte[] counted,
+     *  codec never allocates. dest is MY side of the layout, five lanes per
+     *  entry: dest, stride, aux, counted, arg. A bytes(N) row is an ARRAY's. */
+    public static int compile(Layout theirs, Layout mine, int[] dest,
                               Entry[] plan, short[] remap, Report report) {
-        if (plan == null || plan.length == 0 || remap == null) { return -1; }
+        if (plan == null || plan.length == 0 || remap == null || dest == null) { return -1; }
+        if (dest.length < mine.count * dstLanes) { return -1; }
         final Compiler c = new Compiler();
         c.plan = plan;
         c.remap = remap;
-        c.counted = counted;
+        c.dest = dest;
         c.report = report;
         matchChildren(c, theirs, 0, 0, mine, 0, 0, noGuard, (byte) 0);
         if (c.overflow) { return -1; }
@@ -983,6 +1005,54 @@ public final class TableFixed {
             out++;
         }
         return out;
+    }
+
+    // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's list is
+    // empty: its one copy covers the body, so the hole loop is a no-op on
+    // that path rather than a skip of the prefill. Guarded entries (union
+    // arms) stay holes and keep the defaults; the tag is unguarded and lands.
+    private static int landSize(Entry p) {
+        switch (p.op) {
+            case opCount: return 4;
+            case opText: return 4;
+            case opOrdinal:
+            case opWiden: return p.dstsize & 0xff;
+            case opWidenF: return 8;
+            default: return p.size;
+        }
+    }
+
+    private static void mark(byte[] cover, int off, int n) {
+        if (n <= 0 || off < 0) { return; }
+        int end = off + n;
+        if (end > cover.length) { end = cover.length; }
+        for (int i = off; i < end; i++) { cover[i] = 1; }
+    }
+
+    /** complement of the unguarded dest writes. cover is scratch the size of
+     *  the image; out is packed [dst, size, ...] and answers the hole count. */
+    public static int holes(Entry[] plan, int count, byte[] cover, int[] out) {
+        java.util.Arrays.fill(cover, (byte) 0);
+        for (int i = 0; i < count; i++) {
+            final Entry p = plan[i];
+            if (p.guard != noGuard) { continue; }
+            mark(cover, p.dst, landSize(p));
+            if (p.op == opText) { mark(cover, p.aux, p.size); }
+        }
+        int n = 0;
+        int i = 0;
+        while (i < cover.length) {
+            if (cover[i] != 0) { i++; continue; }
+            final int start = i;
+            i++;
+            while (i < cover.length && cover[i] == 0) { i++; }
+            if (out != null && n * 2 + 1 < out.length) {
+                out[n * 2] = start;
+                out[n * 2 + 1] = i - start;
+            }
+            n++;
+        }
+        return n;
     }
 }
 `

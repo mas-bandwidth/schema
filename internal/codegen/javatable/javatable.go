@@ -190,18 +190,25 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
-	// §15's WIDE-KIND REFUSAL IS THE FORM-1 ACCELERATORS' AND NOT THE WIRE'S
-	// (ir.WideTableKinds): the block form and the cooked form are what must
-	// name a kind's storage column and its reflection descriptor, and the fixed
-	// form names no kind at all on its emitted path.
+	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
+	// ACCELERATORS, NOT OF THE FIXED FORM (ir.WideTableKinds). A block row and
+	// a cooked node are laid out in the ID-TABLE's kind vocabulary, which has
+	// no fixed-point and no 128-bit kind in this backend yet (schema#366) —
+	// but §3.4's fixed form carries both by its own constant-size table, a
+	// `fixed(I, F)` riding as the raw scaled integer at its storage width and
+	// an `int128`/`uint128` as sixteen bytes, the low half then the high.
 	//
-	// THIS IS THE DAY THE RULE'S OWN COMMENT NAMED. The `false` that stood here
-	// while Java carried no form-3 codec is now this backend's OWN answer —
-	// `fixedRoots` is the set of roots this emitter lays out, its coverage and
-	// not the reference's — so a wide-kind unit keeps its fixed form and it is
-	// the two ACCELERATORS that stand down alone. A unit with nothing left is
-	// still refused whole and by name, exactly as it was before the form
+	// THE DAY THAT RULE NAMED IS THIS ONE. The `false` the other ports still
+	// pass is now this backend's OWN answer — `fixedRoots` is the set of roots
+	// this emitter lays out, its coverage and not the reference's — so a
+	// wide-kind unit keeps its form-3 codec and only the two accelerators stand
+	// down. A unit that loses them AND has no fixed form to put in their place
+	// is still refused whole and by name, exactly as it was before the form
 	// arrived.
+	//
+	// The scope question is asked BEFORE checkNames, which is the order the tip
+	// and darttable both use: a unit §15 refuses whole is refused for that,
+	// not for a reserved spelling inside it.
 	scope := ir.WideTableKinds(u, "Java", len(fixedRoots(u)) > 0)
 	if scope.Unit {
 		return nil, scope.Refusal

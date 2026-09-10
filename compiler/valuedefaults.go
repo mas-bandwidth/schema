@@ -14,7 +14,21 @@ import (
 
 // valueDefaultTargets is the canonical name of every built-in target whose
 // backends carry a string, bytes or flags default on both wires.
+//
+// A PORT EARNS THIS LIST BY ANSWERING "ABSENT FIELD" WITH THE DECLARED VALUE
+// on every table form it emits, and by writing the same value where its own
+// form has a template. It is not a claim about the value surface: a port whose
+// packet codec already spells the default (packetValueDefaultTargets) still
+// initializes a fresh value correctly and can still be missing the table half.
 var valueDefaultTargets = []string{"cpp", "c", "cs"}
+
+// registerTableValueDefaultCarrier registers a port on the TABLE half of the
+// list above. A port calls it from its own target file's init, beside the
+// packet call, so a target stays one file (docs/CONTRIBUTING.md, "Adding a
+// language").
+func registerTableValueDefaultCarrier(name string) {
+	valueDefaultTargets = append(valueDefaultTargets, name)
+}
 
 // packetValueDefaultTargets names the packet carriers independently of the
 // table carriers. A port registers here from its own target file's init.

@@ -202,6 +202,40 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
     fixed_check( loose.renamed == 5000 && loose.gone == -7,
                  "C NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
     fixed_check( r.clamped == 0, "C NEGATIVE CONTROL: and counts nothing" );
+
+    /* A COMPILED PLAN FROM THIS BUILD'S OWN LAYOUT. The identity plan copies;
+       a compiled plan clamps. The loop alone, without the storage pass, must
+       already hold the range. */
+    {
+        TableFixedLayoutView parsed;
+        TableFixedEntry compiled[1024];
+        TableReport cr;
+        FxRoot held;
+        int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
+        int32_t guarded = 0;
+        int32_t made;
+        int32_t i, clamp_ops = 0;
+
+        fixed_check( table_fixed_parse_layout( fx_root_fixed_layout, (int64_t) sizeof( fx_root_fixed_layout ), &parsed, &why ) != 0,
+                     "C bounds, compiled-own: this build's layout parses" );
+        memset( &cr, 0, sizeof( cr ) );
+        made = table_fixed_compile( &parsed, fx_root_fixed_layout, (int32_t) sizeof( fx_root_fixed_layout ),
+                                    fx_root_fixed_dst, compiled, 1024, &guarded, &cr );
+        fixed_check( made > 0, "C bounds, compiled-own: the plan compiles" );
+        for ( i = 0; i < made; ++i )
+        {
+            if ( compiled[i].op == (uint8_t) kTableFixedClamp ) { clamp_ops++; }
+        }
+        fixed_check( clamp_ops >= 2, "C bounds, compiled-own: ranged scalars are clamp ops" );
+
+        fx_root_reset( &held );
+        memset( &r, 0, sizeof( r ) );
+        table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &r );
+        fixed_check( held.renamed == 1000 && held.gone == 0,
+                     "C COMPILED CLAMP: the loop alone holds a ranged integer" );
+        fixed_check( r.clamped == 2, "C COMPILED CLAMP: and counts the same two" );
+        fixed_check( held.nested.a == 111 && held.nested.b == 222, "C COMPILED CLAMP: an in-range neighbour is untouched" );
+    }
 }
 
 /* THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4), the C twin of
