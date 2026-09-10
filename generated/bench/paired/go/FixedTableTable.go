@@ -988,7 +988,7 @@ var FixedTableFixedDst = []TableFixedDst{
 	{uint32(unsafe.Offsetof(BenchMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0}, // loadout
 	{0, 0, 0, 0, 0, 0}, // element
 	{uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), 0, 1, 1}, // player_name
-	{uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), 1, uint32(unsafe.Offsetof(BenchMixed{}.Payload)), 1, 3, 3},       // payload
+	{uint32(unsafe.Offsetof(BenchMixed{}.Payload)), 1, uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), 1, 3, 3},       // payload
 	{0, 0, 0, 0, 0, 0}, // u8
 	{uint32(unsafe.Offsetof(BenchMixed{}.AimX)), 0, 0, 0, 0, 0},      // aim_x
 	{uint32(unsafe.Offsetof(BenchMixed{}.AimY)), 0, 0, 0, 0, 0},      // aim_y

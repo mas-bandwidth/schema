@@ -413,5 +413,8 @@ func init() {
 		Name{Name: "tableFixedCompile", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedRefuse", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedOverlay", What: "the fixed form (form 3)"},
+		Name{Name: "tableFixedHole", What: "the fixed form: one dst range a compiled plan does not land"},
+		Name{Name: "tableFixedHoles", What: "the fixed form: the complement of the unguarded dest writes"},
+		Name{Name: "tableFixedLand", What: "the fixed form: mark a dest range as landed for hole prefill"},
 	)
 }

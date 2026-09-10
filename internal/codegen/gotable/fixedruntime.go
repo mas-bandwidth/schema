@@ -529,7 +529,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if te.Size-4 < units {
 			units = te.Size - 4
 		}
-		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Arg})
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
 	default:
 		e := TableFixedEntry{Src: theirAt, Dst: at, Guard: guard, Arg: arg}
 		if te.Size == me.Size {

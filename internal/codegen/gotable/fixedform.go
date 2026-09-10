@@ -222,16 +222,13 @@ func (g *tableGen) fixedWalkPayload(w *fixedWalk, owner string, f *ir.Field, id 
 			dstGo(offGo(owner, member(f)), g.sizeofGo(f), aux, counted, 0))
 		g.fixedWalkElement(w, f, 0, "element", "0")
 	case f.Type.Kind == ir.TBytes:
-		// THE LANES ARE SWAPPED AGAINST THE ARRAY ROW ABOVE, deliberately and
-		// not happily: a counted array puts the ARRAY in dst and the count in
-		// aux, and `bytes(N)` — the same kind 14 — puts the LENGTH in dst and
-		// the payload in aux, because the reader lands it with the text op,
-		// whose dst is a count. This port mirrors the reference exactly
-		// (ir/fixedform.go, the TBytes row of fixedWalkPayload); the lane
-		// convention is a REFERENCE-SIDE question and its fix belongs on
-		// fixed-table-form, where it had not landed at b7fdb475.
+		// `bytes(N)` is an ARRAY of u8 on this wire (ir/fixedform.go, the
+		// TBytes row of tableFixedWalkPayload). Dst is the buffer, Aux is the
+		// live length, Counted is 1, stride is 1: the same columns a counted
+		// array uses. The identity plan still lands the field with the TEXT op
+		// and reads neither column; only the compiled path reads these.
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindArray, size: size, children: 1, note: f.Name},
-			dstGo(offGo(owner, member(f)+"Length"), "1", offGo(owner, member(f)), 1, 3))
+			dstGo(offGo(owner, member(f)), "1", offGo(owner, member(f)+"Length"), 1, 3))
 		w.push(fixedLayoutEntry{id: 0, kind: ir.TableKindU8, size: 1, children: 0, note: "u8"}, dstGo("0", "", "", 0, 0))
 	case f.Type.Kind == ir.TString:
 		w.push(fixedLayoutEntry{id: id, kind: ir.TableKindString, size: size, children: 0, note: f.Name},

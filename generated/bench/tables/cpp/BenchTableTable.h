@@ -2158,7 +2158,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2212,7 +2212,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2334,14 +2340,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2764,7 +2770,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -3020,7 +3026,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -9865,6 +9871,52 @@ inline void TableStatFixedWriteBody( uint8_t * b, const TableStat & value )
     TableFixedPut32( b + 4, (uint32_t) value.delta );
 }
 
+// TableEntity's read-side bounds.
+inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.entity_id > 4095ull ) { value.entity_id = 4095ull; clamped++; } // bits(12) width clamp
+    if ( value.pos_x < -16383 ) { value.pos_x = -16383; clamped++; }
+    else if ( value.pos_x > 16383 ) { value.pos_x = 16383; clamped++; }
+    if ( value.pos_y < -16383 ) { value.pos_y = -16383; clamped++; }
+    else if ( value.pos_y > 16383 ) { value.pos_y = 16383; clamped++; }
+    if ( value.pos_z < -16383 ) { value.pos_z = -16383; clamped++; }
+    else if ( value.pos_z > 16383 ) { value.pos_z = 16383; clamped++; }
+    if ( value.yaw > 511ull ) { value.yaw = 511ull; clamped++; } // bits(9) width clamp
+    if ( value.pitch > 511ull ) { value.pitch = 511ull; clamped++; } // bits(9) width clamp
+    if ( value.vel_x < -2048 ) { value.vel_x = -2048; clamped++; }
+    else if ( value.vel_x > 2047 ) { value.vel_x = 2047; clamped++; }
+    if ( value.vel_y < -2048 ) { value.vel_y = -2048; clamped++; }
+    else if ( value.vel_y > 2047 ) { value.vel_y = 2047; clamped++; }
+    if ( value.vel_z < -2048 ) { value.vel_z = -2048; clamped++; }
+    else if ( value.vel_z > 2047 ) { value.vel_z = 2047; clamped++; }
+    if ( value.health < 0 ) { value.health = 0; clamped++; }
+    else if ( value.health > 1000 ) { value.health = 1000; clamped++; }
+    if ( (uint64_t) value.weapon > 15u ) { value.weapon = TableWeapon::None; clamped++; }
+}
+
+// TableStat's read-side bounds.
+inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.stat_id > 255ull ) { value.stat_id = 255ull; clamped++; } // bits(8) width clamp
+    if ( value.delta < -512 ) { value.delta = -512; clamped++; }
+    else if ( value.delta > 511 ) { value.delta = 511; clamped++; }
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void TableEntityFixedClamp( TableEntity & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    TableEntityFixedClampBody( value, clamped );
+    report->clamped += clamped;
+}
+
 // ---- TableEntity, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -9956,8 +10008,8 @@ constexpr TableFixedDst TableEntityFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry TableEntityFixedPlan[] = {
-    { 0u, 0u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 41u, 48u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
+    { 0u, 0u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 41u, 48u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
 };
 constexpr int32_t TableEntityFixedPlanCount = 2;
 constexpr int32_t TableEntityFixedPlanGuarded = 2;
@@ -10049,9 +10101,25 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
         TableEntityReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        TableEntityFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void TableStatFixedClamp( TableStat & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    TableStatFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- TableStat, the fixed form ----
@@ -10089,7 +10157,7 @@ constexpr TableFixedDst TableStatFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry TableStatFixedPlan[] = {
-    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // stat_id
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // stat_id
 };
 constexpr int32_t TableStatFixedPlanCount = 1;
 constexpr int32_t TableStatFixedPlanGuarded = 1;
@@ -10181,6 +10249,9 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
         TableStatReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        TableStatFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
