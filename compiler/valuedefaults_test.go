@@ -241,6 +241,14 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 					t.Errorf("C fixed-form prefill lacks %q", want)
 				}
 			}
+		case "dart":
+			// construction storage, not length-only: `"fx"` in the generated
+			// field initializer, the way C++ writes `char label[8 + 1] = "fx"`
+			for _, want := range []string{`"fx"`, "labelLength = 2", "..[0] = 0x66", "..[1] = 0x78"} {
+				if !strings.Contains(got, want) {
+					t.Errorf("dart fixed-form storage lacks %q", want)
+				}
+			}
 		}
 	}
 }
