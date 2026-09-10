@@ -79,7 +79,19 @@ var unpublishedLanguages = []string{"elixir"}
 // confirmation pass and no board.
 var tableOnlyLanguages = []string{"rust", "java", "js"}
 
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java", "js": "JavaScript"}
+// A PENDING LANGUAGE is a row the published table names that this driver has
+// no leg for at all: no generator invocation, no build step, no runner, no
+// wire. It is deliberately NOT in allLanguages(), so `-langs` refuses it and
+// nothing can generate, build, gate or measure it. The nine-language table
+// carries the name so the row it will one day fill reads as absent rather than
+// silently missing, and `bench/paired/table.go` takes it from here rather than
+// keeping a list of its own — dart's fixed-form emitter has landed, its bench
+// leg has not.
+var pendingLanguages = []string{"dart"}
+
+// names is the ONE display-name map: every language this driver knows, plus
+// the pending rows, so nothing downstream keeps a second one.
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java", "js": "JavaScript", "dart": "Dart"}
 
 // allLanguages IS EVERY NAME -langs ACCEPTS: the published four, the paired
 // legs that are measurable but not published yet, and the table-only legs.
@@ -97,6 +109,35 @@ func wiresFor(lang string) []string {
 		return []string{"table"}
 	}
 	return []string{"packet", "table"}
+}
+
+// checkRequestShape holds the rule that A TABLE-ONLY LANGUAGE IS NEVER IN A
+// MIXED REQUEST, and names the one exception: `build`.
+//
+// The exception is the build MANIFEST, which is one file. generateAndBuild does
+// per-language work and compares nothing — it walks `wiresFor(lang)`, which
+// already knows a table-only leg has no packet wire — and then writes the whole
+// of build/paired/build.json, replacing what was there. fastMeasure refuses to
+// measure a leg that manifest does not carry ("cached build lacks %s/%s"), so
+// every leg of one sitting has to be built by ONE invocation, and the
+// nine-language sitting is paired legs and table-only legs together. Splitting
+// that build in two would leave a manifest describing half of it.
+//
+// GATE KEEPS THE RULE. It is per-language work too, but nothing forces it into
+// one invocation, so bench/paired/nine.sh gates one language at a time — every
+// single-language request is one shape or the other — and this driver never has
+// to decide what a half-paired gate would mean. Every other mode reads the
+// request as a set to compare and takes one shape or the other, whole.
+func checkRequestShape(mode string, langs []string) error {
+	if mode == "build" || onlyTableLanguages(langs) {
+		return nil
+	}
+	for _, lang := range langs {
+		if contains(tableOnlyLanguages, lang) {
+			return errors.New("a table-only language is requested alone: -langs " + lang)
+		}
+	}
+	return nil
 }
 
 // onlyTableLanguages reports whether every requested language is table-only.
@@ -1352,7 +1393,7 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, run confirmation, or render")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
@@ -1364,6 +1405,10 @@ func main() {
 	fastTimeout := flag.Duration("fast-timeout", 5*time.Minute, "whole fast-mode deadline, at most 5m including gates")
 	noise := flag.String("noise-note", "uncontrolled diagnostic; no quiet-window claim", "operator context recorded by fast mode")
 	flag.Float64Var(&twinTolerance, "twin-tolerance", 10, "C and C++ rows of the same wire/path must agree within this percent; 0 disables")
+	// Recorded, never applied: the caller pins the sitting (bench/paired/nine.sh
+	// runs the whole pass under `bench-lane <core>` so every runner inherits it)
+	// and this only carries that fact into the rendered header.
+	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the table header, table mode only")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {
@@ -1377,15 +1422,8 @@ func main() {
 		}
 		seen[lang] = true
 	}
-	// A TABLE-ONLY LANGUAGE IS NEVER IN A MIXED REQUEST. Build and gate could
-	// take one, but every other mode reads the request as a set to compare, so
-	// keeping the shapes apart everywhere is one rule instead of four.
-	if !onlyTableLanguages(langs) {
-		for _, lang := range langs {
-			if contains(tableOnlyLanguages, lang) {
-				fail(errors.New("a table-only language is requested alone: -langs " + lang))
-			}
-		}
+	if e := checkRequestShape(*mode, langs); e != nil {
+		fail(e)
 	}
 	if *mode == "render" {
 		if e := render(*out); e != nil {
@@ -1393,8 +1431,19 @@ func main() {
 		}
 		return
 	}
-	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" {
+	// Discovery answers before any build, because the wrapper uses it to
+	// decide what to build.
+	if *mode == "table-langs" {
+		if e := reportTableLanguages(); e != nil {
+			fail(e)
+		}
+		return
+	}
+	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" {
 		fail(errors.New("unknown mode"))
+	}
+	if *lane != "" && *mode != "table" {
+		fail(errors.New("-lane is recorded by table mode only"))
 	}
 	if *mode == "run" && strings.TrimSpace(*receipt) == "" {
 		fail(errors.New("run requires -quiet-window with the operator’s READY/START receipt or reference"))
@@ -1410,11 +1459,21 @@ func main() {
 		if !onlyTableLanguages(langs) && !unpublishedAlone(langs) && len(langs) != len(languages) {
 			fail(errors.New("fast mode requires all four paired languages, or one unpublished language alone"))
 		}
+	}
+	// Table mode takes its languages from the tree, not from -langs: the point
+	// of the one command is that the same line runs everywhere and the tree
+	// answers for what it carries.
+	if *mode == "table" {
+		if *langsFlag != flag.Lookup("langs").DefValue {
+			fail(errors.New("table mode discovers its languages from bench/tables; -langs does not apply"))
+		}
+	}
+	if *mode == "fast" || *mode == "table" {
 		if e := fast.validate(); e != nil {
 			fail(e)
 		}
 	}
-	if !*reuse && *mode != "fast" {
+	if !*reuse && *mode != "fast" && *mode != "table" {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
 		}
@@ -1425,6 +1484,12 @@ func main() {
 	}
 	if *mode == "fast" {
 		if e := fastMeasure(langs, *out, info, fast); e != nil {
+			fail(e)
+		}
+		return
+	}
+	if *mode == "table" {
+		if e := tablePass(*out, info, fast, *lane); e != nil {
 			fail(e)
 		}
 		return
