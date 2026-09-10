@@ -435,13 +435,13 @@ func MixedEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	{
 		es := src + 49
 		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Moving))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
 		n++
 	}
 	{
 		es := src + 50
 		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Firing))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
 		n++
 	}
 	return n
@@ -521,7 +521,7 @@ func MixedHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	{
 		es := src + 12
 		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.Crit))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
 		n++
 	}
 	return n
@@ -751,7 +751,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	{
 		es := src + 1227
 		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.HasExtra))
-		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
 		n++
 	}
 	{
