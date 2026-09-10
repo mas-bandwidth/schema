@@ -65,7 +65,8 @@ var (
 	reEnumSingle      = regexp.MustCompile(`enum\s*\{\s*(\w+)\s*=\s*([^,}]+)\s*\}\s*;`)
 	reTypedefStruct   = regexp.MustCompile(`typedef struct (\w+)\s*\{`)
 	reStructClose     = regexp.MustCompile(`\}\s*(TableFixed\w+)\s*;`)
-	reFieldDefault    = regexp.MustCompile(`(?m)^(\s*(?:u?int(?:8|16|32|64)_t|bool)\s+\w+)\s*=\s*(?:0u?|false|true|kTableFixedNoGuard|layout_malformed)\s*;`)
+	reFieldDefault    = regexp.MustCompile(`(?m)^(\s*(?:u?int(?:8|16|32|64)_t|bool)\s+\w+)\s*=\s*(?:0u?|1u?|false|true|kTableFixedNoGuard|layout_malformed)\s*;`)
+	reUint8Lit        = regexp.MustCompile(`\(uint8_t\)\s*(\d+)`)
 	rePtrDefault      = regexp.MustCompile(`(?m)^(\s*\S+\s*\*\s*\w+)\s*=\s*NULL\s*;`)
 	reForInt          = regexp.MustCompile(`\bint i;\s*for \( i =`)
 	reForI32          = regexp.MustCompile(`\bint32_t i;\s*for \( i =`)
@@ -365,6 +366,7 @@ func normalizeSyntax(s string) string {
 		{"*is_leaf = false", "is_leaf = false"},
 		{"(uint8_t) 1", "1u"},
 		{"(uint8_t) 0", "0u"},
+		{"(uint8_t) 8", "8u"},
 		{"(uint8_t) kTableFixedWidenF", "kTableFixedWidenF"},
 		{"(uint8_t) kTableFixedWiden", "kTableFixedWiden"},
 		{"(uint8_t) kTableFixedClamp", "kTableFixedClamp"},
@@ -424,6 +426,7 @@ func normalizeSyntax(s string) string {
 	}
 	s = normalizeLocals(s)
 	s = rewriteLayBounds(s)
+	s = reUint8Lit.ReplaceAllString(s, "${1}u")
 	s = reSkipBraceOpen.ReplaceAllString(s, "n = their_n < my_n ? their_n : my_n;")
 	s = reSkipBraceClose.ReplaceAllString(s, "c.skip_clamp = prev_skip; break;")
 	s = orderCompileEntry(s)
@@ -469,6 +472,13 @@ func orderCompileEntry(s string) string {
 		body = strings.ReplaceAll(body, aux, "")
 		const at = "at = my_at + d.dst;"
 		body = strings.Replace(body, at, at+" "+aux, 1)
+		// C hoists my_arm then stamps argw; C++ stamps argw then declares my_arm.
+		const myArm = "my_arm = mi + 1;"
+		const saved = "saved_argw = c.argw;"
+		if strings.Contains(body, saved) && strings.Contains(body, myArm) {
+			body = strings.ReplaceAll(body, myArm, "")
+			body = strings.Replace(body, saved, saved+" "+myArm, 1)
+		}
 		return body
 	})
 }

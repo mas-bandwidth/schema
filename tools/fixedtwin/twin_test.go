@@ -56,6 +56,47 @@ value.game_event.hit;
 	}
 }
 
+func TestArgwSpellingAgrees(t *testing.T) {
+	// The tip's guard-width field: C++ defaults argw to 1, C does not;
+	// C casts the 8-byte clamp, C++ writes 8u; C hoists my_arm then stamps
+	// argw, C++ stamps argw then declares my_arm. Spelling, not a fourth
+	// named remaining.
+	c := `
+struct TableFixedEntry {
+    uint8_t argw;
+};
+static SCHEMA_UNUSED uint64_t table_fixed_tag_at( const uint8_t * src, uint32_t guard, uint8_t argw )
+{
+    const uint8_t w = argw == 0 ? (uint8_t) 1 : ( argw > 8u ? (uint8_t) 8 : argw );
+}
+static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c )
+{
+    const uint8_t saved_argw = c->argw;
+    int32_t my_arm = mi + 1;
+    c->argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : (uint8_t) 1;
+}
+`
+	cpp := `
+struct TableFixedEntry {
+    uint8_t argw = 1;
+};
+inline uint64_t TableFixedTagAt( const uint8_t * src, uint32_t guard, uint8_t argw )
+{
+    const uint8_t w = argw == 0 ? 1u : ( argw > 8u ? 8u : argw );
+}
+inline void TableFixedCompileEntry( TableFixedCompiler & c )
+{
+    const uint8_t saved_argw = c.argw;
+    c.argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : 1u;
+    int32_t my_arm = mi + 1;
+}
+`
+	left := diffLines("fixture", canonicalize(c), canonicalize(cpp))
+	if len(left) != 0 {
+		t.Fatalf("argw spelling should be empty after the map:\n%s", strings.Join(left, "\n"))
+	}
+}
+
 func TestPlantedDivergenceReds(t *testing.T) {
 	c := `enum { kTableFixedCopy = 99, kTableFixedCount = 1 };`
 	cpp := `enum : uint8_t { kTableFixedCopy = 0, kTableFixedCount = 1, };`
