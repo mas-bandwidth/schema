@@ -29,6 +29,8 @@ union Pick
 
 table FuRoot
 {
+    flag  bool = false
+    note  ?int32
     pick  Pick
     tail  int32 = 3
     // THE WIDE SIDE OF THE SIGNED RUNG: FU1 declares this `int16` (see there).

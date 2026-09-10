@@ -28,6 +28,8 @@
 /test/conformance/rust/Cargo.lock
 /test/rust-fuzz/target/
 /test/rust-fuzz/Cargo.lock
+/test/rust-fixedform/target/
+/test/rust-fixedform/Cargo.lock
 /bench/tools/cs-union-form/bin/
 /bench/tools/cs-union-form/obj/
 # every build stamp under generated/ — stamps order the build and are not
@@ -83,3 +85,7 @@ erl_crash.dump
 # Matched packet/table benchmark build products.
 /bench/paired/cs/bin/
 /bench/paired/cs/obj/
+/bench/tables/rust/target/
+/bench/tables/rust/Cargo.lock
+/generated/bench/paired/rust/target/
+/generated/bench/paired/rust/Cargo.lock

@@ -15,6 +15,18 @@
 // scalar in the FIRST arm keeps the arms different sizes, which is what makes
 // the second arm's offsets its own.
 //
+//
+// IT CARRIES TWO MORE FIELDS THAN THE BUG STRICTLY NEEDS, AND THEY LEAD THE
+// BODY SO THEIR BYTES ARE AT A KNOWN OFFSET: a `bool` and an optional. §3.4
+// spells both as ONE BYTE THAT IS TRUE WHEN IT IS NOT ZERO — not when it is
+// one — so a writer that spells `true` 2, or presence 7, is a writer this
+// reader still understands. That is a ruling and not an accident, so this
+// fixture is where it is held: the test forges those two bytes and reads them
+// back down BOTH paths, which is the same pair of paths the text above needs.
+//
+// AND TWO WIDENING RUNGS RIDE THE SAME FIXTURE, AFTER `tail` so the two bytes
+// above keep their offsets: `mark` and `heat` (see below).
+//
 // FU2 is the same declaration with one field appended, so its layout hash
 // differs and a read of FU1's bytes goes through a COMPILED plan rather than
 // the identity one. That is the whole point: the two reads have to agree field
@@ -41,6 +53,8 @@ union Pick
 
 table FuRoot
 {
+    flag bool = false
+    note ?int32
     pick Pick
     tail int32 = 3
     // THE SIGNED WIDENING RUNG (SPEC §4), which nothing else in this corpus

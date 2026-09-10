@@ -98,6 +98,37 @@ and the same sibling serialize runtimes as the standard packet pass. `CC`,
 required. `-langs cpp,go,cs` permits a partial build or correctness check, but
 publishing requires all four languages and at least seven rounds.
 
+## Table-only languages
+
+**A fifth language may ride the table wire alone, and it never appears in a
+ratio, a board or a confirmation pass.** The percentages on this page are a
+division, and a division needs both halves over the same records; a language
+with one half has one number and says so.
+
+`rust` is the first. It is table-only because its packet leg does not meet this
+driver's contract, not because anybody chose to skip it: `bench/rust` is a real
+packet runner whose CSV is already the seventeen columns, and it has neither
+`--gate` nor `--iterations` — the two flags this driver passes on every
+invocation — reports the median of seven runs of its own choosing where this
+driver requires one measured run per round, and measures the packet corpus's own
+variant set rather than this pairing's. Those are three changes to a leg whose
+numbers are already published, so they are separate work with their own ruling;
+filling the driver's second wire with a fabricated packet row would be inventing
+a measurement, so the driver accepts a table-only row instead. `CARGO` (or
+`RUSTUP_BIN`) names the toolchain; `SERIALIZE_RS` relocates the sibling runtime
+the unit's packet module links.
+
+    go run ./bench/paired -mode build -langs rust   generate, build, gate the leg
+    go run ./bench/paired -mode gate  -langs rust   the no-clock gate alone
+    go run ./bench/paired -mode fast  -langs rust -fast-rounds 3 -noise-note "..."
+
+A request is one shape or the other and never a mixture: `-langs rust` is asked
+for alone, `-mode run` refuses it, and its fast summary prints the table wire's
+own cost with **NO RATIO** written where the percentages would be. Because the
+Rust port has no form-1 table wire, its leg measures the FIXED form and names
+its rows `bench_fixed` — the same corpus, the same corpus id and the same
+`table` family as every other table row (docs/SPEC-TABLES.md §3.4).
+
 The standard packet runners keep their existing generated storage, release
 flags and timed loops. Table runners use a separately generated closure so a
 table representation cannot slow the packet reference. All binaries are built
