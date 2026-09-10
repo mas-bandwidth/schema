@@ -72,7 +72,8 @@ func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 		// so the aux is that destination and then the tag's own offset
 		aux = dstTerms(d.Dst) + " + " + offOf(d.Aux[0].Type, d.Aux[0].Member)
 	}
-	return fmt.Sprintf("{ %s, %s, %s, %d, %d }", dstTerms(d.Dst), stride, aux, d.Counted, d.Meta)
+	return fmt.Sprintf("{ %s, %s, %s, %d, %d, %dull, %dull, %d, %d }",
+		dstTerms(d.Dst), stride, aux, d.Counted, d.Meta, d.ClampLo, d.ClampHi, d.ClampFlags, d.ClampWidth)
 }
 
 // ---------------------------------------------------------------------------
@@ -540,10 +541,14 @@ func fixedOpName(op int) string {
 // type table to keep in step with the first. A compiler folds the reload.
 //
 // A fixed record is a positional image, so the ONE read loop moves bytes and
-// asks nothing about what they mean. What a declaration bounds is held HERE,
-// as straight-line code in the generated decode, after the copy — never as plan
-// entries, which would be a test per bounded field on every read of every
-// record and is the cost the identity plan exists to avoid.
+// asks nothing about what they mean. What a declaration bounds is held HERE
+// on the identity path, as straight-line code in the generated decode, after
+// the copy — never as identity-plan entries, which would be a test per bounded
+// field on every read of every record and is the cost the identity plan exists
+// to avoid. A compiled plan emits a clamp op per ranged scalar (not per
+// counted-array slot: live count, slack never). This pass still runs after
+// either plan: identity's only clamp, the compiled path's live-count remainder
+// and ordinals. It is idempotent.
 //
 // THE PASS RUNS OVER STORAGE, so ONE pass covers both plans: the identity plan
 // and a plan compiled from a stranger's layout land values in the same places.
