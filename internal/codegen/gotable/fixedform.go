@@ -178,7 +178,7 @@ func dstGo(dst, stride, aux string, counted, arg int) string {
 	if aux == "" {
 		aux = "0"
 	}
-	return fmt.Sprintf("{%s, %s, %s, %d, %d}", dst, stride, aux, counted, arg)
+	return fmt.Sprintf("{%s, %s, %s, %d, %d, %d}", dst, stride, aux, counted, arg, arg)
 }
 
 func offGo(owner, field string) string {
@@ -483,7 +483,7 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 }
 
 func (g *tableGen) emitFixedTextLeaf(st *ir.Struct, f *ir.Field, base, units int64, flavour int) {
-	g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Aux: dst + %s, Guard: tableFixedNoGuard, Op: tableFixedText, Arg: %d} // %s\n",
+	g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Aux: dst + %s, Guard: tableFixedNoGuard, Op: tableFixedText, Meta: %d} // %s\n",
 		base, offGo(st.Name, member(f)+"Length"), units, offGo(st.Name, member(f)), flavour, f.Name)
 	g.pf("\tn++\n")
 }

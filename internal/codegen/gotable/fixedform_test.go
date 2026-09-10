@@ -752,3 +752,92 @@ func TestArgLane(t *testing.T) {
 		t.Fatalf("arg-lane probe:\n%s", out)
 	}
 }
+
+// TestFixedFormArgLaneOldEncodingControl plants the OLD encoding: flavour in
+// Arg, Meta unused. A compiled text-under-arm-2 read must DROP the string —
+// putting flavour in Arg must not stay green.
+func TestFixedFormArgLaneOldEncodingControl(t *testing.T) {
+	runGenerated(t, `package probe
+type ArmA { n int32 }
+type ArmB { s string(8) }
+union Pick
+{
+    a ArmA
+    b ArmB
+}
+table Writer {
+    pick Pick
+}
+table Reader {
+    pick Pick
+    tail int32 = 7
+}
+`, `package probe
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestOldArgLaneControl(t *testing.T) {
+	one := Writer{}
+	WriterReset(&one)
+	one.Pick.Type = PickTypeB
+	copy(one.Pick.B.S[:], "hi")
+	one.Pick.B.SLength = 2
+	buf := make([]byte, WriterFixedMeasure(1))
+	if n := WriterFixedSave([]Writer{one}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+
+	layoutBytes := tableFixedGet32(buf[TableFixedHeaderBytes:])
+	layout := buf[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	parsed, ok := tableFixedParseLayout(layout)
+	if !ok {
+		t.Fatal("writer layout does not parse")
+	}
+	plan := make([]TableFixedEntry, 256)
+	var r TableReport
+	made := tableFixedCompile(parsed, ReaderFixedLayout, ReaderFixedDst, plan, &r)
+	if made <= 0 {
+		t.Fatalf("compile made %d %+v", made, r)
+	}
+
+	var got Reader
+	ReaderReset(&got)
+	record := buf[len(buf)-WriterFixedRecordBytes:]
+	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
+	if got.Pick.Type != PickTypeB || string(got.Pick.B.S[:got.Pick.B.SLength]) != "hi" {
+		t.Fatalf("split itself is not in: arm %d %q %+v", got.Pick.Type, got.Pick.B.S[:got.Pick.B.SLength], r)
+	}
+
+	found := false
+	for i := int32(0); i < made; i++ {
+		if plan[i].Op != tableFixedText {
+			continue
+		}
+		found = true
+		if plan[i].Arg != 2 || plan[i].Meta != tableFixedTextUtf8 {
+			t.Fatalf("text entry is not arm-2/utf8: Arg=%d Meta=%d", plan[i].Arg, plan[i].Meta)
+		}
+		// OLD ENCODING: flavour in Arg, Meta unused
+		plan[i].Arg = plan[i].Meta
+		plan[i].Meta = 0
+	}
+	if !found {
+		t.Fatal("compiled plan has no text entry to plant the old lane on")
+	}
+
+	got = Reader{}
+	ReaderReset(&got)
+	r = TableReport{}
+	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&got), unsafe.Sizeof(got)), &r)
+	landed := string(got.Pick.B.S[:got.Pick.B.SLength])
+	if landed == "hi" {
+		t.Fatal("NEGATIVE CONTROL FAILED: flavour in Arg, Meta unused still landed the string under union arm 2; the old lane stayed green")
+	}
+	if got.Pick.Type != PickTypeB {
+		t.Fatalf("old-lane sabotage moved the arm: %d %+v", got.Pick.Type, r)
+	}
+}
+`)
+}
