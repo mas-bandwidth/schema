@@ -451,3 +451,124 @@ func TestForm1VariableLoad(t *testing.T) {
 }
 `)
 }
+
+// TestFixedFormHostileBoolByte is the CONTROL for the one place a Go
+// destination is not the wire's own byte: a Go `bool` compares its byte
+// against 1, so a raw copy lands a hostile 2 as FALSE, where the wire and the
+// C++ reference both say NONZERO IS TRUE (docs/SPEC-TABLES.md §3). Every bool
+// destination is here — a plain field, an optional's PRESENT byte, an
+// optional's own value, and an array of them, which the coalescer folds into
+// ONE bool run — and both reader paths are: the identity plan the emitter laid
+// down, and the plan the compiler builds when a writer's layout is not this
+// build's.
+func TestFixedFormHostileBoolByte(t *testing.T) {
+	runGenerated(t, `package probe
+table Host {
+    on bool
+    off bool
+    maybe ?bool
+    many [4]bool
+    tail int32 = 7
+}
+`, `package probe
+import ("testing"; "unsafe")
+
+// the record body, in declared order at declared widths: on, off, maybe's
+// present byte, maybe's value, four of many, then the tail's four
+const bodyOn, bodyOff, bodyPresent, bodyMaybe, bodyMany, bodyTail = 0, 1, 2, 3, 4, 8
+
+func hostileRecord(t *testing.T) []byte {
+	t.Helper()
+	if HostFixedBodyBytes != 12 {
+		t.Fatalf("the record body moved: %d bytes, so the offsets below are stale", HostFixedBodyBytes)
+	}
+	buf := make([]byte, HostFixedMeasure(1))
+	if n := HostFixedSave([]Host{{Tail: 7}}, buf); n != int64(len(buf)) {
+		t.Fatalf("save %d", n)
+	}
+	body := buf[len(buf)-HostFixedRecordBytes+8:]
+	// EVERY BOOL BYTE HOSTILE, and 2 is the one that matters: it is nonzero,
+	// so it is true on the wire, and it is not 1, so a raw copy makes it false
+	body[bodyOn] = 2
+	body[bodyOff] = 0
+	body[bodyPresent] = 3
+	body[bodyMaybe] = 0xFF
+	body[bodyMany+0] = 2
+	body[bodyMany+1] = 0
+	body[bodyMany+2] = 5
+	body[bodyMany+3] = 0
+	return buf
+}
+
+func wantHostile(t *testing.T, what string, v Host, r TableReport) {
+	t.Helper()
+	if !v.On {
+		t.Fatalf("%s: a hostile 2 in a bool landed as false", what)
+	}
+	if v.Off {
+		t.Fatalf("%s: a zero bool landed as true", what)
+	}
+	if !v.MaybePresent {
+		t.Fatalf("%s: a hostile 3 in the present byte landed as absent", what)
+	}
+	if !v.Maybe {
+		t.Fatalf("%s: a hostile 0xFF in an optional bool landed as false", what)
+	}
+	if v.Many != [4]bool{true, false, true, false} {
+		t.Fatalf("%s: the bool array landed %v", what, v.Many)
+	}
+	if v.Tail != 7 {
+		t.Fatalf("%s: the tail past the bools is %d, not the 7 the writer put there", what, v.Tail)
+	}
+	if r != (TableReport{}) {
+		t.Fatalf("%s: a hostile bool byte is not one of the six events: %+v", what, r)
+	}
+}
+
+func TestHostileBoolOnTheIdentityPath(t *testing.T) {
+	buf := hostileRecord(t)
+	got := make([]Host, 1)
+	var r TableReport
+	plan := make([]TableFixedEntry, 256)
+	if n := HostFixedLoad(got, buf, plan, &r); n != 1 {
+		t.Fatalf("load n=%d %+v", n, r)
+	}
+	wantHostile(t, "identity plan", got[0], r)
+}
+
+func TestHostileBoolOnThePlanPath(t *testing.T) {
+	buf := hostileRecord(t)
+	parsed, ok := tableFixedParseLayout(HostFixedLayout)
+	if !ok {
+		t.Fatal("my own layout does not parse")
+	}
+	plan := make([]TableFixedEntry, 256)
+	var r TableReport
+	made := tableFixedCompile(parsed, HostFixedLayout, HostFixedDst, plan, &r)
+	if made <= 0 {
+		t.Fatalf("compile made %d", made)
+	}
+	var v Host
+	HostReset(&v)
+	v.Tail = 0
+	record := buf[len(buf)-HostFixedRecordBytes:]
+	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &r)
+	wantHostile(t, "compiled plan", v, r)
+}
+
+// THE NEGATIVE CONTROL, in the same file: with the normalisation removed the
+// hostile 2 must land as false. A raw byte copy is exactly what the op
+// replaced, so this is the op's own sabotage without a build overlay.
+func TestHostileBoolNegativeControl(t *testing.T) {
+	buf := hostileRecord(t)
+	record := buf[len(buf)-HostFixedRecordBytes:]
+	var v Host
+	HostReset(&v)
+	raw := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
+	raw[unsafe.Offsetof(v.On)] = record[8+bodyOn] // the copy the op replaced
+	if v.On {
+		t.Fatal("NEGATIVE CONTROL FAILED: a raw 2 copied into a Go bool read as true, so the op it replaced was never needed")
+	}
+}
+`)
+}

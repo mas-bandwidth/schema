@@ -1562,6 +1562,7 @@ const (
 	tableFixedWiden
 	tableFixedConst
 	tableFixedWidenF
+	tableFixedBool
 )
 
 const (
@@ -1600,12 +1601,16 @@ func tableFixedWidens(from, to uint8) bool {
 func tableFixedSignedKind(kind uint8) bool { return kind >= 2 && kind <= 5 }
 func tableFixedKindKnown(kind uint8) bool  { return kind <= 33 || kind == 35 }
 
+// tableFixedRuns is whether an op advances src and dst together one byte at a
+// time, which is the whole of what lets two adjacent entries become one.
+func tableFixedRuns(op uint8) bool { return op == tableFixedCopy || op == tableFixedBool }
+
 func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
 	raw := make([]TableFixedEntry, n)
 	written := emit(raw, 0, 0)
 	out := 0
 	for i := 0; i < written; i++ {
-		if out > 0 && raw[out-1].Op == tableFixedCopy && raw[i].Op == tableFixedCopy &&
+		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
@@ -1671,6 +1676,19 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		switch p.Op {
 		case tableFixedCopy:
 			tableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
+		case tableFixedBool:
+			// A GO bool IS NOT A BYTE: the comparison reads the byte against
+			// 1, so a hostile 2 in a bool slot lands as FALSE if it is copied
+			// raw. The wire says nonzero is true (docs/SPEC-TABLES.md §3), and
+			// the reference reads it that way, so the byte is NORMALISED here
+			// and never copied.
+			for k := uint32(0); k < p.Size; k++ {
+				v := byte(0)
+				if src[p.Src+k] != 0 {
+					v = 1
+				}
+				dst[p.Dst+k] = v
+			}
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			if v < 0 {
@@ -1932,7 +1950,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	}
 	switch me.Kind {
 	case 35:
-		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedCopy, Arg: arg})
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedBool, Arg: arg})
 		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg)
 	case 13:
 		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg)
@@ -2026,6 +2044,9 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if te.Size == me.Size {
 			e.Size = me.Size
 			e.Op = tableFixedCopy
+			if me.Kind == 1 {
+				e.Op = tableFixedBool
+			}
 			tableFixedPush(c, e)
 		} else if te.Size < me.Size && me.Size <= 8 {
 			e.Size = te.Size
@@ -2053,7 +2074,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	}
 	out := int32(0)
 	for i := int32(0); i < c.count; i++ {
-		if out > 0 && plan[out-1].Op == tableFixedCopy && plan[i].Op == tableFixedCopy &&
+		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
 			plan[out-1].Src+plan[out-1].Size == plan[i].Src &&
 			plan[out-1].Dst+plan[out-1].Size == plan[i].Dst {

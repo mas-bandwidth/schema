@@ -443,7 +443,8 @@ func (g *tableGen) emitFixedLeafWalk(st *ir.Struct) {
 func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	base := off
 	if f.Type.Optional {
-		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy} // %s present\n",
+		// the PRESENT byte lands in a Go bool, so it is normalised, not copied
+		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // %s present\n",
 			base, offGo(st.Name, member(f)+"Present"), f.Name)
 		g.pf("\tn++\n")
 		base += fixedPresentBytes
@@ -532,8 +533,16 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 			return
 		}
 	}
-	g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCopy}\n",
-		ind, src, dst, fixedElementBytes(f))
+	// A GO bool IS NOT A BYTE. Its comparison reads the byte against 1, so a
+	// raw copy lands a hostile 2 as FALSE where the wire and the reference
+	// both say nonzero is true; tableFixedBool normalises instead of copying,
+	// and being its own op it never coalesces into a neighbouring copy run.
+	op := "tableFixedCopy"
+	if f.Type.Kind == ir.TBool {
+		op = "tableFixedBool"
+	}
+	g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Guard: tableFixedNoGuard, Op: %s}\n",
+		ind, src, dst, fixedElementBytes(f), op)
 	g.pf("%sn++\n", ind)
 }
 
