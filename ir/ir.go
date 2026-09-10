@@ -227,6 +227,21 @@ func (u *Union) GeneralArm() string {
 type Struct struct {
 	Name    string
 	IsTable bool // declared with `table`: a table-wire root
+	// FixedDeclared is set when the AUTHOR ASKED FOR THE FIXED FORM — the
+	// `fixed table` keyword (docs/SPEC-TABLES.md §3.4, #823). It is the
+	// SELECTION rule for form `3`: a declared fixed table encodes as form 3
+	// ALWAYS and there is no path by which it reaches form 1, which is why a
+	// form-1 file handed to its `Load` is a refusal BY NAME rather than a
+	// slower read of the same records.
+	//
+	// #823 IS THE ONE POINTER THIS TREE CARRIES TO THE KEYWORD, which lives
+	// on branch `fixed-table-keyword` and is not merged. Until it lands
+	// NOTHING SETS THIS, and that is deliberate: a table the compiler merely
+	// DERIVED into the fixed mode (§2.2) asked for nothing, so it keeps the
+	// form-1 Load it never lost even though the backends also emit form 3
+	// for it. When the keyword lands, the parser sets this and the backends'
+	// refusal follows without further change.
+	FixedDeclared bool
 	// MapEntryOf names the `Table.field` whose `map[K]V` GENERATED this table
 	// (docs/SPEC-TABLES.md §2.8), and is empty on every declared table. A
 	// generated entry is a real table of the closure — it has a record, a

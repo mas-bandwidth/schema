@@ -53,9 +53,18 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
-	if g.hasFixedForm(st) {
+	if g.refusesForm1(st) {
 		g.emitFixedForm1Load(st)
 		return
+	}
+	if g.hasFixedForm(st) {
+		// DERIVED into the fixed mode, not declared fixed (§2.2 vs §3.4). It
+		// carries FixedSave/FixedLoad for form 3 AND keeps the form-1 Load it
+		// never lost. When #823's `fixed table` keyword marks it declared,
+		// this Load becomes the `previous_form` refusal above.
+		g.pf("// %s also carries the fixed form (form 3), because its closure lays out\n", n)
+		g.pf("// fixed — but nobody DECLARED it fixed, so this reader still reads form 1.\n")
+		g.pf("// A `fixed table` (docs/SPEC-TABLES.md §3.4, #823) refuses form 1 by name.\n")
 	}
 	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
 	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")

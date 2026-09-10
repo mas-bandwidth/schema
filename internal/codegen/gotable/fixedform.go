@@ -12,10 +12,15 @@
 // layout hash at 8, layout description from 16 (u32 LE length, then the
 // layout), then records. Records are hash plus values and do not move.
 //
-// Form-1 Load of a table that has FixedLoad is a named refusal (Glenn
-// 2026-09-09), never a slow read. Writer emits 3 only. FixedLoad answers
-// previous_form for form < 3 and newer_form for form > 3. The C++ reference
-// still accepts form 1 by the form byte; this port does not copy that.
+// Form-1 Load of a DECLARED fixed table is a named refusal (Glenn
+// 2026-09-09), never a slow read — and the word that matters is DECLARED.
+// The refusal is keyed on the `fixed table` KEYWORD ([ir.Struct.FixedDeclared],
+// #823), not on the shape: a table the compiler merely derived into the fixed
+// mode asked for nothing and keeps the form-1 Load it never lost, even though
+// this backend also emits form 3 for it. FixedLoad itself is the form-3 reader
+// either way and answers previous_form for form < 3, newer_form for form > 3.
+// The C++ reference still accepts form 1 by the form byte; this port does not
+// copy that for a declared fixed table.
 package gotable
 
 import (
@@ -297,15 +302,26 @@ func (g *tableGen) isVarTable(name string) bool {
 	return ir.VariableTables(g.unit)[name]
 }
 
-// hasFixedForm is whether this table emits FixedLoad/FixedSave. A regional
-// unit skips the fixed form entirely, so a mixed unit's fixed-size tables
-// keep form-1 Load. Glenn 2026-09-09: a form-1 file of a table that has
-// FixedLoad is a named refusal, never a slow read.
+// hasFixedForm is whether this table emits FixedLoad/FixedSave. It is a
+// question about SHAPE — the closure this form can lay out — and a regional
+// unit skips the form entirely, so a mixed unit's fixed-size tables keep
+// form-1 Load.
 func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 	if g.regional || !st.IsTable || st.IsMapEntry() || g.isVarTable(st.Name) || !fixedSupported(st, 0) {
 		return false
 	}
 	return g.fixedLeafCount(st) <= fixedLeafCap
+}
+
+// refusesForm1 is the OTHER question, and Glenn 2026-09-09 is that they are
+// two: a form-1 file handed to <T>Load is a named refusal when the AUTHOR
+// DECLARED the table fixed, never merely because the compiler could lay it
+// out fixed. hasFixedForm above is shape; this is the keyword. Nothing sets
+// [ir.Struct.FixedDeclared] until #823's `fixed table` lands, so today every
+// table in this tree keeps its form-1 Load and the shared wire oracle reads
+// what it always read.
+func (g *tableGen) refusesForm1(st *ir.Struct) bool {
+	return g.hasFixedForm(st) && st.FixedDeclared
 }
 
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
@@ -718,11 +734,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t}\n\treturn n\n}\n\n")
 }
 
-// emitFixedForm1Load is the form-1 file reader for a table that also has
-// FixedLoad. Form 1 is previous_form; the slow tableOpen walk never runs.
-// Other bytes keep the form-1 Load's existing refusal names. The C++
-// reference still accepts form 1 on this type (cpptable/fixedform.go:19);
-// Glenn says refuse.
+// emitFixedForm1Load is the form-1 file reader for a DECLARED fixed table
+// (#823's keyword, [ir.Struct.FixedDeclared]) — see [tableGen.refusesForm1].
+// Form 1 is previous_form; the slow tableOpen walk never runs. Other bytes
+// keep the form-1 Load's existing refusal names. The C++ reference still
+// accepts form 1 on this type (cpptable/fixedform.go:19); Glenn says refuse.
 func (g *tableGen) emitFixedForm1Load(st *ir.Struct) {
 	n := st.Name
 	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
