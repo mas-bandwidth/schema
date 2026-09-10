@@ -5925,6 +5925,15 @@ and not §19's block form, neither of which this section touches.
 **FORM BYTE `3` IS THE FIXED FORM.** Form bytes `1` and `2` do not move, and
 nothing in this subsection touches a file of §3 or a batch of §3.3.
 
+**AND THE ALGORITHM EVERY PORT IMPLEMENTS FROM IS
+[`docs/FIXED-FORM-ALGORITHM.md`](FIXED-FORM-ALGORITHM.md).** This section states
+the wire and its reasons; that page states the same wire as STEPS, in one
+language-neutral notation, with each piece's invariants, refusal names and §4
+counters beside it — because nine ports written from prose and a C++ reference
+came out nine ways, and the ones that copied the reference inherited its
+accidents as law. **Where the two disagree THIS SECTION IS THE LAW**, except at
+that page's footnoted rulings, which name the reference fixes still landing.
+
 ---
 
 #### THE VERSIONING INVARIANT, FIRST
