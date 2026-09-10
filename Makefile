@@ -5699,24 +5699,87 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
-tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan
+# THE RUN COPY'S BOUND, ON ITS OWN (test/tables/fixedform_runcopy.cpp). The
+# fixtures above check the VALUES a read produces; this one checks the single
+# invariant the copy primitive has — every byte it reads or writes is inside the
+# run — over EVERY length from 0 to 96 rather than the lengths a schema happens
+# to produce. Exact-size heap blocks make the sanitized twin the assertion.
+build/schema_test_fixedform_runcopy: build/tables-generated/.stamp test/tables/fixedform_runcopy.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -O2 -Ibuild/tables-generated/scalars \
+	    -I$(SERIALIZE) test/tables/fixedform_runcopy.cpp -o $@
+
+build/schema_test_fixedform_runcopy_asan: build/tables-generated/.stamp test/tables/fixedform_runcopy.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -Ibuild/tables-generated/scalars \
+	    -I$(SERIALIZE) test/tables/fixedform_runcopy.cpp -o $@
+
+tables-fixedform: build/schema_test_fixedform build/schema_test_fixedform_asan \
+                  build/schema_test_fixedform_runcopy build/schema_test_fixedform_runcopy_asan
 	./build/schema_test_fixedform
 	./build/schema_test_fixedform_asan
+	./build/schema_test_fixedform_runcopy
+	./build/schema_test_fixedform_runcopy_asan
 
 test: tables-fixedform
 
 .PHONY: tables-fixedform
 
+# THE RUN COPY'S NEGATIVE CONTROL, BOTH LEGS AT ONCE. The defect this gate is
+# for was real and it was SILENT: the 17..31-byte branch anchored its tail move
+# at the run's end, so it began 32 - n bytes in front of the run, took a
+# neighbour's field with it on both sides of the copy, and read past the record
+# body — with every counter and verdict in the report clean. Nothing but a
+# sanitizer over exact-size blocks can see it, which is exactly why the gate
+# above has to be shown going red.
+#
+# The sabotage plants that anchor back in BOTH emitters through a Go overlay,
+# never in the tree, and the control requires the sanitized run copy test to
+# name a heap-buffer-overflow in each leg.
+#
+# The C compile uses TABLES_CFLAGS, which carries -O2: gcc at -O0 emits the
+# generated header's unused JSON wrappers, they call symbols in ScalarsTable.c,
+# and the link fails before ASan can name the overflow. The optimiser drops
+# them; the control's red is still the sanitizer's.
+.PHONY: tables-fixedform-run-copy-negative-control
+tables-fixedform-run-copy-negative-control:
+	@mkdir -p build/runcopy-negative
+	go run ./tools/sabotage -name reference-run-copy-anchor -out build/runcopy-negative/cpp_fixedruntime.gotext internal/codegen/cpptable/fixedruntime.go
+	go run ./tools/sabotage -name reference-run-copy-anchor-c -out build/runcopy-negative/c_fixedruntime.gotext internal/codegen/ctable/fixedruntime.go
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/fixedruntime.go":"%s/build/runcopy-negative/cpp_fixedruntime.gotext","%s/internal/codegen/ctable/fixedruntime.go":"%s/build/runcopy-negative/c_fixedruntime.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/runcopy-negative/overlay.json
+	go run -overlay=build/runcopy-negative/overlay.json ./cmd/schema generate --lang cpp --out build/runcopy-negative/cpp tables/scalars
+	go run -overlay=build/runcopy-negative/overlay.json ./cmd/schema generate --lang c --out build/runcopy-negative/c tables/scalars
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -Ibuild/runcopy-negative/cpp \
+	    -I$(SERIALIZE) test/tables/fixedform_runcopy.cpp -o build/runcopy-negative/cpp_driver
+	$(CC) $(TABLES_CFLAGS) -fsanitize=address,undefined \
+	    -fno-sanitize-recover=all -fno-omit-frame-pointer -g -Ibuild/runcopy-negative/c \
+	    -I$(SERIALIZE_C) test/tables/fixedform_runcopy.c -o build/runcopy-negative/c_driver -lm
+	@if ./build/runcopy-negative/cpp_driver > build/runcopy-negative/cpp.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ run copy anchored at n - 32 did not leave its run"; exit 1; \
+	fi
+	@grep -q "heap-buffer-overflow" build/runcopy-negative/cpp.log || { \
+		echo "NEGATIVE CONTROL FAILED: the C++ driver failed, but not with the overflow this control is for"; \
+		tail -20 build/runcopy-negative/cpp.log; exit 1; }
+	@if ./build/runcopy-negative/c_driver > build/runcopy-negative/c.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C run copy anchored at n - 32 did not leave its run"; exit 1; \
+	fi
+	@grep -q "heap-buffer-overflow" build/runcopy-negative/c.log || { \
+		echo "NEGATIVE CONTROL FAILED: the C driver failed, but not with the overflow this control is for"; \
+		tail -20 build/runcopy-negative/c.log; exit 1; }
+	@echo "run copy negative control: the old n - 32 anchor is a heap-buffer-overflow in both legs"
+
 # THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
 #
 # The C++ backend is the REFERENCE for this form, so the reference is what
-# writes the bytes and every port matches them — the same shape the paired
-# bench already pins. This target writes one form-3 FILE per root into
-# build/fixedform-corpus, with values set by hand so nothing passes by
-# accident, and a port's leg proves itself against them two ways: reading a
-# file and saving it back has to reproduce it BYTE FOR BYTE, and reading a file
-# written under ANOTHER schema's layout is the plan path, which is the whole of
-# what §3.4's versioning invariant is worth.
+# writes the bytes and every port matches them — Glenn's rule for this class,
+# and the same shape the paired bench already pins. This target writes one
+# form-3 FILE per root into build/fixedform-corpus, with values set by hand so
+# nothing passes by accident, and a port's leg proves itself against them two
+# ways: reading a file and saving it back has to reproduce it BYTE FOR BYTE,
+# and reading a file written under ANOTHER schema's layout is the plan path,
+# which is the whole of what §3.4's versioning invariant is worth.
 #
 # It lives HERE rather than in a language's own make/<lang>.mk because it is
 # every port's oracle and none of theirs: a corpus one leg owns is a corpus the

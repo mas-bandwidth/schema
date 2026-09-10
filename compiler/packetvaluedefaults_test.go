@@ -83,34 +83,42 @@ type Loose
 }
 `
 	for _, tc := range []struct {
-		name string
-		decl string
-		edge string
+		name  string
+		decl  string
+		edge  string
+		form1 bool // form-1 / variable tables still refuse; the fixed form does not
 	}{
-		{"direct", "table", ""},
-		{"nested_type", "type", "type Middle { badge Badge }\ntable Root { middle Middle }"},
-		{"fixed_array", "type", "table Root { badges [2]Badge }"},
-		{"counted_array", "type", "table Root { badges [..2]Badge }"},
-		{"union_arm", "type", "union Choice { badge Badge }\ntable Root { choice Choice }"},
-		{"union_array_arm", "type", "union Choice { badges [2]Badge }\ntable Root { choice Choice }"},
-		{"pointer", "table", "table Root { badge *Badge }"},
-		{"map_value", "type", "table Root { badges map[uint8]Badge }"},
-		{"nested_map_value", "type", "table Root { badges map[uint8]map[uint8]Badge }"},
+		{"direct", "table", "", false},
+		{"nested_type", "type", "type Middle { badge Badge }\ntable Root { middle Middle }", false},
+		{"fixed_array", "type", "table Root { badges [2]Badge }", false},
+		{"counted_array", "type", "table Root { badges [..2]Badge }", false},
+		{"union_arm", "type", "union Choice { badge Badge }\ntable Root { choice Choice }", false},
+		{"union_array_arm", "type", "union Choice { badges [2]Badge }\ntable Root { choice Choice }", true},
+		{"pointer", "table", "table Root { badge *Badge }", true},
+		{"map_value", "type", "table Root { badges map[uint8]Badge }", true},
+		{"nested_map_value", "type", "table Root { badges map[uint8]map[uint8]Badge }", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			src := "package vdef\nflags Caps { Jump, Crouch }\n" +
 				tc.decl + " Badge {\n" + fields + "}\n" + tc.edge + packet
 			u := unitFromSource(t, src)
-			// js is NOT on this list any more: internal/codegen/jstable lays a
-			// string, bytes or flags default into the table's own storage and
-			// into the fixed form's prefill, so the port carries the form and
-			// the refusal is not its. It moved to the carrier list in
-			// compiler/target_javascript.go, and the sentence below moved with
-			// it — the two are one list.
-			for _, target := range []string{"rust", "java", "dart", "elixir"} {
+			// NEITHER JAVA NOR ELIXIR NOR JS IS ON THIS LIST ANY MORE: java
+			// carries the table half (compiler/target_java.go) the way go and
+			// rust do, elixir carries it too (compiler/target_elixir.go), and
+			// js lays the default into the table's own storage and the fixed
+			// form's prefill (compiler/target_javascript.go). Their carrier
+			// test is TestTableValueDefaultsCarriers. What is left here is the
+			// ports that carry neither table form.
+			for _, target := range []string{"dart"} {
 				_, err := New().Generate(u, target, Options{})
+				if !tc.form1 {
+					if err != nil && strings.Contains(err.Error(), "table-wire defaults") {
+						t.Errorf("fixed-form defaults refused as form-1 table-wire: %v", err)
+					}
+					continue
+				}
 				if err == nil {
-					t.Fatal("table-closure defaults accepted without table reset and elision support")
+					t.Fatal("form-1 table-closure defaults accepted without table reset and elision support")
 				}
 				// A later refusal of maps or table unions is not enough: the
 				// defaults must be found through those edges before codec generation.
@@ -119,7 +127,7 @@ type Loose
 						t.Errorf("refusal does not name %q: %v", want, err)
 					}
 				}
-				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs, --lang go and --lang js, or drop the default") {
+				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs, --lang elixir, --lang go, --lang java, --lang js and --lang rust, or drop the default") {
 					t.Errorf("table refusal includes a supported packet field or names %s as a table carrier: %v", target, err)
 				}
 			}
