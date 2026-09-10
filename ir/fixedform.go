@@ -359,7 +359,10 @@ type TableFixedDstSpec struct {
 	// offset of its own.
 	AuxExtendsDst bool
 	Counted       int
-	Arg           int
+	// Meta is the ROW's own argument for the op that lands this entry: a text
+	// field's flavour. It is named for the plan entry's meta lane, which is
+	// where it ends up, and it is not the guard's tag — that lane is arg's.
+	Meta int
 }
 
 // TableFixedLayoutEntry is one seventeen-byte entry: an id, a kind, a constant
@@ -429,17 +432,28 @@ func tableFixedWalkPayload(w *tableFixedWalk, owner string, f *Field, id uint64,
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindArray, Size: size, Children: 1, Note: f.Name}, spec)
 		tableFixedWalkElement(w, f, 0, "element", nil)
 	case f.Type.Kind == TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, and the
-		// text flavour on the row is what makes the reader land it in one move
+		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, SO ITS
+		// DESTINATION ROW IS AN ARRAY'S: Dst is the buffer the elements land in
+		// and Aux is the live count beside it. It is stated here because the
+		// TEXT row above is the other way round — Dst the length, Aux the
+		// buffer — and a `bytes(N)` written under the text convention hands a
+		// plan compiled from a stranger's layout a count destination that is
+		// the buffer's first four bytes and an element destination that is the
+		// length field. The identity plan lands this field with the TEXT op and
+		// reads neither column, so only the compiled path saw it.
+		//
+		// Meta still carries the text flavour: the identity walk below spends
+		// it, and a port that lands `bytes(N)` in one move on the compiled path
+		// reads it from here rather than deriving it a second time.
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindArray, Size: size, Children: 1, Note: f.Name},
-			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Stride1: true, Aux: tableFixedTerm1(owner, f.Name), Counted: 1, Arg: 3})
+			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name), Stride1: true, Aux: tableFixedTerm1(owner, f.Name+"_length"), Counted: 1, Meta: 3})
 		w.push(TableFixedLayoutEntry{ID: 0, Kind: TableKindU8, Size: 1, Children: 0, Note: "u8"}, TableFixedDstSpec{})
 	case f.Type.Kind == TString:
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindString, Size: size, Children: 0, Note: f.Name},
-			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Aux: tableFixedTerm1(owner, f.Name), Arg: 1})
+			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Aux: tableFixedTerm1(owner, f.Name), Meta: 1})
 	case f.Type.Kind == TWString:
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindWstring, Size: size, Children: 0, Note: f.Name},
-			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Aux: tableFixedTerm1(owner, f.Name), Arg: 2})
+			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Aux: tableFixedTerm1(owner, f.Name), Meta: 2})
 	default:
 		tableFixedWalkElement(w, f, id, f.Name, tableFixedTerm1(owner, f.Name))
 	}
@@ -643,8 +657,18 @@ const (
 type TableFixedLeaf struct {
 	Src, Dst, Size, Aux int64
 	Guard               int64 // TableFixedNoGuard when the entry belongs to no arm
-	Op, Arg             int
-	Note                string // a comment on the emitted array; never a wire byte
+	Op                  int
+	// Arg is THE GUARD'S TAG and nothing else: the ordinal the byte at Guard
+	// must hold for this entry to run. It is meaningless on an unguarded entry
+	// and it belongs to no op.
+	Arg int
+	// Meta is THE OP'S OWN ARGUMENT, on the ops that have one: a text entry's
+	// flavour today. It has its own lane because Arg's is the guard's, and the
+	// two used to share one — which put a text field under a union arm on a
+	// collision course, the flavour overwriting the tag or the tag the flavour
+	// depending on which was stamped last.
+	Meta int
+	Note string // a comment on the emitted array; never a wire byte
 }
 
 // tableFixedLeaves writes one type's leaves at a base the caller gives — the C twin
@@ -687,7 +711,7 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, out *[
 func tableFixedTextLeaf(u *Unit, st *Struct, f *Field, src, dst, units int64, flavour int, out *[]TableFixedLeaf) {
 	*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_length"),
 		Size: units, Aux: dst + TableFixedMemberOffset(u, st, f.Name), Guard: TableFixedNoGuard,
-		Op: TableFixedOpText, Arg: flavour, Note: f.Name})
+		Op: TableFixedOpText, Meta: flavour, Note: f.Name})
 }
 
 func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64, out *[]TableFixedLeaf) {
@@ -758,7 +782,7 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 			if len(plan) > guarded {
 				last := &plan[len(plan)-1]
 				if last.Op == TableFixedOpCopy && e.Op == TableFixedOpCopy &&
-					last.Guard == e.Guard && last.Arg == e.Arg &&
+					last.Guard == e.Guard && last.Arg == e.Arg && last.Meta == e.Meta &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
 					last.Size += e.Size
 					continue
@@ -937,4 +961,55 @@ func TableFixedEmitted(u *Unit, st *Struct) bool {
 		return false
 	}
 	return TableFixedLeafCount(u, st) <= TableFixedLeafCap
+}
+
+// TableFixedHasWriteBound answers whether any fixed table of the unit has a
+// number the WRITE side bounds: a text field's used length, or a counted
+// array's live count. Those are the only two write-side checks this form has,
+// and they are DEBUG-ONLY (schema_assert), so a unit of plain scalars declares
+// no bound and pays for no assert hook at all — the zero-cost gate (§2.2).
+func TableFixedHasWriteBound(u *Unit) bool {
+	seen := map[string]bool{}
+	var has func(st *Struct) bool
+	has = func(st *Struct) bool {
+		if seen[st.Name] {
+			return false
+		}
+		seen[st.Name] = true
+		for _, f := range st.Fields {
+			switch {
+			case f.Array == ArrayCounted:
+				return true
+			case f.Type.Kind == TString, f.Type.Kind == TWString, f.Type.Kind == TBytes:
+				return true
+			}
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *Struct:
+				if has(r) {
+					return true
+				}
+			case *Union:
+				for _, v := range r.Variants {
+					if v.F == nil {
+						continue
+					}
+					if s2, ok := v.F.Type.Ref.(*Struct); ok && v.F.Type.Kind == TNamed && has(s2) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if TableFixedEmitted(u, st) && has(st) {
+				return true
+			}
+		}
+	}
+	return false
 }
