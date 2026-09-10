@@ -46,6 +46,9 @@ defmodule SchemaBenchElixir do
   @mixed_iters 4_000_000
   # --quick only (PROPOSED, BENCH-STANDARD quick-mode scaling)
   @quick_mixed_iters 400_000
+  # the ceiling --iterations accepts, the same one every other leg accepts:
+  # whole 64-record rotations that also fit a 32-bit long
+  @max_iterations 2_147_483_584
 
   # CSV v2 (§5.1) per-runner constants: family gen (the rows measure
   # generated code), linkage beam (codec modules compiled beside the caller
@@ -71,15 +74,19 @@ defmodule SchemaBenchElixir do
     System.halt(1)
   end
 
-  defp golden(name) do
-    path = "../../testdata/wire/#{name}.bin"
+  defp golden(dir, name) do
+    path = Path.join(dir, "#{name}.bin")
 
     case File.read(path) do
       {:ok, bytes} ->
         bytes
 
       {:error, _} ->
-        IO.write(:stderr, "missing wire golden #{path} — run from bench/elixir\n")
+        IO.write(
+          :stderr,
+          "missing wire golden #{path} — run from bench/elixir, or pass --wire-dir\n"
+        )
+
         System.halt(1)
     end
   end
@@ -165,8 +172,8 @@ defmodule SchemaBenchElixir do
   # no hand-written pin, vary, field-check or sink function survives here.
   # ------------------------------------------------------------------
 
-  defp variant_data(row) do
-    path = "../../bench/corpus/variants/#{row}.variants.bin"
+  defp variant_data(dir, row) do
+    path = Path.join(dir, "#{row}.variants.bin")
 
     case File.read(path) do
       {:ok, bytes} ->
@@ -175,15 +182,16 @@ defmodule SchemaBenchElixir do
       {:error, _} ->
         IO.write(
           :stderr,
-          "missing variant data #{path} — run `make bench-variants`, and run the bench from bench/elixir\n"
+          "missing variant data #{path} — run `make bench-variants`, and run the bench " <>
+            "from bench/elixir or pass --variant-dir\n"
         )
 
         System.halt(1)
     end
   end
 
-  defp gate_data_driven(row, golden_name, write, read) do
-    packed = variant_data(row)
+  defp gate_data_driven(opts, row, golden_name, write, read) do
+    packed = variant_data(opts.variant_dir, row)
 
     # The records are fixed-width by construction (§2.7 pins every structure
     # field), so the file needs no index: the record size IS file size /
@@ -201,10 +209,10 @@ defmodule SchemaBenchElixir do
 
     # gate 1 (§1.5): variant 0 IS the pinned instance, so the whole variant
     # file is bound to the wire golden by one byte-compare.
-    golden_bytes = golden(golden_name)
+    golden_bytes = golden(opts.wire_dir, golden_name)
 
     if hd(variants) != golden_bytes do
-      gate_fail(row, "variant 0 vs testdata/wire/#{golden_name}.bin")
+      gate_fail(row, "variant 0 vs #{Path.join(opts.wire_dir, golden_name <> ".bin")}")
     end
 
     # gate 2: every variant decodes, re-encodes, and comes back byte-identical
@@ -312,19 +320,63 @@ defmodule SchemaBenchElixir do
     rows
   end
 
+  # THE PAIRED DRIVER'S OWN ARGV (bench/paired/main.go's `runner`) is a superset
+  # of run.sh's, and every flag it adds is one this leg has to answer rather
+  # than refuse: `--gate` runs the golden gate and reports NOTHING, which is
+  # how the driver asks a leg for correctness without a clock; `--iterations`
+  # is the diagnostic count fast mode escalates uniformly across the group; and
+  # `--wire-dir`/`--variant-dir` name the corpus, because the driver spawns
+  # every leg from the REPOSITORY ROOT while run.sh spawns this one from
+  # bench/elixir. The defaults are run.sh's paths, so that invocation is
+  # unchanged.
   defp parse_args(argv) do
-    parse_args(argv, %{csv: false, quick: false, num_runs: 7})
+    parse_args(argv, %{
+      csv: false,
+      quick: false,
+      gate: false,
+      num_runs: 7,
+      iterations: 0,
+      wire_dir: Path.join(__DIR__, "../../testdata/wire"),
+      variant_dir: Path.join(__DIR__, "../../bench/corpus/variants")
+    })
   end
 
   defp parse_args([], opts), do: opts
   defp parse_args(["--csv" | rest], opts), do: parse_args(rest, %{opts | csv: true})
   defp parse_args(["--quick" | rest], opts), do: parse_args(rest, %{opts | quick: true})
+  defp parse_args(["--gate" | rest], opts), do: parse_args(rest, %{opts | gate: true})
 
   defp parse_args(["--round", _k | rest], opts),
     do: parse_args(rest, %{opts | num_runs: 1})
 
+  defp parse_args(["--wire-dir", dir | rest], opts),
+    do: parse_args(rest, %{opts | wire_dir: dir})
+
+  defp parse_args(["--variant-dir", dir | rest], opts),
+    do: parse_args(rest, %{opts | variant_dir: dir})
+
+  defp parse_args(["--iterations", n | rest], opts) do
+    case Integer.parse(n) do
+      {v, ""} when v > 0 and v <= @max_iterations and rem(v, @num_variants) == 0 ->
+        parse_args(rest, %{opts | iterations: v})
+
+      _ ->
+        IO.write(
+          :stderr,
+          "--iterations requires a positive multiple of #{@num_variants} up to #{@max_iterations}\n"
+        )
+
+        System.halt(1)
+    end
+  end
+
   defp parse_args([arg | _], _opts) do
-    IO.write(:stderr, "usage: main.exs [--csv] [--round K] [--quick] (got #{arg})\n")
+    IO.write(
+      :stderr,
+      "usage: main.exs [--csv] [--gate] [--round K] [--quick] [--iterations N] " <>
+        "[--wire-dir <dir>] [--variant-dir <dir>] (got #{arg})\n"
+    )
+
     System.halt(1)
   end
 
@@ -343,6 +395,7 @@ defmodule SchemaBenchElixir do
     # runner that fails its goldens reports nothing at all (§1.5)
     gated_mixed =
       gate_data_driven(
+        opts,
         "bench_mixed",
         "bench_mixed",
         &Bench.Bench.write_bench_mixed/1,
@@ -351,11 +404,26 @@ defmodule SchemaBenchElixir do
 
     {_, _, _, goldens_mixed} = gated_mixed
 
+    # `--gate` IS THE GATE AND NOTHING ELSE (bench/paired/main.go's `gate`): the
+    # goldens above have all run, and a leg that reached here answered them, so
+    # the whole report is an exit status and an empty stdout.
+    if opts.gate do
+      IO.write(:stderr, "OK (gate only, corpus_id #{corpus_id(goldens_mixed)})\n")
+      System.halt(0)
+    end
+
+    iters =
+      cond do
+        opts.iterations > 0 -> opts.iterations
+        quick -> @quick_mixed_iters
+        true -> @mixed_iters
+      end
+
     rows =
       bench_data_driven(
         "bench_mixed",
         gated_mixed,
-        if(quick, do: @quick_mixed_iters, else: @mixed_iters),
+        iters,
         num_runs,
         &Bench.Bench.write_bench_mixed/1,
         &Bench.Bench.read_bench_mixed/2

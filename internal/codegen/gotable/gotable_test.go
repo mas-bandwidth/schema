@@ -33,6 +33,44 @@ func generate(t *testing.T, src string) map[string][]byte {
 	return out
 }
 
+// declareFixed stands in for #823's `fixed table` keyword, which is not in
+// this tree (see [ir.Struct.FixedDeclared]): a test that wants a DECLARED
+// fixed table — the only kind whose Load refuses form 1 — sets the field the
+// parser will set when the keyword lands. Naming no table declares every
+// table of the unit fixed.
+func declareFixed(t *testing.T, u *ir.Unit, names ...string) *ir.Unit {
+	t.Helper()
+	want := map[string]bool{}
+	for _, n := range names {
+		want[n] = true
+	}
+	found := 0
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if !st.IsTable || st.IsMapEntry() {
+				continue
+			}
+			if len(want) == 0 || want[st.Name] {
+				st.FixedDeclared = true
+				found++
+			}
+		}
+	}
+	if found == 0 {
+		t.Fatalf("declareFixed: no table matched %v", names)
+	}
+	return u
+}
+
+func generateFixed(t *testing.T, src string, names ...string) map[string][]byte {
+	t.Helper()
+	out, err := Generate(declareFixed(t, unitFrom(t, src), names...))
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	return out
+}
+
 // TestTagListNamesDoNotCollide holds the tag-list naming to the one thing a
 // package-level name has to be: unique. A table Ship with a tagged field
 // config and a tagged table ShipConfig are two rows whose owner and member

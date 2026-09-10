@@ -3,4 +3,4 @@
 # Paths are repository-relative.
 
 names bench/tables/go/shape.go 2 original shape adapter: generated root type and load callback only, no fields
-names bench/tables/go/shape_matched.go 2 paired shape adapter: canonical packet root type and load callback only, no fields
+names bench/tables/go/shape_matched.go 4 paired shape adapter: the canonical packet root type at its bench_table call site and the FIXED form's root at its own (docs/SPEC-TABLES.md §3.4), each with its load callback and no fields (callsite)

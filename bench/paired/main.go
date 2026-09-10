@@ -25,8 +25,164 @@ import (
 	"time"
 )
 
+// languages IS THE PUBLISHED SET, and it is what a confirmation pass and a
+// rendered report are sealed over (provenance.go's passInputNames). Each one
+// measures BOTH wires over the same 64 logical records, which is the only
+// thing that licenses the division, so the confirmation pass, its window and
+// its board are defined over exactly these. A leg is not published until every
+// round of a seven-round pass carries it, so adding a name here changes what an
+// old pass renders as — which is why a new leg arrives in one of the two lists
+// below and moves here when it is promoted.
 var languages = []string{"cpp", "c", "go", "cs"}
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#"}
+
+// AN UNPUBLISHED PAIRED LANGUAGE has BOTH wires, so it has a ratio of its own,
+// but no published pass carries it yet. `-mode fast` is the DIAGNOSTIC mode and
+// takes one of these ALONE; `-mode run` still takes the published four and
+// nothing else.
+var unpublishedLanguages = []string{"elixir"}
+
+// A TABLE-ONLY LANGUAGE measures the table wire and NEVER a ratio.
+//
+// rust is here because its packet leg does not meet this driver's contract
+// rather than because somebody chose to skip it. bench/rust/src/main.rs is a
+// real, maintained packet runner — its CSV is already the seventeen columns —
+// and it still cannot be invoked here: it has neither `--gate` nor
+// `--iterations`, the two flags this driver passes on every invocation
+// (`--iterations` is how one uniform count is held across every language and
+// round, §2.1, and `--gate` is the no-clock correctness pass), it reports the
+// median of seven runs of its own choosing where this driver requires one
+// measured run per round and aggregates across rounds itself, and it measures
+// the packet corpus's own variant set rather than this pairing's. Those are
+// three changes to a leg whose numbers are already published, so they are
+// separate work with their own ruling; filling this driver's second wire with
+// a fabricated row would be inventing a measurement. So rust rides the table
+// wire alone and appears in no ratio, no confirmation pass and no board.
+//
+// java is here for the same reason arrived at down a different road:
+// bench/java/Main.java is the TYPE BOARD's runner, with neither `--gate` nor
+// `--iterations` either, and the paired set above is the four the board is
+// defined over. The table leg (bench/tables/java/TableMain.java) is this
+// driver's own shape. A packet leg here is separate work with its own ruling,
+// so java too rides the table wire alone and appears in no ratio, no
+// confirmation pass and no board; its packet number is the type board's,
+// measured by its own runner over the same sixty-four records.
+//
+// js is here because its packet leg does not exist to be run rather than
+// because somebody chose to skip it: bench/js/main.mjs imports the serialize.js
+// sibling runtime, has neither `--gate` nor `--iterations` — the two flags this
+// driver passes on every invocation — and appends the §5.1 `codec` column, so
+// its rows are eighteen columns where parseRows requires seventeen. The table
+// codec has none of those problems: the generated JS table modules import no
+// runtime at all. A packet leg is separate work with its own ruling, and
+// filling this driver's second wire with a fabricated row would be inventing a
+// measurement, so js rides the table wire alone and appears in no ratio, no
+// confirmation pass and no board.
+var tableOnlyLanguages = []string{"rust", "java", "js"}
+
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java", "js": "JavaScript"}
+
+// allLanguages IS EVERY NAME -langs ACCEPTS: the published four, the paired
+// legs that are measurable but not published yet, and the table-only legs.
+func allLanguages() []string {
+	out := append([]string{}, languages...)
+	out = append(out, unpublishedLanguages...)
+	return append(out, tableOnlyLanguages...)
+}
+
+// wiresFor names the wires a language actually has a runner for. Every loop
+// that walks a language's legs walks this and not the literal pair, so a
+// table-only language is never asked for a packet row it cannot produce.
+func wiresFor(lang string) []string {
+	if contains(tableOnlyLanguages, lang) {
+		return []string{"table"}
+	}
+	return []string{"packet", "table"}
+}
+
+// onlyTableLanguages reports whether every requested language is table-only.
+// A request is one shape or the other and never a mixture: a diagnostic that
+// paired some languages and not others would print a ratio table with holes.
+func onlyTableLanguages(langs []string) bool {
+	for _, lang := range langs {
+		if !contains(tableOnlyLanguages, lang) {
+			return false
+		}
+	}
+	return len(langs) > 0
+}
+
+// twinTolerance is the C vs C++ paired-row band (percent). Rows within it
+// do not fail the twin check. 0 disables. Flag --twin-tolerance.
+var twinTolerance = 10.0
+
+// unpublishedAlone reports the DIAGNOSTIC shape: one leg that no published
+// pass carries, asked for on its own. It seals nothing and enters no board.
+func unpublishedAlone(langs []string) bool {
+	return len(langs) == 1 && !contains(languages, langs[0])
+}
+
+// THE BEAM TOOLCHAIN, pinned exactly as make/elixir.mk pins it: the repo-local
+// unpacked dist/ by default, and whatever is on PATH when BEAM_PATH names a
+// directory that is not there (which is what CI has). The `elixir` launcher
+// finds `erl` through PATH, so both bin directories ride together.
+func beamPath() string {
+	return setting("BEAM_PATH", abs("dist/otp-29.0.5/bin")+string(os.PathListSeparator)+abs("dist/elixir-1.20.4/bin"))
+}
+
+// elixirLeg is the leg's entry point per wire: the packet runner is the same
+// one bench/run.sh drives, and the table runner is the fixed form's own.
+func elixirLeg(wire string) string {
+	if wire == "packet" {
+		return "bench/elixir/main.exs"
+	}
+	return "bench/tables/elixir/main.exs"
+}
+
+// elixirInputs is what a run of an Elixir leg IS, for provenance: there is no
+// compiled artifact to hash, so the identity of the leg is its own sources and
+// the generated modules it loads. Every one of them is recorded in build.json
+// and re-hashed by readBuild, so an edit after the build is refused exactly as
+// a recompiled binary would be.
+func elixirInputs(wire string) ([]string, error) {
+	out := []string{elixirLeg(wire), filepath.Join(filepath.Dir(elixirLeg(wire)), "runner.exs")}
+	gen := "generated/bench/elixir"
+	if wire != "packet" {
+		gen = "generated/bench/paired/elixir"
+	}
+	found, err := filepath.Glob(filepath.Join(gen, "*.ex"))
+	if err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no generated Elixir under %s", gen)
+	}
+	sort.Strings(found)
+	return append(out, found...), nil
+}
+
+// elixirManifest writes the one path binary() can name for an interpreted leg:
+// a sorted list of every input and its SHA-256. It is a convenience for a
+// reader of build/paired — the inputs themselves are recorded individually and
+// are what actually holds the leg to its build.
+func elixirManifest(wire string) (string, error) {
+	inputs, err := elixirInputs(wire)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	for _, p := range inputs {
+		h, err := hashFile(p)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "%s  %s\n", h, filepath.ToSlash(p))
+	}
+	path := binary(wire, "elixir")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return "", err
+	}
+	return path, os.WriteFile(path, []byte(b.String()), 0644)
+}
 
 const header = "lang,bench,path,iters,bytes_per_op,runs,median_msgs_per_sec,min_msgs_per_sec,max_msgs_per_sec,median_mb_per_sec,spread_pct,corpus_id,family,linkage,checks,opt,inline"
 
@@ -70,19 +226,60 @@ func cpuName() string {
 type command struct {
 	args []string
 	dir  string
+	// env is added to this process's environment, never replacing it: an
+	// interpreted leg needs its pinned toolchain on PATH, and the Rust leg's
+	// optimization level is a cargo setting rather than a compiler flag on a
+	// command line. Nothing here drops what the operator already exported, and
+	// nothing else about the measured environment may move (see
+	// measuredEnvironment).
+	env []string
+}
+
+func (c command) environment() []string {
+	if len(c.env) == 0 {
+		return nil
+	}
+	return append(os.Environ(), c.env...)
+}
+
+// program is argv[0], resolved against the PATH this command CARRIES rather
+// than the driver's own. exec.Command looks a bare name up in the parent's
+// PATH before cmd.Env is ever consulted, so a pinned toolchain reached only
+// through c.env would not be found at all — the leg would fail with "not in
+// $PATH" while sitting in the directory it was pinned to.
+func (c command) program() string {
+	name := c.args[0]
+	if len(c.env) == 0 || strings.ContainsRune(name, filepath.Separator) {
+		return name
+	}
+	for _, kv := range c.env {
+		value, ok := strings.CutPrefix(kv, "PATH=")
+		if !ok {
+			continue
+		}
+		for dir := range strings.SplitSeq(value, string(os.PathListSeparator)) {
+			candidate := filepath.Join(dir, name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+				return candidate
+			}
+		}
+	}
+	return name
 }
 
 func execute(c command) error {
-	fmt.Fprintln(os.Stderr, "+", c.args[0], strings.Join(c.args[1:], " "))
-	cmd := exec.Command(c.args[0], c.args[1:]...)
+	fmt.Fprintln(os.Stderr, "+", strings.Join(append(append([]string{}, c.env...), c.args...), " "))
+	cmd := exec.Command(c.program(), c.args[1:]...)
 	cmd.Dir = c.dir
+	cmd.Env = c.environment()
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 func capture(c command) ([]byte, error) {
-	cmd := exec.Command(c.args[0], c.args[1:]...)
+	cmd := exec.Command(c.program(), c.args[1:]...)
 	cmd.Dir = c.dir
+	cmd.Env = c.environment()
 	cmd.Stderr = os.Stderr
 	return cmd.Output()
 }
@@ -101,7 +298,28 @@ func abs(p string) string {
 	return s
 }
 func binary(wire, lang string) string {
+	// AN INTERPRETED LEG HAS NO BUILD PRODUCT, so the thing this driver pins,
+	// hashes and runs is the runner source itself. Its generated modules are
+	// hashed beside it (generateAndBuild), so the recorded identity covers the
+	// whole unit that runs and not only the entry point.
+	if lang == "js" {
+		return filepath.Join("bench", "tables", "js", "table_main.mjs")
+	}
+	// THE JAVA LEG'S BUILD PRODUCT is a directory of classfiles, so the thing
+	// this driver pins and hashes is the runner's own class in it; the
+	// generated sources it was compiled beside are hashed too
+	// (generateAndBuild), so the recorded identity covers the whole unit that
+	// runs and not only the entry point.
+	if lang == "java" {
+		return filepath.Join(javaClassDir, "TableMain.class")
+	}
 	p := filepath.Join("build", "paired", wire+"-"+lang)
+	if lang == "elixir" {
+		// AN INTERPRETED LEG HAS NO EXECUTABLE. What stands in its place is the
+		// manifest of its inputs and their hashes; the inputs are recorded and
+		// verified individually beside it (elixirInputs).
+		return filepath.Join(p, "leg.sha256")
+	}
 	if lang == "cs" {
 		if wire == "packet" {
 			return filepath.Join(p, "schemabench.dll")
@@ -113,17 +331,127 @@ func binary(wire, lang string) string {
 	}
 	return p
 }
+
+// cargoExecutable names the cargo the Rust leg builds with. make/rust.mk finds
+// it in the rustup keg, which is not on PATH by default, and PREFERS it —
+// prepending RUSTUP_BIN — so the paired leg is built by the same cargo the rest
+// of the Rust leg's gates use rather than by whatever a shell happens to
+// expose. build.json records its version either way.
+// The cargo target directory: under build/, which is not tracked, so a paired
+// build never leaves artefacts beside a runner's source.
+const rustTargetDir = "build/paired/rust"
+
+// The Rust unit's manifest is tracked and hand-written (generated/bench/paired/
+// rust/Cargo.toml says why). pointRustManifest requires it and, when
+// SERIALIZE_RS names a checkout other than the sibling the manifest carries,
+// rewrites THAT ONE LINE — which dirties a tracked file on purpose: the
+// operator changed the build, and build.json's `dirty` should say so.
+func pointRustManifest() error {
+	const manifest = "generated/bench/paired/rust/Cargo.toml"
+	b, e := os.ReadFile(manifest)
+	if e != nil {
+		return fmt.Errorf("the paired rust unit's manifest is missing (%s); it is tracked build wiring, not generator output: %w", manifest, e)
+	}
+	override := os.Getenv("SERIALIZE_RS")
+	if strings.TrimSpace(override) == "" {
+		return nil
+	}
+	lines := strings.Split(string(b), "\n")
+	found := false
+	for i, line := range lines {
+		if strings.HasPrefix(line, "serialize = ") {
+			lines[i] = "serialize = { package = \"serialize-official\", path = \"" + abs(override) + "\" }"
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("%s carries no serialize dependency line to point at SERIALIZE_RS", manifest)
+	}
+	return os.WriteFile(manifest, []byte(strings.Join(lines, "\n")), 0644)
+}
+func cargoExecutable() string { return rustupTool("CARGO", "cargo") }
+
+// rustcExecutable names the compiler behind that cargo. It is recorded for the
+// same reason `cc --version` is: the codegen is the compiler's, not the build
+// tool's.
+func rustcExecutable() string { return rustupTool("RUSTC", "rustc") }
+
+func rustupTool(env, name string) string {
+	if s := os.Getenv(env); s != "" {
+		return s
+	}
+	keg := filepath.Join(setting("RUSTUP_BIN", "/opt/homebrew/opt/rustup/bin"), name)
+	if _, e := os.Stat(keg); e == nil {
+		return keg
+	}
+	return name
+}
+
+// generatedModules names the generated sources a leg COMPILES rather than
+// links (java) or LOADS (js), so readBuild verifies them the way it verifies a
+// compiled leg's binary. It is a GLOB and not a list: the emitter decides how
+// many modules a unit has, and a list here would be one more place to keep in
+// step with it — and one more place naming a corpus type, which this driver
+// has no business doing. rust's unit is inside its binary, and the binary's
+// own hash already covers it.
+func generatedModules(lang string) ([]string, error) {
+	if lang != "java" && lang != "js" {
+		return nil, nil
+	}
+	found, err := filepath.Glob(filepath.Join("generated", "bench", "paired", lang, "*."+lang))
+	if err != nil {
+		return nil, err
+	}
+	if len(found) == 0 {
+		return nil, fmt.Errorf("no generated %s modules for the paired unit", lang)
+	}
+	sort.Strings(found)
+	return found, nil
+}
+
+// javaClassDir is where the Java table leg's classfiles land.
+const javaClassDir = "build/paired/table-java"
+
+// javaExecutable and javacExecutable are the JDK's two halves, the same pins
+// make/java.mk carries: the repository-local JDK when it is there, and the one
+// on PATH otherwise, with JAVA and JAVAC overriding both.
+func javaExecutable() string  { return jdkTool("JAVA", "java") }
+func javacExecutable() string { return jdkTool("JAVAC", "javac") }
+func jdkTool(name, tool string) string {
+	if s := os.Getenv(name); s != "" {
+		return s
+	}
+	local := filepath.Join("dist", "jdk-21.0.12.1", "Contents", "Home", "bin", tool)
+	if _, err := os.Stat(local); err == nil {
+		return local
+	}
+	return tool
+}
+func nodeExecutable() string { return setting("NODE", "node") }
 func runner(wire, lang string, args ...string) command {
 	a := []string{binary(wire, lang)}
-	if lang == "cs" {
+	var env []string
+	switch lang {
+	case "cs":
 		a = append([]string{"dotnet"}, a...)
+	case "js":
+		a = append([]string{nodeExecutable()}, a...)
+	case "java":
+		// The class, by name, on the classpath the build filled.
+		a = []string{javaExecutable(), "-cp", javaClassDir, "TableMain"}
+	case "elixir":
+		// The leg is a script, and it is spawned from the REPOSITORY ROOT like
+		// every other leg, so its corpus paths arrive through --wire-dir and
+		// --variant-dir rather than through a working directory.
+		a = []string{"elixir", elixirLeg(wire)}
+		env = []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
 	}
 	if wire == "table" {
 		a = append(a, "--indexed", "--wire-dir", "bench/paired/corpus", "--variant-dir", "bench/paired/corpus")
 	} else {
 		a = append(a, "--wire-dir", "testdata/wire", "--variant-dir", "bench/corpus/variants")
 	}
-	return command{args: append(a, args...)}
+	return command{args: append(a, args...), env: env}
 }
 func hashFile(path string) (string, error) {
 	b, e := os.ReadFile(path)
@@ -190,8 +518,41 @@ func generateAndBuild(langs []string) error {
 		return e
 	}
 	for _, lang := range langs {
-		if e := run(schema, "generate", "--lang", lang, "--out", "generated/bench/paired/"+lang, "bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"); e != nil {
+		paired := []string{"bench/corpus/Bench.schema", "bench/corpus/FixedTable.schema"}
+		if lang == "elixir" {
+			// THE UNIT'S SCHEMA FILES ARE COPIED UNDER OTHER BASENAMES, and only
+			// that: a declaration whose name is its own file's basename collides
+			// with the module the Elixir backend writes for that file
+			// (docs/SPEC-TABLES.md §11), which is the checker working rather
+			// than a problem. No declaration moves, so no id and no layout byte
+			// moves either. make/elixir.mk's tables-elixir-fixed-bench makes the
+			// same copy for the same reason.
+			src := "build/paired/elixir-src"
+			if e := os.MkdirAll(src, 0755); e != nil {
+				return e
+			}
+			renamed := []string{"Bench.schema", "Wrap.schema"}
+			for i, to := range renamed {
+				b, e := os.ReadFile(paired[i])
+				if e != nil {
+					return e
+				}
+				to = filepath.Join(src, to)
+				if e := os.WriteFile(to, b, 0644); e != nil {
+					return e
+				}
+				renamed[i] = to
+			}
+			paired = renamed
+		}
+		if e := run(append([]string{schema, "generate", "--lang", lang, "--out", "generated/bench/paired/" + lang}, paired...)...); e != nil {
 			return e
+		}
+		// The standalone packet unit is the packet leg's, so a table-only
+		// language does not generate it: nothing here would compile it and
+		// emitting it would imply a leg that does not exist.
+		if contains(tableOnlyLanguages, lang) {
+			continue
 		}
 		if e := run(schema, "generate", "--lang", lang, "--out", "generated/bench/"+lang, "bench/corpus/Bench.schema"); e != nil {
 			return e
@@ -294,6 +655,105 @@ func generateAndBuild(langs []string) error {
 					return e
 				}
 			}
+		case "elixir":
+			// NOTHING IS LINKED AND NOTHING IS CACHED: the leg is a script that
+			// compiles the generated modules into the VM it measures in. What
+			// this stage does instead is (a) hold the generated Elixir to the
+			// SAME TWO GATES the make targets hold it to — `mix format
+			// --check-formatted`, because the emitter emits the formatter's own
+			// shape rather than being checked afterwards, and `elixirc
+			// --warnings-as-errors`, because a warning in generated code is a
+			// defect in the emitter — and (b) write the manifest that stands in
+			// for an executable in the provenance.
+			env := []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}
+			for _, wire := range []string{"table", "packet"} {
+				inputs, e := elixirInputs(wire)
+				if e != nil {
+					return e
+				}
+				sources := inputs[2:] // the generated modules; [0] and [1] are the leg
+				if e := execute(command{args: append([]string{"mix", "format", "--check-formatted"}, inputs...), env: env}); e != nil {
+					return e
+				}
+				ebin := filepath.Join("build", "paired", wire+"-elixir", "ebin")
+				if e := os.MkdirAll(ebin, 0755); e != nil {
+					return e
+				}
+				if e := execute(command{args: append([]string{"elixirc", "--warnings-as-errors", "-o", ebin}, sources...), env: env}); e != nil {
+					return e
+				}
+				if _, e := elixirManifest(wire); e != nil {
+					return e
+				}
+			}
+		case "rust":
+			// THE MANIFEST IS BUILD WIRING AND IS TRACKED (the Rust emitter
+			// writes only .rs files; make/rust.mk says the same of every other
+			// Rust unit's Cargo.toml), so this step does not write it — it
+			// requires it, and repairs only the ONE line an operator can move:
+			// the serialize.rs sibling path, when SERIALIZE_RS names another
+			// checkout. Left alone, nothing under generated/ is touched.
+			if e := pointRustManifest(); e != nil {
+				return e
+			}
+			// The optimization level is a CARGO SETTING, not a flag on a
+			// command line, so it is set on the build and stamped into the
+			// binary through the same option_env! seam the packet Rust leg
+			// opened: a row's `opt` column then says what the build actually
+			// was instead of repeating a constant nobody checked.
+			cargoEnv := []string{"BENCH_OPT=" + opt, "CARGO_PROFILE_RELEASE_OPT_LEVEL=" + strings.TrimPrefix(opt, "O")}
+			if e := execute(command{args: []string{cargoExecutable(), "build", "--release", "--quiet", "--manifest-path", "bench/tables/rust/Cargo.toml", "--target-dir", rustTargetDir}, env: cargoEnv}); e != nil {
+				return e
+			}
+			// Replace the inode rather than writing over it: a copy onto a
+			// binary another process is running corrupts it in place, and a
+			// long sitting runs this one (make/rust.mk's conformance target
+			// carries the same note for the same reason).
+			built, e := os.ReadFile(filepath.Join(rustTargetDir, "release", "table-rust"))
+			if e != nil {
+				return e
+			}
+			if e = os.Remove(binary("table", lang)); e != nil && !os.IsNotExist(e) {
+				return e
+			}
+			if e = os.WriteFile(binary("table", lang), built, 0755); e != nil {
+				return e
+			}
+		case "java":
+			// The generated unit and the runner, compiled beside each other
+			// into one classpath under the same javac flags the Java legs
+			// use everywhere (make/java.mk): -Werror, because the generated
+			// sources are compiled by the consumer's javac. Then the gate.
+			if e := os.RemoveAll(javaClassDir); e != nil {
+				return e
+			}
+			if e := os.MkdirAll(javaClassDir, 0755); e != nil {
+				return e
+			}
+			modules, e := generatedModules(lang)
+			if e != nil {
+				return e
+			}
+			javac := []string{"--release", "17", "-Xlint:all", "-Werror", "-d", javaClassDir}
+			javac = append(javac, modules...)
+			javac = append(javac, filepath.Join("bench", "tables", "java", "TableMain.java"))
+			if e := run(append([]string{javacExecutable()}, javac...)...); e != nil {
+				return fmt.Errorf("javac is required for the java leg (set JAVAC): %w", e)
+			}
+			if e := execute(runner("table", lang, "--gate")); e != nil {
+				return e
+			}
+		case "js":
+			// Nothing compiles. The build step's whole job is to prove the
+			// interpreter is here and that the leg loads and gates, which is
+			// the same evidence a compile gives the other legs: a leg that
+			// cannot start is a build failure and not a skipped row.
+			if e := run(nodeExecutable(), "--version"); e != nil {
+				return fmt.Errorf("node is required for the js leg (set NODE): %w", e)
+			}
+			if e := execute(runner("table", lang, "--gate")); e != nil {
+				return e
+			}
 		}
 	}
 	hostname, _ := os.Hostname()
@@ -304,19 +764,50 @@ func generateAndBuild(langs []string) error {
 			info.Runtimes[key] += "-dirty"
 		}
 	}
-	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}} {
+	for key, args := range map[string][]string{"c": {cc, "--version"}, "cpp": {cxx, "--version"}, "go": {"go", "version"}, "dotnet": {"dotnet", "--info"}, "cargo": {cargoExecutable(), "--version"}, "rustc": {rustcExecutable(), "--version"}, "java": {javaExecutable(), "--version"}, "node": {nodeExecutable(), "--version"}} {
 		if b, e := capture(command{args: args}); e == nil {
 			info.Tools[key] = strings.TrimSpace(string(b))
 		}
 	}
+	if b, e := capture(command{args: []string{"elixir", "--version"}, env: []string{"PATH=" + beamPath() + string(os.PathListSeparator) + os.Getenv("PATH")}}); e == nil {
+		info.Tools["elixir"] = strings.TrimSpace(string(b))
+	}
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		modules, e := generatedModules(lang)
+		if e != nil {
+			return e
+		}
+		for _, p := range modules {
+			h, e := hashFile(p)
+			if e != nil {
+				return e
+			}
+			info.Binaries[p] = h
+		}
+		for _, wire := range wiresFor(lang) {
 			p := binary(wire, lang)
 			h, e := hashFile(p)
 			if e != nil {
 				return e
 			}
 			info.Binaries[p] = h
+			if lang == "elixir" {
+				// EVERY INPUT INDIVIDUALLY, not only the manifest: an edit to a
+				// leg script or a regenerated module after the build is what
+				// readBuild has to refuse, and it can only refuse a path it
+				// recorded.
+				inputs, e := elixirInputs(wire)
+				if e != nil {
+					return e
+				}
+				for _, in := range inputs {
+					h, e := hashFile(in)
+					if e != nil {
+						return e
+					}
+					info.Binaries[in] = h
+				}
+			}
 			if lang == "cs" {
 				for _, suffix := range []string{".deps.json", ".runtimeconfig.json"} {
 					config := strings.TrimSuffix(p, ".dll") + suffix
@@ -344,6 +835,26 @@ func generateAndBuild(langs []string) error {
 	info.Tools["cpp_table_flags"] = strings.Join(cppFlags, " ") + " -DBENCH_MATCHED"
 	info.Tools["c_packet_flags"] = strings.Join(cFlags, " ")
 	info.Tools["c_table_flags"] = strings.Join(cFlags, " ") + " -DBENCH_MATCHED -ffp-contract=off"
+	if contains(langs, "rust") {
+		// The Rust leg's "flags" are cargo settings; the level is also stamped
+		// into the binary, so a row's `opt` column and this line agree or the
+		// build is not the one that ran.
+		info.Tools["rust_table_flags"] = "cargo build --release; BENCH_OPT=" + opt + " CARGO_PROFILE_RELEASE_OPT_LEVEL=" + strings.TrimPrefix(opt, "O")
+		info.Runtimes["serialize.rs"] = gitValue(abs(setting("SERIALIZE_RS", "../serialize.rs")), "rev-parse", "HEAD")
+		if gitValue(abs(setting("SERIALIZE_RS", "../serialize.rs")), "diff", "--name-only", "HEAD", "--") != "" {
+			info.Runtimes["serialize.rs"] += "-dirty"
+		}
+	}
+	if contains(langs, "java") {
+		// The Java leg's compile is the JDK's own, and what decides its code is
+		// the JIT, which the tools map above carries by version.
+		info.Tools["java_table_flags"] = "javac --release 17 -Xlint:all -Werror; java default (JIT, no -ea)"
+	}
+	if contains(langs, "js") {
+		// An interpreted leg has no flags to record; what decides its code is the
+		// interpreter, which the tools map above already carries by version.
+		info.Tools["js_table_flags"] = "none: node runs the generated ES modules as written"
+	}
 	hash, err := hashFile("build/paired/corpus")
 	if err != nil {
 		return err
@@ -416,7 +927,7 @@ func gate(langs []string) error {
 		return e
 	}
 	for _, lang := range langs {
-		for _, wire := range []string{"packet", "table"} {
+		for _, wire := range wiresFor(lang) {
 			out, e := capture(runner(wire, lang, "--gate"))
 			if e != nil {
 				return fmt.Errorf("%s/%s gate: %w", lang, wire, e)
@@ -521,8 +1032,15 @@ func expectedChecks(lang, wire string) string {
 	if wire == "table" {
 		return "contract"
 	}
-	if lang == "go" {
+	switch lang {
+	case "go":
 		return "always"
+	case "elixir":
+		// The generated Elixir writer takes no caller-error checks and its
+		// reader validates the wire contract in every build — there is no
+		// release mode that removes either, so the axis is `contract` on both
+		// wires (bench/elixir/runner.exs states the same).
+		return "contract"
 	}
 	return "removed"
 }
@@ -647,6 +1165,29 @@ func measure(langs []string, out string, rounds int, info buildInfo, receipt str
 	fmt.Fprintln(os.Stderr, "completed paired pass:", out)
 	return nil
 }
+func checkTwinTolerance(best map[string]float64) error {
+	if twinTolerance <= 0 {
+		return nil
+	}
+	for _, wire := range []string{"packet", "table"} {
+		for _, path := range []string{"write", "round_trip"} {
+			c, cpp := best["c/"+wire+"/"+path], best["cpp/"+wire+"/"+path]
+			if c <= 0 || cpp <= 0 {
+				continue
+			}
+			hi, lo := c, cpp
+			if cpp > hi {
+				hi, lo = cpp, c
+			}
+			dev := (hi/lo - 1) * 100
+			if dev > twinTolerance {
+				return fmt.Errorf("c and cpp %s/%s differ by %.1f%% > twin-tolerance %.0f%%", wire, path, dev, twinTolerance)
+			}
+		}
+	}
+	return nil
+}
+
 func render(dir string) error {
 	if err := verifyPass(dir); err != nil {
 		return err
@@ -797,6 +1338,9 @@ func renderReport(dir string, writeOutputs bool) error {
 	fmt.Fprintln(&readme, "\nFastest table = 100%. Each language’s packet wire = 100%; below 100% beats packet. Lower is better.")
 	fmt.Fprintln(&readme, "\n"+checksCaption)
 	text := fmt.Sprintf("# Fixed Table details\n\n%s / %s, %s. Revision `%s` (dirty: %t). %d interleaved rounds, one discarded warmup per path per round. Separate standard packet storage and table closure storage carry the same 64 logical records. Table byte counts are exact averages; record padding is not serialized.\n\nHeadline percentages use the best measured round-trip rate, following packet README convention. Seven rounds intentionally follow that convention, with a 4/3 wire-order imbalance; no additional attempts are selected from the separate bracketing controls. Each per-path warmup uses the full 4,000,000 packet or 400,000 table iterations. Public table Load restores declared defaults inside the clock; the runner adds no separate reset. Packet round trips do not require that reset. Before timing, two complete corpus rotations load into one reused target without caller resets and must re-save the exact expected bytes, including the last-to-first transition. Round trip includes read and write; dividing both by two leaves both ratios unchanged. Fixed Table %% = fastest table rate / this table rate × 100; vs Packet Wire %% = this packet rate / this table rate × 100.\n\n| Language | Wire | Path | Best µs/op | Median µs/op | Spread | Mean bytes/op |\n|---|---|---|---:|---:|---:|---:|\n", info.OS, info.Arch, info.Host, info.Revision, info.Dirty, roundCount) + details.String() + "\n" + checksDetails + "\n\n`build.json` records compiler/runtime and binary/corpus identity. `round-*.csv` contains every measured sample; `load.json` records load. `window.json` records the operator READY/START receipt, process names/PIDs/CPU, periodic and boundary samples, and the complete OK verdict. Known foreign build/benchmark processes refuse the sitting; ordinary desktop load is recorded without a universal threshold. Process sampling can miss brief or unusually named work, so the receipt and bracketing controls remain necessary. The shared producer verified packet -> table -> packet identity for all 64 records before any clock. `completion.json` binds the complete raw evidence by SHA-256; rendering verifies it without requiring old local binaries. This detects changed evidence, not a deliberately dishonest operator.\n"
+	if err := checkTwinTolerance(best); err != nil {
+		return err
+	}
 	if !writeOutputs {
 		return nil
 	}
@@ -819,6 +1363,7 @@ func main() {
 	tableIters := flag.Int64("table-iters", 200000, "initial Table iterations per warmup/sample, fast mode only")
 	fastTimeout := flag.Duration("fast-timeout", 5*time.Minute, "whole fast-mode deadline, at most 5m including gates")
 	noise := flag.String("noise-note", "uncontrolled diagnostic; no quiet-window claim", "operator context recorded by fast mode")
+	flag.Float64Var(&twinTolerance, "twin-tolerance", 10, "C and C++ rows of the same wire/path must agree within this percent; 0 disables")
 	// Recorded, never applied: the caller pins the sitting (bench/paired/nine.sh
 	// runs the whole pass under `bench-lane <core>` so every runner inherits it)
 	// and this only carries that fact into the rendered header.
@@ -831,10 +1376,20 @@ func main() {
 	langs := strings.Split(*langsFlag, ",")
 	seen := map[string]bool{}
 	for _, lang := range langs {
-		if !contains(languages, lang) || seen[lang] {
-			fail(errors.New("langs must be unique c,cpp,go,cs names"))
+		if !contains(allLanguages(), lang) || seen[lang] {
+			fail(errors.New("langs must be unique " + strings.Join(allLanguages(), ",") + " names"))
 		}
 		seen[lang] = true
+	}
+	// A TABLE-ONLY LANGUAGE IS NEVER IN A MIXED REQUEST. Build and gate could
+	// take one, but every other mode reads the request as a set to compare, so
+	// keeping the shapes apart everywhere is one rule instead of four.
+	if !onlyTableLanguages(langs) {
+		for _, lang := range langs {
+			if contains(tableOnlyLanguages, lang) {
+				fail(errors.New("a table-only language is requested alone: -langs " + lang))
+			}
+		}
 	}
 	if *mode == "render" {
 		if e := render(*out); e != nil {
@@ -861,8 +1416,14 @@ func main() {
 	}
 	fast := fastConfig{Rounds: *fastRounds, PacketIterations: *packetIters, TableIterations: *tableIters, Timeout: *fastTimeout, Noise: *noise}
 	if *mode == "fast" {
-		if len(langs) != 4 {
-			fail(errors.New("fast mode requires all four languages"))
+		// FAST IS THE DIAGNOSTIC MODE. EITHER the whole published paired set —
+		// the only shape that yields the board's ratio — OR one unpublished leg
+		// on its own: paired (its own packet ratio, no board) or table-only (no
+		// ratio at all). It publishes nothing and seals nothing, and it is where
+		// a leg that is not in a published pass yet is measured at all.
+		// Confirmation is unchanged below: the published four and nothing else.
+		if !onlyTableLanguages(langs) && !unpublishedAlone(langs) && len(langs) != len(languages) {
+			fail(errors.New("fast mode requires all four paired languages, or one unpublished language alone"))
 		}
 	}
 	// Table mode takes its languages from the tree, not from -langs: the point
@@ -908,8 +1469,13 @@ func main() {
 		}
 		return
 	}
-	if len(langs) != 4 {
-		fail(errors.New("published pass requires all four languages"))
+	// A CONFIRMATION PASS IS THE PUBLISHED SET, EXACTLY: provenance.go seals a
+	// pass over `languages`, so a pass measuring anything else would render as
+	// a pass it is not. The board is a ratio, so a table-only language cannot
+	// enter one at all, and an unpublished paired leg is a diagnostic until it
+	// is promoted.
+	if !slices.Equal(slices.Sorted(slices.Values(langs)), slices.Sorted(slices.Values(languages))) {
+		fail(fmt.Errorf("published pass requires exactly the published languages: %s", strings.Join(languages, ",")))
 	}
 	if e := measure(langs, *out, *rounds, info, *receipt); e != nil {
 		fail(e)

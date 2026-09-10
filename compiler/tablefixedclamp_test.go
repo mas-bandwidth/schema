@@ -95,59 +95,6 @@ func TestCppTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	deadCppCompile(t, files)
 }
 
-func TestCppIdentityPlanHasNoClampOp(t *testing.T) {
-	src, _ := deadCppHeader(t, clampTagOnlySrc)
-	plan := extractFn(src, "CfgFixedPlan")
-	if plan == "" {
-		// the plan is an array, not a function
-		i := strings.Index(src, "constexpr TableFixedEntry CfgFixedPlan[]")
-		if i < 0 {
-			t.Fatal("the identity plan was not emitted")
-		}
-		plan = src[i:]
-		if end := strings.Index(plan, "constexpr int32_t CfgFixedPlanCount"); end > 0 {
-			plan = plan[:end]
-		}
-	}
-	if strings.Contains(plan, "kTableFixedClamp") {
-		t.Error("the identity plan must not carry a clamp op: ranged integers are copies, held after the copy")
-	}
-	if !strings.Contains(src, "kTableFixedClamp   = 7") {
-		t.Error("the compiled path must still have a clamp op")
-	}
-	if !strings.Contains(src, "case kTableFixedClamp:") {
-		t.Error("the read loop must apply a compiled clamp")
-	}
-	// a is int32 | min = 0, max = 1000: both ends fire, signed. flags 1|2|4 = 7, width 4.
-	if !strings.Contains(src, "0ull, 1000ull, 7, 4 }") {
-		t.Error("the destination row for a ranged scalar must carry the compiled clamp's ends")
-	}
-}
-
-func TestCIdentityPlanHasNoClampOp(t *testing.T) {
-	src, _ := deadCHeader(t, clampTagOnlySrc)
-	i := strings.Index(src, "static SCHEMA_UNUSED const TableFixedEntry cfg_fixed_plan[]")
-	if i < 0 {
-		t.Fatal("the identity plan was not emitted")
-	}
-	plan := src[i:]
-	if end := strings.Index(plan, "cfg_fixed_plan_count"); end > 0 {
-		plan = plan[:end]
-	}
-	if strings.Contains(plan, "kTableFixedClamp") {
-		t.Error("the identity plan must not carry a clamp op: ranged integers are copies, held after the copy")
-	}
-	if !strings.Contains(src, "kTableFixedClamp   = 7") {
-		t.Error("the compiled path must still have a clamp op")
-	}
-	if !strings.Contains(src, "case kTableFixedClamp:") {
-		t.Error("the read loop must apply a compiled clamp")
-	}
-	if !strings.Contains(src, "0ull, 1000ull, 7, 4 }") {
-		t.Error("the destination row for a ranged scalar must carry the compiled clamp's ends")
-	}
-}
-
 func TestCTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	without, _ := deadCHeader(t, clampTagOnlySrc)
 	body := extractFn(without, "cfg_fixed_clamp_body_")
@@ -162,5 +109,58 @@ func TestCTableFixedClampOmitsEmptyUnionSwitch(t *testing.T) {
 	body = extractFn(with, "cfg_fixed_clamp_body_")
 	if !strings.Contains(body, "switch ( value->effect.type )") {
 		t.Error("a union with a bounded arm must still switch over the set arm")
+	}
+}
+
+// NEITHER PLAN CLAMPS (docs/SPEC-TABLES.md §3.4). A read is one prefill, one
+// loop over the plan the layout hash selected, then ONE bounds pass over the
+// storage the loop wrote — the same pass for either plan. There is no clamp op
+// for a plan to carry, so the op set stops at widenf and the destination rows
+// carry destinations and nothing about a range.
+func TestCppNoPlanClamps(t *testing.T) {
+	src, _ := deadCppHeader(t, clampTagOnlySrc)
+	if strings.Contains(src, "kTableFixedClamp") {
+		t.Error("no plan op clamps: the clamp op must not exist")
+	}
+	if !strings.Contains(src, "kTableFixedWidenF  = 6") {
+		t.Error("the op set is the seven, and widenf is the last of them")
+	}
+	if !strings.Contains(src, "CfgFixedClampBody") {
+		t.Error("the bounds pass is the clamp, and it must still be emitted")
+	}
+	i := strings.Index(src, "constexpr TableFixedDst CfgFixedDst[]")
+	if i < 0 {
+		t.Fatal("the destination rows were not emitted")
+	}
+	rows := src[i:]
+	if end := strings.Index(rows, "\n};"); end > 0 {
+		rows = rows[:end]
+	}
+	if strings.Contains(rows, "ull") {
+		t.Error("a destination row must carry no clamp ends: the pass holds the range, not the plan")
+	}
+}
+
+func TestCNoPlanClamps(t *testing.T) {
+	src, _ := deadCHeader(t, clampTagOnlySrc)
+	if strings.Contains(src, "kTableFixedClamp") {
+		t.Error("no plan op clamps: the clamp op must not exist")
+	}
+	if !strings.Contains(src, "kTableFixedWidenF  = 6") {
+		t.Error("the op set is the seven, and widenf is the last of them")
+	}
+	if !strings.Contains(src, "cfg_fixed_clamp_body_") {
+		t.Error("the bounds pass is the clamp, and it must still be emitted")
+	}
+	i := strings.Index(src, "TableFixedDst cfg_fixed_dst[]")
+	if i < 0 {
+		t.Fatal("the destination rows were not emitted")
+	}
+	rows := src[i:]
+	if end := strings.Index(rows, "\n};"); end > 0 {
+		rows = rows[:end]
+	}
+	if strings.Contains(rows, "ull") {
+		t.Error("a destination row must carry no clamp ends: the pass holds the range, not the plan")
 	}
 }

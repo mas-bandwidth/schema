@@ -687,9 +687,9 @@ enum { kTableFixedForm = 3 };
 enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 
 /* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-   the rest are what a plan compiled from another writer's layout adds. clamp
-   is compiled-only: a ranged integer is a copy on the identity path and the
-   generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
+   the other four are what a plan compiled from another writer's layout adds.
+   NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
+   after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
 
    C HAS NO ENUM BASE TYPE, so where C++ writes enum : uint8_t these are plain
    anonymous enumerators — ints, stored into the uint8_t op and arg columns at
@@ -702,8 +702,7 @@ enum
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
-    kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
-    kTableFixedClamp   = 7  /* a ranged integer, in place on the destination the copy landed */
+    kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
 };
 
 /* meta on a kTableFixedText entry */
@@ -808,7 +807,7 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
-    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the tag at guard
        must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
        entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
        shared one, and a string(N) under a union's arm then had to be either
@@ -817,6 +816,13 @@ typedef struct TableFixedEntry
     uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
+    /* argw IS THE GUARD'S WIDTH IN BYTES. A union tag is one, two, four or
+       eight, and comparing only the FIRST of them fires arm 1 on a foreign
+       tag of 0x0101 — an ordinal no arm of this build names. Zero is read as
+       one, which is the width a tag had when this field did not exist. It
+       sits last so a ten-value aggregate still names op, arg, meta, dstsize
+       and sign in that order. */
+    uint8_t argw;
 } TableFixedEntry;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
@@ -829,6 +835,7 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
     TableFixedEntry e;
     memset( &e, 0, sizeof( e ) );
     e.guard = SCHEMA_TABLE_FIXED_NO_GUARD;
+    e.argw = 1;
     return e;
 }
 
@@ -905,6 +912,22 @@ static SCHEMA_UNUSED uint64_t table_fixed_get64( const uint8_t * b )
     return v;
 }
 
+/* THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+   byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+   for, and reading only the first byte let 0x0101 run arm 1's entries over
+   a stranger's record. */
+static SCHEMA_UNUSED uint64_t table_fixed_tag_at( const uint8_t * src, uint32_t guard, uint8_t argw )
+{
+    const uint8_t w = argw == 0 ? (uint8_t) 1 : ( argw > 8u ? (uint8_t) 8 : argw );
+    uint64_t v = 0;
+    uint8_t i;
+    for ( i = 0; i < w; ++i )
+    {
+        v |= ( (uint64_t) src[guard + i] ) << ( 8 * i );
+    }
+    return v;
+}
+
 /* THE HASH is fnv1a64 over the layout's bytes exactly as written (§3.4). */
 static SCHEMA_UNUSED uint64_t table_fixed_hash_of( const uint8_t * layout, int64_t bytes )
 {
@@ -925,7 +948,12 @@ static SCHEMA_UNUSED uint64_t table_fixed_hash_of( const uint8_t * layout, int64
    the form and not an optimization a port may skip: the ruling that there is
    ONE reader path rests on a measurement, and with a runtime-length memcpy per
    entry that same measurement is 3.1x instead of 1.3x
-   (test/bench/fixedform_measure.cpp). */
+   (test/bench/fixedform_measure.cpp).
+
+   AND EVERY MOVE STAYS WITHIN [ run start, run end ). Overlapping moves are the
+   technique; a move anchored OUTSIDE the run is not the technique, it is a
+   defect — it clobbers whatever field sits in front of the destination and it
+   reads past the record body. */
 static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_copy_run( uint8_t * d, const uint8_t * s, uint32_t n )
 {
     if ( n <= 16 )
@@ -948,8 +976,25 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_copy_run( ui
         }
         return;
     }
+    /* EVERY MOVE IS ANCHORED INSIDE [ s, s + n ), AND THAT IS THE INVARIANT THIS
+       BRANCH EXISTS TO STATE. A run of 17..31 bytes has no room for a sixteen,
+       a second sixteen and a thirty-two, so it takes TWO SIXTEENS that OVERLAP
+       in the middle: one at the run's start and one at end - 16, both wholly
+       within the run because n >= 16. Anchoring the tail move at n - 32
+       instead would put it 32 - n bytes IN FRONT of the run — reading and
+       writing a neighbour's bytes, and reading past the record body, which for
+       a file's last record is past the buffer. */
+    if ( n <= 32 )
+    {
+        uint64_t w[2];
+        memcpy( w, s, 16 ); memcpy( d, w, 16 );
+        memcpy( w, s + n - 16, 16 ); memcpy( d + n - 16, w, 16 );
+        return;
+    }
     if ( n <= 64 )
     {
+        /* n >= 33 here, so n - 32 is at least 1 and the tail move begins
+           inside the run, exactly as the two moves in front of it do. */
         uint64_t w[4];
         memcpy( w, s, 16 ); memcpy( d, w, 16 );
         memcpy( w, s + 16, 16 ); memcpy( d + 16, w, 16 );
@@ -1053,39 +1098,6 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_apply( const
             memcpy( dst + p->dst, &p->aux, p->size );
             break;
         }
-        case kTableFixedClamp:
-        {
-            /* IN PLACE ON THE DESTINATION the copy or widen just landed. src is
-               unused: this op does not read the record. meta bit 0 is the low
-               end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
-               OF THE TWO ENDS, the same select-and-add the identity pass emits. */
-            uint64_t lo = 0, hi = 0, raw = 0;
-            int32_t under = 0, over = 0;
-            memcpy( &lo, base + p->aux, 8 );
-            memcpy( &hi, base + p->aux + 8, 8 );
-            memcpy( &raw, dst + p->dst, p->size );
-            if ( p->sign != 0 && p->size < 8 )
-            {
-                const unsigned bits = p->size * 8u;
-                const uint64_t top = 1ull << ( bits - 1 );
-                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            }
-            if ( p->sign != 0 )
-            {
-                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
-                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
-                raw = under ? lo : ( over ? hi : raw );
-            }
-            else
-            {
-                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
-                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
-                raw = under ? lo : ( over ? hi : raw );
-            }
-            (*clamped) += under | over;
-            memcpy( dst + p->dst, &raw, p->size );
-            break;
-        }
         default: break;
     }
 }
@@ -1116,7 +1128,7 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
-        if ( src[p->guard] != p->arg ) { continue; }
+        if ( table_fixed_tag_at( src, p->guard, p->argw ) != (uint64_t) p->arg ) { continue; }
         table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
     }
     report->clamped += clamped;
@@ -1495,10 +1507,6 @@ typedef struct TableFixedDst
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
     uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
-    uint64_t lo;     /* a compiled clamp's low end, bit pattern of the slot */
-    uint64_t hi;     /* a compiled clamp's high end */
-    uint8_t clamp;   /* bit 0 = low, bit 1 = high, bit 2 = signed */
-    uint8_t width;   /* the slot's bytes; 0 = this row is not a compiled clamp */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1516,7 +1524,7 @@ typedef struct TableFixedCompiler
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
-    int skip_clamp;    /* counted-array elements: the live count, never slack */
+    uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     TableReport * report;
 } TableFixedCompiler;
 
@@ -1527,6 +1535,7 @@ static SCHEMA_UNUSED void table_fixed_compiler_init( TableFixedCompiler * c )
     memset( c, 0, sizeof( *c ) );
     c->plan = NULL;
     c->report = NULL;
+    c->argw = 1;
 }
 
 static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEntry e )
@@ -1540,19 +1549,12 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
     {
-        /* A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
-           already landed. src+size is not a wire reach. */
-        if ( e.op != kTableFixedClamp )
-        {
-            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-            if ( reach > (uint64_t) c->record ||
-                 ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
-            {
-                c->hostile = 1;
-                return;
-            }
-        }
-        else if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record )
+        if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) { e.argw = c->argw ? c->argw : (uint8_t) 1; }
+        const uint8_t gw = e.argw == 0 ? (uint8_t) 1 : e.argw;
+        const int guard_out = e.guard != SCHEMA_TABLE_FIXED_NO_GUARD &&
+            ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record );
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
             return;
@@ -1578,39 +1580,6 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_table( TableFixedCompiler * c, con
     slots[0] = (uint16_t) n;
     for ( i = 0; i < n; ++i ) { slots[1 + i] = values[i]; }
     return at;
-}
-
-/* table_fixed_lay_bounds lays a compiled clamp's two ends above the entries,
-   the same pool the ordinal remap tables use, and answers the byte offset from
-   the plan's base. memcpy, not a typed store: the pool is not 8-aligned. */
-static SCHEMA_UNUSED uint32_t table_fixed_lay_bounds( TableFixedCompiler * c, uint64_t lo, uint64_t hi )
-{
-    const int32_t bytes = 16;
-    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c->capacity;
-    uint8_t * at;
-    c->pool += bytes;
-    if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
-    at = (uint8_t *) (void *) ( (uint8_t *) c->plan + (uint32_t) ( total - c->pool ) );
-    memcpy( at, &lo, 8 );
-    memcpy( at + 8, &hi, 8 );
-    return (uint32_t) ( total - c->pool );
-}
-
-/* table_fixed_push_clamp is ONE ranged scalar after the copy or widen that
-   landed it. Counted-array elements skip: the live count is a value the plan
-   cannot name, and clamping slack would count a clamp on a byte nobody wrote. */
-static SCHEMA_UNUSED void table_fixed_push_clamp( TableFixedCompiler * c, const TableFixedDst * d,
-                                                  uint32_t at, uint32_t guard, uint8_t arg )
-{
-    TableFixedEntry e;
-    if ( c->skip_clamp || d->width == 0 ) { return; }
-    e = table_fixed_entry_zero();
-    e.src = 0; e.dst = at; e.size = d->width;
-    e.aux = table_fixed_lay_bounds( c, d->lo, d->hi );
-    e.guard = guard; e.op = (uint8_t) kTableFixedClamp; e.arg = arg;
-    e.meta = (uint8_t) ( d->clamp & 3u );
-    e.sign = ( d->clamp & 4u ) ? (uint8_t) 1 : (uint8_t) 0;
-    table_fixed_push( c, e );
 }
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
@@ -1701,7 +1670,6 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.op = ( te.kind == 10 ) ? (uint8_t) kTableFixedWidenF : (uint8_t) kTableFixedWiden;
                 e.sign = table_fixed_signed_kind( te.kind ) ? (uint8_t) 1 : (uint8_t) 0;
                 table_fixed_push( c, e );
-                table_fixed_push_clamp( c, d, at, guard, arg );
                 break;
             }
             /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
@@ -1740,15 +1708,10 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     table_fixed_push( c, e );
                 }
                 n = their_n < my_n ? their_n : my_n;
+                for ( i = 0; i < n; ++i )
                 {
-                    const int prev_skip = c->skip_clamp;
-                    if ( d->counted ) { c->skip_clamp = 1; }
-                    for ( i = 0; i < n; ++i )
-                    {
-                        table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
-                                                   mine, mi + 1, dst, at + i * d->stride, guard, arg );
-                    }
-                    c->skip_clamp = prev_skip;
+                    table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
+                                               mine, mi + 1, dst, at + i * d->stride, guard, arg );
                 }
                 break;
             }
@@ -1778,8 +1741,10 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             {
                 const uint32_t their_tag = table_fixed_tag_bytes( theirs, ti );
                 const uint32_t my_tag = table_fixed_tag_bytes( mine, mi );
+                const uint8_t saved_argw = c->argw;
                 int32_t my_arm = mi + 1;
                 uint32_t k;
+                c->argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : (uint8_t) 1;
                 for ( k = 0; k < me.children && my_arm < mine->count; ++k )
                 {
                     const TableFixedLayoutEntry ma = table_fixed_entry_at( mine, my_arm );
@@ -1794,6 +1759,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                             TableFixedEntry tag = table_fixed_entry_zero();
                             tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
                             tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint8_t) ( j + 1 );
+                            tag.argw = c->argw;
                             table_fixed_push( c, tag );
                             table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
                                                        mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 ) );
@@ -1803,6 +1769,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     }
                     my_arm += table_fixed_subtree( mine, my_arm );
                 }
+                c->argw = saved_argw;
                 break;
             }
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
@@ -1847,13 +1814,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 {
                     e.size = me.size; e.op = kTableFixedCopy;
                     table_fixed_push( c, e );
-                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
                 {
                     e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                     table_fixed_push( c, e );
-                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( c->report != NULL )
                 {
@@ -1907,6 +1872,7 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
         if ( i == plain ) { split = out; }
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
+             plan[out-1].argw == plan[i].argw &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -11649,20 +11615,20 @@ static SCHEMA_UNUSED const int64_t render_camera_fixed_layout_bytes = (int64_t) 
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_camera_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderCamera */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* position */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* rotation */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* w */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* camera_id */
-    { 60, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* camera_type */
-    { 64, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* target_object_id */
-    { 68, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* fov */
+    { 0, 0, 0, 0, 0 }, /* RenderCamera */
+    { 0, 0, 0, 0, 0 }, /* position */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* rotation */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* w */
+    { 56, 0, 0, 0, 0 }, /* camera_id */
+    { 60, 0, 0, 0, 0 }, /* camera_type */
+    { 64, 0, 0, 0, 0 }, /* target_object_id */
+    { 68, 0, 0, 0, 0 }, /* fov */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 11 leaves by the schema compiler —
@@ -11672,7 +11638,7 @@ static SCHEMA_UNUSED const TableFixedDst render_camera_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_camera_fixed_plan[] = {
-    { 0u, 0u, 72u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 72u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_camera_fixed_plan_guarded = 1;
@@ -11886,32 +11852,32 @@ static SCHEMA_UNUSED const int64_t render_ship_fixed_layout_bytes = (int64_t) si
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_ship_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderShip */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* position */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* rotation */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* w */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flags */
-    { 64, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* object_id */
-    { 68, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* target_object_id */
-    { 72, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* thrust */
-    { 76, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* object_sequence */
-    { 77, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* ship_type */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Fighter */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Bomber */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Freighter */
-    { 78, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
-    { 79, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* has_target_lock */
-    { 80, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* predicted_explode */
+    { 0, 0, 0, 0, 0 }, /* RenderShip */
+    { 0, 0, 0, 0, 0 }, /* position */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* rotation */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* w */
+    { 56, 0, 0, 0, 0 }, /* flags */
+    { 64, 0, 0, 0, 0 }, /* object_id */
+    { 68, 0, 0, 0, 0 }, /* target_object_id */
+    { 72, 0, 0, 0, 0 }, /* thrust */
+    { 76, 0, 0, 0, 0 }, /* object_sequence */
+    { 77, 0, 0, 0, 0 }, /* ship_type */
+    { 0, 0, 0, 0, 0 }, /* Fighter */
+    { 0, 0, 0, 0, 0 }, /* Bomber */
+    { 0, 0, 0, 0, 0 }, /* Freighter */
+    { 78, 0, 0, 0, 0 }, /* team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
+    { 79, 0, 0, 0, 0 }, /* has_target_lock */
+    { 80, 0, 0, 0, 0 }, /* predicted_explode */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 16 leaves by the schema compiler —
@@ -11921,7 +11887,7 @@ static SCHEMA_UNUSED const TableFixedDst render_ship_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_ship_fixed_plan[] = {
-    { 0u, 0u, 81u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 81u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_ship_fixed_plan_guarded = 1;
@@ -12130,24 +12096,24 @@ static SCHEMA_UNUSED const int64_t render_turret_fixed_layout_bytes = (int64_t) 
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_turret_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderTurret */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* rotation */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* w */
-    { 32, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flags */
-    { 40, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* object_id */
-    { 44, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* parent_object_id */
-    { 48, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* turret_index */
-    { 52, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* target_object_id */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* object_sequence */
-    { 57, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
-    { 58, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* has_target_lock */
+    { 0, 0, 0, 0, 0 }, /* RenderTurret */
+    { 0, 0, 0, 0, 0 }, /* rotation */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* w */
+    { 32, 0, 0, 0, 0 }, /* flags */
+    { 40, 0, 0, 0, 0 }, /* object_id */
+    { 44, 0, 0, 0, 0 }, /* parent_object_id */
+    { 48, 0, 0, 0, 0 }, /* turret_index */
+    { 52, 0, 0, 0, 0 }, /* target_object_id */
+    { 56, 0, 0, 0, 0 }, /* object_sequence */
+    { 57, 0, 0, 0, 0 }, /* team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
+    { 58, 0, 0, 0, 0 }, /* has_target_lock */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -12157,7 +12123,7 @@ static SCHEMA_UNUSED const TableFixedDst render_turret_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_turret_fixed_plan[] = {
-    { 0u, 0u, 59u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 59u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_turret_fixed_plan_guarded = 1;
@@ -12369,27 +12335,27 @@ static SCHEMA_UNUSED const int64_t render_missile_fixed_layout_bytes = (int64_t)
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_missile_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderMissile */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* position */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* rotation */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* w */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flags */
-    { 64, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* object_id */
-    { 68, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* object_sequence */
-    { 69, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* missile_type */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Seeker */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Dumb */
-    { 70, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0 }, /* RenderMissile */
+    { 0, 0, 0, 0, 0 }, /* position */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* rotation */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* w */
+    { 56, 0, 0, 0, 0 }, /* flags */
+    { 64, 0, 0, 0, 0 }, /* object_id */
+    { 68, 0, 0, 0, 0 }, /* object_sequence */
+    { 69, 0, 0, 0, 0 }, /* missile_type */
+    { 0, 0, 0, 0, 0 }, /* Seeker */
+    { 0, 0, 0, 0, 0 }, /* Dumb */
+    { 70, 0, 0, 0, 0 }, /* team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -12399,7 +12365,7 @@ static SCHEMA_UNUSED const TableFixedDst render_missile_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_missile_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_missile_fixed_plan_guarded = 1;
@@ -12612,28 +12578,28 @@ static SCHEMA_UNUSED const int64_t render_dynamic_prop_fixed_layout_bytes = (int
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_dynamic_prop_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderDynamicProp */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* position */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* rotation */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* w */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flags */
-    { 64, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* object_id */
-    { 68, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* object_sequence */
-    { 69, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* prop_type */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Rock */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Station */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Beacon */
-    { 70, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0 }, /* RenderDynamicProp */
+    { 0, 0, 0, 0, 0 }, /* position */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* rotation */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* w */
+    { 56, 0, 0, 0, 0 }, /* flags */
+    { 64, 0, 0, 0, 0 }, /* object_id */
+    { 68, 0, 0, 0, 0 }, /* object_sequence */
+    { 69, 0, 0, 0, 0 }, /* prop_type */
+    { 0, 0, 0, 0, 0 }, /* Rock */
+    { 0, 0, 0, 0, 0 }, /* Station */
+    { 0, 0, 0, 0, 0 }, /* Beacon */
+    { 70, 0, 0, 0, 0 }, /* team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -12643,7 +12609,7 @@ static SCHEMA_UNUSED const TableFixedDst render_dynamic_prop_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_dynamic_prop_fixed_plan[] = {
-    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 71u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_dynamic_prop_fixed_plan_guarded = 1;
@@ -12856,28 +12822,28 @@ static SCHEMA_UNUSED const int64_t render_static_prop_fixed_layout_bytes = (int6
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_static_prop_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderStaticProp */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* position */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* rotation */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* w */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* scale */
-    { 64, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flags */
-    { 72, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* static_prop_id */
-    { 76, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* prop_type */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Rock */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Station */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Beacon */
-    { 77, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0 }, /* RenderStaticProp */
+    { 0, 0, 0, 0, 0 }, /* position */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* rotation */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* w */
+    { 56, 0, 0, 0, 0 }, /* scale */
+    { 64, 0, 0, 0, 0 }, /* flags */
+    { 72, 0, 0, 0, 0 }, /* static_prop_id */
+    { 76, 0, 0, 0, 0 }, /* prop_type */
+    { 0, 0, 0, 0, 0 }, /* Rock */
+    { 0, 0, 0, 0, 0 }, /* Station */
+    { 0, 0, 0, 0, 0 }, /* Beacon */
+    { 77, 0, 0, 0, 0 }, /* team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -12887,7 +12853,7 @@ static SCHEMA_UNUSED const TableFixedDst render_static_prop_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_static_prop_fixed_plan[] = {
-    { 0u, 0u, 78u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 78u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_static_prop_fixed_plan_guarded = 1;
@@ -13101,29 +13067,29 @@ static SCHEMA_UNUSED const int64_t render_cosmetic_prop_fixed_layout_bytes = (in
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_cosmetic_prop_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderCosmeticProp */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* position */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* rotation */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* w */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* scale */
-    { 64, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flags */
-    { 72, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* cosmetic_prop_id */
-    { 76, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* prop_sequence */
-    { 77, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* prop_type */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Rock */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Station */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Beacon */
-    { 78, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0 }, /* RenderCosmeticProp */
+    { 0, 0, 0, 0, 0 }, /* position */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* rotation */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* w */
+    { 56, 0, 0, 0, 0 }, /* scale */
+    { 64, 0, 0, 0, 0 }, /* flags */
+    { 72, 0, 0, 0, 0 }, /* cosmetic_prop_id */
+    { 76, 0, 0, 0, 0 }, /* prop_sequence */
+    { 77, 0, 0, 0, 0 }, /* prop_type */
+    { 0, 0, 0, 0, 0 }, /* Rock */
+    { 0, 0, 0, 0, 0 }, /* Station */
+    { 0, 0, 0, 0, 0 }, /* Beacon */
+    { 78, 0, 0, 0, 0 }, /* team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 13 leaves by the schema compiler —
@@ -13133,7 +13099,7 @@ static SCHEMA_UNUSED const TableFixedDst render_cosmetic_prop_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_cosmetic_prop_fixed_plan[] = {
-    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 79u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_cosmetic_prop_fixed_plan_guarded = 1;
@@ -13343,25 +13309,25 @@ static SCHEMA_UNUSED const int64_t render_laser_fixed_layout_bytes = (int64_t) s
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_laser_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderLaser */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* start */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* finish */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 48, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* t */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* laser_id */
-    { 60, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* laser_type */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Pulse */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Beam */
-    { 61, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0 }, /* RenderLaser */
+    { 0, 0, 0, 0, 0 }, /* start */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* finish */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 48, 0, 0, 0, 0 }, /* t */
+    { 56, 0, 0, 0, 0 }, /* laser_id */
+    { 60, 0, 0, 0, 0 }, /* laser_type */
+    { 0, 0, 0, 0, 0 }, /* Pulse */
+    { 0, 0, 0, 0, 0 }, /* Beam */
+    { 61, 0, 0, 0, 0 }, /* team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 10 leaves by the schema compiler —
@@ -13371,7 +13337,7 @@ static SCHEMA_UNUSED const TableFixedDst render_laser_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_laser_fixed_plan[] = {
-    { 0u, 0u, 62u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 62u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_laser_fixed_plan_guarded = 1;
@@ -13583,27 +13549,27 @@ static SCHEMA_UNUSED const int64_t render_explosion_fixed_layout_bytes = (int64_
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst render_explosion_fixed_dst[] = {
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* RenderExplosion */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* position */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* rotation */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* x */
-    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* y */
-    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* z */
-    { 24, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* w */
-    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* t */
-    { 64, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* explosion_id */
-    { 68, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* parent_object_id */
-    { 72, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* explosion_type */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Small */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Large */
-    { 73, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* team */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0 }, /* RenderExplosion */
+    { 0, 0, 0, 0, 0 }, /* position */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* rotation */
+    { 0, 0, 0, 0, 0 }, /* x */
+    { 8, 0, 0, 0, 0 }, /* y */
+    { 16, 0, 0, 0, 0 }, /* z */
+    { 24, 0, 0, 0, 0 }, /* w */
+    { 56, 0, 0, 0, 0 }, /* t */
+    { 64, 0, 0, 0, 0 }, /* explosion_id */
+    { 68, 0, 0, 0, 0 }, /* parent_object_id */
+    { 72, 0, 0, 0, 0 }, /* explosion_type */
+    { 0, 0, 0, 0, 0 }, /* Small */
+    { 0, 0, 0, 0, 0 }, /* Large */
+    { 73, 0, 0, 0, 0 }, /* team */
+    { 0, 0, 0, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0 }, /* Gold */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 12 leaves by the schema compiler —
@@ -13613,7 +13579,7 @@ static SCHEMA_UNUSED const TableFixedDst render_explosion_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry render_explosion_fixed_plan[] = {
-    { 0u, 0u, 74u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* x */
+    { 0u, 0u, 74u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* x */
 };
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t render_explosion_fixed_plan_guarded = 1;

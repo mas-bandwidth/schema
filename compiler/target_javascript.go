@@ -57,6 +57,22 @@ func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 }
 
 func init() {
+	// THE TABLE WIRE CARRIES A STRING, BYTES OR FLAGS DEFAULT TOO (SPEC §4.2),
+	// and the packet registration below is not enough to say so: a table
+	// default governs ELISION and the ABSENT-FIELD READ as well as storage.
+	// Form 3 elides nothing — every field of every record rides — so what is
+	// left is the absent-field read, and on this form that is the PREFILL,
+	// which internal/codegen/jstable lays down as a constant run of bytes:
+	// a string's or bytes' declared default with its length ahead of it, and a
+	// flags default at its storage width (fixedprefill.go). The write side
+	// takes the value's own storage, which the packet constructor has
+	// initialized from the same defaults since js registered below.
+	//
+	// It is claimed here rather than assumed: the FX1/FX2 leg carries
+	// `label string(8) = "fx"` and its bytes are compared against the C++
+	// reference's, so a default this port dropped would be a byte that did not
+	// come back.
+	valueDefaultTargets = append(valueDefaultTargets, "js")
 	registerPacketValueDefaultCarrier("js")
 	registerWideTextCarrier("js")
 	registerBuiltin(jsTarget{}, true, false, false, false)
