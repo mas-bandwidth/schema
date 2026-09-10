@@ -12,7 +12,6 @@ const (
 	kFixedNoGuard     = int64(0xFFFFFFFF)
 	fixedCountBytes   = int64(4)
 	fixedPresentBytes = int64(1)
-	fixedLeafCap      = 4096
 	kFixedOpFlat      = byte(7)
 )
 
@@ -92,40 +91,6 @@ func fixedElementBytes(f *ir.Field) int64 {
 	return fixedStorageBytes(f.Type)
 }
 
-func fixedSupported(st *ir.Struct, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
-			return false
-		}
-		if f.Type.Kind == ir.TNamed {
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				if !fixedSupported(r, depth+1) {
-					return false
-				}
-			case *ir.Union:
-				for _, v := range r.Variants {
-					if v.F == nil {
-						return false
-					}
-					a := v.F
-					if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-						a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes || a.Type.Optional {
-						return false
-					}
-					if s, ok := a.Type.Ref.(*ir.Struct); ok && a.Type.Kind == ir.TNamed && !fixedSupported(s, depth+1) {
-						return false
-					}
-				}
-			}
-		}
-	}
-	return true
-}
-
 // fixedFlatType reports a type whose STORAGE IMAGE IS ITS WIRE IMAGE: the
 // declared order is the storage order, there is no padding anywhere in it, and
 // no field of it reorders against the wire. An array of such a type is ONE run
@@ -155,59 +120,6 @@ func (g *tableGen) fixedFlatElem(f *ir.Field) bool {
 		return false
 	}
 	return true
-}
-
-func (g *tableGen) fixedLeafCount(st *ir.Struct) int {
-	n := 0
-	for _, f := range st.Fields {
-		n += g.fixedFieldLeafCount(f)
-	}
-	return n
-}
-
-func (g *tableGen) fixedFieldLeafCount(f *ir.Field) int {
-	per := g.fixedElementLeafCount(f)
-	flat := g.fixedFlatElem(f)
-	n := per
-	switch {
-	case f.KeyEnum != "":
-		n = int(f.KeyEnumRef.Max) * per
-		if flat {
-			n = 1
-		}
-	case f.Array == ir.ArrayFixed:
-		n = int(f.ArrayBound) * per
-		if flat {
-			n = 1
-		}
-	case f.Array == ir.ArrayCounted:
-		n = 1 + int(f.ArrayBound)*per
-		if flat {
-			n = 2
-		}
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
-		n = 1
-	}
-	if f.Type.Optional {
-		n++
-	}
-	return n
-}
-
-func (g *tableGen) fixedElementLeafCount(f *ir.Field) int {
-	if f.Type.Kind == ir.TNamed {
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			return g.fixedLeafCount(r)
-		case *ir.Union:
-			n := 1
-			for _, v := range r.Variants {
-				n += g.fixedFieldLeafCount(v.F)
-			}
-			return n
-		}
-	}
-	return 1
 }
 
 type fixedBlockEntry struct {
