@@ -440,6 +440,49 @@ func RefuseWideTableKinds(u *Unit, backend string) error {
 		"and each port lands them as a row on schema#366)", backend, strings.Join(fields, ", "))
 }
 
+// WideTableKindScope is §15's refusal SCOPED: which of a backend's outputs a
+// unit's wide kinds stand down, and whether there is anything left to emit at
+// all.
+//
+// §15'S REFUSAL IS OWED BY THE FORM-1 ACCELERATORS AND NOT BY THE WIRE. It
+// exists because a backend that emits the BLOCK FORM (§19) or the COOKED FORM
+// (§7) has to name a kind's storage column and its reflection descriptor, and a
+// port that does not carry the fixed-point and 128-bit families cannot name
+// theirs. THE FIXED FORM (§3.4) NAMES NO KIND AT ALL on the emitted path: a
+// field is a store of its declared width at its declared offset, so a 128-bit
+// field is a sixteen-byte store and a fixed-point one is its raw integer, and
+// the kind byte a reader compares rides in the LAYOUT the emitter already
+// writes. So a unit that declares the wide kinds still gets its form-3 codec,
+// and it is the two accelerators that stand down.
+//
+// THE RULE IS HERE RATHER THAN IN EACH PORT because a rule five ports each
+// spell for themselves is five rules: the Rust, JS, Dart and Elixir legs each
+// scoped it locally first, and this is that one answer.
+type WideTableKindScope struct {
+	// Refusal is §15's error, by name, naming every field — nil when the unit
+	// declares no wide kind at all.
+	Refusal error
+	// Accelerators says the BLOCK FORM and the COOKED FORM must not be emitted
+	// for this unit: their columns are the ones that cannot be named.
+	Accelerators bool
+	// Unit says the WHOLE unit is refused and Refusal is the whole answer:
+	// there is nothing left for this backend to emit.
+	Unit bool
+}
+
+// WideTableKinds answers [WideTableKindScope] for one backend. `fixedForm` is
+// the BACKEND'S OWN answer to "do I emit a form-3 codec for this unit", because
+// which types a port lays out in the fixed form is that port's own state and
+// not a fact about the unit — [TableFixedAnyEmitted] is the answer a port whose
+// coverage matches the reference's passes.
+func WideTableKinds(u *Unit, backend string, fixedForm bool) WideTableKindScope {
+	refusal := RefuseWideTableKinds(u, backend)
+	if refusal == nil {
+		return WideTableKindScope{}
+	}
+	return WideTableKindScope{Refusal: refusal, Accelerators: true, Unit: !fixedForm}
+}
+
 // TableKindWidens reports whether a payload under `kind` decodes EXACTLY into
 // a field declared at `declared` (docs/SPEC-TABLES.md §4): an integer kind
 // into a WIDER integer kind of the same signedness, and f32 into f64. The
