@@ -203,11 +203,11 @@ public final class FixedTableFixed {
 
     // THE IDENTITY PLAN, and it is a CONSTANT of this reader: in the image
     // domain the declared order IS the destination's, so §3.4's coalescing
-    // takes the whole body to ONE move. It is stated here because §3.4
-    // states it, and it is what a caller running the plan loop by hand over
-    // this build's own records is handed; the reader's own identity path
-    // (loadOwn) never walks it, because the one move it holds is the body
-    // onto itself. Published by class initialization.
+    // takes the whole body to ONE move. THE LOAD BELOW WALKS IT the way it
+    // walks any other plan — a plan is DATA here, never a case — and the
+    // hole list computed from it comes out empty, which is what makes the
+    // prefill a no-op on this build's own records rather than a skip.
+    // Published by class initialization.
     private static final class Identity {
         static final TableFixed.Entry[] plan = build();
 
@@ -224,35 +224,76 @@ public final class FixedTableFixed {
     /** a scratch image of one record body, allocated ONCE by the caller. */
     public static byte[] image() { return new byte[bodyBytes]; }
 
-    /** THE READ, and it is TWO METHODS BEHIND ONE DOOR: the hash decides
-     *  which. A record under this build's OWN hash is this reader's own
-     *  body, so it is decoded the way the packet reader decodes — straight-
-     *  line loads at constant offsets from the record's own bytes into the
-     *  value, with no prefill, no plan, no image and no copy (loadOwn).
-     *  Anybody else's is a prefill and ONE loop over a plan compiled once
-     *  from the writer's own layout, landed through the SAME scatter
-     *  (loadCompiled). Same checks on both — every count, length, ordinal
-     *  and ranged value is held to this reader's own bound — and the
-     *  compiled path is its own method so the identity path stays small
-     *  enough to compile as one body. Answers the records read, or -1.
+    /** THE READ, AND IT IS ONE PATH (docs/SPEC-TABLES.md §3.4): the prefill of
+     *  the holes the chosen plan leaves, ONE loop over that plan, ONE scatter,
+     *  and the bounds the scatter holds. WHICH PLAN is the only thing the hash
+     *  decides — the identity plan when the file's layout is this build's own,
+     *  a plan compiled from the writer's layout when it is not. There is no
+     *  identity flag in the record loop and no second method behind the door,
+     *  because a plan is data: one path is exercised by every read, and there
+     *  is one shape to test rather than two.
      *
-     *  NOTHING PER RECORD ALLOCATES, which is the claim the batch loop
-     *  rests on: EVERY BUFFER IS THE CALLER'S — the plan, the ordinal
-     *  remap scratch and the record image — and the loops below only
-     *  fill them. What this DOES make is a fixed handful of cursors,
-     *  once per call: the header below, the hole list the COMPILED path
-     *  builds (cover and the packed ranges — the identity path builds
-     *  none, having no holes to fill), and on that same path the two
-     *  Layout views (a byte[] reference and two ints each, over the
-     *  caller's own bytes) that TableFixed.parse returns. None escapes
-     *  this method, and none is per record. */
+     *  THE PREFILL IS PER-PLAN, computed once per load from whichever plan
+     *  won: identity's one move covers the body, so its hole list is empty; a
+     *  compiled plan that leaves a field out has that field in the list, and
+     *  the declared default is what that field keeps.
+     *
+     *  NOTHING PER RECORD ALLOCATES, which is the claim the batch loop rests
+     *  on: EVERY BUFFER IS THE CALLER'S — the plan, the ordinal remap scratch
+     *  and the record image — and the loop below only fills them. What this
+     *  DOES make is a fixed handful of cursors, once per call: the header, the
+     *  hole list (cover and the packed ranges), and on a stranger's layout the
+     *  two Layout views (a byte[] reference and two ints each, over the
+     *  caller's own bytes) that TableFixed.parse returns. None escapes this
+     *  method, and none is per record. Answers the records read, or -1. */
     public static int load(Value[] values, int count, byte[] data,
                            TableFixed.Entry[] plan, short[] remap, byte[] image,
                            TableFixed.Report report) {
         final TableFixed.Header head = new TableFixed.Header();
         if (!TableFixed.readHeader(data, head, report)) { return -1; }
-        if (head.hash == hash) { return loadOwn(values, count, data, head, report); }
-        return loadCompiled(values, count, data, head, plan, remap, image, report);
+
+        // WHICH PLAN, and that is the only thing that differs between reading
+        // this build's own record and reading anybody else's. A STRANGER'S
+        // LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        // every rule it fails refuses under ITS OWN NAME.
+        TableFixed.Entry[] entries = Identity.plan;
+        int made = Identity.plan.length;
+        long recordSize = recordBytes;
+        if (head.hash != hash) {
+            final TableFixed.Layout theirs = TableFixed.parse(data, head.layoutAt, head.layoutLength, report);
+            if (theirs == null) { return -1; }
+            final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);
+            if (mine == null) { return -1; }
+            made = TableFixed.compile(theirs, mine, dest, plan, remap, report);
+            if (made < 0) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }
+            entries = plan;
+            recordSize = 8 + theirs.size(0);
+        }
+        final int n = records(values, count, data, head, recordSize, report);
+        if (n < 0) { return -1; }
+        final int bodySize = (int) (recordSize - 8);
+
+        // THE PREFILL IS THE BYTES THIS PLAN DOES NOT WRITE, and no more than
+        // those: packed once per call rather than a whole-image copy per
+        // record, and empty when the plan is the identity plan.
+        final byte[] cover = new byte[bodyBytes];
+        final int[] hole = new int[Math.max(2, bodyBytes * 2)];
+        final int holeN = TableFixed.holes(entries, made, cover, hole);
+        int at = head.recordsAt;
+        for (int k = 0; k < n; k++) {
+            // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A
+            // REFUSAL BY NAME, never a guess and never damage.
+            if (TableFixed.get64(data, at) != head.hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }
+            for (int h = 0; h < holeN; h++) {
+                final int off = hole[h * 2];
+                final int hn = hole[h * 2 + 1];
+                System.arraycopy(defaults, off, image, off, hn);
+            }
+            TableFixed.run(entries, made, remap, data, at + 8, bodySize, image, report);
+            scatter(image, 0, values[k], report);
+            at += 8 + bodySize;
+        }
+        return n;
     }
 
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the
@@ -268,64 +309,5 @@ public final class FixedTableFixed {
         final long n = rest / recordSize;
         if (n > count || n > values.length) { report.refuse(TableFixed.Reason.batchTooLarge); return -1; }
         return (int) n;
-    }
-
-    // THE IDENTITY PATH: this build's own layout, so the record body IS this
-    // reader's image and the scatter reads it in place. No prefill — every
-    // field of the body is one this reader declares, so every byte lands —
-    // and no plan, because the one entry the identity plan would hold is a
-    // copy of the whole body onto itself. This is the packet reader's shape.
-    private static int loadOwn(Value[] values, int count, byte[] data, TableFixed.Header head,
-                               TableFixed.Report report) {
-        final int n = records(values, count, data, head, recordBytes, report);
-        if (n < 0) { return -1; }
-        int at = head.recordsAt;
-        for (int k = 0; k < n; k++) {
-            // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A
-            // REFUSAL BY NAME, never a guess and never damage.
-            if (TableFixed.get64(data, at) != hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }
-            scatter(data, at + 8, values[k], report);
-            at += recordBytes;
-        }
-        return n;
-    }
-
-    // ANOTHER WRITER: a prefill and one loop over a plan compiled from its
-    // layout, then the same scatter over the image. THE LAYOUT IS VALIDATED
-    // BEFORE A SINGLE RECORD BYTE IS TOUCHED, and every rule it fails
-    // refuses under ITS OWN NAME.
-    private static int loadCompiled(Value[] values, int count, byte[] data, TableFixed.Header head,
-                                    TableFixed.Entry[] plan, short[] remap, byte[] image,
-                                    TableFixed.Report report) {
-        final TableFixed.Layout theirs = TableFixed.parse(data, head.layoutAt, head.layoutLength, report);
-        if (theirs == null) { return -1; }
-        final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);
-        if (mine == null) { return -1; }
-        final int made = TableFixed.compile(theirs, mine, dest, plan, remap, report);
-        if (made < 0) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }
-        final long recordSize = 8 + theirs.size(0);
-        final int n = records(values, count, data, head, recordSize, report);
-        if (n < 0) { return -1; }
-        int at = head.recordsAt;
-        final int bodySize = (int) (recordSize - 8);
-        // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE, and no more than
-        // those: the holes this plan leaves, packed once per call rather than
-        // a whole-image copy per record. The identity path never gets here —
-        // its one copy covers the body, so its hole list would be empty.
-        final byte[] cover = new byte[bodyBytes];
-        final int[] hole = new int[Math.max(2, bodyBytes * 2)];
-        final int holeN = TableFixed.holes(plan, made, cover, hole);
-        for (int k = 0; k < n; k++) {
-            if (TableFixed.get64(data, at) != head.hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }
-            for (int h = 0; h < holeN; h++) {
-                final int off = hole[h * 2];
-                final int hn = hole[h * 2 + 1];
-                System.arraycopy(defaults, off, image, off, hn);
-            }
-            TableFixed.run(plan, made, remap, data, at + 8, bodySize, image, report);
-            scatter(image, 0, values[k], report);
-            at += bodySize + 8;
-        }
-        return n;
     }
 }
