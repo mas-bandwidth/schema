@@ -294,7 +294,7 @@ func appendFixedU32(b []byte, v uint32) []byte {
 }
 
 func appendFixedU64(b []byte, v uint64) []byte {
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		b = append(b, byte(v>>(8*i)))
 	}
 	return b
@@ -784,10 +784,7 @@ func (g *tableGen) emitFixedForm1Load(st *ir.Struct) {
 
 func (g *tableGen) emitByteArray(b []byte) {
 	for i := 0; i < len(b); i += 16 {
-		end := i + 16
-		if end > len(b) {
-			end = len(b)
-		}
+		end := min(i+16, len(b))
 		var sb strings.Builder
 		sb.WriteString("\t")
 		for _, v := range b[i:end] {
