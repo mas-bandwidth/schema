@@ -692,6 +692,7 @@ final class TableFixedPlanCache {
 /// entry costs it the measurement the one-reader ruling rests on; the fastest
 /// move Dart has for the same job is Uint8List.setRange, which is the typed
 /// list's own bulk copy and not a per-byte loop, so that is what this is.
+@pragma('vm:prefer-inline')
 void tableFixedRun(
   Int32List plan,
   int entryCount,
@@ -704,6 +705,13 @@ void tableFixedRun(
   ByteData conv,
   TableFixedReport report,
 ) {
+  if (entryCount == 1 && plan[TableFixedLane.op] == TableFixedOp.copy) {
+    final size = plan[TableFixedLane.size];
+    final s = at + plan[TableFixedLane.src];
+    final d = plan[TableFixedLane.dst];
+    image.setRange(d, d + size, source, s);
+    return;
+  }
   for (var i = 0; i < entryCount; i++) {
     final b = i * TableFixedLane.lanes;
     final guard = plan[b + TableFixedLane.guard];
@@ -1226,6 +1234,7 @@ void initFixedTable(FixedTable value) {
 
 /// MixedEntity's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
+@pragma('vm:prefer-inline')
 void mixedEntityFixedWriteBody(
   Uint8List bytes,
   ByteData view,
@@ -1250,23 +1259,99 @@ void mixedEntityFixedWriteBody(
 
 /// MixedEntity's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
+///
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
+/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
+/// an enum ordinal past the last variant land None and count. They are
+/// straight line rather than plan entries, so the identity path and a
+/// plan compiled from a stranger's layout hold the SAME bounds.
+@pragma('vm:prefer-inline')
 void mixedEntityFixedDecode(
   MixedEntity value,
   Uint8List image,
   ByteData view,
   int at,
+  TableFixedReport report,
 ) {
   value.entityId = view.getUint32(at, Endian.little);
+  if (value.entityId > 4095) {
+    // the bits(12) WIDTH clamp
+    value.entityId = 4095;
+    report.clamped++;
+  }
   value.posX = view.getInt32(at + 4, Endian.little);
+  if (value.posX < -16383) {
+    value.posX = -16383;
+    report.clamped++;
+  } else if (value.posX > 16383) {
+    value.posX = 16383;
+    report.clamped++;
+  }
   value.posY = view.getInt32(at + 8, Endian.little);
+  if (value.posY < -16383) {
+    value.posY = -16383;
+    report.clamped++;
+  } else if (value.posY > 16383) {
+    value.posY = 16383;
+    report.clamped++;
+  }
   value.posZ = view.getInt32(at + 12, Endian.little);
+  if (value.posZ < -16383) {
+    value.posZ = -16383;
+    report.clamped++;
+  } else if (value.posZ > 16383) {
+    value.posZ = 16383;
+    report.clamped++;
+  }
   value.yaw = view.getUint32(at + 16, Endian.little);
+  if (value.yaw > 511) {
+    // the bits(9) WIDTH clamp
+    value.yaw = 511;
+    report.clamped++;
+  }
   value.pitch = view.getUint32(at + 20, Endian.little);
+  if (value.pitch > 511) {
+    // the bits(9) WIDTH clamp
+    value.pitch = 511;
+    report.clamped++;
+  }
   value.velX = view.getInt32(at + 24, Endian.little);
+  if (value.velX < -2048) {
+    value.velX = -2048;
+    report.clamped++;
+  } else if (value.velX > 2047) {
+    value.velX = 2047;
+    report.clamped++;
+  }
   value.velY = view.getInt32(at + 28, Endian.little);
+  if (value.velY < -2048) {
+    value.velY = -2048;
+    report.clamped++;
+  } else if (value.velY > 2047) {
+    value.velY = 2047;
+    report.clamped++;
+  }
   value.velZ = view.getInt32(at + 32, Endian.little);
+  if (value.velZ < -2048) {
+    value.velZ = -2048;
+    report.clamped++;
+  } else if (value.velZ > 2047) {
+    value.velZ = 2047;
+    report.clamped++;
+  }
   value.health = view.getInt32(at + 36, Endian.little);
+  if (value.health < 0) {
+    value.health = 0;
+    report.clamped++;
+  } else if (value.health > 1000) {
+    value.health = 1000;
+    report.clamped++;
+  }
   value.weapon = view.getUint8(at + 40);
+  if (value.weapon > 15) {
+    value.weapon = 0;
+    report.clamped++;
+  }
   value.damage = view.getUint64(at + 41, Endian.little);
   value.moving = view.getUint8(at + 49) != 0;
   value.firing = view.getUint8(at + 50) != 0;
@@ -1274,6 +1359,7 @@ void mixedEntityFixedDecode(
 
 /// MixedStat's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
+@pragma('vm:prefer-inline')
 void mixedStatFixedWriteBody(
   Uint8List bytes,
   ByteData view,
@@ -1286,18 +1372,39 @@ void mixedStatFixedWriteBody(
 
 /// MixedStat's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
+///
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
+/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
+/// an enum ordinal past the last variant land None and count. They are
+/// straight line rather than plan entries, so the identity path and a
+/// plan compiled from a stranger's layout hold the SAME bounds.
+@pragma('vm:prefer-inline')
 void mixedStatFixedDecode(
   MixedStat value,
   Uint8List image,
   ByteData view,
   int at,
+  TableFixedReport report,
 ) {
   value.statId = view.getUint32(at, Endian.little);
+  if (value.statId > 255) {
+    // the bits(8) WIDTH clamp
+    value.statId = 255;
+    report.clamped++;
+  }
   value.delta = view.getInt32(at + 4, Endian.little);
+  if (value.delta < -512) {
+    value.delta = -512;
+    report.clamped++;
+  } else if (value.delta > 511) {
+    value.delta = 511;
+    report.clamped++;
+  }
 }
 
 /// MixedHitEvent's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
+@pragma('vm:prefer-inline')
 void mixedHitEventFixedWriteBody(
   Uint8List bytes,
   ByteData view,
@@ -1312,20 +1419,48 @@ void mixedHitEventFixedWriteBody(
 
 /// MixedHitEvent's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
+///
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
+/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
+/// an enum ordinal past the last variant land None and count. They are
+/// straight line rather than plan entries, so the identity path and a
+/// plan compiled from a stranger's layout hold the SAME bounds.
+@pragma('vm:prefer-inline')
 void mixedHitEventFixedDecode(
   MixedHitEvent value,
   Uint8List image,
   ByteData view,
   int at,
+  TableFixedReport report,
 ) {
   value.targetId = view.getUint32(at, Endian.little);
+  if (value.targetId > 4095) {
+    // the bits(12) WIDTH clamp
+    value.targetId = 4095;
+    report.clamped++;
+  }
   value.damage = view.getInt32(at + 4, Endian.little);
+  if (value.damage < 0) {
+    value.damage = 0;
+    report.clamped++;
+  } else if (value.damage > 4095) {
+    value.damage = 4095;
+    report.clamped++;
+  }
   value.hitKind = view.getInt32(at + 8, Endian.little);
+  if (value.hitKind < 0) {
+    value.hitKind = 0;
+    report.clamped++;
+  } else if (value.hitKind > 7) {
+    value.hitKind = 7;
+    report.clamped++;
+  }
   value.crit = view.getUint8(at + 12) != 0;
 }
 
 /// MixedChatEvent's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
+@pragma('vm:prefer-inline')
 void mixedChatEventFixedWriteBody(
   Uint8List bytes,
   ByteData view,
@@ -1338,18 +1473,39 @@ void mixedChatEventFixedWriteBody(
 
 /// MixedChatEvent's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
+///
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
+/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
+/// an enum ordinal past the last variant land None and count. They are
+/// straight line rather than plan entries, so the identity path and a
+/// plan compiled from a stranger's layout hold the SAME bounds.
+@pragma('vm:prefer-inline')
 void mixedChatEventFixedDecode(
   MixedChatEvent value,
   Uint8List image,
   ByteData view,
   int at,
+  TableFixedReport report,
 ) {
   value.channel = view.getInt32(at, Endian.little);
+  if (value.channel < 0) {
+    value.channel = 0;
+    report.clamped++;
+  } else if (value.channel > 3) {
+    value.channel = 3;
+    report.clamped++;
+  }
   value.speaker = view.getUint32(at + 4, Endian.little);
+  if (value.speaker > 4095) {
+    // the bits(12) WIDTH clamp
+    value.speaker = 4095;
+    report.clamped++;
+  }
 }
 
 /// MixedPickupEvent's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
+@pragma('vm:prefer-inline')
 void mixedPickupEventFixedWriteBody(
   Uint8List bytes,
   ByteData view,
@@ -1362,18 +1518,39 @@ void mixedPickupEventFixedWriteBody(
 
 /// MixedPickupEvent's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
+///
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
+/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
+/// an enum ordinal past the last variant land None and count. They are
+/// straight line rather than plan entries, so the identity path and a
+/// plan compiled from a stranger's layout hold the SAME bounds.
+@pragma('vm:prefer-inline')
 void mixedPickupEventFixedDecode(
   MixedPickupEvent value,
   Uint8List image,
   ByteData view,
   int at,
+  TableFixedReport report,
 ) {
   value.itemId = view.getUint32(at, Endian.little);
+  if (value.itemId > 1023) {
+    // the bits(10) WIDTH clamp
+    value.itemId = 1023;
+    report.clamped++;
+  }
   value.amount = view.getInt32(at + 4, Endian.little);
+  if (value.amount < 0) {
+    value.amount = 0;
+    report.clamped++;
+  } else if (value.amount > 255) {
+    value.amount = 255;
+    report.clamped++;
+  }
 }
 
 /// BenchMixed's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
+@pragma('vm:prefer-inline')
 void benchMixedFixedWriteBody(
   Uint8List bytes,
   ByteData view,
@@ -1452,36 +1629,109 @@ void benchMixedFixedWriteBody(
 
 /// BenchMixed's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
+///
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
+/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
+/// an enum ordinal past the last variant land None and count. They are
+/// straight line rather than plan entries, so the identity path and a
+/// plan compiled from a stranger's layout hold the SAME bounds.
+@pragma('vm:prefer-inline')
 void benchMixedFixedDecode(
   BenchMixed value,
   Uint8List image,
   ByteData view,
   int at,
+  TableFixedReport report,
 ) {
   value.sequence = view.getUint32(at, Endian.little);
+  if (value.sequence > 65535) {
+    // the bits(16) WIDTH clamp
+    value.sequence = 65535;
+    report.clamped++;
+  }
   value.ackSequence = view.getInt32(at + 4, Endian.little);
+  if (value.ackSequence < 0) {
+    value.ackSequence = 0;
+    report.clamped++;
+  } else if (value.ackSequence > 65535) {
+    value.ackSequence = 65535;
+    report.clamped++;
+  }
   value.ackBits = view.getUint32(at + 8, Endian.little);
   value.sessionId = view.getUint64(at + 12, Endian.little);
   value.clientId = view.getUint32(at + 20, Endian.little);
   value.nonce = view.getUint64(at + 24, Endian.little);
   value.worldTime = view.getInt64(at + 32, Endian.little);
+  if (value.worldTime < -1000000000000) {
+    value.worldTime = -1000000000000;
+    report.clamped++;
+  } else if (value.worldTime > 1000000000000) {
+    value.worldTime = 1000000000000;
+    report.clamped++;
+  }
   value.frameTick = view.getUint64(at + 40, Endian.little);
+  if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) {
+    // the bits(48) WIDTH clamp
+    value.frameTick = 281474976710655;
+    report.clamped++;
+  }
   value.serverTime = view.getInt32(at + 48, Endian.little);
+  if (value.serverTime < 0) {
+    value.serverTime = 0;
+    report.clamped++;
+  } else if (value.serverTime > 16776960) {
+    value.serverTime = 16776960;
+    report.clamped++;
+  }
   value.entitiesCount = view.getInt32(at + 52, Endian.little);
+  if (value.entitiesCount < 0) {
+    value.entitiesCount = 0;
+    report.clamped++;
+  } else if (value.entitiesCount > 8) {
+    value.entitiesCount = 8;
+    report.clamped++;
+  }
   for (var i = 0; i < 8; i++) {
-    mixedEntityFixedDecode(value.entities[i], image, view, at + 56 + i * 51);
+    mixedEntityFixedDecode(
+      value.entities[i],
+      image,
+      view,
+      at + 56 + i * 51,
+      report,
+    );
   }
   value.statsCount = view.getInt32(at + 464, Endian.little);
+  if (value.statsCount < 0) {
+    value.statsCount = 0;
+    report.clamped++;
+  } else if (value.statsCount > 80) {
+    value.statsCount = 80;
+    report.clamped++;
+  }
   for (var i = 0; i < 80; i++) {
-    mixedStatFixedDecode(value.stats[i], image, view, at + 468 + i * 8);
+    mixedStatFixedDecode(value.stats[i], image, view, at + 468 + i * 8, report);
   }
   value.gameEvent.type = view.getUint8(at + 1108);
   switch (value.gameEvent.type) {
+    case 0:
+      break; // None, which is a tag this reader holds
     case 1:
-      mixedHitEventFixedDecode(value.gameEvent.hit, image, view, at + 1109);
+      mixedHitEventFixedDecode(
+        value.gameEvent.hit,
+        image,
+        view,
+        at + 1109,
+        report,
+      );
       break;
     case 2:
-      mixedChatEventFixedDecode(value.gameEvent.chat, image, view, at + 1109);
+      mixedChatEventFixedDecode(
+        value.gameEvent.chat,
+        image,
+        view,
+        at + 1109,
+        report,
+      );
       break;
     case 3:
       mixedPickupEventFixedDecode(
@@ -1489,15 +1739,32 @@ void benchMixedFixedDecode(
         image,
         view,
         at + 1109,
+        report,
       );
       break;
     default:
+      value.gameEvent.type = 0;
+      report.clamped++;
       break;
   }
   value.loadout.setRange(0, 4, image, at + 1122);
   value.playerNameLength = view.getInt32(at + 1126, Endian.little);
+  if (value.playerNameLength < 0) {
+    value.playerNameLength = 0;
+    report.clamped++;
+  } else if (value.playerNameLength > 15) {
+    value.playerNameLength = 15;
+    report.clamped++;
+  }
   value.playerName.setRange(0, 15, image, at + 1130);
   value.payloadLength = view.getInt32(at + 1145, Endian.little);
+  if (value.payloadLength < 0) {
+    value.payloadLength = 0;
+    report.clamped++;
+  } else if (value.payloadLength > 16) {
+    value.payloadLength = 16;
+    report.clamped++;
+  }
   value.payload.setRange(0, 16, image, at + 1149);
   value.aimX = view.getFloat32(at + 1165, Endian.little);
   value.aimY = view.getFloat32(at + 1169, Endian.little);
@@ -1512,15 +1779,46 @@ void benchMixedFixedDecode(
     view.getUint64(at + 1205 + 8, Endian.little),
     view.getUint64(at + 1205, Endian.little),
   );
+  if (value.flux < Int128(0xfffffff000000000, 0)) {
+    value.flux = Int128(0xfffffff000000000, 0);
+    report.clamped++;
+  } else if (value.flux > Int128(68719476736, 0)) {
+    value.flux = Int128(68719476736, 0);
+    report.clamped++;
+  }
   value.ping = view.getUint16(at + 1221, Endian.little);
+  if (value.ping > 64000) {
+    value.ping = 64000;
+    report.clamped++;
+  }
   value.crcHint = view.getUint32(at + 1223, Endian.little);
+  if (value.crcHint > 16777215) {
+    // the bits(24) WIDTH clamp
+    value.crcHint = 16777215;
+    report.clamped++;
+  }
   value.hasExtra = view.getUint8(at + 1227) != 0;
   value.extra = view.getInt32(at + 1228, Endian.little);
+  if (value.extra < 0) {
+    value.extra = 0;
+    report.clamped++;
+  } else if (value.extra > 255) {
+    value.extra = 255;
+    report.clamped++;
+  }
   value.idleTicks = view.getInt32(at + 1232, Endian.little);
+  if (value.idleTicks < 0) {
+    value.idleTicks = 0;
+    report.clamped++;
+  } else if (value.idleTicks > 15) {
+    value.idleTicks = 15;
+    report.clamped++;
+  }
 }
 
 /// FixedTable's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
+@pragma('vm:prefer-inline')
 void fixedTableFixedWriteBody(
   Uint8List bytes,
   ByteData view,
@@ -1532,11 +1830,19 @@ void fixedTableFixedWriteBody(
 
 /// FixedTable's loads, out of the reader's own image and into the value the
 /// caller handed in — filled, never returned, as the packet reader is.
+///
+/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps
+/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and
+/// an enum ordinal past the last variant land None and count. They are
+/// straight line rather than plan entries, so the identity path and a
+/// plan compiled from a stranger's layout hold the SAME bounds.
+@pragma('vm:prefer-inline')
 void fixedTableFixedDecode(
   FixedTable value,
   Uint8List image,
   ByteData view,
   int at,
+  TableFixedReport report,
 ) {
-  benchMixedFixedDecode(value.value, image, view, at);
+  benchMixedFixedDecode(value.value, image, view, at, report);
 }

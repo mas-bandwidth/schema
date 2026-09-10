@@ -289,6 +289,14 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("]);\n")
 	g.pf("%s\n", fixedFormatOn)
 
+	zeroLine := fmt.Sprintf("final Uint8List %sFixedZeroBody = Uint8List(%sFixedBodyBytes);", lower, lower)
+	if len(zeroLine) <= 80 {
+		g.pf("%s\n\n", zeroLine)
+	} else {
+		g.pf("final Uint8List %sFixedZeroBody = Uint8List(\n  %sFixedBodyBytes,\n);\n\n", lower, lower)
+	}
+
+
 	g.pf("/// MY SIDE of the layout, five lanes per entry: the storage facts a layout\n")
 	g.pf("/// entry cannot carry. In C++ these are offsetof rows; the reader's own\n")
 	g.pf("/// storage in Dart is the canonical image, so they are its offsets.\n")
@@ -367,8 +375,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  final view = ByteData.sublistView(bytes);\n")
 	g.pf("  // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven\n")
 	g.pf("  // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.\n")
-	g.call("  ", "", "bytes.fillRange",
-		[]string{"0", "TableFixedLimits.headerBytes", "0"}, ";")
+	g.call("  ", "", "view.setUint64",
+		[]string{"0", "0", "Endian.little"}, ";")
+	g.call("  ", "", "view.setUint64",
+		[]string{"8", "0", "Endian.little"}, ";")
 	g.pf("  bytes[0] = tableFixedForm;\n")
 	g.call("  ", "", "view.setUint64",
 		[]string{"TableFixedLimits.hashAt", lower + "FixedHash", "Endian.little"}, ";")
@@ -383,14 +393,64 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  for (var k = 0; k < count; k++) {\n")
 	g.pf("    view.setUint64(at, %sFixedHash, Endian.little);\n", lower)
 	g.pf("    // the template's zeros, which is also every byte of declared slack\n")
-	g.call("    ", "", "bytes.fillRange",
-		[]string{"at + 8", "at + " + lower + "FixedRecordBytes", "0"}, ";")
+	g.call("    ", "", "bytes.setRange",
+		[]string{"at + 8", "at + " + lower + "FixedRecordBytes", lower + "FixedZeroBody"}, ";")
 	g.call("    ", "", lower+"FixedWriteBody",
 		[]string{"bytes", "view", "at + 8", "values[k]"}, ";")
 	g.pf("    at += %sFixedRecordBytes;\n", lower)
 	g.pf("  }\n  return need;\n}\n\n")
 
 	// ---- the read ----
+	g.pf("/// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
+	g.pf("/// the layout's hash is this build's own, and a plan compiled once from the\n")
+	g.pf("/// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict\n")
+	g.pf("/// flag, no fast path and no second reader to keep honest against the first,\n")
+	g.pf("/// which is the owner's own ruling — a form whose cost moved when a peer\n")
+	g.pf("/// shipped would be a cliff at exactly the moment a deployment cannot afford\n")
+	g.emitFn("int", "_"+lower+"FixedLoadForeign", []string{
+		"List<" + st.Name + "> values", "int capacity", "Uint8List bytes",
+		"int byteLength", "TableFixedPlan plan", "TableFixedReport report",
+		"ByteData view", "int layoutBytes", "int hash",
+	})
+	g.pf("  if (!plan.ready || plan.hash != hash) {\n")
+	g.pf("    if (!plan.theirs.parse(view, TableFixedLimits.layoutAt, layoutBytes)) {\n")
+	g.pf("      report.refused = plan.theirs.refusal;\n      return -1;\n    }\n")
+	g.pf("    final made = TableFixedCompiler.compile(\n")
+	g.pf("      plan,\n")
+	g.pf("      %sFixedLayout,\n", lower)
+	g.pf("      ByteData.sublistView(%sFixedLayout),\n", lower)
+	g.pf("      %sFixedDst,\n", lower)
+	g.pf("      report,\n")
+	g.pf("    );\n")
+	g.pf("    if (made < 0) {\n")
+	g.pf("      report.refused = TableFixedRefusal.planTooLarge;\n      return -1;\n    }\n")
+	g.pf("    plan.recordBytes = 8 + plan.theirs.size(0);\n")
+	g.pf("    plan.hash = hash;\n    plan.ready = true;\n")
+	g.pf("  }\n")
+	g.pf("  if (view.getUint64(TableFixedLimits.hashAt, Endian.little) != hash) {\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutMalformed;\n    return -1;\n  }\n")
+	g.pf("  final recordBytes = plan.recordBytes;\n")
+	g.pf("  final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;\n")
+	g.pf("  if (recordBytes <= 8 || rest %% recordBytes != 0) {\n")
+	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
+	g.pf("  final n = rest ~/ recordBytes;\n")
+	g.pf("  if (n > capacity) {\n")
+	g.pf("    report.refused = TableFixedRefusal.batchTooLarge;\n    return -1;\n  }\n")
+	g.pf("  var at = TableFixedLimits.layoutAt + layoutBytes;\n")
+	g.pf("  for (var k = 0; k < n; k++) {\n")
+	g.pf("    if (view.getUint64(at, Endian.little) != hash) {\n")
+	g.pf("      report.refused = TableFixedRefusal.noLayout;\n      return -1;\n    }\n")
+	g.call("    ", "", "plan.image.setRange",
+		[]string{"0", lower + "FixedBodyBytes", lower + "FixedPrefill"}, ";")
+	g.pf("    tableFixedRun(\n")
+	g.pf("      plan.entries,\n      plan.count,\n      bytes,\n      view,\n      at + 8,\n")
+	g.pf("      plan.image,\n      plan.imageView,\n      plan.remap,\n      plan.conv,\n")
+	g.pf("      report,\n    );\n")
+	g.call("    ", "", lower+"FixedDecode",
+		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
+	g.pf("    at += recordBytes;\n")
+	g.pf("  }\n  return n;\n}\n\n")
+
 	g.pf("/// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
 	g.pf("/// the layout's hash is this build's own, and a plan compiled once from the\n")
 	g.pf("/// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict\n")
@@ -423,63 +483,39 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.call("  ", "final hash = ", "TableFixedLayout.hashOf",
 		[]string{"bytes", "TableFixedLimits.layoutAt", "layoutBytes"}, ";")
 	g.pf("  report.hash = hash;\n")
-	g.pf("  var entries = %sFixedIdentity;\n", lower)
-	g.pf("  var entryCount = %sFixedIdentityCount;\n", lower)
-	g.pf("  var recordBytes = %sFixedRecordBytes;\n", lower)
-	g.pf("  if (hash != %sFixedHash) {\n", lower)
-	g.pf("    // ANOTHER WRITER: the same loop, over a plan compiled from its layout\n")
-	g.pf("    // and CACHED BY HASH, so the compile is paid once per peer and never\n")
-	g.pf("    // once per record. THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE\n")
-	g.pf("    // IS TOUCHED, and every rule it fails refuses under ITS OWN NAME.\n")
-	g.pf("    if (!plan.ready || plan.hash != hash) {\n")
-	g.pf("      if (!plan.theirs.parse(view, TableFixedLimits.layoutAt, layoutBytes)) {\n")
-	g.pf("        report.refused = plan.theirs.refusal;\n        return -1;\n      }\n")
-	g.pf("      final made = TableFixedCompiler.compile(\n")
-	g.pf("        plan,\n")
-	g.pf("        %sFixedLayout,\n", lower)
-	g.pf("        ByteData.sublistView(%sFixedLayout),\n", lower)
-	g.pf("        %sFixedDst,\n", lower)
-	g.pf("        report,\n")
-	g.pf("      );\n")
-	g.pf("      if (made < 0) {\n")
-	g.pf("        report.refused = TableFixedRefusal.planTooLarge;\n        return -1;\n      }\n")
-	g.pf("      plan.recordBytes = 8 + plan.theirs.size(0);\n")
-	g.pf("      plan.hash = hash;\n      plan.ready = true;\n")
-	g.pf("    }\n")
-	g.pf("    entries = plan.entries;\n    entryCount = plan.count;\n")
-	g.pf("    recordBytes = plan.recordBytes;\n")
-	g.pf("  }\n")
-	g.pf("  // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:\n")
-	g.pf("  // the layout's own rules each refuse under their own name first, so a\n")
-	g.pf("  // broken layout is never reported as a lying header. A header whose hash\n")
-	g.pf("  // is not the hash of the layout behind it is refused (§3).\n")
-	g.pf("  if (view.getUint64(TableFixedLimits.hashAt, Endian.little) != hash) {\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutMalformed;\n    return -1;\n  }\n")
-	g.pf("  final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;\n")
-	g.pf("  // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:\n")
-	g.pf("  // the two ends of the file have met.\n")
-	g.pf("  if (recordBytes <= 8 || rest %% recordBytes != 0) {\n")
-	g.pf("    report.malformed = true;\n    return -1;\n  }\n")
-	g.pf("  final n = rest ~/ recordBytes;\n")
-	g.pf("  if (n > capacity) {\n")
-	g.pf("    report.refused = TableFixedRefusal.batchTooLarge;\n    return -1;\n  }\n")
-	g.pf("  var at = TableFixedLimits.layoutAt + layoutBytes;\n")
-	g.pf("  for (var k = 0; k < n; k++) {\n")
-	g.pf("    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY\n")
-	g.pf("    // NAME, never a guess and never damage: nothing is decoded and no\n")
-	g.pf("    // counter moves.\n")
-	g.pf("    if (view.getUint64(at, Endian.little) != hash) {\n")
-	g.pf("      report.refused = TableFixedRefusal.noLayout;\n      return -1;\n    }\n")
-	g.call("    ", "", "plan.image.setRange",
-		[]string{"0", lower + "FixedBodyBytes", lower + "FixedPrefill"}, ";")
-	g.pf("    tableFixedRun(\n")
-	g.pf("      entries,\n      entryCount,\n      bytes,\n      view,\n      at + 8,\n")
-	g.pf("      plan.image,\n      plan.imageView,\n      plan.remap,\n      plan.conv,\n")
-	g.pf("      report,\n    );\n")
-	g.call("    ", "", lower+"FixedDecode",
+	g.pf("  if (hash == %sFixedHash) {\n", lower)
+	g.pf("    // Identity path: ONE run, NO PREFILL (Glenn's ruling)\n")
+	g.pf("    if (view.getUint64(TableFixedLimits.hashAt, Endian.little) != hash) {\n")
+	g.pf("      report.refused = TableFixedRefusal.layoutMalformed;\n      return -1;\n    }\n")
+	g.pf("    final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;\n")
+	cond := fmt.Sprintf("if (%sFixedRecordBytes <= 8 || rest %% %sFixedRecordBytes != 0)", lower, lower)
+	if len("    "+cond+" {") <= 80 {
+		g.pf("    %s {\n", cond)
+	} else {
+		g.pf("    if (%sFixedRecordBytes <= 8 ||\n", lower)
+		g.pf("        rest %% %sFixedRecordBytes != 0) {\n", lower)
+	}
+	g.pf("      report.malformed = true;\n      return -1;\n    }\n")
+	g.pf("    final n = rest ~/ %sFixedRecordBytes;\n", lower)
+	g.pf("    if (n > capacity) {\n")
+	g.pf("      report.refused = TableFixedRefusal.batchTooLarge;\n      return -1;\n    }\n")
+	g.pf("    var at = TableFixedLimits.layoutAt + layoutBytes;\n")
+	g.pf("    for (var k = 0; k < n; k++) {\n")
+	g.pf("      if (view.getUint64(at, Endian.little) != hash) {\n")
+	g.pf("        report.refused = TableFixedRefusal.noLayout;\n        return -1;\n      }\n")
+	g.pf("      tableFixedRun(\n")
+	g.pf("        %sFixedIdentity,\n        %sFixedIdentityCount,\n        bytes,\n        view,\n        at + 8,\n", lower, lower)
+	g.pf("        plan.image,\n        plan.imageView,\n        plan.remap,\n        plan.conv,\n")
+	g.pf("        report,\n      );\n")
+	g.call("      ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
-	g.pf("    at += recordBytes;\n")
-	g.pf("  }\n  return n;\n}\n\n")
+	g.pf("      at += %sFixedRecordBytes;\n", lower)
+	g.pf("    }\n    return n;\n  }\n")
+	g.call("  ", "return ", "_"+lower+"FixedLoadForeign", []string{
+		"values", "capacity", "bytes", "byteLength", "plan", "report", "view", "layoutBytes", "hash",
+	}, ";")
+
+	g.pf("}\n\n")
 }
 
 func (g *fixedModule) emitBytes(b []byte) {

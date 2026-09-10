@@ -695,6 +695,7 @@ final class TableFixedPlanCache {
 /// entry costs it the measurement the one-reader ruling rests on; the fastest
 /// move Dart has for the same job is Uint8List.setRange, which is the typed
 /// list's own bulk copy and not a per-byte loop, so that is what this is.
+@pragma('vm:prefer-inline')
 void tableFixedRun(
   Int32List plan,
   int entryCount,
@@ -707,6 +708,13 @@ void tableFixedRun(
   ByteData conv,
   TableFixedReport report,
 ) {
+  if (entryCount == 1 && plan[TableFixedLane.op] == TableFixedOp.copy) {
+    final size = plan[TableFixedLane.size];
+    final s = at + plan[TableFixedLane.src];
+    final d = plan[TableFixedLane.dst];
+    image.setRange(d, d + size, source, s);
+    return;
+  }
   for (var i = 0; i < entryCount; i++) {
     final b = i * TableFixedLane.lanes;
     final guard = plan[b + TableFixedLane.guard];

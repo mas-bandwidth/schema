@@ -550,6 +550,7 @@ func (g *fixedGen) emitTextDefaultBytes(f *ir.Field, ind, target string) {
 func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 	g.pf("/// %s's stores. Every offset is a constant of the type and nothing is\n", st.Name)
 	g.pf("/// measured: on this form MeasureBody is a constant, not a walk.\n")
+	g.pf("@pragma('vm:prefer-inline')\n")
 	g.fn("void", lowerFirst(st.Name)+"FixedWriteBody",
 		[]string{"Uint8List bytes", "ByteData view", "int at", st.Name + " value"})
 	var cur int64
@@ -680,6 +681,7 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("/// an enum ordinal past the last variant land None and count. They are\n")
 	g.pf("/// straight line rather than plan entries, so the identity path and a\n")
 	g.pf("/// plan compiled from a stranger's layout hold the SAME bounds.\n")
+	g.pf("@pragma('vm:prefer-inline')\n")
 	g.fn("void", lowerFirst(st.Name)+"FixedDecode",
 		[]string{st.Name + " value", "Uint8List image", "ByteData view", "int at",
 			"TableFixedReport report"})
@@ -705,15 +707,36 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 	case f.Array == ir.ArrayCounted:
 		g.call(ind, val+"."+name+"Count = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
+		g.pf("%sif (%s.%sCount < 0) {\n", ind, val, name)
+		g.pf("%s  %s.%sCount = 0;\n", ind, val, name)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s} else if (%s.%sCount > %d) {\n", ind, val, name, f.ArrayBound)
+		g.pf("%s  %s.%sCount = %d;\n", ind, val, name, f.ArrayBound)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s}\n", ind)
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, f.ArrayBound, val+"."+name, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.call(ind, val+"."+name+"Length = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
+		g.pf("%sif (%s.%sLength < 0) {\n", ind, val, name)
+		g.pf("%s  %s.%sLength = 0;\n", ind, val, name)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s} else if (%s.%sLength > %d) {\n", ind, val, name, f.Type.Size)
+		g.pf("%s  %s.%sLength = %d;\n", ind, val, name, f.Type.Size)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s}\n", ind)
 		g.call(ind, "", val+"."+name+".setRange",
 			[]string{"0", fmt.Sprintf("%d", f.Type.Size), "image", fixedOff(base, at+fixedCountBytes)}, ";")
 	case f.Type.Kind == ir.TWString:
 		g.call(ind, val+"."+name+"Length = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
+		g.pf("%sif (%s.%sLength < 0) {\n", ind, val, name)
+		g.pf("%s  %s.%sLength = 0;\n", ind, val, name)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s} else if (%s.%sLength > %d) {\n", ind, val, name, f.Type.Size)
+		g.pf("%s  %s.%sLength = %d;\n", ind, val, name, f.Type.Size)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s}\n", ind)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, f.Type.Size)
 		g.call(ind+"  ", val+"."+name+"[i] = ", "view.getUint16",
 			[]string{fixedOff(base, at+fixedCountBytes) + " + i * 2", "Endian.little"}, ";")

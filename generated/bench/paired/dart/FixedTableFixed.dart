@@ -286,6 +286,8 @@ final Uint8List fixedTableFixedPrefill = Uint8List.fromList(const <int>[
 ]);
 // dart format on
 
+final Uint8List fixedTableFixedZeroBody = Uint8List(fixedTableFixedBodyBytes);
+
 /// MY SIDE of the layout, five lanes per entry: the storage facts a layout
 /// entry cannot carry. In C++ these are offsetof rows; the reader's own
 /// storage in Dart is the canonical image, so they are its offsets.
@@ -372,30 +374,18 @@ final Int32List fixedTableFixedDst = Int32List.fromList(const <int>[
 /// THE IDENTITY PLAN, coalesced HERE rather than at run time: when a record's
 /// hash is this build's own the plan is the one the compiler already wrote.
 /// Because the reader's own storage in this language IS the wire's layout,
-/// source and destination advance together and the walk collapses to 12
-/// entries — the same coalescer the plan compiler runs, reaching its best
-/// case
+/// source and destination advance together and the walk collapses to 1
+/// entry — the same coalescer the plan compiler runs, reaching its best case
 /// rather than skipping a step. A COUNT and a TEXT LENGTH keep entries of
 /// their own, because those two are the only bytes a record does not merely
 /// move: a hostile one is CLAMPED to this reader's bound before it reaches a
 /// value a consumer will index with.
 // dart format off
 final Int32List fixedTableFixedIdentity = Int32List.fromList(const <int>[
-  0, 0, 0, 52, 0, -1, 0, 0,
-  1, 52, 52, 8, 0, -1, 0, 0, // entities count
-  0, 56, 56, 408, 0, -1, 0, 0, // entities, whole
-  1, 464, 464, 80, 0, -1, 0, 0, // stats count
-  0, 468, 468, 641, 0, -1, 0, 0, // stats, whole
-  0, 1109, 1109, 13, 0, 1108, 1, 0,
-  0, 1109, 1109, 8, 0, 1108, 2, 0,
-  0, 1109, 1109, 8, 0, 1108, 3, 0,
-  0, 1122, 1122, 4, 0, -1, 0, 0, // loadout, whole
-  2, 1126, 1126, 15, 1130, -1, 0, 1, // player_name
-  2, 1145, 1145, 16, 1149, -1, 0, 3, // payload
-  0, 1165, 1165, 71, 0, -1, 0, 0,
+  0, 0, 0, 1236, 0, -1, 0, 0, // FixedTable, whole
 ]);
 // dart format on
-const int fixedTableFixedIdentityCount = 12;
+const int fixedTableFixedIdentityCount = 1;
 
 /// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
 /// NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit
@@ -426,7 +416,8 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   final view = ByteData.sublistView(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
-  bytes.fillRange(0, TableFixedLimits.headerBytes, 0);
+  view.setUint64(0, 0, Endian.little);
+  view.setUint64(8, 0, Endian.little);
   bytes[0] = tableFixedForm;
   view.setUint64(TableFixedLimits.hashAt, fixedTableFixedHash, Endian.little);
   view.setUint32(
@@ -443,11 +434,92 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   for (var k = 0; k < count; k++) {
     view.setUint64(at, fixedTableFixedHash, Endian.little);
     // the template's zeros, which is also every byte of declared slack
-    bytes.fillRange(at + 8, at + fixedTableFixedRecordBytes, 0);
+    bytes.setRange(
+      at + 8,
+      at + fixedTableFixedRecordBytes,
+      fixedTableFixedZeroBody,
+    );
     fixedTableFixedWriteBody(bytes, view, at + 8, values[k]);
     at += fixedTableFixedRecordBytes;
   }
   return need;
+}
+
+/// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
+/// the layout's hash is this build's own, and a plan compiled once from the
+/// writer's layout otherwise. THE SAME LOOP EITHER WAY: there is no strict
+/// flag, no fast path and no second reader to keep honest against the first,
+/// which is the owner's own ruling — a form whose cost moved when a peer
+/// shipped would be a cliff at exactly the moment a deployment cannot afford
+int _fixedTableFixedLoadForeign(
+  List<FixedTable> values,
+  int capacity,
+  Uint8List bytes,
+  int byteLength,
+  TableFixedPlan plan,
+  TableFixedReport report,
+  ByteData view,
+  int layoutBytes,
+  int hash,
+) {
+  if (!plan.ready || plan.hash != hash) {
+    if (!plan.theirs.parse(view, TableFixedLimits.layoutAt, layoutBytes)) {
+      report.refused = plan.theirs.refusal;
+      return -1;
+    }
+    final made = TableFixedCompiler.compile(
+      plan,
+      fixedTableFixedLayout,
+      ByteData.sublistView(fixedTableFixedLayout),
+      fixedTableFixedDst,
+      report,
+    );
+    if (made < 0) {
+      report.refused = TableFixedRefusal.planTooLarge;
+      return -1;
+    }
+    plan.recordBytes = 8 + plan.theirs.size(0);
+    plan.hash = hash;
+    plan.ready = true;
+  }
+  if (view.getUint64(TableFixedLimits.hashAt, Endian.little) != hash) {
+    report.refused = TableFixedRefusal.layoutMalformed;
+    return -1;
+  }
+  final recordBytes = plan.recordBytes;
+  final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
+  if (recordBytes <= 8 || rest % recordBytes != 0) {
+    report.malformed = true;
+    return -1;
+  }
+  final n = rest ~/ recordBytes;
+  if (n > capacity) {
+    report.refused = TableFixedRefusal.batchTooLarge;
+    return -1;
+  }
+  var at = TableFixedLimits.layoutAt + layoutBytes;
+  for (var k = 0; k < n; k++) {
+    if (view.getUint64(at, Endian.little) != hash) {
+      report.refused = TableFixedRefusal.noLayout;
+      return -1;
+    }
+    plan.image.setRange(0, fixedTableFixedBodyBytes, fixedTableFixedPrefill);
+    tableFixedRun(
+      plan.entries,
+      plan.count,
+      bytes,
+      view,
+      at + 8,
+      plan.image,
+      plan.imageView,
+      plan.remap,
+      plan.conv,
+      report,
+    );
+    fixedTableFixedDecode(values[k], plan.image, plan.imageView, 0, report);
+    at += recordBytes;
+  }
+  return n;
 }
 
 /// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
@@ -496,82 +568,55 @@ int fixedTableFixedLoad(
     layoutBytes,
   );
   report.hash = hash;
-  var entries = fixedTableFixedIdentity;
-  var entryCount = fixedTableFixedIdentityCount;
-  var recordBytes = fixedTableFixedRecordBytes;
-  if (hash != fixedTableFixedHash) {
-    // ANOTHER WRITER: the same loop, over a plan compiled from its layout
-    // and CACHED BY HASH, so the compile is paid once per peer and never
-    // once per record. THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE
-    // IS TOUCHED, and every rule it fails refuses under ITS OWN NAME.
-    if (!plan.ready || plan.hash != hash) {
-      if (!plan.theirs.parse(view, TableFixedLimits.layoutAt, layoutBytes)) {
-        report.refused = plan.theirs.refusal;
-        return -1;
-      }
-      final made = TableFixedCompiler.compile(
-        plan,
-        fixedTableFixedLayout,
-        ByteData.sublistView(fixedTableFixedLayout),
-        fixedTableFixedDst,
-        report,
-      );
-      if (made < 0) {
-        report.refused = TableFixedRefusal.planTooLarge;
-        return -1;
-      }
-      plan.recordBytes = 8 + plan.theirs.size(0);
-      plan.hash = hash;
-      plan.ready = true;
-    }
-    entries = plan.entries;
-    entryCount = plan.count;
-    recordBytes = plan.recordBytes;
-  }
-  // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-  // the layout's own rules each refuse under their own name first, so a
-  // broken layout is never reported as a lying header. A header whose hash
-  // is not the hash of the layout behind it is refused (§3).
-  if (view.getUint64(TableFixedLimits.hashAt, Endian.little) != hash) {
-    report.refused = TableFixedRefusal.layoutMalformed;
-    return -1;
-  }
-  final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
-  // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
-  // the two ends of the file have met.
-  if (recordBytes <= 8 || rest % recordBytes != 0) {
-    report.malformed = true;
-    return -1;
-  }
-  final n = rest ~/ recordBytes;
-  if (n > capacity) {
-    report.refused = TableFixedRefusal.batchTooLarge;
-    return -1;
-  }
-  var at = TableFixedLimits.layoutAt + layoutBytes;
-  for (var k = 0; k < n; k++) {
-    // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
-    // NAME, never a guess and never damage: nothing is decoded and no
-    // counter moves.
-    if (view.getUint64(at, Endian.little) != hash) {
-      report.refused = TableFixedRefusal.noLayout;
+  if (hash == fixedTableFixedHash) {
+    // Identity path: ONE run, NO PREFILL (Glenn's ruling)
+    if (view.getUint64(TableFixedLimits.hashAt, Endian.little) != hash) {
+      report.refused = TableFixedRefusal.layoutMalformed;
       return -1;
     }
-    plan.image.setRange(0, fixedTableFixedBodyBytes, fixedTableFixedPrefill);
-    tableFixedRun(
-      entries,
-      entryCount,
-      bytes,
-      view,
-      at + 8,
-      plan.image,
-      plan.imageView,
-      plan.remap,
-      plan.conv,
-      report,
-    );
-    fixedTableFixedDecode(values[k], plan.image, plan.imageView, 0);
-    at += recordBytes;
+    final rest = byteLength - TableFixedLimits.layoutAt - layoutBytes;
+    if (fixedTableFixedRecordBytes <= 8 ||
+        rest % fixedTableFixedRecordBytes != 0) {
+      report.malformed = true;
+      return -1;
+    }
+    final n = rest ~/ fixedTableFixedRecordBytes;
+    if (n > capacity) {
+      report.refused = TableFixedRefusal.batchTooLarge;
+      return -1;
+    }
+    var at = TableFixedLimits.layoutAt + layoutBytes;
+    for (var k = 0; k < n; k++) {
+      if (view.getUint64(at, Endian.little) != hash) {
+        report.refused = TableFixedRefusal.noLayout;
+        return -1;
+      }
+      tableFixedRun(
+        fixedTableFixedIdentity,
+        fixedTableFixedIdentityCount,
+        bytes,
+        view,
+        at + 8,
+        plan.image,
+        plan.imageView,
+        plan.remap,
+        plan.conv,
+        report,
+      );
+      fixedTableFixedDecode(values[k], plan.image, plan.imageView, 0, report);
+      at += fixedTableFixedRecordBytes;
+    }
+    return n;
   }
-  return n;
+  return _fixedTableFixedLoadForeign(
+    values,
+    capacity,
+    bytes,
+    byteLength,
+    plan,
+    report,
+    view,
+    layoutBytes,
+    hash,
+  );
 }

@@ -71,74 +71,22 @@ func TestFixedPrefillCarriesDeclaredDefaults(t *testing.T) {
 	}
 }
 
-// THE IDENTITY PLAN IS THE REFERENCE'S LEAF WALK COALESCED, and what this pins
-// is the property that makes it correct rather than merely small: EVERY COUNT
-// AND EVERY TEXT LENGTH THE TYPE DECLARES HAS ITS OWN ENTRY. Those two are the
-// only bytes a record does not merely move — a hostile one has to be clamped
-// to this reader's own bound before it reaches a value a consumer indexes with
-// — so a plan that coalesced them away would be a plan that lets a forged
-// length through, and a Dart consumer would meet it as a RangeError.
-func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
+// THE IDENTITY PLAN IS A SINGLE WHOLE-BODY COPY RUN per Glenn's ruling.
+// Clamping of counts and text lengths is done in the decode projection directly
+// (with report.clamped accounting), so the identity plan does not need multi-entry
+// plan walking.
+func TestFixedIdentityPlanIsSingleCopyRun(t *testing.T) {
 	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
 	st := findTable(t, u, "FixedTable")
 	plan := fixedIdentityPlan(st)
 
-	counts, texts := 0, 0
-	for _, e := range plan {
-		switch e.op {
-		case fixedOpCount:
-			counts++
-		case fixedOpText:
-			texts++
-		case fixedOpCopy:
-		default:
-			t.Fatalf("the identity plan carries op %d; only copy, count and text belong in it", e.op)
-		}
-	}
-	// BenchMixed declares two counted arrays (entities, stats) and two text
-	// fields (player_name, payload)
-	if counts != 2 {
-		t.Errorf("the identity plan carries %d count entries; the type declares 2 counted arrays", counts)
-	}
-	if texts != 2 {
-		t.Errorf("the identity plan carries %d text entries; the type declares 2 text fields", texts)
-	}
-
-	// AND IT COVERS THE BODY WITH NO GAP. The entries are in source order and
-	// each one starts where the last ended, so nothing of the record is left
-	// standing at the prefill where a value should have landed. THE ONE PLACE
-	// TWO ENTRIES SHARE A SOURCE is a UNION's arms: every arm is laid at the
-	// same offset under its own tag guard, and what the record spends there is
-	// the WIDEST of them, which is what the walk steps over.
 	body := fixedTypeBytes(st)
-	var at, widest int64
-	for i, e := range plan {
-		if e.src != e.dst {
-			t.Fatalf("plan entry %d has src %d and dst %d; the identity plan's source IS its destination in this backend",
-				i, e.src, e.dst)
-		}
-		if e.guard != fixedNoGuard {
-			// an ARM: it starts where the walk stands and does not advance it
-			if e.src != at {
-				t.Fatalf("plan entry %d is an arm at %d, the walk is at %d", i, e.src, at)
-			}
-			if end := planEnd(e) - at; end > widest {
-				widest = end
-			}
-			continue
-		}
-		if widest != 0 {
-			at += widest // the union's widest arm, which the arms shared
-			widest = 0
-		}
-		if e.src != at {
-			t.Fatalf("plan entry %d starts at %d, the walk is at %d", i, e.src, at)
-		}
-		at = planEnd(e)
+	if len(plan) != 1 {
+		t.Fatalf("expected 1 entry in identity plan, got %d", len(plan))
 	}
-	at += widest
-	if at != body {
-		t.Fatalf("the identity plan covers %d bytes, the body is %d", at, body)
+	e := plan[0]
+	if e.op != fixedOpCopy || e.src != 0 || e.dst != 0 || e.size != body || e.guard != fixedNoGuard {
+		t.Fatalf("unexpected identity plan entry: %+v (expected copy 0..%d)", e, body)
 	}
 }
 
