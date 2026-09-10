@@ -726,13 +726,6 @@ func (r rseg) hasFast() bool {
 	return false
 }
 
-func (r rseg) when() string {
-	if len(r.guards) == 0 {
-		return ""
-	}
-	return strings.Join(r.guards, " and ")
-}
-
 func (g *fixedGen) readType(st *ir.Struct, prefix string) rseg {
 	var out rseg
 	for _, f := range st.Fields {
@@ -1299,12 +1292,6 @@ func (g *fixedGen) emitShortDef(head, body string) {
 	g.pf("  %s,\n    do: %s\n\n", head, body)
 }
 
-// tuple2 is `{a, b}` as a shape: a struct that breaks keeps its brace beside
-// the tuple's own.
-func tuple2(a, b node) node {
-	return pairNode{a: a, b: b}
-}
-
 // triple is `{a, b, c}` — the projection's `{value, clamped, malformed}`.
 func triple(a, b, c node) node {
 	return tripleNode{a: a, b: b, c: c}
@@ -1321,17 +1308,6 @@ func (t tripleNode) render(at, ind, tail int) string {
 		return one
 	}
 	return "{" + t.a.render(at+1, ind+1, tail+2+len(t.b.flat())+2+len(t.c.flat())) + ", " + t.b.flat() + ", " + t.c.flat() + "}"
-}
-
-type pairNode struct{ a, b node }
-
-func (p pairNode) flat() string { return "{" + p.a.flat() + ", " + p.b.flat() + "}" }
-
-func (p pairNode) render(at, ind, tail int) string {
-	if one := p.flat(); fits(at, tail, one) {
-		return one
-	}
-	return "{" + p.a.render(at+1, ind+1, tail+3+len(p.b.flat())) + ", " + p.b.flat() + "}"
 }
 
 // emitPost prints a projection's `name = value` statements in the formatter's
