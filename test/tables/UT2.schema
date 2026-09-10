@@ -1,0 +1,37 @@
+// UT2.schema — the NEW side of the union-arm text conformance (see UT1.schema
+// for what the pair is for).
+//
+// ONE EDIT, and its whole job is to make the two layouts differ so the same
+// records have to land through a COMPILED PLAN instead of the identity one: on
+// the identity path the whole body is a single copy and no text entry exists to
+// get wrong. `lead` is inserted BEFORE `pick`, so the union's tag sits four
+// bytes later in a UT2 record than in a UT1 one — which is exactly the offset
+// a guarded entry has to take from the WRITER's layout rather than its own.
+//
+// Nothing else moves: the union, its arms and their field names are UT1's, so
+// their wire ids match and every arm lands.
+package tblut2
+
+type PlainArm
+{
+    n int32 = 7 | min = -1000, max = 1000
+}
+
+type TextedArm
+{
+    label string(8)
+    m     int32 = 9 | min = -1000, max = 1000
+}
+
+union Pick
+{
+    plain  PlainArm
+    texted TextedArm
+}
+
+table UtRoot
+{
+    lead int32 = 0 | min = -1000, max = 1000
+    pick Pick
+    tail int32 = 3 | min = -1000, max = 1000
+}

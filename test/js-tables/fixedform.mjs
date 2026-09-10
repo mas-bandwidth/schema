@@ -69,11 +69,18 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir) {
   const fx2 = await load("fx2/FX2Table.js");
   const fx1home = await load("fx1/Tblfx1Table.js");
   const fx2home = await load("fx2/Tblfx2Table.js");
+  const ut1 = await load("ut1/UT1Table.js");
+  const ut2 = await load("ut2/UT2Table.js");
+  const ut1home = await load("ut1/Tblut1Table.js");
+  const ut2home = await load("ut2/Tblut2Table.js");
+  const ut1types = await load("ut1/UT1.js");
+  const ut2types = await load("ut2/UT2.js");
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
   versioning(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
+  unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types);
 
   if (optionalDir) {
     const o = {
@@ -622,6 +629,114 @@ const WRAP_LEAF_PRESENT = 48, WRAP_LEAF_V = 49, EFFECT_TAG = 65;
 
 // setText lays a string(N) member down the way every port must: the bytes,
 // then the USED LENGTH beside them.
+// ---------------------------------------------------------------------------
+// A TEXT FIELD UNDER A UNION ARM: two facts, two lanes
+// ---------------------------------------------------------------------------
+//
+// A PLAN ENTRY THAT BELONGS TO A UNION ARM CARRIES TWO INDEPENDENT THINGS: the
+// OFFSET of the writer's tag, and the VALUE that tag has to hold for the entry
+// to run. A TEXT entry carries a third — which flavour of text it lands. Put
+// the flavour where the tag's value goes and the read loop compares a tag byte
+// against a text flavour, which fails in BOTH directions at once:
+//
+//   the arm WITH the text loses it, because its own tag value no longer
+//   matches the guard, so the entry never runs and the field comes back as the
+//   prefill;
+//
+//   and the arm WITHOUT the text is CORRUPTED BY IT, because the flavour of a
+//   utf-8 string is 1 and the FIRST arm's tag value is also 1 — so the text
+//   entry runs under the wrong arm and writes its payload across a sibling's
+//   storage, which a union shares.
+//
+// It is only reachable through a COMPILED plan: on the identity path the whole
+// body is one copy and no text entry exists at all. So UT2 writes and UT1
+// reads, and their layouts differ by one field inserted ahead of the union —
+// which also moves the tag, so the guard offset has to be the WRITER's.
+//
+// No fixture reached this before: FO1's union has two arms and neither carries
+// text (docs/SPEC-TABLES.md §3.4).
+function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
+  const LABEL = "arm-text";
+  const write = (fill) => {
+    const v = new ut2home.UtRoot();
+    fill(v);
+    const buf = new Uint8Array(ut2.UtRootFixedMeasure(1));
+    if (ut2.UtRootFixedSave([v], 1, buf) !== buf.length) { return null; }
+    return buf;
+  };
+  const readWithUt1 = (bytes) => {
+    const out = [new ut1home.UtRoot()];
+    const r = new ut1home.TableFixedReport();
+    const n = ut1.UtRootFixedLoad(out, 1, bytes, bytes.length, ut1.UtRootFixedNewPlan(), r);
+    return { n, r, v: out[0] };
+  };
+
+  // 1. THE ARM THAT CARRIES THE TEXT KEEPS IT.
+  {
+    const bytes = write((v) => {
+      v.Lead = 41;
+      v.Pick.Type = ut2types.PickType.Texted;
+      v.Pick.Texted.LabelLength = setText(v.Pick.Texted.Label, LABEL);
+      v.Pick.Texted.M = 55;
+      v.Tail = 66;
+    });
+    check(bytes !== null, "union-arm text: UT2 wrote its record");
+    const { n, r, v } = readWithUt1(bytes);
+    check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's record through a compiled plan");
+    check(v.Pick.Type === ut1types.PickType.Texted,
+      "union-arm text: the tag lands on the TEXTED arm");
+    let label = "";
+    for (let i = 0; i < v.Pick.Texted.LabelLength; i++) { label += String.fromCharCode(v.Pick.Texted.Label[i]); }
+    check(v.Pick.Texted.LabelLength === LABEL.length && label === LABEL,
+      `union-arm text: the arm's own string survives the guard — got ${v.Pick.Texted.LabelLength} ${JSON.stringify(label)}, want ${LABEL.length} ${JSON.stringify(LABEL)}`);
+    check(v.Pick.Texted.M === 55, `union-arm text: the scalar behind the string is 55, got ${v.Pick.Texted.M}`);
+    check(v.Tail === 66, `union-arm text: the field past the union is 66, got ${v.Tail}`);
+  }
+
+  // 2. THE ARM THAT DOES NOT CARRY TEXT IS NOT WRITTEN OVER BY IT. This is the
+  // sharper half: the first arm's tag value and a utf-8 flavour are both 1, so
+  // a conflated lane runs the OTHER arm's text entry over this arm's storage.
+  {
+    const bytes = write((v) => {
+      v.Lead = 71;
+      v.Pick.Type = ut2types.PickType.Plain;
+      v.Pick.Plain.N = -404;
+      v.Tail = 77;
+    });
+    check(bytes !== null, "union-arm text: UT2 wrote its plain-arm record");
+    const { n, r, v } = readWithUt1(bytes);
+    check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's plain-arm record");
+    check(v.Pick.Type === ut1types.PickType.Plain,
+      "union-arm text: the tag lands on the PLAIN arm");
+    check(v.Pick.Plain.N === -404,
+      `union-arm text: the plain arm's scalar is untouched by the other arm's text entry — got ${v.Pick.Plain.N}, want -404`);
+    check(v.Tail === 77, `union-arm text: the field past the union is 77, got ${v.Tail}`);
+  }
+
+  // 3. AND THE OTHER DIRECTION, so neither side is the only one proved: UT1
+  // writes, UT2 reads, and UT2's own extra field takes its declared default.
+  {
+    const v1 = new ut1home.UtRoot();
+    v1.Pick.Type = ut1types.PickType.Texted;
+    v1.Pick.Texted.LabelLength = setText(v1.Pick.Texted.Label, "back");
+    v1.Pick.Texted.M = -12;
+    v1.Tail = 88;
+    const buf = new Uint8Array(ut1.UtRootFixedMeasure(1));
+    check(ut1.UtRootFixedSave([v1], 1, buf) === buf.length, "union-arm text: UT1 wrote its record");
+    const out = [new ut2home.UtRoot()];
+    const r = new ut2home.TableFixedReport();
+    const n = ut2.UtRootFixedLoad(out, 1, buf, buf.length, ut2.UtRootFixedNewPlan(), r);
+    check(n === 1 && !r.malformed, "union-arm text: UT2 read UT1's record through a compiled plan");
+    let label = "";
+    for (let i = 0; i < out[0].Pick.Texted.LabelLength; i++) { label += String.fromCharCode(out[0].Pick.Texted.Label[i]); }
+    check(out[0].Pick.Type === ut2types.PickType.Texted && label === "back" && out[0].Pick.Texted.M === -12,
+      `union-arm text: the arm's string and scalar land the other way round too — got ${JSON.stringify(label)} ${out[0].Pick.Texted.M}`);
+    check(out[0].Lead === 0,
+      `union-arm text: UT2's own field UT1 never wrote takes its declared default, got ${out[0].Lead}`);
+    check(out[0].Tail === 88, `union-arm text: the field past the union is 88, got ${out[0].Tail}`);
+  }
+}
+
 function setText(buf, s) {
   buf.fill(0);
   for (let i = 0; i < s.length; i++) { buf[i] = s.charCodeAt(i); }

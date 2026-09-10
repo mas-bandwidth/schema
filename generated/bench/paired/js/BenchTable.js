@@ -75,7 +75,7 @@ const TableFixedLaneSize = 3;
 const TableFixedLaneAux = 4;
 const TableFixedLaneGuard = 5;
 const TableFixedLaneArg = 6;
-const TableFixedLaneMeta = 7;
+const TableFixedLaneMeta = 7; // a widen's width and sign, a text entry's flavour
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
 // others are what a plan compiled from another writer's layout adds.
@@ -251,7 +251,12 @@ export function TableFixedRun(plan, entryCount, src, srcAt, dst, remap, report) 
         break;
       }
       case TableFixedOpText: {
-        const unit = e[b + TableFixedLaneArg] === TableFixedTextWide ? 2 : 1;
+        // THE FLAVOUR RIDES IN META, NOT IN ARG. Arg is the GUARD'S VALUE —
+        // the union tag an arm's entry answers to — and it is read as that by
+        // the guard test above, on every entry, before any op runs. A text
+        // field under a union arm needs BOTH, so they cannot share a lane
+        // (docs/SPEC-TABLES.md §3.4).
+        const unit = e[b + TableFixedLaneMeta] === TableFixedTextWide ? 2 : 1;
         const cap = (size / unit) | 0;
         let v = TableFixedGetU32(src, s) | 0;
         if (v < 0) { v = 0; report.clamped++; }
@@ -579,8 +584,14 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       break;
     }
     case 12: case 33: { // text
+      // ARG STAYS THE ARM'S, AND THE FLAVOUR GOES IN META. Writing the flavour
+      // into arg was a text field under a union arm losing its guard value: the
+      // read loop would then compare the writer's TAG BYTE against a text
+      // flavour, so the entry either never ran under its own arm or ran under
+      // somebody else's and smeared its bytes across a sibling's storage. The
+      // two facts are independent, so they get independent lanes.
       const units = (mySize - 4) < (theirSize - 4) ? (mySize - 4) : (theirSize - 4);
-      TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0);
+      TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst[row + TableFixedDstArg]);
       break;
     }
     default: {

@@ -1,0 +1,48 @@
+// UT1.schema — the FIXED FORM's UNION-ARM TEXT conformance, old side
+// (docs/SPEC-TABLES.md §3.4).
+//
+// The fact this pair holds is one a plan entry's LANES have to keep apart. An
+// entry that belongs to a union arm carries TWO independent things: the offset
+// of the writer's tag, and the VALUE that tag must hold for the entry to run.
+// A TEXT entry carries a third — which flavour of text it is landing — and if
+// the flavour is written where the tag's value goes, the read loop compares a
+// tag byte against a text flavour. Then a text field under an arm either never
+// runs under its own arm, or runs under somebody else's and writes its bytes
+// across a sibling arm's storage, which share one union's space.
+//
+// No existing fixture reached it: FO1's union has two arms and NEITHER of them
+// carries text. So the shape is spelled out here — a union whose SECOND arm
+// carries a string beside a scalar, so the failure is visible from both sides:
+// the arm with the text loses it, and the arm WITHOUT the text is corrupted by
+// it.
+//
+// The pair is JavaScript-to-JavaScript by design. What is under test is not a
+// byte layout — the layout and the record bytes are settled by the compiler
+// and checked against the C++ reference elsewhere — it is what the runtime
+// PLAN COMPILER builds, which only runs when the two sides' layouts differ.
+package tblut1
+
+type PlainArm
+{
+    n int32 = 7 | min = -1000, max = 1000
+}
+
+// THE SECOND ARM, and the one that carries text. `m` rides behind `label` so a
+// smeared text payload is visible as a wrong scalar as well as a wrong string.
+type TextedArm
+{
+    label string(8)
+    m     int32 = 9 | min = -1000, max = 1000
+}
+
+union Pick
+{
+    plain  PlainArm
+    texted TextedArm
+}
+
+table UtRoot
+{
+    pick Pick
+    tail int32 = 3 | min = -1000, max = 1000
+}

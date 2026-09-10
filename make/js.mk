@@ -408,7 +408,7 @@ build/js-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixed
 		build/js-fixed-corpus/bench_fixed.bin build/js-fixed-corpus/bench_fixed.oracle.json
 	@touch $@
 
-build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FO1.schema test/tables/FO2.schema make/js.mk
+build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FO1.schema test/tables/FO2.schema test/tables/UT1.schema test/tables/UT2.schema make/js.mk
 	@mkdir -p build/js-fixed
 	./bin/schema generate --lang js --out build/js-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	./bin/schema generate --lang js --out build/js-fixed/fx1 test/tables/FX1.schema
@@ -417,6 +417,8 @@ build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTa
 	./bin/schema generate --lang js --out build/js-fixed/p3 test/tables/P3.schema
 	./bin/schema generate --lang js --out build/js-fixed/fo1 test/tables/FO1.schema
 	./bin/schema generate --lang js --out build/js-fixed/fo2 test/tables/FO2.schema
+	./bin/schema generate --lang js --out build/js-fixed/ut1 test/tables/UT1.schema
+	./bin/schema generate --lang js --out build/js-fixed/ut2 test/tables/UT2.schema
 	@touch $@
 
 # THE OPTIONAL CORPUS, and its bytes are the C++ REFERENCE'S TOO. `?T` is the
@@ -461,6 +463,8 @@ tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp b
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/p3 test/tables/P3.schema
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fo1 test/tables/FO1.schema
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fo2 test/tables/FO2.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/ut1 test/tables/UT1.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/ut2 test/tables/UT2.schema
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-sabotage build/js-fixed-corpus \
 			build/js-fixed-optional > build/js-fixed-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a string length one byte off left the fixed form green"; \
@@ -469,6 +473,46 @@ tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp b
 	@grep -q "first byte differing from the C++ reference" build/js-fixed-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; cat build/js-fixed-sabotage/log; exit 1; }
 	@echo 'tables JS fixed form negative control: one byte off the write template reds the reference byte match'
+
+# THE UNION-ARM TEXT LANE'S OWN CONTROL: put the text flavour back where the
+# guard's value lives — the one line this defect was — and the leg must go red.
+# A plan entry under a union arm carries the tag's OFFSET and the VALUE the tag
+# must hold; a text entry carries a flavour too, and the three are three facts.
+# Sharing a lane between the last two is invisible to every other gate in this
+# file, because the identity path reads a whole body as ONE copy and never
+# builds a text entry at all — so this control is what proves the pair is
+# watching.
+.PHONY: tables-js-union-arm-text-negative-control
+tables-js-union-arm-text-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp
+	@rm -rf build/js-armtext-sabotage && mkdir -p build/js-armtext-sabotage
+	@sed 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
+		internal/codegen/jstable/fixedruntime.go > build/js-armtext-sabotage/fixedruntime.go.txt
+	@sed -i.bak 's|const unit = e\[b + TableFixedLaneMeta\] === TableFixedTextWide ? 2 : 1;|const unit = e[b + TableFixedLaneArg] === TableFixedTextWide ? 2 : 1; // SABOTAGED|' \
+		build/js-armtext-sabotage/fixedruntime.go.txt
+	@test $$(grep -c SABOTAGED build/js-armtext-sabotage/fixedruntime.go.txt) -eq 2 || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both halves of the lane"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
+	@go build -overlay=build/js-armtext-sabotage/overlay.json -o build/js-armtext-sabotage/schema ./cmd/schema
+	@for u in bench:bench/corpus/Bench.schema fx1:test/tables/FX1.schema fx2:test/tables/FX2.schema \
+			p1:test/tables/P1.schema p3:test/tables/P3.schema fo1:test/tables/FO1.schema \
+			fo2:test/tables/FO2.schema ut1:test/tables/UT1.schema ut2:test/tables/UT2.schema; do \
+		d=$${u%%:*}; f=$${u#*:}; \
+		if [ "$$d" = bench ]; then \
+			./build/js-armtext-sabotage/schema generate --lang js --out build/js-armtext-sabotage/bench \
+				bench/corpus/Bench.schema bench/corpus/FixedTable.schema; \
+		else \
+			./build/js-armtext-sabotage/schema generate --lang js --out build/js-armtext-sabotage/$$d $$f; \
+		fi; \
+	done
+	@if $(NODE) test/js-tables/fixedform.mjs build/js-armtext-sabotage build/js-fixed-corpus \
+			build/js-fixed-optional > build/js-armtext-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the text flavour sharing the guard's lane left the leg green"; \
+		cat build/js-armtext-sabotage/log; exit 1; \
+	fi
+	@grep -q "union-arm text:" build/js-armtext-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red for another reason"; cat build/js-armtext-sabotage/log; exit 1; }
+	@echo 'tables JS union-arm text negative control: the text flavour back in the guard'"'"'s lane reds a text field under a union arm'
 
 # THE OPTIONAL HALF'S OWN CONTROL: invert one present byte and the leg must go
 # red against the reference's optional corpus. The `?T` bytes are the ones a
@@ -493,6 +537,8 @@ tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.sta
 	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/p3 test/tables/P3.schema
 	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fo1 test/tables/FO1.schema
 	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fo2 test/tables/FO2.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/ut1 test/tables/UT1.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/ut2 test/tables/UT2.schema
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-opt-sabotage build/js-fixed-corpus \
 			build/js-fixed-optional > build/js-fixed-opt-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an inverted present byte left the optionals green"; \
@@ -521,6 +567,7 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-fixed-form
 	$(MAKE) tables-js-fixed-form-negative-control
 	$(MAKE) tables-js-fixed-optional-negative-control
+	$(MAKE) tables-js-union-arm-text-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 
