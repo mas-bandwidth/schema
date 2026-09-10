@@ -23,6 +23,7 @@ package jstable
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -288,30 +289,42 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, ind
 	name := ir.GoExportName(f.Name)
 	switch {
 	case f.KeyEnum != "":
-		g.emitWriteLoop(f, base, at, f.KeyEnumRef.Max, val+"."+name, ind)
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
+		// slack, so the declared bound IS the loop.
+		g.emitWriteLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+name, ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitWriteLoop(f, base, at, f.ArrayBound, val+"."+name, ind)
+		// AND EVERY ELEMENT OF `[N]T` IS LIVE: min equals max, so no count rides.
+		g.emitWriteLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
 	case f.Array == ir.ArrayCounted:
-		// the count, then MAX elements, the slack zero-filled
+		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
+		// slots' STORAGE on the wire, which for an array of a type with declared
+		// defaults is the element's default image and not zero — a value nobody
+		// wrote, riding as if somebody had.
 		g.pf("%sview.setInt32(%s, %s.%sCount, true);\n", ind, off(base, at), val, name)
-		g.emitWriteLoop(f, base, at+fixedCountBytes, f.ArrayBound, val+"."+name, ind)
+		g.emitWriteLoop(f, base, at+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), val+"."+name, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+		// THE USED LENGTH, THEN THAT MANY UNITS, and the slack stays zero.
+		// Copying the whole declared span instead put whatever the caller's
+		// storage held past the used length on the wire, so a `string(N)`
+		// written twice with two different values did not compare equal on the
+		// second write.
 		g.pf("%sview.setInt32(%s, %s.%sLength, true);\n", ind, off(base, at), val, name)
-		g.pf("%sfor (let i = 0; i < %d; i++) { view.setUint8(%s + i, %s.%s[i]); }\n",
-			ind, f.Type.Size, off(base, at+fixedCountBytes), val, name)
+		g.pf("%sfor (let i = 0; i < %s.%sLength; i++) { view.setUint8(%s + i, %s.%s[i]); }\n",
+			ind, val, name, off(base, at+fixedCountBytes), val, name)
 	case f.Type.Kind == ir.TWString:
-		// the length in CODE UNITS, then 2N bytes
+		// the length in CODE UNITS, then that many two-byte units
 		g.pf("%sview.setInt32(%s, %s.%sLength, true);\n", ind, off(base, at), val, name)
-		g.pf("%sfor (let i = 0; i < %d; i++) { view.setUint16(%s + i * 2, %s.%s[i], true); }\n",
-			ind, f.Type.Size, off(base, at+fixedCountBytes), val, name)
+		g.pf("%sfor (let i = 0; i < %s.%sLength; i++) { view.setUint16(%s + i * 2, %s.%s[i], true); }\n",
+			ind, val, name, off(base, at+fixedCountBytes), val, name)
 	default:
 		g.emitWriteElement(f, base, at, val+"."+name, ind)
 	}
 }
 
-func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at, count int64, expr, ind string) {
+func (g *fixedGen) emitWriteLoop(f *ir.Field, base string, at int64, count string, expr, ind string) {
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (let i = 0; i < %d; i++) {\n", ind, count)
+	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
 	g.emitWriteElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, expr+"[i]", ind+"  ")
 	g.pf("%s}\n", ind)
 }
@@ -673,6 +686,7 @@ func (g *fixedGen) emitFieldStorage(f *ir.Field, ind, target string) {
 		g.pf("%s%s.%sCount = %d;\n", ind, target, name, f.ArrayMin)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.pf("%s%s.%s = new Uint8Array(%d);\n", ind, target, name, f.Type.Size)
+		g.emitDefaultTextBytes(f, ind, target)
 		g.pf("%s%s.%sLength = %d;\n", ind, target, name, fixedDefaultTextLength(f))
 	case f.Type.Kind == ir.TWString:
 		g.pf("%s%s.%s = new Uint16Array(%d);\n", ind, target, name, f.Type.Size)
@@ -699,6 +713,36 @@ func (g *fixedGen) emitPresenceStorage(f *ir.Field, ind, target string) {
 	}
 	g.pf("%s%s.%sPresent = false; // ?: absent until set (docs/SPEC-TABLES.md §3.4)\n",
 		ind, target, ir.GoExportName(f.Name))
+}
+
+// emitDefaultTextBytes lays a `string(N)` or `bytes(N)` field's DECLARED
+// DEFAULT into its storage (SPEC §4.2). Setting only the used LENGTH from the
+// default and leaving the buffer zero was a value that claimed N used bytes of
+// an empty buffer: the reference's own constructed record reads "fx" where this
+// one read two NULs, and since the write side takes the value's own storage,
+// the two ports then disagreed on the BYTES for the same logical value.
+//
+// The prefill lays the same default down on the read side
+// (fixedprefill.go), so a constructed value and a record whose writer did not
+// carry the field now hold the same thing — which is what a default means.
+//
+// A wstring carries none: the IR holds a wstring default as BYTES and this form
+// counts CODE UNITS, so laying one down would be this backend guessing an
+// encoding. fixedDefaultTextLength answers 0 there for the same reason.
+func (g *fixedGen) emitDefaultTextBytes(f *ir.Field, ind, target string) {
+	if f.Type.Kind == ir.TWString {
+		return
+	}
+	n := fixedDefaultTextLength(f)
+	if n <= 0 {
+		return
+	}
+	parts := make([]string, 0, n)
+	for _, b := range f.DefBytes[:n] {
+		parts = append(parts, strconv.FormatUint(uint64(b), 10))
+	}
+	g.pf("%s%s.%s.set([%s]); // the declared default (SPEC §4.2)\n",
+		ind, target, ir.GoExportName(f.Name), strings.Join(parts, ", "))
 }
 
 func fixedDefaultTextLength(f *ir.Field) int64 {
@@ -751,6 +795,7 @@ func (g *fixedGen) emitPayloadReset(f *ir.Field, ind, target string) {
 		}
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TWString:
 		g.pf("%s%s.%s.fill(0);\n", ind, target, name)
+		g.emitDefaultTextBytes(f, ind, target)
 		g.pf("%s%s.%sLength = %d;\n", ind, target, name, fixedDefaultTextLength(f))
 	default:
 		if cls := fixedElementClass(f.Type); cls != "" {

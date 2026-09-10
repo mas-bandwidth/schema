@@ -60,7 +60,7 @@ const LAYOUT_AT = 20;
 //
 // Run from the repository root, which is where the Makefile runs it.
 
-export async function checkFixedForm(check, generated, corpusDir, optionalDir) {
+export async function checkFixedForm(check, generated, corpusDir, optionalDir, oracleDir) {
   const load = (p) => import(pathToFileURL(resolve(generated, p)).href);
 
   const bench = await load("bench/BenchTable.js");
@@ -81,6 +81,9 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir) {
   versioning(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
   unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types);
+  if (oracleDir) {
+    referenceOracle(check, fx1, fx2, fx1home, oracleDir);
+  }
 
   if (optionalDir) {
     const o = {
@@ -634,107 +637,236 @@ const WRAP_LEAF_PRESENT = 48, WRAP_LEAF_V = 49, EFFECT_TAG = 65;
 // A TEXT FIELD UNDER A UNION ARM: two facts, two lanes
 // ---------------------------------------------------------------------------
 //
-// A PLAN ENTRY THAT BELONGS TO A UNION ARM CARRIES TWO INDEPENDENT THINGS: the
-// OFFSET of the writer's tag, and the VALUE that tag has to hold for the entry
-// to run. A TEXT entry carries a third — which flavour of text it lands. Put
-// the flavour where the tag's value goes and the read loop compares a tag byte
-// against a text flavour, which fails in BOTH directions at once:
+// A PLAN ENTRY CARRIES TWO FACTS THAT ARE NOT THE SAME FACT: the ordinal the
+// GUARD byte must hold for the entry to run, and the ARGUMENT the entry's own
+// op takes — for a text entry, its flavour. They had one lane between them, so
+// a `string(N)` under a union's arm could be guarded correctly or read with the
+// right flavour and could not be both.
 //
-//   the arm WITH the text loses it, because its own tag value no longer
-//   matches the guard, so the entry never runs and the field comes back as the
-//   prefill;
+// Neither failure is quiet. The flavour of a `string(N)` is 1 and UT1's second
+// arm's ordinal is 2, so a shared lane does not merely lose one fact — it turns
+// a byte string into a WIDE one, halving the bound. And under a compiled plan
+// the entry runs only when the tag happens to equal the flavour, which means it
+// runs under the WRONG ARM and writes across a sibling's storage, which a union
+// shares.
 //
-//   and the arm WITHOUT the text is CORRUPTED BY IT, because the flavour of a
-//   utf-8 string is 1 and the FIRST arm's tag value is also 1 — so the text
-//   entry runs under the wrong arm and writes its payload across a sibling's
-//   storage, which a union shares.
-//
-// It is only reachable through a COMPILED plan: on the identity path the whole
-// body is one copy and no text entry exists at all. So UT2 writes and UT1
-// reads, and their layouts differ by one field inserted ahead of the union —
-// which also moves the tag, so the guard offset has to be the WRITER's.
-//
-// No fixture reached this before: FO1's union has two arms and neither carries
-// text (docs/SPEC-TABLES.md §3.4).
+// UT2 inserts `mid` IN THE MIDDLE of the union, so the arm carrying the string
+// moves from ordinal 2 to ordinal 3 and the read is a COMPILED plan: the guard
+// must hold THEIR ordinal while the tag lands MINE, which is the other half of
+// the same confusion. The pair is the C++ leg's own (test/tables/UT1.schema,
+// UT2.schema) and this is its JavaScript twin.
 function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
   const LABEL = "arm-text";
-  const write = (fill) => {
-    const v = new ut2home.UtRoot();
-    fill(v);
-    const buf = new Uint8Array(ut2.UtRootFixedMeasure(1));
-    if (ut2.UtRootFixedSave([v], 1, buf) !== buf.length) { return null; }
-    return buf;
+  const textOf = (buf, n) => {
+    let out = "";
+    for (let i = 0; i < n; i++) { out += String.fromCharCode(buf[i]); }
+    return out;
   };
-  const readWithUt1 = (bytes) => {
+
+  // 1. UT2 WRITES ARM `b` — ordinal 3 THERE — AND UT1 READS IT AS ORDINAL 2.
+  //    The string is guarded by the WRITER's ordinal and lands under the
+  //    READER's, and its flavour is neither number.
+  {
+    const v = new ut2home.UtRoot();
+    v.Head = 41;
+    v.Pick.Type = ut2types.PickType.B;
+    v.Pick.B.LabelLength = setText(v.Pick.B.Label, LABEL);
+    v.Pick.B.M = 55;
+    v.Tail = 66;
+    const buf = new Uint8Array(ut2.UtRootFixedMeasure(1));
+    check(ut2.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT2 wrote its arm-b record");
+
     const out = [new ut1home.UtRoot()];
     const r = new ut1home.TableFixedReport();
-    const n = ut1.UtRootFixedLoad(out, 1, bytes, bytes.length, ut1.UtRootFixedNewPlan(), r);
-    return { n, r, v: out[0] };
-  };
-
-  // 1. THE ARM THAT CARRIES THE TEXT KEEPS IT.
-  {
-    const bytes = write((v) => {
-      v.Lead = 41;
-      v.Pick.Type = ut2types.PickType.Texted;
-      v.Pick.Texted.LabelLength = setText(v.Pick.Texted.Label, LABEL);
-      v.Pick.Texted.M = 55;
-      v.Tail = 66;
-    });
-    check(bytes !== null, "union-arm text: UT2 wrote its record");
-    const { n, r, v } = readWithUt1(bytes);
+    const n = ut1.UtRootFixedLoad(out, 1, buf, buf.length, ut1.UtRootFixedNewPlan(), r);
     check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's record through a compiled plan");
-    check(v.Pick.Type === ut1types.PickType.Texted,
-      "union-arm text: the tag lands on the TEXTED arm");
-    let label = "";
-    for (let i = 0; i < v.Pick.Texted.LabelLength; i++) { label += String.fromCharCode(v.Pick.Texted.Label[i]); }
-    check(v.Pick.Texted.LabelLength === LABEL.length && label === LABEL,
-      `union-arm text: the arm's own string survives the guard — got ${v.Pick.Texted.LabelLength} ${JSON.stringify(label)}, want ${LABEL.length} ${JSON.stringify(LABEL)}`);
-    check(v.Pick.Texted.M === 55, `union-arm text: the scalar behind the string is 55, got ${v.Pick.Texted.M}`);
-    check(v.Tail === 66, `union-arm text: the field past the union is 66, got ${v.Tail}`);
+    const got = out[0];
+    check(got.Pick.Type === ut1types.PickType.B,
+      `union-arm text: the tag lands on UT1's OWN ordinal for arm b — got ${got.Pick.Type}, want ${ut1types.PickType.B}`);
+    const label = textOf(got.Pick.B.Label, got.Pick.B.LabelLength);
+    check(got.Pick.B.LabelLength === LABEL.length && label === LABEL,
+      `union-arm text: the arm's string survives BOTH the guard and the flavour — got ${got.Pick.B.LabelLength} ${JSON.stringify(label)}, want ${LABEL.length} ${JSON.stringify(LABEL)}`);
+    check(got.Pick.B.M === 55, `union-arm text: the scalar behind the string is 55, got ${got.Pick.B.M}`);
+    check(got.Head === 41 && got.Tail === 66,
+      `union-arm text: the fields either side of the union are 41/66, got ${got.Head}/${got.Tail}`);
   }
 
-  // 2. THE ARM THAT DOES NOT CARRY TEXT IS NOT WRITTEN OVER BY IT. This is the
-  // sharper half: the first arm's tag value and a utf-8 flavour are both 1, so
-  // a conflated lane runs the OTHER arm's text entry over this arm's storage.
+  // 2. UT2 WRITES ARM `a` — ordinal 1, WHICH IS ALSO A BYTE STRING'S FLAVOUR.
+  //    This is the sharper half: with one lane between the two facts, arm b's
+  //    text entry runs under arm a's tag and smears its payload across a
+  //    sibling arm's storage.
   {
-    const bytes = write((v) => {
-      v.Lead = 71;
-      v.Pick.Type = ut2types.PickType.Plain;
-      v.Pick.Plain.N = -404;
-      v.Tail = 77;
-    });
-    check(bytes !== null, "union-arm text: UT2 wrote its plain-arm record");
-    const { n, r, v } = readWithUt1(bytes);
-    check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's plain-arm record");
-    check(v.Pick.Type === ut1types.PickType.Plain,
-      "union-arm text: the tag lands on the PLAIN arm");
-    check(v.Pick.Plain.N === -404,
-      `union-arm text: the plain arm's scalar is untouched by the other arm's text entry — got ${v.Pick.Plain.N}, want -404`);
-    check(v.Tail === 77, `union-arm text: the field past the union is 77, got ${v.Tail}`);
+    const v = new ut2home.UtRoot();
+    v.Head = 71;
+    v.Pick.Type = ut2types.PickType.A;
+    v.Pick.A.N = -404;
+    v.Tail = 77;
+    const buf = new Uint8Array(ut2.UtRootFixedMeasure(1));
+    check(ut2.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT2 wrote its arm-a record");
+
+    const out = [new ut1home.UtRoot()];
+    const r = new ut1home.TableFixedReport();
+    const n = ut1.UtRootFixedLoad(out, 1, buf, buf.length, ut1.UtRootFixedNewPlan(), r);
+    check(n === 1 && !r.malformed, "union-arm text: UT1 read UT2's arm-a record");
+    const got = out[0];
+    check(got.Pick.Type === ut1types.PickType.A,
+      `union-arm text: the tag lands on arm a — got ${got.Pick.Type}, want ${ut1types.PickType.A}`);
+    check(got.Pick.A.N === -404,
+      `union-arm text: arm a's scalar is untouched by arm b's text entry — got ${got.Pick.A.N}, want -404`);
+    check(got.Head === 71 && got.Tail === 77,
+      `union-arm text: the fields either side of the union are 71/77, got ${got.Head}/${got.Tail}`);
   }
 
   // 3. AND THE OTHER DIRECTION, so neither side is the only one proved: UT1
-  // writes, UT2 reads, and UT2's own extra field takes its declared default.
+  //    writes arm b at ordinal 2, UT2 reads it as ordinal 3.
   {
-    const v1 = new ut1home.UtRoot();
-    v1.Pick.Type = ut1types.PickType.Texted;
-    v1.Pick.Texted.LabelLength = setText(v1.Pick.Texted.Label, "back");
-    v1.Pick.Texted.M = -12;
-    v1.Tail = 88;
+    const v = new ut1home.UtRoot();
+    v.Head = 81;
+    v.Pick.Type = ut1types.PickType.B;
+    v.Pick.B.LabelLength = setText(v.Pick.B.Label, "back");
+    v.Pick.B.M = -12;
+    v.Tail = 88;
     const buf = new Uint8Array(ut1.UtRootFixedMeasure(1));
-    check(ut1.UtRootFixedSave([v1], 1, buf) === buf.length, "union-arm text: UT1 wrote its record");
+    check(ut1.UtRootFixedSave([v], 1, buf) === buf.length, "union-arm text: UT1 wrote its arm-b record");
+
     const out = [new ut2home.UtRoot()];
     const r = new ut2home.TableFixedReport();
     const n = ut2.UtRootFixedLoad(out, 1, buf, buf.length, ut2.UtRootFixedNewPlan(), r);
     check(n === 1 && !r.malformed, "union-arm text: UT2 read UT1's record through a compiled plan");
-    let label = "";
-    for (let i = 0; i < out[0].Pick.Texted.LabelLength; i++) { label += String.fromCharCode(out[0].Pick.Texted.Label[i]); }
-    check(out[0].Pick.Type === ut2types.PickType.Texted && label === "back" && out[0].Pick.Texted.M === -12,
-      `union-arm text: the arm's string and scalar land the other way round too — got ${JSON.stringify(label)} ${out[0].Pick.Texted.M}`);
-    check(out[0].Lead === 0,
-      `union-arm text: UT2's own field UT1 never wrote takes its declared default, got ${out[0].Lead}`);
-    check(out[0].Tail === 88, `union-arm text: the field past the union is 88, got ${out[0].Tail}`);
+    const got = out[0];
+    const label = textOf(got.Pick.B.Label, got.Pick.B.LabelLength);
+    check(got.Pick.Type === ut2types.PickType.B && label === "back" && got.Pick.B.M === -12,
+      `union-arm text: the arm's string and scalar land the other way round too — tag ${got.Pick.Type} ${JSON.stringify(label)} ${got.Pick.B.M}`);
+    check(got.Head === 81 && got.Tail === 88,
+      `union-arm text: the fields either side of the union are 81/88, got ${got.Head}/${got.Tail}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE C++ REFERENCE'S OWN BYTE ORACLE (make tables-fixedform-corpus)
+// ---------------------------------------------------------------------------
+//
+// The reference writes one form-3 FILE per root with its values set BY HAND,
+// and a port proves itself against them two ways: read a file and save it back
+// and the bytes must be identical — which reaches every field, because a byte a
+// port encodes differently is a byte that does not come back — and read a file
+// written under ANOTHER schema's layout, which is the plan path.
+//
+// WHAT THIS CATCHES THAT NOTHING ELSE HERE DOES: §3.4's "the slack is zero".
+// The paired corpus round trip cannot see it — a value READ from a file has the
+// prefill's zeros past its used length already, so a writer that copies the
+// whole span writes the same zeros back. The reference's own records are set
+// from CONSTRUCTED storage instead, and `label` has a declared default, so
+// record 1's `label_length = 0` means the whole span is slack over storage that
+// holds "fx". A port that wrote the span would put those two bytes on the wire.
+function referenceOracle(check, fx1, fx2, fx1home, oracleDir) {
+  const read = (name) => {
+    try {
+      return new Uint8Array(readFileSync(resolve(oracleDir, name)));
+    } catch {
+      return null;
+    }
+  };
+  const textOf = (buf, n) => {
+    let out = "";
+    for (let i = 0; i < n; i++) { out += String.fromCharCode(buf[i]); }
+    return out;
+  };
+
+  // ---- fx1.bin: THIS BUILD'S OWN LAYOUT, so the identity plan reads it
+  {
+    const file = read("fx1.bin");
+    check(file !== null, "reference oracle: fx1.bin is present (make tables-fixedform-corpus)");
+    if (file === null) { return; }
+    const v = [new fx1home.FxRoot(), new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(v, 2, file, file.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === 2 && !r.malformed, `reference oracle: fx1.bin holds two records, got ${n}`);
+    if (n !== 2) { return; }
+
+    // the values the reference states, checked INDEPENDENTLY of the bytes: a
+    // reader and a writer sharing one offset mistake round trip perfectly
+    check(v[0].Keep === 4242 && v[0].Narrow === 40000 && v[0].Renamed === 321 && v[0].Gone === 654,
+      `reference oracle: fx1 record 0 scalars — got ${v[0].Keep}/${v[0].Narrow}/${v[0].Renamed}/${v[0].Gone}`);
+    check(v[0].Nested.A === 111 && v[0].Nested.B === 222,
+      `reference oracle: fx1 record 0 nested — got ${v[0].Nested.A}/${v[0].Nested.B}`);
+    check(v[0].LabelLength === 3 && textOf(v[0].Label, 3) === "fx1",
+      `reference oracle: fx1 record 0 label — got ${v[0].LabelLength} ${JSON.stringify(textOf(v[0].Label, v[0].LabelLength))}`);
+    check(v[0].MarksCount === 2 && v[0].Marks[0] === 101 && v[0].Marks[1] === 202,
+      `reference oracle: fx1 record 0 marks — got count ${v[0].MarksCount} [${v[0].Marks[0]}, ${v[0].Marks[1]}]`);
+    check(v[0].BlobLength === 4 && v[0].Blob[0] === 0xDE && v[0].Blob[1] === 0xAD &&
+      v[0].Blob[2] === 0xBE && v[0].Blob[3] === 0xEF,
+      `reference oracle: fx1 record 0 blob — got length ${v[0].BlobLength}`);
+    // record 1: NOTHING USED AT ALL, which is the slack case in full
+    check(v[1].LabelLength === 0 && v[1].MarksCount === 0 && v[1].BlobLength === 0,
+      `reference oracle: fx1 record 1 uses nothing — got ${v[1].LabelLength}/${v[1].MarksCount}/${v[1].BlobLength}`);
+
+    const twin = new Uint8Array(fx1.FxRootFixedMeasure(2));
+    check(fx1.FxRootFixedSave(v, 2, twin) === file.length,
+      "reference oracle: fx1 saves back to the reference's own byte count");
+    const at = firstDiff(twin, file);
+    check(at < 0,
+      `reference oracle: fx1.bin saved back is IDENTICAL to the C++ reference's — first byte differing from the C++ reference at ${at}` +
+      (at < 0 ? "" : ` (ours 0x${twin[at].toString(16)}, reference 0x${file[at].toString(16)})`));
+
+    // ---- THE SAME FILE BUILT FROM CONSTRUCTED STORAGE, which is the ONLY
+    // instrument here that can see §3.4's "the slack is zero". A value READ
+    // from a file already has the prefill's zeros past its used length, so a
+    // writer that copies the whole declared span writes the same zeros back
+    // and the round trip above cannot tell. These records are built the way
+    // the reference builds them — from a FRESH value — and `label` has a
+    // declared default of "fx", so record 1's `LabelLength = 0` leaves two
+    // bytes of live storage behind the used length. A port that wrote the span
+    // puts "fx" on the wire under a length that says nothing is there.
+    const made = [new fx1home.FxRoot(), new fx1home.FxRoot()];
+    check(made[0].LabelLength === 2 && textOf(made[0].Label, 2) === "fx",
+      `reference oracle: a DECLARED DEFAULT is the value and not just its length — a fresh FxRoot's label is ${made[0].LabelLength} ${JSON.stringify(textOf(made[0].Label, made[0].LabelLength))}, want 2 "fx"`);
+
+    made[0].Keep = 4242; made[0].Narrow = 40000; made[0].Renamed = 321; made[0].Gone = 654;
+    made[0].Nested.A = 111; made[0].Nested.B = 222;
+    made[0].LabelLength = setText(made[0].Label, "fx1");
+    made[0].Marks[0] = 101; made[0].Marks[1] = 202; made[0].MarksCount = 2;
+    made[0].Blob[0] = 0xDE; made[0].Blob[1] = 0xAD; made[0].Blob[2] = 0xBE; made[0].Blob[3] = 0xEF;
+    made[0].BlobLength = 4;
+    made[1].Keep = 1; made[1].Narrow = 2; made[1].Renamed = 3; made[1].Gone = 4;
+    made[1].Nested.A = 5; made[1].Nested.B = 6;
+    made[1].LabelLength = 0; // nothing used at all: the WHOLE span is slack,
+    made[1].MarksCount = 0;  // over storage that still holds the default "fx"
+    made[1].BlobLength = 0;
+
+    const built = new Uint8Array(fx1.FxRootFixedMeasure(2));
+    check(fx1.FxRootFixedSave(made, 2, built) === file.length,
+      "reference oracle: the by-hand records measure the reference's own byte count");
+    const bat = firstDiff(built, file);
+    check(bat < 0,
+      `reference oracle: fx1.bin built from CONSTRUCTED storage is identical to the C++ reference's — the slack is zero — first byte differing from the C++ reference at ${bat}` +
+      (bat < 0 ? "" : ` (ours 0x${built[bat].toString(16)}, reference 0x${file[bat].toString(16)})`));
+  }
+
+  // ---- fx2.bin: ANOTHER WRITER'S LAYOUT, so the plan path reads it
+  {
+    const file = read("fx2.bin");
+    check(file !== null, "reference oracle: fx2.bin is present");
+    if (file === null) { return; }
+    const v = [new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(v, 1, file, file.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === 1 && !r.malformed,
+      `reference oracle: FX1 reads the reference's FX2 file through a COMPILED plan, got ${n}`);
+    if (n !== 1) { return; }
+    check(v[0].Keep === 5150, `reference oracle: fx2's keep lands, got ${v[0].Keep}`);
+    check(v[0].Renamed === 808, `reference oracle: fx2's renamed_to lands under was, got ${v[0].Renamed}`);
+    // narrow is 70000 in FX2 and a uint16 here: a kind that MOVED, not a widening
+    check(v[0].Nested.A === 33 && v[0].Nested.B === 44,
+      `reference oracle: fx2's nested lands, got ${v[0].Nested.A}/${v[0].Nested.B}`);
+    check(v[0].LabelLength === 3 && textOf(v[0].Label, 3) === "fx2",
+      `reference oracle: fx2's short string lands through the plan — got ${v[0].LabelLength} ${JSON.stringify(textOf(v[0].Label, v[0].LabelLength))}`);
+    check(v[0].MarksCount === 1 && v[0].Marks[0] === 303,
+      `reference oracle: fx2's partly-used array lands through the plan — got count ${v[0].MarksCount} [${v[0].Marks[0]}]`);
+    check(v[0].BlobLength === 3 && v[0].Blob[0] === 1 && v[0].Blob[1] === 2 && v[0].Blob[2] === 3,
+      `reference oracle: fx2's partly-used bytes(N) lands through the plan — got length ${v[0].BlobLength}`);
+    check(v[0].Gone === 9,
+      `reference oracle: a field FX2 does not carry keeps its declared default, got ${v[0].Gone}`);
   }
 }
 
@@ -1180,7 +1312,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const generated = process.argv[2] ?? "build/js-fixed";
   const corpus = process.argv[3] ?? "build/js-fixed-corpus";
   const optional = process.argv[4] ?? "build/js-fixed-optional";
-  await checkFixedForm(check, generated, corpus, optional);
+  const oracle = process.argv[5] ?? "build/fixedform-corpus";
+  await checkFixedForm(check, generated, corpus, optional, oracle);
   if (failed) {
     console.log("FAILED");
     process.exit(1);

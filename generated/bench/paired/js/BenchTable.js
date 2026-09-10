@@ -788,11 +788,11 @@ export function BenchMixedFixedWriteBody(view, at, value) {
   view.setBigUint64(at + 40, value.FrameTick, true);
   view.setInt32(at + 48, value.ServerTime, true);
   view.setInt32(at + 52, value.EntitiesCount, true);
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < value.EntitiesCount; i++) {
     MixedEntityFixedWriteBody(view, at + 56 + i * 51, value.Entities[i]);
   }
   view.setInt32(at + 464, value.StatsCount, true);
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < value.StatsCount; i++) {
     MixedStatFixedWriteBody(view, at + 468 + i * 8, value.Stats[i]);
   }
   view.setUint8(at + 1108, value.GameEvent.Type);
@@ -815,9 +815,9 @@ export function BenchMixedFixedWriteBody(view, at, value) {
     view.setUint8(at + 1122 + i * 1, value.Loadout[i]);
   }
   view.setInt32(at + 1126, value.PlayerNameLength, true);
-  for (let i = 0; i < 15; i++) { view.setUint8(at + 1130 + i, value.PlayerName[i]); }
+  for (let i = 0; i < value.PlayerNameLength; i++) { view.setUint8(at + 1130 + i, value.PlayerName[i]); }
   view.setInt32(at + 1145, value.PayloadLength, true);
-  for (let i = 0; i < 16; i++) { view.setUint8(at + 1149 + i, value.Payload[i]); }
+  for (let i = 0; i < value.PayloadLength; i++) { view.setUint8(at + 1149 + i, value.Payload[i]); }
   view.setFloat32(at + 1165, value.AimX, true);
   view.setFloat32(at + 1169, value.AimY, true);
   view.setFloat32(at + 1173, value.AimZ, true);

@@ -439,15 +439,21 @@ build/js-fixed-optional/.stamp: bin/schema test/js-tables/fixedoptional_corpus.c
 		build/js-fixed-optional/p3.bin build/js-fixed-optional/fo1.bin
 	@touch $@
 
+# build/fixedform-corpus is THE C++ REFERENCE'S OWN BYTE ORACLE, and it belongs
+# to no language (Makefile, tables-fixedform-corpus). This leg reads its files,
+# checks the values the reference states, and saves them back byte for byte —
+# which is the only instrument here that can see §3.4's "the slack is zero",
+# because the reference's records are set from CONSTRUCTED storage and one of
+# them uses NOTHING of a string whose declared default is not empty.
 .PHONY: tables-js-fixed-form
-tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp
-	cd $(CURDIR) && $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional
+tables-js-fixed-form: build/js-fixed/.stamp build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
+	cd $(CURDIR) && $(NODE) test/js-tables/fixedform.mjs build/js-fixed build/js-fixed-corpus build/js-fixed-optional build/fixedform-corpus
 
 # ITS NEGATIVE CONTROL: move one byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
 # comparing a file with itself and nobody would know.
 .PHONY: tables-js-fixed-form-negative-control
-tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp
+tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
 	@rm -rf build/js-fixed-sabotage && mkdir -p build/js-fixed-sabotage
 	@sed 's|g.pf("%sview.setInt32(%s, %s.%sLength, true);\\n", ind, off(base, at), val, name)|g.pf("%sview.setInt32(%s, %s.%sLength + 1, true);\\n", ind, off(base, at), val, name) // SABOTAGED|' \
 		internal/codegen/jstable/fixedjs.go > build/js-fixed-sabotage/fixedjs.go.txt
@@ -466,13 +472,48 @@ tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp b
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/ut1 test/tables/UT1.schema
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/ut2 test/tables/UT2.schema
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-sabotage build/js-fixed-corpus \
-			build/js-fixed-optional > build/js-fixed-sabotage/log 2>&1; then \
+			build/js-fixed-optional build/fixedform-corpus > build/js-fixed-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a string length one byte off left the fixed form green"; \
 		cat build/js-fixed-sabotage/log; exit 1; \
 	fi
 	@grep -q "first byte differing from the C++ reference" build/js-fixed-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fixed form went red for another reason"; cat build/js-fixed-sabotage/log; exit 1; }
 	@echo 'tables JS fixed form negative control: one byte off the write template reds the reference byte match'
+
+# THE SLACK RULE'S OWN CONTROL (docs/SPEC-TABLES.md §3.4, "the slack is zero").
+# Put the text write back to the WHOLE DECLARED SPAN — one line — and the leg
+# must go red against the reference's own byte oracle. Nothing else here can
+# see it: a value READ from a file already carries the prefill's zeros past its
+# used length, so the round trip writes the same zeros back either way. Only
+# the record built from CONSTRUCTED storage, over a `string(N)` with a declared
+# default, has live bytes behind a used length of zero.
+.PHONY: tables-js-fixed-slack-negative-control
+tables-js-fixed-slack-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
+	@rm -rf build/js-slack-sabotage && mkdir -p build/js-slack-sabotage
+	@sed 's|ind, val, name, off(base, at+fixedCountBytes), val, name)|ind, f.Type.Size, off(base, at+fixedCountBytes), val, name) // SABOTAGED|; s|%sfor (let i = 0; i < %s.%sLength; i++) { view.setUint8(%s + i, %s.%s\[i\]); }|%sfor (let i = 0; i < %d; i++) { view.setUint8(%s + i, %s.%s[i]); }|' \
+		internal/codegen/jstable/fixedjs.go > build/js-slack-sabotage/fixedjs.go.txt
+	@grep -q SABOTAGED build/js-slack-sabotage/fixedjs.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedjs.go":"%s/build/js-slack-sabotage/fixedjs.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/js-slack-sabotage/overlay.json
+	@go build -overlay=build/js-slack-sabotage/overlay.json -o build/js-slack-sabotage/schema ./cmd/schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/fx1 test/tables/FX1.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/fx2 test/tables/FX2.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/p1 test/tables/P1.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/p3 test/tables/P3.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/fo1 test/tables/FO1.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/fo2 test/tables/FO2.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/ut1 test/tables/UT1.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/ut2 test/tables/UT2.schema
+	@if $(NODE) test/js-tables/fixedform.mjs build/js-slack-sabotage build/js-fixed-corpus \
+			build/js-fixed-optional build/fixedform-corpus > build/js-slack-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: writing the whole declared span left the slack rule green"; \
+		cat build/js-slack-sabotage/log; exit 1; \
+	fi
+	@grep -q "the slack is zero" build/js-slack-sabotage/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red for another reason"; cat build/js-slack-sabotage/log; exit 1; }
+	@echo 'tables JS fixed slack negative control: writing the whole declared span reds the reference byte oracle'
 
 # THE UNION-ARM TEXT LANE'S OWN CONTROL: put the text flavour back where the
 # guard's value lives — the one line this defect was — and the leg must go red.
@@ -483,7 +524,7 @@ tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp b
 # builds a text entry at all — so this control is what proves the pair is
 # watching.
 .PHONY: tables-js-union-arm-text-negative-control
-tables-js-union-arm-text-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp
+tables-js-union-arm-text-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
 	@rm -rf build/js-armtext-sabotage && mkdir -p build/js-armtext-sabotage
 	@sed 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
 		internal/codegen/jstable/fixedruntime.go > build/js-armtext-sabotage/fixedruntime.go.txt
@@ -506,7 +547,7 @@ tables-js-union-arm-text-negative-control: bin/schema build/js-fixed-corpus/.sta
 		fi; \
 	done
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-armtext-sabotage build/js-fixed-corpus \
-			build/js-fixed-optional > build/js-armtext-sabotage/log 2>&1; then \
+			build/js-fixed-optional build/fixedform-corpus > build/js-armtext-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the text flavour sharing the guard's lane left the leg green"; \
 		cat build/js-armtext-sabotage/log; exit 1; \
 	fi
@@ -521,7 +562,7 @@ tables-js-union-arm-text-negative-control: bin/schema build/js-fixed-corpus/.sta
 # the reference is the only thing watching them, and this is what proves it is
 # watching.
 .PHONY: tables-js-fixed-optional-negative-control
-tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp
+tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
 	@rm -rf build/js-fixed-opt-sabotage && mkdir -p build/js-fixed-opt-sabotage
 	@sed 's|Present ? 1 : 0);|Present ? 0 : 1);  // SABOTAGED|' \
 		internal/codegen/jstable/fixedjs.go > build/js-fixed-opt-sabotage/fixedjs.go.txt
@@ -540,7 +581,7 @@ tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.sta
 	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/ut1 test/tables/UT1.schema
 	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/ut2 test/tables/UT2.schema
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-opt-sabotage build/js-fixed-corpus \
-			build/js-fixed-optional > build/js-fixed-opt-sabotage/log 2>&1; then \
+			build/js-fixed-optional build/fixedform-corpus > build/js-fixed-opt-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an inverted present byte left the optionals green"; \
 		cat build/js-fixed-opt-sabotage/log; exit 1; \
 	fi
@@ -568,6 +609,7 @@ test-js: toolchain-js generated/js/.stamp generated/js-ludicrous/.stamp generate
 	$(MAKE) tables-js-fixed-form-negative-control
 	$(MAKE) tables-js-fixed-optional-negative-control
 	$(MAKE) tables-js-union-arm-text-negative-control
+	$(MAKE) tables-js-fixed-slack-negative-control
 	cd test/js && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 	cd test/js-ludicrous && $(NODE) main.mjs && NODE_ENV=production $(NODE) main.mjs
 

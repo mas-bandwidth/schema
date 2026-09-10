@@ -101,7 +101,13 @@ type Loose
 			src := "package vdef\nflags Caps { Jump, Crouch }\n" +
 				tc.decl + " Badge {\n" + fields + "}\n" + tc.edge + packet
 			u := unitFromSource(t, src)
-			for _, target := range []string{"rust", "java", "js", "dart", "elixir"} {
+			// js is NOT on this list any more: internal/codegen/jstable lays a
+			// string, bytes or flags default into the table's own storage and
+			// into the fixed form's prefill, so the port carries the form and
+			// the refusal is not its. It moved to the carrier list in
+			// compiler/target_javascript.go, and the sentence below moved with
+			// it — the two are one list.
+			for _, target := range []string{"rust", "java", "dart", "elixir"} {
 				_, err := New().Generate(u, target, Options{})
 				if err == nil {
 					t.Fatal("table-closure defaults accepted without table reset and elision support")
@@ -113,7 +119,7 @@ type Loose
 						t.Errorf("refusal does not name %q: %v", want, err)
 					}
 				}
-				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs and --lang go, or drop the default") {
+				if strings.Contains(err.Error(), "Loose.label") || !strings.Contains(err.Error(), "generate with --lang c, --lang cpp, --lang cs, --lang go and --lang js, or drop the default") {
 					t.Errorf("table refusal includes a supported packet field or names %s as a table carrier: %v", target, err)
 				}
 			}

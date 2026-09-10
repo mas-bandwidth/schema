@@ -475,6 +475,7 @@
         "tables-js-fuzz-negative-control",
         "tables-js-runtime-home-negative-control",
         "tables-js-slot-negative-control",
+        "tables-js-fixed-slack-negative-control",
         "tables-js-union-arm-text-negative-control"
       ],
       "node": "26"
