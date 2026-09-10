@@ -690,9 +690,9 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 1126, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), Size: 15, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), Guard: tableFixedNoGuard, Op: tableFixedText, Arg: 1} // player_name
+	out[n] = TableFixedEntry{Src: src + 1126, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), Size: 15, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // player_name
 	n++
-	out[n] = TableFixedEntry{Src: src + 1145, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.Payload)), Guard: tableFixedNoGuard, Op: tableFixedText, Arg: 3} // payload
+	out[n] = TableFixedEntry{Src: src + 1145, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.Payload)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 3} // payload
 	n++
 	{
 		es := src + 1165
@@ -927,81 +927,81 @@ var FixedTableFixedLayout = []byte{
 }
 
 var FixedTableFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0}, // FixedTable
-	{uint32(unsafe.Offsetof(FixedTable{}.Value)), 0, 0, 0, 0},                                                                                         // value
-	{uint32(unsafe.Offsetof(BenchMixed{}.Sequence)), 0, 0, 0, 0},                                                                                      // sequence
-	{uint32(unsafe.Offsetof(BenchMixed{}.AckSequence)), 0, 0, 0, 0},                                                                                   // ack_sequence
-	{uint32(unsafe.Offsetof(BenchMixed{}.AckBits)), 0, 0, 0, 0},                                                                                       // ack_bits
-	{uint32(unsafe.Offsetof(BenchMixed{}.SessionId)), 0, 0, 0, 0},                                                                                     // session_id
-	{uint32(unsafe.Offsetof(BenchMixed{}.ClientId)), 0, 0, 0, 0},                                                                                      // client_id
-	{uint32(unsafe.Offsetof(BenchMixed{}.Nonce)), 0, 0, 0, 0},                                                                                         // nonce
-	{uint32(unsafe.Offsetof(BenchMixed{}.WorldTime)), 0, 0, 0, 0},                                                                                     // world_time
-	{uint32(unsafe.Offsetof(BenchMixed{}.FrameTick)), 0, 0, 0, 0},                                                                                     // frame_tick
-	{uint32(unsafe.Offsetof(BenchMixed{}.ServerTime)), 0, 0, 0, 0},                                                                                    // server_time
-	{uint32(unsafe.Offsetof(BenchMixed{}.Entities)), uint32(unsafe.Sizeof(MixedEntity{})), uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), 1, 0}, // entities
-	{0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(MixedEntity{}.EntityId)), 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosX)), 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosY)), 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(MixedEntity{}.PosZ)), 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(MixedEntity{}.Yaw)), 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(MixedEntity{}.Pitch)), 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelX)), 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelY)), 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(MixedEntity{}.VelZ)), 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(MixedEntity{}.Health)), 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(MixedEntity{}.Weapon)), 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(MixedEntity{}.Damage)), 0, 0, 0, 0},                                                                               // damage
-	{uint32(unsafe.Offsetof(MixedEntity{}.Moving)), 0, 0, 0, 0},                                                                               // moving
-	{uint32(unsafe.Offsetof(MixedEntity{}.Firing)), 0, 0, 0, 0},                                                                               // firing
-	{uint32(unsafe.Offsetof(BenchMixed{}.Stats)), uint32(unsafe.Sizeof(MixedStat{})), uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), 1, 0}, // stats
-	{0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(MixedStat{}.StatId)), 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(MixedStat{}.Delta)), 0, 0, 0, 0},  // delta
-	{uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)) + uint32(unsafe.Offsetof(MixedEvent{}.Type)), 0, 0}, // game_event
-	{uint32(unsafe.Offsetof(MixedEvent{}.Hit)), 0, 0, 0, 0},                                   // hit
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId)), 0, 0, 0, 0},                           // target_id
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.Damage)), 0, 0, 0, 0},                             // damage
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind)), 0, 0, 0, 0},                            // hit_kind
-	{uint32(unsafe.Offsetof(MixedHitEvent{}.Crit)), 0, 0, 0, 0},                               // crit
-	{uint32(unsafe.Offsetof(MixedEvent{}.Chat)), 0, 0, 0, 0},                                  // chat
-	{uint32(unsafe.Offsetof(MixedChatEvent{}.Channel)), 0, 0, 0, 0},                           // channel
-	{uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker)), 0, 0, 0, 0},                           // speaker
-	{uint32(unsafe.Offsetof(MixedEvent{}.Pickup)), 0, 0, 0, 0},                                // pickup
-	{uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId)), 0, 0, 0, 0},                          // item_id
-	{uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount)), 0, 0, 0, 0},                          // amount
-	{uint32(unsafe.Offsetof(BenchMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0}, // loadout
-	{0, 0, 0, 0, 0}, // element
-	{uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), 0, 1}, // player_name
-	{uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), 1, uint32(unsafe.Offsetof(BenchMixed{}.Payload)), 1, 3},       // payload
-	{0, 0, 0, 0, 0}, // u8
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimX)), 0, 0, 0, 0},      // aim_x
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimY)), 0, 0, 0, 0},      // aim_y
-	{uint32(unsafe.Offsetof(BenchMixed{}.AimZ)), 0, 0, 0, 0},      // aim_z
-	{uint32(unsafe.Offsetof(BenchMixed{}.Recoil)), 0, 0, 0, 0},    // recoil
-	{uint32(unsafe.Offsetof(BenchMixed{}.Drift)), 0, 0, 0, 0},     // drift
-	{uint32(unsafe.Offsetof(BenchMixed{}.WideKey)), 0, 0, 0, 0},   // wide_key
-	{uint32(unsafe.Offsetof(BenchMixed{}.Flux)), 0, 0, 0, 0},      // flux
-	{uint32(unsafe.Offsetof(BenchMixed{}.Ping)), 0, 0, 0, 0},      // ping
-	{uint32(unsafe.Offsetof(BenchMixed{}.CrcHint)), 0, 0, 0, 0},   // crc_hint
-	{uint32(unsafe.Offsetof(BenchMixed{}.HasExtra)), 0, 0, 0, 0},  // has_extra
-	{uint32(unsafe.Offsetof(BenchMixed{}.Extra)), 0, 0, 0, 0},     // extra
-	{uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), 0, 0, 0, 0}, // idle_ticks
+	{0, 0, 0, 0, 0, 0}, // FixedTable
+	{uint32(unsafe.Offsetof(FixedTable{}.Value)), 0, 0, 0, 0, 0},                                                                                         // value
+	{uint32(unsafe.Offsetof(BenchMixed{}.Sequence)), 0, 0, 0, 0, 0},                                                                                      // sequence
+	{uint32(unsafe.Offsetof(BenchMixed{}.AckSequence)), 0, 0, 0, 0, 0},                                                                                   // ack_sequence
+	{uint32(unsafe.Offsetof(BenchMixed{}.AckBits)), 0, 0, 0, 0, 0},                                                                                       // ack_bits
+	{uint32(unsafe.Offsetof(BenchMixed{}.SessionId)), 0, 0, 0, 0, 0},                                                                                     // session_id
+	{uint32(unsafe.Offsetof(BenchMixed{}.ClientId)), 0, 0, 0, 0, 0},                                                                                      // client_id
+	{uint32(unsafe.Offsetof(BenchMixed{}.Nonce)), 0, 0, 0, 0, 0},                                                                                         // nonce
+	{uint32(unsafe.Offsetof(BenchMixed{}.WorldTime)), 0, 0, 0, 0, 0},                                                                                     // world_time
+	{uint32(unsafe.Offsetof(BenchMixed{}.FrameTick)), 0, 0, 0, 0, 0},                                                                                     // frame_tick
+	{uint32(unsafe.Offsetof(BenchMixed{}.ServerTime)), 0, 0, 0, 0, 0},                                                                                    // server_time
+	{uint32(unsafe.Offsetof(BenchMixed{}.Entities)), uint32(unsafe.Sizeof(MixedEntity{})), uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), 1, 0, 0}, // entities
+	{0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(MixedEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(MixedEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
+	{uint32(unsafe.Offsetof(MixedEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
+	{uint32(unsafe.Offsetof(MixedEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
+	{uint32(unsafe.Offsetof(MixedEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
+	{uint32(unsafe.Offsetof(MixedEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
+	{uint32(unsafe.Offsetof(MixedEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
+	{uint32(unsafe.Offsetof(MixedEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
+	{uint32(unsafe.Offsetof(MixedEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
+	{uint32(unsafe.Offsetof(MixedEntity{}.Health)), 0, 0, 0, 0, 0},   // health
+	{uint32(unsafe.Offsetof(MixedEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
+	{0, 0, 0, 0, 0, 0}, // Fists
+	{0, 0, 0, 0, 0, 0}, // Pistol
+	{0, 0, 0, 0, 0, 0}, // Shotgun
+	{0, 0, 0, 0, 0, 0}, // Rifle
+	{0, 0, 0, 0, 0, 0}, // Sniper
+	{0, 0, 0, 0, 0, 0}, // Smg
+	{0, 0, 0, 0, 0, 0}, // Rocket
+	{0, 0, 0, 0, 0, 0}, // Grenade
+	{0, 0, 0, 0, 0, 0}, // Plasma
+	{0, 0, 0, 0, 0, 0}, // Railgun
+	{0, 0, 0, 0, 0, 0}, // Flamer
+	{0, 0, 0, 0, 0, 0}, // Mine
+	{0, 0, 0, 0, 0, 0}, // Turret
+	{0, 0, 0, 0, 0, 0}, // Drone
+	{0, 0, 0, 0, 0, 0}, // Repair
+	{uint32(unsafe.Offsetof(MixedEntity{}.Damage)), 0, 0, 0, 0, 0},                                                                               // damage
+	{uint32(unsafe.Offsetof(MixedEntity{}.Moving)), 0, 0, 0, 0, 0},                                                                               // moving
+	{uint32(unsafe.Offsetof(MixedEntity{}.Firing)), 0, 0, 0, 0, 0},                                                                               // firing
+	{uint32(unsafe.Offsetof(BenchMixed{}.Stats)), uint32(unsafe.Sizeof(MixedStat{})), uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), 1, 0, 0}, // stats
+	{0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(MixedStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(MixedStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
+	{uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)), 0, uint32(unsafe.Offsetof(BenchMixed{}.GameEvent)) + uint32(unsafe.Offsetof(MixedEvent{}.Type)), 0, 0, 0}, // game_event
+	{uint32(unsafe.Offsetof(MixedEvent{}.Hit)), 0, 0, 0, 0, 0},                                   // hit
+	{uint32(unsafe.Offsetof(MixedHitEvent{}.TargetId)), 0, 0, 0, 0, 0},                           // target_id
+	{uint32(unsafe.Offsetof(MixedHitEvent{}.Damage)), 0, 0, 0, 0, 0},                             // damage
+	{uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind)), 0, 0, 0, 0, 0},                            // hit_kind
+	{uint32(unsafe.Offsetof(MixedHitEvent{}.Crit)), 0, 0, 0, 0, 0},                               // crit
+	{uint32(unsafe.Offsetof(MixedEvent{}.Chat)), 0, 0, 0, 0, 0},                                  // chat
+	{uint32(unsafe.Offsetof(MixedChatEvent{}.Channel)), 0, 0, 0, 0, 0},                           // channel
+	{uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker)), 0, 0, 0, 0, 0},                           // speaker
+	{uint32(unsafe.Offsetof(MixedEvent{}.Pickup)), 0, 0, 0, 0, 0},                                // pickup
+	{uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemId)), 0, 0, 0, 0, 0},                          // item_id
+	{uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount)), 0, 0, 0, 0, 0},                          // amount
+	{uint32(unsafe.Offsetof(BenchMixed{}.Loadout)), uint32(unsafe.Sizeof(uint8(0))), 0, 0, 0, 0}, // loadout
+	{0, 0, 0, 0, 0, 0}, // element
+	{uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), 0, uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), 0, 1, 1}, // player_name
+	{uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), 1, uint32(unsafe.Offsetof(BenchMixed{}.Payload)), 1, 3, 3},       // payload
+	{0, 0, 0, 0, 0, 0}, // u8
+	{uint32(unsafe.Offsetof(BenchMixed{}.AimX)), 0, 0, 0, 0, 0},      // aim_x
+	{uint32(unsafe.Offsetof(BenchMixed{}.AimY)), 0, 0, 0, 0, 0},      // aim_y
+	{uint32(unsafe.Offsetof(BenchMixed{}.AimZ)), 0, 0, 0, 0, 0},      // aim_z
+	{uint32(unsafe.Offsetof(BenchMixed{}.Recoil)), 0, 0, 0, 0, 0},    // recoil
+	{uint32(unsafe.Offsetof(BenchMixed{}.Drift)), 0, 0, 0, 0, 0},     // drift
+	{uint32(unsafe.Offsetof(BenchMixed{}.WideKey)), 0, 0, 0, 0, 0},   // wide_key
+	{uint32(unsafe.Offsetof(BenchMixed{}.Flux)), 0, 0, 0, 0, 0},      // flux
+	{uint32(unsafe.Offsetof(BenchMixed{}.Ping)), 0, 0, 0, 0, 0},      // ping
+	{uint32(unsafe.Offsetof(BenchMixed{}.CrcHint)), 0, 0, 0, 0, 0},   // crc_hint
+	{uint32(unsafe.Offsetof(BenchMixed{}.HasExtra)), 0, 0, 0, 0, 0},  // has_extra
+	{uint32(unsafe.Offsetof(BenchMixed{}.Extra)), 0, 0, 0, 0, 0},     // extra
+	{uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks)), 0, 0, 0, 0, 0}, // idle_ticks
 }
 
 var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)

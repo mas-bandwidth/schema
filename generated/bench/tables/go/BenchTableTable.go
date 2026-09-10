@@ -1621,10 +1621,8 @@ type TableMessageWriter struct {
 }
 
 const TableFixedForm uint8 = 3
-
-// TableFixedHeaderBytes is the form byte plus the u32 layout length in front
-// of it; the length itself sits at offset 1, behind the form byte.
-const TableFixedHeaderBytes = 5
+const TableFixedHeaderBytes = 16
+const TableFixedHashAt = 8
 
 const (
 	tableFixedCopy uint8 = iota
@@ -1647,21 +1645,20 @@ const (
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
 
-// Arg IS ONE LANE WITH SEVERAL MEANINGS, mirrored from the reference: the
-// byte a GUARD expects at src[Guard], a text entry's flavour, and a const
-// entry's arm ordinal. No entry uses two of them at once, which is why it
-// works, and the coalescer compares it because two runs under different
-// guards must not merge. Splitting the lane is a REFERENCE-SIDE change
-// (cpptable/fixedruntime.go, its own uint8 arg) and had not landed on
-// fixed-table-form at b7fdb475; this port matches the reference until it does.
+// Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
+// it. Meta is a text entry's flavour (tableFixedTextUtf8/Wide/Bytes). They
+// shared one lane until reference-fix 12; compiling a string under a union
+// arm overwrote the guard with the flavour and the read skipped the string.
+// tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
+// not this in-memory plan row — Meta does not ride the wire.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard uint32
-	Op, Arg, DstSize, Sign     uint8
+	Src, Dst, Size, Aux, Guard   uint32
+	Op, Arg, DstSize, Sign, Meta uint8
 }
 
 type TableFixedDst struct {
-	Dst, Stride, Aux uint32
-	Counted, Arg     uint8
+	Dst, Stride, Aux   uint32
+	Counted, Arg, Meta uint8
 }
 
 type tableFixedPlan struct {
@@ -1692,6 +1689,7 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 	for i := 0; i < written; i++ {
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
+			raw[out-1].Meta == raw[i].Meta &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
 			raw[out-1].Size += raw[i].Size
@@ -1775,11 +1773,11 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				dst[p.Dst+k] = byte(tag >> (8 * k))
 			}
 		case tableFixedBool:
-			// A GO bool IS NOT A BYTE: the comparison reads the byte against
-			// 1, so a hostile 2 in a bool slot lands as FALSE if it is copied
-			// raw. The wire says nonzero is true (docs/SPEC-TABLES.md §3), and
-			// the reference reads it that way, so the byte is NORMALISED here
-			// and never copied.
+			// A GO bool IS NOT A BYTE. A Go true is the byte 1 (v == true,
+			// array equality). if v is TESTB (nonzero) on amd64 and TBZ bit
+			// 0 on arm64, so a hostile 2 reads true on one and false on the
+			// other. The wire says nonzero is true (docs/SPEC-TABLES.md §3);
+			// normalise here (byte != 0 -> 1) and never copy.
 			for k := uint32(0); k < p.Size; k++ {
 				v := byte(0)
 				if src[p.Src+k] != 0 {
@@ -1799,7 +1797,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 		case tableFixedText:
 			unit := uint32(1)
-			if p.Arg == tableFixedTextWide {
+			if p.Meta == tableFixedTextWide {
 				unit = 2
 			}
 			capn := p.Size / unit
@@ -1813,7 +1811,7 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			}
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
-			if p.Arg != tableFixedTextBytes && uint32(v) < capn {
+			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
 				off := p.Aux + uint32(v)*unit
 				dst[off] = 0
 				if unit == 2 {
@@ -2136,7 +2134,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if te.Size-4 < units {
 			units = te.Size - 4
 		}
-		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: d.Arg})
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Arg})
 	default:
 		e := TableFixedEntry{Src: theirAt, Dst: at, Guard: guard, Arg: arg}
 		if te.Size == me.Size {
@@ -2174,6 +2172,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	for i := int32(0); i < c.count; i++ {
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
+			plan[out-1].Meta == plan[i].Meta &&
 			plan[out-1].Src+plan[out-1].Size == plan[i].Src &&
 			plan[out-1].Dst+plan[out-1].Size == plan[i].Dst {
 			plan[out-1].Size += plan[i].Size
@@ -9494,36 +9493,36 @@ var TableEntityFixedLayout = []byte{
 }
 
 var TableEntityFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0}, // TableEntity
-	{uint32(unsafe.Offsetof(TableEntity{}.EntityId)), 0, 0, 0, 0}, // entity_id
-	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0},     // pos_x
-	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0},     // pos_y
-	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0},     // pos_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0},      // yaw
-	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0},    // pitch
-	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0},     // vel_x
-	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0},     // vel_y
-	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0},     // vel_z
-	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0},   // health
-	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0},   // weapon
-	{0, 0, 0, 0, 0}, // Fists
-	{0, 0, 0, 0, 0}, // Pistol
-	{0, 0, 0, 0, 0}, // Shotgun
-	{0, 0, 0, 0, 0}, // Rifle
-	{0, 0, 0, 0, 0}, // Sniper
-	{0, 0, 0, 0, 0}, // Smg
-	{0, 0, 0, 0, 0}, // Rocket
-	{0, 0, 0, 0, 0}, // Grenade
-	{0, 0, 0, 0, 0}, // Plasma
-	{0, 0, 0, 0, 0}, // Railgun
-	{0, 0, 0, 0, 0}, // Flamer
-	{0, 0, 0, 0, 0}, // Mine
-	{0, 0, 0, 0, 0}, // Turret
-	{0, 0, 0, 0, 0}, // Drone
-	{0, 0, 0, 0, 0}, // Repair
-	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0}, // damage
-	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0}, // moving
-	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0}, // firing
+	{0, 0, 0, 0, 0, 0}, // TableEntity
+	{uint32(unsafe.Offsetof(TableEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
+	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
+	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
+	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
+	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
+	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
+	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0},   // health
+	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
+	{0, 0, 0, 0, 0, 0}, // Fists
+	{0, 0, 0, 0, 0, 0}, // Pistol
+	{0, 0, 0, 0, 0, 0}, // Shotgun
+	{0, 0, 0, 0, 0, 0}, // Rifle
+	{0, 0, 0, 0, 0, 0}, // Sniper
+	{0, 0, 0, 0, 0, 0}, // Smg
+	{0, 0, 0, 0, 0, 0}, // Rocket
+	{0, 0, 0, 0, 0, 0}, // Grenade
+	{0, 0, 0, 0, 0, 0}, // Plasma
+	{0, 0, 0, 0, 0, 0}, // Railgun
+	{0, 0, 0, 0, 0, 0}, // Flamer
+	{0, 0, 0, 0, 0, 0}, // Mine
+	{0, 0, 0, 0, 0, 0}, // Turret
+	{0, 0, 0, 0, 0, 0}, // Drone
+	{0, 0, 0, 0, 0, 0}, // Repair
+	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0}, // damage
+	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0}, // moving
+	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0}, // firing
 }
 
 var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
@@ -9531,7 +9530,7 @@ var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func TableEntityFixedMeasure(count int64) int64 {
-	return TableFixedHeaderBytes + int64(len(TableEntityFixedLayout)) + count*TableEntityFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(TableEntityFixedLayout)) + count*TableEntityFixedRecordBytes
 }
 
 func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
@@ -9539,10 +9538,12 @@ func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
+	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
-	tableFixedPut32(buffer[1:], uint32(len(TableEntityFixedLayout)))
-	copy(buffer[TableFixedHeaderBytes:], TableEntityFixedLayout)
-	at := buffer[TableFixedHeaderBytes+len(TableEntityFixedLayout):]
+	tableFixedPut64(buffer[TableFixedHashAt:], TableEntityFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TableEntityFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], TableEntityFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(TableEntityFixedLayout):]
 	for k := range values {
 		tableFixedPut64(at, TableEntityFixedHash)
 		clear(at[8 : 8+TableEntityFixedBodyBytes])
@@ -9557,7 +9558,7 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		var local TableReport
 		report = &local
 	}
-	if len(data) < TableFixedHeaderBytes {
+	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
 		return -1
 	}
@@ -9570,14 +9571,17 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		}
 		return tableFixedRefuse(report, "newer_form")
 	}
-	layoutBytes := tableFixedGet32(data[1:])
-	if int64(layoutBytes)+TableFixedHeaderBytes > int64(len(data)) {
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
 		return tableFixedRefuse(report, "layout_malformed")
 	}
-	layout := data[TableFixedHeaderBytes : TableFixedHeaderBytes+layoutBytes]
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	at := data[TableFixedHeaderBytes+layoutBytes:]
-	rest := int64(len(data)) - TableFixedHeaderBytes - int64(layoutBytes)
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := TableEntityFixedPlan.Entries
 	entryCount := TableEntityFixedPlan.Count
 	recordBytes := int64(TableEntityFixedRecordBytes)
@@ -9628,9 +9632,9 @@ var TableStatFixedLayout = []byte{
 }
 
 var TableStatFixedDst = []TableFixedDst{
-	{0, 0, 0, 0, 0}, // TableStat
-	{uint32(unsafe.Offsetof(TableStat{}.StatId)), 0, 0, 0, 0}, // stat_id
-	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0},  // delta
+	{0, 0, 0, 0, 0, 0}, // TableStat
+	{uint32(unsafe.Offsetof(TableStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
 }
 
 var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
@@ -9638,7 +9642,7 @@ var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
 // A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
 // then the layout behind its u32 length, then the records to the end of it.
 func TableStatFixedMeasure(count int64) int64 {
-	return TableFixedHeaderBytes + int64(len(TableStatFixedLayout)) + count*TableStatFixedRecordBytes
+	return TableFixedHeaderBytes + 4 + int64(len(TableStatFixedLayout)) + count*TableStatFixedRecordBytes
 }
 
 func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
@@ -9646,10 +9650,12 @@ func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
 	if int64(len(buffer)) < need {
 		return -1
 	}
+	clear(buffer[:TableFixedHeaderBytes])
 	buffer[0] = TableFixedForm
-	tableFixedPut32(buffer[1:], uint32(len(TableStatFixedLayout)))
-	copy(buffer[TableFixedHeaderBytes:], TableStatFixedLayout)
-	at := buffer[TableFixedHeaderBytes+len(TableStatFixedLayout):]
+	tableFixedPut64(buffer[TableFixedHashAt:], TableStatFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TableStatFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], TableStatFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(TableStatFixedLayout):]
 	for k := range values {
 		tableFixedPut64(at, TableStatFixedHash)
 		clear(at[8 : 8+TableStatFixedBodyBytes])
@@ -9664,7 +9670,7 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		var local TableReport
 		report = &local
 	}
-	if len(data) < TableFixedHeaderBytes {
+	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
 		return -1
 	}
@@ -9677,14 +9683,17 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		}
 		return tableFixedRefuse(report, "newer_form")
 	}
-	layoutBytes := tableFixedGet32(data[1:])
-	if int64(layoutBytes)+TableFixedHeaderBytes > int64(len(data)) {
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
 		return tableFixedRefuse(report, "layout_malformed")
 	}
-	layout := data[TableFixedHeaderBytes : TableFixedHeaderBytes+layoutBytes]
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	at := data[TableFixedHeaderBytes+layoutBytes:]
-	rest := int64(len(data)) - TableFixedHeaderBytes - int64(layoutBytes)
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := TableStatFixedPlan.Entries
 	entryCount := TableStatFixedPlan.Count
 	recordBytes := int64(TableStatFixedRecordBytes)
