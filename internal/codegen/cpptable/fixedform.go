@@ -645,19 +645,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// counts.
 			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
 				ind, expr, r.Max, expr, f.Type.Name)
-			// AND THE ARMS, only where an arm has a bound of its own. A union
-			// whose arms are all unbounded gets NO SWITCH AT ALL: `switch ( t )
-			// { default: break; }` is a statement with no case labels, which
-			// MSVC refuses under /W4 /WX (C4065) and which does nothing on
-			// every other compiler either.
-			bounded := false
-			for _, v := range r.Variants {
-				if v.F != nil && ir.TableFixedClampNeededField(v.F) {
-					bounded = true
-					break
-				}
-			}
-			if !bounded {
+			if !ir.TableFixedClampNeededUnionArm(r) {
 				return
 			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)

@@ -1145,6 +1145,19 @@ func TableFixedClampNeededField(f *Field) bool {
 	return tableFixedClampNeededField(f, map[string]bool{})
 }
 
+// TableFixedClampNeededUnionArm is whether ANY arm's payload is bounded. The
+// tag is a bound of its own (TableFixedClampNeededField is true of every
+// union); a switch over arms that none of them need is not emitted, rather
+// than emitted with nothing to switch on.
+func TableFixedClampNeededUnionArm(r *Union) bool {
+	for _, v := range r.Variants {
+		if v.F != nil && TableFixedClampNeededField(v.F) {
+			return true
+		}
+	}
+	return false
+}
+
 func tableFixedClampNeededField(f *Field, seen map[string]bool) bool {
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {

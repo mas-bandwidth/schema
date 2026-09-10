@@ -1159,6 +1159,10 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 	g.pf("    }\n}\n\n")
 }
 
+// fixedRangeClampUnion is NOT ir.TableFixedClampNeededUnionArm, and the
+// difference is the same one fixedRangeClampNeeded states: ir's answer counts an
+// arm whose only bound is an ORDINAL, and this port holds every ordinal in the
+// scatter already.
 func fixedRangeClampUnion(un *ir.Union) bool {
 	for _, v := range un.Variants {
 		if fixedRangeClampField(v.F, map[string]bool{}) {
