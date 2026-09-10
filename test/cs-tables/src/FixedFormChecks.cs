@@ -26,6 +26,7 @@ static partial class Program
         TestFixedArmTextCase();
         TestFixedNegativeControl();
         TestFixedLayoutValidation();
+        TestFixedHostileBoolCase();
     }
 
     static void TestFixedFxCase()
@@ -692,5 +693,34 @@ static partial class Program
             byte[] f = LayoutFileOf(new byte[2]);
             LayoutRefuses(f, "layout_malformed", "RULE: fewer bytes than a header is layout_malformed");
         }
+    }
+
+    static void TestFixedHostileBoolCase()
+    {
+        TD.WeaponConfig wc = new TD.WeaponConfig();
+        TD.Schema.TableReset(wc);
+        wc.Homing = false;
+
+        byte[] buf = new byte[TD.Schema.WeaponConfigFixedMeasure(1)];
+        long saved = TD.Schema.WeaponConfigFixedSave(wc, buf);
+        Check(saved == buf.Length, "hostile bool: initial save");
+
+        int bodyOffset = TD.Schema.TableFixedWire.HeaderBytes + 4 + (int)TD.Schema.WeaponConfigFixedLayoutBytes + 8;
+        int homingOffset = bodyOffset + 16;
+        buf[homingOffset] = 0x7F; // plant hostile nonzero byte
+
+        TD.WeaponConfig back = new TD.WeaponConfig();
+        TD.TableReport r = new TD.TableReport();
+        TD.TableFixedEntry[] plan = new TD.TableFixedEntry[64];
+        long loaded = TD.Schema.WeaponConfigFixedLoad(back, buf, plan, r);
+        Check(loaded == 1, "hostile bool: load one record");
+        Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused,
+              "hostile bool: clean report, no counters moved");
+        Check(back.Homing == true, "hostile bool: nonzero byte normalized to true");
+
+        byte[] resaved = new byte[buf.Length];
+        long savedAgain = TD.Schema.WeaponConfigFixedSave(back, resaved);
+        Check(savedAgain == resaved.Length, "hostile bool: resave");
+        Check(resaved[homingOffset] == 1, "hostile bool: resaved byte is strictly 1, not 0x7F");
     }
 }
