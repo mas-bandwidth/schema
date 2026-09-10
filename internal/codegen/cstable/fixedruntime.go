@@ -19,11 +19,12 @@ public struct TableFixedEntry
     public uint Aux;
     public uint Guard;
     public byte Op;
-    public byte Arg;
+    public byte Arg; // Arm ordinal compared by Guard
     public byte DstSize;
     public byte Sign;
+    public byte Meta; // Op metadata (e.g. text flavour: 1=utf8, 2=wide, 3=bytes)
 
-    public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0)
+    public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0, byte meta = 0)
     {
         Src = src;
         Dst = dst;
@@ -34,6 +35,7 @@ public struct TableFixedEntry
         Arg = arg;
         DstSize = dstSize;
         Sign = sign;
+        Meta = meta;
     }
 }
 
@@ -100,19 +102,22 @@ public readonly struct TableFixedSlot<T>
     public readonly Action<T, UInt128> SetWide;
     public readonly TableFixedSetBytes<T> SetBytes;
     public readonly TableFixedSetBytes<T> SetChars;
+    public readonly Action<T, ulong, TableReport> SetRawReport;
 
     public TableFixedSlot(
         Action<T, ulong> setRaw = null,
         Action<T, double> setDouble = null,
         Action<T, UInt128> setWide = null,
         TableFixedSetBytes<T> setBytes = null,
-        TableFixedSetBytes<T> setChars = null)
+        TableFixedSetBytes<T> setChars = null,
+        Action<T, ulong, TableReport> setRawReport = null)
     {
         SetRaw = setRaw;
         SetDouble = setDouble;
         SetWide = setWide;
         SetBytes = setBytes;
         SetChars = setChars;
+        SetRawReport = setRawReport;
     }
 }
 `
@@ -255,7 +260,8 @@ const tableFixedWireSource = `
 
             public void Push(in TableFixedEntry e)
             {
-                int room = Capacity - (Pool + 23) / 24;
+                int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+                int room = Capacity - (Pool + entrySize - 1) / entrySize;
                 if (Count >= room) { Overflow = true; return; }
                 Plan[Count++] = e;
             }
@@ -263,9 +269,10 @@ const tableFixedWireSource = `
             public uint LayTable(ReadOnlySpan<ushort> values, int n)
             {
                 int bytes = (n + 1) * 2;
-                int total = 24 * Capacity;
+                int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
+                int total = entrySize * Capacity;
                 Pool += bytes;
-                if (total - Pool < Count * 24) { Overflow = true; return 0; }
+                if (total - Pool < Count * entrySize) { Overflow = true; return 0; }
                 uint at = (uint)(total - Pool);
                 Span<byte> planBytes = MemoryMarshal.AsBytes(Plan);
                 BinaryPrimitives.WriteUInt16LittleEndian(planBytes.Slice((int)at), (ushort)n);
@@ -365,7 +372,7 @@ const tableFixedWireSource = `
                     {
                         uint units = Math.Min(me.Size - 4u, te.Size - 4u);
                         TableFixedEntry e = new TableFixedEntry(
-                            their_at, at, units, aux_at, guard, Text, d.Arg, 0);
+                            their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);
                         c.Push(e);
                         break;
                     }
@@ -468,7 +475,7 @@ const tableFixedWireSource = `
                 {
                     uint units = Math.Min(me.Size - 4u, te.Size - 4u);
                     TableFixedEntry e = new TableFixedEntry(
-                        their_at, at, units, aux_at, guard, Text, d.Arg, 0);
+                        their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);
                     c.Push(e);
                     break;
                 }
@@ -533,6 +540,18 @@ const tableFixedWireSource = `
                         {
                             slots[(int)p.Dst].SetBytes(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
                         }
+                        else if (slots[(int)p.Dst].SetRawReport != null)
+                        {
+                            ulong raw = p.Size switch
+                            {
+                                1 => src[(int)p.Src],
+                                2 => BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src)),
+                                4 => BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src)),
+                                8 => BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src)),
+                                _ => 0UL,
+                            };
+                            slots[(int)p.Dst].SetRawReport(dst, raw, report);
+                        }
                         else if (p.Size == 1)
                         {
                             slots[(int)p.Dst].SetRaw?.Invoke(dst, src[(int)p.Src]);
@@ -576,14 +595,14 @@ const tableFixedWireSource = `
                     }
                     case Text:
                     {
-                        uint unit = (p.Arg == TextWide) ? 2u : 1u;
+                        uint unit = (p.Meta == TextWide) ? 2u : 1u;
                         uint cap = p.Size / unit;
                         int v = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)p.Src));
                         if (v < 0) { v = 0; if (report != null) report.Clamped++; }
                         else if ((uint)v > cap) { v = (int)cap; if (report != null) report.Clamped++; }
                         slots[(int)p.Dst].SetRaw?.Invoke(dst, (ulong)(uint)v);
                         ReadOnlySpan<byte> textBytes = src.Slice((int)p.Src + 4, (int)p.Size);
-                        if (p.Arg == TextWide)
+                        if (p.Meta == TextWide)
                         {
                             slots[(int)p.Aux].SetChars?.Invoke(dst, textBytes, v);
                         }
@@ -608,8 +627,16 @@ const tableFixedWireSource = `
                             {
                                 v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                             }
+                            if (raw > count && report != null) { report.Clamped++; }
                         }
-                        slots[(int)p.Dst].SetRaw?.Invoke(dst, v);
+                        if (slots[(int)p.Dst].SetRaw != null)
+                        {
+                            slots[(int)p.Dst].SetRaw(dst, v);
+                        }
+                        else
+                        {
+                            slots[(int)p.Dst].SetRawReport?.Invoke(dst, v, report);
+                        }
                         break;
                     }
                     case Widen:
@@ -650,7 +677,14 @@ const tableFixedWireSource = `
                     }
                     case Const:
                     {
-                        slots[(int)p.Dst].SetRaw?.Invoke(dst, p.Aux);
+                        if (slots[(int)p.Dst].SetRaw != null)
+                        {
+                            slots[(int)p.Dst].SetRaw(dst, p.Aux);
+                        }
+                        else
+                        {
+                            slots[(int)p.Dst].SetRawReport?.Invoke(dst, p.Aux, report);
+                        }
                         break;
                     }
                     default: break;

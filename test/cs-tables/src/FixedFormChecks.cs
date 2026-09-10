@@ -11,6 +11,7 @@ using P1 = Tblp1;
 using P3 = Tblp3;
 using TD = Tabledemo;
 using S2 = Scalardemo2;
+using UT = Tblut;
 
 static partial class Program
 {
@@ -22,6 +23,7 @@ static partial class Program
         TestFixedWideBlobCase();
         TestFixedWide128Case();
         TestFixedFoldedArraysCase();
+        TestFixedArmTextCase();
         TestFixedNegativeControl();
     }
 
@@ -445,6 +447,152 @@ static partial class Program
             Check(back.HardpointsCount == 4, "ShipEntry hardpoints count");
             Check(back.Hardpoints[0] == 101 && back.Hardpoints[1] == 202 && back.Hardpoints[2] == 303 && back.Hardpoints[3] == 404,
                   "ShipEntry 16-byte folded int32 array reproduced");
+        }
+    }
+
+    static byte[] UtRecord(string label, UT.UtGrade grade, int m, int tail)
+    {
+        UT.UtRoot root = new UT.UtRoot();
+        UT.Schema.TableReset(root);
+        root.Pick.Type = UT.UtPickType.B;
+        byte[] labelBytes = Encoding.UTF8.GetBytes(label);
+        labelBytes.CopyTo(root.Pick.B.Label.AsSpan());
+        root.Pick.B.LabelLength = labelBytes.Length;
+        root.Pick.B.Grade = grade;
+        root.Pick.B.M = m;
+        root.Tail = tail;
+
+        byte[] wire = new byte[UT.Schema.UtRootFixedMeasure(1)];
+        Check(UT.Schema.UtRootFixedSave(root, wire) == wire.Length, "arm text: save fills what measure says");
+        return wire;
+    }
+
+    static UT.UtRoot UtCompiled(byte[] wire, UT.TableReport r)
+    {
+        UT.UtRoot outVal = new UT.UtRoot();
+        UT.Schema.TableReset(outVal);
+
+        uint layoutBytes = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(
+            wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes));
+        ReadOnlySpan<byte> layout = wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes + 4, (int)layoutBytes);
+        Check(UT.Schema.TableFixedWire.ParseLayout(layout, out UT.TableFixedLayoutView parsed),
+              "arm text: the layout parses");
+
+        Span<UT.TableFixedEntry> plan = new UT.TableFixedEntry[512];
+        int made = UT.Schema.TableFixedWire.Compile(parsed, UT.Schema.UtRootFixedLayout, UT.Schema.UtRootFixedDst, plan, r);
+        Check(made > 0, "arm text: a plan compiles from my own layout");
+
+        ReadOnlySpan<byte> planBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(plan);
+        ReadOnlySpan<byte> at = wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
+        UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes);
+        return outVal;
+    }
+
+    static bool UtSame(UT.UtRoot x, UT.UtRoot y)
+    {
+        byte[] a = new byte[UT.Schema.UtRootFixedMeasure(1)];
+        byte[] b = new byte[UT.Schema.UtRootFixedMeasure(1)];
+        UT.Schema.UtRootFixedSave(x, a);
+        UT.Schema.UtRootFixedSave(y, b);
+        return a.AsSpan().SequenceEqual(b);
+    }
+
+    static int UtBodyAt(byte[] wire)
+    {
+        uint layoutBytes = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(
+            wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes));
+        return UT.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes + 8;
+    }
+
+    static void TestFixedArmTextCase()
+    {
+        byte[] wire = UtRecord("hello", UT.UtGrade.gold, 42, 11);
+
+        // THE IDENTITY PATH
+        UT.UtRoot id = new UT.UtRoot();
+        UT.TableReport r = new UT.TableReport();
+        UT.TableFixedEntry[] plan = new UT.TableFixedEntry[512];
+        long n = UT.Schema.UtRootFixedLoad(id, wire, plan, r);
+        Check(n == 1, "arm text: the identity path reads the record");
+        Check(!r.Refused && !r.Malformed && r.Clamped == 0 && r.Unknown == 0 && r.KindMismatch == 0,
+              "arm text: a clean read moves no counter");
+        Check(id.Pick.Type == UT.UtPickType.B, "arm text: the SECOND arm is the selected one");
+        Check(Encoding.UTF8.GetString(id.Pick.B.Label.AsSpan(0, id.Pick.B.LabelLength)) == "hello",
+              "arm text: the identity path lands the arm's text");
+        Check(id.Pick.B.Grade == UT.UtGrade.gold && id.Pick.B.M == 42 && id.Tail == 11,
+              "arm text: and the rest of that arm with it");
+
+        // THE COMPILED PATH, and it must land the same record
+        UT.TableReport rc = new UT.TableReport();
+        UT.UtRoot viaPlan = UtCompiled(wire, rc);
+        Check(Encoding.UTF8.GetString(viaPlan.Pick.B.Label.AsSpan(0, viaPlan.Pick.B.LabelLength)) == "hello",
+              "arm text: a COMPILED plan lands a text field under the SECOND arm");
+        Check(viaPlan.Pick.B.Grade == UT.UtGrade.gold && viaPlan.Pick.B.M == 42 && viaPlan.Tail == 11,
+              "arm text: and the rest of that arm with it");
+        Check(rc.Clamped == 0 && !rc.Malformed && !rc.Refused,
+              "arm text: the compiled read moves no counter either");
+        Check(UtSame(viaPlan, id),
+              "arm text: a COMPILED plan lands exactly what the identity plan lands");
+
+        // A TAG PAST THE LAST ARM: None on both paths, and the identity path
+        // counts one clamped. THE COMPILED PLAN COUNTS NOTHING HERE and that
+        // is not an oversight: a plan says what a SELECTED arm does, so
+        // "no arm fired" is not an event any entry of it can see. The tag
+        // still lands None, because the prefill put None there and no entry
+        // wrote over it.
+        {
+            byte[] bad = (byte[])wire.Clone();
+            int body = UtBodyAt(bad);
+            Check(bad[body] == 2, "tag past the last arm: the tag sits where the layout says");
+            bad[body] = 7;
+
+            UT.UtRoot v = new UT.UtRoot();
+            UT.TableReport r1 = new UT.TableReport();
+            Check(UT.Schema.UtRootFixedLoad(v, bad, plan, r1) == 1,
+                  "tag past the last arm: the record still reads");
+            Check(v.Pick.Type == UT.UtPickType.None,
+                  "tag past the last arm: the union lands None");
+            Check(r1.Clamped == 1,
+                  "tag past the last arm: the identity path counts ONE clamped");
+            Check(!r1.Malformed && !r1.Refused,
+                  "tag past the last arm: damage in a VALUE is not framing damage");
+
+            UT.TableReport r2 = new UT.TableReport();
+            UT.UtRoot bent = UtCompiled(bad, r2);
+            Check(bent.Pick.Type == UT.UtPickType.None,
+                  "tag past the last arm: the compiled plan lands None too");
+            Check(r2.Clamped == 0,
+                  "tag past the last arm: no entry of a plan can see an arm that did not fire");
+        }
+
+        // AN ORDINAL PAST THE LAST VARIANT: None (0) on both paths, and BOTH
+        // count it — the identity scatter on its own read, and the plan's
+        // ordinal op on the compiled one.
+        {
+            byte[] bad = (byte[])wire.Clone();
+            int body = UtBodyAt(bad);
+            int at = body + 13; // the tag, then the arm's text, then the ordinal
+            Check(bad[at] == (byte)UT.UtGrade.gold,
+                  "ordinal past the last variant: the ordinal is where the layout says");
+            bad[at] = 9;
+
+            UT.UtRoot v = new UT.UtRoot();
+            UT.TableReport r1 = new UT.TableReport();
+            Check(UT.Schema.UtRootFixedLoad(v, bad, plan, r1) == 1,
+                  "ordinal past the last variant: the record still reads");
+            Check(v.Pick.B.Grade == UT.UtGrade.None,
+                  "ordinal past the last variant: it lands None");
+            Check(r1.Clamped == 1,
+                  "ordinal past the last variant: the identity path counts ONE clamped");
+
+            UT.TableReport r2 = new UT.TableReport();
+            UT.UtRoot bent = UtCompiled(bad, r2);
+            Check(bent.Pick.B.Grade == UT.UtGrade.None,
+                  "ordinal past the last variant: the compiled plan lands None too");
+            Check(r2.Clamped == 1,
+                  "ordinal past the last variant: and the plan's ordinal op counts it");
+            Check(UtSame(bent, v),
+                  "ordinal past the last variant: the two paths land ONE record");
         }
     }
 }

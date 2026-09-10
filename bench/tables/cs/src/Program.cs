@@ -420,16 +420,16 @@ static class Program
         }
         byte[] file = File.ReadAllBytes(filePath);
 
-        string vocabPath = Path.Combine(gVariantDir, "bench_fixed.vocab");
-        if (!File.Exists(vocabPath))
+        string layoutPath = Path.Combine(gVariantDir, "bench_fixed.layout");
+        if (!File.Exists(layoutPath))
         {
-            Console.Error.WriteLine("missing fixed corpus " + vocabPath + " — run from the schema repo root (or pass --variant-dir)");
+            Console.Error.WriteLine("missing fixed corpus " + layoutPath + " — run from the schema repo root (or pass --variant-dir)");
             failed = true;
             return;
         }
-        byte[] vocab = File.ReadAllBytes(vocabPath);
+        byte[] layout = File.ReadAllBytes(layoutPath);
 
-        if (file.Length == 0 || vocab.Length == 0)
+        if (file.Length == 0 || layout.Length == 0)
         {
             Console.Error.WriteLine("empty fixed corpus in " + gVariantDir);
             failed = true;
@@ -437,15 +437,15 @@ static class Program
         }
 
         gGoldensLoaded["bench_fixed.bin"] = file;
-        gGoldensLoaded["bench_fixed.vocab"] = vocab;
+        gGoldensLoaded["bench_fixed.layout"] = layout;
         double bytesPerOp = (double)file.Length / FixedCount;
         byte[] twin = new byte[file.Length];
 
-        // gate 1: THE BLOCK IS THE CORPUS'S BLOCK.
-        if (vocab.Length != BenchSchema.FixedTableFixedLayoutBytes ||
-            !vocab.AsSpan().SequenceEqual(BenchSchema.FixedTableFixedLayout))
+        // gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT.
+        if (layout.Length != BenchSchema.FixedTableFixedLayoutBytes ||
+            !layout.AsSpan().SequenceEqual(BenchSchema.FixedTableFixedLayout))
         {
-            Fail(name, "this build's vocabulary block is not the corpus's, byte for byte");
+            Fail(name, "this build's layout block is not the corpus's, byte for byte");
             return;
         }
 
