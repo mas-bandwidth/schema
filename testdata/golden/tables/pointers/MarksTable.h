@@ -328,6 +328,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    GRAPHDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     GRAPHDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     GRAPHDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     GRAPHDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -5341,8 +5353,9 @@ inline bool MarkerLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
 
 inline int64_t TallyMeasureBody( TableIds & ids, const Tally & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.hits != 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; } // hits
+    bytes += TableLebBytes( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; // hits
     return bytes;
 }
 
@@ -5356,7 +5369,6 @@ inline int64_t TallyMeasure( const Tally & value )
 
 GRAPHDEMO_TABLE_INLINE bool TallySaveBody( TableWriter & w, TableIds & ids, const Tally & value )
 {
-    if ( value.hits != 0 )
     {
         w.header( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
         w.put32( uint32_t( value.hits ) );
@@ -6936,15 +6948,15 @@ inline bool MarkerLoadBuilder( MarkerBuilder & builder, const uint8_t * wire_fil
 
 inline int64_t TallyMeasureBodyRetain( TableRetainIds & ids, const Tally & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.hits != 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; } // hits
+    bytes += TableLebBytes( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; // hits
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 GRAPHDEMO_TABLE_INLINE bool TallySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Tally & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.hits != 0 )
     {
         w.header( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
         w.put32( uint32_t( value.hits ) );

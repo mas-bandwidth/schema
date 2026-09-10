@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package bench — protocol id 0x8d12c3149393f40f (packets only: tables version by field id, not by protocol id)
+// package bench — protocol id 0xc93127c82f083edf (packets only: tables version by field id, not by protocol id)
 // The TABLE wire (evolution-tolerant, docs/SPEC-TABLES.md): includable from
 // any TU — the one thing taken from serialize.h is the 128-bit storage type.
 
@@ -277,6 +277,18 @@ struct TableWriter
     {
         if ( offset + bytes > capacity ) { overflow = true; return; }
         memcpy( buffer + offset, data, (size_t) bytes );
+        offset += bytes;
+    }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    BENCH_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
         offset += bytes;
     }
     BENCH_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
@@ -1489,7 +1501,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // generated field header carries as a literal.
 static const int64_t kTableAnnounceBytes = 932;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0xf4, 0xdd, 0x77, 0xb4, 0x4a, 0xa1, 0x47, 0x0f, 0x02,
+    0x01, 0x01, 0x09, 0x2c, 0x1b, 0x35, 0xfe, 0x07, 0x9e, 0xbc, 0x12, 0x02,
     0x0e, 0xfc, 0x06, 0x06, 0xf9, 0x06, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac,
     0x38, 0xaa, 0x07, 0x01, 0x10, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00,
     0xbe, 0x0d, 0x04, 0x01, 0x10, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d,
@@ -2122,7 +2134,7 @@ namespace bench {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x0f47a14ab477ddf4ull;
+static const uint64_t BuildVersion = 0x12bc9e07fe351b2cull;
 
 } // namespace bench
 
@@ -2405,14 +2417,13 @@ BENCH_TABLE_INLINE bool FixedTableLoadBody( TableReader & r, FixedTable & value 
 
 inline int64_t FixedTableMeasureBody( TableIds & ids, const FixedTable & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_value = ids.count;
         const uint64_t ref_value = ids.ref_at( 35, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = BenchMixedMeasureBody( ids, value.value );
         if ( body_value < 0 ) { return -1; }
-        if ( body_value > 1 ) { bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); } // value
-        else { ids.truncate( mark_value ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_value ) + 1 + TableLebBytes( (uint64_t) ( body_value ) ) + ( body_value ); // value
     }
     return bytes;
 }
@@ -2428,16 +2439,11 @@ inline int64_t FixedTableMeasure( const FixedTable & value )
 BENCH_TABLE_INLINE bool FixedTableSaveBody( TableWriter & w, TableIds & ids, const FixedTable & value )
 {
     {
-        const int32_t mark_value = ids.count;
         const uint64_t ref_value = ids.ref_at( 35, 0x7ce4fd9430e80ceaull );
         const int64_t body_value = BenchMixedMeasureBody( ids, value.value );
         if ( body_value < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_value > 1 ) // all-default nested elides
-        {
-            w.header( ref_value, 13 ); w.putleb( (uint64_t) body_value ); // value
-            if ( !BenchMixedSaveBody( w, ids, value.value ) ) return false;
-        }
-        else { ids.truncate( mark_value ); }
+        w.header( ref_value, 13 ); w.putleb( (uint64_t) body_value ); // value
+        if ( !BenchMixedSaveBody( w, ids, value.value ) ) return false;
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;

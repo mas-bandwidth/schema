@@ -328,6 +328,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    GRAPHDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     GRAPHDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     GRAPHDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     GRAPHDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -5247,10 +5259,11 @@ inline bool ColourLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
 
 inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
-    if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
+    bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); // tag
+    bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; // seq
     return bytes;
 }
 
@@ -5265,13 +5278,11 @@ inline int64_t StampMeasure( const Stamp & value )
 GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value )
 {
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
-    if ( value.tag_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
-    if ( value.seq != 0 )
     {
         w.header( ids.ref_at( 27, 0x823b8a195ce2133cull ), 4 ); // seq
         w.put32( uint32_t( value.seq ) );
@@ -5661,10 +5672,11 @@ inline bool StampLoadMessages( Stamp * values, int64_t * count, const TableVocab
 
 inline int64_t ColourMeasureBody( TableIds & ids, const Colour & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
-    if ( value.g != 0 ) { bytes += TableLebBytes( ids.ref_at( 32, 0xaf63da4c8601e926ull ) ) + 1 + 1; } // g
-    if ( value.b != 0 ) { bytes += TableLebBytes( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ) ) + 1 + 1; } // b
+    bytes += TableLebBytes( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ) + 1 + 1; // r
+    bytes += TableLebBytes( ids.ref_at( 32, 0xaf63da4c8601e926ull ) ) + 1 + 1; // g
+    bytes += TableLebBytes( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ) ) + 1 + 1; // b
     return bytes;
 }
 
@@ -5678,17 +5690,14 @@ inline int64_t ColourMeasure( const Colour & value )
 
 GRAPHDEMO_TABLE_INLINE bool ColourSaveBody( TableWriter & w, TableIds & ids, const Colour & value )
 {
-    if ( value.r != 0 )
     {
         w.header( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ), 6 ); // r
         w.put8( uint8_t( value.r ) );
     }
-    if ( value.g != 0 )
     {
         w.header( ids.ref_at( 32, 0xaf63da4c8601e926ull ), 6 ); // g
         w.put8( uint8_t( value.g ) );
     }
-    if ( value.b != 0 )
     {
         w.header( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ), 6 ); // b
         w.put8( uint8_t( value.b ) );
@@ -6062,10 +6071,11 @@ inline bool ColourLoadMessages( Colour * values, int64_t * count, const TableVoc
 
 inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
-    if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
+    bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); // tag
+    bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; // seq
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -6073,13 +6083,11 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Stamp & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
-    if ( value.tag_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
     }
-    if ( value.seq != 0 )
     {
         w.header( ids.ref_at( 27, 0x823b8a195ce2133cull ), 4 ); // seq
         w.put32( uint32_t( value.seq ) );
@@ -6307,27 +6315,25 @@ inline bool StampLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
 
 inline int64_t ColourMeasureBodyRetain( TableRetainIds & ids, const Colour & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.r != 0 ) { bytes += TableLebBytes( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ) + 1 + 1; } // r
-    if ( value.g != 0 ) { bytes += TableLebBytes( ids.ref_at( 32, 0xaf63da4c8601e926ull ) ) + 1 + 1; } // g
-    if ( value.b != 0 ) { bytes += TableLebBytes( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ) ) + 1 + 1; } // b
+    bytes += TableLebBytes( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ) ) + 1 + 1; // r
+    bytes += TableLebBytes( ids.ref_at( 32, 0xaf63da4c8601e926ull ) ) + 1 + 1; // g
+    bytes += TableLebBytes( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ) ) + 1 + 1; // b
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 GRAPHDEMO_TABLE_INLINE bool ColourSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Colour & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.r != 0 )
     {
         w.header( ids.ref_at( 34, 0xaf63ef4c86020cd5ull ), 6 ); // r
         w.put8( uint8_t( value.r ) );
     }
-    if ( value.g != 0 )
     {
         w.header( ids.ref_at( 32, 0xaf63da4c8601e926ull ), 6 ); // g
         w.put8( uint8_t( value.g ) );
     }
-    if ( value.b != 0 )
     {
         w.header( ids.ref_at( 33, 0xaf63df4c8601f1a5ull ), 6 ); // b
         w.put8( uint8_t( value.b ) );

@@ -295,6 +295,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    BLOCKDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     BLOCKDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     BLOCKDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     BLOCKDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -3244,27 +3256,24 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
 
 inline int64_t RenderCameraMeasureBody( TableIds & ids, const RenderCamera & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
-        if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); // position
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); // rotation
     }
-    if ( value.camera_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 45, 0x9f61700f084ab92eull ) ) + 1 + 4; } // camera_id
-    if ( value.camera_type != 0 ) { bytes += TableLebBytes( ids.ref_at( 15, 0x336d3dc7fffd0c9bull ) ) + 1 + 4; } // camera_type
-    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ) ) + 1 + 4; } // target_object_id
-    if ( value.fov != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 76, 0xdcb27c18fed9e15cull ) ) + 1 + 4; } // fov
+    bytes += TableLebBytes( ids.ref_at( 45, 0x9f61700f084ab92eull ) ) + 1 + 4; // camera_id
+    bytes += TableLebBytes( ids.ref_at( 15, 0x336d3dc7fffd0c9bull ) ) + 1 + 4; // camera_type
+    bytes += TableLebBytes( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ) ) + 1 + 4; // target_object_id
+    bytes += TableLebBytes( ids.ref_at( 76, 0xdcb27c18fed9e15cull ) ) + 1 + 4; // fov
     return bytes;
 }
 
@@ -3279,45 +3288,31 @@ inline int64_t RenderCameraMeasure( const RenderCamera & value )
 BLOCKDEMO_TABLE_INLINE bool RenderCameraSaveBody( TableWriter & w, TableIds & ids, const RenderCamera & value )
 {
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_position > 1 ) // all-default nested elides
-        {
-            w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
-            if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
-        }
-        else { ids.truncate( mark_position ); }
+        w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
+        if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_rotation > 1 ) // all-default nested elides
-        {
-            w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
-            if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
-        }
-        else { ids.truncate( mark_rotation ); }
+        w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
+        if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
     }
-    if ( value.camera_id != 0 )
     {
         w.header( ids.ref_at( 45, 0x9f61700f084ab92eull ), 8 ); // camera_id
         w.put32( uint32_t( value.camera_id ) );
     }
-    if ( value.camera_type != 0 )
     {
         w.header( ids.ref_at( 15, 0x336d3dc7fffd0c9bull ), 8 ); // camera_type
         w.put32( uint32_t( value.camera_type ) );
     }
-    if ( value.target_object_id != 0 )
     {
         w.header( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ), 8 ); // target_object_id
         w.put32( uint32_t( value.target_object_id ) );
     }
-    if ( value.fov != 0.0f )
     {
         w.header( ids.ref_at( 76, 0xdcb27c18fed9e15cull ), 10 ); // fov
         w.put32( table_float_to_bits( value.fov ) );
@@ -3935,29 +3930,25 @@ inline bool RenderCameraLoadMessages( RenderCamera * values, int64_t * count, co
 
 inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
-        if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); // position
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); // rotation
     }
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
-    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
-    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ) ) + 1 + 4; } // target_object_id
-    if ( value.thrust != 0.0f ) { bytes += TableLebBytes( ids.ref_at( 70, 0xcfd587cb3100cd73ull ) ) + 1 + 4; } // thrust
-    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x5de0015285763c46ull ) ) + 1 + 1; } // object_sequence
-    if ( value.ship_type != ShipType::None )
+    bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; // flags
+    bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; // object_id
+    bytes += TableLebBytes( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ) ) + 1 + 4; // target_object_id
+    bytes += TableLebBytes( ids.ref_at( 70, 0xcfd587cb3100cd73ull ) ) + 1 + 4; // thrust
+    bytes += TableLebBytes( ids.ref_at( 28, 0x5de0015285763c46ull ) ) + 1 + 1; // object_sequence
     {
         if ( !TableEnumNamed( value.ship_type ) ) { return -1; } // no variant names this value
         const uint64_t ref_ship_type = ids.ref_at( 11, 0x1f7d2e86a2e77268ull );
@@ -3965,7 +3956,6 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
         if ( !TableEnumRef( ids, value.ship_type, variant_ship_type ) ) { return -1; }
         bytes += TableLebBytes( ref_ship_type ) + 1 + TableLebBytes( variant_ship_type ); // ship_type: the variant's reference
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -3973,8 +3963,8 @@ inline int64_t RenderShipMeasureBody( TableIds & ids, const RenderShip & value )
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
     }
-    if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1554fa45a1220171ull ) ) + 1 + 1; } // has_target_lock
-    if ( value.predicted_explode != false ) { bytes += TableLebBytes( ids.ref_at( 22, 0x4d5be97ba1b9cb81ull ) ) + 1 + 1; } // predicted_explode
+    bytes += TableLebBytes( ids.ref_at( 7, 0x1554fa45a1220171ull ) ) + 1 + 1; // has_target_lock
+    bytes += TableLebBytes( ids.ref_at( 22, 0x4d5be97ba1b9cb81ull ) ) + 1 + 1; // predicted_explode
     return bytes;
 }
 
@@ -3989,55 +3979,39 @@ inline int64_t RenderShipMeasure( const RenderShip & value )
 BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids, const RenderShip & value )
 {
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_position > 1 ) // all-default nested elides
-        {
-            w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
-            if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
-        }
-        else { ids.truncate( mark_position ); }
+        w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
+        if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_rotation > 1 ) // all-default nested elides
-        {
-            w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
-            if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
-        }
-        else { ids.truncate( mark_rotation ); }
+        w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
+        if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
     }
-    if ( value.flags != 0 )
     {
         w.header( ids.ref_at( 8, 0x17a3a1a985f75aecull ), 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
-    if ( value.object_id != 0 )
     {
         w.header( ids.ref_at( 1, 0x0bdab42c07f19812ull ), 8 ); // object_id
         w.put32( uint32_t( value.object_id ) );
     }
-    if ( value.target_object_id != 0 )
     {
         w.header( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ), 8 ); // target_object_id
         w.put32( uint32_t( value.target_object_id ) );
     }
-    if ( value.thrust != 0.0f )
     {
         w.header( ids.ref_at( 70, 0xcfd587cb3100cd73ull ), 10 ); // thrust
         w.put32( table_float_to_bits( value.thrust ) );
     }
-    if ( value.object_sequence != 0 )
     {
         w.header( ids.ref_at( 28, 0x5de0015285763c46ull ), 6 ); // object_sequence
         w.put8( uint8_t( value.object_sequence ) );
     }
-    if ( value.ship_type != ShipType::None )
     {
         if ( !TableEnumNamed( value.ship_type ) ) { return false; }
         const uint64_t ref_ship_type = ids.ref_at( 11, 0x1f7d2e86a2e77268ull );
@@ -4045,7 +4019,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
         if ( !TableEnumRef( ids, value.ship_type, variant_ship_type ) ) { return false; }
         w.header( ref_ship_type, 30 ); w.putleb( variant_ship_type ); // ship_type
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -4053,12 +4026,10 @@ BLOCKDEMO_TABLE_INLINE bool RenderShipSaveBody( TableWriter & w, TableIds & ids,
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.header( ref_team, 30 ); w.putleb( variant_team ); // team
     }
-    if ( value.has_target_lock != false )
     {
         w.header( ids.ref_at( 7, 0x1554fa45a1220171ull ), 1 ); // has_target_lock
         w.put8( value.has_target_lock ? 1 : 0 );
     }
-    if ( value.predicted_explode != false )
     {
         w.header( ids.ref_at( 22, 0x4d5be97ba1b9cb81ull ), 1 ); // predicted_explode
         w.put8( value.predicted_explode ? 1 : 0 );
@@ -4914,22 +4885,20 @@ inline bool RenderShipLoadMessages( RenderShip * values, int64_t * count, const 
 
 inline int64_t RenderTurretMeasureBody( TableIds & ids, const RenderTurret & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); // rotation
     }
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
-    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
-    if ( value.parent_object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x0bee7b3cb4046c93ull ) ) + 1 + 4; } // parent_object_id
-    if ( value.turret_index != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0x88a11a6aed541f54ull ) ) + 1 + 4; } // turret_index
-    if ( value.target_object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ) ) + 1 + 4; } // target_object_id
-    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x5de0015285763c46ull ) ) + 1 + 1; } // object_sequence
-    if ( value.team != Team::None )
+    bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; // flags
+    bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; // object_id
+    bytes += TableLebBytes( ids.ref_at( 2, 0x0bee7b3cb4046c93ull ) ) + 1 + 4; // parent_object_id
+    bytes += TableLebBytes( ids.ref_at( 40, 0x88a11a6aed541f54ull ) ) + 1 + 4; // turret_index
+    bytes += TableLebBytes( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ) ) + 1 + 4; // target_object_id
+    bytes += TableLebBytes( ids.ref_at( 28, 0x5de0015285763c46ull ) ) + 1 + 1; // object_sequence
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -4937,7 +4906,7 @@ inline int64_t RenderTurretMeasureBody( TableIds & ids, const RenderTurret & val
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return -1; }
         bytes += TableLebBytes( ref_team ) + 1 + TableLebBytes( variant_team ); // team: the variant's reference
     }
-    if ( value.has_target_lock != false ) { bytes += TableLebBytes( ids.ref_at( 7, 0x1554fa45a1220171ull ) ) + 1 + 1; } // has_target_lock
+    bytes += TableLebBytes( ids.ref_at( 7, 0x1554fa45a1220171ull ) ) + 1 + 1; // has_target_lock
     return bytes;
 }
 
@@ -4952,48 +4921,36 @@ inline int64_t RenderTurretMeasure( const RenderTurret & value )
 BLOCKDEMO_TABLE_INLINE bool RenderTurretSaveBody( TableWriter & w, TableIds & ids, const RenderTurret & value )
 {
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_rotation > 1 ) // all-default nested elides
-        {
-            w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
-            if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
-        }
-        else { ids.truncate( mark_rotation ); }
+        w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
+        if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
     }
-    if ( value.flags != 0 )
     {
         w.header( ids.ref_at( 8, 0x17a3a1a985f75aecull ), 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
-    if ( value.object_id != 0 )
     {
         w.header( ids.ref_at( 1, 0x0bdab42c07f19812ull ), 8 ); // object_id
         w.put32( uint32_t( value.object_id ) );
     }
-    if ( value.parent_object_id != 0 )
     {
         w.header( ids.ref_at( 2, 0x0bee7b3cb4046c93ull ), 8 ); // parent_object_id
         w.put32( uint32_t( value.parent_object_id ) );
     }
-    if ( value.turret_index != 0 )
     {
         w.header( ids.ref_at( 40, 0x88a11a6aed541f54ull ), 8 ); // turret_index
         w.put32( uint32_t( value.turret_index ) );
     }
-    if ( value.target_object_id != 0 )
     {
         w.header( ids.ref_at( 31, 0x6a0c6a156952b9c2ull ), 8 ); // target_object_id
         w.put32( uint32_t( value.target_object_id ) );
     }
-    if ( value.object_sequence != 0 )
     {
         w.header( ids.ref_at( 28, 0x5de0015285763c46ull ), 6 ); // object_sequence
         w.put8( uint8_t( value.object_sequence ) );
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -5001,7 +4958,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderTurretSaveBody( TableWriter & w, TableIds & id
         if ( !TableEnumRef( ids, value.team, variant_team ) ) { return false; }
         w.header( ref_team, 30 ); w.putleb( variant_team ); // team
     }
-    if ( value.has_target_lock != false )
     {
         w.header( ids.ref_at( 7, 0x1554fa45a1220171ull ), 1 ); // has_target_lock
         w.put8( value.has_target_lock ? 1 : 0 );
@@ -5799,27 +5755,23 @@ inline bool RenderTurretLoadMessages( RenderTurret * values, int64_t * count, co
 
 inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
-        if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); // position
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); // rotation
     }
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
-    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
-    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x5de0015285763c46ull ) ) + 1 + 1; } // object_sequence
-    if ( value.missile_type != MissileType::None )
+    bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; // flags
+    bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; // object_id
+    bytes += TableLebBytes( ids.ref_at( 28, 0x5de0015285763c46ull ) ) + 1 + 1; // object_sequence
     {
         if ( !TableEnumNamed( value.missile_type ) ) { return -1; } // no variant names this value
         const uint64_t ref_missile_type = ids.ref_at( 6, 0x151b2a0e2c07b4bcull );
@@ -5827,7 +5779,6 @@ inline int64_t RenderMissileMeasureBody( TableIds & ids, const RenderMissile & v
         if ( !TableEnumRef( ids, value.missile_type, variant_missile_type ) ) { return -1; }
         bytes += TableLebBytes( ref_missile_type ) + 1 + TableLebBytes( variant_missile_type ); // missile_type: the variant's reference
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -5849,45 +5800,31 @@ inline int64_t RenderMissileMeasure( const RenderMissile & value )
 BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & ids, const RenderMissile & value )
 {
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_position > 1 ) // all-default nested elides
-        {
-            w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
-            if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
-        }
-        else { ids.truncate( mark_position ); }
+        w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
+        if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_rotation > 1 ) // all-default nested elides
-        {
-            w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
-            if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
-        }
-        else { ids.truncate( mark_rotation ); }
+        w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
+        if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
     }
-    if ( value.flags != 0 )
     {
         w.header( ids.ref_at( 8, 0x17a3a1a985f75aecull ), 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
-    if ( value.object_id != 0 )
     {
         w.header( ids.ref_at( 1, 0x0bdab42c07f19812ull ), 8 ); // object_id
         w.put32( uint32_t( value.object_id ) );
     }
-    if ( value.object_sequence != 0 )
     {
         w.header( ids.ref_at( 28, 0x5de0015285763c46ull ), 6 ); // object_sequence
         w.put8( uint8_t( value.object_sequence ) );
     }
-    if ( value.missile_type != MissileType::None )
     {
         if ( !TableEnumNamed( value.missile_type ) ) { return false; }
         const uint64_t ref_missile_type = ids.ref_at( 6, 0x151b2a0e2c07b4bcull );
@@ -5895,7 +5832,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderMissileSaveBody( TableWriter & w, TableIds & i
         if ( !TableEnumRef( ids, value.missile_type, variant_missile_type ) ) { return false; }
         w.header( ref_missile_type, 30 ); w.putleb( variant_missile_type ); // missile_type
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -6550,27 +6486,23 @@ inline bool RenderMissileLoadMessages( RenderMissile * values, int64_t * count, 
 
 inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamicProp & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
-        if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); // position
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); // rotation
     }
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
-    if ( value.object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; } // object_id
-    if ( value.object_sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x5de0015285763c46ull ) ) + 1 + 1; } // object_sequence
-    if ( value.prop_type != PropType::None )
+    bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; // flags
+    bytes += TableLebBytes( ids.ref_at( 1, 0x0bdab42c07f19812ull ) ) + 1 + 4; // object_id
+    bytes += TableLebBytes( ids.ref_at( 28, 0x5de0015285763c46ull ) ) + 1 + 1; // object_sequence
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return -1; } // no variant names this value
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
@@ -6578,7 +6510,6 @@ inline int64_t RenderDynamicPropMeasureBody( TableIds & ids, const RenderDynamic
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return -1; }
         bytes += TableLebBytes( ref_prop_type ) + 1 + TableLebBytes( variant_prop_type ); // prop_type: the variant's reference
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -6600,45 +6531,31 @@ inline int64_t RenderDynamicPropMeasure( const RenderDynamicProp & value )
 BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds & ids, const RenderDynamicProp & value )
 {
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_position > 1 ) // all-default nested elides
-        {
-            w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
-            if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
-        }
-        else { ids.truncate( mark_position ); }
+        w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
+        if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_rotation > 1 ) // all-default nested elides
-        {
-            w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
-            if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
-        }
-        else { ids.truncate( mark_rotation ); }
+        w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
+        if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
     }
-    if ( value.flags != 0 )
     {
         w.header( ids.ref_at( 8, 0x17a3a1a985f75aecull ), 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
-    if ( value.object_id != 0 )
     {
         w.header( ids.ref_at( 1, 0x0bdab42c07f19812ull ), 8 ); // object_id
         w.put32( uint32_t( value.object_id ) );
     }
-    if ( value.object_sequence != 0 )
     {
         w.header( ids.ref_at( 28, 0x5de0015285763c46ull ), 6 ); // object_sequence
         w.put8( uint8_t( value.object_sequence ) );
     }
-    if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return false; }
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
@@ -6646,7 +6563,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderDynamicPropSaveBody( TableWriter & w, TableIds
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
         w.header( ref_prop_type, 30 ); w.putleb( variant_prop_type ); // prop_type
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -7301,27 +7217,23 @@ inline bool RenderDynamicPropLoadMessages( RenderDynamicProp * values, int64_t *
 
 inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticProp & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
-        if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); // position
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); // rotation
     }
-    if ( value.scale != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 32, 0x6aacb9fbb71a1d91ull ) ) + 1 + 8; } // scale
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
-    if ( value.static_prop_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0xd23da7ab574b95c3ull ) ) + 1 + 4; } // static_prop_id
-    if ( value.prop_type != PropType::None )
+    bytes += TableLebBytes( ids.ref_at( 32, 0x6aacb9fbb71a1d91ull ) ) + 1 + 8; // scale
+    bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; // flags
+    bytes += TableLebBytes( ids.ref_at( 72, 0xd23da7ab574b95c3ull ) ) + 1 + 4; // static_prop_id
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return -1; } // no variant names this value
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
@@ -7329,7 +7241,6 @@ inline int64_t RenderStaticPropMeasureBody( TableIds & ids, const RenderStaticPr
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return -1; }
         bytes += TableLebBytes( ref_prop_type ) + 1 + TableLebBytes( variant_prop_type ); // prop_type: the variant's reference
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -7351,45 +7262,31 @@ inline int64_t RenderStaticPropMeasure( const RenderStaticProp & value )
 BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds & ids, const RenderStaticProp & value )
 {
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_position > 1 ) // all-default nested elides
-        {
-            w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
-            if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
-        }
-        else { ids.truncate( mark_position ); }
+        w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
+        if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_rotation > 1 ) // all-default nested elides
-        {
-            w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
-            if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
-        }
-        else { ids.truncate( mark_rotation ); }
+        w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
+        if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
     }
-    if ( value.scale != 0.0 )
     {
         w.header( ids.ref_at( 32, 0x6aacb9fbb71a1d91ull ), 11 ); // scale
         w.put64( table_double_to_bits( value.scale ) );
     }
-    if ( value.flags != 0 )
     {
         w.header( ids.ref_at( 8, 0x17a3a1a985f75aecull ), 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
-    if ( value.static_prop_id != 0 )
     {
         w.header( ids.ref_at( 72, 0xd23da7ab574b95c3ull ), 8 ); // static_prop_id
         w.put32( uint32_t( value.static_prop_id ) );
     }
-    if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return false; }
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
@@ -7397,7 +7294,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropSaveBody( TableWriter & w, TableIds 
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
         w.header( ref_prop_type, 30 ); w.putleb( variant_prop_type ); // prop_type
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -8071,28 +7967,24 @@ inline bool RenderStaticPropLoadMessages( RenderStaticProp * values, int64_t * c
 
 inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmeticProp & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
-        if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); // position
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); // rotation
     }
-    if ( value.scale != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 32, 0x6aacb9fbb71a1d91ull ) ) + 1 + 8; } // scale
-    if ( value.flags != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; } // flags
-    if ( value.cosmetic_prop_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 57, 0xb66e4449e56b2e26ull ) ) + 1 + 4; } // cosmetic_prop_id
-    if ( value.prop_sequence != 0 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x4d7bf73bcbddc228ull ) ) + 1 + 1; } // prop_sequence
-    if ( value.prop_type != PropType::None )
+    bytes += TableLebBytes( ids.ref_at( 32, 0x6aacb9fbb71a1d91ull ) ) + 1 + 8; // scale
+    bytes += TableLebBytes( ids.ref_at( 8, 0x17a3a1a985f75aecull ) ) + 1 + 8; // flags
+    bytes += TableLebBytes( ids.ref_at( 57, 0xb66e4449e56b2e26ull ) ) + 1 + 4; // cosmetic_prop_id
+    bytes += TableLebBytes( ids.ref_at( 23, 0x4d7bf73bcbddc228ull ) ) + 1 + 1; // prop_sequence
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return -1; } // no variant names this value
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
@@ -8100,7 +7992,6 @@ inline int64_t RenderCosmeticPropMeasureBody( TableIds & ids, const RenderCosmet
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return -1; }
         bytes += TableLebBytes( ref_prop_type ) + 1 + TableLebBytes( variant_prop_type ); // prop_type: the variant's reference
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -8122,50 +8013,35 @@ inline int64_t RenderCosmeticPropMeasure( const RenderCosmeticProp & value )
 BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableIds & ids, const RenderCosmeticProp & value )
 {
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_position > 1 ) // all-default nested elides
-        {
-            w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
-            if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
-        }
-        else { ids.truncate( mark_position ); }
+        w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
+        if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_rotation > 1 ) // all-default nested elides
-        {
-            w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
-            if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
-        }
-        else { ids.truncate( mark_rotation ); }
+        w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
+        if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
     }
-    if ( value.scale != 0.0 )
     {
         w.header( ids.ref_at( 32, 0x6aacb9fbb71a1d91ull ), 11 ); // scale
         w.put64( table_double_to_bits( value.scale ) );
     }
-    if ( value.flags != 0 )
     {
         w.header( ids.ref_at( 8, 0x17a3a1a985f75aecull ), 9 ); // flags
         w.put64( uint64_t( value.flags ) );
     }
-    if ( value.cosmetic_prop_id != 0 )
     {
         w.header( ids.ref_at( 57, 0xb66e4449e56b2e26ull ), 8 ); // cosmetic_prop_id
         w.put32( uint32_t( value.cosmetic_prop_id ) );
     }
-    if ( value.prop_sequence != 0 )
     {
         w.header( ids.ref_at( 23, 0x4d7bf73bcbddc228ull ), 6 ); // prop_sequence
         w.put8( uint8_t( value.prop_sequence ) );
     }
-    if ( value.prop_type != PropType::None )
     {
         if ( !TableEnumNamed( value.prop_type ) ) { return false; }
         const uint64_t ref_prop_type = ids.ref_at( 78, 0xe5626f155e4c5dadull );
@@ -8173,7 +8049,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropSaveBody( TableWriter & w, TableId
         if ( !TableEnumRef( ids, value.prop_type, variant_prop_type ) ) { return false; }
         w.header( ref_prop_type, 30 ); w.putleb( variant_prop_type ); // prop_type
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -8895,26 +8770,22 @@ inline bool RenderCosmeticPropLoadMessages( RenderCosmeticProp * values, int64_t
 
 inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_start = ids.count;
         const uint64_t ref_start = ids.ref_at( 82, 0xee5d97ad45ad251full );
         const int64_t body_start = RenderVector3MeasureBody( ids, value.start );
         if ( body_start < 0 ) { return -1; }
-        if ( body_start > 1 ) { bytes += TableLebBytes( ref_start ) + 1 + TableLebBytes( (uint64_t) ( body_start ) ) + ( body_start ); } // start
-        else { ids.truncate( mark_start ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_start ) + 1 + TableLebBytes( (uint64_t) ( body_start ) ) + ( body_start ); // start
     }
     {
-        const int32_t mark_finish = ids.count;
         const uint64_t ref_finish = ids.ref_at( 30, 0x6917a5bab91540f2ull );
         const int64_t body_finish = RenderVector3MeasureBody( ids, value.finish );
         if ( body_finish < 0 ) { return -1; }
-        if ( body_finish > 1 ) { bytes += TableLebBytes( ref_finish ) + 1 + TableLebBytes( (uint64_t) ( body_finish ) ) + ( body_finish ); } // finish
-        else { ids.truncate( mark_finish ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_finish ) + 1 + TableLebBytes( (uint64_t) ( body_finish ) ) + ( body_finish ); // finish
     }
-    if ( value.t != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 50, 0xaf63e94c860202a3ull ) ) + 1 + 8; } // t
-    if ( value.laser_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 68, 0xcd29c05f390294ecull ) ) + 1 + 4; } // laser_id
-    if ( value.laser_type != LaserType::None )
+    bytes += TableLebBytes( ids.ref_at( 50, 0xaf63e94c860202a3ull ) ) + 1 + 8; // t
+    bytes += TableLebBytes( ids.ref_at( 68, 0xcd29c05f390294ecull ) ) + 1 + 4; // laser_id
     {
         if ( !TableEnumNamed( value.laser_type ) ) { return -1; } // no variant names this value
         const uint64_t ref_laser_type = ids.ref_at( 43, 0x96b593c242133841ull );
@@ -8922,7 +8793,6 @@ inline int64_t RenderLaserMeasureBody( TableIds & ids, const RenderLaser & value
         if ( !TableEnumRef( ids, value.laser_type, variant_laser_type ) ) { return -1; }
         bytes += TableLebBytes( ref_laser_type ) + 1 + TableLebBytes( variant_laser_type ); // laser_type: the variant's reference
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -8944,40 +8814,27 @@ inline int64_t RenderLaserMeasure( const RenderLaser & value )
 BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids, const RenderLaser & value )
 {
     {
-        const int32_t mark_start = ids.count;
         const uint64_t ref_start = ids.ref_at( 82, 0xee5d97ad45ad251full );
         const int64_t body_start = RenderVector3MeasureBody( ids, value.start );
         if ( body_start < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_start > 1 ) // all-default nested elides
-        {
-            w.header( ref_start, 13 ); w.putleb( (uint64_t) body_start ); // start
-            if ( !RenderVector3SaveBody( w, ids, value.start ) ) return false;
-        }
-        else { ids.truncate( mark_start ); }
+        w.header( ref_start, 13 ); w.putleb( (uint64_t) body_start ); // start
+        if ( !RenderVector3SaveBody( w, ids, value.start ) ) return false;
     }
     {
-        const int32_t mark_finish = ids.count;
         const uint64_t ref_finish = ids.ref_at( 30, 0x6917a5bab91540f2ull );
         const int64_t body_finish = RenderVector3MeasureBody( ids, value.finish );
         if ( body_finish < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_finish > 1 ) // all-default nested elides
-        {
-            w.header( ref_finish, 13 ); w.putleb( (uint64_t) body_finish ); // finish
-            if ( !RenderVector3SaveBody( w, ids, value.finish ) ) return false;
-        }
-        else { ids.truncate( mark_finish ); }
+        w.header( ref_finish, 13 ); w.putleb( (uint64_t) body_finish ); // finish
+        if ( !RenderVector3SaveBody( w, ids, value.finish ) ) return false;
     }
-    if ( value.t != 0.0 )
     {
         w.header( ids.ref_at( 50, 0xaf63e94c860202a3ull ), 11 ); // t
         w.put64( table_double_to_bits( value.t ) );
     }
-    if ( value.laser_id != 0 )
     {
         w.header( ids.ref_at( 68, 0xcd29c05f390294ecull ), 8 ); // laser_id
         w.put32( uint32_t( value.laser_id ) );
     }
-    if ( value.laser_type != LaserType::None )
     {
         if ( !TableEnumNamed( value.laser_type ) ) { return false; }
         const uint64_t ref_laser_type = ids.ref_at( 43, 0x96b593c242133841ull );
@@ -8985,7 +8842,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserSaveBody( TableWriter & w, TableIds & ids
         if ( !TableEnumRef( ids, value.laser_type, variant_laser_type ) ) { return false; }
         w.header( ref_laser_type, 30 ); w.putleb( variant_laser_type ); // laser_type
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -9587,27 +9443,23 @@ inline bool RenderLaserLoadMessages( RenderLaser * values, int64_t * count, cons
 
 inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) { return -1; }
-        if ( body_position > 1 ) { bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); } // position
-        else { ids.truncate( mark_position ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_position ) + 1 + TableLebBytes( (uint64_t) ( body_position ) ) + ( body_position ); // position
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) { return -1; }
-        if ( body_rotation > 1 ) { bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); } // rotation
-        else { ids.truncate( mark_rotation ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_rotation ) + 1 + TableLebBytes( (uint64_t) ( body_rotation ) ) + ( body_rotation ); // rotation
     }
-    if ( value.t != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 50, 0xaf63e94c860202a3ull ) ) + 1 + 8; } // t
-    if ( value.explosion_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 86, 0xfd7f3fa0b16ed778ull ) ) + 1 + 4; } // explosion_id
-    if ( value.parent_object_id != 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x0bee7b3cb4046c93ull ) ) + 1 + 4; } // parent_object_id
-    if ( value.explosion_type != ExplosionType::None )
+    bytes += TableLebBytes( ids.ref_at( 50, 0xaf63e94c860202a3ull ) ) + 1 + 8; // t
+    bytes += TableLebBytes( ids.ref_at( 86, 0xfd7f3fa0b16ed778ull ) ) + 1 + 4; // explosion_id
+    bytes += TableLebBytes( ids.ref_at( 2, 0x0bee7b3cb4046c93ull ) ) + 1 + 4; // parent_object_id
     {
         if ( !TableEnumNamed( value.explosion_type ) ) { return -1; } // no variant names this value
         const uint64_t ref_explosion_type = ids.ref_at( 75, 0xdc89eb9cd3393be5ull );
@@ -9615,7 +9467,6 @@ inline int64_t RenderExplosionMeasureBody( TableIds & ids, const RenderExplosion
         if ( !TableEnumRef( ids, value.explosion_type, variant_explosion_type ) ) { return -1; }
         bytes += TableLebBytes( ref_explosion_type ) + 1 + TableLebBytes( variant_explosion_type ); // explosion_type: the variant's reference
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return -1; } // no variant names this value
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -9637,45 +9488,31 @@ inline int64_t RenderExplosionMeasure( const RenderExplosion & value )
 BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds & ids, const RenderExplosion & value )
 {
     {
-        const int32_t mark_position = ids.count;
         const uint64_t ref_position = ids.ref_at( 21, 0x4cbf3a26fca1d74aull );
         const int64_t body_position = RenderVector3MeasureBody( ids, value.position );
         if ( body_position < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_position > 1 ) // all-default nested elides
-        {
-            w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
-            if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
-        }
-        else { ids.truncate( mark_position ); }
+        w.header( ref_position, 13 ); w.putleb( (uint64_t) body_position ); // position
+        if ( !RenderVector3SaveBody( w, ids, value.position ) ) return false;
     }
     {
-        const int32_t mark_rotation = ids.count;
         const uint64_t ref_rotation = ids.ref_at( 56, 0xb51afb05cd34709full );
         const int64_t body_rotation = RenderQuaternionMeasureBody( ids, value.rotation );
         if ( body_rotation < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_rotation > 1 ) // all-default nested elides
-        {
-            w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
-            if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
-        }
-        else { ids.truncate( mark_rotation ); }
+        w.header( ref_rotation, 13 ); w.putleb( (uint64_t) body_rotation ); // rotation
+        if ( !RenderQuaternionSaveBody( w, ids, value.rotation ) ) return false;
     }
-    if ( value.t != 0.0 )
     {
         w.header( ids.ref_at( 50, 0xaf63e94c860202a3ull ), 11 ); // t
         w.put64( table_double_to_bits( value.t ) );
     }
-    if ( value.explosion_id != 0 )
     {
         w.header( ids.ref_at( 86, 0xfd7f3fa0b16ed778ull ), 8 ); // explosion_id
         w.put32( uint32_t( value.explosion_id ) );
     }
-    if ( value.parent_object_id != 0 )
     {
         w.header( ids.ref_at( 2, 0x0bee7b3cb4046c93ull ), 8 ); // parent_object_id
         w.put32( uint32_t( value.parent_object_id ) );
     }
-    if ( value.explosion_type != ExplosionType::None )
     {
         if ( !TableEnumNamed( value.explosion_type ) ) { return false; }
         const uint64_t ref_explosion_type = ids.ref_at( 75, 0xdc89eb9cd3393be5ull );
@@ -9683,7 +9520,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionSaveBody( TableWriter & w, TableIds &
         if ( !TableEnumRef( ids, value.explosion_type, variant_explosion_type ) ) { return false; }
         w.header( ref_explosion_type, 30 ); w.putleb( variant_explosion_type ); // explosion_type
     }
-    if ( value.team != Team::None )
     {
         if ( !TableEnumNamed( value.team ) ) { return false; }
         const uint64_t ref_team = ids.ref_at( 85, 0xfa23d9ef19afc32cull );
@@ -10359,10 +10195,10 @@ inline bool RenderExplosionLoadMessages( RenderExplosion * values, int64_t * cou
 
 inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
+    bytes += TableLebBytes( ids.ref_at( 59, 0xbb62c62c9808ea37ull ) ) + 1 + 8; // version
     if ( value.cameras_count < 0 || value.cameras_count > 1 ) { return -1; } // storage invariant
-    if ( value.cameras_count > 0 )
     {
         const uint64_t ref_cameras = ids.ref_at( 4, 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
@@ -10376,7 +10212,6 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_cameras ) + 1 + TableLebBytes( (uint64_t) ( body_cameras ) ) + ( body_cameras ); // cameras
     }
     if ( value.ships_count < 0 || value.ships_count > 4096 ) { return -1; } // storage invariant
-    if ( value.ships_count > 0 )
     {
         const uint64_t ref_ships = ids.ref_at( 12, 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
@@ -10390,7 +10225,6 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_ships ) + 1 + TableLebBytes( (uint64_t) ( body_ships ) ) + ( body_ships ); // ships
     }
     if ( value.turrets_count < 0 || value.turrets_count > 1024 ) { return -1; } // storage invariant
-    if ( value.turrets_count > 0 )
     {
         const uint64_t ref_turrets = ids.ref_at( 38, 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
@@ -10404,7 +10238,6 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_turrets ) + 1 + TableLebBytes( (uint64_t) ( body_turrets ) ) + ( body_turrets ); // turrets
     }
     if ( value.missiles_count < 0 || value.missiles_count > 4096 ) { return -1; } // storage invariant
-    if ( value.missiles_count > 0 )
     {
         const uint64_t ref_missiles = ids.ref_at( 9, 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
@@ -10418,7 +10251,6 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_missiles ) + 1 + TableLebBytes( (uint64_t) ( body_missiles ) ) + ( body_missiles ); // missiles
     }
     if ( value.dynamic_props_count < 0 || value.dynamic_props_count > 4096 ) { return -1; } // storage invariant
-    if ( value.dynamic_props_count > 0 )
     {
         const uint64_t ref_dynamic_props = ids.ref_at( 19, 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
@@ -10432,7 +10264,6 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_dynamic_props ) + 1 + TableLebBytes( (uint64_t) ( body_dynamic_props ) ) + ( body_dynamic_props ); // dynamic_props
     }
     if ( value.static_props_count < 0 || value.static_props_count > 20000 ) { return -1; } // storage invariant
-    if ( value.static_props_count > 0 )
     {
         const uint64_t ref_static_props = ids.ref_at( 62, 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
@@ -10446,7 +10277,6 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_static_props ) + 1 + TableLebBytes( (uint64_t) ( body_static_props ) ) + ( body_static_props ); // static_props
     }
     if ( value.cosmetic_props_count < 0 || value.cosmetic_props_count > 8192 ) { return -1; } // storage invariant
-    if ( value.cosmetic_props_count > 0 )
     {
         const uint64_t ref_cosmetic_props = ids.ref_at( 14, 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
@@ -10460,7 +10290,6 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_cosmetic_props ) + 1 + TableLebBytes( (uint64_t) ( body_cosmetic_props ) ) + ( body_cosmetic_props ); // cosmetic_props
     }
     if ( value.lasers_count < 0 || value.lasers_count > 32000 ) { return -1; } // storage invariant
-    if ( value.lasers_count > 0 )
     {
         const uint64_t ref_lasers = ids.ref_at( 74, 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
@@ -10474,7 +10303,6 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_lasers ) + 1 + TableLebBytes( (uint64_t) ( body_lasers ) ) + ( body_lasers ); // lasers
     }
     if ( value.explosions_count < 0 || value.explosions_count > 32000 ) { return -1; } // storage invariant
-    if ( value.explosions_count > 0 )
     {
         const uint64_t ref_explosions = ids.ref_at( 39, 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
@@ -10500,13 +10328,11 @@ inline int64_t RenderFrameMeasure( const RenderFrame & value )
 
 BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids, const RenderFrame & value )
 {
-    if ( value.version != 0 )
     {
         w.header( ids.ref_at( 59, 0xbb62c62c9808ea37ull ), 9 ); // version
         w.put64( uint64_t( value.version ) );
     }
     if ( value.cameras_count < 0 || value.cameras_count > 1 ) { return false; } // storage invariant
-    if ( value.cameras_count > 0 )
     {
         const uint64_t ref_cameras = ids.ref_at( 4, 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
@@ -10535,7 +10361,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.ships_count < 0 || value.ships_count > 4096 ) { return false; } // storage invariant
-    if ( value.ships_count > 0 )
     {
         const uint64_t ref_ships = ids.ref_at( 12, 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
@@ -10564,7 +10389,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.turrets_count < 0 || value.turrets_count > 1024 ) { return false; } // storage invariant
-    if ( value.turrets_count > 0 )
     {
         const uint64_t ref_turrets = ids.ref_at( 38, 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
@@ -10593,7 +10417,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.missiles_count < 0 || value.missiles_count > 4096 ) { return false; } // storage invariant
-    if ( value.missiles_count > 0 )
     {
         const uint64_t ref_missiles = ids.ref_at( 9, 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
@@ -10622,7 +10445,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.dynamic_props_count < 0 || value.dynamic_props_count > 4096 ) { return false; } // storage invariant
-    if ( value.dynamic_props_count > 0 )
     {
         const uint64_t ref_dynamic_props = ids.ref_at( 19, 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
@@ -10651,7 +10473,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.static_props_count < 0 || value.static_props_count > 20000 ) { return false; } // storage invariant
-    if ( value.static_props_count > 0 )
     {
         const uint64_t ref_static_props = ids.ref_at( 62, 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
@@ -10680,7 +10501,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.cosmetic_props_count < 0 || value.cosmetic_props_count > 8192 ) { return false; } // storage invariant
-    if ( value.cosmetic_props_count > 0 )
     {
         const uint64_t ref_cosmetic_props = ids.ref_at( 14, 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
@@ -10709,7 +10529,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.lasers_count < 0 || value.lasers_count > 32000 ) { return false; } // storage invariant
-    if ( value.lasers_count > 0 )
     {
         const uint64_t ref_lasers = ids.ref_at( 74, 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
@@ -10738,7 +10557,6 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     if ( value.explosions_count < 0 || value.explosions_count > 32000 ) { return false; } // storage invariant
-    if ( value.explosions_count > 0 )
     {
         const uint64_t ref_explosions = ids.ref_at( 39, 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
@@ -12098,10 +11916,11 @@ inline bool RenderFrameLoadMessages( RenderFrame * values, int64_t * count, cons
 
 inline int64_t RenderVector3MeasureBody( TableIds & ids, const RenderVector3 & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0xaf63f54c86021707ull ) ) + 1 + 8; } // x
-    if ( value.y != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 52, 0xaf63f44c86021554ull ) ) + 1 + 8; } // y
-    if ( value.z != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0xaf63f74c86021a6dull ) ) + 1 + 8; } // z
+    bytes += TableLebBytes( ids.ref_at( 53, 0xaf63f54c86021707ull ) ) + 1 + 8; // x
+    bytes += TableLebBytes( ids.ref_at( 52, 0xaf63f44c86021554ull ) ) + 1 + 8; // y
+    bytes += TableLebBytes( ids.ref_at( 54, 0xaf63f74c86021a6dull ) ) + 1 + 8; // z
     return bytes;
 }
 
@@ -12115,17 +11934,14 @@ inline int64_t RenderVector3Measure( const RenderVector3 & value )
 
 BLOCKDEMO_TABLE_INLINE bool RenderVector3SaveBody( TableWriter & w, TableIds & ids, const RenderVector3 & value )
 {
-    if ( value.x != 0.0 )
     {
         w.header( ids.ref_at( 53, 0xaf63f54c86021707ull ), 11 ); // x
         w.put64( table_double_to_bits( value.x ) );
     }
-    if ( value.y != 0.0 )
     {
         w.header( ids.ref_at( 52, 0xaf63f44c86021554ull ), 11 ); // y
         w.put64( table_double_to_bits( value.y ) );
     }
-    if ( value.z != 0.0 )
     {
         w.header( ids.ref_at( 54, 0xaf63f74c86021a6dull ), 11 ); // z
         w.put64( table_double_to_bits( value.z ) );
@@ -12556,11 +12372,12 @@ inline bool RenderVector3LoadMessages( RenderVector3 * values, int64_t * count, 
 
 inline int64_t RenderQuaternionMeasureBody( TableIds & ids, const RenderQuaternion & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.x != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0xaf63f54c86021707ull ) ) + 1 + 8; } // x
-    if ( value.y != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 52, 0xaf63f44c86021554ull ) ) + 1 + 8; } // y
-    if ( value.z != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0xaf63f74c86021a6dull ) ) + 1 + 8; } // z
-    if ( value.w != 1.0 ) { bytes += TableLebBytes( ids.ref_at( 51, 0xaf63ea4c86020456ull ) ) + 1 + 8; } // w
+    bytes += TableLebBytes( ids.ref_at( 53, 0xaf63f54c86021707ull ) ) + 1 + 8; // x
+    bytes += TableLebBytes( ids.ref_at( 52, 0xaf63f44c86021554ull ) ) + 1 + 8; // y
+    bytes += TableLebBytes( ids.ref_at( 54, 0xaf63f74c86021a6dull ) ) + 1 + 8; // z
+    bytes += TableLebBytes( ids.ref_at( 51, 0xaf63ea4c86020456ull ) ) + 1 + 8; // w
     return bytes;
 }
 
@@ -12574,22 +12391,18 @@ inline int64_t RenderQuaternionMeasure( const RenderQuaternion & value )
 
 BLOCKDEMO_TABLE_INLINE bool RenderQuaternionSaveBody( TableWriter & w, TableIds & ids, const RenderQuaternion & value )
 {
-    if ( value.x != 0.0 )
     {
         w.header( ids.ref_at( 53, 0xaf63f54c86021707ull ), 11 ); // x
         w.put64( table_double_to_bits( value.x ) );
     }
-    if ( value.y != 0.0 )
     {
         w.header( ids.ref_at( 52, 0xaf63f44c86021554ull ), 11 ); // y
         w.put64( table_double_to_bits( value.y ) );
     }
-    if ( value.z != 0.0 )
     {
         w.header( ids.ref_at( 54, 0xaf63f74c86021a6dull ), 11 ); // z
         w.put64( table_double_to_bits( value.z ) );
     }
-    if ( value.w != 1.0 )
     {
         w.header( ids.ref_at( 51, 0xaf63ea4c86020456ull ), 11 ); // w
         w.put64( table_double_to_bits( value.w ) );

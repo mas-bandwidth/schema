@@ -227,6 +227,7 @@ static BenchMixed pin_bench_mixed()
     in.crc_hint = 0xABCDEFu;
     in.has_extra = true;
     in.extra = 200;
+    in.idle_ticks = 9;           // rides now: the branch that gated it is gone
     return in;
 }
 
@@ -385,7 +386,7 @@ int main()
     static_assert( BenchPacketMaxBits == 392, "§1.3: BenchPacket is 392 bits" );
     static_assert( BenchIntsMaxBits == 110, "§1.3: BenchInts is 110 bits" );
     static_assert( BenchBitsMaxBits == 156, "§1.3: BenchBits is 156 bits" );
-    static_assert( BenchMixedMaxBits == 3626, "§1.3: BenchMixed's worst case is 3626 bits (the pinned wire is 3504 = 438 bytes)" );
+    static_assert( BenchMixedMaxBits == 3630, "§1.3: BenchMixed's worst case is 3630 bits (the pinned wire is 3508 bits in 438 bytes)" );
     // worst case includes the 181 bits of untaken branch bodies; the pinned
     // all-defaults wire is 1629 bits = 204 bytes (RealWorld.schema header)
     static_assert( realworld::RealPacketMaxBits == 1810, "RealWorld.schema: RealPacket worst case is 1810 bits" );

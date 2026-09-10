@@ -295,6 +295,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    TABLEDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     TABLEDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     TABLEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     TABLEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -2705,30 +2717,31 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsLoadBody( TableReader & r, RangedWidths 
 
 inline int64_t RangedSignedMeasureBody( TableIds & ids, const RangedSigned & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.i8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0x48121511bf702eb5ull ) ) + 1 + 1; } // i8_span
-    if ( value.i8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0x942bfe3168090f7dull ) ) + 1 + 1; } // i8_low
-    if ( value.i8_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 126, 0xd182acd105b55dd1ull ) ) + 1 + 1; } // i8_high
-    if ( value.i8_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 141, 0xef9ded23c8912a81ull ) ) + 1 + 1; } // i8_inside
-    if ( value.i16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 100, 0xb655574ea23760b4ull ) ) + 1 + 2; } // i16_span
-    if ( value.i16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 127, 0xd217b3af8d7a2bdeull ) ) + 1 + 2; } // i16_low
-    if ( value.i16_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 75, 0x90652f70c9127900ull ) ) + 1 + 2; } // i16_high
-    if ( value.i16_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 58, 0x6a659d7c354db158ull ) ) + 1 + 2; } // i16_inside
-    if ( value.i32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 137, 0xe693bd88532c91d6ull ) ) + 1 + 4; } // i32_span
-    if ( value.i32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 5, 0x065ee827cf99fbb4ull ) ) + 1 + 4; } // i32_low
-    if ( value.i32_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 118, 0xc9b121c4c2a186eeull ) ) + 1 + 4; } // i32_high
-    if ( value.i32_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 129, 0xd363dfa465acf27aull ) ) + 1 + 4; } // i32_inside
-    if ( value.i64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 63, 0x7549c70700c49d6full ) ) + 1 + 8; } // i64_span
-    if ( value.i64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 16, 0x1cce6617419771dbull ) ) + 1 + 8; } // i64_low
-    if ( value.i64_high != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x3b54fa60620b5597ull ) ) + 1 + 8; } // i64_high
-    if ( value.i64_inside != 0 ) { bytes += TableLebBytes( ids.ref_at( 128, 0xd308fcb98ece5d23ull ) ) + 1 + 8; } // i64_inside
+    bytes += TableLebBytes( ids.ref_at( 43, 0x48121511bf702eb5ull ) ) + 1 + 1; // i8_span
+    bytes += TableLebBytes( ids.ref_at( 76, 0x942bfe3168090f7dull ) ) + 1 + 1; // i8_low
+    bytes += TableLebBytes( ids.ref_at( 126, 0xd182acd105b55dd1ull ) ) + 1 + 1; // i8_high
+    bytes += TableLebBytes( ids.ref_at( 141, 0xef9ded23c8912a81ull ) ) + 1 + 1; // i8_inside
+    bytes += TableLebBytes( ids.ref_at( 100, 0xb655574ea23760b4ull ) ) + 1 + 2; // i16_span
+    bytes += TableLebBytes( ids.ref_at( 127, 0xd217b3af8d7a2bdeull ) ) + 1 + 2; // i16_low
+    bytes += TableLebBytes( ids.ref_at( 75, 0x90652f70c9127900ull ) ) + 1 + 2; // i16_high
+    bytes += TableLebBytes( ids.ref_at( 58, 0x6a659d7c354db158ull ) ) + 1 + 2; // i16_inside
+    bytes += TableLebBytes( ids.ref_at( 137, 0xe693bd88532c91d6ull ) ) + 1 + 4; // i32_span
+    bytes += TableLebBytes( ids.ref_at( 5, 0x065ee827cf99fbb4ull ) ) + 1 + 4; // i32_low
+    bytes += TableLebBytes( ids.ref_at( 118, 0xc9b121c4c2a186eeull ) ) + 1 + 4; // i32_high
+    bytes += TableLebBytes( ids.ref_at( 129, 0xd363dfa465acf27aull ) ) + 1 + 4; // i32_inside
+    bytes += TableLebBytes( ids.ref_at( 63, 0x7549c70700c49d6full ) ) + 1 + 8; // i64_span
+    bytes += TableLebBytes( ids.ref_at( 16, 0x1cce6617419771dbull ) ) + 1 + 8; // i64_low
+    bytes += TableLebBytes( ids.ref_at( 36, 0x3b54fa60620b5597ull ) ) + 1 + 8; // i64_high
+    bytes += TableLebBytes( ids.ref_at( 128, 0xd308fcb98ece5d23ull ) ) + 1 + 8; // i64_inside
     if ( value.edges_count < 0 || value.edges_count > 4 ) { return -1; } // storage invariant
-    if ( value.edges_count > 0 )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
         body_edges += 1 + TableLebBytes( (uint64_t) ( value.edges_count ) ); // the element kind byte and the count
         body_edges += (int64_t) ( value.edges_count ) * 2;
+        body_edges += ( (int64_t) 4 - (int64_t) value.edges_count ) * 2; // the elements ride at the BOUND (§3)
         bytes += TableLebBytes( ref_edges ) + 1 + TableLebBytes( (uint64_t) ( body_edges ) ) + ( body_edges ); // edges
     }
     return bytes;
@@ -2744,99 +2757,84 @@ inline int64_t RangedSignedMeasure( const RangedSigned & value )
 
 TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & ids, const RangedSigned & value )
 {
-    if ( value.i8_span != 0 )
     {
         w.header( ids.ref_at( 43, 0x48121511bf702eb5ull ), 2 ); // i8_span
         w.put8( uint8_t( value.i8_span ) );
     }
-    if ( value.i8_low != 0 )
     {
         w.header( ids.ref_at( 76, 0x942bfe3168090f7dull ), 2 ); // i8_low
         w.put8( uint8_t( value.i8_low ) );
     }
-    if ( value.i8_high != 0 )
     {
         w.header( ids.ref_at( 126, 0xd182acd105b55dd1ull ), 2 ); // i8_high
         w.put8( uint8_t( value.i8_high ) );
     }
-    if ( value.i8_inside != 0 )
     {
         w.header( ids.ref_at( 141, 0xef9ded23c8912a81ull ), 2 ); // i8_inside
         w.put8( uint8_t( value.i8_inside ) );
     }
-    if ( value.i16_span != 0 )
     {
         w.header( ids.ref_at( 100, 0xb655574ea23760b4ull ), 3 ); // i16_span
         w.put16( uint16_t( value.i16_span ) );
     }
-    if ( value.i16_low != 0 )
     {
         w.header( ids.ref_at( 127, 0xd217b3af8d7a2bdeull ), 3 ); // i16_low
         w.put16( uint16_t( value.i16_low ) );
     }
-    if ( value.i16_high != 0 )
     {
         w.header( ids.ref_at( 75, 0x90652f70c9127900ull ), 3 ); // i16_high
         w.put16( uint16_t( value.i16_high ) );
     }
-    if ( value.i16_inside != 0 )
     {
         w.header( ids.ref_at( 58, 0x6a659d7c354db158ull ), 3 ); // i16_inside
         w.put16( uint16_t( value.i16_inside ) );
     }
-    if ( value.i32_span != 0 )
     {
         w.header( ids.ref_at( 137, 0xe693bd88532c91d6ull ), 4 ); // i32_span
         w.put32( uint32_t( value.i32_span ) );
     }
-    if ( value.i32_low != 0 )
     {
         w.header( ids.ref_at( 5, 0x065ee827cf99fbb4ull ), 4 ); // i32_low
         w.put32( uint32_t( value.i32_low ) );
     }
-    if ( value.i32_high != 0 )
     {
         w.header( ids.ref_at( 118, 0xc9b121c4c2a186eeull ), 4 ); // i32_high
         w.put32( uint32_t( value.i32_high ) );
     }
-    if ( value.i32_inside != 0 )
     {
         w.header( ids.ref_at( 129, 0xd363dfa465acf27aull ), 4 ); // i32_inside
         w.put32( uint32_t( value.i32_inside ) );
     }
-    if ( value.i64_span != 0 )
     {
         w.header( ids.ref_at( 63, 0x7549c70700c49d6full ), 5 ); // i64_span
         w.put64( uint64_t( value.i64_span ) );
     }
-    if ( value.i64_low != 0 )
     {
         w.header( ids.ref_at( 16, 0x1cce6617419771dbull ), 5 ); // i64_low
         w.put64( uint64_t( value.i64_low ) );
     }
-    if ( value.i64_high != 0 )
     {
         w.header( ids.ref_at( 36, 0x3b54fa60620b5597ull ), 5 ); // i64_high
         w.put64( uint64_t( value.i64_high ) );
     }
-    if ( value.i64_inside != 0 )
     {
         w.header( ids.ref_at( 128, 0xd308fcb98ece5d23ull ), 5 ); // i64_inside
         w.put64( uint64_t( value.i64_inside ) );
     }
     if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; } // storage invariant
-    if ( value.edges_count > 0 )
     {
         const uint64_t ref_edges = ids.ref_at( 117, 0xc70cde6b85b6197dull );
         int64_t body_edges = 0;
         body_edges += 1 + TableLebBytes( (uint64_t) ( value.edges_count ) ); // the element kind byte and the count
         body_edges += (int64_t) ( value.edges_count ) * 2;
+        body_edges += ( (int64_t) 4 - (int64_t) value.edges_count ) * 2; // the elements ride at the BOUND (§3)
         w.header( ref_edges, 14 ); w.putleb( (uint64_t) body_edges ); // edges
         w.put8( 3 ); w.putleb( (uint64_t) ( value.edges_count ) );
         for ( int32_t elem_i = 0; elem_i < value.edges_count; elem_i++ )
         {
             w.put16( uint16_t( value.edges[elem_i] ) );
         }
+        w.zeros( ( (int64_t) 4 - (int64_t) value.edges_count ) * 2 ); // the slack above the count, which no reader reads
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -4519,30 +4517,31 @@ inline bool RangedSignedLoadMessages( RangedSigned * values, int64_t * count, co
 
 inline int64_t RangedUnsignedMeasureBody( TableIds & ids, const RangedUnsigned & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.u8_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 8, 0x0f8897557f37c021ull ) ) + 1 + 1; } // u8_span
-    if ( value.u8_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 28, 0x2e17553f8200a2a1ull ) ) + 1 + 1; } // u8_low
-    if ( value.u8_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 84, 0xa0e5c60df9301b7dull ) ) + 1 + 1; } // u8_high
-    if ( value.u8_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 15, 0x1cb2c073a6f5844dull ) ) + 1 + 1; } // u8_inside
-    if ( value.u16_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 46, 0x4ca0c150b1790960ull ) ) + 1 + 2; } // u16_span
-    if ( value.u16_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 143, 0xf252136836b04cb2ull ) ) + 1 + 2; } // u16_low
-    if ( value.u16_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 48, 0x4f37e1f216e7610cull ) ) + 1 + 2; } // u16_high
-    if ( value.u16_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 125, 0xd176b605978f3304ull ) ) + 1 + 2; } // u16_inside
-    if ( value.u32_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x200b924de7479cdaull ) ) + 1 + 4; } // u32_span
-    if ( value.u32_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 87, 0xa53d2f2a31b5acb0ull ) ) + 1 + 4; } // u32_low
-    if ( value.u32_high != 1 ) { bytes += TableLebBytes( ids.ref_at( 78, 0x9759be8ea1a4e3d2ull ) ) + 1 + 4; } // u32_high
-    if ( value.u32_inside != 1 ) { bytes += TableLebBytes( ids.ref_at( 74, 0x8dc515fc082e3c0eull ) ) + 1 + 4; } // u32_inside
-    if ( value.u64_span != 0 ) { bytes += TableLebBytes( ids.ref_at( 109, 0xbeecef11dbdf8973ull ) ) + 1 + 8; } // u64_span
-    if ( value.u64_low != 0 ) { bytes += TableLebBytes( ids.ref_at( 0, 0x0117ad66e0fff227ull ) ) + 1 + 8; } // u64_low
-    if ( value.u64_high != 1ull ) { bytes += TableLebBytes( ids.ref_at( 144, 0xf2b45af3b50689dbull ) ) + 1 + 8; } // u64_high
-    if ( value.u64_inside != 1ull ) { bytes += TableLebBytes( ids.ref_at( 62, 0x713e12017eebcaf7ull ) ) + 1 + 8; } // u64_inside
+    bytes += TableLebBytes( ids.ref_at( 8, 0x0f8897557f37c021ull ) ) + 1 + 1; // u8_span
+    bytes += TableLebBytes( ids.ref_at( 28, 0x2e17553f8200a2a1ull ) ) + 1 + 1; // u8_low
+    bytes += TableLebBytes( ids.ref_at( 84, 0xa0e5c60df9301b7dull ) ) + 1 + 1; // u8_high
+    bytes += TableLebBytes( ids.ref_at( 15, 0x1cb2c073a6f5844dull ) ) + 1 + 1; // u8_inside
+    bytes += TableLebBytes( ids.ref_at( 46, 0x4ca0c150b1790960ull ) ) + 1 + 2; // u16_span
+    bytes += TableLebBytes( ids.ref_at( 143, 0xf252136836b04cb2ull ) ) + 1 + 2; // u16_low
+    bytes += TableLebBytes( ids.ref_at( 48, 0x4f37e1f216e7610cull ) ) + 1 + 2; // u16_high
+    bytes += TableLebBytes( ids.ref_at( 125, 0xd176b605978f3304ull ) ) + 1 + 2; // u16_inside
+    bytes += TableLebBytes( ids.ref_at( 21, 0x200b924de7479cdaull ) ) + 1 + 4; // u32_span
+    bytes += TableLebBytes( ids.ref_at( 87, 0xa53d2f2a31b5acb0ull ) ) + 1 + 4; // u32_low
+    bytes += TableLebBytes( ids.ref_at( 78, 0x9759be8ea1a4e3d2ull ) ) + 1 + 4; // u32_high
+    bytes += TableLebBytes( ids.ref_at( 74, 0x8dc515fc082e3c0eull ) ) + 1 + 4; // u32_inside
+    bytes += TableLebBytes( ids.ref_at( 109, 0xbeecef11dbdf8973ull ) ) + 1 + 8; // u64_span
+    bytes += TableLebBytes( ids.ref_at( 0, 0x0117ad66e0fff227ull ) ) + 1 + 8; // u64_low
+    bytes += TableLebBytes( ids.ref_at( 144, 0xf2b45af3b50689dbull ) ) + 1 + 8; // u64_high
+    bytes += TableLebBytes( ids.ref_at( 62, 0x713e12017eebcaf7ull ) ) + 1 + 8; // u64_inside
     if ( value.counts_count < 0 || value.counts_count > 4 ) { return -1; } // storage invariant
-    if ( value.counts_count > 0 )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
         body_counts += 1 + TableLebBytes( (uint64_t) ( value.counts_count ) ); // the element kind byte and the count
         body_counts += (int64_t) ( value.counts_count ) * 8;
+        body_counts += ( (int64_t) 4 - (int64_t) value.counts_count ) * 8; // the elements ride at the BOUND (§3)
         bytes += TableLebBytes( ref_counts ) + 1 + TableLebBytes( (uint64_t) ( body_counts ) ) + ( body_counts ); // counts
     }
     return bytes;
@@ -4558,99 +4557,84 @@ inline int64_t RangedUnsignedMeasure( const RangedUnsigned & value )
 
 TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & ids, const RangedUnsigned & value )
 {
-    if ( value.u8_span != 0 )
     {
         w.header( ids.ref_at( 8, 0x0f8897557f37c021ull ), 6 ); // u8_span
         w.put8( uint8_t( value.u8_span ) );
     }
-    if ( value.u8_low != 0 )
     {
         w.header( ids.ref_at( 28, 0x2e17553f8200a2a1ull ), 6 ); // u8_low
         w.put8( uint8_t( value.u8_low ) );
     }
-    if ( value.u8_high != 1 )
     {
         w.header( ids.ref_at( 84, 0xa0e5c60df9301b7dull ), 6 ); // u8_high
         w.put8( uint8_t( value.u8_high ) );
     }
-    if ( value.u8_inside != 1 )
     {
         w.header( ids.ref_at( 15, 0x1cb2c073a6f5844dull ), 6 ); // u8_inside
         w.put8( uint8_t( value.u8_inside ) );
     }
-    if ( value.u16_span != 0 )
     {
         w.header( ids.ref_at( 46, 0x4ca0c150b1790960ull ), 7 ); // u16_span
         w.put16( uint16_t( value.u16_span ) );
     }
-    if ( value.u16_low != 0 )
     {
         w.header( ids.ref_at( 143, 0xf252136836b04cb2ull ), 7 ); // u16_low
         w.put16( uint16_t( value.u16_low ) );
     }
-    if ( value.u16_high != 1 )
     {
         w.header( ids.ref_at( 48, 0x4f37e1f216e7610cull ), 7 ); // u16_high
         w.put16( uint16_t( value.u16_high ) );
     }
-    if ( value.u16_inside != 1 )
     {
         w.header( ids.ref_at( 125, 0xd176b605978f3304ull ), 7 ); // u16_inside
         w.put16( uint16_t( value.u16_inside ) );
     }
-    if ( value.u32_span != 0 )
     {
         w.header( ids.ref_at( 21, 0x200b924de7479cdaull ), 8 ); // u32_span
         w.put32( uint32_t( value.u32_span ) );
     }
-    if ( value.u32_low != 0 )
     {
         w.header( ids.ref_at( 87, 0xa53d2f2a31b5acb0ull ), 8 ); // u32_low
         w.put32( uint32_t( value.u32_low ) );
     }
-    if ( value.u32_high != 1 )
     {
         w.header( ids.ref_at( 78, 0x9759be8ea1a4e3d2ull ), 8 ); // u32_high
         w.put32( uint32_t( value.u32_high ) );
     }
-    if ( value.u32_inside != 1 )
     {
         w.header( ids.ref_at( 74, 0x8dc515fc082e3c0eull ), 8 ); // u32_inside
         w.put32( uint32_t( value.u32_inside ) );
     }
-    if ( value.u64_span != 0 )
     {
         w.header( ids.ref_at( 109, 0xbeecef11dbdf8973ull ), 9 ); // u64_span
         w.put64( uint64_t( value.u64_span ) );
     }
-    if ( value.u64_low != 0 )
     {
         w.header( ids.ref_at( 0, 0x0117ad66e0fff227ull ), 9 ); // u64_low
         w.put64( uint64_t( value.u64_low ) );
     }
-    if ( value.u64_high != 1ull )
     {
         w.header( ids.ref_at( 144, 0xf2b45af3b50689dbull ), 9 ); // u64_high
         w.put64( uint64_t( value.u64_high ) );
     }
-    if ( value.u64_inside != 1ull )
     {
         w.header( ids.ref_at( 62, 0x713e12017eebcaf7ull ), 9 ); // u64_inside
         w.put64( uint64_t( value.u64_inside ) );
     }
     if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; } // storage invariant
-    if ( value.counts_count > 0 )
     {
         const uint64_t ref_counts = ids.ref_at( 112, 0xc341febe5aae51e5ull );
         int64_t body_counts = 0;
         body_counts += 1 + TableLebBytes( (uint64_t) ( value.counts_count ) ); // the element kind byte and the count
         body_counts += (int64_t) ( value.counts_count ) * 8;
+        body_counts += ( (int64_t) 4 - (int64_t) value.counts_count ) * 8; // the elements ride at the BOUND (§3)
         w.header( ref_counts, 14 ); w.putleb( (uint64_t) body_counts ); // counts
         w.put8( 9 ); w.putleb( (uint64_t) ( value.counts_count ) );
         for ( int32_t elem_i = 0; elem_i < value.counts_count; elem_i++ )
         {
             w.put64( uint64_t( value.counts[elem_i] ) );
         }
+        w.zeros( ( (int64_t) 4 - (int64_t) value.counts_count ) * 8 ); // the slack above the count, which no reader reads
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
     return !w.overflow;
@@ -6169,13 +6153,14 @@ inline bool RangedUnsignedLoadMessages( RangedUnsigned * values, int64_t * count
 
 inline int64_t RangedWidthsMeasureBody( TableIds & ids, const RangedWidths & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.b8 != 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ) ) + 1 + 1; } // b8
-    if ( value.b16 != 0 ) { bytes += TableLebBytes( ids.ref_at( 149, 0xff95701912ad97beull ) ) + 1 + 2; } // b16
-    if ( value.b32 != 0 ) { bytes += TableLebBytes( ids.ref_at( 151, 0xff9c5c1912b39470ull ) ) + 1 + 4; } // b32
-    if ( value.b64 != 0 ) { bytes += TableLebBytes( ids.ref_at( 148, 0xff92701912ab61e7ull ) ) + 1 + 8; } // b64
-    if ( value.b12 != 0 ) { bytes += TableLebBytes( ids.ref_at( 150, 0xff95741912ad9e8aull ) ) + 1 + 2; } // b12
-    if ( value.b48 != 0 ) { bytes += TableLebBytes( ids.ref_at( 147, 0xff8b681912a535a1ull ) ) + 1 + 8; } // b48
+    bytes += TableLebBytes( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ) ) + 1 + 1; // b8
+    bytes += TableLebBytes( ids.ref_at( 149, 0xff95701912ad97beull ) ) + 1 + 2; // b16
+    bytes += TableLebBytes( ids.ref_at( 151, 0xff9c5c1912b39470ull ) ) + 1 + 4; // b32
+    bytes += TableLebBytes( ids.ref_at( 148, 0xff92701912ab61e7ull ) ) + 1 + 8; // b64
+    bytes += TableLebBytes( ids.ref_at( 150, 0xff95741912ad9e8aull ) ) + 1 + 2; // b12
+    bytes += TableLebBytes( ids.ref_at( 147, 0xff8b681912a535a1ull ) ) + 1 + 8; // b48
     return bytes;
 }
 
@@ -6189,32 +6174,26 @@ inline int64_t RangedWidthsMeasure( const RangedWidths & value )
 
 TABLEDEMO_TABLE_INLINE bool RangedWidthsSaveBody( TableWriter & w, TableIds & ids, const RangedWidths & value )
 {
-    if ( value.b8 != 0 )
     {
         w.header( ids.ref_at( 6, 0x08a60c07b54d8dc7ull ), 6 ); // b8
         w.put8( uint8_t( value.b8 ) );
     }
-    if ( value.b16 != 0 )
     {
         w.header( ids.ref_at( 149, 0xff95701912ad97beull ), 7 ); // b16
         w.put16( uint16_t( value.b16 ) );
     }
-    if ( value.b32 != 0 )
     {
         w.header( ids.ref_at( 151, 0xff9c5c1912b39470ull ), 8 ); // b32
         w.put32( uint32_t( value.b32 ) );
     }
-    if ( value.b64 != 0 )
     {
         w.header( ids.ref_at( 148, 0xff92701912ab61e7ull ), 9 ); // b64
         w.put64( uint64_t( value.b64 ) );
     }
-    if ( value.b12 != 0 )
     {
         w.header( ids.ref_at( 150, 0xff95741912ad9e8aull ), 7 ); // b12
         w.put16( uint16_t( value.b12 ) );
     }
-    if ( value.b48 != 0 )
     {
         w.header( ids.ref_at( 147, 0xff8b681912a535a1ull ), 9 ); // b48
         w.put64( uint64_t( value.b48 ) );

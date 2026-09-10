@@ -335,6 +335,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    LISTDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     LISTDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     LISTDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     LISTDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -6596,8 +6608,9 @@ inline bool UnboundedLoadMessageBodyRetain( TableBitReader & r, const TableVocab
 
 inline int64_t UnitMeasureBody( TableIds & ids, const Unit & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.v != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0xaf63eb4c86020609ull ) ) + 1 + 4; } // v
+    bytes += TableLebBytes( ids.ref_at( 40, 0xaf63eb4c86020609ull ) ) + 1 + 4; // v
     return bytes;
 }
 
@@ -6611,7 +6624,6 @@ inline int64_t UnitMeasure( const Unit & value )
 
 LISTDEMO_TABLE_INLINE bool UnitSaveBody( TableWriter & w, TableIds & ids, const Unit & value )
 {
-    if ( value.v != 0 )
     {
         w.header( ids.ref_at( 40, 0xaf63eb4c86020609ull ), 4 ); // v
         w.put32( uint32_t( value.v ) );
@@ -6927,9 +6939,9 @@ inline bool UnitLoadMessages( Unit * values, int64_t * count, const TableVocabul
 
 inline int64_t BoundedMeasureBody( TableIds & ids, const Bounded & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.items_count < 0 || value.items_count > 8 ) { return -1; } // storage invariant
-    if ( value.items_count > 0 )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
         int64_t body_items = 0;
@@ -6942,7 +6954,7 @@ inline int64_t BoundedMeasureBody( TableIds & ids, const Bounded & value )
         }
         bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items ); // items
     }
-    if ( value.tag != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x56d7ab194448a4f3ull ) ) + 1 + 4; } // tag
+    bytes += TableLebBytes( ids.ref_at( 21, 0x56d7ab194448a4f3ull ) ) + 1 + 4; // tag
     return bytes;
 }
 
@@ -6957,7 +6969,6 @@ inline int64_t BoundedMeasure( const Bounded & value )
 LISTDEMO_TABLE_INLINE bool BoundedSaveBody( TableWriter & w, TableIds & ids, const Bounded & value )
 {
     if ( value.items_count < 0 || value.items_count > 8 ) { return false; } // storage invariant
-    if ( value.items_count > 0 )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
         int64_t body_items = 0;
@@ -6985,7 +6996,6 @@ LISTDEMO_TABLE_INLINE bool BoundedSaveBody( TableWriter & w, TableIds & ids, con
             }
         }
     }
-    if ( value.tag != 0 )
     {
         w.header( ids.ref_at( 21, 0x56d7ab194448a4f3ull ), 4 ); // tag
         w.put32( uint32_t( value.tag ) );
@@ -8881,15 +8891,15 @@ inline bool UnboundedLoadBuilder( UnboundedBuilder & builder, const uint8_t * wi
 
 inline int64_t UnitMeasureBodyRetain( TableRetainIds & ids, const Unit & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.v != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0xaf63eb4c86020609ull ) ) + 1 + 4; } // v
+    bytes += TableLebBytes( ids.ref_at( 40, 0xaf63eb4c86020609ull ) ) + 1 + 4; // v
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 LISTDEMO_TABLE_INLINE bool UnitSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Unit & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.v != 0 )
     {
         w.header( ids.ref_at( 40, 0xaf63eb4c86020609ull ), 4 ); // v
         w.put32( uint32_t( value.v ) );
@@ -9059,9 +9069,9 @@ inline bool UnitLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
 
 inline int64_t BoundedMeasureBodyRetain( TableRetainIds & ids, const Bounded & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.items_count < 0 || value.items_count > 8 ) { return -1; } // storage invariant
-    if ( value.items_count > 0 )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
         int64_t body_items = 0;
@@ -9074,7 +9084,7 @@ inline int64_t BoundedMeasureBodyRetain( TableRetainIds & ids, const Bounded & v
         }
         bytes += TableLebBytes( ref_items ) + 1 + TableLebBytes( (uint64_t) ( body_items ) ) + ( body_items ); // items
     }
-    if ( value.tag != 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x56d7ab194448a4f3ull ) ) + 1 + 4; } // tag
+    bytes += TableLebBytes( ids.ref_at( 21, 0x56d7ab194448a4f3ull ) ) + 1 + 4; // tag
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -9082,7 +9092,6 @@ inline int64_t BoundedMeasureBodyRetain( TableRetainIds & ids, const Bounded & v
 LISTDEMO_TABLE_INLINE bool BoundedSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Bounded & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.items_count < 0 || value.items_count > 8 ) { return false; } // storage invariant
-    if ( value.items_count > 0 )
     {
         const uint64_t ref_items = ids.ref_at( 15, 0x3e7884bf4f412c6full );
         int64_t body_items = 0;
@@ -9105,7 +9114,6 @@ LISTDEMO_TABLE_INLINE bool BoundedSaveBodyRetain( TableWriter & w, TableRetainId
             }
         }
     }
-    if ( value.tag != 0 )
     {
         w.header( ids.ref_at( 21, 0x56d7ab194448a4f3ull ), 4 ); // tag
         w.put32( uint32_t( value.tag ) );

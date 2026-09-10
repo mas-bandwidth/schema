@@ -296,6 +296,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    TABLEDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     TABLEDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     TABLEDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     TABLEDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -2594,16 +2606,15 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigLoadBody( TableReader & r, ArchiveConfi
 
 inline int64_t ArchiveConfigMeasureBody( TableIds & ids, const ArchiveConfig & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
-        const int32_t mark_root = ids.count;
         const uint64_t ref_root = ids.ref_at( 85, 0xa354fd1ff0c467c5ull );
         const int64_t body_root = RootConfigMeasureBody( ids, value.root );
         if ( body_root < 0 ) { return -1; }
-        if ( body_root > 1 ) { bytes += TableLebBytes( ref_root ) + 1 + TableLebBytes( (uint64_t) ( body_root ) ) + ( body_root ); } // root
-        else { ids.truncate( mark_root ); } // an all-default nested table elides, and costs no entry
+        bytes += TableLebBytes( ref_root ) + 1 + TableLebBytes( (uint64_t) ( body_root ) ) + ( body_root ); // root
     }
-    if ( value.count != 1 ) { bytes += TableLebBytes( ids.ref_at( 97, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
+    bytes += TableLebBytes( ids.ref_at( 97, 0xb1e5e28e4479a274ull ) ) + 1 + 4; // count
     return bytes;
 }
 
@@ -2618,18 +2629,12 @@ inline int64_t ArchiveConfigMeasure( const ArchiveConfig & value )
 TABLEDEMO_TABLE_INLINE bool ArchiveConfigSaveBody( TableWriter & w, TableIds & ids, const ArchiveConfig & value )
 {
     {
-        const int32_t mark_root = ids.count;
         const uint64_t ref_root = ids.ref_at( 85, 0xa354fd1ff0c467c5ull );
         const int64_t body_root = RootConfigMeasureBody( ids, value.root );
         if ( body_root < 0 ) return false; // storage invariant, refused as measure refuses it
-        if ( body_root > 1 ) // all-default nested elides
-        {
-            w.header( ref_root, 13 ); w.putleb( (uint64_t) body_root ); // root
-            if ( !RootConfigSaveBody( w, ids, value.root ) ) return false;
-        }
-        else { ids.truncate( mark_root ); }
+        w.header( ref_root, 13 ); w.putleb( (uint64_t) body_root ); // root
+        if ( !RootConfigSaveBody( w, ids, value.root ) ) return false;
     }
-    if ( value.count != 1 )
     {
         w.header( ids.ref_at( 97, 0xb1e5e28e4479a274ull ), 4 ); // count
         w.put32( uint32_t( value.count ) );

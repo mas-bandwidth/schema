@@ -331,6 +331,18 @@ struct TableWriter
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
+    // THE FIXED TABLE'S PADDING (docs/SPEC-TABLES.md §3): the slack a bounded
+    // payload rides at its bound with. Zero-filled, and no reader reads it —
+    // the count or length in front of it says where the value stopped, and the
+    // enclosing L says where the field stopped. It is written rather than
+    // skipped because the buffer is the caller's and may hold anything.
+    GRAPHDEMO_TABLE_INLINE void zeros( int64_t bytes )
+    {
+        if ( bytes <= 0 ) { return; }
+        if ( offset + bytes > capacity ) { overflow = true; return; }
+        memset( buffer + offset, 0, (size_t) bytes );
+        offset += bytes;
+    }
     GRAPHDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
     GRAPHDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
     GRAPHDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
@@ -5688,10 +5700,11 @@ inline bool AlbumLoadMessageBodyRetain( TableBitReader & r, const TableVocabular
 
 inline int64_t MetaMeasureBody( TableIds & ids, const Meta & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
+    bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; // build
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); // tag
     return bytes;
 }
 
@@ -5705,14 +5718,12 @@ inline int64_t MetaMeasure( const Meta & value )
 
 GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const Meta & value )
 {
-    if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
         w.put32( uint32_t( value.build ) );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
-    if ( value.tag_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
@@ -6102,10 +6113,11 @@ inline bool MetaLoadMessages( Meta * values, int64_t * count, const TableVocabul
 
 inline int64_t SettingsMeasureBody( TableIds & ids, const Settings & value )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
+    bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; // quality
     if ( value.label_length < 0 || value.label_length > 16 ) { return -1; } // storage invariant
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); // label
     return bytes;
 }
 
@@ -6119,14 +6131,12 @@ inline int64_t SettingsMeasure( const Settings & value )
 
 GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, const Settings & value )
 {
-    if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
         w.put32( uint32_t( value.quality ) );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
-    if ( value.label_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
@@ -15745,24 +15755,23 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire_file,
 
 inline int64_t MetaMeasureBodyRetain( TableRetainIds & ids, const Meta & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
+    bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; // build
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
-    if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); // tag
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Meta & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
         w.put32( uint32_t( value.build ) );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
-    if ( value.tag_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
         w.putleb( (uint64_t) value.tag_length );
         w.raw( value.tag, value.tag_length );
@@ -15990,24 +15999,23 @@ inline bool MetaLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
 
 inline int64_t SettingsMeasureBodyRetain( TableRetainIds & ids, const Settings & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) value;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
+    bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; // quality
     if ( value.label_length < 0 || value.label_length > 16 ) { return -1; } // storage invariant
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); // label
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
 
 GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Settings & value, TableRetain * retain, const TableRetainPath & path )
 {
-    if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
         w.put32( uint32_t( value.quality ) );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
-    if ( value.label_length > 0 )
-    {
+    { // rides whatever it holds, AT ITS LENGTH: kind 12 admits no zero byte (§3)
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
