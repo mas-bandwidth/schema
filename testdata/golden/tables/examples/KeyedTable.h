@@ -6964,8 +6964,8 @@ inline void KeyedConfigFixedWriteBody( uint8_t * b, const KeyedConfig & value )
 inline void TeamConfigFixedClampBody( TeamConfig & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.spawn_count < 0 ) { value.spawn_count = 0; clamped++; }
-    else if ( value.spawn_count > 64 ) { value.spawn_count = 64; clamped++; }
+    clamped += (int) ( value.spawn_count < 0 ) | (int) ( value.spawn_count > 64 );
+    value.spawn_count = ( value.spawn_count < 0 ) ? 0 : ( ( value.spawn_count > 64 ) ? 64 : value.spawn_count );
 }
 
 // ScoreBoard's read-side bounds.
@@ -6974,8 +6974,8 @@ inline void ScoreBoardFixedClampBody( ScoreBoard & value, int32_t & clamped )
     (void) value; (void) clamped;
     for ( int64_t i = 0; i < 3; ++i )
     {
-        if ( value.per_team[i] < 0 ) { value.per_team[i] = 0; clamped++; }
-        else if ( value.per_team[i] > 100000 ) { value.per_team[i] = 100000; clamped++; }
+        clamped += (int) ( value.per_team[i] < 0 ) | (int) ( value.per_team[i] > 100000 );
+        value.per_team[i] = ( value.per_team[i] < 0 ) ? 0 : ( ( value.per_team[i] > 100000 ) ? 100000 : value.per_team[i] );
     }
 }
 

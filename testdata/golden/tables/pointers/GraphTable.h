@@ -10649,16 +10649,16 @@ inline void SettingsFixedWriteBody( uint8_t * b, const Settings & value )
 inline void MetaFixedClampBody( Meta & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.build < 0 ) { value.build = 0; clamped++; }
-    else if ( value.build > 1000 ) { value.build = 1000; clamped++; }
+    clamped += (int) ( value.build < 0 ) | (int) ( value.build > 1000 );
+    value.build = ( value.build < 0 ) ? 0 : ( ( value.build > 1000 ) ? 1000 : value.build );
 }
 
 // Settings's read-side bounds.
 inline void SettingsFixedClampBody( Settings & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.quality < 0 ) { value.quality = 0; clamped++; }
-    else if ( value.quality > 4 ) { value.quality = 4; clamped++; }
+    clamped += (int) ( value.quality < 0 ) | (int) ( value.quality > 4 );
+    value.quality = ( value.quality < 0 ) ? 0 : ( ( value.quality > 4 ) ? 4 : value.quality );
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's

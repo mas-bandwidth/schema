@@ -526,6 +526,19 @@ func fixedOpName(op int) string {
 
 // ---- the read-side bounds --------------------------------------------------
 //
+// THE CLAMP IS BRANCHLESS AND THE COUNT IS AN ADD. A bounds pass over a record
+// that is nearly always in range is a pass of branches that are nearly always
+// not taken, and a predictor that is right every time still spends the slots;
+// worse, a branch in the body of an array loop is what stops the loop
+// vectorizing at all. Written as a select and an add the whole pass folds into
+// straight-line SIMD over an array, which is what a form that trades bytes for
+// speed owes its own read path (test/bench/fixedform_measure.cpp).
+//
+// The two lines re-read the storage rather than naming a temporary, and that is
+// deliberate: the C leg has no `auto` and this walk knows every field's DECLARED
+// width but not its spelled storage type, so a temporary would mean a second
+// type table to keep in step with the first. A compiler folds the reload.
+//
 // A fixed record is a positional image, so the ONE read loop moves bytes and
 // asks nothing about what they mean. What a declaration bounds is held HERE,
 // as straight-line code in the generated decode, after the copy — never as plan
@@ -673,11 +686,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMin, true))
-		g.pf("%selse if ( %s > %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMax, true), expr, formatFloat(f.FMax, true))
+		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMin, false))
-		g.pf("%selse if ( %s > %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMax, false), expr, formatFloat(f.FMax, false))
+		g.fixedClampBoth(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -685,22 +696,39 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		// spelled — the same numbers the variable form's codec clamps at.
 		if rlo, rhi, ok := ir.TableRawRange(f); ok {
 			low, high := tableClampEnds(f, width)
-			if low {
-				lo := tableIntLit(rlo, signed, width)
-				g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, lo, expr, lo)
-			}
-			if high {
-				hi := tableIntLit(rhi, signed, width)
-				lead := "if"
-				if low {
-					lead = "else if"
-				}
-				g.pf("%s%s ( %s > %s ) { %s = %s; clamped++; }\n", ind, lead, expr, hi, expr, hi)
+			switch {
+			case low && high:
+				g.fixedClampBoth(expr, tableIntLit(rlo, signed, width), tableIntLit(rhi, signed, width), ind)
+			case low:
+				g.fixedClampEnd(expr, "<", tableIntLit(rlo, signed, width), ind)
+			case high:
+				g.fixedClampEnd(expr, ">", tableIntLit(rhi, signed, width), ind)
 			}
 		}
 		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
 			maxv := (uint64(1) << f.Type.Width) - 1
-			g.pf("%sif ( %s > %dull ) { %s = %dull; clamped++; } // bits(%d) width clamp\n", ind, expr, maxv, expr, maxv, f.Type.Width)
+			g.pf("%s// bits(%d) width clamp\n", ind, f.Type.Width)
+			g.fixedClampEnd(expr, ">", fmt.Sprintf("%dull", maxv), ind)
 		}
 	}
+}
+
+// fixedClampBoth is a two-ended clamp: the select, then the count as an add.
+func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
+	// THE COUNT IS AN OR OF THE TWO ENDS, and the casts are what say the `|` is
+	// meant: clang reads a bitwise operator between two comparisons as a
+	// mistyped `||` and reds it (-Wbitwise-instead-of-logical), which is a good
+	// warning about code that is not this. A sum would silence it too and is
+	// measurably slower — the or folds to a mask the compiler keeps in a
+	// vector lane, and the add does not (test/bench/fixedform_measure.cpp).
+	g.pf("%sclamped += (int) ( %s < %s ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
+	g.pf("%s%s = ( %s < %s ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
+}
+
+// fixedClampEnd is the one-ended twin: an end the storage's own width already
+// holds is an end the emitter drops (tableClampEnds), so a great many bounded
+// fields spend one compare and not two.
+func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
+	g.pf("%sclamped += ( %s %s %s );\n", ind, expr, op, bound)
+	g.pf("%s%s = ( %s %s %s ) ? %s : %s;\n", ind, expr, expr, op, bound, bound, expr)
 }

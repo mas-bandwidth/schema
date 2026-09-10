@@ -5117,8 +5117,8 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_clamp_body_( TeamConfig * value, int32_t * clamped )
 {
     (void) value; (void) clamped;
-    if ( value->spawn_count < 0 ) { value->spawn_count = 0; (*clamped)++; }
-    else if ( value->spawn_count > 64 ) { value->spawn_count = 64; (*clamped)++; }
+    (*clamped) += (int) ( value->spawn_count < 0 ) | (int) ( value->spawn_count > 64 );
+    value->spawn_count = ( value->spawn_count < 0 ) ? 0 : ( ( value->spawn_count > 64 ) ? 64 : value->spawn_count );
 }
 
 /* ScoreBoard's read-side bounds. */
@@ -5129,8 +5129,8 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_b
         int64_t i;
         for ( i = 0; i < 3; ++i )
         {
-            if ( value->per_team[i] < 0 ) { value->per_team[i] = 0; (*clamped)++; }
-            else if ( value->per_team[i] > 100000 ) { value->per_team[i] = 100000; (*clamped)++; }
+            (*clamped) += (int) ( value->per_team[i] < 0 ) | (int) ( value->per_team[i] > 100000 );
+            value->per_team[i] = ( value->per_team[i] < 0 ) ? 0 : ( ( value->per_team[i] > 100000 ) ? 100000 : value->per_team[i] );
         }
     }
 }

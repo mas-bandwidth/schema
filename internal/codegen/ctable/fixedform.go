@@ -627,11 +627,11 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		g.pf("%sif ( %s < %s ) { %s = %s; (*clamped)++; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMin, true))
-		g.pf("%selse if ( %s > %s ) { %s = %s; (*clamped)++; }\n", ind, expr, formatFloat(f.FMax, true), expr, formatFloat(f.FMax, true))
+		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, true), formatFloat(f.FMin, true),
+			expr+" > "+formatFloat(f.FMax, true), formatFloat(f.FMax, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		g.pf("%sif ( %s < %s ) { %s = %s; (*clamped)++; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMin, false))
-		g.pf("%selse if ( %s > %s ) { %s = %s; (*clamped)++; }\n", ind, expr, formatFloat(f.FMax, false), expr, formatFloat(f.FMax, false))
+		g.fixedClampBoth(expr, expr+" < "+formatFloat(f.FMin, false), formatFloat(f.FMin, false),
+			expr+" > "+formatFloat(f.FMax, false), formatFloat(f.FMax, false), ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -653,22 +653,47 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 				loLane, hiLane := wideLanes(v)
 				return fmt.Sprintf("%s( %s, %sull, %sull ) %s 0", fn, expr, hiLane, loLane, op)
 			}
-			if low {
-				lo := tableIntLit(rlo, signed, width)
-				g.pf("%sif ( %s ) { %s = %s; (*clamped)++; }\n", ind, cmp("<", lo, rlo), expr, lo)
-			}
-			if high {
-				hi := tableIntLit(rhi, signed, width)
-				lead := "if"
-				if low {
-					lead = "else if"
-				}
-				g.pf("%s%s ( %s ) { %s = %s; (*clamped)++; }\n", ind, lead, cmp(">", hi, rhi), expr, hi)
+			lo, hi := tableIntLit(rlo, signed, width), tableIntLit(rhi, signed, width)
+			switch {
+			case low && high:
+				g.fixedClampBoth(expr, cmp("<", lo, rlo), lo, cmp(">", hi, rhi), hi, ind)
+			case low:
+				g.fixedClampEnd(expr, cmp("<", lo, rlo), lo, ind)
+			case high:
+				g.fixedClampEnd(expr, cmp(">", hi, rhi), hi, ind)
 			}
 		}
 		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
-			maxv := (uint64(1) << f.Type.Width) - 1
-			g.pf("%sif ( %s > %dull ) { %s = %dull; (*clamped)++; } /* bits(%d) width clamp */\n", ind, expr, maxv, expr, maxv, f.Type.Width)
+			maxv := fmt.Sprintf("%dull", (uint64(1)<<f.Type.Width)-1)
+			g.pf("%s/* bits(%d) width clamp */\n", ind, f.Type.Width)
+			g.fixedClampEnd(expr, expr+" > "+maxv, maxv, ind)
 		}
 	}
+}
+
+/*
+THE CLAMP IS BRANCHLESS AND THE COUNT IS AN ADD, the C twin of the
+
+	reference's: a bounds pass over a record that is nearly always in range is a
+	pass of branches nearly always not taken, and a branch in an array loop's
+	body is what stops the loop vectorizing at all.
+*/
+func (g *tableGen) fixedClampBoth(expr, loTest, lo, hiTest, hi, ind string) {
+	/* THE COUNT IS AN OR OF THE TWO ENDS, and the casts are what say the `|` is
+	   meant: clang reads a bitwise operator between two comparisons as a
+	   mistyped `||` and reds it (-Wbitwise-instead-of-logical), which is a good
+	   warning about code that is not this. A sum would silence it too and is
+	   measurably slower (test/bench/fixedform_measure.cpp). */
+	g.pf("%s(*clamped) += (int) ( %s ) | (int) ( %s );\n", ind, loTest, hiTest)
+	g.pf("%s%s = ( %s ) ? %s : ( ( %s ) ? %s : %s );\n", ind, expr, loTest, lo, hiTest, hi, expr)
+}
+
+/*
+fixedClampEnd is the one-ended twin: an end the storage's own width already
+
+	holds is an end the emitter drops (tableClampEnds).
+*/
+func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
+	g.pf("%s(*clamped) += ( %s );\n", ind, test)
+	g.pf("%s%s = ( %s ) ? %s : %s;\n", ind, expr, test, bound, expr)
 }

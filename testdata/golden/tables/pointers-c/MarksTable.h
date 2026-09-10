@@ -4808,8 +4808,8 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_f
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_fixed_clamp_body_( Tally * value, int32_t * clamped )
 {
     (void) value; (void) clamped;
-    if ( value->hits < 0 ) { value->hits = 0; (*clamped)++; }
-    else if ( value->hits > 10000 ) { value->hits = 10000; (*clamped)++; }
+    (*clamped) += (int) ( value->hits < 0 ) | (int) ( value->hits > 10000 );
+    value->hits = ( value->hits < 0 ) ? 0 : ( ( value->hits > 10000 ) ? 10000 : value->hits );
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's

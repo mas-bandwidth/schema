@@ -8821,17 +8821,19 @@ inline void LoadoutConfigFixedWriteBody( uint8_t * b, const LoadoutConfig & valu
 inline void DebuffFixedClampBody( Debuff & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.amount < 0 ) { value.amount = 0; clamped++; }
-    else if ( value.amount > 100 ) { value.amount = 100; clamped++; }
+    clamped += (int) ( value.amount < 0 ) | (int) ( value.amount > 100 );
+    value.amount = ( value.amount < 0 ) ? 0 : ( ( value.amount > 100 ) ? 100 : value.amount );
 }
 
 // WeaponConfig's read-side bounds.
 inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.penetration < 0 ) { value.penetration = 0; clamped++; }
-    else if ( value.penetration > 10 ) { value.penetration = 10; clamped++; }
-    if ( value.channel > 63ull ) { value.channel = 63ull; clamped++; } // bits(6) width clamp
+    clamped += (int) ( value.penetration < 0 ) | (int) ( value.penetration > 10 );
+    value.penetration = ( value.penetration < 0 ) ? 0 : ( ( value.penetration > 10 ) ? 10 : value.penetration );
+    // bits(6) width clamp
+    clamped += ( value.channel > 63ull );
+    value.channel = ( value.channel > 63ull ) ? 63ull : value.channel;
     if ( (uint32_t) value.effect.type > 2u ) { value.effect.type = EffectType::None; clamped++; }
     switch ( value.effect.type )
     {
@@ -8848,8 +8850,8 @@ inline void WeaponConfigFixedClampBody( WeaponConfig & value, int32_t & clamped 
 inline void AttachmentFixedClampBody( Attachment & value, int32_t & clamped )
 {
     (void) value; (void) clamped;
-    if ( value.slot < 0 ) { value.slot = 0; clamped++; }
-    else if ( value.slot > 7 ) { value.slot = 7; clamped++; }
+    clamped += (int) ( value.slot < 0 ) | (int) ( value.slot > 7 );
+    value.slot = ( value.slot < 0 ) ? 0 : ( ( value.slot > 7 ) ? 7 : value.slot );
 }
 
 // LoadoutConfig's read-side bounds.
