@@ -653,8 +653,15 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("/// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("/// caller handed in — filled, never returned, as the packet reader is.\n")
+	g.pf("///\n")
+	g.pf("/// THE DECLARED BOUNDS ARE CHECKED HERE and nowhere else: a range clamps\n")
+	g.pf("/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and\n")
+	g.pf("/// an enum ordinal past the last variant land None and count. They are\n")
+	g.pf("/// straight line rather than plan entries, so the identity path and a\n")
+	g.pf("/// plan compiled from a stranger's layout hold the SAME bounds.\n")
 	g.fn("void", lowerFirst(st.Name)+"FixedDecode",
-		[]string{st.Name + " value", "Uint8List image", "ByteData view", "int at"})
+		[]string{st.Name + " value", "Uint8List image", "ByteData view", "int at",
+			"TableFixedReport report"})
 	var cur int64
 	for _, f := range st.Fields {
 		g.emitDecodeField(f, "at", cur, "value", "  ")
@@ -697,7 +704,9 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 
 func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at, count int64, expr, ind string) {
 	elem := fixedElementBytes(f)
-	if fixedElementClass(f.Type) == "" && fixedIsByteList(f.Type) {
+	// The run move is only available to an element the decode does nothing
+	// else to: a BOUNDED byte whose range clamps takes the loop instead.
+	if fixedElementClass(f.Type) == "" && fixedIsByteList(f.Type) && !fixedHasClamp(f) {
 		g.call(ind, "", expr+".setRange",
 			[]string{"0", fmt.Sprintf("%d", count), "image", fixedOff(base, at)}, ";")
 		return
@@ -712,25 +721,178 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			g.call(ind, "", lowerFirst(r.Name)+"FixedDecode",
-				[]string{expr, "image", "view", fixedOff(base, at)}, ";")
+				[]string{expr, "image", "view", fixedOff(base, at), "report"}, ";")
 			return
 		case *ir.Union:
 			tag := fixedUnionTagBytes(r)
 			g.loadTag(ind, expr+".type", fixedOff(base, at), tag)
 			g.pf("%sswitch (%s.type) {\n", ind, expr)
+			g.pf("%s  case 0:\n%s    break; // None, which is a tag this reader holds\n", ind, ind)
 			for i, v := range r.Variants {
 				g.pf("%s  case %d:\n", ind, i+1)
 				g.emitDecodeElement(v.F, fixedOff(base, at+tag), 0, expr+"."+dartName(v.Name), ind+"    ")
 				g.pf("%s    break;\n", ind)
 			}
-			g.pf("%s  default:\n%s    break;\n%s}\n", ind, ind, ind)
+			// A TAG PAST THE LAST ARM IS None (§3.4): the arms run from 1 and
+			// tag 0 is None, so a tag beyond them names storage NO DECLARATION
+			// DESCRIBES. It lands None and counts one clamp — the same landing
+			// the compiled plan gives it through its own remap, so the identity
+			// path and a stranger's plan agree about a hostile tag.
+			g.pf("%s  default:\n", ind)
+			g.pf("%s    %s.type = 0;\n", ind, expr)
+			g.pf("%s    report.clamped++;\n", ind)
+			g.pf("%s    break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
 			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8))
+			// AN ORDINAL PAST THE LAST VARIANT IS None (§3.4): the ordinal is
+			// the variant's POSITION IN THE LAYOUT, from 1, and the layout
+			// lists this reader's variants and no more. Past them it lands 0
+			// and counts one clamp, which is where the plan's own remap lands
+			// it too.
+			if n := len(r.Variants); n > 0 {
+				g.pf("%sif (%s > %d) {\n", ind, expr, n)
+				g.pf("%s  %s = 0;\n", ind, expr)
+				g.pf("%s  report.clamped++;\n", ind)
+				g.pf("%s}\n", ind)
+			}
 			return
 		}
 	}
 	g.load(ind, expr, fixedOff(base, at), f.Type)
+	g.emitClamp(f, expr, ind)
+}
+
+// ---------------------------------------------------------------------------
+// THE DECLARED RANGE, CLAMPED ON LOAD AND COUNTED (docs/SPEC-TABLES.md §4)
+// ---------------------------------------------------------------------------
+//
+// IT IS STRAIGHT LINE IN THE DECODE AND NOT A PLAN ENTRY, which is the whole
+// of the design here. The plan moves BYTES between two layouts; a declared
+// range is a fact about THIS READER's field and about no layout at all, so a
+// plan entry for it would have to be compiled twice — once into the identity
+// plan and once into every stranger's — and the two could drift. One clamp,
+// after the copy, in the projection every path runs, holds on both.
+//
+// A FIXED-POINT VALUE RIDES RAW AT ITS STORAGE WIDTH on this form: the storage
+// is the scaled integer and NOTHING HERE DIVIDES BY 2^F. So the bound compared
+// against is the declared whole-unit bound SHIFTED BY F onto that same raw
+// scale, which is what ir.TableRawRange answers.
+//
+// AN END THAT CANNOT FIRE IS NOT WRITTEN. A bound sitting ON the storage
+// type's own limit describes a value the load cannot hold, so the comparison
+// has no false case; the C++ table emitter elides it for the same reason and
+// under the same test.
+
+// fixedStorageRange is a leaf's own storage limits, on the raw scale.
+func fixedStorageRange(t ir.FieldType) (lo, hi *big.Int) {
+	bits := uint(fixedStorageBytes(t) * 8)
+	if fixedSigned(t) {
+		half := new(big.Int).Lsh(big.NewInt(1), bits-1)
+		return new(big.Int).Neg(half), new(big.Int).Sub(half, big.NewInt(1))
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), bits), big.NewInt(1))
+}
+
+// fixedClampEnds answers the declared range on the raw scale and which of its
+// two ends the decode writes a comparison for.
+func fixedClampEnds(f *ir.Field) (lo, hi *big.Int, low, high bool) {
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return nil, nil, false, false
+	}
+	slo, shi := fixedStorageRange(f.Type)
+	return rlo, rhi, rlo.Cmp(slo) > 0, rhi.Cmp(shi) < 0
+}
+
+// fixedBitsClamp answers a `bits(N)` width clamp: the older half of the same
+// rule, written only where N is narrower than the storage the form gives it.
+func fixedBitsClamp(t ir.FieldType) (*big.Int, bool) {
+	if t.Kind != ir.TBits || int64(t.Width) >= fixedStorageBytes(t)*8 {
+		return nil, false
+	}
+	one := big.NewInt(1)
+	return new(big.Int).Sub(new(big.Int).Lsh(one, uint(t.Width)), one), true
+}
+
+// fixedHasClamp reports a leaf whose decode writes any comparison at all.
+func fixedHasClamp(f *ir.Field) bool {
+	switch f.Type.Kind {
+	case ir.TInt, ir.TFixed, ir.TBits:
+	default:
+		return false
+	}
+	if _, _, low, high := fixedClampEnds(f); low || high {
+		return true
+	}
+	_, ok := fixedBitsClamp(f.Type)
+	return ok
+}
+
+// fixedClampTerms renders one end of a range as the Dart a comparison and an
+// assignment take at this leaf's storage width.
+func (g *fixedGen) fixedClampTerms(t ir.FieldType, expr string, v *big.Int) (lhs, cmp, assign string) {
+	if fixedIs128(t) {
+		cls := "UInt128"
+		if fixedSigned(t) {
+			cls = "Int128"
+		}
+		g.need(cls)
+		lo, hi := fixed128Halves(v)
+		lit := fmt.Sprintf("%s(%s, %s)", cls, fixedHexLit(hi), fixedHexLit(lo))
+		return expr, lit, lit
+	}
+	if !fixedSigned(t) && fixedStorageBytes(t) == 8 {
+		// A uint64 RIDES BIT-TRANSPARENTLY in a Dart int, which is signed, so
+		// a value past 2^63 reads back negative and the signed comparison
+		// would order it below zero. Flipping BOTH sign bits orders the
+		// unsigned domain, which is the packet emitter's own _unsignedLessThan
+		// spelled inline — one constant, folded, and no import.
+		flip := new(big.Int).Xor(new(big.Int).Set(v), new(big.Int).Lsh(big.NewInt(1), 63))
+		return "(" + expr + " ^ 0x8000000000000000)", fixedHexLit(flip), fixedHexLit(v)
+	}
+	return expr, v.String(), v.String()
+}
+
+// emitClamp writes the comparisons one leaf's declaration earns, after the
+// load that put the raw value in place.
+func (g *fixedGen) emitClamp(f *ir.Field, expr, ind string) {
+	switch f.Type.Kind {
+	case ir.TInt, ir.TFixed, ir.TBits:
+	default:
+		return
+	}
+	rlo, rhi, low, high := fixedClampEnds(f)
+	lead := "if"
+	if low {
+		lhs, cmp, assign := g.fixedClampTerms(f.Type, expr, rlo)
+		g.pf("%s%s (%s < %s) {\n", ind, lead, lhs, cmp)
+		g.pf("%s  %s = %s;\n", ind, expr, assign)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s}", ind)
+		lead = " else if"
+	}
+	if high {
+		lhs, cmp, assign := g.fixedClampTerms(f.Type, expr, rhi)
+		if lead == "if" {
+			g.pf("%s", ind)
+		}
+		g.pf("%s (%s > %s) {\n", lead, lhs, cmp)
+		g.pf("%s  %s = %s;\n", ind, expr, assign)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s}", ind)
+	}
+	if low || high {
+		g.pf("\n")
+	}
+	if maxv, ok := fixedBitsClamp(f.Type); ok {
+		lhs, cmp, assign := g.fixedClampTerms(f.Type, expr, maxv)
+		g.pf("%sif (%s > %s) {\n", ind, lhs, cmp)
+		g.pf("%s  // the bits(%d) WIDTH clamp\n", ind, f.Type.Width)
+		g.pf("%s  %s = %s;\n", ind, expr, assign)
+		g.pf("%s  report.clamped++;\n", ind)
+		g.pf("%s}\n", ind)
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -477,7 +477,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      plan.image,\n      plan.imageView,\n      plan.remap,\n      plan.conv,\n")
 	g.pf("      report,\n    );\n")
 	g.call("    ", "", lower+"FixedDecode",
-		[]string{"values[k]", "plan.image", "plan.imageView", "0"}, ";")
+		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
 	g.pf("    at += recordBytes;\n")
 	g.pf("  }\n  return n;\n}\n\n")
 }

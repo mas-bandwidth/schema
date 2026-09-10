@@ -973,7 +973,7 @@ void negativeControl() {
       r,
     );
     final wrong = fx1home.FxRoot();
-    fx1home.fxRootFixedDecode(wrong, plan.image, plan.imageView, 0);
+    fx1home.fxRootFixedDecode(wrong, plan.image, plan.imageView, 0, r);
     final intact =
         wrong.nested.a == 33 && wrong.nested.b == 44 && wrong.renamed == 808;
     check(
