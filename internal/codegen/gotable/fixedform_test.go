@@ -37,6 +37,7 @@ table Point {
 		"newer_form",
 		"previous_form",
 		"tableFixedParseLayout",
+		"tableFixedHoles",
 		"PointFixedLayout",
 		"PointFixedPlan",
 	} {
@@ -58,6 +59,19 @@ table Point {
 	}
 	if strings.Contains(load, "previous_form") {
 		t.Error("PointLoad refuses form 1 on a table nobody declared fixed")
+	}
+	fixedLoad := funcSource(body, "func PointFixedLoad(")
+	if fixedLoad == "" {
+		t.Fatal("PointFixedLoad was not emitted")
+	}
+	if !strings.Contains(fixedLoad, "identity") || !strings.Contains(fixedLoad, "tableFixedHoles") {
+		t.Error("compiled FixedLoad does not prefill the plan's holes")
+	}
+	if !strings.Contains(fixedLoad, "PointReset(&values[k])") {
+		t.Error("identity FixedLoad dropped Reset; padding and unselected arms would be the previous record")
+	}
+	if !strings.Contains(fixedLoad, "PointReset(&def)") {
+		t.Error("compiled holes have no default image")
 	}
 }
 
@@ -224,6 +238,8 @@ func TestPlanPath(t *testing.T) {
 
 	{
 		back := make([]tblfx2.FxRoot, 1)
+		back[0].Added = 99
+		back[0].Keep = 1
 		var r tblfx2.TableReport
 		plan := make([]tblfx2.TableFixedEntry, 1024)
 		n := tblfx2.FxRootFixedLoad(back, w1, plan, &r)
@@ -266,6 +282,8 @@ func TestPlanPath(t *testing.T) {
 	}
 	{
 		back := make([]tblfx1.FxRoot, 1)
+		back[0].Gone = 99
+		back[0].Narrow = 99
 		var r tblfx1.TableReport
 		plan := make([]tblfx1.TableFixedEntry, 1024)
 		n := tblfx1.FxRootFixedLoad(back, w2, plan, &r)
@@ -750,6 +768,7 @@ func TestArgLane(t *testing.T) {
 	}
 
 	got := make([]tblr.Root, 1)
+	got[0].Tail = 99
 	var r tblr.TableReport
 	plan := make([]tblr.TableFixedEntry, 256)
 	if n := tblr.RootFixedLoad(got, buf, plan, &r); n != 1 {

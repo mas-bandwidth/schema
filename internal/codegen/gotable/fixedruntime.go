@@ -579,6 +579,79 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	return out
 }
 
+// tableFixedHole is one dst range the plan does not land. Compiled Load copies
+// declared defaults into exactly these; identity does not use the list.
+type tableFixedHole struct {
+	Off, Size uint32
+}
+
+func tableFixedLand(cover []byte, off, n uint32) {
+	if n == 0 {
+		return
+	}
+	end := uint32(len(cover))
+	if off >= end {
+		return
+	}
+	last := off + n
+	if last > end {
+		last = end
+	}
+	for i := off; i < last; i++ {
+		cover[i] = 1
+	}
+}
+
+// tableFixedHoles is the complement of the unguarded dest writes. Guarded
+// entries (union arms, compiled tag consts) are not always written, so they
+// stay holes and keep the defaults. The write sizes match tableFixedRun.
+func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tableFixedHole {
+	if dstSize == 0 {
+		return nil
+	}
+	cover := make([]byte, dstSize)
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		if p.Guard != tableFixedNoGuard {
+			continue
+		}
+		switch p.Op {
+		case tableFixedCopy, tableFixedBool, tableFixedTag, tableFixedConst:
+			tableFixedLand(cover, p.Dst, p.Size)
+		case tableFixedCount:
+			tableFixedLand(cover, p.Dst, 4)
+		case tableFixedText:
+			tableFixedLand(cover, p.Dst, 4)
+			tableFixedLand(cover, p.Aux, p.Size)
+		case tableFixedWiden:
+			tableFixedLand(cover, p.Dst, uint32(p.DstSize))
+		case tableFixedWidenF:
+			tableFixedLand(cover, p.Dst, 8)
+		case tableFixedOrdinal:
+			n := uint32(4)
+			if p.DstSize == 1 || p.DstSize == 2 {
+				n = uint32(p.DstSize)
+			}
+			tableFixedLand(cover, p.Dst, n)
+		}
+	}
+	var holes []tableFixedHole
+	i := uint32(0)
+	for i < dstSize {
+		if cover[i] != 0 {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < dstSize && cover[j] == 0 {
+			j++
+		}
+		holes = append(holes, tableFixedHole{Off: i, Size: j - i})
+		i = j
+	}
+	return holes
+}
+
 func tableFixedRefuse(report *TableReport, reason string) int64 {
 	report.Verdict = TableOpenRefused
 	report.Reason = reason
