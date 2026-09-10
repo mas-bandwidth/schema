@@ -448,6 +448,18 @@ tables-java-release:
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
 
+# THE PAIRED UNIT, in the discovered generation graph beside the four the
+# driver already tracks (c, cpp, cs, go each have this rule in their own .mk).
+# Java's tree was committed without one, so `make generated/*/.stamp` — which
+# is what CI's `generated` job discovers and runs — walked past it and the
+# committed Java went stale against its own emitter without turning anything
+# red. The paired driver regenerates this tree on `-mode build`, which is how
+# the staleness surfaced at all: as a dirty checkpoint refusing a fast pass.
+generated/bench/paired/java/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema make/java.mk
+	@mkdir -p generated/bench/paired/java
+	./bin/schema generate --lang java --out generated/bench/paired/java bench/corpus/Bench.schema bench/corpus/FixedTable.schema
+	@touch $@
+
 generated/bench/java/.stamp: bin/schema $(SCHEMAS_BENCH)
 	./bin/schema generate --lang java --out generated/bench/java bench/corpus/Bench.schema
 	./bin/schema generate --lang java --out generated/bench/java/realworld bench/corpus/RealWorld.schema

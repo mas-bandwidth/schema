@@ -199,12 +199,14 @@ public final class BenchMixedFixed {
             v.playerNameLength = n;
         }
         System.arraycopy(b, at + 1130, v.playerName, 0, v.playerNameLength);
+        if (v.playerNameLength < v.playerName.length) { java.util.Arrays.fill(v.playerName, v.playerNameLength, v.playerName.length, (byte) 0); }
         {
             int n = TableFixed.get32(b, at + 1145);
             if (n < 0) { n = 0; r.clamped++; } else if (n > 16) { n = 16; r.clamped++; }
             v.payloadLength = n;
         }
         System.arraycopy(b, at + 1149, v.payload, 0, v.payloadLength);
+        if (v.payloadLength < v.payload.length) { java.util.Arrays.fill(v.payload, v.payloadLength, v.payload.length, (byte) 0); }
         v.aimX = Float.intBitsToFloat(TableFixed.get32(b, at + 1165));
         v.aimY = Float.intBitsToFloat(TableFixed.get32(b, at + 1169));
         v.aimZ = Float.intBitsToFloat(TableFixed.get32(b, at + 1173));
