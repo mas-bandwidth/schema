@@ -124,7 +124,10 @@ typedef struct TableVocabulary {
  TableMessageEntry * entries;int64_t max_entries,count,ref_bits;
  uint64_t build_version;int announced,refused;int64_t max_bytes;
 } TableVocabulary;
+#ifndef SCHEMA_TABLE_MESSAGE_REASONS
+#define SCHEMA_TABLE_MESSAGE_REASONS
 enum { SCHEMA_TABLE_NO_VOCABULARY=3,SCHEMA_TABLE_SECOND_ANNOUNCEMENT=4,SCHEMA_TABLE_VOCABULARY_TOO_LARGE=5,SCHEMA_TABLE_BATCH_TOO_LARGE=6 };
+#endif
 static SCHEMA_UNUSED TableVocabulary table_vocabulary(TableMessageEntry * storage,int64_t capacity)
 {TableVocabulary v;memset(&v,0,sizeof(v));v.entries=storage;v.max_entries=capacity;v.max_bytes=65536;return v;}
 static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64_t * at,uint64_t * value)
