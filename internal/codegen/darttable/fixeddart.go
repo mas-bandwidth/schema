@@ -679,7 +679,8 @@ func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("/// and counts (docs/SPEC-TABLES.md §4), a union tag past the last arm and\n")
 	g.pf("/// an enum ordinal past the last variant land None and count. They are\n")
 	g.pf("/// straight line rather than plan entries, so the identity path and a\n")
-	g.pf("/// plan compiled from a stranger's layout hold the SAME bounds.\n")
+	g.pf("/// plan compiled from a stranger's layout hold the SAME bounds. A COUNTED\n")
+	g.pf("/// ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never clamped.\n")
 	g.fn("void", lowerFirst(st.Name)+"FixedDecode",
 		[]string{st.Name + " value", "Uint8List image", "ByteData view", "int at",
 			"TableFixedReport report"})
@@ -699,13 +700,16 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitDecodeLoop(f, base, at, f.KeyEnumRef.Max, val+"."+name, ind)
+		g.emitDecodeLoop(f, base, at, fmt.Sprintf("%d", f.KeyEnumRef.Max), val+"."+name, ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitDecodeLoop(f, base, at, f.ArrayBound, val+"."+name, ind)
+		g.emitDecodeLoop(f, base, at, fmt.Sprintf("%d", f.ArrayBound), val+"."+name, ind)
 	case f.Array == ir.ArrayCounted:
 		g.call(ind, val+"."+name+"Count = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
-		g.emitDecodeLoop(f, base, at+fixedCountBytes, f.ArrayBound, val+"."+name, ind)
+		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
+		// live count, never the slack behind it. Identity copies the whole
+		// array into the image; this loop is the pass both paths share.
+		g.emitDecodeLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.call(ind, val+"."+name+"Length = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
@@ -723,16 +727,16 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 	}
 }
 
-func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at, count int64, expr, ind string) {
+func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
 	elem := fixedElementBytes(f)
 	// The run move is only available to an element the decode does nothing
 	// else to: a BOUNDED byte whose range clamps takes the loop instead.
 	if fixedElementClass(f.Type) == "" && fixedIsByteList(f.Type) && !fixedHasClamp(f) {
 		g.call(ind, "", expr+".setRange",
-			[]string{"0", fmt.Sprintf("%d", count), "image", fixedOff(base, at)}, ";")
+			[]string{"0", count, "image", fixedOff(base, at)}, ";")
 		return
 	}
-	g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, count)
+	g.pf("%sfor (var i = 0; i < %s; i++) {\n", ind, count)
 	g.emitDecodeElement(f, fmt.Sprintf("%s + i * %d", fixedOff(base, at), elem), 0, expr+"[i]", ind+"  ")
 	g.pf("%s}\n", ind)
 }

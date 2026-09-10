@@ -106,6 +106,55 @@ table Probe
 	}
 }
 
+// A COUNTED ARRAY'S DECODE WALKS THE LIVE COUNT, never the bound. Identity
+// copies the whole array into the image (enums are a flat run); clamp and
+// ordinal counters live in the projection both paths share, so a loop over
+// ArrayBound would count slack. LIVE elements only, slack never.
+func TestDecodeCountedArrayWalksLiveCount(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+enum Grade
+{
+    Bronze
+    Silver
+    Gold
+}
+
+table LiveRoot
+{
+    grades [1..4]Grade
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "void liveRootFixedDecode(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no liveRootFixedDecode in the generated unit")
+	}
+	body := src
+	if i := strings.Index(src, "void liveRootFixedDecode("); i >= 0 {
+		body = src[i:]
+		if j := strings.Index(body[1:], "\nvoid "); j >= 0 {
+			body = body[:j+1]
+		}
+	}
+	if !strings.Contains(body, "i < value.gradesCount") {
+		t.Fatalf("counted-array decode must walk the live count, not the bound:\n%s", body)
+	}
+	if strings.Contains(body, "i < 4") {
+		t.Fatalf("counted-array decode still walks the declared bound:\n%s", body)
+	}
+}
+
 // THE PREFILL IS THE DECLARED DEFAULTS, and the one this corpus carries is
 // `has_extra bool = true` — the byte that would silently read false if the
 // prefill were a zero fill.
