@@ -300,6 +300,62 @@ table Root
 	}
 }
 
+// A RUN OF SMALL FLAT RECORDS UNROLLS the way the packet reader unrolls stats:
+// several LIVE elements in one match, consed onto the recursive tail, no
+// reverse. A larger record stays one element. Hostile still has a one-element
+// clause with the clamp.
+func TestFixedListWalkUnrollsSmallRecords(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+type Cell
+{
+    id    uint32
+    delta int32 | min = -512, max = 511
+}
+
+type Wide
+{
+    a int32
+    b int32
+    c int32
+    d int32
+    e int32
+    f int32
+    g int32
+    h int32
+    i int32
+    j int32
+    k int32
+    l int32
+    m int32
+    n int32
+    o int32
+}
+
+table Root
+{
+    cells [..80]Cell
+    wides [..8]Wide
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(out["Probe"+FixedModuleSuffix+".ex"])
+	if !strings.Contains(body, "def cell_fixed_list(_bin, 0, c, m), do: {[], c, m}") {
+		t.Fatal("the cell walk still reverses an accumulator")
+	}
+	if !strings.Contains(body, "n >= 8") {
+		t.Fatal("a run of 8-byte cells did not unroll")
+	}
+	if strings.Contains(body, "wide_fixed_list") && strings.Count(body, "n >= 8") != 1 {
+		t.Fatal("a run of 60-byte records unrolled; that match is the whole record")
+	}
+	if !strings.Contains(body, "{[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}") {
+		t.Fatal("the unrolled walk did not cons eight cells onto the recursive tail")
+	}
+}
+
 func keysOf(out map[string][]byte) []string {
 	names := make([]string, 0, len(out))
 	for name := range out {

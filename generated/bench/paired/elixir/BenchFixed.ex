@@ -78,11 +78,12 @@ defmodule Bench.BenchFixed do
   end
 
   # A RUN OF MixedEvent: the LIVE elements walked into a list, the count beside it.
-  def mixed_event_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
+  def mixed_event_fixed_list(_bin, 0, c, m), do: {[], c, m}
 
-  def mixed_event_fixed_list(<<e::binary-size(14), rest::binary>>, n, acc, c, m) do
+  def mixed_event_fixed_list(<<e::binary-size(14), rest::binary>>, n, c, m) do
     {v, c, m} = mixed_event_fixed_decode(e, c, m)
-    mixed_event_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = mixed_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedEntity's body: 51 bytes, the values in DECLARED ORDER, every field at its
@@ -198,8 +199,10 @@ defmodule Bench.BenchFixed do
   end
 
   # A RUN OF MixedEntity: the LIVE elements walked into a list, the count riding beside
-  # it, and not a byte of the slack behind them read.
-  def mixed_entity_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # Hostile falls through to one element and the clamp.
+  def mixed_entity_fixed_list(_bin, 0, c, m), do: {[], c, m}
 
   def mixed_entity_fixed_list(
         <<f_entity_id::little-unsigned-32, f_pos_x::little-signed-32, f_pos_y::little-signed-32,
@@ -208,7 +211,6 @@ defmodule Bench.BenchFixed do
           f_health::little-signed-32, f_weapon::little-unsigned-8, f_damage::little-unsigned-64,
           f_moving::unsigned-8, f_firing::unsigned-8, rest::binary>>,
         n,
-        acc,
         c,
         m
       )
@@ -234,7 +236,8 @@ defmodule Bench.BenchFixed do
         firing: f_firing != 0
       }
 
-    mixed_entity_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = mixed_entity_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   def mixed_entity_fixed_list(
@@ -244,7 +247,6 @@ defmodule Bench.BenchFixed do
           f_health::little-signed-32, f_weapon::little-unsigned-8, f_damage::little-unsigned-64,
           f_moving::unsigned-8, f_firing::unsigned-8, rest::binary>>,
         n,
-        acc,
         c,
         m
       ) do
@@ -275,7 +277,8 @@ defmodule Bench.BenchFixed do
         firing: f_firing != 0
       }
 
-    mixed_entity_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = mixed_entity_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedStat's body: 8 bytes, the values in DECLARED ORDER, every field at its
@@ -318,32 +321,64 @@ defmodule Bench.BenchFixed do
   end
 
   # A RUN OF MixedStat: the LIVE elements walked into a list, the count riding beside
-  # it, and not a byte of the slack behind them read.
-  def mixed_stat_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # Hostile falls through to one element and the clamp.
+  def mixed_stat_fixed_list(_bin, 0, c, m), do: {[], c, m}
 
   def mixed_stat_fixed_list(
-        <<f_stat_id::little-unsigned-32, f_delta::little-signed-32, rest::binary>>,
+        <<f_stat_id_0::little-unsigned-32, f_delta_0::little-signed-32,
+          f_stat_id_1::little-unsigned-32, f_delta_1::little-signed-32,
+          f_stat_id_2::little-unsigned-32, f_delta_2::little-signed-32,
+          f_stat_id_3::little-unsigned-32, f_delta_3::little-signed-32,
+          f_stat_id_4::little-unsigned-32, f_delta_4::little-signed-32,
+          f_stat_id_5::little-unsigned-32, f_delta_5::little-signed-32,
+          f_stat_id_6::little-unsigned-32, f_delta_6::little-signed-32,
+          f_stat_id_7::little-unsigned-32, f_delta_7::little-signed-32, rest::binary>>,
         n,
-        acc,
         c,
         m
       )
-      when f_delta >= -512 and f_delta <= 511 do
-    v = %Bench.MixedStat{stat_id: f_stat_id, delta: f_delta}
-    mixed_stat_fixed_list(rest, n - 1, [v | acc], c, m)
+      when n >= 8 and f_delta_0 >= -512 and f_delta_0 <= 511 and f_delta_1 >= -512 and
+             f_delta_1 <= 511 and f_delta_2 >= -512 and f_delta_2 <= 511 and f_delta_3 >= -512 and
+             f_delta_3 <= 511 and f_delta_4 >= -512 and f_delta_4 <= 511 and f_delta_5 >= -512 and
+             f_delta_5 <= 511 and f_delta_6 >= -512 and f_delta_6 <= 511 and f_delta_7 >= -512 and
+             f_delta_7 <= 511 do
+    v0 = %Bench.MixedStat{stat_id: f_stat_id_0, delta: f_delta_0}
+    v1 = %Bench.MixedStat{stat_id: f_stat_id_1, delta: f_delta_1}
+    v2 = %Bench.MixedStat{stat_id: f_stat_id_2, delta: f_delta_2}
+    v3 = %Bench.MixedStat{stat_id: f_stat_id_3, delta: f_delta_3}
+    v4 = %Bench.MixedStat{stat_id: f_stat_id_4, delta: f_delta_4}
+    v5 = %Bench.MixedStat{stat_id: f_stat_id_5, delta: f_delta_5}
+    v6 = %Bench.MixedStat{stat_id: f_stat_id_6, delta: f_delta_6}
+    v7 = %Bench.MixedStat{stat_id: f_stat_id_7, delta: f_delta_7}
+    {tail, c, m} = mixed_stat_fixed_list(rest, n - 8, c, m)
+    {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
   end
 
   def mixed_stat_fixed_list(
         <<f_stat_id::little-unsigned-32, f_delta::little-signed-32, rest::binary>>,
         n,
-        acc,
+        c,
+        m
+      )
+      when f_delta >= -512 and f_delta <= 511 do
+    v = %Bench.MixedStat{stat_id: f_stat_id, delta: f_delta}
+    {tail, c, m} = mixed_stat_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
+  end
+
+  def mixed_stat_fixed_list(
+        <<f_stat_id::little-unsigned-32, f_delta::little-signed-32, rest::binary>>,
+        n,
         c,
         m
       ) do
     c = R.clamps(c, f_delta, -512, 511)
 
     v = %Bench.MixedStat{stat_id: f_stat_id, delta: min(max(f_delta, -512), 511)}
-    mixed_stat_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = mixed_stat_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedHitEvent's body: 13 bytes, the values in DECLARED ORDER, every field at its
@@ -401,14 +436,68 @@ defmodule Bench.BenchFixed do
   end
 
   # A RUN OF MixedHitEvent: the LIVE elements walked into a list, the count riding beside
-  # it, and not a byte of the slack behind them read.
-  def mixed_hit_event_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # Hostile falls through to one element and the clamp.
+  def mixed_hit_event_fixed_list(_bin, 0, c, m), do: {[], c, m}
+
+  def mixed_hit_event_fixed_list(
+        <<f_target_id_0::little-unsigned-32, f_damage_0::little-signed-32,
+          f_hit_kind_0::little-signed-32, f_crit_0::unsigned-8, f_target_id_1::little-unsigned-32,
+          f_damage_1::little-signed-32, f_hit_kind_1::little-signed-32, f_crit_1::unsigned-8,
+          f_target_id_2::little-unsigned-32, f_damage_2::little-signed-32,
+          f_hit_kind_2::little-signed-32, f_crit_2::unsigned-8, f_target_id_3::little-unsigned-32,
+          f_damage_3::little-signed-32, f_hit_kind_3::little-signed-32, f_crit_3::unsigned-8,
+          rest::binary>>,
+        n,
+        c,
+        m
+      )
+      when n >= 4 and f_damage_0 >= 0 and f_damage_0 <= 4095 and f_hit_kind_0 >= 0 and
+             f_hit_kind_0 <= 7 and f_damage_1 >= 0 and f_damage_1 <= 4095 and f_hit_kind_1 >= 0 and
+             f_hit_kind_1 <= 7 and f_damage_2 >= 0 and f_damage_2 <= 4095 and f_hit_kind_2 >= 0 and
+             f_hit_kind_2 <= 7 and f_damage_3 >= 0 and f_damage_3 <= 4095 and f_hit_kind_3 >= 0 and
+             f_hit_kind_3 <= 7 do
+    v0 =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id_0,
+        damage: f_damage_0,
+        hit_kind: f_hit_kind_0,
+        crit: f_crit_0 != 0
+      }
+
+    v1 =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id_1,
+        damage: f_damage_1,
+        hit_kind: f_hit_kind_1,
+        crit: f_crit_1 != 0
+      }
+
+    v2 =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id_2,
+        damage: f_damage_2,
+        hit_kind: f_hit_kind_2,
+        crit: f_crit_2 != 0
+      }
+
+    v3 =
+      %Bench.MixedHitEvent{
+        target_id: f_target_id_3,
+        damage: f_damage_3,
+        hit_kind: f_hit_kind_3,
+        crit: f_crit_3 != 0
+      }
+
+    {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 4, c, m)
+    {[v0, v1, v2, v3 | tail], c, m}
+  end
 
   def mixed_hit_event_fixed_list(
         <<f_target_id::little-unsigned-32, f_damage::little-signed-32,
           f_hit_kind::little-signed-32, f_crit::unsigned-8, rest::binary>>,
         n,
-        acc,
         c,
         m
       )
@@ -421,14 +510,14 @@ defmodule Bench.BenchFixed do
         crit: f_crit != 0
       }
 
-    mixed_hit_event_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   def mixed_hit_event_fixed_list(
         <<f_target_id::little-unsigned-32, f_damage::little-signed-32,
           f_hit_kind::little-signed-32, f_crit::unsigned-8, rest::binary>>,
         n,
-        acc,
         c,
         m
       ) do
@@ -443,7 +532,8 @@ defmodule Bench.BenchFixed do
         crit: f_crit != 0
       }
 
-    mixed_hit_event_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = mixed_hit_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedChatEvent's body: 8 bytes, the values in DECLARED ORDER, every field at its
@@ -486,32 +576,64 @@ defmodule Bench.BenchFixed do
   end
 
   # A RUN OF MixedChatEvent: the LIVE elements walked into a list, the count riding beside
-  # it, and not a byte of the slack behind them read.
-  def mixed_chat_event_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # Hostile falls through to one element and the clamp.
+  def mixed_chat_event_fixed_list(_bin, 0, c, m), do: {[], c, m}
 
   def mixed_chat_event_fixed_list(
-        <<f_channel::little-signed-32, f_speaker::little-unsigned-32, rest::binary>>,
+        <<f_channel_0::little-signed-32, f_speaker_0::little-unsigned-32,
+          f_channel_1::little-signed-32, f_speaker_1::little-unsigned-32,
+          f_channel_2::little-signed-32, f_speaker_2::little-unsigned-32,
+          f_channel_3::little-signed-32, f_speaker_3::little-unsigned-32,
+          f_channel_4::little-signed-32, f_speaker_4::little-unsigned-32,
+          f_channel_5::little-signed-32, f_speaker_5::little-unsigned-32,
+          f_channel_6::little-signed-32, f_speaker_6::little-unsigned-32,
+          f_channel_7::little-signed-32, f_speaker_7::little-unsigned-32, rest::binary>>,
         n,
-        acc,
         c,
         m
       )
-      when f_channel >= 0 and f_channel <= 3 do
-    v = %Bench.MixedChatEvent{channel: f_channel, speaker: f_speaker}
-    mixed_chat_event_fixed_list(rest, n - 1, [v | acc], c, m)
+      when n >= 8 and f_channel_0 >= 0 and f_channel_0 <= 3 and f_channel_1 >= 0 and
+             f_channel_1 <= 3 and f_channel_2 >= 0 and f_channel_2 <= 3 and f_channel_3 >= 0 and
+             f_channel_3 <= 3 and f_channel_4 >= 0 and f_channel_4 <= 3 and f_channel_5 >= 0 and
+             f_channel_5 <= 3 and f_channel_6 >= 0 and f_channel_6 <= 3 and f_channel_7 >= 0 and
+             f_channel_7 <= 3 do
+    v0 = %Bench.MixedChatEvent{channel: f_channel_0, speaker: f_speaker_0}
+    v1 = %Bench.MixedChatEvent{channel: f_channel_1, speaker: f_speaker_1}
+    v2 = %Bench.MixedChatEvent{channel: f_channel_2, speaker: f_speaker_2}
+    v3 = %Bench.MixedChatEvent{channel: f_channel_3, speaker: f_speaker_3}
+    v4 = %Bench.MixedChatEvent{channel: f_channel_4, speaker: f_speaker_4}
+    v5 = %Bench.MixedChatEvent{channel: f_channel_5, speaker: f_speaker_5}
+    v6 = %Bench.MixedChatEvent{channel: f_channel_6, speaker: f_speaker_6}
+    v7 = %Bench.MixedChatEvent{channel: f_channel_7, speaker: f_speaker_7}
+    {tail, c, m} = mixed_chat_event_fixed_list(rest, n - 8, c, m)
+    {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
   end
 
   def mixed_chat_event_fixed_list(
         <<f_channel::little-signed-32, f_speaker::little-unsigned-32, rest::binary>>,
         n,
-        acc,
+        c,
+        m
+      )
+      when f_channel >= 0 and f_channel <= 3 do
+    v = %Bench.MixedChatEvent{channel: f_channel, speaker: f_speaker}
+    {tail, c, m} = mixed_chat_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
+  end
+
+  def mixed_chat_event_fixed_list(
+        <<f_channel::little-signed-32, f_speaker::little-unsigned-32, rest::binary>>,
+        n,
         c,
         m
       ) do
     c = R.clamps(c, f_channel, 0, 3)
 
     v = %Bench.MixedChatEvent{channel: min(max(f_channel, 0), 3), speaker: f_speaker}
-    mixed_chat_event_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = mixed_chat_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # MixedPickupEvent's body: 8 bytes, the values in DECLARED ORDER, every field at its
@@ -555,32 +677,64 @@ defmodule Bench.BenchFixed do
   end
 
   # A RUN OF MixedPickupEvent: the LIVE elements walked into a list, the count riding beside
-  # it, and not a byte of the slack behind them read.
-  def mixed_pickup_event_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # Hostile falls through to one element and the clamp.
+  def mixed_pickup_event_fixed_list(_bin, 0, c, m), do: {[], c, m}
 
   def mixed_pickup_event_fixed_list(
-        <<f_item_id::little-unsigned-32, f_amount::little-signed-32, rest::binary>>,
+        <<f_item_id_0::little-unsigned-32, f_amount_0::little-signed-32,
+          f_item_id_1::little-unsigned-32, f_amount_1::little-signed-32,
+          f_item_id_2::little-unsigned-32, f_amount_2::little-signed-32,
+          f_item_id_3::little-unsigned-32, f_amount_3::little-signed-32,
+          f_item_id_4::little-unsigned-32, f_amount_4::little-signed-32,
+          f_item_id_5::little-unsigned-32, f_amount_5::little-signed-32,
+          f_item_id_6::little-unsigned-32, f_amount_6::little-signed-32,
+          f_item_id_7::little-unsigned-32, f_amount_7::little-signed-32, rest::binary>>,
         n,
-        acc,
         c,
         m
       )
-      when f_amount >= 0 and f_amount <= 255 do
-    v = %Bench.MixedPickupEvent{item_id: f_item_id, amount: f_amount}
-    mixed_pickup_event_fixed_list(rest, n - 1, [v | acc], c, m)
+      when n >= 8 and f_amount_0 >= 0 and f_amount_0 <= 255 and f_amount_1 >= 0 and
+             f_amount_1 <= 255 and f_amount_2 >= 0 and f_amount_2 <= 255 and f_amount_3 >= 0 and
+             f_amount_3 <= 255 and f_amount_4 >= 0 and f_amount_4 <= 255 and f_amount_5 >= 0 and
+             f_amount_5 <= 255 and f_amount_6 >= 0 and f_amount_6 <= 255 and f_amount_7 >= 0 and
+             f_amount_7 <= 255 do
+    v0 = %Bench.MixedPickupEvent{item_id: f_item_id_0, amount: f_amount_0}
+    v1 = %Bench.MixedPickupEvent{item_id: f_item_id_1, amount: f_amount_1}
+    v2 = %Bench.MixedPickupEvent{item_id: f_item_id_2, amount: f_amount_2}
+    v3 = %Bench.MixedPickupEvent{item_id: f_item_id_3, amount: f_amount_3}
+    v4 = %Bench.MixedPickupEvent{item_id: f_item_id_4, amount: f_amount_4}
+    v5 = %Bench.MixedPickupEvent{item_id: f_item_id_5, amount: f_amount_5}
+    v6 = %Bench.MixedPickupEvent{item_id: f_item_id_6, amount: f_amount_6}
+    v7 = %Bench.MixedPickupEvent{item_id: f_item_id_7, amount: f_amount_7}
+    {tail, c, m} = mixed_pickup_event_fixed_list(rest, n - 8, c, m)
+    {[v0, v1, v2, v3, v4, v5, v6, v7 | tail], c, m}
   end
 
   def mixed_pickup_event_fixed_list(
         <<f_item_id::little-unsigned-32, f_amount::little-signed-32, rest::binary>>,
         n,
-        acc,
+        c,
+        m
+      )
+      when f_amount >= 0 and f_amount <= 255 do
+    v = %Bench.MixedPickupEvent{item_id: f_item_id, amount: f_amount}
+    {tail, c, m} = mixed_pickup_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
+  end
+
+  def mixed_pickup_event_fixed_list(
+        <<f_item_id::little-unsigned-32, f_amount::little-signed-32, rest::binary>>,
+        n,
         c,
         m
       ) do
     c = R.clamps(c, f_amount, 0, 255)
 
     v = %Bench.MixedPickupEvent{item_id: f_item_id, amount: min(max(f_amount, 0), 255)}
-    mixed_pickup_event_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = mixed_pickup_event_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # BenchMixed's body: 1236 bytes, the values in DECLARED ORDER, every field at its
@@ -698,8 +852,8 @@ defmodule Bench.BenchFixed do
              f_flux <= 1_267_650_600_228_229_401_496_703_205_376 and f_ping >= 0 and
              f_ping <= 64_000 and f_extra >= 0 and f_extra <= 255 and f_idle_ticks >= 0 and
              f_idle_ticks <= 15 do
-    {l_entities, c, m} = mixed_entity_fixed_list(b_entities, n_entities, [], c, m)
-    {l_stats, c, m} = mixed_stat_fixed_list(b_stats, n_stats, [], c, m)
+    {l_entities, c, m} = mixed_entity_fixed_list(b_entities, n_entities, c, m)
+    {l_stats, c, m} = mixed_stat_fixed_list(b_stats, n_stats, c, m)
     {f_game_event, c, m} = mixed_event_fixed_decode(b_game_event, c, m)
     {t_player_name, m} = R.text(binary_part(b_player_name, 0, n_player_name), <<>>, m, true)
 
@@ -758,9 +912,9 @@ defmodule Bench.BenchFixed do
     c = R.clamps(c, f_world_time, -1_000_000_000_000, 1_000_000_000_000)
     c = R.clamps(c, f_server_time, 0, 16_776_960)
     c = R.clamps(c, n_entities, 0, 8)
-    {l_entities, c, m} = mixed_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), [], c, m)
+    {l_entities, c, m} = mixed_entity_fixed_list(b_entities, min(max(n_entities, 0), 8), c, m)
     c = R.clamps(c, n_stats, 0, 80)
-    {l_stats, c, m} = mixed_stat_fixed_list(b_stats, min(max(n_stats, 0), 80), [], c, m)
+    {l_stats, c, m} = mixed_stat_fixed_list(b_stats, min(max(n_stats, 0), 80), c, m)
     {f_game_event, c, m} = mixed_event_fixed_decode(b_game_event, c, m)
     c = R.clamps(c, n_player_name, 0, 15)
 
@@ -817,11 +971,14 @@ defmodule Bench.BenchFixed do
   end
 
   # A RUN OF BenchMixed: the LIVE elements walked into a list, the count riding beside
-  # it, and not a byte of the slack behind them read.
-  def bench_mixed_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # Hostile falls through to one element and the clamp.
+  def bench_mixed_fixed_list(_bin, 0, c, m), do: {[], c, m}
 
-  def bench_mixed_fixed_list(<<e::binary-size(1236), rest::binary>>, n, acc, c, m) do
+  def bench_mixed_fixed_list(<<e::binary-size(1236), rest::binary>>, n, c, m) do
     {v, c, m} = bench_mixed_fixed_decode(e, c, m)
-    bench_mixed_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = bench_mixed_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 end

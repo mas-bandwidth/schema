@@ -31,6 +31,8 @@ package elixirtable
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -799,7 +801,6 @@ func forkNode(n node, v string) node {
 }
 
 func forkText(s, v string) string {
-	s = strings.ReplaceAll(s, ", [], c, m)", ", [], c_"+v+", m_"+v+")")
 	s = strings.ReplaceAll(s, ", c, m)", ", c_"+v+", m_"+v+")")
 	s = strings.ReplaceAll(s, "(c, ", "(c_"+v+", ")
 	s = strings.ReplaceAll(s, ", c)", ", c_"+v+")")
@@ -906,15 +907,15 @@ func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live, liveFast
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			callSlow := call(fmt.Sprintf("%s%s_fixed_list", g.moduleOf(r), ir.RustSnake(r.Name)), raw("b_"+v), live, raw("[]"), raw("c"), raw("m"))
-			callFast := call(fmt.Sprintf("%s%s_fixed_list", g.moduleOf(r), ir.RustSnake(r.Name)), raw("b_"+v), liveFast, raw("[]"), raw("c"), raw("m"))
+			callSlow := call(fmt.Sprintf("%s%s_fixed_list", g.moduleOf(r), ir.RustSnake(r.Name)), raw("b_"+v), live, raw("c"), raw("m"))
+			callFast := call(fmt.Sprintf("%s%s_fixed_list", g.moduleOf(r), ir.RustSnake(r.Name)), raw("b_"+v), liveFast, raw("c"), raw("m"))
 			out.stmt("{l_"+v+", c, m}", callSlow)
 			out.postFast = append(out.postFast, postStmt{name: "{l_" + v + ", c, m}", val: callFast})
 			out.field(f.Name, raw("l_"+v), raw("l_"+v))
 			return
 		case *ir.Union:
-			callSlow := call(fmt.Sprintf("%s%s_fixed_list", g.unionModule(r), ir.RustSnake(r.Name)), raw("b_"+v), live, raw("[]"), raw("c"), raw("m"))
-			callFast := call(fmt.Sprintf("%s%s_fixed_list", g.unionModule(r), ir.RustSnake(r.Name)), raw("b_"+v), liveFast, raw("[]"), raw("c"), raw("m"))
+			callSlow := call(fmt.Sprintf("%s%s_fixed_list", g.unionModule(r), ir.RustSnake(r.Name)), raw("b_"+v), live, raw("c"), raw("m"))
+			callFast := call(fmt.Sprintf("%s%s_fixed_list", g.unionModule(r), ir.RustSnake(r.Name)), raw("b_"+v), liveFast, raw("c"), raw("m"))
 			out.stmt("{l_"+v+", c, m}", callSlow)
 			out.postFast = append(out.postFast, postStmt{name: "{l_" + v + ", c, m}", val: callFast})
 			out.field(f.Name, raw("l_"+v), raw("l_"+v))
@@ -933,14 +934,14 @@ func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live, liveFast
 		out.field(f.Name, raw("l_"+v), raw("l_"+v))
 		return
 	}
-	callSlow := call(g.leafListName(v), raw("b_"+v), live, raw("[]"), raw("c"), raw("m"))
-	callFast := call(g.leafListName(v), raw("b_"+v), liveFast, raw("[]"), raw("c"), raw("m"))
+	callSlow := call(g.leafListName(v), raw("b_"+v), live, raw("c"), raw("m"))
+	callFast := call(g.leafListName(v), raw("b_"+v), liveFast, raw("c"), raw("m"))
 	out.stmt("{l_"+v+", c, m}", callSlow)
 	out.postFast = append(out.postFast, postStmt{name: "{l_" + v + ", c, m}", val: callFast})
 	out.field(f.Name, raw("l_"+v), raw("l_"+v))
 	g.leafLists = append(g.leafLists, leafList{
 		name: g.leafListName(v), spec: d.spec, wrap: d.wrap, wrapFast: d.wrapFast,
-		count: d.count, guards: d.guards,
+		count: d.count, guards: d.guards, bytes: ir.TableFixedStorageBytes(f.Type),
 	})
 }
 
@@ -965,6 +966,7 @@ type leafList struct {
 	wrapFast node
 	count    node
 	guards   []string
+	bytes    int64
 }
 
 // readElement binds ONE element, inlining a nested type whose image is a run of
@@ -1143,38 +1145,148 @@ func (g *fixedGen) emitDecodeClauses(st *ir.Struct, name string, r rseg, args []
 
 func (g *fixedGen) emitListHelpers(st *ir.Struct, snake string, size int64, r rseg) {
 	g.pf("  # A RUN OF %s: the LIVE elements walked into a list, the count riding beside\n", st.Name)
-	g.pf("  # it, and not a byte of the slack behind them read.\n")
-	g.pf("  def %s_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}\n\n", snake)
+	g.pf("  # it, and not a byte of the slack behind them read. Several elements per clause\n")
+	g.pf("  # where the record is small, consed onto the recursive tail in order, no reverse.\n")
+	g.pf("  # Hostile falls through to one element and the clamp.\n")
+	g.emitForwardListBase("def", snake+"_fixed_list")
 	if fixedFlatType(st) {
+		if k := listUnrollK(size); k > 1 && r.hasFast() && r.unrollable() {
+			g.emitUnrolledFlatList(st, snake, r, k)
+		}
 		if r.hasFast() {
-			g.emitMatchHead("def", snake+"_fixed_list", r.matchFast, []string{"n", "acc", "c", "m"}, 2, "rest::binary", r.guards)
+			g.emitMatchHead("def", snake+"_fixed_list", r.matchFast, []string{"n", "c", "m"}, 2, "rest::binary", r.guards)
 			g.emitPost(r.postFast, 4)
 			g.emitLines(g.assign("v", g.structNodeFast(st, r), 4))
-			g.pf("    %s_fixed_list(rest, n - 1, [v | acc], c, m)\n", snake)
+			g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
+			g.pf("    {[v | tail], c, m}\n")
 			g.pf("  end\n\n")
 		}
-		g.emitMatchHead("def", snake+"_fixed_list", r.match, []string{"n", "acc", "c", "m"}, 2, "rest::binary", nil)
+		g.emitMatchHead("def", snake+"_fixed_list", r.match, []string{"n", "c", "m"}, 2, "rest::binary", nil)
 		g.emitPost(r.post, 4)
 		g.emitLines(g.assign("v", g.structNodeOf(st, r), 4))
-		g.pf("    %s_fixed_list(rest, n - 1, [v | acc], c, m)\n", snake)
+		g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
+		g.pf("    {[v | tail], c, m}\n")
 	} else {
-		g.pf("  def %s_fixed_list(<<e::binary-size(%d), rest::binary>>, n, acc, c, m) do\n", snake, size)
+		g.pf("  def %s_fixed_list(<<e::binary-size(%d), rest::binary>>, n, c, m) do\n", snake, size)
 		g.pf("    {v, c, m} = %s_fixed_decode(e, c, m)\n", snake)
-		g.pf("    %s_fixed_list(rest, n - 1, [v | acc], c, m)\n", snake)
+		g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
+		g.pf("    {[v | tail], c, m}\n")
 	}
 	g.pf("  end\n\n")
 
 	for _, l := range g.leafLists {
-		g.pf("  defp %s(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}\n\n", l.name)
+		g.emitForwardListBase("defp", l.name)
+		if k := listUnrollK(l.bytes); k > 1 && len(l.guards) > 0 {
+			g.emitUnrolledLeafList(l, k)
+		}
 		if len(l.guards) > 0 {
-			g.emitMatchHead("defp", l.name, []string{l.spec}, []string{"n", "acc", "c", "m"}, 2, "rest::binary", l.guards)
-			g.pf("    %s\n", call(l.name, raw("rest"), raw("n - 1"), rawf("[%s | acc]", l.wrapFast.flat()), raw("c"), raw("m")).render(4, 4, 0))
+			g.emitMatchHead("defp", l.name, []string{l.spec}, []string{"n", "c", "m"}, 2, "rest::binary", l.guards)
+			g.pf("    {tail, c, m} = %s(rest, n - 1, c, m)\n", l.name)
+			g.pf("    {[%s | tail], c, m}\n", l.wrapFast.flat())
 			g.pf("  end\n\n")
 		}
-		g.emitMatchHead("defp", l.name, []string{l.spec}, []string{"n", "acc", "c", "m"}, 2, "rest::binary", nil)
-		g.pf("    %s\n", call(l.name, raw("rest"), raw("n - 1"), rawf("[%s | acc]", l.wrap.flat()), l.count, raw("m")).render(4, 4, 0))
+		g.emitMatchHead("defp", l.name, []string{l.spec}, []string{"n", "c", "m"}, 2, "rest::binary", nil)
+		g.emitLines(g.assign("{tail, c, m}", call(l.name, raw("rest"), raw("n - 1"), l.count, raw("m")), 4))
+		g.pf("    {[%s | tail], c, m}\n", l.wrap.flat())
 		g.pf("  end\n\n")
 	}
+}
+
+// listUnrollK is how many LIVE elements one fast clause matches. The packet
+// reader's stats walk takes four 18-bit elements per clause; this form's
+// elements are whole bytes, and eight 8-byte MixedStats is one cache line and
+// the k that moved the identity load. Past that the match grew faster than the
+// calls it saved. A larger record stays one element.
+func listUnrollK(size int64) int {
+	const maxK = 8
+	const budget = 64
+	if size <= 0 {
+		return 1
+	}
+	k := int(budget / size)
+	if k < 1 {
+		return 1
+	}
+	if k > maxK {
+		return maxK
+	}
+	return k
+}
+
+func (r rseg) unrollable() bool {
+	// The slow clause's clamp statements ride `post`. The fast unroll only
+	// needs matchFast, guards and valsFast, so a ranged leaf is still a leaf.
+	return len(r.postFast) == 0
+}
+
+func (g *fixedGen) emitForwardListBase(kw, name string) {
+	g.emitShortDef(fmt.Sprintf("%s %s(_bin, 0, c, m)", kw, name), "{[], c, m}")
+}
+
+func (g *fixedGen) emitUnrolledFlatList(st *ir.Struct, snake string, r rseg, k int) {
+	var segs []string
+	guards := []string{fmt.Sprintf("n >= %d", k)}
+	elems := make([]rseg, k)
+	for i := 0; i < k; i++ {
+		elems[i] = suffixRseg(r, strconv.Itoa(i))
+		segs = append(segs, elems[i].matchFast...)
+		guards = append(guards, elems[i].guards...)
+	}
+	g.emitMatchHead("def", snake+"_fixed_list", segs, []string{"n", "c", "m"}, 2, "rest::binary", guards)
+	names := make([]string, k)
+	for i, el := range elems {
+		names[i] = fmt.Sprintf("v%d", i)
+		g.emitLines(g.assign(names[i], g.structNodeFast(st, el), 4))
+	}
+	g.pf("    {tail, c, m} = %s_fixed_list(rest, n - %d, c, m)\n", snake, k)
+	g.pf("    {[%s | tail], c, m}\n", strings.Join(names, ", "))
+	g.pf("  end\n\n")
+}
+
+func (g *fixedGen) emitUnrolledLeafList(l leafList, k int) {
+	segs := make([]string, k)
+	guards := []string{fmt.Sprintf("n >= %d", k)}
+	wraps := make([]string, k)
+	for i := 0; i < k; i++ {
+		suf := strconv.Itoa(i)
+		segs[i] = suffixIdent(l.spec, suf)
+		guards = append(guards, suffixAll(l.guards, suf)...)
+		wraps[i] = suffixIdent(l.wrapFast.flat(), suf)
+	}
+	g.emitMatchHead("defp", l.name, segs, []string{"n", "c", "m"}, 2, "rest::binary", guards)
+	g.pf("    {tail, c, m} = %s(rest, n - %d, c, m)\n", l.name, k)
+	g.pf("    {[%s | tail], c, m}\n", strings.Join(wraps, ", "))
+	g.pf("  end\n\n")
+}
+
+var matchIdent = regexp.MustCompile(`\bf_[A-Za-z0-9_]+\b`)
+
+func suffixIdent(s, suf string) string {
+	return matchIdent.ReplaceAllStringFunc(s, func(m string) string { return m + "_" + suf })
+}
+
+func suffixAll(ss []string, suf string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = suffixIdent(s, suf)
+	}
+	return out
+}
+
+func suffixRseg(r rseg, suf string) rseg {
+	out := rseg{
+		match:     suffixAll(r.match, suf),
+		matchFast: suffixAll(r.matchFast, suf),
+		keys:      append([]string{}, r.keys...),
+		guards:    suffixAll(r.guards, suf),
+	}
+	for _, v := range r.vals {
+		out.vals = append(out.vals, raw(suffixIdent(v.flat(), suf)))
+	}
+	for _, v := range r.valsFast {
+		out.valsFast = append(out.valsFast, raw(suffixIdent(v.flat(), suf)))
+	}
+	return out
 }
 
 // emitShortDef prints `def head, do: body`, broken after the head's comma with
@@ -1369,10 +1481,11 @@ func (g *fixedGen) unionHelpers(u *ir.Union) {
 	g.pf("  end\n\n")
 
 	g.pf("  # A RUN OF %s: the LIVE elements walked into a list, the count beside it.\n", u.Name)
-	g.pf("  def %s_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}\n\n", snake)
-	g.pf("  def %s_fixed_list(<<e::binary-size(%d), rest::binary>>, n, acc, c, m) do\n", snake, total)
+	g.emitForwardListBase("def", snake+"_fixed_list")
+	g.pf("  def %s_fixed_list(<<e::binary-size(%d), rest::binary>>, n, c, m) do\n", snake, total)
 	g.pf("    {v, c, m} = %s_fixed_decode(e, c, m)\n", snake)
-	g.pf("    %s_fixed_list(rest, n - 1, [v | acc], c, m)\n", snake)
+	g.pf("    {tail, c, m} = %s_fixed_list(rest, n - 1, c, m)\n", snake)
+	g.pf("    {[v | tail], c, m}\n")
 	g.pf("  end\n\n")
 }
 

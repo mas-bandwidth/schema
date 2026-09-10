@@ -44,12 +44,15 @@ defmodule Bench.WrapFixed do
   end
 
   # A RUN OF FixedTable: the LIVE elements walked into a list, the count riding beside
-  # it, and not a byte of the slack behind them read.
-  def fixed_table_fixed_list(_bin, 0, acc, c, m), do: {:lists.reverse(acc), c, m}
+  # it, and not a byte of the slack behind them read. Several elements per clause
+  # where the record is small, consed onto the recursive tail in order, no reverse.
+  # Hostile falls through to one element and the clamp.
+  def fixed_table_fixed_list(_bin, 0, c, m), do: {[], c, m}
 
-  def fixed_table_fixed_list(<<e::binary-size(1236), rest::binary>>, n, acc, c, m) do
+  def fixed_table_fixed_list(<<e::binary-size(1236), rest::binary>>, n, c, m) do
     {v, c, m} = fixed_table_fixed_decode(e, c, m)
-    fixed_table_fixed_list(rest, n - 1, [v | acc], c, m)
+    {tail, c, m} = fixed_table_fixed_list(rest, n - 1, c, m)
+    {[v | tail], c, m}
   end
 
   # ---- FixedTable, the fixed form ----
