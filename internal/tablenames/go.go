@@ -363,7 +363,6 @@ func init() {
 
 		Name{Name: "TableFixedForm", What: "the fixed form (form 3)"},
 		Name{Name: "TableFixedHeaderBytes", What: "the fixed form (form 3)"},
-		Name{Name: "TableFixedHashAt", What: "the fixed form (form 3)"},
 		Name{Name: "TableFixedEntry", What: "the fixed form (form 3)"},
 		Name{Name: "TableFixedDst", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedCopy", What: "the fixed form (form 3)"},

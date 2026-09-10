@@ -1551,8 +1551,10 @@ type TableMessageWriter struct {
 }
 
 const TableFixedForm uint8 = 3
-const TableFixedHeaderBytes = 16
-const TableFixedHashAt = 8
+
+// TableFixedHeaderBytes is the form byte plus the u32 layout length in front
+// of it; the length itself sits at offset 1, behind the form byte.
+const TableFixedHeaderBytes = 5
 
 const (
 	tableFixedCopy uint8 = iota
