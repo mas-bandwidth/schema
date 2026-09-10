@@ -1,0 +1,39 @@
+// FE2.schema — the NEWER side of the ordinal slide pair. See FE1.schema.
+//
+// `Electrum` is inserted between Bronze and Silver, so Silver and Gold both
+// slide by one; `shield` is inserted between `boost` and `ward`, so `ward`'s
+// tag ordinal slides by one and the arm behind the tag moves with it. Both
+// edits are INVISIBLE in a record — the ordinal is the only thing that carries
+// them — which is exactly why the layout has to name the variants.
+package tblfe2
+
+enum Grade { Bronze, Electrum, Silver, Gold }
+
+type Boost
+{
+    power int32 = 1
+}
+
+type Shield
+{
+    plating int32 = 3
+}
+
+type Ward
+{
+    charge int32 = 2
+}
+
+union Effect
+{
+    boost  Boost
+    shield Shield
+    ward   Ward
+}
+
+table FeRoot
+{
+    grade  Grade = Silver
+    effect Effect
+    tail   int32 = 7
+}
