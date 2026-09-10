@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedCompile, TableFixedForm, TableFixedHashAt, TableFixedHashOf, TableFixedHeaderBytes, TableFixedLayoutHeaderBytes, TableFixedLayoutView, TableFixedMessageForm, TableFixedParseLayout, TableFixedPlan, TableFixedRefusal, TableFixedResetReport, TableFixedRun, TableFixedSize, TableFixedVariableForm } from "./BenchTable.js";
+import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedCompile, TableFixedForm, TableFixedHashAt, TableFixedHashOf, TableFixedHeaderBytes, TableFixedHoles, TableFixedLayoutHeaderBytes, TableFixedLayoutView, TableFixedMessageForm, TableFixedParseLayout, TableFixedPlan, TableFixedRefusal, TableFixedResetReport, TableFixedRun, TableFixedSize, TableFixedVariableForm } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -129,9 +129,9 @@ export const FixedTableFixedLayout = new Uint8Array([
 ]);
 export const FixedTableFixedLayoutBytes = 1279;
 
-// THE PREFILL: the declared defaults as a constant run of bytes, laid down
-// with one set. A field this record does not carry has no plan entry, so it
-// keeps what this put there and the loop never learns it existed.
+// THE PREFILL: the declared defaults as a constant run of bytes. Load copies
+// them into exactly the dest ranges the plan does not write. Identity's hole
+// list is empty — one COPY of the whole body — so that copy is a no-op.
 const FixedTableFixedPrefill = new Uint8Array([
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -403,6 +403,12 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   const n = (rest / recordBytes) | 0;
   if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
   const image = plan.image, imageView = plan.view;
+  // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one
+  // COPY of the whole body, so the hole list is empty and the inner loop is a
+  // no-op. A compiled plan that leaves a field out has that field in the list,
+  // and the declared default is what it keeps. Same loop either way. There is
+  // no identity flag in the record loop — an empty list is what skips the work.
+  const holeN = TableFixedHoles(entries, entryCount, plan.cover, plan.holes);
   // ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the
   // read loop moves a run in 32-bit lanes and a DataView is what has an
   // unaligned word move in this language (§3.4).
@@ -415,7 +421,10 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
         ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {
       report.refused = TableFixedRefusal.NoLayout; return -1;
     }
-    image.set(FixedTableFixedPrefill);            // the declared defaults, one prefill
+    for (let h = 0; h < holeN; h++) {
+      const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];
+      for (let i = 0; i < z; i++) { image[o + i] = FixedTableFixedPrefill[o + i]; }
+    }
     TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);
     FixedTableFixedDecode(values[k], imageView, 0, report);
     at += recordBytes;

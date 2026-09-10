@@ -79,6 +79,8 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
   versioning(check, fx1, fx2, fx1home, fx2home);
+  liveCountSlack(check, fx1, fx1home);
+  holePrefill(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
   unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types);
   if (oracleDir) {
@@ -868,6 +870,83 @@ function referenceOracle(check, fx1, fx2, fx1home, oracleDir) {
     check(v[0].Gone === 9,
       `reference oracle: a field FX2 does not carry keeps its declared default, got ${v[0].Gone}`);
   }
+}
+
+// LIVE-COUNT: decode walks MarksCount, never the bound. Constructed count=1,
+// wire slack poisoned after write (write already walks MarksCount, so the
+// template's zeros are what the writer put there). A fresh object after load
+// has template zeros in the slack and clamped 0, not 3. Walking the bound
+// would have copied the poison into the object.
+function liveCountSlack(check, fx1, fx1home) {
+  const one = new fx1home.FxRoot();
+  one.MarksCount = 1;
+  one.Marks[0] = 42;
+  one.Marks[1] = 999;
+  one.Marks[2] = 888;
+  one.Marks[3] = 777;
+  const buf = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([one], 1, buf) === buf.length, "live-count: save of count=1");
+
+  // keep(4) + narrow(2) + renamed(4) + gone(4) + nested(8) + label string(8) (4+8)
+  const marksAt = 4 + 2 + 4 + 4 + 8 + 12;
+  const recBody = HEADER_BYTES + 4 + fx1.FxRootFixedLayoutBytes + 8;
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.length);
+  check(view.getInt32(recBody + marksAt, true) === 1, "live-count: the wire count is 1");
+  check(view.getInt32(recBody + marksAt + 4, true) === 42, "live-count: live slot 0 is 42");
+  check(view.getInt32(recBody + marksAt + 8, true) === 0 &&
+    view.getInt32(recBody + marksAt + 12, true) === 0 &&
+    view.getInt32(recBody + marksAt + 16, true) === 0,
+    "live-count: write left slack as the template's zeros");
+  view.setInt32(recBody + marksAt + 8, 999, true);
+  view.setInt32(recBody + marksAt + 12, 888, true);
+  view.setInt32(recBody + marksAt + 16, 777, true);
+
+  const back = [new fx1home.FxRoot()];
+  const r = new fx1home.TableFixedReport();
+  const n = fx1.FxRootFixedLoad(back, 1, buf, buf.length, fx1.FxRootFixedNewPlan(), r);
+  check(n === 1 && !r.malformed && r.refused === 0, `live-count: load of the poisoned-slack record, got ${n}`);
+  check(back[0].MarksCount === 1 && back[0].Marks[0] === 42,
+    `live-count: live prefix lands — got count ${back[0].MarksCount} [${back[0].Marks[0]}]`);
+  check(back[0].Marks[1] === 0 && back[0].Marks[2] === 0 && back[0].Marks[3] === 0,
+    `live-count: object slack is template zeros, not the poisoned wire — got [${back[0].Marks[1]}, ${back[0].Marks[2]}, ${back[0].Marks[3]}]`);
+  check(r.clamped === 0,
+    `live-count: clamped counts 0 not 3 (got ${r.clamped})`);
+}
+
+// HOLE PREFILL: identity's hole list is empty (one COPY of the whole body).
+// Compiled FX2→FX1 has holes for Gone; a dirty image still reads the default.
+function holePrefill(check, fx1, fx2, fx1home, fx2home) {
+  const identity = new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0]);
+  const idPlan = fx1.FxRootFixedNewPlan();
+  const idHoles = fx1home.TableFixedHoles(identity, 1, idPlan.cover, idPlan.holes);
+  check(idHoles === 0, `hole prefill: identity's hole list is empty, got ${idHoles}`);
+
+  const two = new fx2home.FxRoot();
+  two.Keep = 5150;
+  two.Narrow = 70000;
+  two.RenamedTo = 808;
+  two.Added = 909;
+  two.Nested.A = 33;
+  two.Nested.B = 44;
+  const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
+  check(fx2.FxRootFixedSave([two], 1, w2) === w2.length, "hole prefill: FX2 save");
+
+  const plan = fx1.FxRootFixedNewPlan();
+  const back = [new fx1home.FxRoot()];
+  const r = new fx1home.TableFixedReport();
+  const n = fx1.FxRootFixedLoad(back, 1, w2, w2.length, plan, r);
+  check(n === 1, "hole prefill: FX1 reads FX2 through a compiled plan");
+  check(back[0].Gone === 9, `hole prefill: Gone keeps its declared default, got ${back[0].Gone}`);
+  const compiledHoles = fx1home.TableFixedHoles(plan.entries, plan.count, plan.cover, plan.holes);
+  check(compiledHoles > 0, `hole prefill: compiled FX2→FX1 has holes (Gone), got ${compiledHoles}`);
+
+  plan.image.fill(0xff);
+  const dirty = [new fx1home.FxRoot()];
+  const r2 = new fx1home.TableFixedReport();
+  check(fx1.FxRootFixedLoad(dirty, 1, w2, w2.length, plan, r2) === 1,
+    "hole prefill: a second load on a dirty image");
+  check(dirty[0].Gone === 9,
+    `hole prefill: holes restore Gone's default after a dirty image, got ${dirty[0].Gone}`);
 }
 
 function setText(buf, s) {

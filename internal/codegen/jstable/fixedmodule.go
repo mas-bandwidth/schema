@@ -164,7 +164,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 
 	g.needHome("TableFixedForm", "TableFixedRun", "TableFixedCompile", "TableFixedHashOf",
 		"TableFixedParseLayout", "TableFixedLayoutView", "TableFixedPlan", "TableFixedSize",
-		"TableFixedRefusal", "TableFixedResetReport",
+		"TableFixedRefusal", "TableFixedResetReport", "TableFixedHoles",
 		"TableFixedHeaderBytes", "TableFixedHashAt", "TableFixedLayoutHeaderBytes",
 		"TableFixedVariableForm", "TableFixedMessageForm")
 	g.needHome(st.Name+"FixedWriteBody", st.Name+"FixedDecode", st.Name, "Init"+st.Name)
@@ -192,9 +192,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("]);\n")
 	g.pf("export const %sFixedLayoutBytes = %d;\n\n", st.Name, len(layout))
 
-	g.pf("// THE PREFILL: the declared defaults as a constant run of bytes, laid down\n")
-	g.pf("// with one set. A field this record does not carry has no plan entry, so it\n")
-	g.pf("// keeps what this put there and the loop never learns it existed.\n")
+	g.pf("// THE PREFILL: the declared defaults as a constant run of bytes. Load copies\n")
+	g.pf("// them into exactly the dest ranges the plan does not write. Identity's hole\n")
+	g.pf("// list is empty — one COPY of the whole body — so that copy is a no-op.\n")
 	g.pf("const %sFixedPrefill = new Uint8Array([\n", st.Name)
 	g.emitBytes(prefill)
 	g.pf("]);\n\n")
@@ -315,6 +315,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  const n = (rest / recordBytes) | 0;\n")
 	g.pf("  if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }\n")
 	g.pf("  const image = plan.image, imageView = plan.view;\n")
+	g.pf("  // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's plan is one\n")
+	g.pf("  // COPY of the whole body, so the hole list is empty and the inner loop is a\n")
+	g.pf("  // no-op. A compiled plan that leaves a field out has that field in the list,\n")
+	g.pf("  // and the declared default is what it keeps. Same loop either way. There is\n")
+	g.pf("  // no identity flag in the record loop — an empty list is what skips the work.\n")
+	g.pf("  const holeN = TableFixedHoles(entries, entryCount, plan.cover, plan.holes);\n")
 	g.pf("  // ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the\n")
 	g.pf("  // read loop moves a run in 32-bit lanes and a DataView is what has an\n")
 	g.pf("  // unaligned word move in this language (§3.4).\n")
@@ -327,7 +333,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("        ((bytes[at + 4] | (bytes[at + 5] << 8) | (bytes[at + 6] << 16) | (bytes[at + 7] << 24)) >>> 0) !== hashHi) {\n")
 	g.pf("      report.refused = TableFixedRefusal.NoLayout; return -1;\n")
 	g.pf("    }\n")
-	g.pf("    image.set(%sFixedPrefill);            // the declared defaults, one prefill\n", st.Name)
+	g.pf("    for (let h = 0; h < holeN; h++) {\n")
+	g.pf("      const o = plan.holes[h * 2], z = plan.holes[h * 2 + 1];\n")
+	g.pf("      for (let i = 0; i < z; i++) { image[o + i] = %sFixedPrefill[o + i]; }\n", st.Name)
+	g.pf("    }\n")
 	g.pf("    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);\n")
 	g.pf("    %sFixedDecode(values[k], imageView, 0, report);\n", st.Name)
 	g.pf("    at += recordBytes;\n")

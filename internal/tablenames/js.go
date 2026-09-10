@@ -96,6 +96,8 @@ func init() {
 		Name{Name: "TableFixedHashOf", What: "fnv1a64 over the layout's bytes, in two uint32 lanes because a BigInt on a per-record compare is an allocation per record"},
 		Name{Name: "TableFixedHashOut", What: "the hash's two-lane out-parameter, consumed in the call that fills it"},
 		Name{Name: "TableFixedRun", What: "THE ONE READ LOOP: one plan over one record body, and the only thing that differs between this build's own record and anybody else's is which plan it is handed"},
+		Name{Name: "TableFixedLand", What: "mark one dest range the plan writes, so the complement is the holes"},
+		Name{Name: "TableFixedHoles", What: "the complement of the unguarded dest writes — what the prefill copies into"},
 		Name{Name: "TableFixedConv", What: "the sixteen-byte float conversion scratch, the flat packet tier's SC twin"},
 		Name{Name: "TableFixedCompile", What: "the plan compiler, run once per peer and never once per record"},
 		Name{Name: "TableFixedCompileEntry", What: "the compiler's per-entry walk, matching one of the writer's entries against one of mine"},

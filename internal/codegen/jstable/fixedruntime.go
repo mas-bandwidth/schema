@@ -140,6 +140,10 @@ export class TableFixedPlan {
     // the reader's own storage: this build's declared order at its own widths
     this.image = new Uint8Array(imageBytes | 0);
     this.view = new DataView(this.image.buffer);
+    // cover and holes: scratch for TableFixedHoles, one allocation at
+    // construction and never per record. holes is (off, size) pairs.
+    this.cover = new Uint8Array(imageBytes | 0);
+    this.holes = new Int32Array(((imageBytes | 0) + 1) * 2);
     // the remap tables an TableFixedOpOrdinal entry resolves through, laid down here
     // rather than above the entries: JavaScript has no pointer to alias two
     // arrays through, so the pool is its own array and aux is an index into it
@@ -320,6 +324,68 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       default: break;
     }
   }
+}
+
+// TableFixedLand marks one dest range the plan writes, so the complement is
+// the holes. Sizes match TableFixedRun.
+function TableFixedLand(cover, off, n) {
+  if (n <= 0) { return; }
+  const end = cover.length;
+  if (off >= end) { return; }
+  let last = off + n;
+  if (last > end) { last = end; }
+  for (let i = off; i < last; i++) { cover[i] = 1; }
+}
+
+// Complement of the unguarded dest writes. Guarded entries (union arms,
+// compiled tag consts) are not always written, so they stay holes and keep
+// the defaults. cover is scratch the size of the destination image; holes
+// holds (off, size) pairs, at most cover.length of them. Returns how many.
+export function TableFixedHoles(plan, entryCount, cover, holes) {
+  cover.fill(0);
+  const e = plan;
+  for (let i = 0; i < entryCount; i++) {
+    const b = i * TableFixedLanes;
+    if (e[b + TableFixedLaneGuard] !== TableFixedNoGuard) { continue; }
+    const d = e[b + TableFixedLaneDst];
+    const size = e[b + TableFixedLaneSize];
+    switch (e[b + TableFixedLaneOp]) {
+      case TableFixedOpCopy:
+      case TableFixedOpConst:
+        TableFixedLand(cover, d, size);
+        break;
+      case TableFixedOpCount:
+        TableFixedLand(cover, d, 4);
+        break;
+      case TableFixedOpText:
+        TableFixedLand(cover, d, 4);
+        TableFixedLand(cover, e[b + TableFixedLaneAux], size);
+        break;
+      case TableFixedOpOrdinal:
+      case TableFixedOpWiden:
+        TableFixedLand(cover, d, e[b + TableFixedLaneMeta] & 0xff);
+        break;
+      case TableFixedOpWidenF:
+        TableFixedLand(cover, d, 8);
+        break;
+      default: break;
+    }
+  }
+  let h = 0;
+  let i = 0;
+  const n = cover.length;
+  while (i < n) {
+    if (cover[i] !== 0) { i++; continue; }
+    const start = i;
+    i++;
+    while (i < n && cover[i] === 0) { i++; }
+    if (h * 2 + 1 < holes.length) {
+      holes[h * 2] = start;
+      holes[h * 2 + 1] = i - start;
+      h++;
+    }
+  }
+  return h;
 }
 
 // the sixteen-byte conversion scratch — the flat packet tier's SC twin. Module

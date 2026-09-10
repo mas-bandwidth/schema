@@ -390,7 +390,8 @@ func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
 // lands values in the value itself and there is nothing after the loop; here a
 // value is an object with named properties and the image is a Uint8Array, so
 // the projection is a pass of constant-offset loads — the same straight line
-// the flat packet reader is, minus the bit cursor.
+// the flat packet reader is, minus the bit cursor. A COUNTED ARRAY WALKS ITS
+// LIVE COUNT, never the bound: slack is never projected and never clamped.
 func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("// caller handed in — filled, never returned, exactly as Read<Name>Flat is.\n")
@@ -434,12 +435,15 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 	name := ir.GoExportName(f.Name)
 	switch {
 	case f.KeyEnum != "":
-		g.emitDecodeLoop(f, base, at, f.KeyEnumRef.Max, val+"."+name, ind)
+		g.emitDecodeLoop(f, base, at, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+"."+name, ind)
 	case f.Array == ir.ArrayFixed:
-		g.emitDecodeLoop(f, base, at, f.ArrayBound, val+"."+name, ind)
+		g.emitDecodeLoop(f, base, at, strconv.FormatInt(f.ArrayBound, 10), val+"."+name, ind)
 	case f.Array == ir.ArrayCounted:
 		g.emitDecodeCount(ind, val+"."+name+"Count", off(base, at), f.ArrayBound)
-		g.emitDecodeLoop(f, base, at+fixedCountBytes, f.ArrayBound, val+"."+name, ind)
+		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
+		// live count, never the slack behind it. Identity copies the whole
+		// array into the image; this loop is the pass both paths share.
+		g.emitDecodeLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.emitDecodeCount(ind, val+"."+name+"Length", off(base, at), f.Type.Size)
 		g.pf("%sfor (let i = 0; i < %d; i++) { %s.%s[i] = view.getUint8(%s + i); }\n",
@@ -475,9 +479,9 @@ func (g *fixedGen) emitDecodeCount(ind, dst, at string, bound int64) {
 	g.pf("%s}\n", ind)
 }
 
-func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at, count int64, expr, ind string) {
+func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (let i = 0; i < %d; i++) {\n", ind, count)
+	g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
 	g.emitDecodeElement(f, fmt.Sprintf("%s + i * %d", off(base, at), elem), 0, expr+"[i]", ind+"  ")
 	g.pf("%s}\n", ind)
 }

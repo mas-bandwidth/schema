@@ -86,6 +86,52 @@ func TestFixedImageIsContiguous(t *testing.T) {
 	}
 }
 
+// A COUNTED ARRAY'S DECODE WALKS THE LIVE COUNT, never the bound. Identity
+// copies the whole array into the image (enums are a flat run); clamp and
+// ordinal counters live in the projection both paths share, so a loop over
+// ArrayBound would count slack. LIVE elements only, slack never.
+func TestDecodeCountedArrayWalksLiveCount(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+enum Grade
+{
+    Bronze
+    Silver
+    Gold
+}
+
+table LiveRoot
+{
+    grades [1..4]Grade
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "function LiveRootFixedDecode(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no LiveRootFixedDecode in the generated unit")
+	}
+	body := jsFn(src, "LiveRootFixedDecode")
+	if body == "" {
+		t.Fatal("LiveRootFixedDecode was not a closed function")
+	}
+	if !strings.Contains(body, "i < value.GradesCount") {
+		t.Fatalf("counted-array decode must walk the live count, not the bound:\n%s", body)
+	}
+	if strings.Contains(body, "i < 4") {
+		t.Fatalf("counted-array decode still walks the declared bound:\n%s", body)
+	}
+}
+
 // `bytes(N)` RIDES AS A COUNTED ARRAY, so its destination row has to be the
 // COUNTED ARRAY's row and not the text row. The two spell the same two numbers
 // in the opposite order — an array entry's `dst` is the ELEMENT BASE and its
@@ -130,6 +176,108 @@ func TestFixedBytesRowIsTheCountedArrayRow(t *testing.T) {
 	if array.stride != 1 {
 		t.Fatalf("bytes(N): stride = %d, its elements are single bytes", array.stride)
 	}
+}
+
+// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: prefill the bytes
+// the plan does not write. The compiler computes the unwritten ranges; the
+// load copies defaults into exactly those; identity's list is empty because
+// its plan is one Copy of the whole body. There is no identity flag in the
+// record loop — an empty list is what skips the work.
+func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
+	u := unitFrom(t, `package probe
+table Config {
+    scale float32 = 1.0
+    extra int32 = 9
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "function ConfigFixedLoad(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no ConfigFixedLoad in the generated unit")
+	}
+	load := jsFn(src, "ConfigFixedLoad")
+	if load == "" {
+		t.Fatal("ConfigFixedLoad was not a closed function")
+	}
+	if !strings.Contains(load, "TableFixedHoles") {
+		t.Error("the load does not compute the plan's unwritten ranges")
+	}
+	if !strings.Contains(load, "ConfigFixedPrefill") {
+		t.Error("the load has no default image to copy into holes")
+	}
+	if strings.Contains(load, "image.set(ConfigFixedPrefill)") {
+		t.Error("the load still prefills the whole image; holes are the bytes the plan does not write")
+	}
+	i := strings.Index(load, "for (let k = 0; k < n; k++)")
+	if i < 0 {
+		t.Fatal("the load has no record loop")
+	}
+	loop := load[i:]
+	if strings.Contains(loop, "identity") {
+		t.Error("the load loop still branches on identity; an empty hole list is what skips work")
+	}
+	if !strings.Contains(src, "function TableFixedHoles(") && !strings.Contains(src, "TableFixedHoles") {
+		t.Error("the generated unit never names TableFixedHoles")
+	}
+	runtimeHas := false
+	for _, b := range files {
+		if strings.Contains(string(b), "export function TableFixedHoles(") {
+			runtimeHas = true
+			break
+		}
+	}
+	if !runtimeHas {
+		t.Error("the fixed runtime is missing TableFixedHoles")
+	}
+}
+
+func unitFrom(t *testing.T, src string) *ir.Unit {
+	t.Helper()
+	f, perrs := parser.Parse("Probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	return u
+}
+
+// jsFn is the source of one generated function, from its signature to the
+// matching close brace, so a pin can name a loop without matching the rest of
+// the module.
+func jsFn(body, name string) string {
+	sig := "function " + name + "("
+	i := strings.Index(body, sig)
+	if i < 0 {
+		return ""
+	}
+	n := 0
+	for j := i; j < len(body); j++ {
+		switch body[j] {
+		case '{':
+			n++
+		case '}':
+			n--
+			if n == 0 {
+				return body[i : j+1]
+			}
+		}
+	}
+	return body[i:]
 }
 
 func findTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
