@@ -153,6 +153,10 @@ func fixedFlatField(f *ir.Field) bool {
 			return fixedFlatType(r)
 		case *ir.Union:
 			return false
+		case *ir.Enum:
+			// AN ORDINAL IS HELD TO THE VARIANTS THE WRITER DECLARED, which is
+			// a check and not a move, so an enum is not a plain byte run.
+			return false
 		}
 	}
 	return true
@@ -206,6 +210,14 @@ func fixedTextLeaf(w *fixedLeafWalk, base, size int64, flavour int, guard string
 	w.push(fixedOther([]string{":text", itoa(base), itoa(base), itoa(base + fixedCountBytes), itoa(size), strconv.Itoa(flavour)}, "text", guard))
 }
 
+// fixedOrdinalLeaf emits the op that holds an ORDINAL — an enum variant's, or
+// a union tag's — to the variants the writer declared. THE IDENTITY PLAN NEEDS
+// NO REMAP, so where a compiled plan carries the writer's table this carries
+// the plain VARIANT COUNT, which is the same check written in one number.
+func fixedOrdinalLeaf(w *fixedLeafWalk, at, size int64, variants int, guard string) {
+	w.push(fixedOther([]string{":ordinal", itoa(at), itoa(at), itoa(size), itoa(size), strconv.Itoa(variants)}, "ordinal", guard))
+}
+
 func fixedElementLoop(w *fixedLeafWalk, f *ir.Field, base, count int64, guard string) {
 	elem := fixedElementBytes(f)
 	if fixedFlatElem(f) {
@@ -230,6 +242,8 @@ func fixedFlatElem(f *ir.Field) bool {
 			return fixedFlatType(r)
 		case *ir.Union:
 			return false
+		case *ir.Enum:
+			return false
 		}
 	}
 	switch f.Type.Kind {
@@ -251,11 +265,18 @@ func fixedElementLeaves(w *fixedLeafWalk, f *ir.Field, at int64, guard string) {
 			// an arm runs only when the tag it was compiled for is the tag the
 			// record carries.
 			tag := fixedUnionTagBytes(r)
-			w.push(fixedCopy(at, at, tag, guard))
+			fixedOrdinalLeaf(w, at, tag, len(r.Variants), guard)
 			for i, v := range r.Variants {
 				arm := fmt.Sprintf("%d:%d", at, i+1)
 				fixedElementLeaves(w, v.F, at+tag, arm)
 			}
+			return
+		case *ir.Enum:
+			// AN ORDINAL PAST THE LAST VARIANT IS NOT A VARIANT: it lands None
+			// and counts one `clamped`, which is the same answer §3 gives a
+			// value outside its range. Nothing but a plan op can say so, so on
+			// this path the ordinal is an op and not a byte of a run.
+			fixedOrdinalLeaf(w, at, fixedElementBytes(f), len(r.Variants), guard)
 			return
 		}
 	}

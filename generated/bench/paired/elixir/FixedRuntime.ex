@@ -1107,7 +1107,7 @@ defmodule Bench.FixedRuntime do
     # gained a variant IN THE MIDDLE is remapped here and never reinterpreted.
     case body do
       <<_::binary-size(^src), raw::little-unsigned-size(^size)-unit(8), _::binary>> ->
-        v = if raw > 0 and raw <= tuple_size(remap), do: elem(remap, raw - 1), else: 0
+        {v, report} = ordinal(raw, remap, report)
         step(rest, body, [{dst, <<v::little-unsigned-size(width)-unit(8)>>} | writes], report)
 
       _ ->
@@ -1194,6 +1194,27 @@ defmodule Bench.FixedRuntime do
   end
 
   defp widen_float(value), do: value
+
+  # AN ORDINAL PAST THE LAST VARIANT THE WRITER DECLARED IS NOT A VARIANT AT
+  # ALL: it lands None and counts one `clamped`, which is the answer §3 gives
+  # every other value outside its range and the answer a union tag beyond the
+  # declared arm count gets too. TAG 0 IS None and is not a clamp.
+  #
+  # `remap` is the WRITER's table where the two sides can disagree about
+  # what a number means, and the plain VARIANT COUNT where they cannot — which
+  # is what the identity plan carries, because a plan compiled against my own
+  # layout remaps every ordinal to itself.
+  defp ordinal(0, _remap, report), do: {0, report}
+
+  defp ordinal(raw, variants, report) when is_integer(variants) do
+    if raw <= variants, do: {raw, report}, else: {0, bump(report, :clamped)}
+  end
+
+  defp ordinal(raw, remap, report) do
+    if raw <= tuple_size(remap),
+      do: {elem(remap, raw - 1), report},
+      else: {0, bump(report, :clamped)}
+  end
 
   defp clamp_count(raw, max, report) do
     cond do
