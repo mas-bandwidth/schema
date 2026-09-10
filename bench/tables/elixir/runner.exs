@@ -24,7 +24,7 @@
 #
 # THE TOLERANT HALF IS STILL LOADED, AND ONLY LOADED. The corpus id (§1.6) is a
 # fold over the files a run actually read, and the paired driver's TABLE id
-# folds all five: `bench_fixed.bin`, `bench_fixed.vocab`, `bench_table.bin`,
+# folds all five: `bench_fixed.bin`, `bench_fixed.layout`, `bench_table.bin`,
 # `bench_table.lengths`, `bench_table.variants.bin`. A row measured against one
 # corpus is not divisible against a row measured against another, so this leg
 # reads all five and says plainly what it did with each: the two `bench_fixed`
@@ -118,13 +118,13 @@ defmodule SchemaTablesBenchElixir do
   # — the positions, the ids, the kinds, the record's size, the hash every
   # record carries — is settled by these bytes, so this one comparison is what
   # says this leg speaks the form and not a near miss.
-  defp gate_layout(vocab) do
+  defp gate_layout(layout) do
     mine = Bench.WrapFixed.fixed_table_fixed_layout()
 
-    if vocab != mine do
+    if layout != mine do
       gate_fail(
         "this build's layout is not the corpus's, byte for byte " <>
-          "(#{byte_size(mine)} bytes here, #{byte_size(vocab)} in the corpus)"
+          "(#{byte_size(mine)} bytes here, #{byte_size(layout)} in the corpus)"
       )
     end
   end
@@ -315,7 +315,7 @@ defmodule SchemaTablesBenchElixir do
     )
 
     {_, file} = fixed_bin = corpus_file(opts, "bench_fixed.bin")
-    {_, vocab} = fixed_vocab = corpus_file(opts, "bench_fixed.vocab")
+    {_, layout} = fixed_layout = corpus_file(opts, "bench_fixed.layout")
 
     # READ AND NOT DECODED — see this file's header. They are in the fold
     # because the driver's table id folds them, and a row that claimed a corpus
@@ -324,12 +324,12 @@ defmodule SchemaTablesBenchElixir do
       for name <- ["bench_table.bin", "bench_table.lengths", "bench_table.variants.bin"],
           do: corpus_file(opts, name)
 
-    goldens = [fixed_bin, fixed_vocab | tolerant]
+    goldens = [fixed_bin, fixed_layout | tolerant]
     id = corpus_id(goldens)
 
     if byte_size(file) == 0, do: gate_fail("the corpus is empty")
 
-    gate_layout(vocab)
+    gate_layout(layout)
     values = gate_load(file)
     gate_save(values, file, "same-storage")
     gate_reload(file)
