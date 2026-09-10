@@ -249,7 +249,7 @@ type Connection struct {
 	Wire         string
 }
 
-// Message is one value in BOTH forms (docs/SPEC-TABLES.md §3.3). The file form
+// Message is one value in BOTH forms (docs/SPEC-TABLES.md §3.3). The variable form
 // is an ordinary instance and rides every surface an instance rides; the
 // message form rides the WIRE surface alone, because its text is the file-form
 // vector's byte for byte.
@@ -279,7 +279,7 @@ type Message struct {
 //
 // A MESSAGE row is the form-2 one (§3.3): the wire is a BATCH, `Connection`
 // names the announcement its references resolve against, and the SAVES are the
-// FILE form, one a body, back to back in body order, which is the one
+// VARIABLE form, one a body, back to back in body order, which is the one
 // direction retention crosses the forms, because a form-2 SaveRetain refuses by
 // name. A message row's capacity is `full`: `short` is one buffer's rule, a
 // batch takes one buffer a body, and the loader refuses the pair by name

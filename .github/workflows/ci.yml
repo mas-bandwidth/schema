@@ -66,7 +66,10 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    branches: [ main ]
+    # main, and the fixed-form integration branch while the nine language legs
+    # land on it (2026-09-09): a leg PR into that branch is a pull request the
+    # gate must run on, or the batch to main is the first time anybody sees red.
+    branches: [ main, fixed-table-form ]
   workflow_dispatch:
 
 # Superseded pushes to the same pull request cancel each other; a push to main

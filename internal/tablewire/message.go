@@ -406,7 +406,7 @@ func Refused(err error) bool {
 // reader finds from the END. ok is false where the trailer cannot be read
 // whole, which is malformed on every path that reads one.
 //
-// It is the file form's half of what [Resolve] needs, and the message form's
+// It is the variable form's half of what [Resolve] needs, and the message form's
 // half is the connection's table, which is why the two forms can be compared
 // under RESOLUTION at all (§3.3).
 func Trailer(data []byte) (body []byte, ids []uint64, ok bool) { return trailer(data) }

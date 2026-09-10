@@ -1073,7 +1073,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    return %sSaveWire( ctx, *(const %s *) TableArenaAt( builder.arena, (uint32_t) builder.root_ref.value ), buffer, capacity, builder.arena.allocator );\n}\n\n", n, n)
 
 	// THE MESSAGE FORM over a POINTERED root (docs/SPEC-TABLES.md §3.3): the
-	// batch's three verbs over a region, beside the file form's.
+	// batch's three verbs over a region, beside the variable form's.
 	g.emitVariableMessageSurface(st)
 
 	// load

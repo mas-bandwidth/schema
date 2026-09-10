@@ -1046,7 +1046,7 @@ static void message_form()
     // can never turn a good read into a bad one (§6.6)
     CHECK( report.kind_mismatch == 0 && report.clamped == 0 && report.widened == 0 );
 
-    // AND THE SAVE IS THE FILE FORM'S, because form 2 refuses to write a
+    // AND THE SAVE IS THE VARIABLE FORM'S, because form 2 refuses to write a
     // retained record by name (§3.3): the file carries its own table and takes
     // §6.6 unchanged.
     for ( int i = 0; i < 2; i++ )

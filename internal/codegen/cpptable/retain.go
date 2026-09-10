@@ -1276,12 +1276,12 @@ inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRet
 // replacing every reference with the id it names AGAINST THE CONNECTION'S
 // VOCABULARY instead of a trailer, and SaveRetain writing form 2 refuses by
 // name. So retention crosses the forms in ONE DIRECTION, and the record a
-// message body produces is the FILE FORM'S OWN, to the byte: a retained record
+// message body produces is the VARIABLE FORM'S OWN, to the byte: a retained record
 // carries the field's bytes with every reference resolved so that re-emitting
 // it into any id table is correct, and the table it is re-emitted into is a
 // file's. The capture below is therefore a TRANSCODE as well as a resolve, a
 // bitpacked value is read at the width its announced shape states and written
-// at the width the file form spells, and from there it is the same record,
+// at the width the variable form spells, and from there it is the same record,
 // laid down in the same slots and read back by the same emit walk.
 //
 // THE SKIP RUNS FIRST AND THE CAPTURE SECOND, over the same bits. The plain
@@ -1587,7 +1587,7 @@ inline int64_t TableMessageRetainPayload( TableMessageRetainIn & s, const TableM
     switch ( entry.kind )
     {
         case 17: return -1; // THE NODE-INDEX CLASS, met inside a payload (§6.6)
-        case 0: return -1;  // a KIND-0 ENTRY names no payload the file form has a kind for
+        case 0: return -1;  // a KIND-0 ENTRY names no payload the variable form has a kind for
         case 32: TableRetainInLeb( s.out, 0 ); break;
         case 30:
         {
@@ -1818,7 +1818,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	// THE MESSAGE FORM'S LoadRetain (docs/SPEC-TABLES.md §3.3): the batch's
 	// read half over this root, with the caller's stores threaded. There is no
 	// measure and no save beside it, because retention writing form 2 refuses
-	// by name and the file form's own pair is what a caller saves through.
+	// by name and the variable form's own pair is what a caller saves through.
 	g.emitRootNodeMessageDispatch(st)
 	g.emitVariableMessageLoadSurface(st)
 	g.retain = false
@@ -1894,12 +1894,12 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("// %sSaveRetainMessages: RETENTION WRITING FORM 2 IS REFUSED BY NAME\n", n)
 	g.pf("// (docs/SPEC-TABLES.md §3.3). It is a MISUSE refusal on §6.6's own\n")
 	g.pf("// precedent and never a silent drop, and the two answers are named: a\n")
-	g.pf("// caller that must carry unknowns across a rewrite writes the FILE form,\n")
+	g.pf("// caller that must carry unknowns across a rewrite writes the VARIABLE form,\n")
 	g.pf("// which carries its own table and takes §6.6 unchanged, and a RELAY\n")
 	g.pf("// forwards the sending peer's announcement and its batch bytes verbatim.\n")
 	g.pf("template <typename... Args>\ninline int64_t %sSaveRetainMessages( Args &&... )\n{\n", n)
 	g.pf("    static_assert( sizeof...( Args ) == (size_t) -1,\n")
-	g.pf("        \"%s: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the FILE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim.\" );\n", n)
+	g.pf("        \"%s: a form 2 writer names entries through slots of a vocabulary the compiler settled, and a retained id is one this build's closure does not contain, so it has neither a slot nor an announced shape. Retention writing the MESSAGE form is refused by name (docs/SPEC-TABLES.md §3.3). Write the VARIABLE form, which carries its own table and takes §6.6 unchanged, or relay the sender's announcement and batch bytes verbatim.\" );\n", n)
 	g.pf("    return -1;\n}\n\n")
 }
 
@@ -1911,7 +1911,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 // The refusal is IN THE SOURCE THE UNIT DOES EMIT rather than a missing symbol
 // (§11's rule for a surface a class does not carry): the five names are
 // declared, and naming one is a compile error that says why. The MESSAGE
-// form's two ride beside the file form's three (§3.3, schema#680): a
+// form's two ride beside the variable form's three (§3.3, schema#680): a
 // variable-class root carries LoadRetainMessages and refuses
 // SaveRetainMessages by name, and a fixed-class root that declared neither
 // would answer a caller with a missing symbol, which is the one answer §11
@@ -1936,7 +1936,7 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 			g.pf("%s\n", RetainRefusalOpen)
 			g.pf("//\n")
 			g.pf("// A fixed-class root is a VALUE: no region, no node directory, and so no\n")
-			g.pf("// anchor for a retained record's path. The five names, the file form's three\n")
+			g.pf("// anchor for a retained record's path. The five names, the VARIABLE form's three\n")
 			g.pf("// and the message form's two (§3.3), are declared here so that naming one is\n")
 			g.pf("// a refusal that says why, rather than a symbol a linker could not find. The\n")
 			g.pf("// suffixes stay claimed on every closure member all the same (§11): a table\n")

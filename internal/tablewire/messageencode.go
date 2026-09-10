@@ -415,7 +415,7 @@ func encodeBitValue(e *bitEncoder, w *bitWriter, f *ir.Field, kind uint8, shape 
 
 // encodeBitArm writes one union ARM: its NAME's reference and then the payload
 // a FIELD of the arm's type would carry (§2.6). A payload-free arm carries
-// nothing at all, where the file form spent a kind byte and a zero length.
+// nothing at all, where the variable form spent a kind byte and a zero length.
 func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tabletext.Cell) error {
 	entry := ir.TableArmEntry(arm)
 	e.ref(w, entry)
@@ -485,7 +485,7 @@ func encodeBitArm(e *bitEncoder, w *bitWriter, arm ir.UnionVariant, cell *tablet
 
 // encodeBitKeyed writes an enum-keyed array (docs/SPEC-TABLES.md §3.2): the
 // number of PRESENT slots, then one `(key reference, element)` pair per slot,
-// ascending by variant ordinal. Elision is the file form's, unchanged.
+// ascending by variant ordinal. Elision is the variable form's, unchanged.
 func encodeBitKeyed(e *bitEncoder, w *bitWriter, fv *tabletext.Field, entry ir.TableVocabularyEntry) error {
 	f := fv.Def
 	shape := entry.Shape

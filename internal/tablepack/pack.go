@@ -75,7 +75,7 @@ func Pack(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Rep
 // announced table rather than in a trailer of this wire's.
 //
 // The tree is unchanged, which is the text form's own claim: a message's text
-// is its file form's text, byte for byte.
+// is its variable form's text, byte for byte.
 func PackMessage(m *tabletext.Model, root, dir string) ([]byte, []string, tabletext.Report, error) {
 	return PackMessages(m, []MessageTree{{Root: root, Dir: dir}})
 }

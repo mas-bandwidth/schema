@@ -820,7 +820,7 @@ Form byte `2` moves the id table one level up, to the CONNECTION, and BITPACKS
 what is left: a peer announces its unit's whole vocabulary once a direction as
 an ordinary form-`1` file, and every BATCH after it is a form byte, a body count
 and the bodies as one continuous bit stream. What a port owes is
-`LoadMessages`, `MeasureMessages` and `SaveMessages` beside the file form's
+`LoadMessages`, `MeasureMessages` and `SaveMessages` beside the variable form's
 three, the message overload of `LoadMeasure` for a pointered batch's one region,
 `TableVocabulary` and the three unit-scope entry points `Announce`,
 `AnnounceMeasure` and `AnnounceRead`, each in that language's own naming
@@ -1143,6 +1143,7 @@ refuse, under s390x emulation); `tables-java-order`;
 
 **Negative control.** `tables-big-endian-negative-control`;
 `tables-c-big-endian-negative-control`;
+`tables-c-little-endian-negative-control`;
 `conformance-negative-control-c-foreign` neuters the byte swap and requires
 both foreign rows red with `cook` and `block` green.
 

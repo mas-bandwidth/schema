@@ -119,6 +119,6 @@ func (g *tableGen) emitRetainRefusals(members []*ir.Struct) {
 				g.pf("/* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */\n#define %s(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))\n", g.api(st.Name, verb))
 			}
 		}
-		g.pf("/* Retained fields have no announced slots: save the FILE form or relay the original message. */\n#define %s(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))\n", g.api(st.Name, "save_retain_messages"))
+		g.pf("/* Retained fields have no announced slots: save the VARIABLE form or relay the original message. */\n#define %s(...) ((void)sizeof(struct { int retention_message_write_requires_file_form : -1; }))\n", g.api(st.Name, "save_retain_messages"))
 	}
 }

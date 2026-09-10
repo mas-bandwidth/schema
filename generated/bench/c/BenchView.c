@@ -72,8 +72,8 @@ static const TableFieldInfo schema_bench_bench_mixed_fields_[] = {
     { "ping", NULL, "ufixed(8, 8)", 0x0000000000000000ull, 26, 0, 0, 0, 0, (uint32_t) offsetof( BenchMixed, ping ), (uint32_t) sizeof( ( (BenchMixed *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, &schema_bench_bench_mixed_ping_outside_range_, 8, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
     { "crc_hint", NULL, "bits(24)", 0x0000000000000000ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( BenchMixed, crc_hint ), (uint32_t) sizeof( ( (BenchMixed *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
     { "has_extra", NULL, "bool", 0x0000000000000000ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( BenchMixed, has_extra ), (uint32_t) sizeof( ( (BenchMixed *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
-    { "extra", NULL, "int32", 0x0000000000000000ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( BenchMixed, extra ), (uint32_t) sizeof( ( (BenchMixed *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "has_extra", TableDocNone, 0, NULL, 0, NULL },
-    { "idle_ticks", NULL, "int32", 0x0000000000000000ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( BenchMixed, idle_ticks ), (uint32_t) sizeof( ( (BenchMixed *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "!has_extra", TableDocNone, 0, NULL, 0, NULL },
+    { "extra", NULL, "int32", 0x0000000000000000ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( BenchMixed, extra ), (uint32_t) sizeof( ( (BenchMixed *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "idle_ticks", NULL, "int32", 0x0000000000000000ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( BenchMixed, idle_ticks ), (uint32_t) sizeof( ( (BenchMixed *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
 const TableTypeInfo schema_bench_bench_mixed_info_ = { "BenchMixed", (uint32_t) sizeof( BenchMixed ), 27, schema_bench_bench_mixed_fields_, schema_bench_bench_mixed_reset_raw_, TableDocNone, 0, NULL };
@@ -228,7 +228,7 @@ const UnitViewInfo * schema_bench_unit_view_(void)
         { "MixedPickupEvent", "Bench.schema", 0, &schema_bench_mixed_pickup_event_info_, TableDocNone, 0, NULL },
         { "MixedStat", "Bench.schema", 0, &schema_bench_mixed_stat_info_, TableDocNone, 0, NULL },
     };
-    static const UnitViewInfo info = { "bench", 0x8d12c3149393f40full,
+    static const UnitViewInfo info = { "bench", 0xc93127c82f083edfull,
         9, types,
         0, NULL,
         1, enums,

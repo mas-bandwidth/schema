@@ -31,7 +31,7 @@ func (g *tableGen) knownOrdinal(id uint64) int {
 	return ord
 }
 
-// wireIdCall is a header's id call. The FILE form interns through the ORDINAL
+// wireIdCall is a header's id call. The VARIABLE form interns through the ORDINAL
 // SLOT CACHE, because every id spelled here is a compile-time constant of the
 // unit and so carries an ordinal. The RETAINED family keeps the general path:
 // it has an id table of its own (TableRetainIds), whose numbering interleaves
@@ -120,7 +120,7 @@ func (g *tableGen) wirePrimitives() string {
 	if len(ir.WideTextFields(g.unit)) > 0 {
 		wideText = tableTextRuntime
 	}
-	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime) + wideText
+	return tablePrimitives(g.unit.Package, g.anyVariable, g.anyKeyed, runtime, true, unitHasWideStorage(g.unit)) + wideText
 }
 
 // tableWidenF32Runtime is the FLOAT RUNG of the widening rule (§4): f32 into

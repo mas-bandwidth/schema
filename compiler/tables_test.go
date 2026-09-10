@@ -1022,7 +1022,7 @@ fixed table ShipConfig
 
 // THE RESOLVING WALK'S CAP COUNTS NESTED FRAMED VALUES IN BOTH FORMS
 // (docs/SPEC-TABLES.md §6.6): a message body resolved against the connection's
-// vocabulary takes the same bound the file form's own walk takes, so the last
+// vocabulary takes the same bound the variable form's own walk takes, so the last
 // depth the cap admits rides and one past it is dropped, whichever form the
 // record arrived in. The C target pins the same pair in
 // TestCTableRetainFramedDepth. CONTROL: a message chain that passes its depth
@@ -1078,7 +1078,7 @@ static const uint8_t wire[]={%s};
 static const uint8_t batch[]={%s};
 static const uint8_t announcement[]={%s};
 int main(){
- // THE FILE FORM, whose walk resolves against the wire's own trailer
+ // THE VARIABLE FORM, whose walk resolves against the wire's own trailer
  {TableRetain retain;TableRetain::Id ids[256];TableReport report;uint8_t store[8192],out[8192];
   retain.bytes=store;retain.capacity=sizeof(store);retain.ids=ids;retain.id_capacity=256;
   const int64_t need=RootLoadMeasure(wire,sizeof(wire));CHECK(need>0);uint8_t * region=(uint8_t *)malloc((size_t)need);CHECK(region);

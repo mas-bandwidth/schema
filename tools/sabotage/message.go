@@ -376,7 +376,7 @@ func init() {
 // hold.
 var messageTextSabotages = map[string][]edit{
 	// ILL-FORMED TEXT IS DAMAGE HERE TOO: take the check out of the oracle's
-	// message path and the file form still refuses what the message form now
+	// message path and the variable form still refuses what the message form now
 	// stores, which is the two forms parting on the one rule they share.
 	"message-text-accepts-ill-formed": {{
 		old: "\tif f.Type.Kind == ir.TString && !textValid(raw) {\n",

@@ -146,7 +146,7 @@ func unpack(m *tabletext.Model, root string, wire []byte, dir string, oneFile bo
 	return unpackWith(m, root, wire, dir, oneFile, nil)
 }
 
-// unpackWith is both forms' one walk: a nil vocabulary reads the FILE form,
+// unpackWith is both forms' one walk: a nil vocabulary reads the VARIABLE form,
 // whose id table is its own trailer, and a non-nil one reads the MESSAGE form
 // against the connection's (docs/SPEC-TABLES.md §3, §3.3). Nothing else about
 // the tree, the text or the report differs.
