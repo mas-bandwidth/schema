@@ -417,3 +417,63 @@ func TestFixedFormRowFromTheJsTableOnlyLeg(t *testing.T) {
 		t.Fatal("an eighteen-column row was accepted")
 	}
 }
+
+// THE ONE COMMAND BUILDS ONCE AND GATES PER LANGUAGE. build/paired/build.json
+// is written whole by every build, and fastMeasure refuses a leg the manifest
+// does not carry, so the nine-language sitting — paired legs and table-only
+// legs together — has to be built by a single invocation. Nothing forces the
+// gate into one invocation, so the rule stands there and bench/paired/nine.sh
+// walks the discovered list one language at a time.
+func TestOnlyTheBuildTakesAMixedRequest(t *testing.T) {
+	nine := append(append([]string{}, languages...), "elixir", "rust", "js", "java")
+	if err := checkRequestShape("build", nine); err != nil {
+		t.Fatal("the build must take the whole sitting in one invocation:", err)
+	}
+	for _, mode := range []string{"gate", "run", "fast", "table"} {
+		if err := checkRequestShape(mode, nine); err == nil {
+			t.Fatal("a mixed request was accepted by", mode)
+		}
+		// Every single-language request is one shape or the other, which is
+		// how the wrapper gates the discovered list without keeping a list of
+		// its own.
+		for _, lang := range nine {
+			if err := checkRequestShape(mode, []string{lang}); err != nil {
+				t.Fatal(mode, lang, err)
+			}
+		}
+		if err := checkRequestShape(mode, tableOnlyLanguages); err != nil {
+			t.Fatal("the table-only set is one shape:", err)
+		}
+		if err := checkRequestShape(mode, languages); err != nil {
+			t.Fatal("the published set is one shape:", err)
+		}
+	}
+}
+
+// ONE ROSTER, ONE CLASSIFICATION. Every name this driver knows is in exactly
+// one of the four lists, and a pending row is in none of the measuring ones —
+// this is the invariant the second roster in table.go used to break.
+func TestALanguageIsClassifiedInExactlyOnePlace(t *testing.T) {
+	seen := map[string]int{}
+	for _, list := range [][]string{languages, unpublishedLanguages, tableOnlyLanguages, pendingLanguages} {
+		for _, lang := range list {
+			seen[lang]++
+		}
+	}
+	for lang, n := range seen {
+		if n != 1 {
+			t.Fatal("classified in", n, "places:", lang)
+		}
+		if names[lang] == "" {
+			t.Fatal("a row on the table needs a printed name:", lang)
+		}
+	}
+	for _, lang := range pendingLanguages {
+		if contains(allLanguages(), lang) {
+			t.Fatal("a pending language has no leg here and -langs must refuse it:", lang)
+		}
+		if err := checkRequestShape("build", []string{lang}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

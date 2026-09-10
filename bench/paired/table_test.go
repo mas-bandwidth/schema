@@ -213,3 +213,60 @@ func TestACorpusMismatchReadsAsOneLine(t *testing.T) {
 		t.Fatal("a CSV with no data row has no identity to report")
 	}
 }
+
+// The published row set is DERIVED from main.go's roster: this file keeps the
+// ORDER and no opinion about what a language is. dart was in this file's list
+// and in none of main.go's, and elixir was called table-only here while
+// main.go paired it; both are one answer now.
+func TestTheRowSetIsMainsRoster(t *testing.T) {
+	for _, lang := range append(allLanguages(), pendingLanguages...) {
+		if !contains(nineLanguages, lang) {
+			t.Fatal("a language on the roster has no row:", lang)
+		}
+	}
+	for _, lang := range nineLanguages {
+		if !contains(allLanguages(), lang) && !contains(pendingLanguages, lang) {
+			t.Fatal("a row this driver does not know:", lang)
+		}
+	}
+	if strings.Join(nineLanguages, ",") != strings.Join(nineRowOrder, ",") {
+		t.Fatal("the row set is not in publication order:", nineLanguages)
+	}
+	if contains(tableOnlyLanguages, "elixir") || !contains(unpublishedLanguages, "elixir") {
+		t.Fatal("elixir is a paired leg with a packet wire of its own")
+	}
+	if displayName("elixir") != "Elixir" || displayName("dart") != "Dart" {
+		t.Fatal("one name map, and it carries every row")
+	}
+}
+
+// A RUNNER DIRECTORY IS NOT ENOUGH. A pending row whose runner lands before
+// its wiring does must still be reported absent, because nothing here can
+// generate, build or measure it — and it is named with the reason that is
+// actually true of it.
+func TestAPendingLanguageIsNeverMeasuredEvenWithARunner(t *testing.T) {
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	for _, lang := range []string{"cpp", "dart"} {
+		if err := os.MkdirAll(filepath.Join(root, "bench", "tables", lang), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+	present, absent := discoverTableLanguages()
+	if contains(present, "dart") {
+		t.Fatal("a pending language reached the measured set:", present)
+	}
+	if !contains(absent, "dart") || !strings.Contains(absentReason("dart"), "no leg in this driver yet") {
+		t.Fatal(absent, absentReason("dart"))
+	}
+	if !strings.Contains(absentReason("go"), "no runner on this tree") {
+		t.Fatal(absentReason("go"))
+	}
+}

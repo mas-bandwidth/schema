@@ -85,7 +85,23 @@ fi
 # disagree about what this tree carries.
 $PIN go build -o bin/schema-paired ./bench/paired
 LANGS=$(bin/schema-paired -mode table-langs)
-$PIN bin/schema-paired -mode gate -langs "$LANGS"
+
+# ONE BUILD, THEN ONE GATE PER LANGUAGE.
+#
+# The build takes the whole sitting in a single invocation because
+# build/paired/build.json is written whole and replaces what was there, and the
+# measuring mode refuses a leg that manifest does not carry. Two builds would
+# leave a manifest describing half of this table.
+#
+# The gate is the other way round. A request is one shape or the other and
+# never a mixture — a table-only leg may not share `-langs` with a paired one —
+# so this walks the discovered list one language at a time, which is always one
+# shape, and needs no opinion of its own about which languages are which. The
+# gate reuses the build above rather than repeating it.
+$PIN bin/schema-paired -mode build -langs "$LANGS"
+for LANG_ in $(echo "$LANGS" | tr ',' ' '); do
+    bin/schema-paired -mode gate -reuse-build -langs "$LANG_"
+done
 
 # The whole pass goes through one bench-lane, so the lock is held once and
 # every runner the driver forks inherits the pin. -lane only records it.

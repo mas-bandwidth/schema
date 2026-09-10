@@ -79,7 +79,19 @@ var unpublishedLanguages = []string{"elixir"}
 // confirmation pass and no board.
 var tableOnlyLanguages = []string{"rust", "java", "js"}
 
-var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java", "js": "JavaScript"}
+// A PENDING LANGUAGE is a row the published table names that this driver has
+// no leg for at all: no generator invocation, no build step, no runner, no
+// wire. It is deliberately NOT in allLanguages(), so `-langs` refuses it and
+// nothing can generate, build, gate or measure it. The nine-language table
+// carries the name so the row it will one day fill reads as absent rather than
+// silently missing, and `bench/paired/table.go` takes it from here rather than
+// keeping a list of its own — dart's fixed-form emitter has landed, its bench
+// leg has not.
+var pendingLanguages = []string{"dart"}
+
+// names is the ONE display-name map: every language this driver knows, plus
+// the pending rows, so nothing downstream keeps a second one.
+var names = map[string]string{"c": "C", "cpp": "C++", "go": "Go", "cs": "C#", "elixir": "Elixir", "rust": "Rust", "java": "Java", "js": "JavaScript", "dart": "Dart"}
 
 // allLanguages IS EVERY NAME -langs ACCEPTS: the published four, the paired
 // legs that are measurable but not published yet, and the table-only legs.
@@ -97,6 +109,35 @@ func wiresFor(lang string) []string {
 		return []string{"table"}
 	}
 	return []string{"packet", "table"}
+}
+
+// checkRequestShape holds the rule that A TABLE-ONLY LANGUAGE IS NEVER IN A
+// MIXED REQUEST, and names the one exception: `build`.
+//
+// The exception is the build MANIFEST, which is one file. generateAndBuild does
+// per-language work and compares nothing — it walks `wiresFor(lang)`, which
+// already knows a table-only leg has no packet wire — and then writes the whole
+// of build/paired/build.json, replacing what was there. fastMeasure refuses to
+// measure a leg that manifest does not carry ("cached build lacks %s/%s"), so
+// every leg of one sitting has to be built by ONE invocation, and the
+// nine-language sitting is paired legs and table-only legs together. Splitting
+// that build in two would leave a manifest describing half of it.
+//
+// GATE KEEPS THE RULE. It is per-language work too, but nothing forces it into
+// one invocation, so bench/paired/nine.sh gates one language at a time — every
+// single-language request is one shape or the other — and this driver never has
+// to decide what a half-paired gate would mean. Every other mode reads the
+// request as a set to compare and takes one shape or the other, whole.
+func checkRequestShape(mode string, langs []string) error {
+	if mode == "build" || onlyTableLanguages(langs) {
+		return nil
+	}
+	for _, lang := range langs {
+		if contains(tableOnlyLanguages, lang) {
+			return errors.New("a table-only language is requested alone: -langs " + lang)
+		}
+	}
+	return nil
 }
 
 // onlyTableLanguages reports whether every requested language is table-only.
@@ -1381,15 +1422,8 @@ func main() {
 		}
 		seen[lang] = true
 	}
-	// A TABLE-ONLY LANGUAGE IS NEVER IN A MIXED REQUEST. Build and gate could
-	// take one, but every other mode reads the request as a set to compare, so
-	// keeping the shapes apart everywhere is one rule instead of four.
-	if !onlyTableLanguages(langs) {
-		for _, lang := range langs {
-			if contains(tableOnlyLanguages, lang) {
-				fail(errors.New("a table-only language is requested alone: -langs " + lang))
-			}
-		}
+	if e := checkRequestShape(*mode, langs); e != nil {
+		fail(e)
 	}
 	if *mode == "render" {
 		if e := render(*out); e != nil {

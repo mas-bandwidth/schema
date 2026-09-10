@@ -28,20 +28,45 @@ import (
 	"strings"
 )
 
-// nineLanguages is the published row order — the same nine
+// nineRowOrder is the published ROW ORDER and NOTHING ELSE — the same nine
 // `bench/tools/pass-driver.sh` names, C++ first because it is the reference
 // implementation and the denominator of the last column.
-var nineLanguages = []string{"cpp", "c", "go", "rust", "cs", "js", "java", "dart", "elixir"}
+//
+// WHICH languages exist, and what each one is, is main.go's business and only
+// main.go's: `languages` (published paired), `unpublishedLanguages` (paired,
+// not published yet), `tableOnlyLanguages` (table wire only) and
+// `pendingLanguages` (named here, no leg in this driver). This file used to
+// keep a second roster beside that one and the two drifted — dart was in this
+// list and in no list of main.go's, and elixir was called table-only here
+// while main.go paired it — so the row set below is DERIVED and a language is
+// classified in exactly one place.
+var nineRowOrder = []string{"cpp", "c", "go", "rust", "cs", "js", "java", "dart", "elixir"}
 
-// tableOnlyNames covers the languages the paired driver does not pair with a
-// packet leg. A leg that lands and adds itself to `names` wins over this.
-var tableOnlyNames = map[string]string{"rust": "Rust", "js": "JavaScript", "java": "Java", "dart": "Dart", "elixir": "Elixir"}
+// nineLanguages is the published row SET: main.go's roster, in that order.
+var nineLanguages = orderedRoster()
+
+// orderedRoster puts every name main.go carries — the languages this driver
+// can measure, plus the pending rows it cannot — into publication order. A
+// roster name the order forgot still gets a row, at the end, because dropping
+// it silently is the failure this derivation exists to prevent.
+func orderedRoster() []string {
+	roster := append(allLanguages(), pendingLanguages...)
+	out := make([]string, 0, len(roster))
+	for _, lang := range nineRowOrder {
+		if contains(roster, lang) {
+			out = append(out, lang)
+		}
+	}
+	for _, lang := range roster {
+		if !contains(out, lang) {
+			out = append(out, lang)
+		}
+	}
+	return out
+}
 
 func displayName(lang string) string {
 	if n := names[lang]; n != "" {
-		return n
-	}
-	if n := tableOnlyNames[lang]; n != "" {
 		return n
 	}
 	return lang
@@ -60,15 +85,31 @@ func tableRunnerPresent(lang string) bool {
 
 // discoverTableLanguages splits the nine into the ones this tree can measure
 // and the ones it cannot, both in publication order.
+//
+// A RUNNER DIRECTORY IS NOT ENOUGH: the language also has to be one this
+// driver knows how to generate and build (`allLanguages()`). A pending row
+// whose runner appears before its wiring does would otherwise be handed
+// straight to a build that has no case for it, and the honest answer for it is
+// the same either way — absent, with the reason said out loud.
 func discoverTableLanguages() (present, absent []string) {
 	for _, lang := range nineLanguages {
-		if tableRunnerPresent(lang) {
+		if tableRunnerPresent(lang) && contains(allLanguages(), lang) {
 			present = append(present, lang)
 		} else {
 			absent = append(absent, lang)
 		}
 	}
 	return present, absent
+}
+
+// absentReason names WHY a row is not measured, and the two reasons are
+// different facts about the merge: this tree carries no runner, or this driver
+// carries no leg.
+func absentReason(lang string) string {
+	if !contains(allLanguages(), lang) {
+		return "no leg in this driver yet (" + tableRunnerDir(lang) + " is not built, generated or measured here)"
+	}
+	return "no runner on this tree (" + tableRunnerDir(lang) + ")"
 }
 
 // skipped is a language the table does not carry, and WHY. Naming the reason
@@ -479,7 +520,10 @@ func reportTableLanguages() error {
 	}
 	fmt.Println(strings.Join(present, ","))
 	if len(absent) > 0 {
-		fmt.Fprintln(os.Stderr, "no runner on this tree:", strings.Join(absent, ","))
+		// Not "no runner": a row can also be absent because this driver has no
+		// leg for it (absentReason says which), and the wrapper's log should
+		// not claim the one when it is the other.
+		fmt.Fprintln(os.Stderr, "not measured on this tree:", strings.Join(absent, ","))
 	}
 	return nil
 }
@@ -492,7 +536,7 @@ func tablePass(out string, info buildInfo, config fastConfig, lane string) error
 	present, missing := discoverTableLanguages()
 	absent := make([]skipped, 0, len(nineLanguages))
 	for _, lang := range missing {
-		absent = append(absent, skipped{Language: lang, Reason: "no runner on this tree (" + tableRunnerDir(lang) + ")"})
+		absent = append(absent, skipped{Language: lang, Reason: absentReason(lang)})
 	}
 	// One rotation each, before any clock. A leg that is here but does not
 	// answer to this corpus is named with its refusal rather than measured.
