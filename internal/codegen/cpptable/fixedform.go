@@ -12,9 +12,10 @@
 //	a read is one loop over it. For a record whose hash equals the reader's
 //	own the plan is the IDENTITY PLAN, built at COMPILE TIME by a constexpr
 //	walk of this type's leaves with adjacent runs coalesced; for any other
-//	hash the SAME LOOP runs over a plan compiled once from the writer's layout.
-//	There is no second reader and no fast/slow cliff — the owner's own ruling,
-//	which §3.4 quotes him on.
+//	hash the SAME LOOP runs over a plan compiled once from the writer's layout
+//	and cached by hash, so the compile is paid once per peer. There is no
+//	second reader and no fast/slow cliff — the owner's own ruling, which §3.4
+//	quotes him on.
 //
 // Nothing here touches form 1: a fixed-table type's reader accepts both, by
 // the form byte.
@@ -72,7 +73,8 @@ func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 		// so the aux is that destination and then the tag's own offset
 		aux = dstTerms(d.Dst) + " + " + offOf(d.Aux[0].Type, d.Aux[0].Member)
 	}
-	return fmt.Sprintf("{ %s, %s, %s, %d, %d }", dstTerms(d.Dst), stride, aux, d.Counted, d.Meta)
+	return fmt.Sprintf("{ %s, %s, %s, %d, %d, %dull, %dull, %d, %d }",
+		dstTerms(d.Dst), stride, aux, d.Counted, d.Meta, d.ClampLo, d.ClampHi, d.ClampFlags, d.ClampWidth)
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +107,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	g.pf("// the values in declared order, every field at its declared storage width.\n")
 	g.pf("// The writer is the constant bytes memcpy'd and then stores; the reader is\n")
 	g.pf("// ONE loop over ONE plan, the identity plan here and a plan compiled from\n")
-	g.pf("// the writer's own layout for anybody else.\n\n")
+	g.pf("// the writer's own layout for anybody else. There is no second reader.\n\n")
 	seen := map[string]bool{}
 	var order []*ir.Struct
 	for _, st := range roots {
@@ -354,7 +356,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n\n")
 
-	flat := ir.TableFixedIdentityFlat(g.unit, st)
 	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
 	g.pf("// THE IDENTITY PLAN, coalesced out of %d leaves by the schema compiler —\n", ir.TableFixedLeafCount(g.unit, st))
 	g.pf("// the one walk every backend lays down (ir/fixedform.go), so no two ports\n")
@@ -390,7 +391,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("};\n")
 	g.pf("constexpr int32_t %sFixedCoverCount = %d;\n\n", st.Name, len(cover))
-	g.emitFixedScatter(st)
 
 	g.pf("// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)\n")
 	g.pf("// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —\n")
@@ -413,21 +413,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        %sFixedWriteBody( at + 8, values[k] );\n", st.Name)
 	g.pf("        at += %sFixedRecordBytes;\n    }\n    return need;\n}\n\n", st.Name)
 
-	g.pf("// THE READ. ONE PLAN, and which one is the only thing a peer's shipping\n")
-	g.pf("// changes: the IDENTITY PLAN for a record stamped with this build's own\n")
-	g.pf("// layout hash, a plan compiled once from the writer's layout for anybody\n")
-	g.pf("// else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it\n")
-	g.pf("// says: the identity plan is a compile-time constant, so this compiler\n")
-	g.pf("// spends it HERE — one copy of the body and a straight-line scatter, or one\n")
-	g.pf("// memcpy where the storage image is the wire image — and a stranger's plan\n")
-	g.pf("// arrives at run time and is spent by the interpreter it was always spent by.\n")
+	g.pf("// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
+	g.pf("// the layout's hash is this build's own, and a plan compiled once from the\n")
+	g.pf("// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).\n")
+	g.pf("// There is no second reader: the identity plan is data the one loop walks.\n")
 	g.pf("//\n")
 	g.pf("// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of\n")
 	g.pf("// ranges the plan compiler works out once, and on the identity plan that list\n")
 	g.pf("// is EMPTY — so this read writes no byte twice, and it is one rule for both\n")
 	g.pf("// plans rather than a flag that asks which one this is.\n")
 	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
-	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )\n{\n")
+	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
 	g.pf("    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
@@ -449,28 +445,51 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t entry_count = %sFixedPlanCount;\n", st.Name)
 	g.pf("    int32_t entry_guarded = %sFixedPlanGuarded;\n", st.Name)
 	g.pf("    int64_t record_bytes = %sFixedRecordBytes;\n", st.Name)
-	g.pf("    const bool identity = ( hash == %sFixedHash );\n", st.Name)
-	g.pf("    // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:\n")
-	g.pf("    // the rule is the type's value bytes minus what the plan lands, and the\n")
-	g.pf("    // identity plan lands all of them.\n")
 	g.pf("    const TableFixedFill * fill = NULL;\n")
 	g.pf("    int32_t fill_count = 0;\n")
-	g.pf("    if ( !identity )\n    {\n")
-	g.pf("        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.\n")
+	g.pf("    if ( hash != %sFixedHash )\n    {\n", st.Name)
+	g.pf("        // ANOTHER WRITER: the same loop, over a plan compiled from its layout\n")
+	g.pf("        // and CACHED BY HASH, so the compile is paid once per peer, not per record.\n")
 	g.pf("        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
 	g.pf("        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).\n")
-	g.pf("        TableFixedLayoutView parsed;\n")
-	g.pf("        TableMessageReason why = layout_malformed;\n")
-	g.pf("        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }\n")
-	g.pf("        int32_t compiled_guarded = 0;\n")
-	g.pf("        uint32_t fill_at = 0;\n")
-	g.pf("        const int32_t made = TableFixedCompile( parsed, %sFixedLayout, (int32_t) %sFixedLayoutBytes, %sFixedDst,\n", st.Name, st.Name, st.Name)
-	g.pf("                                               %sFixedCover, %sFixedCoverCount,\n", st.Name, st.Name)
-	g.pf("                                               plan, plan_capacity, &compiled_guarded, &fill_at, &fill_count, report );\n")
-	g.pf("        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }\n")
-	g.pf("        entries = plan;\n        entry_count = made;\n        entry_guarded = compiled_guarded;\n")
-	g.pf("        fill = (const TableFixedFill *) (const void *) ( (const uint8_t *) plan + fill_at );\n")
-	g.pf("        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;\n")
+	g.pf("        const TableFixedPlanCacheSlot * hit = NULL;\n")
+	g.pf("        if ( cache != NULL )\n        {\n")
+	g.pf("            for ( int32_t i = 0; i < cache->used; ++i )\n            {\n")
+	g.pf("                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }\n")
+	g.pf("            }\n        }\n")
+	g.pf("        if ( hit != NULL )\n        {\n")
+	g.pf("            entries = hit->plan;\n            entry_count = hit->count;\n            entry_guarded = hit->guarded;\n")
+	g.pf("            record_bytes = hit->record_bytes;\n")
+	g.pf("            fill = hit->fill;\n            fill_count = hit->fill_count;\n")
+	g.pf("        }\n        else\n        {\n")
+	g.pf("            TableFixedLayoutView parsed;\n")
+	g.pf("            TableMessageReason why = layout_malformed;\n")
+	g.pf("            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }\n")
+	g.pf("            TableFixedEntry * dest = plan;\n            int32_t dest_capacity = plan_capacity;\n            int storing = 0;\n")
+	g.pf("            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )\n")
+	g.pf("            {\n                dest = cache->storage + cache->used * cache->stride;\n                dest_capacity = cache->stride;\n                storing = 1;\n            }\n")
+	g.pf("            int32_t compiled_guarded = 0;\n")
+	g.pf("            uint32_t fill_at = 0;\n")
+	g.pf("            const int32_t made = TableFixedCompile( parsed, %sFixedLayout, (int32_t) %sFixedLayoutBytes, %sFixedDst,\n", st.Name, st.Name, st.Name)
+	g.pf("                                                   %sFixedCover, %sFixedCoverCount,\n", st.Name, st.Name)
+	g.pf("                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );\n")
+	g.pf("            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }\n")
+	g.pf("            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;\n")
+	g.pf("            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;\n")
+	g.pf("            if ( cache != NULL ) { cache->compiles++; }\n")
+	g.pf("            if ( storing )\n            {\n")
+	g.pf("                cache->slots[cache->used].hash = hash;\n")
+	g.pf("                cache->slots[cache->used].plan = dest;\n")
+	g.pf("                cache->slots[cache->used].count = made;\n")
+	g.pf("                cache->slots[cache->used].guarded = compiled_guarded;\n")
+	g.pf("                cache->slots[cache->used].record_bytes = record_bytes;\n")
+	g.pf("                cache->slots[cache->used].fill = fill;\n")
+	g.pf("                cache->slots[cache->used].fill_count = fill_count;\n")
+	g.pf("                cache->slots[cache->used].made = 1;\n")
+	g.pf("                cache->used++;\n")
+	g.pf("            }\n")
+	g.pf("            entries = dest;\n            entry_count = made;\n            entry_guarded = compiled_guarded;\n")
+	g.pf("        }\n")
 	g.pf("    }\n")
 	g.pf("    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:\n")
 	g.pf("    // the layout's own rules each refuse under their own name first, so a\n")
@@ -480,42 +499,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( record_bytes <= 8 || rest %% record_bytes != 0 ) { report->malformed = true; return -1; }\n")
 	g.pf("    const int64_t n = rest / record_bytes;\n")
 	g.pf("    if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }\n")
-	g.pf("    if ( identity )\n    {\n")
-	if flat {
-		g.pf("        // THE STORAGE IMAGE IS THE WIRE IMAGE for this type, and that is not a\n")
-		g.pf("        // claim beside the plan — it IS the plan: the coalescer folded every\n")
-		g.pf("        // leaf into ONE copy of the whole body from offset zero, which it can\n")
-		g.pf("        // only do when source and destination advance together the whole way.\n")
-		g.pf("        // So the read is that memcpy, the scatter is empty and none is emitted,\n")
-		g.pf("        // and the prefill's list is empty for the reason above.\n")
-		g.pf("        static_assert( sizeof( %s ) >= (size_t) %sFixedBodyBytes, \"%s: the body lands inside the storage\" );\n", st.Name, st.Name, st.Name)
-		g.pf("        for ( int64_t k = 0; k < n; ++k )\n        {\n")
-		g.pf("            if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
-		g.pf("            memcpy( (void *) &values[k], at + 8, (size_t) %sFixedBodyBytes );\n", st.Name)
-		if ir.TableFixedClampNeeded(st) {
-			g.pf("            %sFixedClamp( values[k], report ); // the bounds the copy does not hold (§3.4)\n", st.Name)
-		}
-		g.pf("            at += %sFixedRecordBytes;\n        }\n", st.Name)
-	} else {
-		g.pf("        // ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,\n")
-		g.pf("        // same census, same bytes — every offset in the scatter above came out\n")
-		g.pf("        // of the plan above it — and no per-entry dispatch, no runtime length\n")
-		g.pf("        // and no plan array competing with the record for cache.\n")
-		g.pf("        uint8_t image[%sFixedBodyBytes];\n", st.Name)
-		g.pf("        for ( int64_t k = 0; k < n; ++k )\n        {\n")
-		g.pf("            if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
-		g.pf("            memcpy( image, at + 8, (size_t) %sFixedBodyBytes );\n", st.Name)
-		g.pf("            %sFixedScatter( image, values[k], report );\n", st.Name)
-		if ir.TableFixedClampNeeded(st) {
-			g.pf("            %sFixedClamp( values[k], report ); // the bounds the scatter does not hold (§3.4)\n", st.Name)
-		}
-		g.pf("            at += %sFixedRecordBytes;\n        }\n", st.Name)
-	}
-	g.pf("        return n;\n    }\n")
-	g.pf("    // A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.\n")
+	g.pf("    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.\n")
 	g.pf("    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only\n")
-	g.pf("    // where there is a range to prefill at all. It is the caller's own stack\n")
-	g.pf("    // and this codec allocates nothing.\n")
+	g.pf("    // where there is a range to prefill at all. Empty list is the skip.\n")
+	g.pf("    // It is the caller's own stack and this codec allocates nothing.\n")
 	g.pf("    %s defaults;\n", st.Name)
 	g.pf("    if ( fill_count > 0 )\n    {\n")
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic\n")
@@ -602,119 +589,30 @@ func fixedOpName(op int) string {
 	return "kTableFixedCopy"
 }
 
-// ---- THE IDENTITY READ -----------------------------------------------------
-//
-// A RECORD WHOSE HASH IS THIS BUILD'S OWN IS ONE COPY AND A STRAIGHT LINE. The
-// plan interpreter is what a STRANGER's layout needs, and it pays for that
-// generality on every record: an entry is a switch on an op, a runtime-length
-// copy, and a load of five fields from a plan array that the record's own bytes
-// are competing for cache with. None of that is unknown here — the identity
-// plan is a compile-time constant, so every offset, every length and every
-// clamp bound in it is a literal this generator can write down.
-//
-// So the identity read is:
-//
-//	  ONE COPY of the whole body into a record image, and then a STRAIGHT-LINE
-//	  SCATTER out of it into the caller's storage, constant offset by constant
-//	  offset, with the count and text clamps written INLINE where the plan makes
-//	  them entries that break a run.
-//
-// and where the storage image IS the wire image (ir.TableFixedIdentityFlat, and
-// the const asserts above are what make that claim checkable), it is ONE MEMCPY
-// into the caller's struct and no scatter at all.
-//
-// THE IMAGE IS NOT A DETOUR. It is a fixed-size local the compiler knows the
-// alignment of, filled by one sequential read of the record; the scatter then
-// reads it with constant offsets and constant lengths, which is where the moves
-// become register-width instructions instead of calls. It is also the shape the
-// Rust port arrived at independently (internal/codegen/rusttable), and the two
-// agreeing is worth more than either being clever.
-//
-// NOTHING ABOUT THE CLAMPS IS RELAXED. A count and a text length are checked on
-// the read side unconditionally, here exactly as in the interpreter, and the
-// clamp census lands in the same report field: the identity hash says the
-// writer's LAYOUT was this build's, not that its BYTES are honest.
-
-// fixedScatterUnit is a text entry's code-unit width, and its terminator's.
-func fixedScatterUnit(meta int) int64 {
-	if meta == 2 {
-		return 2
-	}
-	return 1
-}
-
-// emitFixedScatter lays down <T>FixedScatter: the identity plan, unrolled.
-func (g *tableGen) emitFixedScatter(st *ir.Struct) {
-	if ir.TableFixedIdentityFlat(g.unit, st) {
-		return
-	}
-	plan, guarded := ir.TableFixedBuildPlan(g.unit, st)
-	g.pf("// %s's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by this\n", st.Name)
-	g.pf("// compiler into constant-offset moves. Every number in it is a number from\n")
-	g.pf("// that plan, and the static_asserts at the top of this form tie each one to\n")
-	g.pf("// this compiler's own offsetof and sizeof.\n")
-	g.pf("inline void %sFixedScatter( const uint8_t * TABLE_RESTRICT image, %s & value, TableReport * report )\n{\n", st.Name, st.Name)
-	g.pf("    uint8_t * TABLE_RESTRICT dst = (uint8_t *) &value;\n")
-	g.pf("    int32_t clamped = 0;\n")
-	g.pf("    (void) dst; (void) clamped;\n")
-	for _, e := range plan[:guarded] {
-		g.emitFixedScatterEntry(e, 4)
-	}
-	// THE ARMS, GROUPED BY THEIR GUARD: consecutive entries of one arm share
-	// one test, which is what the interpreter's partition buys per entry.
-	for i := guarded; i < len(plan); {
-		j := i
-		for j < len(plan) && plan[j].Guard == plan[i].Guard && plan[j].Arg == plan[i].Arg {
-			j++
-		}
-		g.pf("    if ( image[%d] == %d )\n    {\n", plan[i].Guard, plan[i].Arg)
-		for _, e := range plan[i:j] {
-			g.emitFixedScatterEntry(e, 8)
-		}
-		g.pf("    }\n")
-		i = j
-	}
-	g.pf("    report->clamped += clamped;\n")
-	g.pf("}\n\n")
-}
-
-func (g *tableGen) emitFixedScatterEntry(e ir.TableFixedLeaf, indent int) {
-	ind := strings.Repeat(" ", indent)
-	switch e.Op {
-	case ir.TableFixedOpCopy:
-		g.pf("%smemcpy( dst + %d, image + %d, %d ); // %s\n", ind, e.Dst, e.Src, e.Size, e.Note)
-	case ir.TableFixedOpCount:
-		g.pf("%s{ // %s\n", ind, e.Note)
-		g.pf("%s    int32_t v = (int32_t) TableFixedGet32( image + %d );\n", ind, e.Src)
-		g.pf("%s    if ( v < 0 ) { v = 0; clamped++; } else if ( v > %d ) { v = %d; clamped++; }\n", ind, e.Size, e.Size)
-		g.pf("%s    memcpy( dst + %d, &v, 4 );\n", ind, e.Dst)
-		g.pf("%s}\n", ind)
-	case ir.TableFixedOpText:
-		unit := fixedScatterUnit(e.Meta)
-		g.pf("%s{ // %s\n", ind, e.Note)
-		g.pf("%s    int32_t v = (int32_t) TableFixedGet32( image + %d );\n", ind, e.Src)
-		g.pf("%s    if ( v < 0 ) { v = 0; clamped++; } else if ( v > %d ) { v = %d; clamped++; }\n", ind, e.Size/unit, e.Size/unit)
-		g.pf("%s    memcpy( dst + %d, &v, 4 );\n", ind, e.Dst)
-		g.pf("%s    memcpy( dst + %d, image + %d, %d );\n", ind, e.Aux, e.Src+4, e.Size)
-		if e.Meta != 3 {
-			g.pf("%s    // the used length terminates the buffer, whose storage is one unit\n", ind)
-			g.pf("%s    // longer than the bound for exactly this.\n", ind)
-			g.pf("%s    dst[%d + (uint32_t) v * %d] = 0;\n", ind, e.Aux, unit)
-			if unit == 2 {
-				g.pf("%s    dst[%d + (uint32_t) v * %d + 1] = 0;\n", ind, e.Aux, unit)
-			}
-		}
-		g.pf("%s}\n", ind)
-	}
-}
-
 // ---- the read-side bounds --------------------------------------------------
 //
+// THE CLAMP IS BRANCHLESS AND THE COUNT IS AN ADD. A bounds pass over a record
+// that is nearly always in range is a pass of branches that are nearly always
+// not taken, and a predictor that is right every time still spends the slots;
+// worse, a branch in the body of an array loop is what stops the loop
+// vectorizing at all. Written as a select and an add the whole pass folds into
+// straight-line SIMD over an array, which is what a form that trades bytes for
+// speed owes its own read path (test/bench/fixedform_measure.cpp).
+//
+// The two lines re-read the storage rather than naming a temporary, and that is
+// deliberate: the C leg has no `auto` and this walk knows every field's DECLARED
+// width but not its spelled storage type, so a temporary would mean a second
+// type table to keep in step with the first. A compiler folds the reload.
+//
 // A fixed record is a positional image, so the ONE read loop moves bytes and
-// asks nothing about what they mean. What a declaration bounds is held HERE,
-// as straight-line code in the generated decode, after the copy — never as plan
-// entries, which would be a test per bounded field on every read of every
-// record and is the cost the identity plan exists to avoid.
+// asks nothing about what they mean. What a declaration bounds is held HERE
+// on the identity path, as straight-line code in the generated decode, after
+// the copy — never as identity-plan entries, which would be a test per bounded
+// field on every read of every record and is the cost the identity plan exists
+// to avoid. A compiled plan emits a clamp op per ranged scalar (not per
+// counted-array slot: live count, slack never). This pass still runs after
+// either plan: identity's only clamp, the compiled path's live-count remainder
+// and ordinals. It is idempotent.
 //
 // THE PASS RUNS OVER STORAGE, so ONE pass covers both plans: the identity plan
 // and a plan compiled from a stranger's layout land values in the same places.
@@ -733,8 +631,8 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	}
 	g.fixedOwner = st
 	g.pf("// %s's read-side bounds.\n", st.Name)
-	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped )\n{\n", st.Name, st.Name)
-	g.pf("    (void) value; (void) clamped;\n")
+	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped, int32_t & damaged )\n{\n", st.Name, st.Name)
+	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value", 4)
 	}
@@ -755,8 +653,13 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("// clamp COUNTS.\n")
 	g.pf("inline void %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    int32_t clamped = 0;\n")
-	g.pf("    %sFixedClampBody( value, clamped );\n", st.Name)
-	g.pf("    report->clamped += clamped;\n}\n\n")
+	g.pf("    int32_t damaged = 0;\n")
+	g.pf("    %sFixedClampBody( value, clamped, damaged );\n", st.Name)
+	g.pf("    report->clamped += clamped;\n")
+	g.pf("    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the\n")
+	g.pf("    // one flag and not on a counter: the field read its declared default\n")
+	g.pf("    // and the rest of the record stands.\n")
+	g.pf("    if ( damaged != 0 ) { report->malformed = true; }\n}\n\n")
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
@@ -794,9 +697,43 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s.%s_count; ++i )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
 		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		g.emitFixedTextContent(f, val, ind)
 	default:
 		g.emitFixedClampElement(f, val+"."+f.Name, indent)
 	}
+}
+
+// emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), on this
+// form's terms. A `string(N)`'s used bytes are well-formed UTF-8 with no zero
+// among them and a `wstring(N)`'s used units are paired UTF-16 with no zero
+// unit; the check runs over the USED LENGTH and over nothing else, because the
+// slack carries no meaning and reading it would be the cost this form exists to
+// avoid.
+//
+// A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and it is the same
+// verdict every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
+// `malformed` counts, and the rest of the record stands. It is what SPEC.md
+// §4.7 and §4.12 put on the packet wire, where the whole read refuses — here
+// the record is positional, so the damage is one field's and the reader does
+// not lose the others to it.
+func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
+	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
+	if f.Type.Kind == ir.TWString {
+		// THE SAME BYTES THE COPY MOVED. A wstring's units ride little-endian
+		// and land as a raw copy, so the validator reads the storage as the
+		// wire it came from.
+		call = fmt.Sprintf("TableUtf16Valid( (const uint8_t *) %s.%s, (int64_t) %s.%s_length )", val, f.Name, val, f.Name)
+	}
+	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
+	g.pf("%s    memset( %s.%s, 0, sizeof( %s.%s ) );\n", ind, val, f.Name, val, f.Name)
+	if f.Type.Kind == ir.TString && hasByteDefault(f) {
+		g.pf("%s    memcpy( %s.%s, %s, %d ); // the declared default\n", ind, val, f.Name, cStringLit(f.DefBytes), len(f.DefBytes))
+		g.pf("%s    %s.%s_length = %d;\n", ind, val, f.Name, len(f.DefBytes))
+	} else {
+		g.pf("%s    %s.%s_length = 0;\n", ind, val, f.Name)
+	}
+	g.pf("%s    damaged++;\n%s}\n", ind, ind)
 }
 
 func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
@@ -805,7 +742,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%sFixedClampBody( %s, clamped );\n", ind, r.Name, expr)
+				g.pf("%s%sFixedClampBody( %s, clamped, damaged );\n", ind, r.Name, expr)
 			}
 			return
 		case *ir.Union:
@@ -816,6 +753,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// counts.
 			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
 				ind, expr, r.Max, expr, f.Type.Name)
+			if !ir.TableFixedClampNeededUnionArm(r) {
+				return
+			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
 				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
@@ -842,11 +782,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMin, true))
-		g.pf("%selse if ( %s > %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMax, true), expr, formatFloat(f.FMax, true))
+		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMin, false))
-		g.pf("%selse if ( %s > %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMax, false), expr, formatFloat(f.FMax, false))
+		g.fixedClampBoth(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -854,22 +792,39 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		// spelled — the same numbers the variable form's codec clamps at.
 		if rlo, rhi, ok := ir.TableRawRange(f); ok {
 			low, high := tableClampEnds(f, width)
-			if low {
-				lo := tableIntLit(rlo, signed, width)
-				g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, lo, expr, lo)
-			}
-			if high {
-				hi := tableIntLit(rhi, signed, width)
-				lead := "if"
-				if low {
-					lead = "else if"
-				}
-				g.pf("%s%s ( %s > %s ) { %s = %s; clamped++; }\n", ind, lead, expr, hi, expr, hi)
+			switch {
+			case low && high:
+				g.fixedClampBoth(expr, tableIntLit(rlo, signed, width), tableIntLit(rhi, signed, width), ind)
+			case low:
+				g.fixedClampEnd(expr, "<", tableIntLit(rlo, signed, width), ind)
+			case high:
+				g.fixedClampEnd(expr, ">", tableIntLit(rhi, signed, width), ind)
 			}
 		}
 		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
 			maxv := (uint64(1) << f.Type.Width) - 1
-			g.pf("%sif ( %s > %dull ) { %s = %dull; clamped++; } // bits(%d) width clamp\n", ind, expr, maxv, expr, maxv, f.Type.Width)
+			g.pf("%s// bits(%d) width clamp\n", ind, f.Type.Width)
+			g.fixedClampEnd(expr, ">", fmt.Sprintf("%dull", maxv), ind)
 		}
 	}
+}
+
+// fixedClampBoth is a two-ended clamp: the select, then the count as an add.
+func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
+	// THE COUNT IS AN OR OF THE TWO ENDS, and the casts are what say the `|` is
+	// meant: clang reads a bitwise operator between two comparisons as a
+	// mistyped `||` and reds it (-Wbitwise-instead-of-logical), which is a good
+	// warning about code that is not this. A sum would silence it too and is
+	// measurably slower — the or folds to a mask the compiler keeps in a
+	// vector lane, and the add does not (test/bench/fixedform_measure.cpp).
+	g.pf("%sclamped += (int) ( %s < %s ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
+	g.pf("%s%s = ( %s < %s ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
+}
+
+// fixedClampEnd is the one-ended twin: an end the storage's own width already
+// holds is an end the emitter drops (tableClampEnds), so a great many bounded
+// fields spend one compare and not two.
+func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
+	g.pf("%sclamped += ( %s %s %s );\n", ind, expr, op, bound)
+	g.pf("%s%s = ( %s %s %s ) ? %s : %s;\n", ind, expr, expr, op, bound, bound, expr)
 }

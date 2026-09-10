@@ -2096,7 +2096,9 @@ constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other two are what a plan compiled from another writer's layout adds.
+// the rest are what a plan compiled from another writer's layout adds. clamp
+// is compiled-only: a ranged integer is a copy on the identity path and the
+// generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2106,6 +2108,7 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedClamp   = 7, // a ranged integer, in place on the destination the copy landed
 };
 
 // meta on a kTableFixedText entry
@@ -2350,6 +2353,39 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
+            break;
+        }
+        case kTableFixedClamp:
+        {
+            // IN PLACE ON THE DESTINATION the copy or widen just landed. src is
+            // unused: this op does not read the record. meta bit 0 is the low
+            // end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
+            // OF THE TWO ENDS, the same select-and-add the identity pass emits.
+            uint64_t lo = 0, hi = 0, raw = 0;
+            memcpy( &lo, base + p.aux, 8 );
+            memcpy( &hi, base + p.aux + 8, 8 );
+            memcpy( &raw, dst + p.dst, p.size );
+            if ( p.sign != 0 && p.size < 8 )
+            {
+                const unsigned bits = p.size * 8u;
+                const uint64_t top = 1ull << ( bits - 1 );
+                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            }
+            int32_t under = 0, over = 0;
+            if ( p.sign != 0 )
+            {
+                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
+                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            else
+            {
+                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
+                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            clamped += under | over;
+            memcpy( dst + p.dst, &raw, p.size );
             break;
         }
         default: break;
@@ -2832,6 +2868,10 @@ struct TableFixedDst
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
     uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
+    uint64_t lo = 0;     // a compiled clamp's low end, bit pattern of the slot
+    uint64_t hi = 0;     // a compiled clamp's high end
+    uint8_t clamp = 0;   // bit 0 = low, bit 1 = high, bit 2 = signed
+    uint8_t width = 0;   // the slot's bytes; 0 = this row is not a compiled clamp
 };
 
 struct TableFixedCompiler
@@ -2845,6 +2885,7 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    bool skip_clamp = false; // counted-array elements: the live count, never slack
     TableReport * report = NULL;
 };
 
@@ -2859,9 +2900,19 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
     {
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c.record ||
-             ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+        // A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
+        // already landed. src+size is not a wire reach.
+        if ( e.op != kTableFixedClamp )
+        {
+            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+            if ( reach > (uint64_t) c.record ||
+                 ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+            {
+                c.hostile = true;
+                return;
+            }
+        }
+        else if ( e.guard != kTableFixedNoGuard && e.guard >= c.record )
         {
             c.hostile = true;
             return;
@@ -2901,6 +2952,39 @@ inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
     c.pool = ( c.pool + n * (int32_t) sizeof( TableFixedFill ) + 3 ) & ~3;
     if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
     return (uint32_t) ( total - c.pool );
+}
+
+// TableFixedLayBounds lays a compiled clamp's two ends above the entries, the
+// same pool the ordinal remap tables use, and answers the byte offset from the
+// plan's base. memcpy, not a typed store: the pool is not 8-aligned.
+inline uint32_t TableFixedLayBounds( TableFixedCompiler & c, uint64_t lo, uint64_t hi )
+{
+    const int32_t bytes = 16;
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    c.pool += bytes;
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    const uint32_t at = (uint32_t) ( total - c.pool );
+    uint8_t * dst = (uint8_t *) (void *) ( (uint8_t *) c.plan + at );
+    memcpy( dst, &lo, 8 );
+    memcpy( dst + 8, &hi, 8 );
+    return at;
+}
+
+// TableFixedPushClamp is ONE ranged scalar after the copy or widen that landed
+// it. Counted-array elements skip: the live count is a value the plan cannot
+// name, and clamping slack would count a clamp on a byte nobody wrote.
+inline void TableFixedPushClamp( TableFixedCompiler & c, const TableFixedDst & d,
+                                 uint32_t at, uint32_t guard, uint8_t arg )
+{
+    if ( c.skip_clamp || d.width == 0 ) { return; }
+    TableFixedEntry e;
+    e.src = 0; e.dst = at; e.size = d.width;
+    e.aux = TableFixedLayBounds( c, d.lo, d.hi );
+    e.guard = guard; e.op = kTableFixedClamp; e.arg = arg;
+    e.meta = (uint8_t) ( d.clamp & 3u );
+    e.dstsize = 0;
+    e.sign = ( d.clamp & 4u ) ? 1u : 0u;
+    TableFixedPush( c, e );
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
@@ -2983,6 +3067,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
             e.sign = TableFixedSignedKind( te.kind ) ? 1u : 0u;
             TableFixedPush( c, e );
+            TableFixedPushClamp( c, d, at, guard, arg );
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
@@ -3019,11 +3104,14 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;
+            const bool prev_skip = c.skip_clamp;
+            if ( d.counted ) { c.skip_clamp = true; }
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
                                         mine, mi + 1, dst, at + i * d.stride, guard, arg );
             }
+            c.skip_clamp = prev_skip;
             break;
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
@@ -3128,11 +3216,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size; e.op = kTableFixedCopy;
                 TableFixedPush( c, e );
+                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( te.size < me.size && me.size <= 8 )
             {
                 e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
+                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( c.report != NULL )
             {
@@ -3201,6 +3291,58 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
         *fill_at = at;
     }
     return out;
+}
+
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].fill = NULL;
+        cache.slots[i].fill_count = 0;
+        cache.slots[i].made = 0;
+    }
 }
 
 } // namespace blockhome
@@ -4540,7 +4682,7 @@ inline bool PartFrameLoadMessages( PartFrame * values, int64_t * count, const Ta
 // the values in declared order, every field at its declared storage width.
 // The writer is the constant bytes memcpy'd and then stores; the reader is
 // ONE loop over ONE plan, the identity plan here and a plan compiled from
-// the writer's own layout for anybody else.
+// the writer's own layout for anybody else. There is no second reader.
 
 // THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
 // schema compiler rather than folded by this one, because they are the same
@@ -4697,31 +4839,31 @@ constexpr int64_t PartRowFixedLayoutBytes = (int64_t) sizeof( PartRowFixedLayout
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst PartRowFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // PartRow
-    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0 }, // armor
-    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0 }, // front
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0 }, // rear
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0 }, // rating
-    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0 }, // tier
-    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0 }, // firing_groups
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0 }, // missile_groups
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0 }, // reload_seconds
-    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0 }, // gunner_id
-    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0 }, // part_id
-    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0 }, // slot
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // PartRow
+    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // armor
+    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // front
+    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thickness
+    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // material
+    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // layer
+    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rear
+    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thickness
+    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // material
+    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // layer
+    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rating
+    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // tier
+    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner
+    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0, 0ull, 0ull, 0, 0 }, // firing_groups
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // barrel
+    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
+    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0, 0ull, 0ull, 0, 0 }, // missile_groups
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // barrel
+    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
+    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // reload_seconds
+    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner_id
+    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // part_id
+    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // slot
 };
 
 // THE IDENTITY PLAN, coalesced out of 16 leaves by the schema compiler —
@@ -4759,34 +4901,6 @@ constexpr TableFixedFill PartRowFixedCover[] = {
 };
 constexpr int32_t PartRowFixedCoverCount = 4;
 
-// PartRow's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by this
-// compiler into constant-offset moves. Every number in it is a number from
-// that plan, and the static_asserts at the top of this form tie each one to
-// this compiler's own offsetof and sizeof.
-inline void PartRowFixedScatter( const uint8_t * TABLE_RESTRICT image, PartRow & value, TableReport * report )
-{
-    uint8_t * TABLE_RESTRICT dst = (uint8_t *) &value;
-    int32_t clamped = 0;
-    (void) dst; (void) clamped;
-    memcpy( dst + 0, image + 0, 13 ); // thickness
-    memcpy( dst + 16, image + 13, 13 ); // thickness
-    memcpy( dst + 32, image + 26, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 31 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 296, &v, 4 );
-    }
-    memcpy( dst + 40, image + 35, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 291 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 332, &v, 4 );
-    }
-    memcpy( dst + 300, image + 295, 32 ); // missile_groups, whole
-    memcpy( dst + 336, image + 327, 13 ); // reload_seconds
-    report->clamped += clamped;
-}
-
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -4815,21 +4929,17 @@ inline int64_t PartRowFixedSave( const PartRow * values, int64_t count, uint8_t 
     return need;
 }
 
-// THE READ. ONE PLAN, and which one is the only thing a peer's shipping
-// changes: the IDENTITY PLAN for a record stamped with this build's own
-// layout hash, a plan compiled once from the writer's layout for anybody
-// else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
-// says: the identity plan is a compile-time constant, so this compiler
-// spends it HERE — one copy of the body and a straight-line scatter, or one
-// memcpy where the storage image is the wire image — and a stranger's plan
-// arrives at run time and is spent by the interpreter it was always spent by.
+// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
 //
 // THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
 // ranges the plan compiler works out once, and on the identity plan that list
 // is EMPTY — so this read writes no byte twice, and it is one rule for both
 // plans rather than a flag that asks which one this is.
 inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -4855,31 +4965,70 @@ inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8
     int32_t entry_count = PartRowFixedPlanCount;
     int32_t entry_guarded = PartRowFixedPlanGuarded;
     int64_t record_bytes = PartRowFixedRecordBytes;
-    const bool identity = ( hash == PartRowFixedHash );
-    // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:
-    // the rule is the type's value bytes minus what the plan lands, and the
-    // identity plan lands all of them.
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
-    if ( !identity )
+    if ( hash != PartRowFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        uint32_t fill_at = 0;
-        const int32_t made = TableFixedCompile( parsed, PartRowFixedLayout, (int32_t) PartRowFixedLayoutBytes, PartRowFixedDst,
-                                               PartRowFixedCover, PartRowFixedCoverCount,
-                                               plan, plan_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        fill = (const TableFixedFill *) (const void *) ( (const uint8_t *) plan + fill_at );
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, PartRowFixedLayout, (int32_t) PartRowFixedLayoutBytes, PartRowFixedDst,
+                                                   PartRowFixedCover, PartRowFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -4889,26 +5038,10 @@ inline int64_t PartRowFixedLoad( PartRow * values, int64_t capacity, const uint8
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    if ( identity )
-    {
-        // ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,
-        // same census, same bytes — every offset in the scatter above came out
-        // of the plan above it — and no per-entry dispatch, no runtime length
-        // and no plan array competing with the record for cache.
-        uint8_t image[PartRowFixedBodyBytes];
-        for ( int64_t k = 0; k < n; ++k )
-        {
-            if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
-            memcpy( image, at + 8, (size_t) PartRowFixedBodyBytes );
-            PartRowFixedScatter( image, values[k], report );
-            at += PartRowFixedRecordBytes;
-        }
-        return n;
-    }
-    // A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
     // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. It is the caller's own stack
-    // and this codec allocates nothing.
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
     PartRow defaults;
     if ( fill_count > 0 )
     {
@@ -4974,34 +5107,34 @@ constexpr int64_t PartFrameFixedLayoutBytes = (int64_t) sizeof( PartFrameFixedLa
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst PartFrameFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // PartFrame
-    { (uint32_t) __builtin_offsetof( PartFrame, version ), 0, 0, 0, 0 }, // version
-    { (uint32_t) __builtin_offsetof( PartFrame, parts ), (uint32_t) sizeof( PartRow ), (uint32_t) __builtin_offsetof( PartFrame, parts_count ), 1, 0 }, // parts
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0 }, // armor
-    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0 }, // front
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0 }, // rear
-    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0 }, // thickness
-    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0 }, // material
-    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0 }, // layer
-    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0 }, // rating
-    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0 }, // tier
-    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0 }, // gunner
-    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0 }, // firing_groups
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0 }, // missile_groups
-    { 0, 0, 0, 0, 0 }, // element
-    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0 }, // barrel
-    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0 }, // cooldown
-    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0 }, // reload_seconds
-    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0 }, // gunner_id
-    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0 }, // part_id
-    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0 }, // slot
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // PartFrame
+    { (uint32_t) __builtin_offsetof( PartFrame, version ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // version
+    { (uint32_t) __builtin_offsetof( PartFrame, parts ), (uint32_t) sizeof( PartRow ), (uint32_t) __builtin_offsetof( PartFrame, parts_count ), 1, 0, 0ull, 0ull, 0, 0 }, // parts
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( PartRow, armor ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // armor
+    { (uint32_t) __builtin_offsetof( ArmorConfig, front ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // front
+    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thickness
+    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // material
+    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // layer
+    { (uint32_t) __builtin_offsetof( ArmorConfig, rear ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rear
+    { (uint32_t) __builtin_offsetof( ArmorPlate, thickness ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // thickness
+    { (uint32_t) __builtin_offsetof( ArmorPlate, material ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // material
+    { (uint32_t) __builtin_offsetof( ArmorPlate, layer ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // layer
+    { (uint32_t) __builtin_offsetof( ArmorConfig, rating ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // rating
+    { (uint32_t) __builtin_offsetof( ArmorConfig, tier ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // tier
+    { (uint32_t) __builtin_offsetof( PartRow, gunner ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner
+    { (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ), 1, 0, 0ull, 0ull, 0, 0 }, // firing_groups
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // barrel
+    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
+    { (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( FiringGroup ), (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ), 1, 0, 0ull, 0ull, 0, 0 }, // missile_groups
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // element
+    { (uint32_t) __builtin_offsetof( FiringGroup, barrel ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // barrel
+    { (uint32_t) __builtin_offsetof( FiringGroup, cooldown ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // cooldown
+    { (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // reload_seconds
+    { (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // gunner_id
+    { (uint32_t) __builtin_offsetof( PartRow, part_id ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // part_id
+    { (uint32_t) __builtin_offsetof( PartRow, slot ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // slot
 };
 
 // THE IDENTITY PLAN, coalesced out of 514 leaves by the schema compiler —
@@ -5414,536 +5547,6 @@ constexpr TableFixedFill PartFrameFixedCover[] = {
 };
 constexpr int32_t PartFrameFixedCoverCount = 129;
 
-// PartFrame's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by this
-// compiler into constant-offset moves. Every number in it is a number from
-// that plan, and the static_asserts at the top of this form tie each one to
-// this compiler's own offsetof and sizeof.
-inline void PartFrameFixedScatter( const uint8_t * TABLE_RESTRICT image, PartFrame & value, TableReport * report )
-{
-    uint8_t * TABLE_RESTRICT dst = (uint8_t *) &value;
-    int32_t clamped = 0;
-    (void) dst; (void) clamped;
-    memcpy( dst + 0, image + 0, 8 ); // version
-    { // parts count
-        int32_t v = (int32_t) TableFixedGet32( image + 8 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 11272, &v, 4 );
-    }
-    memcpy( dst + 8, image + 12, 13 ); // thickness
-    memcpy( dst + 24, image + 25, 13 ); // thickness
-    memcpy( dst + 40, image + 38, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 43 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 304, &v, 4 );
-    }
-    memcpy( dst + 48, image + 47, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 303 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 340, &v, 4 );
-    }
-    memcpy( dst + 308, image + 307, 32 ); // missile_groups, whole
-    memcpy( dst + 344, image + 339, 13 ); // reload_seconds
-    memcpy( dst + 360, image + 352, 13 ); // thickness
-    memcpy( dst + 376, image + 365, 13 ); // thickness
-    memcpy( dst + 392, image + 378, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 383 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 656, &v, 4 );
-    }
-    memcpy( dst + 400, image + 387, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 643 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 692, &v, 4 );
-    }
-    memcpy( dst + 660, image + 647, 32 ); // missile_groups, whole
-    memcpy( dst + 696, image + 679, 13 ); // reload_seconds
-    memcpy( dst + 712, image + 692, 13 ); // thickness
-    memcpy( dst + 728, image + 705, 13 ); // thickness
-    memcpy( dst + 744, image + 718, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 723 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 1008, &v, 4 );
-    }
-    memcpy( dst + 752, image + 727, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 983 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 1044, &v, 4 );
-    }
-    memcpy( dst + 1012, image + 987, 32 ); // missile_groups, whole
-    memcpy( dst + 1048, image + 1019, 13 ); // reload_seconds
-    memcpy( dst + 1064, image + 1032, 13 ); // thickness
-    memcpy( dst + 1080, image + 1045, 13 ); // thickness
-    memcpy( dst + 1096, image + 1058, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 1063 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 1360, &v, 4 );
-    }
-    memcpy( dst + 1104, image + 1067, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 1323 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 1396, &v, 4 );
-    }
-    memcpy( dst + 1364, image + 1327, 32 ); // missile_groups, whole
-    memcpy( dst + 1400, image + 1359, 13 ); // reload_seconds
-    memcpy( dst + 1416, image + 1372, 13 ); // thickness
-    memcpy( dst + 1432, image + 1385, 13 ); // thickness
-    memcpy( dst + 1448, image + 1398, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 1403 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 1712, &v, 4 );
-    }
-    memcpy( dst + 1456, image + 1407, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 1663 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 1748, &v, 4 );
-    }
-    memcpy( dst + 1716, image + 1667, 32 ); // missile_groups, whole
-    memcpy( dst + 1752, image + 1699, 13 ); // reload_seconds
-    memcpy( dst + 1768, image + 1712, 13 ); // thickness
-    memcpy( dst + 1784, image + 1725, 13 ); // thickness
-    memcpy( dst + 1800, image + 1738, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 1743 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 2064, &v, 4 );
-    }
-    memcpy( dst + 1808, image + 1747, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 2003 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 2100, &v, 4 );
-    }
-    memcpy( dst + 2068, image + 2007, 32 ); // missile_groups, whole
-    memcpy( dst + 2104, image + 2039, 13 ); // reload_seconds
-    memcpy( dst + 2120, image + 2052, 13 ); // thickness
-    memcpy( dst + 2136, image + 2065, 13 ); // thickness
-    memcpy( dst + 2152, image + 2078, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 2083 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 2416, &v, 4 );
-    }
-    memcpy( dst + 2160, image + 2087, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 2343 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 2452, &v, 4 );
-    }
-    memcpy( dst + 2420, image + 2347, 32 ); // missile_groups, whole
-    memcpy( dst + 2456, image + 2379, 13 ); // reload_seconds
-    memcpy( dst + 2472, image + 2392, 13 ); // thickness
-    memcpy( dst + 2488, image + 2405, 13 ); // thickness
-    memcpy( dst + 2504, image + 2418, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 2423 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 2768, &v, 4 );
-    }
-    memcpy( dst + 2512, image + 2427, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 2683 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 2804, &v, 4 );
-    }
-    memcpy( dst + 2772, image + 2687, 32 ); // missile_groups, whole
-    memcpy( dst + 2808, image + 2719, 13 ); // reload_seconds
-    memcpy( dst + 2824, image + 2732, 13 ); // thickness
-    memcpy( dst + 2840, image + 2745, 13 ); // thickness
-    memcpy( dst + 2856, image + 2758, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 2763 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 3120, &v, 4 );
-    }
-    memcpy( dst + 2864, image + 2767, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 3023 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 3156, &v, 4 );
-    }
-    memcpy( dst + 3124, image + 3027, 32 ); // missile_groups, whole
-    memcpy( dst + 3160, image + 3059, 13 ); // reload_seconds
-    memcpy( dst + 3176, image + 3072, 13 ); // thickness
-    memcpy( dst + 3192, image + 3085, 13 ); // thickness
-    memcpy( dst + 3208, image + 3098, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 3103 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 3472, &v, 4 );
-    }
-    memcpy( dst + 3216, image + 3107, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 3363 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 3508, &v, 4 );
-    }
-    memcpy( dst + 3476, image + 3367, 32 ); // missile_groups, whole
-    memcpy( dst + 3512, image + 3399, 13 ); // reload_seconds
-    memcpy( dst + 3528, image + 3412, 13 ); // thickness
-    memcpy( dst + 3544, image + 3425, 13 ); // thickness
-    memcpy( dst + 3560, image + 3438, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 3443 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 3824, &v, 4 );
-    }
-    memcpy( dst + 3568, image + 3447, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 3703 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 3860, &v, 4 );
-    }
-    memcpy( dst + 3828, image + 3707, 32 ); // missile_groups, whole
-    memcpy( dst + 3864, image + 3739, 13 ); // reload_seconds
-    memcpy( dst + 3880, image + 3752, 13 ); // thickness
-    memcpy( dst + 3896, image + 3765, 13 ); // thickness
-    memcpy( dst + 3912, image + 3778, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 3783 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 4176, &v, 4 );
-    }
-    memcpy( dst + 3920, image + 3787, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 4043 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 4212, &v, 4 );
-    }
-    memcpy( dst + 4180, image + 4047, 32 ); // missile_groups, whole
-    memcpy( dst + 4216, image + 4079, 13 ); // reload_seconds
-    memcpy( dst + 4232, image + 4092, 13 ); // thickness
-    memcpy( dst + 4248, image + 4105, 13 ); // thickness
-    memcpy( dst + 4264, image + 4118, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 4123 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 4528, &v, 4 );
-    }
-    memcpy( dst + 4272, image + 4127, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 4383 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 4564, &v, 4 );
-    }
-    memcpy( dst + 4532, image + 4387, 32 ); // missile_groups, whole
-    memcpy( dst + 4568, image + 4419, 13 ); // reload_seconds
-    memcpy( dst + 4584, image + 4432, 13 ); // thickness
-    memcpy( dst + 4600, image + 4445, 13 ); // thickness
-    memcpy( dst + 4616, image + 4458, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 4463 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 4880, &v, 4 );
-    }
-    memcpy( dst + 4624, image + 4467, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 4723 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 4916, &v, 4 );
-    }
-    memcpy( dst + 4884, image + 4727, 32 ); // missile_groups, whole
-    memcpy( dst + 4920, image + 4759, 13 ); // reload_seconds
-    memcpy( dst + 4936, image + 4772, 13 ); // thickness
-    memcpy( dst + 4952, image + 4785, 13 ); // thickness
-    memcpy( dst + 4968, image + 4798, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 4803 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 5232, &v, 4 );
-    }
-    memcpy( dst + 4976, image + 4807, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 5063 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 5268, &v, 4 );
-    }
-    memcpy( dst + 5236, image + 5067, 32 ); // missile_groups, whole
-    memcpy( dst + 5272, image + 5099, 13 ); // reload_seconds
-    memcpy( dst + 5288, image + 5112, 13 ); // thickness
-    memcpy( dst + 5304, image + 5125, 13 ); // thickness
-    memcpy( dst + 5320, image + 5138, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 5143 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 5584, &v, 4 );
-    }
-    memcpy( dst + 5328, image + 5147, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 5403 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 5620, &v, 4 );
-    }
-    memcpy( dst + 5588, image + 5407, 32 ); // missile_groups, whole
-    memcpy( dst + 5624, image + 5439, 13 ); // reload_seconds
-    memcpy( dst + 5640, image + 5452, 13 ); // thickness
-    memcpy( dst + 5656, image + 5465, 13 ); // thickness
-    memcpy( dst + 5672, image + 5478, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 5483 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 5936, &v, 4 );
-    }
-    memcpy( dst + 5680, image + 5487, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 5743 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 5972, &v, 4 );
-    }
-    memcpy( dst + 5940, image + 5747, 32 ); // missile_groups, whole
-    memcpy( dst + 5976, image + 5779, 13 ); // reload_seconds
-    memcpy( dst + 5992, image + 5792, 13 ); // thickness
-    memcpy( dst + 6008, image + 5805, 13 ); // thickness
-    memcpy( dst + 6024, image + 5818, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 5823 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 6288, &v, 4 );
-    }
-    memcpy( dst + 6032, image + 5827, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 6083 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 6324, &v, 4 );
-    }
-    memcpy( dst + 6292, image + 6087, 32 ); // missile_groups, whole
-    memcpy( dst + 6328, image + 6119, 13 ); // reload_seconds
-    memcpy( dst + 6344, image + 6132, 13 ); // thickness
-    memcpy( dst + 6360, image + 6145, 13 ); // thickness
-    memcpy( dst + 6376, image + 6158, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 6163 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 6640, &v, 4 );
-    }
-    memcpy( dst + 6384, image + 6167, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 6423 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 6676, &v, 4 );
-    }
-    memcpy( dst + 6644, image + 6427, 32 ); // missile_groups, whole
-    memcpy( dst + 6680, image + 6459, 13 ); // reload_seconds
-    memcpy( dst + 6696, image + 6472, 13 ); // thickness
-    memcpy( dst + 6712, image + 6485, 13 ); // thickness
-    memcpy( dst + 6728, image + 6498, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 6503 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 6992, &v, 4 );
-    }
-    memcpy( dst + 6736, image + 6507, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 6763 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 7028, &v, 4 );
-    }
-    memcpy( dst + 6996, image + 6767, 32 ); // missile_groups, whole
-    memcpy( dst + 7032, image + 6799, 13 ); // reload_seconds
-    memcpy( dst + 7048, image + 6812, 13 ); // thickness
-    memcpy( dst + 7064, image + 6825, 13 ); // thickness
-    memcpy( dst + 7080, image + 6838, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 6843 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 7344, &v, 4 );
-    }
-    memcpy( dst + 7088, image + 6847, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 7103 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 7380, &v, 4 );
-    }
-    memcpy( dst + 7348, image + 7107, 32 ); // missile_groups, whole
-    memcpy( dst + 7384, image + 7139, 13 ); // reload_seconds
-    memcpy( dst + 7400, image + 7152, 13 ); // thickness
-    memcpy( dst + 7416, image + 7165, 13 ); // thickness
-    memcpy( dst + 7432, image + 7178, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 7183 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 7696, &v, 4 );
-    }
-    memcpy( dst + 7440, image + 7187, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 7443 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 7732, &v, 4 );
-    }
-    memcpy( dst + 7700, image + 7447, 32 ); // missile_groups, whole
-    memcpy( dst + 7736, image + 7479, 13 ); // reload_seconds
-    memcpy( dst + 7752, image + 7492, 13 ); // thickness
-    memcpy( dst + 7768, image + 7505, 13 ); // thickness
-    memcpy( dst + 7784, image + 7518, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 7523 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 8048, &v, 4 );
-    }
-    memcpy( dst + 7792, image + 7527, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 7783 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 8084, &v, 4 );
-    }
-    memcpy( dst + 8052, image + 7787, 32 ); // missile_groups, whole
-    memcpy( dst + 8088, image + 7819, 13 ); // reload_seconds
-    memcpy( dst + 8104, image + 7832, 13 ); // thickness
-    memcpy( dst + 8120, image + 7845, 13 ); // thickness
-    memcpy( dst + 8136, image + 7858, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 7863 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 8400, &v, 4 );
-    }
-    memcpy( dst + 8144, image + 7867, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 8123 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 8436, &v, 4 );
-    }
-    memcpy( dst + 8404, image + 8127, 32 ); // missile_groups, whole
-    memcpy( dst + 8440, image + 8159, 13 ); // reload_seconds
-    memcpy( dst + 8456, image + 8172, 13 ); // thickness
-    memcpy( dst + 8472, image + 8185, 13 ); // thickness
-    memcpy( dst + 8488, image + 8198, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 8203 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 8752, &v, 4 );
-    }
-    memcpy( dst + 8496, image + 8207, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 8463 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 8788, &v, 4 );
-    }
-    memcpy( dst + 8756, image + 8467, 32 ); // missile_groups, whole
-    memcpy( dst + 8792, image + 8499, 13 ); // reload_seconds
-    memcpy( dst + 8808, image + 8512, 13 ); // thickness
-    memcpy( dst + 8824, image + 8525, 13 ); // thickness
-    memcpy( dst + 8840, image + 8538, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 8543 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 9104, &v, 4 );
-    }
-    memcpy( dst + 8848, image + 8547, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 8803 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 9140, &v, 4 );
-    }
-    memcpy( dst + 9108, image + 8807, 32 ); // missile_groups, whole
-    memcpy( dst + 9144, image + 8839, 13 ); // reload_seconds
-    memcpy( dst + 9160, image + 8852, 13 ); // thickness
-    memcpy( dst + 9176, image + 8865, 13 ); // thickness
-    memcpy( dst + 9192, image + 8878, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 8883 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 9456, &v, 4 );
-    }
-    memcpy( dst + 9200, image + 8887, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 9143 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 9492, &v, 4 );
-    }
-    memcpy( dst + 9460, image + 9147, 32 ); // missile_groups, whole
-    memcpy( dst + 9496, image + 9179, 13 ); // reload_seconds
-    memcpy( dst + 9512, image + 9192, 13 ); // thickness
-    memcpy( dst + 9528, image + 9205, 13 ); // thickness
-    memcpy( dst + 9544, image + 9218, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 9223 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 9808, &v, 4 );
-    }
-    memcpy( dst + 9552, image + 9227, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 9483 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 9844, &v, 4 );
-    }
-    memcpy( dst + 9812, image + 9487, 32 ); // missile_groups, whole
-    memcpy( dst + 9848, image + 9519, 13 ); // reload_seconds
-    memcpy( dst + 9864, image + 9532, 13 ); // thickness
-    memcpy( dst + 9880, image + 9545, 13 ); // thickness
-    memcpy( dst + 9896, image + 9558, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 9563 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 10160, &v, 4 );
-    }
-    memcpy( dst + 9904, image + 9567, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 9823 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 10196, &v, 4 );
-    }
-    memcpy( dst + 10164, image + 9827, 32 ); // missile_groups, whole
-    memcpy( dst + 10200, image + 9859, 13 ); // reload_seconds
-    memcpy( dst + 10216, image + 9872, 13 ); // thickness
-    memcpy( dst + 10232, image + 9885, 13 ); // thickness
-    memcpy( dst + 10248, image + 9898, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 9903 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 10512, &v, 4 );
-    }
-    memcpy( dst + 10256, image + 9907, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 10163 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 10548, &v, 4 );
-    }
-    memcpy( dst + 10516, image + 10167, 32 ); // missile_groups, whole
-    memcpy( dst + 10552, image + 10199, 13 ); // reload_seconds
-    memcpy( dst + 10568, image + 10212, 13 ); // thickness
-    memcpy( dst + 10584, image + 10225, 13 ); // thickness
-    memcpy( dst + 10600, image + 10238, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 10243 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 10864, &v, 4 );
-    }
-    memcpy( dst + 10608, image + 10247, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 10503 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 10900, &v, 4 );
-    }
-    memcpy( dst + 10868, image + 10507, 32 ); // missile_groups, whole
-    memcpy( dst + 10904, image + 10539, 13 ); // reload_seconds
-    memcpy( dst + 10920, image + 10552, 13 ); // thickness
-    memcpy( dst + 10936, image + 10565, 13 ); // thickness
-    memcpy( dst + 10952, image + 10578, 5 ); // rating
-    { // firing_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 10583 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 32 ) { v = 32; clamped++; }
-        memcpy( dst + 11216, &v, 4 );
-    }
-    memcpy( dst + 10960, image + 10587, 256 ); // firing_groups, whole
-    { // missile_groups count
-        int32_t v = (int32_t) TableFixedGet32( image + 10843 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 4 ) { v = 4; clamped++; }
-        memcpy( dst + 11252, &v, 4 );
-    }
-    memcpy( dst + 11220, image + 10847, 32 ); // missile_groups, whole
-    memcpy( dst + 11256, image + 10879, 13 ); // reload_seconds
-    report->clamped += clamped;
-}
-
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5972,21 +5575,17 @@ inline int64_t PartFrameFixedSave( const PartFrame * values, int64_t count, uint
     return need;
 }
 
-// THE READ. ONE PLAN, and which one is the only thing a peer's shipping
-// changes: the IDENTITY PLAN for a record stamped with this build's own
-// layout hash, a plan compiled once from the writer's layout for anybody
-// else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
-// says: the identity plan is a compile-time constant, so this compiler
-// spends it HERE — one copy of the body and a straight-line scatter, or one
-// memcpy where the storage image is the wire image — and a stranger's plan
-// arrives at run time and is spent by the interpreter it was always spent by.
+// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
 //
 // THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
 // ranges the plan compiler works out once, and on the identity plan that list
 // is EMPTY — so this read writes no byte twice, and it is one rule for both
 // plans rather than a flag that asks which one this is.
 inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -6012,31 +5611,70 @@ inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const u
     int32_t entry_count = PartFrameFixedPlanCount;
     int32_t entry_guarded = PartFrameFixedPlanGuarded;
     int64_t record_bytes = PartFrameFixedRecordBytes;
-    const bool identity = ( hash == PartFrameFixedHash );
-    // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:
-    // the rule is the type's value bytes minus what the plan lands, and the
-    // identity plan lands all of them.
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
-    if ( !identity )
+    if ( hash != PartFrameFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        uint32_t fill_at = 0;
-        const int32_t made = TableFixedCompile( parsed, PartFrameFixedLayout, (int32_t) PartFrameFixedLayoutBytes, PartFrameFixedDst,
-                                               PartFrameFixedCover, PartFrameFixedCoverCount,
-                                               plan, plan_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        fill = (const TableFixedFill *) (const void *) ( (const uint8_t *) plan + fill_at );
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, PartFrameFixedLayout, (int32_t) PartFrameFixedLayoutBytes, PartFrameFixedDst,
+                                                   PartFrameFixedCover, PartFrameFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -6046,26 +5684,10 @@ inline int64_t PartFrameFixedLoad( PartFrame * values, int64_t capacity, const u
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    if ( identity )
-    {
-        // ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,
-        // same census, same bytes — every offset in the scatter above came out
-        // of the plan above it — and no per-entry dispatch, no runtime length
-        // and no plan array competing with the record for cache.
-        uint8_t image[PartFrameFixedBodyBytes];
-        for ( int64_t k = 0; k < n; ++k )
-        {
-            if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
-            memcpy( image, at + 8, (size_t) PartFrameFixedBodyBytes );
-            PartFrameFixedScatter( image, values[k], report );
-            at += PartFrameFixedRecordBytes;
-        }
-        return n;
-    }
-    // A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
     // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. It is the caller's own stack
-    // and this codec allocates nothing.
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
     PartFrame defaults;
     if ( fill_count > 0 )
     {

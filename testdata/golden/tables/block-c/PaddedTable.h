@@ -688,7 +688,9 @@ enum { kTableFixedForm = 3 };
 enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 
 /* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-   the other two are what a plan compiled from another writer's layout adds.
+   the rest are what a plan compiled from another writer's layout adds. clamp
+   is compiled-only: a ranged integer is a copy on the identity path and the
+   generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
 
    C HAS NO ENUM BASE TYPE, so where C++ writes enum : uint8_t these are plain
    anonymous enumerators — ints, stored into the uint8_t op and arg columns at
@@ -701,7 +703,8 @@ enum
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
-    kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
+    kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
+    kTableFixedClamp   = 7  /* a ranged integer, in place on the destination the copy landed */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1049,6 +1052,39 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void table_fixed_apply( const
         case kTableFixedConst:
         {
             memcpy( dst + p->dst, &p->aux, p->size );
+            break;
+        }
+        case kTableFixedClamp:
+        {
+            /* IN PLACE ON THE DESTINATION the copy or widen just landed. src is
+               unused: this op does not read the record. meta bit 0 is the low
+               end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
+               OF THE TWO ENDS, the same select-and-add the identity pass emits. */
+            uint64_t lo = 0, hi = 0, raw = 0;
+            int32_t under = 0, over = 0;
+            memcpy( &lo, base + p->aux, 8 );
+            memcpy( &hi, base + p->aux + 8, 8 );
+            memcpy( &raw, dst + p->dst, p->size );
+            if ( p->sign != 0 && p->size < 8 )
+            {
+                const unsigned bits = p->size * 8u;
+                const uint64_t top = 1ull << ( bits - 1 );
+                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            }
+            if ( p->sign != 0 )
+            {
+                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
+                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            else
+            {
+                if ( ( p->meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
+                if ( ( p->meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            (*clamped) += under | over;
+            memcpy( dst + p->dst, &raw, p->size );
             break;
         }
         default: break;
@@ -1576,6 +1612,10 @@ typedef struct TableFixedDst
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
     uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
+    uint64_t lo;     /* a compiled clamp's low end, bit pattern of the slot */
+    uint64_t hi;     /* a compiled clamp's high end */
+    uint8_t clamp;   /* bit 0 = low, bit 1 = high, bit 2 = signed */
+    uint8_t width;   /* the slot's bytes; 0 = this row is not a compiled clamp */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1593,6 +1633,7 @@ typedef struct TableFixedCompiler
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
+    int skip_clamp;    /* counted-array elements: the live count, never slack */
     TableReport * report;
 } TableFixedCompiler;
 
@@ -1616,9 +1657,19 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
     {
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c->record ||
-             ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
+        /* A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
+           already landed. src+size is not a wire reach. */
+        if ( e.op != kTableFixedClamp )
+        {
+            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+            if ( reach > (uint64_t) c->record ||
+                 ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record ) )
+            {
+                c->hostile = 1;
+                return;
+            }
+        }
+        else if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD && e.guard >= c->record )
         {
             c->hostile = 1;
             return;
@@ -1660,6 +1711,41 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_fills( TableFixedCompiler * c, int
     if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
     return (uint32_t) ( total - c->pool );
 }
+
+/* table_fixed_lay_bounds lays a compiled clamp's two ends above the entries,
+   the same pool the ordinal remap tables use, and answers the byte offset from
+   the plan's base. memcpy, not a typed store: the pool is not 8-aligned. */
+static SCHEMA_UNUSED uint32_t table_fixed_lay_bounds( TableFixedCompiler * c, uint64_t lo, uint64_t hi )
+{
+    const int32_t bytes = 16;
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c->capacity;
+    c->pool += bytes;
+    if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
+    const uint32_t at = (uint32_t) ( total - c->pool );
+    uint8_t * dst = (uint8_t *) (void *) ( (uint8_t *) c->plan + at );
+    memcpy( dst, &lo, 8 );
+    memcpy( dst + 8, &hi, 8 );
+    return at;
+}
+
+/* table_fixed_push_clamp is ONE ranged scalar after the copy or widen that
+   landed it. Counted-array elements skip: the live count is a value the plan
+   cannot name, and clamping slack would count a clamp on a byte nobody wrote. */
+static SCHEMA_UNUSED void table_fixed_push_clamp( TableFixedCompiler * c, const TableFixedDst * d,
+                                                  uint32_t at, uint32_t guard, uint8_t arg )
+{
+    TableFixedEntry e;
+    if ( c->skip_clamp || d->width == 0 ) { return; }
+    e = table_fixed_entry_zero();
+    e.src = 0; e.dst = at; e.size = d->width;
+    e.aux = table_fixed_lay_bounds( c, d->lo, d->hi );
+    e.guard = guard; e.op = (uint8_t) kTableFixedClamp; e.arg = arg;
+    e.meta = (uint8_t) ( d->clamp & 3u );
+    e.dstsize = 0;
+    e.sign = ( d->clamp & 4u ) ? (uint8_t) 1 : (uint8_t) 0;
+    table_fixed_push( c, e );
+}
+
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                                                      const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
@@ -1749,6 +1835,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.op = ( te.kind == 10 ) ? (uint8_t) kTableFixedWidenF : (uint8_t) kTableFixedWiden;
                 e.sign = table_fixed_signed_kind( te.kind ) ? (uint8_t) 1 : (uint8_t) 0;
                 table_fixed_push( c, e );
+                table_fixed_push_clamp( c, d, at, guard, arg );
                 break;
             }
             /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
@@ -1787,11 +1874,14 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     table_fixed_push( c, e );
                 }
                 n = their_n < my_n ? their_n : my_n;
+                const int prev_skip = c->skip_clamp;
+                if ( d->counted ) { c->skip_clamp = 1; }
                 for ( i = 0; i < n; ++i )
                 {
                     table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
                                                mine, mi + 1, dst, at + i * d->stride, guard, arg );
                 }
+                c->skip_clamp = prev_skip;
                 break;
             }
             case 16: /* an enum-keyed array: every slot, matched by the KEY's id */
@@ -1903,11 +1993,13 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 {
                     e.size = me.size; e.op = kTableFixedCopy;
                     table_fixed_push( c, e );
+                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
                 {
                     e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                     table_fixed_push( c, e );
+                    table_fixed_push_clamp( c, d, at, guard, arg );
                 }
                 else if ( c->report != NULL )
                 {
@@ -1986,6 +2078,59 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
         *fill_at = at;
     }
     return out;
+}
+
+/* ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+
+   THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+   table of 64, the plan bytes they point at are a slab the caller hands
+   init, and overflow is a miss — compile into the caller's plan buffer and
+   do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+   hash never consults it. compiles counts successful compiles through this
+   cache, which is the pin; made is 1 on a slot after the compile that
+   filled it. */
+
+enum { kTableFixedPlanCacheCapacity = 64 };
+
+typedef struct TableFixedPlanCacheSlot
+{
+    uint64_t hash;
+    TableFixedEntry * plan;
+    int32_t count;
+    int32_t guarded;
+    int64_t record_bytes;
+    const TableFixedFill * fill;
+    int32_t fill_count;
+    uint8_t made;
+} TableFixedPlanCacheSlot;
+
+typedef struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage; /* capacity * stride entries, caller-owned */
+    int32_t stride;            /* entries per slot, the plan capacity */
+    int32_t used;
+    int32_t compiles;
+} TableFixedPlanCache;
+
+static SCHEMA_UNUSED void table_fixed_plan_cache_init( TableFixedPlanCache * cache, TableFixedEntry * storage, int32_t stride )
+{
+    int32_t i;
+    cache->storage = storage;
+    cache->stride = stride;
+    cache->used = 0;
+    cache->compiles = 0;
+    for ( i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache->slots[i].hash = 0;
+        cache->slots[i].plan = NULL;
+        cache->slots[i].count = 0;
+        cache->slots[i].guarded = 0;
+        cache->slots[i].record_bytes = 0;
+        cache->slots[i].fill = NULL;
+        cache->slots[i].fill_count = 0;
+        cache->slots[i].made = 0;
+    }
 }
 
 static SCHEMA_UNUSED float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
@@ -4215,7 +4360,7 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_frame_message_extent_(TableMess
    the values in declared order, every field at its declared storage width.
    The writer is the constant bytes memcpy'd and then stores; the reader is
    ONE loop over ONE plan, the identity plan here and a plan compiled from
-   the writer's own layout for anybody else. */
+   the writer's own layout for anybody else. There is no second reader. */
 
 /* THE C ABI AGREES WITH THE PLAN. C has no constexpr, so the offsets in the
    plans below were computed by the schema compiler rather than folded by
@@ -4297,6 +4442,49 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
     memcpy( b + 3217, value->blob, (size_t) ( value->blob_length ) );
 }
 
+/* PaddedRow's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_row_fixed_clamp_body_( PaddedRow * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    if ( !table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) )
+    {
+        memset( value->label, 0, sizeof( value->label ) );
+        value->label_length = 0;
+        (*damaged)++;
+    }
+}
+
+/* PaddedFrame's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_frame_fixed_clamp_body_( PaddedFrame * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->rows_count; ++i )
+        {
+            schema_blockdemo_padded_row_fixed_clamp_body_( &value->rows[i], clamped, damaged );
+        }
+    }
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_padded_row_fixed_clamp_( PaddedRow * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_padded_row_fixed_clamp_body_( value, &clamped, &damaged );
+    report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
+}
+
 /* ---- PaddedRow, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -4335,23 +4523,23 @@ static SCHEMA_UNUSED const int64_t padded_row_fixed_layout_bytes = (int64_t) siz
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst padded_row_fixed_dst[] = {
-    { 0, 0, 0, 0, 0 }, /* PaddedRow */
-    { 0, 0, 0, 0, 0 }, /* tag */
-    { 8, 0, 0, 0, 0 }, /* value */
-    { 16, 0, 0, 0, 0 }, /* flag */
-    { 20, 0, 0, 0, 0 }, /* id */
-    { 40, 0, 24, 0, 1 }, /* label */
-    { 44, 2, 0, 0, 0 }, /* slots */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 52, 1, 0, 0, 0 }, /* teams */
-    { 0, 0, 0, 0, 0 }, /* Team */
-    { 0, 0, 0, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0 }, /* Gold */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 0, 0, 60, 0, 0 }, /* counter ? */
-    { 56, 0, 0, 0, 0 }, /* counter */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* PaddedRow */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* tag */
+    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* value */
+    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flag */
+    { 20, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* id */
+    { 40, 0, 24, 0, 1, 0ull, 0ull, 0, 0 }, /* label */
+    { 44, 2, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* slots */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
+    { 52, 1, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* teams */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Team */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
+    { 0, 0, 60, 0, 0, 0ull, 0ull, 0, 0 }, /* counter ? */
+    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* counter */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 9 leaves by the schema compiler —
@@ -4387,33 +4575,6 @@ static SCHEMA_UNUSED const TableFixedFill padded_row_fixed_cover[] = {
 };
 static SCHEMA_UNUSED const int32_t padded_row_fixed_cover_count = 3;
 
-/* PaddedRow's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by the
-   schema compiler into constant-offset moves. Every number in it is a number
-   from that plan, and the SCHEMA_TABLE_STATIC_ASSERTs at the top of this form
-   tie each one to this compiler's own offsetof and sizeof. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_row_fixed_scatter_( const uint8_t * SCHEMA_TABLE_RESTRICT image, PaddedRow * value, TableReport * report )
-{
-    uint8_t * SCHEMA_TABLE_RESTRICT dst = (uint8_t *) value;
-    int32_t clamped = 0;
-    (void) dst; (void) clamped;
-    memcpy( dst + 0, image + 0, 1 ); /* tag */
-    memcpy( dst + 8, image + 1, 9 ); /* value */
-    memcpy( dst + 20, image + 10, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 14 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 40, &v, 4 );
-        memcpy( dst + 24, image + 18, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[24 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 44, image + 33, 12 ); /* slots, whole */
-    memcpy( dst + 60, image + 45, 1 ); /* counter present */
-    memcpy( dst + 56, image + 46, 4 ); /* counter */
-    report->clamped += clamped;
-}
-
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
    then the layout behind its u32 length, then the records to the end of it. */
@@ -4444,21 +4605,17 @@ static SCHEMA_UNUSED int64_t padded_row_fixed_save( const PaddedRow * values, in
     return need;
 }
 
-/* THE READ. ONE PLAN, and which one is the only thing a peer's shipping
-   changes: the IDENTITY PLAN for a record stamped with this build's own
-   layout hash, a plan compiled once from the writer's layout for anybody
-   else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
-   says: the identity plan is a constant the schema compiler holds whole, so
-   it is spent HERE — one copy of the body and a straight-line scatter, or one
-   memcpy where the storage image is the wire image — and a stranger's plan
-   arrives at run time and is spent by the interpreter it was always spent by.
+/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
+   the layout's hash is this build's own, and a plan compiled once from the
+   writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+   There is no second reader: the identity plan is data the one loop walks.
 
    THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
    ranges the plan compiler works out once, and on the identity plan that list
    is EMPTY — so this read writes no byte twice, and it is one rule for both
    plans rather than a flag that asks which one this is. */
 static SCHEMA_UNUSED int64_t padded_row_fixed_load( PaddedRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     uint32_t layout_bytes;
@@ -4466,7 +4623,6 @@ static SCHEMA_UNUSED int64_t padded_row_fixed_load( PaddedRow * values, int64_t 
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
-    int identity;
     const TableFixedEntry * entries = padded_row_fixed_plan;
     int32_t entry_count = padded_row_fixed_plan_count;
     int32_t entry_guarded = padded_row_fixed_plan_guarded;
@@ -4497,27 +4653,73 @@ static SCHEMA_UNUSED int64_t padded_row_fixed_load( PaddedRow * values, int64_t 
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 50;
-    identity = ( hash == padded_row_fixed_hash );
-    if ( !identity )
+    if ( hash != padded_row_fixed_hash )
     {
-        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
+           and CACHED BY HASH, so the compile is paid once per peer, not per record.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
            every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        const TableFixedPlanCacheSlot * hit = NULL;
+        TableFixedEntry * dest;
+        int32_t dest_capacity;
+        int storing;
+        int32_t i;
         TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         uint32_t fill_at = 0;
-        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
-        made = table_fixed_compile( &parsed, padded_row_fixed_layout, (int32_t) sizeof( padded_row_fixed_layout ), padded_row_fixed_dst,
-                                    padded_row_fixed_cover, padded_row_fixed_cover_count,
-                                    plan, plan_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        fill = (const TableFixedFill *) (const void *) ( (const uint8_t *) plan + fill_at );
-        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+        if ( cache != NULL )
+        {
+            for ( i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
+            dest = plan;
+            dest_capacity = plan_capacity;
+            storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            made = table_fixed_compile( &parsed, padded_row_fixed_layout, (int32_t) sizeof( padded_row_fixed_layout ), padded_row_fixed_dst,
+                                        padded_row_fixed_cover, padded_row_fixed_cover_count,
+                                        dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+            record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
        the layout's own rules each refuse under their own name first, so a
@@ -4527,26 +4729,10 @@ static SCHEMA_UNUSED int64_t padded_row_fixed_load( PaddedRow * values, int64_t 
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    if ( identity )
-    {
-        /* ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,
-           same census, same bytes — every offset in the scatter above came out
-           of the plan above it — and no per-entry dispatch, no runtime length
-           and no plan array competing with the record for cache. */
-        uint8_t image[50];
-        for ( k = 0; k < count; ++k )
-        {
-            if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
-            memcpy( image, at + 8, (size_t) 50 );
-            schema_blockdemo_padded_row_fixed_scatter_( image, values + k, report );
-            at += 8 + 50;
-        }
-        return count;
-    }
-    /* A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+    /* ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
        THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-       where there is a range to prefill at all. It is the caller's own stack
-       and this codec allocates nothing. */
+       where there is a range to prefill at all. Empty list is the skip.
+       It is the caller's own stack and this codec allocates nothing. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -4557,9 +4743,30 @@ static SCHEMA_UNUSED int64_t padded_row_fixed_load( PaddedRow * values, int64_t 
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_padded_row_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_blockdemo_padded_frame_fixed_clamp_( PaddedFrame * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_padded_frame_fixed_clamp_body_( value, &clamped, &damaged );
+    report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- PaddedFrame, the fixed form ---- */
@@ -4606,29 +4813,29 @@ static SCHEMA_UNUSED const int64_t padded_frame_fixed_layout_bytes = (int64_t) s
    entry cannot carry, which is what a plan compiled from another writer's
    layout lands values through. */
 static SCHEMA_UNUSED const TableFixedDst padded_frame_fixed_dst[] = {
-    { 0, 0, 0, 0, 0 }, /* PaddedFrame */
-    { 0, 0, 0, 0, 0 }, /* marker */
-    { 8, 0, 0, 0, 0 }, /* stamp */
-    { 16, 64, 4112, 1, 0 }, /* rows */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 0, 0, 0, 0, 0 }, /* tag */
-    { 8, 0, 0, 0, 0 }, /* value */
-    { 16, 0, 0, 0, 0 }, /* flag */
-    { 20, 0, 0, 0, 0 }, /* id */
-    { 40, 0, 24, 0, 1 }, /* label */
-    { 44, 2, 0, 0, 0 }, /* slots */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 52, 1, 0, 0, 0 }, /* teams */
-    { 0, 0, 0, 0, 0 }, /* Team */
-    { 0, 0, 0, 0, 0 }, /* Red */
-    { 0, 0, 0, 0, 0 }, /* Blue */
-    { 0, 0, 0, 0, 0 }, /* Green */
-    { 0, 0, 0, 0, 0 }, /* Gold */
-    { 0, 0, 0, 0, 0 }, /* element */
-    { 0, 0, 60, 0, 0 }, /* counter ? */
-    { 56, 0, 0, 0, 0 }, /* counter */
-    { 4116, 1, 4128, 1, 3 }, /* blob */
-    { 0, 0, 0, 0, 0 }, /* u8 */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* PaddedFrame */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* marker */
+    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* stamp */
+    { 16, 64, 4112, 1, 0, 0ull, 0ull, 0, 0 }, /* rows */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* tag */
+    { 8, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* value */
+    { 16, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* flag */
+    { 20, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* id */
+    { 40, 0, 24, 0, 1, 0ull, 0ull, 0, 0 }, /* label */
+    { 44, 2, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* slots */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
+    { 52, 1, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* teams */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Team */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Red */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Blue */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Green */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* Gold */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* element */
+    { 0, 0, 60, 0, 0, 0ull, 0ull, 0, 0 }, /* counter ? */
+    { 56, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* counter */
+    { 4116, 1, 4128, 1, 3, 0ull, 0ull, 0, 0 }, /* blob */
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, /* u8 */
 };
 
 /* THE IDENTITY PLAN, coalesced out of 580 leaves by the schema compiler —
@@ -5300,991 +5507,6 @@ static SCHEMA_UNUSED const TableFixedFill padded_frame_fixed_cover[] = {
 };
 static SCHEMA_UNUSED const int32_t padded_frame_fixed_cover_count = 194;
 
-/* PaddedFrame's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by the
-   schema compiler into constant-offset moves. Every number in it is a number
-   from that plan, and the SCHEMA_TABLE_STATIC_ASSERTs at the top of this form
-   tie each one to this compiler's own offsetof and sizeof. */
-static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_frame_fixed_scatter_( const uint8_t * SCHEMA_TABLE_RESTRICT image, PaddedFrame * value, TableReport * report )
-{
-    uint8_t * SCHEMA_TABLE_RESTRICT dst = (uint8_t *) value;
-    int32_t clamped = 0;
-    (void) dst; (void) clamped;
-    memcpy( dst + 0, image + 0, 1 ); /* marker */
-    memcpy( dst + 8, image + 1, 8 ); /* stamp */
-    { /* rows count */
-        int32_t v = (int32_t) table_fixed_get32( image + 9 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 64 ) { v = 64; clamped++; }
-        memcpy( dst + 4112, &v, 4 );
-    }
-    memcpy( dst + 16, image + 13, 1 ); /* tag */
-    memcpy( dst + 24, image + 14, 9 ); /* value */
-    memcpy( dst + 36, image + 23, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 27 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 56, &v, 4 );
-        memcpy( dst + 40, image + 31, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[40 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 60, image + 46, 12 ); /* slots, whole */
-    memcpy( dst + 76, image + 58, 1 ); /* counter present */
-    memcpy( dst + 72, image + 59, 4 ); /* counter */
-    memcpy( dst + 80, image + 63, 1 ); /* tag */
-    memcpy( dst + 88, image + 64, 9 ); /* value */
-    memcpy( dst + 100, image + 73, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 77 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 120, &v, 4 );
-        memcpy( dst + 104, image + 81, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[104 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 124, image + 96, 12 ); /* slots, whole */
-    memcpy( dst + 140, image + 108, 1 ); /* counter present */
-    memcpy( dst + 136, image + 109, 4 ); /* counter */
-    memcpy( dst + 144, image + 113, 1 ); /* tag */
-    memcpy( dst + 152, image + 114, 9 ); /* value */
-    memcpy( dst + 164, image + 123, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 127 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 184, &v, 4 );
-        memcpy( dst + 168, image + 131, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[168 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 188, image + 146, 12 ); /* slots, whole */
-    memcpy( dst + 204, image + 158, 1 ); /* counter present */
-    memcpy( dst + 200, image + 159, 4 ); /* counter */
-    memcpy( dst + 208, image + 163, 1 ); /* tag */
-    memcpy( dst + 216, image + 164, 9 ); /* value */
-    memcpy( dst + 228, image + 173, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 177 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 248, &v, 4 );
-        memcpy( dst + 232, image + 181, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[232 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 252, image + 196, 12 ); /* slots, whole */
-    memcpy( dst + 268, image + 208, 1 ); /* counter present */
-    memcpy( dst + 264, image + 209, 4 ); /* counter */
-    memcpy( dst + 272, image + 213, 1 ); /* tag */
-    memcpy( dst + 280, image + 214, 9 ); /* value */
-    memcpy( dst + 292, image + 223, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 227 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 312, &v, 4 );
-        memcpy( dst + 296, image + 231, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[296 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 316, image + 246, 12 ); /* slots, whole */
-    memcpy( dst + 332, image + 258, 1 ); /* counter present */
-    memcpy( dst + 328, image + 259, 4 ); /* counter */
-    memcpy( dst + 336, image + 263, 1 ); /* tag */
-    memcpy( dst + 344, image + 264, 9 ); /* value */
-    memcpy( dst + 356, image + 273, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 277 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 376, &v, 4 );
-        memcpy( dst + 360, image + 281, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[360 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 380, image + 296, 12 ); /* slots, whole */
-    memcpy( dst + 396, image + 308, 1 ); /* counter present */
-    memcpy( dst + 392, image + 309, 4 ); /* counter */
-    memcpy( dst + 400, image + 313, 1 ); /* tag */
-    memcpy( dst + 408, image + 314, 9 ); /* value */
-    memcpy( dst + 420, image + 323, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 327 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 440, &v, 4 );
-        memcpy( dst + 424, image + 331, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[424 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 444, image + 346, 12 ); /* slots, whole */
-    memcpy( dst + 460, image + 358, 1 ); /* counter present */
-    memcpy( dst + 456, image + 359, 4 ); /* counter */
-    memcpy( dst + 464, image + 363, 1 ); /* tag */
-    memcpy( dst + 472, image + 364, 9 ); /* value */
-    memcpy( dst + 484, image + 373, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 377 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 504, &v, 4 );
-        memcpy( dst + 488, image + 381, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[488 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 508, image + 396, 12 ); /* slots, whole */
-    memcpy( dst + 524, image + 408, 1 ); /* counter present */
-    memcpy( dst + 520, image + 409, 4 ); /* counter */
-    memcpy( dst + 528, image + 413, 1 ); /* tag */
-    memcpy( dst + 536, image + 414, 9 ); /* value */
-    memcpy( dst + 548, image + 423, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 427 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 568, &v, 4 );
-        memcpy( dst + 552, image + 431, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[552 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 572, image + 446, 12 ); /* slots, whole */
-    memcpy( dst + 588, image + 458, 1 ); /* counter present */
-    memcpy( dst + 584, image + 459, 4 ); /* counter */
-    memcpy( dst + 592, image + 463, 1 ); /* tag */
-    memcpy( dst + 600, image + 464, 9 ); /* value */
-    memcpy( dst + 612, image + 473, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 477 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 632, &v, 4 );
-        memcpy( dst + 616, image + 481, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[616 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 636, image + 496, 12 ); /* slots, whole */
-    memcpy( dst + 652, image + 508, 1 ); /* counter present */
-    memcpy( dst + 648, image + 509, 4 ); /* counter */
-    memcpy( dst + 656, image + 513, 1 ); /* tag */
-    memcpy( dst + 664, image + 514, 9 ); /* value */
-    memcpy( dst + 676, image + 523, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 527 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 696, &v, 4 );
-        memcpy( dst + 680, image + 531, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[680 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 700, image + 546, 12 ); /* slots, whole */
-    memcpy( dst + 716, image + 558, 1 ); /* counter present */
-    memcpy( dst + 712, image + 559, 4 ); /* counter */
-    memcpy( dst + 720, image + 563, 1 ); /* tag */
-    memcpy( dst + 728, image + 564, 9 ); /* value */
-    memcpy( dst + 740, image + 573, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 577 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 760, &v, 4 );
-        memcpy( dst + 744, image + 581, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[744 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 764, image + 596, 12 ); /* slots, whole */
-    memcpy( dst + 780, image + 608, 1 ); /* counter present */
-    memcpy( dst + 776, image + 609, 4 ); /* counter */
-    memcpy( dst + 784, image + 613, 1 ); /* tag */
-    memcpy( dst + 792, image + 614, 9 ); /* value */
-    memcpy( dst + 804, image + 623, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 627 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 824, &v, 4 );
-        memcpy( dst + 808, image + 631, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[808 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 828, image + 646, 12 ); /* slots, whole */
-    memcpy( dst + 844, image + 658, 1 ); /* counter present */
-    memcpy( dst + 840, image + 659, 4 ); /* counter */
-    memcpy( dst + 848, image + 663, 1 ); /* tag */
-    memcpy( dst + 856, image + 664, 9 ); /* value */
-    memcpy( dst + 868, image + 673, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 677 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 888, &v, 4 );
-        memcpy( dst + 872, image + 681, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[872 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 892, image + 696, 12 ); /* slots, whole */
-    memcpy( dst + 908, image + 708, 1 ); /* counter present */
-    memcpy( dst + 904, image + 709, 4 ); /* counter */
-    memcpy( dst + 912, image + 713, 1 ); /* tag */
-    memcpy( dst + 920, image + 714, 9 ); /* value */
-    memcpy( dst + 932, image + 723, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 727 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 952, &v, 4 );
-        memcpy( dst + 936, image + 731, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[936 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 956, image + 746, 12 ); /* slots, whole */
-    memcpy( dst + 972, image + 758, 1 ); /* counter present */
-    memcpy( dst + 968, image + 759, 4 ); /* counter */
-    memcpy( dst + 976, image + 763, 1 ); /* tag */
-    memcpy( dst + 984, image + 764, 9 ); /* value */
-    memcpy( dst + 996, image + 773, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 777 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1016, &v, 4 );
-        memcpy( dst + 1000, image + 781, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1000 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1020, image + 796, 12 ); /* slots, whole */
-    memcpy( dst + 1036, image + 808, 1 ); /* counter present */
-    memcpy( dst + 1032, image + 809, 4 ); /* counter */
-    memcpy( dst + 1040, image + 813, 1 ); /* tag */
-    memcpy( dst + 1048, image + 814, 9 ); /* value */
-    memcpy( dst + 1060, image + 823, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 827 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1080, &v, 4 );
-        memcpy( dst + 1064, image + 831, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1064 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1084, image + 846, 12 ); /* slots, whole */
-    memcpy( dst + 1100, image + 858, 1 ); /* counter present */
-    memcpy( dst + 1096, image + 859, 4 ); /* counter */
-    memcpy( dst + 1104, image + 863, 1 ); /* tag */
-    memcpy( dst + 1112, image + 864, 9 ); /* value */
-    memcpy( dst + 1124, image + 873, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 877 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1144, &v, 4 );
-        memcpy( dst + 1128, image + 881, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1128 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1148, image + 896, 12 ); /* slots, whole */
-    memcpy( dst + 1164, image + 908, 1 ); /* counter present */
-    memcpy( dst + 1160, image + 909, 4 ); /* counter */
-    memcpy( dst + 1168, image + 913, 1 ); /* tag */
-    memcpy( dst + 1176, image + 914, 9 ); /* value */
-    memcpy( dst + 1188, image + 923, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 927 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1208, &v, 4 );
-        memcpy( dst + 1192, image + 931, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1192 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1212, image + 946, 12 ); /* slots, whole */
-    memcpy( dst + 1228, image + 958, 1 ); /* counter present */
-    memcpy( dst + 1224, image + 959, 4 ); /* counter */
-    memcpy( dst + 1232, image + 963, 1 ); /* tag */
-    memcpy( dst + 1240, image + 964, 9 ); /* value */
-    memcpy( dst + 1252, image + 973, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 977 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1272, &v, 4 );
-        memcpy( dst + 1256, image + 981, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1256 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1276, image + 996, 12 ); /* slots, whole */
-    memcpy( dst + 1292, image + 1008, 1 ); /* counter present */
-    memcpy( dst + 1288, image + 1009, 4 ); /* counter */
-    memcpy( dst + 1296, image + 1013, 1 ); /* tag */
-    memcpy( dst + 1304, image + 1014, 9 ); /* value */
-    memcpy( dst + 1316, image + 1023, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1027 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1336, &v, 4 );
-        memcpy( dst + 1320, image + 1031, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1320 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1340, image + 1046, 12 ); /* slots, whole */
-    memcpy( dst + 1356, image + 1058, 1 ); /* counter present */
-    memcpy( dst + 1352, image + 1059, 4 ); /* counter */
-    memcpy( dst + 1360, image + 1063, 1 ); /* tag */
-    memcpy( dst + 1368, image + 1064, 9 ); /* value */
-    memcpy( dst + 1380, image + 1073, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1077 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1400, &v, 4 );
-        memcpy( dst + 1384, image + 1081, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1384 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1404, image + 1096, 12 ); /* slots, whole */
-    memcpy( dst + 1420, image + 1108, 1 ); /* counter present */
-    memcpy( dst + 1416, image + 1109, 4 ); /* counter */
-    memcpy( dst + 1424, image + 1113, 1 ); /* tag */
-    memcpy( dst + 1432, image + 1114, 9 ); /* value */
-    memcpy( dst + 1444, image + 1123, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1127 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1464, &v, 4 );
-        memcpy( dst + 1448, image + 1131, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1448 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1468, image + 1146, 12 ); /* slots, whole */
-    memcpy( dst + 1484, image + 1158, 1 ); /* counter present */
-    memcpy( dst + 1480, image + 1159, 4 ); /* counter */
-    memcpy( dst + 1488, image + 1163, 1 ); /* tag */
-    memcpy( dst + 1496, image + 1164, 9 ); /* value */
-    memcpy( dst + 1508, image + 1173, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1177 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1528, &v, 4 );
-        memcpy( dst + 1512, image + 1181, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1512 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1532, image + 1196, 12 ); /* slots, whole */
-    memcpy( dst + 1548, image + 1208, 1 ); /* counter present */
-    memcpy( dst + 1544, image + 1209, 4 ); /* counter */
-    memcpy( dst + 1552, image + 1213, 1 ); /* tag */
-    memcpy( dst + 1560, image + 1214, 9 ); /* value */
-    memcpy( dst + 1572, image + 1223, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1227 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1592, &v, 4 );
-        memcpy( dst + 1576, image + 1231, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1576 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1596, image + 1246, 12 ); /* slots, whole */
-    memcpy( dst + 1612, image + 1258, 1 ); /* counter present */
-    memcpy( dst + 1608, image + 1259, 4 ); /* counter */
-    memcpy( dst + 1616, image + 1263, 1 ); /* tag */
-    memcpy( dst + 1624, image + 1264, 9 ); /* value */
-    memcpy( dst + 1636, image + 1273, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1277 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1656, &v, 4 );
-        memcpy( dst + 1640, image + 1281, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1640 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1660, image + 1296, 12 ); /* slots, whole */
-    memcpy( dst + 1676, image + 1308, 1 ); /* counter present */
-    memcpy( dst + 1672, image + 1309, 4 ); /* counter */
-    memcpy( dst + 1680, image + 1313, 1 ); /* tag */
-    memcpy( dst + 1688, image + 1314, 9 ); /* value */
-    memcpy( dst + 1700, image + 1323, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1327 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1720, &v, 4 );
-        memcpy( dst + 1704, image + 1331, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1704 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1724, image + 1346, 12 ); /* slots, whole */
-    memcpy( dst + 1740, image + 1358, 1 ); /* counter present */
-    memcpy( dst + 1736, image + 1359, 4 ); /* counter */
-    memcpy( dst + 1744, image + 1363, 1 ); /* tag */
-    memcpy( dst + 1752, image + 1364, 9 ); /* value */
-    memcpy( dst + 1764, image + 1373, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1377 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1784, &v, 4 );
-        memcpy( dst + 1768, image + 1381, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1768 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1788, image + 1396, 12 ); /* slots, whole */
-    memcpy( dst + 1804, image + 1408, 1 ); /* counter present */
-    memcpy( dst + 1800, image + 1409, 4 ); /* counter */
-    memcpy( dst + 1808, image + 1413, 1 ); /* tag */
-    memcpy( dst + 1816, image + 1414, 9 ); /* value */
-    memcpy( dst + 1828, image + 1423, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1427 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1848, &v, 4 );
-        memcpy( dst + 1832, image + 1431, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1832 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1852, image + 1446, 12 ); /* slots, whole */
-    memcpy( dst + 1868, image + 1458, 1 ); /* counter present */
-    memcpy( dst + 1864, image + 1459, 4 ); /* counter */
-    memcpy( dst + 1872, image + 1463, 1 ); /* tag */
-    memcpy( dst + 1880, image + 1464, 9 ); /* value */
-    memcpy( dst + 1892, image + 1473, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1477 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1912, &v, 4 );
-        memcpy( dst + 1896, image + 1481, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1896 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1916, image + 1496, 12 ); /* slots, whole */
-    memcpy( dst + 1932, image + 1508, 1 ); /* counter present */
-    memcpy( dst + 1928, image + 1509, 4 ); /* counter */
-    memcpy( dst + 1936, image + 1513, 1 ); /* tag */
-    memcpy( dst + 1944, image + 1514, 9 ); /* value */
-    memcpy( dst + 1956, image + 1523, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1527 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 1976, &v, 4 );
-        memcpy( dst + 1960, image + 1531, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[1960 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 1980, image + 1546, 12 ); /* slots, whole */
-    memcpy( dst + 1996, image + 1558, 1 ); /* counter present */
-    memcpy( dst + 1992, image + 1559, 4 ); /* counter */
-    memcpy( dst + 2000, image + 1563, 1 ); /* tag */
-    memcpy( dst + 2008, image + 1564, 9 ); /* value */
-    memcpy( dst + 2020, image + 1573, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1577 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2040, &v, 4 );
-        memcpy( dst + 2024, image + 1581, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2024 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2044, image + 1596, 12 ); /* slots, whole */
-    memcpy( dst + 2060, image + 1608, 1 ); /* counter present */
-    memcpy( dst + 2056, image + 1609, 4 ); /* counter */
-    memcpy( dst + 2064, image + 1613, 1 ); /* tag */
-    memcpy( dst + 2072, image + 1614, 9 ); /* value */
-    memcpy( dst + 2084, image + 1623, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1627 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2104, &v, 4 );
-        memcpy( dst + 2088, image + 1631, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2088 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2108, image + 1646, 12 ); /* slots, whole */
-    memcpy( dst + 2124, image + 1658, 1 ); /* counter present */
-    memcpy( dst + 2120, image + 1659, 4 ); /* counter */
-    memcpy( dst + 2128, image + 1663, 1 ); /* tag */
-    memcpy( dst + 2136, image + 1664, 9 ); /* value */
-    memcpy( dst + 2148, image + 1673, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1677 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2168, &v, 4 );
-        memcpy( dst + 2152, image + 1681, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2152 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2172, image + 1696, 12 ); /* slots, whole */
-    memcpy( dst + 2188, image + 1708, 1 ); /* counter present */
-    memcpy( dst + 2184, image + 1709, 4 ); /* counter */
-    memcpy( dst + 2192, image + 1713, 1 ); /* tag */
-    memcpy( dst + 2200, image + 1714, 9 ); /* value */
-    memcpy( dst + 2212, image + 1723, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1727 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2232, &v, 4 );
-        memcpy( dst + 2216, image + 1731, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2216 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2236, image + 1746, 12 ); /* slots, whole */
-    memcpy( dst + 2252, image + 1758, 1 ); /* counter present */
-    memcpy( dst + 2248, image + 1759, 4 ); /* counter */
-    memcpy( dst + 2256, image + 1763, 1 ); /* tag */
-    memcpy( dst + 2264, image + 1764, 9 ); /* value */
-    memcpy( dst + 2276, image + 1773, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1777 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2296, &v, 4 );
-        memcpy( dst + 2280, image + 1781, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2280 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2300, image + 1796, 12 ); /* slots, whole */
-    memcpy( dst + 2316, image + 1808, 1 ); /* counter present */
-    memcpy( dst + 2312, image + 1809, 4 ); /* counter */
-    memcpy( dst + 2320, image + 1813, 1 ); /* tag */
-    memcpy( dst + 2328, image + 1814, 9 ); /* value */
-    memcpy( dst + 2340, image + 1823, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1827 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2360, &v, 4 );
-        memcpy( dst + 2344, image + 1831, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2344 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2364, image + 1846, 12 ); /* slots, whole */
-    memcpy( dst + 2380, image + 1858, 1 ); /* counter present */
-    memcpy( dst + 2376, image + 1859, 4 ); /* counter */
-    memcpy( dst + 2384, image + 1863, 1 ); /* tag */
-    memcpy( dst + 2392, image + 1864, 9 ); /* value */
-    memcpy( dst + 2404, image + 1873, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1877 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2424, &v, 4 );
-        memcpy( dst + 2408, image + 1881, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2408 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2428, image + 1896, 12 ); /* slots, whole */
-    memcpy( dst + 2444, image + 1908, 1 ); /* counter present */
-    memcpy( dst + 2440, image + 1909, 4 ); /* counter */
-    memcpy( dst + 2448, image + 1913, 1 ); /* tag */
-    memcpy( dst + 2456, image + 1914, 9 ); /* value */
-    memcpy( dst + 2468, image + 1923, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1927 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2488, &v, 4 );
-        memcpy( dst + 2472, image + 1931, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2472 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2492, image + 1946, 12 ); /* slots, whole */
-    memcpy( dst + 2508, image + 1958, 1 ); /* counter present */
-    memcpy( dst + 2504, image + 1959, 4 ); /* counter */
-    memcpy( dst + 2512, image + 1963, 1 ); /* tag */
-    memcpy( dst + 2520, image + 1964, 9 ); /* value */
-    memcpy( dst + 2532, image + 1973, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 1977 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2552, &v, 4 );
-        memcpy( dst + 2536, image + 1981, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2536 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2556, image + 1996, 12 ); /* slots, whole */
-    memcpy( dst + 2572, image + 2008, 1 ); /* counter present */
-    memcpy( dst + 2568, image + 2009, 4 ); /* counter */
-    memcpy( dst + 2576, image + 2013, 1 ); /* tag */
-    memcpy( dst + 2584, image + 2014, 9 ); /* value */
-    memcpy( dst + 2596, image + 2023, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2027 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2616, &v, 4 );
-        memcpy( dst + 2600, image + 2031, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2600 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2620, image + 2046, 12 ); /* slots, whole */
-    memcpy( dst + 2636, image + 2058, 1 ); /* counter present */
-    memcpy( dst + 2632, image + 2059, 4 ); /* counter */
-    memcpy( dst + 2640, image + 2063, 1 ); /* tag */
-    memcpy( dst + 2648, image + 2064, 9 ); /* value */
-    memcpy( dst + 2660, image + 2073, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2077 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2680, &v, 4 );
-        memcpy( dst + 2664, image + 2081, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2664 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2684, image + 2096, 12 ); /* slots, whole */
-    memcpy( dst + 2700, image + 2108, 1 ); /* counter present */
-    memcpy( dst + 2696, image + 2109, 4 ); /* counter */
-    memcpy( dst + 2704, image + 2113, 1 ); /* tag */
-    memcpy( dst + 2712, image + 2114, 9 ); /* value */
-    memcpy( dst + 2724, image + 2123, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2127 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2744, &v, 4 );
-        memcpy( dst + 2728, image + 2131, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2728 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2748, image + 2146, 12 ); /* slots, whole */
-    memcpy( dst + 2764, image + 2158, 1 ); /* counter present */
-    memcpy( dst + 2760, image + 2159, 4 ); /* counter */
-    memcpy( dst + 2768, image + 2163, 1 ); /* tag */
-    memcpy( dst + 2776, image + 2164, 9 ); /* value */
-    memcpy( dst + 2788, image + 2173, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2177 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2808, &v, 4 );
-        memcpy( dst + 2792, image + 2181, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2792 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2812, image + 2196, 12 ); /* slots, whole */
-    memcpy( dst + 2828, image + 2208, 1 ); /* counter present */
-    memcpy( dst + 2824, image + 2209, 4 ); /* counter */
-    memcpy( dst + 2832, image + 2213, 1 ); /* tag */
-    memcpy( dst + 2840, image + 2214, 9 ); /* value */
-    memcpy( dst + 2852, image + 2223, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2227 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2872, &v, 4 );
-        memcpy( dst + 2856, image + 2231, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2856 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2876, image + 2246, 12 ); /* slots, whole */
-    memcpy( dst + 2892, image + 2258, 1 ); /* counter present */
-    memcpy( dst + 2888, image + 2259, 4 ); /* counter */
-    memcpy( dst + 2896, image + 2263, 1 ); /* tag */
-    memcpy( dst + 2904, image + 2264, 9 ); /* value */
-    memcpy( dst + 2916, image + 2273, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2277 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 2936, &v, 4 );
-        memcpy( dst + 2920, image + 2281, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2920 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 2940, image + 2296, 12 ); /* slots, whole */
-    memcpy( dst + 2956, image + 2308, 1 ); /* counter present */
-    memcpy( dst + 2952, image + 2309, 4 ); /* counter */
-    memcpy( dst + 2960, image + 2313, 1 ); /* tag */
-    memcpy( dst + 2968, image + 2314, 9 ); /* value */
-    memcpy( dst + 2980, image + 2323, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2327 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3000, &v, 4 );
-        memcpy( dst + 2984, image + 2331, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[2984 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3004, image + 2346, 12 ); /* slots, whole */
-    memcpy( dst + 3020, image + 2358, 1 ); /* counter present */
-    memcpy( dst + 3016, image + 2359, 4 ); /* counter */
-    memcpy( dst + 3024, image + 2363, 1 ); /* tag */
-    memcpy( dst + 3032, image + 2364, 9 ); /* value */
-    memcpy( dst + 3044, image + 2373, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2377 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3064, &v, 4 );
-        memcpy( dst + 3048, image + 2381, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3048 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3068, image + 2396, 12 ); /* slots, whole */
-    memcpy( dst + 3084, image + 2408, 1 ); /* counter present */
-    memcpy( dst + 3080, image + 2409, 4 ); /* counter */
-    memcpy( dst + 3088, image + 2413, 1 ); /* tag */
-    memcpy( dst + 3096, image + 2414, 9 ); /* value */
-    memcpy( dst + 3108, image + 2423, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2427 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3128, &v, 4 );
-        memcpy( dst + 3112, image + 2431, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3112 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3132, image + 2446, 12 ); /* slots, whole */
-    memcpy( dst + 3148, image + 2458, 1 ); /* counter present */
-    memcpy( dst + 3144, image + 2459, 4 ); /* counter */
-    memcpy( dst + 3152, image + 2463, 1 ); /* tag */
-    memcpy( dst + 3160, image + 2464, 9 ); /* value */
-    memcpy( dst + 3172, image + 2473, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2477 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3192, &v, 4 );
-        memcpy( dst + 3176, image + 2481, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3176 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3196, image + 2496, 12 ); /* slots, whole */
-    memcpy( dst + 3212, image + 2508, 1 ); /* counter present */
-    memcpy( dst + 3208, image + 2509, 4 ); /* counter */
-    memcpy( dst + 3216, image + 2513, 1 ); /* tag */
-    memcpy( dst + 3224, image + 2514, 9 ); /* value */
-    memcpy( dst + 3236, image + 2523, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2527 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3256, &v, 4 );
-        memcpy( dst + 3240, image + 2531, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3240 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3260, image + 2546, 12 ); /* slots, whole */
-    memcpy( dst + 3276, image + 2558, 1 ); /* counter present */
-    memcpy( dst + 3272, image + 2559, 4 ); /* counter */
-    memcpy( dst + 3280, image + 2563, 1 ); /* tag */
-    memcpy( dst + 3288, image + 2564, 9 ); /* value */
-    memcpy( dst + 3300, image + 2573, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2577 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3320, &v, 4 );
-        memcpy( dst + 3304, image + 2581, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3304 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3324, image + 2596, 12 ); /* slots, whole */
-    memcpy( dst + 3340, image + 2608, 1 ); /* counter present */
-    memcpy( dst + 3336, image + 2609, 4 ); /* counter */
-    memcpy( dst + 3344, image + 2613, 1 ); /* tag */
-    memcpy( dst + 3352, image + 2614, 9 ); /* value */
-    memcpy( dst + 3364, image + 2623, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2627 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3384, &v, 4 );
-        memcpy( dst + 3368, image + 2631, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3368 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3388, image + 2646, 12 ); /* slots, whole */
-    memcpy( dst + 3404, image + 2658, 1 ); /* counter present */
-    memcpy( dst + 3400, image + 2659, 4 ); /* counter */
-    memcpy( dst + 3408, image + 2663, 1 ); /* tag */
-    memcpy( dst + 3416, image + 2664, 9 ); /* value */
-    memcpy( dst + 3428, image + 2673, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2677 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3448, &v, 4 );
-        memcpy( dst + 3432, image + 2681, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3432 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3452, image + 2696, 12 ); /* slots, whole */
-    memcpy( dst + 3468, image + 2708, 1 ); /* counter present */
-    memcpy( dst + 3464, image + 2709, 4 ); /* counter */
-    memcpy( dst + 3472, image + 2713, 1 ); /* tag */
-    memcpy( dst + 3480, image + 2714, 9 ); /* value */
-    memcpy( dst + 3492, image + 2723, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2727 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3512, &v, 4 );
-        memcpy( dst + 3496, image + 2731, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3496 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3516, image + 2746, 12 ); /* slots, whole */
-    memcpy( dst + 3532, image + 2758, 1 ); /* counter present */
-    memcpy( dst + 3528, image + 2759, 4 ); /* counter */
-    memcpy( dst + 3536, image + 2763, 1 ); /* tag */
-    memcpy( dst + 3544, image + 2764, 9 ); /* value */
-    memcpy( dst + 3556, image + 2773, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2777 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3576, &v, 4 );
-        memcpy( dst + 3560, image + 2781, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3560 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3580, image + 2796, 12 ); /* slots, whole */
-    memcpy( dst + 3596, image + 2808, 1 ); /* counter present */
-    memcpy( dst + 3592, image + 2809, 4 ); /* counter */
-    memcpy( dst + 3600, image + 2813, 1 ); /* tag */
-    memcpy( dst + 3608, image + 2814, 9 ); /* value */
-    memcpy( dst + 3620, image + 2823, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2827 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3640, &v, 4 );
-        memcpy( dst + 3624, image + 2831, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3624 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3644, image + 2846, 12 ); /* slots, whole */
-    memcpy( dst + 3660, image + 2858, 1 ); /* counter present */
-    memcpy( dst + 3656, image + 2859, 4 ); /* counter */
-    memcpy( dst + 3664, image + 2863, 1 ); /* tag */
-    memcpy( dst + 3672, image + 2864, 9 ); /* value */
-    memcpy( dst + 3684, image + 2873, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2877 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3704, &v, 4 );
-        memcpy( dst + 3688, image + 2881, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3688 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3708, image + 2896, 12 ); /* slots, whole */
-    memcpy( dst + 3724, image + 2908, 1 ); /* counter present */
-    memcpy( dst + 3720, image + 2909, 4 ); /* counter */
-    memcpy( dst + 3728, image + 2913, 1 ); /* tag */
-    memcpy( dst + 3736, image + 2914, 9 ); /* value */
-    memcpy( dst + 3748, image + 2923, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2927 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3768, &v, 4 );
-        memcpy( dst + 3752, image + 2931, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3752 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3772, image + 2946, 12 ); /* slots, whole */
-    memcpy( dst + 3788, image + 2958, 1 ); /* counter present */
-    memcpy( dst + 3784, image + 2959, 4 ); /* counter */
-    memcpy( dst + 3792, image + 2963, 1 ); /* tag */
-    memcpy( dst + 3800, image + 2964, 9 ); /* value */
-    memcpy( dst + 3812, image + 2973, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 2977 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3832, &v, 4 );
-        memcpy( dst + 3816, image + 2981, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3816 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3836, image + 2996, 12 ); /* slots, whole */
-    memcpy( dst + 3852, image + 3008, 1 ); /* counter present */
-    memcpy( dst + 3848, image + 3009, 4 ); /* counter */
-    memcpy( dst + 3856, image + 3013, 1 ); /* tag */
-    memcpy( dst + 3864, image + 3014, 9 ); /* value */
-    memcpy( dst + 3876, image + 3023, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 3027 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3896, &v, 4 );
-        memcpy( dst + 3880, image + 3031, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3880 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3900, image + 3046, 12 ); /* slots, whole */
-    memcpy( dst + 3916, image + 3058, 1 ); /* counter present */
-    memcpy( dst + 3912, image + 3059, 4 ); /* counter */
-    memcpy( dst + 3920, image + 3063, 1 ); /* tag */
-    memcpy( dst + 3928, image + 3064, 9 ); /* value */
-    memcpy( dst + 3940, image + 3073, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 3077 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 3960, &v, 4 );
-        memcpy( dst + 3944, image + 3081, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[3944 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 3964, image + 3096, 12 ); /* slots, whole */
-    memcpy( dst + 3980, image + 3108, 1 ); /* counter present */
-    memcpy( dst + 3976, image + 3109, 4 ); /* counter */
-    memcpy( dst + 3984, image + 3113, 1 ); /* tag */
-    memcpy( dst + 3992, image + 3114, 9 ); /* value */
-    memcpy( dst + 4004, image + 3123, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 3127 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 4024, &v, 4 );
-        memcpy( dst + 4008, image + 3131, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[4008 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 4028, image + 3146, 12 ); /* slots, whole */
-    memcpy( dst + 4044, image + 3158, 1 ); /* counter present */
-    memcpy( dst + 4040, image + 3159, 4 ); /* counter */
-    memcpy( dst + 4048, image + 3163, 1 ); /* tag */
-    memcpy( dst + 4056, image + 3164, 9 ); /* value */
-    memcpy( dst + 4068, image + 3173, 4 ); /* id */
-    { /* label */
-        int32_t v = (int32_t) table_fixed_get32( image + 3177 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 15 ) { v = 15; clamped++; }
-        memcpy( dst + 4088, &v, 4 );
-        memcpy( dst + 4072, image + 3181, 15 );
-        /* the used length terminates the buffer, whose storage is one unit
-           longer than the bound for exactly this. */
-        dst[4072 + (uint32_t) v * 1] = 0;
-    }
-    memcpy( dst + 4092, image + 3196, 12 ); /* slots, whole */
-    memcpy( dst + 4108, image + 3208, 1 ); /* counter present */
-    memcpy( dst + 4104, image + 3209, 4 ); /* counter */
-    { /* blob */
-        int32_t v = (int32_t) table_fixed_get32( image + 3213 );
-        if ( v < 0 ) { v = 0; clamped++; } else if ( v > 12 ) { v = 12; clamped++; }
-        memcpy( dst + 4128, &v, 4 );
-        memcpy( dst + 4116, image + 3217, 12 );
-    }
-    report->clamped += clamped;
-}
-
 /* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
    — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
    then the layout behind its u32 length, then the records to the end of it. */
@@ -6315,21 +5537,17 @@ static SCHEMA_UNUSED int64_t padded_frame_fixed_save( const PaddedFrame * values
     return need;
 }
 
-/* THE READ. ONE PLAN, and which one is the only thing a peer's shipping
-   changes: the IDENTITY PLAN for a record stamped with this build's own
-   layout hash, a plan compiled once from the writer's layout for anybody
-   else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
-   says: the identity plan is a constant the schema compiler holds whole, so
-   it is spent HERE — one copy of the body and a straight-line scatter, or one
-   memcpy where the storage image is the wire image — and a stranger's plan
-   arrives at run time and is spent by the interpreter it was always spent by.
+/* THE READ: a prefill and ONE loop over ONE plan — the identity plan when
+   the layout's hash is this build's own, and a plan compiled once from the
+   writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+   There is no second reader: the identity plan is data the one loop walks.
 
    THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
    ranges the plan compiler works out once, and on the identity plan that list
    is EMPTY — so this read writes no byte twice, and it is one rule for both
    plans rather than a flag that asks which one this is. */
 static SCHEMA_UNUSED int64_t padded_frame_fixed_load( PaddedFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                                 TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                                 TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     uint32_t layout_bytes;
@@ -6337,7 +5555,6 @@ static SCHEMA_UNUSED int64_t padded_frame_fixed_load( PaddedFrame * values, int6
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
-    int identity;
     const TableFixedEntry * entries = padded_frame_fixed_plan;
     int32_t entry_count = padded_frame_fixed_plan_count;
     int32_t entry_guarded = padded_frame_fixed_plan_guarded;
@@ -6368,27 +5585,73 @@ static SCHEMA_UNUSED int64_t padded_frame_fixed_load( PaddedFrame * values, int6
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 3229;
-    identity = ( hash == padded_frame_fixed_hash );
-    if ( !identity )
+    if ( hash != padded_frame_fixed_hash )
     {
-        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
+           and CACHED BY HASH, so the compile is paid once per peer, not per record.
            THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
            every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4). */
+        const TableFixedPlanCacheSlot * hit = NULL;
+        TableFixedEntry * dest;
+        int32_t dest_capacity;
+        int storing;
+        int32_t i;
         TableFixedLayoutView parsed;
         int why = SCHEMA_TABLE_LAYOUT_MALFORMED;
         int32_t compiled_guarded = 0;
         int32_t made;
         uint32_t fill_at = 0;
-        if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
-        made = table_fixed_compile( &parsed, padded_frame_fixed_layout, (int32_t) sizeof( padded_frame_fixed_layout ), padded_frame_fixed_dst,
-                                    padded_frame_fixed_cover, padded_frame_fixed_cover_count,
-                                    plan, plan_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-        if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        fill = (const TableFixedFill *) (const void *) ( (const uint8_t *) plan + fill_at );
-        record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+        if ( cache != NULL )
+        {
+            for ( i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            if ( !table_fixed_parse_layout( layout, (int64_t) layout_bytes, &parsed, &why ) ) { report->refused = 1; report->reason = why; return -1; }
+            dest = plan;
+            dest_capacity = plan_capacity;
+            storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            made = table_fixed_compile( &parsed, padded_frame_fixed_layout, (int32_t) sizeof( padded_frame_fixed_layout ), padded_frame_fixed_dst,
+                                        padded_frame_fixed_cover, padded_frame_fixed_cover_count,
+                                        dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = 1; report->reason = ( made == -2 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE; return -1; }
+            record_bytes = 8 + (int64_t) table_fixed_entry_at( &parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
        the layout's own rules each refuse under their own name first, so a
@@ -6398,26 +5661,10 @@ static SCHEMA_UNUSED int64_t padded_frame_fixed_load( PaddedFrame * values, int6
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    if ( identity )
-    {
-        /* ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,
-           same census, same bytes — every offset in the scatter above came out
-           of the plan above it — and no per-entry dispatch, no runtime length
-           and no plan array competing with the record for cache. */
-        uint8_t image[3229];
-        for ( k = 0; k < count; ++k )
-        {
-            if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
-            memcpy( image, at + 8, (size_t) 3229 );
-            schema_blockdemo_padded_frame_fixed_scatter_( image, values + k, report );
-            at += 8 + 3229;
-        }
-        return count;
-    }
-    /* A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+    /* ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
        THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-       where there is a range to prefill at all. It is the caller's own stack
-       and this codec allocates nothing. */
+       where there is a range to prefill at all. Empty list is the skip.
+       It is the caller's own stack and this codec allocates nothing. */
     if ( fill_count > 0 )
     {
         memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
@@ -6428,6 +5675,9 @@ static SCHEMA_UNUSED int64_t padded_frame_fixed_load( PaddedFrame * values, int6
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_blockdemo_padded_frame_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;

@@ -8,16 +8,16 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// Identity tests from #838, held against THIS branch's identity shape:
-// one copy of the body and a straight-line scatter of the identity plan
-// (count and text stay plan ops, unrolled in the scatter), prefill only the
-// holes the plan will not write (empty on identity), and one memcpy with no
-// scatter where ir.TableFixedIdentityFlat. Packed layout is not forced.
+// Identity tests from #838, held against the one-path reshape:
+// the identity plan is data the one loop walks (table_fixed_run), prefill
+// only the holes the plan will not write (empty on identity; empty list is
+// the skip), no Scatter function, no second record loop, no whole-body
+// memcpy of the wire image into storage. Packed layout is not forced.
 //
 // gocritic offBy1: Index can be -1 — every needle goes through mustIndex.
 // gcc -Werror=array-bounds: copy_run's overlapping unroll inlines into fill_run
 // against the compiled path's stack defaults (Held is 36 bytes, Flat is 8).
-// Identity dest is a pointer; the probe is not the form. The flags on the
+// Dest arrives as a pointer; the probe is not the form. The flags on the
 // two execute tests silence that false positive and do not skip the prefill.
 // GNU is detected by __GNUC__ without __clang__: Ubuntu's cc --version never
 // says gcc, and requiring that word dropped the flags on CI.
@@ -90,16 +90,6 @@ func fromNeedle(t *testing.T, s, needle string) string {
 	return s[mustIndex(t, s, needle):]
 }
 
-func between(t *testing.T, s, start, end string) string {
-	t.Helper()
-	i := mustIndex(t, s, start)
-	j := mustIndex(t, s, end)
-	if j < i {
-		t.Fatalf("%q is before %q", end, start)
-	}
-	return s[i:j]
-}
-
 func identityLoad(t *testing.T, h, name string) string {
 	t.Helper()
 	load := fromNeedle(t, h, name+"_fixed_load")
@@ -108,14 +98,6 @@ func identityLoad(t *testing.T, h, name string) string {
 		t.Fatalf("%s_fixed_load not closed", name)
 	}
 	return body
-}
-
-func identityPath(t *testing.T, load string) string {
-	t.Helper()
-	// Rowan's identity read returns; a stranger's layout is the next paragraph,
-	// not an else. "else" is not a bound — gocritic offBy1 on Index, and the
-	// form-byte ternary is not an else.
-	return between(t, load, "if ( identity )", "A STRANGER'S LAYOUT")
 }
 
 func TestIdentityPlanKeepsCountAndText(t *testing.T) {
@@ -132,7 +114,7 @@ func TestIdentityPlanKeepsCountAndText(t *testing.T) {
 		}
 	}
 	if !sawCount || !sawText {
-		t.Fatal("identity plan dropped count or text; the scatter unrolls those ops, it does not rewrite them to copies")
+		t.Fatal("identity plan dropped count or text; the one loop walks those ops, it does not rewrite them to copies")
 	}
 	if ir.TableFixedIdentityFlat(u, st) {
 		t.Fatal("Held has a count after its array and a terminator; it is not a flat memcpy")
@@ -182,34 +164,36 @@ func TestIdentityCoverageIsThePlanAndHolesAreEmpty(t *testing.T) {
 	}
 }
 
-func TestIdentityLoadPrefillsNoDefaults(t *testing.T) {
+func TestIdentityLoadIsOneLoop(t *testing.T) {
 	h := tableH(t, identityHeldSchema)
 	load := identityLoad(t, h, "held")
-	if !strings.Contains(load, "if ( identity )") {
-		t.Fatal("identity path not branched")
+	if strings.Contains(load, "if ( identity )") {
+		t.Fatal("identity is a second record loop")
 	}
-	id := identityPath(t, load)
-	if strings.Contains(id, "held_reset") {
-		t.Fatal("identity path still prefills defaults")
+	if strings.Contains(load, "fixed_scatter") {
+		t.Fatal("identity still has a Scatter function")
 	}
-	if strings.Contains(id, "table_fixed_fill_run") {
-		t.Fatal("identity path still runs the hole prefill")
+	if strings.Contains(load, "memcpy( image, at + 8") {
+		t.Fatal("identity still copies the body then scatters")
 	}
-	if strings.Contains(id, "table_fixed_run") {
-		t.Fatal("identity path still spends the plan in the interpreter")
+	if strings.Contains(load, "memcpy( (void *) ( values + k ), at + 8") {
+		t.Fatal("identity is a whole-body memcpy; that is cook's job")
 	}
-	if !strings.Contains(fromNeedle(t, load, "A STRANGER'S LAYOUT"), "held_reset") {
-		t.Fatal("compiled path dropped the default image")
+	if !strings.Contains(load, "table_fixed_run") {
+		t.Fatal("the one loop dropped table_fixed_run")
 	}
-	if !strings.Contains(id, "schema_probe_held_fixed_scatter_") {
-		t.Fatal("identity path dropped the straight-line scatter")
+	if !strings.Contains(load, "table_fixed_fill_run") {
+		t.Fatal("the one loop dropped the hole prefill")
 	}
-	if !strings.Contains(id, "memcpy( image, at + 8") {
-		t.Fatal("identity path dropped the one copy of the body")
+	if !strings.Contains(load, "fill_count = 0") {
+		t.Fatal("identity hole list is not the empty skip")
+	}
+	if !strings.Contains(load, "fill_count > 0") {
+		t.Fatal("default image is not gated on the hole list")
 	}
 }
 
-func TestIdentityFlatIsMemcpyEmptyScatter(t *testing.T) {
+func TestIdentityFlatIsThePlanNotMemcpy(t *testing.T) {
 	u := unitFrom(t, identityFlatSchema)
 	st := u.Tables["Flat"]
 	if !ir.TableFixedIdentityFlat(u, st) {
@@ -221,18 +205,14 @@ func TestIdentityFlatIsMemcpyEmptyScatter(t *testing.T) {
 	}
 	h := tableH(t, identityFlatSchema)
 	load := identityLoad(t, h, "flat")
-	id := identityPath(t, load)
-	if !strings.Contains(id, "memcpy( (void *) ( values + k ), at + 8, (size_t) 8 )") {
-		t.Fatal("flat identity read is not one memcpy of the body")
+	if strings.Contains(load, "memcpy( (void *) ( values + k ), at + 8") {
+		t.Fatal("flat identity is a whole-body memcpy; that is cook's job")
 	}
-	if strings.Contains(id, "table_fixed_run") {
-		t.Fatal("flat identity still scatters through the interpreter")
-	}
-	if strings.Contains(id, "fixed_scatter_") {
+	if strings.Contains(load, "fixed_scatter") {
 		t.Fatal("flat identity still calls a scatter")
 	}
-	if strings.Contains(id, "flat_reset") {
-		t.Fatal("flat identity still prefills")
+	if !strings.Contains(load, "table_fixed_run") {
+		t.Fatal("flat identity is not the one loop")
 	}
 	if strings.Contains(h, "schema_probe_flat_fixed_scatter_") {
 		t.Fatal("flat identity still emitted a scatter")
@@ -289,12 +269,14 @@ func TestIdentityPaddedDoesNotMemcpyTheStruct(t *testing.T) {
 	}
 	h := tableH(t, identityPadSchema)
 	load := identityLoad(t, h, "pad")
-	id := identityPath(t, load)
-	if strings.Contains(id, "memcpy( (void *) ( values + k ), at + 8") {
+	if strings.Contains(load, "memcpy( (void *) ( values + k ), at + 8") {
 		t.Fatal("padded identity memcpy'd the struct; that is a wire-byte move")
 	}
-	if !strings.Contains(id, "schema_probe_pad_fixed_scatter_") {
-		t.Fatal("padded identity dropped the scatter")
+	if strings.Contains(h, "fixed_scatter") {
+		t.Fatal("padded identity still emitted a scatter")
+	}
+	if !strings.Contains(load, "table_fixed_run") {
+		t.Fatal("padded identity is not the one loop")
 	}
 }
 
@@ -323,7 +305,7 @@ int main(void)
     CHECK(held_fixed_save(&value, 1, file, (int64_t)sizeof(file)) == need);
     memset(&loaded, 0xAA, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = held_fixed_load(&loaded, 1, file, need, plan, 64, &report);
+    n = held_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
     CHECK(n == 1);
     CHECK(!report.malformed && !report.refused && report.clamped == 0);
     CHECK(loaded.marks_count == 1 && loaded.marks[0] == 7);
@@ -331,16 +313,21 @@ int main(void)
     CHECK(loaded.label_length == 2 && loaded.label[0] == 'h' && loaded.label[1] == 'i' && loaded.label[2] == 0);
     layout_bytes = table_fixed_get32(file + kTableFixedHeaderBytes);
     body = file + kTableFixedHeaderBytes + 4 + layout_bytes + 8;
+    /* A CLAMPED TEXT LENGTH MUST STILL BE TEXT: the bounds pass holds the used
+       bytes to UTF-8 with no zero among them. Eight valid bytes, then a length
+       past the bound, so the one loop's text op clamps and the pass still sees
+       a well-formed payload. */
+    memcpy(body + 4 + 16 + 4, "abcdefgh", 8);
     table_fixed_put32(body, 99);
     table_fixed_put32(body + 4 + 16, 99);
     memset(&loaded, 0, sizeof(loaded));
     memset(&report, 0, sizeof(report));
-    n = held_fixed_load(&loaded, 1, file, need, plan, 64, &report);
+    n = held_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
     CHECK(n == 1);
     CHECK(report.clamped == 2);
     CHECK(loaded.marks_count == 4);
     CHECK(loaded.label_length == 8);
-    CHECK(loaded.label[8] == 0);
+    CHECK(loaded.label[0] == 'a' && loaded.label[7] == 'h' && loaded.label[8] == 0);
     return 0;
 }
 `, identityCCFlags()...)
@@ -352,15 +339,15 @@ func TestIdentityFlatRoundTripFromDirty(t *testing.T) {
 #include <string.h>
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
 /* gcc -O2 inlines table_fixed_copy_run into fill_run against stack defaults
-   (8 bytes) and refuses the 16-byte unroll (-Werror=array-bounds). Identity
-   is memcpy of the body's eight bytes; dest arrives here as a pointer gcc
-   cannot bound. The compile flags on this probe match Held's. */
+   (8 bytes) and refuses the 16-byte unroll (-Werror=array-bounds). Dest
+   arrives here as a pointer gcc cannot bound. The compile flags on this
+   probe match Held's. */
 #if defined(__GNUC__)
 __attribute__((noinline))
 #endif
 static int64_t load_flat(Flat *loaded, const uint8_t *file, int64_t need, TableFixedEntry *plan, TableReport *report)
 {
-    return flat_fixed_load(loaded, 1, file, need, plan, 8, report);
+    return flat_fixed_load(loaded, 1, file, need, plan, 8, NULL, report);
 }
 int main(void)
 {

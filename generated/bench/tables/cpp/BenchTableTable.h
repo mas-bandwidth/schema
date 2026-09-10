@@ -2146,7 +2146,9 @@ constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other two are what a plan compiled from another writer's layout adds.
+// the rest are what a plan compiled from another writer's layout adds. clamp
+// is compiled-only: a ranged integer is a copy on the identity path and the
+// generated straight-line pass holds it after the copy (docs/SPEC-TABLES.md §3.4).
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2156,6 +2158,7 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedClamp   = 7, // a ranged integer, in place on the destination the copy landed
 };
 
 // meta on a kTableFixedText entry
@@ -2400,6 +2403,39 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
+            break;
+        }
+        case kTableFixedClamp:
+        {
+            // IN PLACE ON THE DESTINATION the copy or widen just landed. src is
+            // unused: this op does not read the record. meta bit 0 is the low
+            // end, bit 1 the high end; sign is signedness. THE COUNT IS AN OR
+            // OF THE TWO ENDS, the same select-and-add the identity pass emits.
+            uint64_t lo = 0, hi = 0, raw = 0;
+            memcpy( &lo, base + p.aux, 8 );
+            memcpy( &hi, base + p.aux + 8, 8 );
+            memcpy( &raw, dst + p.dst, p.size );
+            if ( p.sign != 0 && p.size < 8 )
+            {
+                const unsigned bits = p.size * 8u;
+                const uint64_t top = 1ull << ( bits - 1 );
+                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            }
+            int32_t under = 0, over = 0;
+            if ( p.sign != 0 )
+            {
+                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( (int64_t) raw < (int64_t) lo ); }
+                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( (int64_t) raw > (int64_t) hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            else
+            {
+                if ( ( p.meta & 1u ) != 0 ) { under = (int32_t) ( raw < lo ); }
+                if ( ( p.meta & 2u ) != 0 ) { over  = (int32_t) ( raw > hi ); }
+                raw = under ? lo : ( over ? hi : raw );
+            }
+            clamped += under | over;
+            memcpy( dst + p.dst, &raw, p.size );
             break;
         }
         default: break;
@@ -2882,6 +2918,10 @@ struct TableFixedDst
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
     uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
+    uint64_t lo = 0;     // a compiled clamp's low end, bit pattern of the slot
+    uint64_t hi = 0;     // a compiled clamp's high end
+    uint8_t clamp = 0;   // bit 0 = low, bit 1 = high, bit 2 = signed
+    uint8_t width = 0;   // the slot's bytes; 0 = this row is not a compiled clamp
 };
 
 struct TableFixedCompiler
@@ -2895,6 +2935,7 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    bool skip_clamp = false; // counted-array elements: the live count, never slack
     TableReport * report = NULL;
 };
 
@@ -2909,9 +2950,19 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     // could otherwise name a byte past the record. A layout that does is refused
     // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
     {
-        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
-        if ( reach > (uint64_t) c.record ||
-             ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+        // A CLAMP DOES NOT READ THE RECORD: it holds the destination the copy
+        // already landed. src+size is not a wire reach.
+        if ( e.op != kTableFixedClamp )
+        {
+            const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+            if ( reach > (uint64_t) c.record ||
+                 ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+            {
+                c.hostile = true;
+                return;
+            }
+        }
+        else if ( e.guard != kTableFixedNoGuard && e.guard >= c.record )
         {
             c.hostile = true;
             return;
@@ -2951,6 +3002,39 @@ inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
     c.pool = ( c.pool + n * (int32_t) sizeof( TableFixedFill ) + 3 ) & ~3;
     if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
     return (uint32_t) ( total - c.pool );
+}
+
+// TableFixedLayBounds lays a compiled clamp's two ends above the entries, the
+// same pool the ordinal remap tables use, and answers the byte offset from the
+// plan's base. memcpy, not a typed store: the pool is not 8-aligned.
+inline uint32_t TableFixedLayBounds( TableFixedCompiler & c, uint64_t lo, uint64_t hi )
+{
+    const int32_t bytes = 16;
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
+    c.pool += bytes;
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    const uint32_t at = (uint32_t) ( total - c.pool );
+    uint8_t * dst = (uint8_t *) (void *) ( (uint8_t *) c.plan + at );
+    memcpy( dst, &lo, 8 );
+    memcpy( dst + 8, &hi, 8 );
+    return at;
+}
+
+// TableFixedPushClamp is ONE ranged scalar after the copy or widen that landed
+// it. Counted-array elements skip: the live count is a value the plan cannot
+// name, and clamping slack would count a clamp on a byte nobody wrote.
+inline void TableFixedPushClamp( TableFixedCompiler & c, const TableFixedDst & d,
+                                 uint32_t at, uint32_t guard, uint8_t arg )
+{
+    if ( c.skip_clamp || d.width == 0 ) { return; }
+    TableFixedEntry e;
+    e.src = 0; e.dst = at; e.size = d.width;
+    e.aux = TableFixedLayBounds( c, d.lo, d.hi );
+    e.guard = guard; e.op = kTableFixedClamp; e.arg = arg;
+    e.meta = (uint8_t) ( d.clamp & 3u );
+    e.dstsize = 0;
+    e.sign = ( d.clamp & 4u ) ? 1u : 0u;
+    TableFixedPush( c, e );
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
@@ -3033,6 +3117,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
             e.sign = TableFixedSignedKind( te.kind ) ? 1u : 0u;
             TableFixedPush( c, e );
+            TableFixedPushClamp( c, d, at, guard, arg );
             return;
         }
         // A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4).
@@ -3069,11 +3154,14 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;
+            const bool prev_skip = c.skip_clamp;
+            if ( d.counted ) { c.skip_clamp = true; }
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
                                         mine, mi + 1, dst, at + i * d.stride, guard, arg );
             }
+            c.skip_clamp = prev_skip;
             break;
         }
         case 16: // an enum-keyed array: every slot, matched by the KEY's id
@@ -3178,11 +3266,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             {
                 e.size = me.size; e.op = kTableFixedCopy;
                 TableFixedPush( c, e );
+                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( te.size < me.size && me.size <= 8 )
             {
                 e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
+                TableFixedPushClamp( c, d, at, guard, arg );
             }
             else if ( c.report != NULL )
             {
@@ -3251,6 +3341,58 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
         *fill_at = at;
     }
     return out;
+}
+
+// ---- THE PLAN CACHE: once per peer, never once per record (§3.4) -----------
+//
+// THE CALLER OWNS THIS. The codec never allocates: the slots are a named
+// table of 64, the plan bytes they point at are a slab the caller hands
+// Init, and overflow is a miss — compile into the caller's plan buffer and
+// do not store, which is Elixir's stance (JS is an unbounded Map). Identity
+// hash never consults it. compiles counts successful compiles through this
+// cache, which is the pin; made is 1 on a slot after the compile that
+// filled it.
+
+constexpr int32_t kTableFixedPlanCacheCapacity = 64;
+
+struct TableFixedPlanCacheSlot
+{
+    uint64_t hash = 0;
+    TableFixedEntry * plan = NULL;
+    int32_t count = 0;
+    int32_t guarded = 0;
+    int64_t record_bytes = 0;
+    const TableFixedFill * fill = NULL;
+    int32_t fill_count = 0;
+    uint8_t made = 0;
+};
+
+struct TableFixedPlanCache
+{
+    TableFixedPlanCacheSlot slots[kTableFixedPlanCacheCapacity];
+    TableFixedEntry * storage = NULL; // capacity * stride entries, caller-owned
+    int32_t stride = 0;               // entries per slot, the plan capacity
+    int32_t used = 0;
+    int32_t compiles = 0;
+};
+
+inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntry * storage, int32_t stride )
+{
+    cache.storage = storage;
+    cache.stride = stride;
+    cache.used = 0;
+    cache.compiles = 0;
+    for ( int32_t i = 0; i < kTableFixedPlanCacheCapacity; ++i )
+    {
+        cache.slots[i].hash = 0;
+        cache.slots[i].plan = NULL;
+        cache.slots[i].count = 0;
+        cache.slots[i].guarded = 0;
+        cache.slots[i].record_bytes = 0;
+        cache.slots[i].fill = NULL;
+        cache.slots[i].fill_count = 0;
+        cache.slots[i].made = 0;
+    }
 }
 
 } // namespace benchtable
@@ -9970,7 +10112,7 @@ inline bool TablePickupEventLoadMessages( TablePickupEvent * values, int64_t * c
 // the values in declared order, every field at its declared storage width.
 // The writer is the constant bytes memcpy'd and then stores; the reader is
 // ONE loop over ONE plan, the identity plan here and a plan compiled from
-// the writer's own layout for anybody else.
+// the writer's own layout for anybody else. There is no second reader.
 
 // THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
 // schema compiler rather than folded by this one, because they are the same
@@ -10026,36 +10168,44 @@ inline void TableStatFixedWriteBody( uint8_t * b, const TableStat & value )
 }
 
 // TableEntity's read-side bounds.
-inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped )
+inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.entity_id > 4095ull ) { value.entity_id = 4095ull; clamped++; } // bits(12) width clamp
-    if ( value.pos_x < -16383 ) { value.pos_x = -16383; clamped++; }
-    else if ( value.pos_x > 16383 ) { value.pos_x = 16383; clamped++; }
-    if ( value.pos_y < -16383 ) { value.pos_y = -16383; clamped++; }
-    else if ( value.pos_y > 16383 ) { value.pos_y = 16383; clamped++; }
-    if ( value.pos_z < -16383 ) { value.pos_z = -16383; clamped++; }
-    else if ( value.pos_z > 16383 ) { value.pos_z = 16383; clamped++; }
-    if ( value.yaw > 511ull ) { value.yaw = 511ull; clamped++; } // bits(9) width clamp
-    if ( value.pitch > 511ull ) { value.pitch = 511ull; clamped++; } // bits(9) width clamp
-    if ( value.vel_x < -2048 ) { value.vel_x = -2048; clamped++; }
-    else if ( value.vel_x > 2047 ) { value.vel_x = 2047; clamped++; }
-    if ( value.vel_y < -2048 ) { value.vel_y = -2048; clamped++; }
-    else if ( value.vel_y > 2047 ) { value.vel_y = 2047; clamped++; }
-    if ( value.vel_z < -2048 ) { value.vel_z = -2048; clamped++; }
-    else if ( value.vel_z > 2047 ) { value.vel_z = 2047; clamped++; }
-    if ( value.health < 0 ) { value.health = 0; clamped++; }
-    else if ( value.health > 1000 ) { value.health = 1000; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    // bits(12) width clamp
+    clamped += ( value.entity_id > 4095ull );
+    value.entity_id = ( value.entity_id > 4095ull ) ? 4095ull : value.entity_id;
+    clamped += (int) ( value.pos_x < -16383 ) | (int) ( value.pos_x > 16383 );
+    value.pos_x = ( value.pos_x < -16383 ) ? -16383 : ( ( value.pos_x > 16383 ) ? 16383 : value.pos_x );
+    clamped += (int) ( value.pos_y < -16383 ) | (int) ( value.pos_y > 16383 );
+    value.pos_y = ( value.pos_y < -16383 ) ? -16383 : ( ( value.pos_y > 16383 ) ? 16383 : value.pos_y );
+    clamped += (int) ( value.pos_z < -16383 ) | (int) ( value.pos_z > 16383 );
+    value.pos_z = ( value.pos_z < -16383 ) ? -16383 : ( ( value.pos_z > 16383 ) ? 16383 : value.pos_z );
+    // bits(9) width clamp
+    clamped += ( value.yaw > 511ull );
+    value.yaw = ( value.yaw > 511ull ) ? 511ull : value.yaw;
+    // bits(9) width clamp
+    clamped += ( value.pitch > 511ull );
+    value.pitch = ( value.pitch > 511ull ) ? 511ull : value.pitch;
+    clamped += (int) ( value.vel_x < -2048 ) | (int) ( value.vel_x > 2047 );
+    value.vel_x = ( value.vel_x < -2048 ) ? -2048 : ( ( value.vel_x > 2047 ) ? 2047 : value.vel_x );
+    clamped += (int) ( value.vel_y < -2048 ) | (int) ( value.vel_y > 2047 );
+    value.vel_y = ( value.vel_y < -2048 ) ? -2048 : ( ( value.vel_y > 2047 ) ? 2047 : value.vel_y );
+    clamped += (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
+    value.vel_z = ( value.vel_z < -2048 ) ? -2048 : ( ( value.vel_z > 2047 ) ? 2047 : value.vel_z );
+    clamped += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
+    value.health = ( value.health < 0 ) ? 0 : ( ( value.health > 1000 ) ? 1000 : value.health );
     if ( (uint64_t) value.weapon > 15u ) { value.weapon = TableWeapon::None; clamped++; }
 }
 
 // TableStat's read-side bounds.
-inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped )
+inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.stat_id > 255ull ) { value.stat_id = 255ull; clamped++; } // bits(8) width clamp
-    if ( value.delta < -512 ) { value.delta = -512; clamped++; }
-    else if ( value.delta > 511 ) { value.delta = 511; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    // bits(8) width clamp
+    clamped += ( value.stat_id > 255ull );
+    value.stat_id = ( value.stat_id > 255ull ) ? 255ull : value.stat_id;
+    clamped += (int) ( value.delta < -512 ) | (int) ( value.delta > 511 );
+    value.delta = ( value.delta < -512 ) ? -512 : ( ( value.delta > 511 ) ? 511 : value.delta );
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -10067,8 +10217,13 @@ inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped )
 inline void TableEntityFixedClamp( TableEntity & value, TableReport * report )
 {
     int32_t clamped = 0;
-    TableEntityFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    TableEntityFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- TableEntity, the fixed form ----
@@ -10123,36 +10278,36 @@ constexpr int64_t TableEntityFixedLayoutBytes = (int64_t) sizeof( TableEntityFix
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TableEntityFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // TableEntity
-    { (uint32_t) __builtin_offsetof( TableEntity, entity_id ), 0, 0, 0, 0 }, // entity_id
-    { (uint32_t) __builtin_offsetof( TableEntity, pos_x ), 0, 0, 0, 0 }, // pos_x
-    { (uint32_t) __builtin_offsetof( TableEntity, pos_y ), 0, 0, 0, 0 }, // pos_y
-    { (uint32_t) __builtin_offsetof( TableEntity, pos_z ), 0, 0, 0, 0 }, // pos_z
-    { (uint32_t) __builtin_offsetof( TableEntity, yaw ), 0, 0, 0, 0 }, // yaw
-    { (uint32_t) __builtin_offsetof( TableEntity, pitch ), 0, 0, 0, 0 }, // pitch
-    { (uint32_t) __builtin_offsetof( TableEntity, vel_x ), 0, 0, 0, 0 }, // vel_x
-    { (uint32_t) __builtin_offsetof( TableEntity, vel_y ), 0, 0, 0, 0 }, // vel_y
-    { (uint32_t) __builtin_offsetof( TableEntity, vel_z ), 0, 0, 0, 0 }, // vel_z
-    { (uint32_t) __builtin_offsetof( TableEntity, health ), 0, 0, 0, 0 }, // health
-    { (uint32_t) __builtin_offsetof( TableEntity, weapon ), 0, 0, 0, 0 }, // weapon
-    { 0, 0, 0, 0, 0 }, // Fists
-    { 0, 0, 0, 0, 0 }, // Pistol
-    { 0, 0, 0, 0, 0 }, // Shotgun
-    { 0, 0, 0, 0, 0 }, // Rifle
-    { 0, 0, 0, 0, 0 }, // Sniper
-    { 0, 0, 0, 0, 0 }, // Smg
-    { 0, 0, 0, 0, 0 }, // Rocket
-    { 0, 0, 0, 0, 0 }, // Grenade
-    { 0, 0, 0, 0, 0 }, // Plasma
-    { 0, 0, 0, 0, 0 }, // Railgun
-    { 0, 0, 0, 0, 0 }, // Flamer
-    { 0, 0, 0, 0, 0 }, // Mine
-    { 0, 0, 0, 0, 0 }, // Turret
-    { 0, 0, 0, 0, 0 }, // Drone
-    { 0, 0, 0, 0, 0 }, // Repair
-    { (uint32_t) __builtin_offsetof( TableEntity, damage ), 0, 0, 0, 0 }, // damage
-    { (uint32_t) __builtin_offsetof( TableEntity, moving ), 0, 0, 0, 0 }, // moving
-    { (uint32_t) __builtin_offsetof( TableEntity, firing ), 0, 0, 0, 0 }, // firing
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // TableEntity
+    { (uint32_t) __builtin_offsetof( TableEntity, entity_id ), 0, 0, 0, 0, 0ull, 4095ull, 2, 4 }, // entity_id
+    { (uint32_t) __builtin_offsetof( TableEntity, pos_x ), 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, // pos_x
+    { (uint32_t) __builtin_offsetof( TableEntity, pos_y ), 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, // pos_y
+    { (uint32_t) __builtin_offsetof( TableEntity, pos_z ), 0, 0, 0, 0, 18446744073709535233ull, 16383ull, 7, 4 }, // pos_z
+    { (uint32_t) __builtin_offsetof( TableEntity, yaw ), 0, 0, 0, 0, 0ull, 511ull, 2, 4 }, // yaw
+    { (uint32_t) __builtin_offsetof( TableEntity, pitch ), 0, 0, 0, 0, 0ull, 511ull, 2, 4 }, // pitch
+    { (uint32_t) __builtin_offsetof( TableEntity, vel_x ), 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, // vel_x
+    { (uint32_t) __builtin_offsetof( TableEntity, vel_y ), 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, // vel_y
+    { (uint32_t) __builtin_offsetof( TableEntity, vel_z ), 0, 0, 0, 0, 18446744073709549568ull, 2047ull, 7, 4 }, // vel_z
+    { (uint32_t) __builtin_offsetof( TableEntity, health ), 0, 0, 0, 0, 0ull, 1000ull, 7, 4 }, // health
+    { (uint32_t) __builtin_offsetof( TableEntity, weapon ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // weapon
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Fists
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Pistol
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Shotgun
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Rifle
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Sniper
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Smg
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Rocket
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Grenade
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Plasma
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Railgun
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Flamer
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Mine
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Turret
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Drone
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // Repair
+    { (uint32_t) __builtin_offsetof( TableEntity, damage ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // damage
+    { (uint32_t) __builtin_offsetof( TableEntity, moving ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // moving
+    { (uint32_t) __builtin_offsetof( TableEntity, firing ), 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // firing
 };
 
 // THE IDENTITY PLAN, coalesced out of 14 leaves by the schema compiler —
@@ -10182,20 +10337,6 @@ constexpr TableFixedFill TableEntityFixedCover[] = {
 };
 constexpr int32_t TableEntityFixedCoverCount = 2;
 
-// TableEntity's STRAIGHT-LINE SCATTER: the identity plan above, unrolled by this
-// compiler into constant-offset moves. Every number in it is a number from
-// that plan, and the static_asserts at the top of this form tie each one to
-// this compiler's own offsetof and sizeof.
-inline void TableEntityFixedScatter( const uint8_t * TABLE_RESTRICT image, TableEntity & value, TableReport * report )
-{
-    uint8_t * TABLE_RESTRICT dst = (uint8_t *) &value;
-    int32_t clamped = 0;
-    (void) dst; (void) clamped;
-    memcpy( dst + 0, image + 0, 41 ); // entity_id
-    memcpy( dst + 48, image + 41, 10 ); // damage
-    report->clamped += clamped;
-}
-
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -10224,21 +10365,17 @@ inline int64_t TableEntityFixedSave( const TableEntity * values, int64_t count, 
     return need;
 }
 
-// THE READ. ONE PLAN, and which one is the only thing a peer's shipping
-// changes: the IDENTITY PLAN for a record stamped with this build's own
-// layout hash, a plan compiled once from the writer's layout for anybody
-// else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
-// says: the identity plan is a compile-time constant, so this compiler
-// spends it HERE — one copy of the body and a straight-line scatter, or one
-// memcpy where the storage image is the wire image — and a stranger's plan
-// arrives at run time and is spent by the interpreter it was always spent by.
+// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
 //
 // THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
 // ranges the plan compiler works out once, and on the identity plan that list
 // is EMPTY — so this read writes no byte twice, and it is one rule for both
 // plans rather than a flag that asks which one this is.
 inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -10264,31 +10401,70 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
     int32_t entry_count = TableEntityFixedPlanCount;
     int32_t entry_guarded = TableEntityFixedPlanGuarded;
     int64_t record_bytes = TableEntityFixedRecordBytes;
-    const bool identity = ( hash == TableEntityFixedHash );
-    // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:
-    // the rule is the type's value bytes minus what the plan lands, and the
-    // identity plan lands all of them.
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
-    if ( !identity )
+    if ( hash != TableEntityFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        uint32_t fill_at = 0;
-        const int32_t made = TableFixedCompile( parsed, TableEntityFixedLayout, (int32_t) TableEntityFixedLayoutBytes, TableEntityFixedDst,
-                                               TableEntityFixedCover, TableEntityFixedCoverCount,
-                                               plan, plan_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        fill = (const TableFixedFill *) (const void *) ( (const uint8_t *) plan + fill_at );
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, TableEntityFixedLayout, (int32_t) TableEntityFixedLayoutBytes, TableEntityFixedDst,
+                                                   TableEntityFixedCover, TableEntityFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -10298,27 +10474,10 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    if ( identity )
-    {
-        // ONE COPY OF THE BODY, THEN A STRAIGHT LINE. Same plan, same clamps,
-        // same census, same bytes — every offset in the scatter above came out
-        // of the plan above it — and no per-entry dispatch, no runtime length
-        // and no plan array competing with the record for cache.
-        uint8_t image[TableEntityFixedBodyBytes];
-        for ( int64_t k = 0; k < n; ++k )
-        {
-            if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
-            memcpy( image, at + 8, (size_t) TableEntityFixedBodyBytes );
-            TableEntityFixedScatter( image, values[k], report );
-            TableEntityFixedClamp( values[k], report ); // the bounds the scatter does not hold (§3.4)
-            at += TableEntityFixedRecordBytes;
-        }
-        return n;
-    }
-    // A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
     // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. It is the caller's own stack
-    // and this codec allocates nothing.
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
     TableEntity defaults;
     if ( fill_count > 0 )
     {
@@ -10347,8 +10506,13 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
 inline void TableStatFixedClamp( TableStat & value, TableReport * report )
 {
     int32_t clamped = 0;
-    TableStatFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    TableStatFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- TableStat, the fixed form ----
@@ -10374,9 +10538,9 @@ constexpr int64_t TableStatFixedLayoutBytes = (int64_t) sizeof( TableStatFixedLa
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst TableStatFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // TableStat
-    { (uint32_t) __builtin_offsetof( TableStat, stat_id ), 0, 0, 0, 0 }, // stat_id
-    { (uint32_t) __builtin_offsetof( TableStat, delta ), 0, 0, 0, 0 }, // delta
+    { 0, 0, 0, 0, 0, 0ull, 0ull, 0, 0 }, // TableStat
+    { (uint32_t) __builtin_offsetof( TableStat, stat_id ), 0, 0, 0, 0, 0ull, 255ull, 2, 4 }, // stat_id
+    { (uint32_t) __builtin_offsetof( TableStat, delta ), 0, 0, 0, 0, 18446744073709551104ull, 511ull, 7, 4 }, // delta
 };
 
 // THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
@@ -10432,21 +10596,17 @@ inline int64_t TableStatFixedSave( const TableStat * values, int64_t count, uint
     return need;
 }
 
-// THE READ. ONE PLAN, and which one is the only thing a peer's shipping
-// changes: the IDENTITY PLAN for a record stamped with this build's own
-// layout hash, a plan compiled once from the writer's layout for anybody
-// else (§3.4). What differs is WHERE THE PLAN IS SPENT and never what it
-// says: the identity plan is a compile-time constant, so this compiler
-// spends it HERE — one copy of the body and a straight-line scatter, or one
-// memcpy where the storage image is the wire image — and a stranger's plan
-// arrives at run time and is spent by the interpreter it was always spent by.
+// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
+// the layout's hash is this build's own, and a plan compiled once from the
+// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
+// There is no second reader: the identity plan is data the one loop walks.
 //
 // THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
 // ranges the plan compiler works out once, and on the identity plan that list
 // is EMPTY — so this read writes no byte twice, and it is one rule for both
 // plans rather than a flag that asks which one this is.
 inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
@@ -10472,31 +10632,70 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
     int32_t entry_count = TableStatFixedPlanCount;
     int32_t entry_guarded = TableStatFixedPlanGuarded;
     int64_t record_bytes = TableStatFixedRecordBytes;
-    const bool identity = ( hash == TableStatFixedHash );
-    // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:
-    // the rule is the type's value bytes minus what the plan lands, and the
-    // identity plan lands all of them.
     const TableFixedFill * fill = NULL;
     int32_t fill_count = 0;
-    if ( !identity )
+    if ( hash != TableStatFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
+        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
         // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
         // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
-        TableFixedLayoutView parsed;
-        TableMessageReason why = layout_malformed;
-        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        int32_t compiled_guarded = 0;
-        uint32_t fill_at = 0;
-        const int32_t made = TableFixedCompile( parsed, TableStatFixedLayout, (int32_t) TableStatFixedLayoutBytes, TableStatFixedDst,
-                                               TableStatFixedCover, TableStatFixedCoverCount,
-                                               plan, plan_capacity, &compiled_guarded, &fill_at, &fill_count, report );
-        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-        entries = plan;
-        entry_count = made;
-        entry_guarded = compiled_guarded;
-        fill = (const TableFixedFill *) (const void *) ( (const uint8_t *) plan + fill_at );
-        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+        const TableFixedPlanCacheSlot * hit = NULL;
+        if ( cache != NULL )
+        {
+            for ( int32_t i = 0; i < cache->used; ++i )
+            {
+                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }
+            }
+        }
+        if ( hit != NULL )
+        {
+            entries = hit->plan;
+            entry_count = hit->count;
+            entry_guarded = hit->guarded;
+            record_bytes = hit->record_bytes;
+            fill = hit->fill;
+            fill_count = hit->fill_count;
+        }
+        else
+        {
+            TableFixedLayoutView parsed;
+            TableMessageReason why = layout_malformed;
+            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            TableFixedEntry * dest = plan;
+            int32_t dest_capacity = plan_capacity;
+            int storing = 0;
+            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )
+            {
+                dest = cache->storage + cache->used * cache->stride;
+                dest_capacity = cache->stride;
+                storing = 1;
+            }
+            int32_t compiled_guarded = 0;
+            uint32_t fill_at = 0;
+            const int32_t made = TableFixedCompile( parsed, TableStatFixedLayout, (int32_t) TableStatFixedLayoutBytes, TableStatFixedDst,
+                                                   TableStatFixedCover, TableStatFixedCoverCount,
+                                                   dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
+            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
+            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
+            if ( cache != NULL ) { cache->compiles++; }
+            if ( storing )
+            {
+                cache->slots[cache->used].hash = hash;
+                cache->slots[cache->used].plan = dest;
+                cache->slots[cache->used].count = made;
+                cache->slots[cache->used].guarded = compiled_guarded;
+                cache->slots[cache->used].record_bytes = record_bytes;
+                cache->slots[cache->used].fill = fill;
+                cache->slots[cache->used].fill_count = fill_count;
+                cache->slots[cache->used].made = 1;
+                cache->used++;
+            }
+            entries = dest;
+            entry_count = made;
+            entry_guarded = compiled_guarded;
+        }
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
     // the layout's own rules each refuse under their own name first, so a
@@ -10506,28 +10705,10 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    if ( identity )
-    {
-        // THE STORAGE IMAGE IS THE WIRE IMAGE for this type, and that is not a
-        // claim beside the plan — it IS the plan: the coalescer folded every
-        // leaf into ONE copy of the whole body from offset zero, which it can
-        // only do when source and destination advance together the whole way.
-        // So the read is that memcpy, the scatter is empty and none is emitted,
-        // and the prefill's list is empty for the reason above.
-        static_assert( sizeof( TableStat ) >= (size_t) TableStatFixedBodyBytes, "TableStat: the body lands inside the storage" );
-        for ( int64_t k = 0; k < n; ++k )
-        {
-            if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
-            memcpy( (void *) &values[k], at + 8, (size_t) TableStatFixedBodyBytes );
-            TableStatFixedClamp( values[k], report ); // the bounds the copy does not hold (§3.4)
-            at += TableStatFixedRecordBytes;
-        }
-        return n;
-    }
-    // A STRANGER'S LAYOUT: the plan interpreter, and the prefill's ranges.
+    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
     // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. It is the caller's own stack
-    // and this codec allocates nothing.
+    // where there is a range to prefill at all. Empty list is the skip.
+    // It is the caller's own stack and this codec allocates nothing.
     TableStat defaults;
     if ( fill_count > 0 )
     {

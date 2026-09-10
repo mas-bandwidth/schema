@@ -74,6 +74,7 @@ var (
 	reForU32j        = regexp.MustCompile(`\buint32_t j;\s*for \( j =`)
 	reForDeclJK      = regexp.MustCompile(`\buint32_t j, k;\s*`)
 	reStarClamped    = regexp.MustCompile(`\(\*(clamped|widened)\)\+\+`)
+	reStarClampedAdd = regexp.MustCompile(`\(\*(clamped|widened)\)\s*\+=`)
 	rePtrApply       = regexp.MustCompile(`(TableFixed(?:Apply|EntryLands)\(\s*)&plan\[i\]`)
 	reAmpCounters    = regexp.MustCompile(`,\s*&clamped,\s*&widened\s*\)`)
 	reStaticAssert   = regexp.MustCompile(`SCHEMA_TABLE_STATIC_ASSERT\s*\(\s*\w+\s*,\s*`)
@@ -280,6 +281,7 @@ func normalizeSyntax(s string) string {
 	s = strings.ReplaceAll(s, "->", ".")
 	s = strings.ReplaceAll(s, ".as.", ".")
 	s = reStarClamped.ReplaceAllString(s, "$1++")
+	s = reStarClampedAdd.ReplaceAllString(s, "$1 +=")
 	s = reTrailingComma.ReplaceAllString(s, "$1")
 	s = reTypedefStruct.ReplaceAllString(s, "struct $1 {")
 	s = reStructClose.ReplaceAllString(s, "};")
@@ -329,6 +331,13 @@ func normalizeSyntax(s string) string {
 		{"int want_guarded;", "bool want_guarded;"},
 		{"int overflow;", "bool overflow;"},
 		{"int hostile;", "bool hostile;"},
+		{"int skip_clamp;", "bool skip_clamp;"},
+		{"const int prev_skip =", "const bool prev_skip ="},
+		{"skip_clamp = 1", "skip_clamp = true"},
+		{"skip_clamp = 0", "skip_clamp = false"},
+		{"(uint8_t) kTableFixedClamp", "kTableFixedClamp"},
+		{"TableFixedPlanCache * cache", "TableFixedPlanCache REF cache"},
+		{"TableFixedPlanCache & cache", "TableFixedPlanCache REF cache"},
 		{"int named;", "bool named;"},
 		{"int kids_are_variants;", "bool kids_are_variants;"},
 		{"int is_leaf;", "bool is_leaf;"},
@@ -572,6 +581,8 @@ var dropStatements = map[string]bool{
 	"split = 0;":                         true,
 	"DEPTH_GUARD;":                       true,
 	"NAMED_128;":                         true,
+	"under = 0, over = 0;":               true,
+	"int32_t under = 0, over = 0;":       true,
 }
 
 func collapse(s string) []string {
