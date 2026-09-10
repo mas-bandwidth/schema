@@ -917,12 +917,20 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base int64, buf, at, val string
 	name := javaName(f.Name)
 	switch {
 	case f.KeyEnum != "":
-		g.emitWriteLoop(f, base, f.KeyEnumRef.Max, buf, at, val+"."+name, indent)
+		g.emitWriteLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, indent)
 	case f.Array == ir.ArrayFixed:
-		g.emitWriteLoop(f, base, f.ArrayBound, buf, at, val+"."+name, indent)
+		g.emitWriteLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, indent)
 	case f.Array == ir.ArrayCounted:
+		// THE COUNT IS THE LOOP AND THE SLACK IS ZERO (docs/SPEC-TABLES.md
+		// §3.4). Writing all Max elements put unused slots' STORAGE on the
+		// wire; Java has no template, so those bytes would be constructor
+		// defaults. Scatter walks the live count, so unused slots are never
+		// filled from the record. Write the live elements, then zero the rest.
 		g.pf("%sTableFixed.put32(%s, %s + %d, %s.%sCount);\n", ind, buf, at, base, val, name)
-		g.emitWriteLoop(f, base+fixedCountBytes, f.ArrayBound, buf, at, val+"."+name, indent)
+		g.emitWriteLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, indent)
+		elem := fixedElementBytes(f)
+		g.pf("%sjava.util.Arrays.fill(%s, %s + %d + %s.%sCount * %d, %s + %d, (byte) 0);\n",
+			ind, buf, at, base+fixedCountBytes, val, name, elem, at, base+fixedCountBytes+f.ArrayBound*elem)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		// TEXT WRITES ITS LENGTH UNITS AND ZEROES ITS SLACK: the bytes past the
 		// used length are the reference's zeros, and this is the one store
@@ -943,10 +951,10 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base int64, buf, at, val string
 	}
 }
 
-func (g *fixedGen) emitWriteLoop(f *ir.Field, base, count int64, buf, at, expr string, indent int) {
+func (g *fixedGen) emitWriteLoop(f *ir.Field, base int64, count, buf, at, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (int i = 0; i < %d; i++) {\n", ind, count)
+	g.pf("%sfor (int i = 0; i < %s; i++) {\n", ind, count)
 	g.emitWriteElement(f, 0, buf, fmt.Sprintf("%s + %d + i * %d", at, base, elem), expr+"[i]", indent+4)
 	g.pf("%s}\n", ind)
 }
@@ -1063,7 +1071,8 @@ func fixedLoadAs(buf, at string, off, w int64, signed bool, typ string) string {
 // emitScatter lands ONE record image into the value. It is the ONLY place this
 // port's storage spelling meets the wire's, which is what keeps the plan free
 // of storage offsets — and it runs identically whether the plan was the
-// identity plan or one compiled from a stranger's layout.
+// identity plan or one compiled from a stranger's layout. A COUNTED ARRAY
+// WALKS ITS LIVE COUNT, never the bound: slack is never clamped (Dart #834).
 func (g *fixedGen) emitScatter(st *ir.Struct) {
 	g.pf("    /** land one record image into a value. The image is this reader's own\n")
 	g.pf("     *  body layout, so every offset here is a constant. */\n")
@@ -1090,12 +1099,15 @@ func (g *fixedGen) emitScatterField(f *ir.Field, off int64, buf, at, val, rep st
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitScatterLoop(f, base, f.KeyEnumRef.Max, buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.KeyEnumRef.Max), buf, at, val+"."+name, rep, indent)
 	case f.Array == ir.ArrayFixed:
-		g.emitScatterLoop(f, base, f.ArrayBound, buf, at, val+"."+name, rep, indent)
+		g.emitScatterLoop(f, base, fmt.Sprintf("%d", f.ArrayBound), buf, at, val+"."+name, rep, indent)
 	case f.Array == ir.ArrayCounted:
 		g.emitScatterCount(fmt.Sprintf("%s.%sCount", val, name), buf, at, base, f.ArrayBound, rep, indent)
-		g.emitScatterLoop(f, base+fixedCountBytes, f.ArrayBound, buf, at, val+"."+name, rep, indent)
+		// LIVE ELEMENTS ONLY: clamp and ordinal counters count the writer's
+		// live count, never the slack behind it. Identity and compiled share
+		// this scatter; write still stores MAX (Dart #834).
+		g.emitScatterLoop(f, base+fixedCountBytes, fmt.Sprintf("%s.%sCount", val, name), buf, at, val+"."+name, rep, indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.emitScatterCount(fmt.Sprintf("%s.%sLength", val, name), buf, at, base, f.Type.Size, rep, indent)
 		g.pf("%sSystem.arraycopy(%s, %s + %d, %s.%s, 0, %s.%sLength);\n", ind, buf, at, base+4, val, name, val, name)
@@ -1124,10 +1136,10 @@ func (g *fixedGen) emitScatterCount(dst, buf, at string, off, bound int64, rep s
 	g.pf("%s}\n", ind)
 }
 
-func (g *fixedGen) emitScatterLoop(f *ir.Field, base, count int64, buf, at, expr, rep string, indent int) {
+func (g *fixedGen) emitScatterLoop(f *ir.Field, base int64, count, buf, at, expr, rep string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := fixedElementBytes(f)
-	g.pf("%sfor (int i = 0; i < %d; i++) {\n", ind, count)
+	g.pf("%sfor (int i = 0; i < %s; i++) {\n", ind, count)
 	g.emitScatterElement(f, 0, buf, fmt.Sprintf("%s + %d + i * %d", at, base, elem), expr+"[i]", rep, indent+4, f)
 	g.pf("%s}\n", ind)
 }

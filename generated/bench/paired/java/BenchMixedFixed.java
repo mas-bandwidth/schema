@@ -107,13 +107,15 @@ public final class BenchMixedFixed {
         TableFixed.put64(b, at + 40, v.frameTick);
         TableFixed.put32(b, at + 48, v.serverTime);
         TableFixed.put32(b, at + 52, v.entitiesCount);
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < v.entitiesCount; i++) {
             MixedEntityFixed.writeBody(b, at + 56 + i * 51 + 0, v.entities[i]);
         }
+        java.util.Arrays.fill(b, at + 56 + v.entitiesCount * 51, at + 464, (byte) 0);
         TableFixed.put32(b, at + 464, v.statsCount);
-        for (int i = 0; i < 80; i++) {
+        for (int i = 0; i < v.statsCount; i++) {
             MixedStatFixed.writeBody(b, at + 468 + i * 8 + 0, v.stats[i]);
         }
+        java.util.Arrays.fill(b, at + 468 + v.statsCount * 8, at + 1108, (byte) 0);
         MixedEventFixed.writeBody(b, at + 1108, v.gameEvent);
         for (int i = 0; i < 4; i++) {
             TableFixed.put8(b, at + 1122 + i * 1 + 0, v.loadout[i]);
@@ -176,7 +178,7 @@ public final class BenchMixedFixed {
             if (n < 0) { n = 0; r.clamped++; } else if (n > 8) { n = 8; r.clamped++; }
             v.entitiesCount = n;
         }
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < v.entitiesCount; i++) {
             MixedEntityFixed.scatter(b, at + 56 + i * 51 + 0, v.entities[i], r);
         }
         {
@@ -184,7 +186,7 @@ public final class BenchMixedFixed {
             if (n < 0) { n = 0; r.clamped++; } else if (n > 80) { n = 80; r.clamped++; }
             v.statsCount = n;
         }
-        for (int i = 0; i < 80; i++) {
+        for (int i = 0; i < v.statsCount; i++) {
             MixedStatFixed.scatter(b, at + 468 + i * 8 + 0, v.stats[i], r);
         }
         MixedEventFixed.scatter(b, at + 1108, v.gameEvent, r);

@@ -399,7 +399,9 @@ public final class TableFixed {
                     // it has, so a value past them is damage rather than a
                     // variant this reader happens not to know. A variant it
                     // knows of and this reader does not lands None too — that
-                    // one is a version difference and counts nothing.
+                    // one is a version difference and counts nothing. Slack
+                    // of a counted array is not this op's: scatter walks the
+                    // LIVE count, so unused slots never reach a clamp.
                     if (raw > n) { report.clamped++; }
                     putUint(image, p.dst, v, p.dstsize);
                     break;
