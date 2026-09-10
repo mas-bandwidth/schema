@@ -31,6 +31,7 @@ int main( void )
     fixed_check( n == fixed_fx1_bytes(), "FX1 save" );
     fixed_fx1_read_own( g_buffer, n );
     fixed_fx2_read_fx1( g_buffer, n );
+    fixed_fx2_plan_cache( g_buffer, n );
     fixed_fx2_bytes_row_control( g_buffer, n );
     fixed_fx1_slack();
 

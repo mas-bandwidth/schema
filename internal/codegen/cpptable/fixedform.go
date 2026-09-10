@@ -12,9 +12,10 @@
 //	a read is one loop over it. For a record whose hash equals the reader's
 //	own the plan is the IDENTITY PLAN, built at COMPILE TIME by a constexpr
 //	walk of this type's leaves with adjacent runs coalesced; for any other
-//	hash the SAME LOOP runs over a plan compiled once from the writer's layout.
-//	There is no second reader and no fast/slow cliff — the owner's own ruling,
-//	which §3.4 quotes him on.
+//	hash the SAME LOOP runs over a plan compiled once from the writer's layout
+//	and cached by hash, so the compile is paid once per peer. There is no
+//	second reader and no fast/slow cliff — the owner's own ruling, which §3.4
+//	quotes him on.
 //
 // Nothing here touches form 1: a fixed-table type's reader accepts both, by
 // the form byte.
@@ -72,7 +73,8 @@ func (g *tableGen) dstRow(e ir.TableFixedLayoutEntry) string {
 		// so the aux is that destination and then the tag's own offset
 		aux = dstTerms(d.Dst) + " + " + offOf(d.Aux[0].Type, d.Aux[0].Member)
 	}
-	return fmt.Sprintf("{ %s, %s, %s, %d, %d }", dstTerms(d.Dst), stride, aux, d.Counted, d.Meta)
+	return fmt.Sprintf("{ %s, %s, %s, %d, %d, %dull, %dull, %d, %d }",
+		dstTerms(d.Dst), stride, aux, d.Counted, d.Meta, d.ClampLo, d.ClampHi, d.ClampFlags, d.ClampWidth)
 }
 
 // ---------------------------------------------------------------------------
@@ -397,9 +399,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	g.pf("// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
 	g.pf("// the layout's hash is this build's own, and a plan compiled once from the\n")
-	g.pf("// writer's layout otherwise. Same loop either way (§3.4).\n")
+	g.pf("// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).\n")
 	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
-	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )\n{\n")
+	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
 	g.pf("    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
@@ -422,17 +424,41 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t entry_guarded = %sFixedPlanGuarded;\n", st.Name)
 	g.pf("    int64_t record_bytes = %sFixedRecordBytes;\n", st.Name)
 	g.pf("    if ( hash != %sFixedHash )\n    {\n", st.Name)
-	g.pf("        // ANOTHER WRITER: the same loop, over a plan compiled from its layout.\n")
+	g.pf("        // ANOTHER WRITER: the same loop, over a plan compiled from its layout\n")
+	g.pf("        // and CACHED BY HASH, so the compile is paid once per peer, not per record.\n")
 	g.pf("        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
 	g.pf("        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).\n")
-	g.pf("        TableFixedLayoutView parsed;\n")
-	g.pf("        TableMessageReason why = layout_malformed;\n")
-	g.pf("        if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }\n")
-	g.pf("        int32_t compiled_guarded = 0;\n")
-	g.pf("        const int32_t made = TableFixedCompile( parsed, %sFixedLayout, (int32_t) %sFixedLayoutBytes, %sFixedDst, plan, plan_capacity, &compiled_guarded, report );\n", st.Name, st.Name, st.Name)
-	g.pf("        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }\n")
-	g.pf("        entries = plan;\n        entry_count = made;\n        entry_guarded = compiled_guarded;\n")
-	g.pf("        record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;\n")
+	g.pf("        const TableFixedPlanCacheSlot * hit = NULL;\n")
+	g.pf("        if ( cache != NULL )\n        {\n")
+	g.pf("            for ( int32_t i = 0; i < cache->used; ++i )\n            {\n")
+	g.pf("                if ( cache->slots[i].hash == hash ) { hit = &cache->slots[i]; break; }\n")
+	g.pf("            }\n        }\n")
+	g.pf("        if ( hit != NULL )\n        {\n")
+	g.pf("            entries = hit->plan;\n            entry_count = hit->count;\n            entry_guarded = hit->guarded;\n")
+	g.pf("            record_bytes = hit->record_bytes;\n")
+	g.pf("        }\n        else\n        {\n")
+	g.pf("            TableFixedLayoutView parsed;\n")
+	g.pf("            TableMessageReason why = layout_malformed;\n")
+	g.pf("            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }\n")
+	g.pf("            TableFixedEntry * dest = plan;\n            int32_t dest_capacity = plan_capacity;\n            int storing = 0;\n")
+	g.pf("            if ( cache != NULL && cache->storage != NULL && cache->used < kTableFixedPlanCacheCapacity && cache->stride > 0 )\n")
+	g.pf("            {\n                dest = cache->storage + cache->used * cache->stride;\n                dest_capacity = cache->stride;\n                storing = 1;\n            }\n")
+	g.pf("            int32_t compiled_guarded = 0;\n")
+	g.pf("            const int32_t made = TableFixedCompile( parsed, %sFixedLayout, (int32_t) %sFixedLayoutBytes, %sFixedDst, dest, dest_capacity, &compiled_guarded, report );\n", st.Name, st.Name, st.Name)
+	g.pf("            if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }\n")
+	g.pf("            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;\n")
+	g.pf("            if ( cache != NULL ) { cache->compiles++; }\n")
+	g.pf("            if ( storing )\n            {\n")
+	g.pf("                cache->slots[cache->used].hash = hash;\n")
+	g.pf("                cache->slots[cache->used].plan = dest;\n")
+	g.pf("                cache->slots[cache->used].count = made;\n")
+	g.pf("                cache->slots[cache->used].guarded = compiled_guarded;\n")
+	g.pf("                cache->slots[cache->used].record_bytes = record_bytes;\n")
+	g.pf("                cache->slots[cache->used].made = 1;\n")
+	g.pf("                cache->used++;\n")
+	g.pf("            }\n")
+	g.pf("            entries = dest;\n            entry_count = made;\n            entry_guarded = compiled_guarded;\n")
+	g.pf("        }\n")
 	g.pf("    }\n")
 	g.pf("    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:\n")
 	g.pf("    // the layout's own rules each refuse under their own name first, so a\n")
@@ -540,10 +566,14 @@ func fixedOpName(op int) string {
 // type table to keep in step with the first. A compiler folds the reload.
 //
 // A fixed record is a positional image, so the ONE read loop moves bytes and
-// asks nothing about what they mean. What a declaration bounds is held HERE,
-// as straight-line code in the generated decode, after the copy — never as plan
-// entries, which would be a test per bounded field on every read of every
-// record and is the cost the identity plan exists to avoid.
+// asks nothing about what they mean. What a declaration bounds is held HERE
+// on the identity path, as straight-line code in the generated decode, after
+// the copy — never as identity-plan entries, which would be a test per bounded
+// field on every read of every record and is the cost the identity plan exists
+// to avoid. A compiled plan emits a clamp op per ranged scalar (not per
+// counted-array slot: live count, slack never). This pass still runs after
+// either plan: identity's only clamp, the compiled path's live-count remainder
+// and ordinals. It is idempotent.
 //
 // THE PASS RUNS OVER STORAGE, so ONE pass covers both plans: the identity plan
 // and a plan compiled from a stranger's layout land values in the same places.
