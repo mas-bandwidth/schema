@@ -356,6 +356,14 @@ type Field struct {
 	// ids are the wire's.
 	JsonKey string
 
+	// Deprecated is the `| deprecated` marker (docs/SPEC-TABLES.md §2.10): the
+	// field is RETIRED IN PLACE. Its slot stays exactly where it is — a fixed
+	// table's record is walked by offset, so removing the field would slide
+	// every field after it — nothing new may name it, and a reader ignores
+	// what it finds there. The marker is one-way: the schema lock refuses to
+	// see it turn off.
+	Deprecated bool
+
 	Array      ArrayKind
 	ArrayBound int64
 	ArrayExpr  Expr  // the declared bound expression, for rendering
