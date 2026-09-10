@@ -667,9 +667,10 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 // lands values in the value itself and there is nothing after the loop; here a
 // value is an object with named fields and the image is a Uint8List, so the
 // projection is a pass of constant-offset loads — the same straight line the
-// packet reader is, minus the bit cursor. Every count and every length it
-// reads was already clamped to this reader's own bound by the plan, so nothing
-// it indexes with can be out of range and nothing here throws.
+// packet reader is, minus the bit cursor. A COUNT the plan already clamped
+// is safe to index with. A TEXT LENGTH the plan copied rather than TEXTed —
+// a counted array of wrapped strings is one COPY — is clamped HERE, over
+// LIVE elements only, so slack never moves a counter and nothing here throws.
 
 func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("/// %s's loads, out of the reader's own image and into the value the\n", st.Name)
@@ -713,11 +714,13 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		g.call(ind, val+"."+name+"Length = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
+		g.emitTextLengthClamp(val+"."+name+"Length", f.Type.Size, ind)
 		g.call(ind, "", val+"."+name+".setRange",
 			[]string{"0", fmt.Sprintf("%d", f.Type.Size), "image", fixedOff(base, at+fixedCountBytes)}, ";")
 	case f.Type.Kind == ir.TWString:
 		g.call(ind, val+"."+name+"Length = ", "view.getInt32",
 			[]string{fixedOff(base, at), "Endian.little"}, ";")
+		g.emitTextLengthClamp(val+"."+name+"Length", f.Type.Size, ind)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, f.Type.Size)
 		g.call(ind+"  ", val+"."+name+"[i] = ", "view.getUint16",
 			[]string{fixedOff(base, at+fixedCountBytes) + " + i * 2", "Endian.little"}, ";")
@@ -725,6 +728,20 @@ func (g *fixedGen) emitDecodeField(f *ir.Field, base string, at int64, val, ind 
 	default:
 		g.emitDecodeElement(f, base, at, val+"."+name, ind)
 	}
+}
+
+// emitTextLengthClamp holds a string/wstring/bytes used-length to [0, cap].
+// A counted array of wrapped strings COPIES the whole run into the image;
+// this is the pass both paths share, and it runs only for the LIVE element
+// decode already selected. Slack never.
+func (g *fixedGen) emitTextLengthClamp(expr string, cap int64, ind string) {
+	g.pf("%sif (%s < 0) {\n", ind, expr)
+	g.pf("%s  %s = 0;\n", ind, expr)
+	g.pf("%s  report.clamped++;\n", ind)
+	g.pf("%s} else if (%s > %d) {\n", ind, expr, cap)
+	g.pf("%s  %s = %d;\n", ind, expr, cap)
+	g.pf("%s  report.clamped++;\n", ind)
+	g.pf("%s}\n", ind)
 }
 
 func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, expr, ind string) {

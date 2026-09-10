@@ -110,6 +110,91 @@ table Probe
 // copies the whole array into the image (enums are a flat run); clamp and
 // ordinal counters live in the projection both paths share, so a loop over
 // ArrayBound would count slack. LIVE elements only, slack never.
+func dumpFn(t *testing.T, src, fn string) string {
+	t.Helper()
+	u := unitFrom(t, src)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var all string
+	for _, b := range files {
+		all += string(b)
+	}
+	i := strings.Index(all, fn)
+	if i < 0 {
+		t.Fatalf("no %s in generated unit:\n%s", fn, all)
+	}
+	body := all[i:]
+	if j := strings.Index(body[1:], "\nvoid "); j >= 0 {
+		body = body[:j+1]
+	}
+	return body
+}
+
+// A COUNTED ARRAY OF WRAPPED string(N)/wstring(N) IS ONE COPY, never a TEXT
+// per bound slot. v1 refuses `[1..4]string(8)` by name ("wrap the element in a
+// type"); the wrap is Item { label string(8); wide wstring(3) }. Identity
+// used to TEXT all four slots, so slack lengths counted. LIVE elements only,
+// slack never: the plan copies the run, decode clamps used-lengths behind
+// itemsCount. Compiled same-size text is a COPY for the same reason.
+func TestCountedStringArrayCopiesWholeRun(t *testing.T) {
+	src := `package probe
+
+table Item
+{
+    label string(8)
+    wide  wstring(3)
+}
+
+table LiveNested
+{
+    items [1..4]Item
+}
+`
+	u := unitFrom(t, src)
+	plan := fixedIdentityPlan(findTable(t, u, "LiveNested"))
+	texts, copies, counts := 0, 0, 0
+	for _, e := range plan {
+		switch e.op {
+		case fixedOpText:
+			texts++
+		case fixedOpCopy:
+			copies++
+		case fixedOpCount:
+			counts++
+		}
+	}
+	if counts != 1 {
+		t.Fatalf("identity plan count entries = %d, want 1 (items)", counts)
+	}
+	if texts != 0 {
+		t.Fatalf("counted array of wrapped strings must COPY the whole run, not TEXT slack: %d text entries", texts)
+	}
+	if copies != 1 {
+		t.Fatalf("identity plan copy entries = %d, want 1 (the four Items as one run)", copies)
+	}
+
+	nested := dumpFn(t, src, "void liveNestedFixedDecode(")
+	if !strings.Contains(nested, "i < value.itemsCount") {
+		t.Fatalf("counted-array decode must walk the live count:\n%s", nested)
+	}
+	if strings.Contains(nested, "i < 4") {
+		t.Fatalf("counted-array decode still walks the declared bound:\n%s", nested)
+	}
+
+	item := dumpFn(t, src, "void itemFixedDecode(")
+	if !strings.Contains(item, "if (value.labelLength < 0)") {
+		t.Fatalf("decode must clamp a live string length, slack never:\n%s", item)
+	}
+	if !strings.Contains(item, "if (value.wideLength < 0)") {
+		t.Fatalf("decode must clamp a live wstring length, slack never:\n%s", item)
+	}
+	if !strings.Contains(fixedRuntime, "SAME-SIZE TEXT IS A COPY") {
+		t.Fatal("compiled same-size string/wstring must COPY, or slack lengths count on that path")
+	}
+}
+
 func TestDecodeCountedArrayWalksLiveCount(t *testing.T) {
 	u := unitFrom(t, `package probe
 

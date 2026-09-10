@@ -1123,6 +1123,14 @@ abstract final class TableFixedCompiler {
         break;
       case 12: // string(N)
       case 33: // wstring(N)
+        // SAME-SIZE TEXT IS A COPY: a counted array of wrapped strings
+        // would otherwise TEXT every bound slot, and slack lengths would
+        // count. The decode both paths share clamps LIVE used-lengths.
+        // A bound that MOVED still needs the text op (min units).
+        if (theirSize == mySize) {
+          push(plan, TableFixedOp.copy, theirAt, at, mySize, 0, guard, arg, 0);
+          break;
+        }
         final units = (mySize - 4) < (theirSize - 4)
             ? (mySize - 4)
             : (theirSize - 4);

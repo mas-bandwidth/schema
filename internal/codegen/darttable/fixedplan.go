@@ -202,15 +202,15 @@ func fixedPlanSub(p *fixedPlanBuild, f *ir.Field, at, guard int64, arg int) {
 }
 
 // fixedFlatElem reports an element whose whole image is one run: nothing in
-// its closure needs the count or the text op, so no byte of it is anything but
-// moved. Every other construct — an enum, a union, an optional, a nested table
-// of plain fields, a fixed array — is byte-identical between the image and the
+// its closure needs a COUNT of its own, so no byte of it is anything but
+// moved. A string/wstring/bytes field's image IS its wire image — the length
+// and the units sit in order — and the TEXT op that clamps a hostile length
+// lives in the decode both paths share, over LIVE elements only. A counted
+// array of wrapped strings is therefore one COPY, never a TEXT per slack slot.
+// Every other construct — an enum, a union, an optional, a nested table of
+// plain fields, a fixed array — is byte-identical between the image and the
 // wire in this backend, because the image IS the wire's layout.
 func fixedFlatElem(f *ir.Field) bool {
-	switch f.Type.Kind {
-	case ir.TString, ir.TWString, ir.TBytes:
-		return false
-	}
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
