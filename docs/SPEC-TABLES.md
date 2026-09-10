@@ -402,10 +402,31 @@ their own `<Name>Row` structs, as they are in C#, because SPEC §6.1's Rust
 storage column spells `string(N)` as `[u8; N]` where the layout model spells
 `char[N + 1]`; the layout contract is asserted over them AT COMPILE TIME, with
 const asserts over `core::mem::offset_of!`, where C++ has `static_assert` and
-C# has a check run at type initialization. A UNION in a cooked record is a
-named follow-on there for the same reason it is absent from the block form: a
-Rust union is a real enum with no committed payload layout, and the
-`#[repr(C)] union` twin is a pass of its own.
+C# has a check run at type initialization. A UNION in one of those records is
+the `#[repr(C)]` TWIN — `<Name>Row`, a tag at offset zero at its own storage
+width beside `<Name>RowArms`, a `#[repr(C)] union` of the arms — because a
+Rust union on the packet wire is a real enum with no committed payload layout
+and the Row family needs one that has: the twin IS ir.UnionLayout, the same
+model the C++ reference's storage struct meets, and the const asserts hold
+this build to it arm by arm. Rust says out loud what the C reference leaves
+unsaid: READING an arm is `unsafe` and every such read is guarded by the tag,
+while WRITING one is safe. THE TAG AND THE OVERLAY ARE THE CRATE'S AND NOT THE
+CALLER'S, for exactly that reason: a public tag beside a public overlay, with
+safe functions reading the arm the tag names, is undefined behaviour with no
+`unsafe` anywhere near the caller — nothing would stop the tag moving without
+its arm, and the next safe read would build a `bool` out of a byte that is
+neither 0 nor 1. The public surface is a CHECKED ACCESSOR PAIR per arm —
+`x() -> Option<XRow>` hands the arm back only when the tag names it, and
+`set_x()` is the only way the tag moves at all — so tag and arm cannot
+disagree, and the generated codecs inside the crate still read the overlay
+under `unsafe` guarded by the tag they just matched, exactly as the C
+reference's `switch` is. What is still a named follow-on is narrower than
+the twin was: an arm whose storage needs a COMPANION beside it — text, or an
+array with its count — is two pieces in one slot of the overlay that C++
+spells as an unnamed struct and no port lays out (§3.4 refuses those arms
+outright), and a union's reflective COOK DESCRIPTOR, whose fields would
+overlap, which is why a union-reaching record has a Row and a fixed form but
+no `<Name>Cook`.
 
 And the THIRD: **the two accelerators are cargo features**, both on by
 default. §19's rule is that the block form costs nothing unless you reach for
@@ -5915,6 +5936,15 @@ and not §19's block form, neither of which this section touches.
 
 **FORM BYTE `3` IS THE FIXED FORM.** Form bytes `1` and `2` do not move, and
 nothing in this subsection touches a file of §3 or a batch of §3.3.
+
+**AND THE ALGORITHM EVERY PORT IMPLEMENTS FROM IS
+[`docs/FIXED-FORM-ALGORITHM.md`](FIXED-FORM-ALGORITHM.md).** This section states
+the wire and its reasons; that page states the same wire as STEPS, in one
+language-neutral notation, with each piece's invariants, refusal names and §4
+counters beside it — because nine ports written from prose and a C++ reference
+came out nine ways, and the ones that copied the reference inherited its
+accidents as law. **Where the two disagree THIS SECTION IS THE LAW**, except at
+that page's footnoted rulings, which name the reference fixes still landing.
 
 ---
 
