@@ -412,20 +412,59 @@ fn the_negative_controls(dir: &str) {
         );
     }
 
-    // 3. A FORM BYTE THIS BUILD DOES NOT CARRY is `newer_form`.
+    // 3. A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE, AND
+    //    THE NAME SAYS WHICH DIRECTION (docs/SPEC-TABLES.md §3, §3.4). The registry
+    //    is ordered, so a fixed reader handed form `1` has been handed the
+    //    VARIABLE form, which is OLDER: calling that `newer_form` would send a
+    //    caller looking for a build that does not exist. Form `4` is the byte no
+    //    form defines or reserves, which is the only kind of byte `newer_form` is
+    //    the honest answer for.
     {
-        let mut future = slurp(dir, "fx1.bin");
-        future[0] = 4;
-        let mut values = [tblfx1::FxRootRow::default(); 8];
-        let mut plan = [tblfx1::TableFixedEntry::default(); 512];
-        let mut remap = [0u16; 512];
-        let mut report = tblfx1::TableFixedReport::default();
-        let n = tblfx1::fx_root_fixed_load(&mut values, &future, &mut plan, &mut remap, &mut report);
-        check(n.is_none(), "newer_form: refused");
-        check(
-            report.reason == tblfx1::TableFixedReason::NewerForm,
-            "newer_form: refused BY NAME",
-        );
+        let rows: [(u8, tblfx1::TableFixedReason, &str); 3] = [
+            (
+                1,
+                tblfx1::TableFixedReason::PreviousForm,
+                "previous_form for the VARIABLE form",
+            ),
+            (
+                2,
+                tblfx1::TableFixedReason::MessageFormAsFile,
+                "message_form_as_file for a batch",
+            ),
+            (
+                4,
+                tblfx1::TableFixedReason::NewerForm,
+                "newer_form for a byte no form defines",
+            ),
+        ];
+        for (form, want, what) in rows {
+            let mut other = slurp(dir, "fx1.bin");
+            other[0] = form;
+            let mut values = [tblfx1::FxRootRow::default(); 8];
+            let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+            let mut remap = [0u16; 512];
+            let mut report = tblfx1::TableFixedReport::default();
+            let n = tblfx1::fx_root_fixed_load(
+                &mut values,
+                &other,
+                &mut plan,
+                &mut remap,
+                &mut report,
+            );
+            check(n.is_none(), what);
+            check(
+                report.refused && report.reason == want,
+                &format!("REFUSED BY NAME: {what}"),
+            );
+            check(!report.malformed, "REFUSED BY NAME: never damage");
+            check(
+                report.unknown == 0
+                    && report.kind_mismatch == 0
+                    && report.widened == 0
+                    && report.clamped == 0,
+                "REFUSED BY NAME: a form-byte refusal moves no counter",
+            );
+        }
     }
 
     // 4. A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE is `plan_too_large`:

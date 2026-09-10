@@ -331,6 +331,9 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		"CONFIG_FIXED_HASH", "CONFIG_FIXED_BLOCK", "CONFIG_FIXED_DEFAULTS",
 		"CONFIG_FIXED_PLAN", "config_fixed_save", "config_fixed_load",
 		"config_fixed_write_body", "config_fixed_scatter",
+		"TableFixedReason::PreviousForm",
+		"TableFixedReason::MessageFormAsFile",
+		"TableFixedReason::NewerForm",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the fixed form's surface is missing %s", want)

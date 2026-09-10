@@ -316,8 +316,15 @@ pub fn fixed_table_fixed_load(
         report.malformed = true;
         return None;
     }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
     if data[0] != TABLE_FIXED_FORM {
-        return report.refuse(TableFixedReason::NewerForm);
+        return report.refuse(match data[0] {
+            1 => TableFixedReason::PreviousForm,      // the VARIABLE form, which is older
+            2 => TableFixedReason::MessageFormAsFile, // a batch where a FILE was expected
+            _ => TableFixedReason::NewerForm,         // a byte no form defines
+        });
     }
     let block_bytes = u32::from_le_bytes(
         data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]

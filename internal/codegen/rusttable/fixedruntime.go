@@ -28,7 +28,8 @@ const fixedRuntimeBody = `//
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 
-/// The form byte. Forms 1 and 2 do not move and nothing here touches them.
+/// The form byte. Forms 1 and 2 do not move; a byte that is not this one is
+/// refused by name, and the name says which direction (§3, §3.4).
 pub const TABLE_FIXED_FORM: u8 = 3;
 
 /// THE PINNED FILE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3,
@@ -142,8 +143,18 @@ impl Default for TableFixedEntry {
 pub enum TableFixedReason {
     #[default]
     None,
-    /// a form byte this build does not carry
+    /// a FORM BYTE this reader does not carry (§3) — a byte no form defines
     NewerForm,
+    /// A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
+    /// registry is ordered, so a reader meeting a byte it does not carry can
+    /// say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
+    /// form, which is older, and calling that NewerForm would send a caller
+    /// looking for a build that does not exist. The bytes are the same refusal
+    /// either way — nothing decoded, no counter moved — and only the name of it
+    /// differs.
+    PreviousForm,
+    /// a form 2 wire where a FILE was expected: its table is somewhere else
+    MessageFormAsFile,
     /// a record whose hash names no block this reader holds
     NoBlock,
     /// bytes handed to this form as a block that are not one
