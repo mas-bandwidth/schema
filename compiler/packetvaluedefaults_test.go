@@ -103,6 +103,26 @@ type Loose
 			u := unitFromSource(t, src)
 			for _, target := range []string{"rust", "java", "js", "dart", "elixir"} {
 				_, err := New().Generate(u, target, Options{})
+				// JAVA'S REFUSAL IS FORM 1's ALONE (compiler/valuedefaults.go,
+				// fixedFormOnlyClosure): a Badge only a FIXED-FORM root reaches
+				// is carried by the Java fixed form, which elides nothing. The
+				// edges that make the root VARIABLE — a pointer and the two
+				// maps — keep this refusal for Java, and a union whose arm is
+				// an ARRAY is one the Java fixed form does not lay out, so it
+				// is refused under the union's own name.
+				if target == "java" {
+					switch tc.name {
+					case "direct", "nested_type", "fixed_array", "counted_array", "union_arm":
+						if err != nil {
+							t.Fatalf("java: a fixed-form-only table closure's defaults refused: %v", err)
+						}
+					default:
+						if err == nil {
+							t.Fatal("java: a variable table's defaults accepted")
+						}
+					}
+					continue
+				}
 				if err == nil {
 					t.Fatal("table-closure defaults accepted without table reset and elision support")
 				}

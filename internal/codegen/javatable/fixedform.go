@@ -902,6 +902,8 @@ func (g *fixedGen) emitWriteField(f *ir.Field, off int64, buf, at, val string, i
 		g.pf("%sTableFixed.put8(%s, %s + %d, %s.%sPresent ? 1 : 0);\n", ind, buf, at, off, val, javaName(f.Name))
 		g.pf("%sif (%s.%sPresent) {\n", ind, val, javaName(f.Name))
 		g.emitWritePayload(f, off+fixedPresentBytes, buf, at, val, indent+4)
+		g.pf("%s} else {\n", ind)
+		g.pf("%s    java.util.Arrays.fill(%s, %s + %d, %s + %d, (byte) 0);\n", ind, buf, at, off+fixedPresentBytes, at, off+fixedFieldBytes(f))
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -922,15 +924,20 @@ func (g *fixedGen) emitWritePayload(f *ir.Field, base int64, buf, at, val string
 		g.pf("%sTableFixed.put32(%s, %s + %d, %s.%sCount);\n", ind, buf, at, base, val, name)
 		g.emitWriteLoop(f, base+fixedCountBytes, f.ArrayBound, buf, at, val+"."+name, indent)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		// TEXT WRITES ITS LENGTH UNITS onto the zeroed template: the slack past
-		// the used bytes is already zero and the writer never touches it.
+		// TEXT WRITES ITS LENGTH UNITS AND ZEROES ITS SLACK: the bytes past the
+		// used length are the reference's zeros, and this is the one store
+		// that puts them there — the writer lays no whole-record template down.
 		g.pf("%sTableFixed.put32(%s, %s + %d, %s.%sLength);\n", ind, buf, at, base, val, name)
 		g.pf("%sSystem.arraycopy(%s.%s, 0, %s, %s + %d, %s.%sLength);\n", ind, val, name, buf, at, base+4, val, name)
+		g.pf("%sjava.util.Arrays.fill(%s, %s + %d + %s.%sLength, %s + %d, (byte) 0);\n",
+			ind, buf, at, base+4, val, name, at, base+4+f.Type.Size)
 	case f.Type.Kind == ir.TWString:
 		g.pf("%sTableFixed.put32(%s, %s + %d, %s.%sLength);\n", ind, buf, at, base, val, name)
 		g.pf("%sfor (int i = 0; i < %s.%sLength; i++) {\n", ind, val, name)
 		g.pf("%s    TableFixed.put16(%s, %s + %d + i * 2, %s.%s[i]);\n", ind, buf, at, base+4, val, name)
 		g.pf("%s}\n", ind)
+		g.pf("%sjava.util.Arrays.fill(%s, %s + %d + %s.%sLength * 2, %s + %d, (byte) 0);\n",
+			ind, buf, at, base+4, val, name, at, base+4+2*f.Type.Size)
 	default:
 		g.emitWriteElement(f, base, buf, at, val+"."+name, indent)
 	}
@@ -955,7 +962,7 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, off int64, buf, at, expr string
 			g.pf("%s%s.writeBody(%s, %s + %d, %s);\n", ind, fixedClass(r.Name), buf, at, off, expr)
 			return
 		case *ir.Enum:
-			g.pf("%sTableFixed.putUint(%s, %s + %d, %s, %d);\n", ind, buf, at, off, fixedWiden(expr, fixedIntType(r.StorageBits)), r.StorageBits/8)
+			g.pf("%s%s;\n", ind, fixedStore(buf, at, off, int64(r.StorageBits/8), expr, fixedIntType(r.StorageBits)))
 			return
 		case *ir.Flags:
 			g.pf("%sTableFixed.put64(%s, %s + %d, %s);\n", ind, buf, at, off, expr)
@@ -977,23 +984,78 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, off int64, buf, at, expr string
 			g.pf("%sTableFixed.put64(%s, %s + %d, %s.hi);\n", ind, buf, at, off+8, expr)
 			return
 		}
-		g.pf("%sTableFixed.putUint(%s, %s + %d, %s, %d);\n", ind, buf, at, off, fixedWiden(expr, fixedScalarType(f.Type)), w)
+		g.pf("%s%s;\n", ind, fixedStore(buf, at, off, w, expr, fixedScalarType(f.Type)))
 	}
 }
 
-// fixedWiden masks a narrow signed storage type up to the `long` the store
-// takes, which is the packet codec's rule: unsigned values ride bit-transparent
-// in the same-width signed type, so the mask goes on after the widening.
-func fixedWiden(expr, typ string) string {
-	switch typ {
-	case "byte":
-		return "(" + expr + ") & 0xffL"
-	case "short":
-		return "(" + expr + ") & 0xffffL"
-	case "int":
-		return "(" + expr + ") & 0xffffffffL"
+// fixedStore is ONE store at a declared width, and it is the packet codec's
+// own primitive AT THAT WIDTH — put8, put16, put32 or put64 — with no switch
+// on the width anywhere near the hot path: the width is the compiler's
+// constant, so the store is chosen here and not at run time. The storage type
+// is the same-width signed type (the packet rule), so the value rides
+// bit-transparent: a narrow type widens to the store's `int` by Java's own
+// rule and the store keeps exactly its low bytes.
+func fixedStore(buf, at string, off, w int64, expr, typ string) string {
+	switch w {
+	case 1:
+		return fmt.Sprintf("TableFixed.put8(%s, %s + %d, %s)", buf, at, off, fixedToInt(expr, typ))
+	case 2:
+		return fmt.Sprintf("TableFixed.put16(%s, %s + %d, %s)", buf, at, off, fixedToInt(expr, typ))
+	case 4:
+		return fmt.Sprintf("TableFixed.put32(%s, %s + %d, %s)", buf, at, off, fixedToInt(expr, typ))
+	}
+	return fmt.Sprintf("TableFixed.put64(%s, %s + %d, %s)", buf, at, off, expr)
+}
+
+// fixedToInt narrows a `long` storage type to the `int` a sub-word store
+// takes; every narrower storage type widens to `int` on its own.
+func fixedToInt(expr, typ string) string {
+	if typ == "long" {
+		return "(int) (" + expr + ")"
 	}
 	return expr
+}
+
+// fixedLoad is ONE load at a declared width, as a `long`-valued expression
+// (an `int` one at four bytes and below): the packet codec's own primitive at
+// that width, sign-extended when the kind is two's complement and masked when
+// it is not, and again no switch on the width at run time.
+func fixedLoad(buf, at string, off, w int64, signed bool) string {
+	switch w {
+	case 1:
+		if signed {
+			return fmt.Sprintf("%s[%s + %d]", buf, at, off)
+		}
+		return fmt.Sprintf("(%s[%s + %d] & 0xFF)", buf, at, off)
+	case 2:
+		if signed {
+			return fmt.Sprintf("(short) TableFixed.get16(%s, %s + %d)", buf, at, off)
+		}
+		return fmt.Sprintf("TableFixed.get16(%s, %s + %d)", buf, at, off)
+	case 4:
+		if signed {
+			return fmt.Sprintf("TableFixed.get32(%s, %s + %d)", buf, at, off)
+		}
+		return fmt.Sprintf("(TableFixed.get32(%s, %s + %d) & 0xFFFFFFFFL)", buf, at, off)
+	}
+	return fmt.Sprintf("TableFixed.get64(%s, %s + %d)", buf, at, off)
+}
+
+// fixedLoadAs is the load landed in its storage type. Storage and wire share a
+// width (the same-width signed type is the storage rule), so the load IS the
+// value and the only cast is the one Java's own type rules require.
+func fixedLoadAs(buf, at string, off, w int64, signed bool, typ string) string {
+	switch {
+	case typ == "byte" && w == 1:
+		return fmt.Sprintf("%s[%s + %d]", buf, at, off)
+	case typ == "short" && w == 2:
+		return fmt.Sprintf("(short) TableFixed.get16(%s, %s + %d)", buf, at, off)
+	case typ == "int" && w == 4:
+		return fmt.Sprintf("TableFixed.get32(%s, %s + %d)", buf, at, off)
+	case typ == "long" && w == 8:
+		return fmt.Sprintf("TableFixed.get64(%s, %s + %d)", buf, at, off)
+	}
+	return fixedNarrow(typ, fixedLoad(buf, at, off, w, signed))
 }
 
 // ---- the reader's straight line -------------------------------------------
@@ -1086,7 +1148,7 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			// op lands (§3.4's one read): the ordinal is the variant's
 			// POSITION, so a value past the last one names nothing here.
 			g.pf("%s{\n", ind)
-			g.pf("%s    long q = TableFixed.getUint(%s, %s + %d, %d);\n", ind, buf, at, off, r.StorageBits/8)
+			g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, int64(r.StorageBits/8), false))
 			g.pf("%s    if (q > %dL) { q = 0L; %s.clamped++; }\n", ind, len(r.Variants), rep)
 			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
 			g.pf("%s}\n", ind)
@@ -1119,24 +1181,21 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 		return
 	}
 	typ := fixedScalarType(f.Type)
-	raw := fmt.Sprintf("TableFixed.getUint(%s, %s + %d, %d)", buf, at, off, w)
-	if f.Type.Signed || f.Type.Kind == ir.TFixed && f.Type.Signed {
-		raw = fmt.Sprintf("TableFixed.getInt(%s, %s + %d, %d)", buf, at, off, w)
-	}
 	// A RANGED INTEGER CLAMPS ON LOAD AND COUNTS (docs/SPEC-TABLES.md §3.4's
 	// constant-size table, §4): the bounds do not ride, so a peer that widened
 	// them lands a value this reader does not admit and the reader cuts it to
-	// its own.
+	// its own. It is straight-line code in the identity decode, as the packet
+	// reader's own range check is.
 	if lo, hi, ok := fixedIntRange(owner); ok && typ != "Int128" && typ != "UInt128" {
 		g.pf("%s{\n", ind)
-		g.pf("%s    long q = %s;\n", ind, raw)
+		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
 		g.pf("%s    if (q < %sL) { q = %sL; %s.clamped++; } else if (q > %sL) { q = %sL; %s.clamped++; }\n",
 			ind, lo, lo, rep, hi, hi, rep)
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
 		return
 	}
-	g.pf("%s%s = %s;\n", ind, expr, fixedNarrow(typ, raw))
+	g.pf("%s%s = %s;\n", ind, expr, fixedLoadAs(buf, at, off, w, f.Type.Signed, typ))
 }
 
 // fixedIntRange answers a plain integer field's declared bounds as Java `long`
@@ -1217,9 +1276,11 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	}
 	g.pf("    }\n\n")
 
-	g.pf("    /** the tag, then the SELECTED arm; the template's zeros are the slack. */\n")
+	g.pf("    /** the tag, then the SELECTED arm; THE SLACK BEHIND IT IS ZEROED HERE — the\n")
+	g.pf("     *  writer lays no template down, so every byte an arm does not store is\n")
+	g.pf("     *  one this store zeroes, and None zeroes the whole of it. */\n")
 	g.pf("    public static void writeBody(byte[] b, int at, Value v) {\n")
-	g.pf("        TableFixed.putUint(b, at, v.type, tagBytes);\n")
+	g.pf("        %s;\n", fixedStore("b", "at", 0, tag, "v.type", "int"))
 	g.pf("        switch (v.type) {\n")
 	for i, v := range un.Variants {
 		if v.F == nil {
@@ -1227,14 +1288,26 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 		}
 		g.pf("            case %d: {\n", i+1)
 		g.emitWriteElement(v.F, 0, "b", fmt.Sprintf("at + %d", tag), "v."+javaName(v.F.Name), 16)
+		if arm := fixedFieldBytes(v.F); arm < widest {
+			g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag+arm, tag+widest)
+		}
 		g.pf("                break;\n            }\n")
 	}
-	g.pf("            default: break;\n")
+	g.pf("            default: {\n")
+	g.pf("                java.util.Arrays.fill(b, at + %d, at + %d, (byte) 0);\n", tag, tag+widest)
+	g.pf("                break;\n            }\n")
 	g.pf("        }\n    }\n\n")
 
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
-	g.pf("        v.type = (int) TableFixed.getUint(b, at, tagBytes);\n")
+	switch tag {
+	case 4:
+		g.pf("        v.type = TableFixed.get32(b, at + 0);\n")
+	case 8:
+		g.pf("        v.type = (int) TableFixed.get64(b, at + 0);\n")
+	default:
+		g.pf("        v.type = %s;\n", fixedLoad("b", "at", 0, tag, false))
+	}
 	g.pf("        // A TAG PAST THE LAST ARM LANDS None AND COUNTS ONE CLAMPED: it\n")
 	g.pf("        // is a value this reader's own storage does not admit, and\n")
 	g.pf("        // landing it raw would hand a caller a `type` that names no arm\n")
@@ -1315,10 +1388,14 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        return headerBytes + count * recordBytes;\n")
 	g.pf("    }\n\n")
 
-	g.pf("    /** THE WRITE: the header once, then per record the hash, the template's\n")
-	g.pf("     *  zeros and a straight line of stores. There is no measuring pass, no id\n")
-	g.pf("     *  interning, no trailer and no second walk. Answers the bytes written,\n")
-	g.pf("     *  or -1 when the caller's buffer cannot hold them. */\n")
+	g.pf("    /** THE WRITE: the header once, then per record the hash and a straight\n")
+	g.pf("     *  line of stores at constant offsets. EVERY BYTE OF THE BODY IS STORED —\n")
+	g.pf("     *  a value's own bytes where it has them and the reference's zeros where\n")
+	g.pf("     *  it does not (text slack, a narrower union arm's, an absent optional's\n")
+	g.pf("     *  payload) — so no template is laid down first and the record is\n")
+	g.pf("     *  written once. There is no measuring pass, no id interning, no trailer\n")
+	g.pf("     *  and no second walk. Answers the bytes written, or -1 when the\n")
+	g.pf("     *  caller's buffer cannot hold them. */\n")
 	g.pf("    public static int save(Value[] values, int count, byte[] buffer) {\n")
 	g.pf("        if (values == null || buffer == null || count < 0 || count > values.length) { return -1; }\n")
 	g.pf("        final int need = measure(count);\n")
@@ -1326,7 +1403,6 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        int at = writeHeader(buffer);\n")
 	g.pf("        for (int k = 0; k < count; k++) {\n")
 	g.pf("            TableFixed.put64(buffer, at, hash);\n")
-	g.pf("            java.util.Arrays.fill(buffer, at + 8, at + recordBytes, (byte) 0); // the template's zeros\n")
 	g.pf("            writeBody(buffer, at + 8, values[k]);\n")
 	g.pf("            at += recordBytes;\n")
 	g.pf("        }\n")
@@ -1335,7 +1411,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 
 	g.pf("    // THE IDENTITY PLAN, and it is a CONSTANT of this reader: in the image\n")
 	g.pf("    // domain the declared order IS the destination's, so §3.4's coalescing\n")
-	g.pf("    // takes the whole body to ONE move. Published by class initialization.\n")
+	g.pf("    // takes the whole body to ONE move. It is stated here because §3.4\n")
+	g.pf("    // states it, and it is what a caller running the plan loop by hand over\n")
+	g.pf("    // this build's own records is handed; the reader's own identity path\n")
+	g.pf("    // (loadOwn) never walks it, because the one move it holds is the body\n")
+	g.pf("    // onto itself. Published by class initialization.\n")
 	g.pf("    private static final class Identity {\n")
 	g.pf("        static final TableFixed.Entry[] plan = build();\n\n")
 	g.pf("        private static TableFixed.Entry[] build() {\n")
@@ -1351,15 +1431,22 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    /** a scratch image of one record body, allocated ONCE by the caller. */\n")
 	g.pf("    public static byte[] image() { return new byte[bodyBytes]; }\n\n")
 
-	g.pf("    /** THE READ: a prefill and ONE loop over ONE plan — the identity plan\n")
-	g.pf("     *  when the layout's hash is this build's own, and a plan compiled once\n")
-	g.pf("     *  from the writer's own layout otherwise. Same loop, same scatter, same\n")
-	g.pf("     *  cost either way (§3.4). Answers the records read, or -1.\n")
+	g.pf("    /** THE READ, and it is TWO METHODS BEHIND ONE DOOR: the hash decides\n")
+	g.pf("     *  which. A record under this build's OWN hash is this reader's own\n")
+	g.pf("     *  body, so it is decoded the way the packet reader decodes — straight-\n")
+	g.pf("     *  line loads at constant offsets from the record's own bytes into the\n")
+	g.pf("     *  value, with no prefill, no plan, no image and no copy (loadOwn).\n")
+	g.pf("     *  Anybody else's is a prefill and ONE loop over a plan compiled once\n")
+	g.pf("     *  from the writer's own layout, landed through the SAME scatter\n")
+	g.pf("     *  (loadCompiled). Same checks on both — every count, length, ordinal\n")
+	g.pf("     *  and ranged value is held to this reader's own bound — and the\n")
+	g.pf("     *  compiled path is its own method so the identity path stays small\n")
+	g.pf("     *  enough to compile as one body. Answers the records read, or -1.\n")
 	g.pf("     *\n")
 	g.pf("     *  NOTHING PER RECORD ALLOCATES, which is the claim the batch loop\n")
 	g.pf("     *  rests on: EVERY BUFFER IS THE CALLER'S — the plan, the ordinal\n")
-	g.pf("     *  remap scratch and the record image — and the loop below only\n")
-	g.pf("     *  fills them. What this DOES make is a fixed handful of cursors,\n")
+	g.pf("     *  remap scratch and the record image — and the loops below only\n")
+	g.pf("     *  fill them. What this DOES make is a fixed handful of cursors,\n")
 	g.pf("     *  once per call: the header below, and on the compiled path the two\n")
 	g.pf("     *  Layout views (a byte[] reference and two ints each, over the\n")
 	g.pf("     *  caller's own bytes) that TableFixed.parse returns. None escapes\n")
@@ -1369,46 +1456,71 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("                           TableFixed.Report report) {\n")
 	g.pf("        final TableFixed.Header head = new TableFixed.Header();\n")
 	g.pf("        if (!TableFixed.readHeader(data, head, report)) { return -1; }\n")
-	g.pf("        TableFixed.Entry[] entries;\n")
-	g.pf("        int entryCount;\n")
-	g.pf("        long recordSize = recordBytes;\n")
-	g.pf("        if (head.hash == hash) {\n")
-	g.pf("            entries = identityPlan();\n")
-	g.pf("            entryCount = 1;\n")
-	g.pf("        } else {\n")
-	g.pf("            // ANOTHER WRITER: the same loop, over a plan compiled from its\n")
-	g.pf("            // layout. THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS\n")
-	g.pf("            // TOUCHED, and every rule it fails refuses under ITS OWN NAME.\n")
-	g.pf("            final TableFixed.Layout theirs = TableFixed.parse(data, head.layoutAt, head.layoutLength, report);\n")
-	g.pf("            if (theirs == null) { return -1; }\n")
-	g.pf("            final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);\n")
-	g.pf("            if (mine == null) { return -1; }\n")
-	g.pf("            final int made = TableFixed.compile(theirs, mine, counted, plan, remap, report);\n")
-	g.pf("            if (made < 0) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }\n")
-	g.pf("            entries = plan;\n")
-	g.pf("            entryCount = made;\n")
-	g.pf("            recordSize = 8 + theirs.size(0);\n")
-	g.pf("        }\n")
-	g.pf("        // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the\n")
-	g.pf("        // three: the layout's own rules each refuse under their own name\n")
-	g.pf("        // first, so a broken layout is never reported as a lying header (§3).\n")
+	g.pf("        if (head.hash == hash) { return loadOwn(values, count, data, head, report); }\n")
+	g.pf("        return loadCompiled(values, count, data, head, plan, remap, image, report);\n")
+	g.pf("    }\n\n")
+
+	g.pf("    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the\n")
+	g.pf("    // three: the layout's own rules each refuse under their own name\n")
+	g.pf("    // first, so a broken layout is never reported as a lying header (§3).\n")
+	g.pf("    // Then the records: a whole number of them at the writer's own size,\n")
+	g.pf("    // and no more than the caller has room for. Answers how many, or -1.\n")
+	g.pf("    private static int records(Value[] values, int count, byte[] data, TableFixed.Header head,\n")
+	g.pf("                               long recordSize, TableFixed.Report report) {\n")
 	g.pf("        if (head.declaredHash != head.hash) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
 	g.pf("        final long rest = data.length - head.recordsAt;\n")
 	g.pf("        if (recordSize <= 8 || rest %% recordSize != 0) { report.malformed = true; return -1; }\n")
 	g.pf("        final long n = rest / recordSize;\n")
 	g.pf("        if (n > count || n > values.length) { report.refuse(TableFixed.Reason.batchTooLarge); return -1; }\n")
+	g.pf("        return (int) n;\n")
+	g.pf("    }\n\n")
+
+	g.pf("    // THE IDENTITY PATH: this build's own layout, so the record body IS this\n")
+	g.pf("    // reader's image and the scatter reads it in place. No prefill — every\n")
+	g.pf("    // field of the body is one this reader declares, so every byte lands —\n")
+	g.pf("    // and no plan, because the one entry the identity plan would hold is a\n")
+	g.pf("    // copy of the whole body onto itself. This is the packet reader's shape.\n")
+	g.pf("    private static int loadOwn(Value[] values, int count, byte[] data, TableFixed.Header head,\n")
+	g.pf("                               TableFixed.Report report) {\n")
+	g.pf("        final int n = records(values, count, data, head, recordBytes, report);\n")
+	g.pf("        if (n < 0) { return -1; }\n")
 	g.pf("        int at = head.recordsAt;\n")
-	g.pf("        final int bodySize = (int) (recordSize - 8);\n")
-	g.pf("        for (int k = 0; k < (int) n; k++) {\n")
+	g.pf("        for (int k = 0; k < n; k++) {\n")
 	g.pf("            // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A\n")
 	g.pf("            // REFUSAL BY NAME, never a guess and never damage.\n")
+	g.pf("            if (TableFixed.get64(data, at) != hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
+	g.pf("            scatter(data, at + 8, values[k], report);\n")
+	g.pf("            at += recordBytes;\n")
+	g.pf("        }\n")
+	g.pf("        return n;\n")
+	g.pf("    }\n\n")
+
+	g.pf("    // ANOTHER WRITER: a prefill and one loop over a plan compiled from its\n")
+	g.pf("    // layout, then the same scatter over the image. THE LAYOUT IS VALIDATED\n")
+	g.pf("    // BEFORE A SINGLE RECORD BYTE IS TOUCHED, and every rule it fails\n")
+	g.pf("    // refuses under ITS OWN NAME.\n")
+	g.pf("    private static int loadCompiled(Value[] values, int count, byte[] data, TableFixed.Header head,\n")
+	g.pf("                                    TableFixed.Entry[] plan, short[] remap, byte[] image,\n")
+	g.pf("                                    TableFixed.Report report) {\n")
+	g.pf("        final TableFixed.Layout theirs = TableFixed.parse(data, head.layoutAt, head.layoutLength, report);\n")
+	g.pf("        if (theirs == null) { return -1; }\n")
+	g.pf("        final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);\n")
+	g.pf("        if (mine == null) { return -1; }\n")
+	g.pf("        final int made = TableFixed.compile(theirs, mine, counted, plan, remap, report);\n")
+	g.pf("        if (made < 0) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }\n")
+	g.pf("        final long recordSize = 8 + theirs.size(0);\n")
+	g.pf("        final int n = records(values, count, data, head, recordSize, report);\n")
+	g.pf("        if (n < 0) { return -1; }\n")
+	g.pf("        int at = head.recordsAt;\n")
+	g.pf("        final int bodySize = (int) (recordSize - 8);\n")
+	g.pf("        for (int k = 0; k < n; k++) {\n")
 	g.pf("            if (TableFixed.get64(data, at) != head.hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
 	g.pf("            System.arraycopy(defaults, 0, image, 0, bodyBytes); // the declared defaults, one prefill\n")
-	g.pf("            TableFixed.run(entries, entryCount, remap, data, at + 8, bodySize, image, report);\n")
+	g.pf("            TableFixed.run(plan, made, remap, data, at + 8, bodySize, image, report);\n")
 	g.pf("            scatter(image, 0, values[k], report);\n")
 	g.pf("            at += bodySize + 8;\n")
 	g.pf("        }\n")
-	g.pf("        return (int) n;\n")
+	g.pf("        return n;\n")
 	g.pf("    }\n")
 }
 
