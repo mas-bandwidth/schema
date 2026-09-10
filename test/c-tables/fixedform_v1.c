@@ -44,7 +44,7 @@ void fixed_v1_bounds( void )
     fixed_check( n == cfg_fixed_measure( 1 ), "C bounds: V1 save" );
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( cfg_fixed_load( &back, 1, file, n, plan, 8192, &r ) == 1,
+    fixed_check( cfg_fixed_load( &back, 1, file, n, plan, 8192, NULL, &r ) == 1,
                  "C bounds: the enum record reads" );
     fixed_check( back.grade == GRADE_NONE, "C ORDINAL: an ordinal past the enum's top value lands None" );
     fixed_check( r.clamped == 1, "C ORDINAL: and counts as a clamp" );

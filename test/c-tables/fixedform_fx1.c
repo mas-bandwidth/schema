@@ -94,7 +94,7 @@ void fixed_fx1_slack( void )
                  "C NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
 
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, &r );
+    n = fx_root_fixed_load( &back, 1, file, need, plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "C slack: the record reads" );
     fixed_check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
                  "C slack: the used length reads, and the buffer terminates at it" );
@@ -121,7 +121,7 @@ void fixed_fx1_read_own( const uint8_t * data, int64_t bytes )
     TableReport r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
+    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "same schema: one record" );
     fixed_check( back.keep == 4242u && back.narrow == 40000u && back.renamed == 321 && back.gone == 654,
                  "same schema: the scalars" );
@@ -141,7 +141,7 @@ void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes )
     TableReport r;
     int64_t n;
     memset( &r, 0, sizeof( r ) );
-    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r );
+    n = fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r );
     fixed_check( n == 1, "newer writer: one record" );
     fixed_check( back.keep == 5150u, "newer writer: an unmoved field lands past the unknowns" );
     fixed_check( back.renamed == 808, "newer writer: `was =` reads the other way too" );
@@ -183,7 +183,7 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
     const uint8_t * body;
 
     memset( &r, 0, sizeof( r ) );
-    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, &r ) == 1,
+    fixed_check( fx_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C bounds: the record reads" );
     fixed_check( back.renamed == 1000, "C RANGE: a value past max lands at max" );
     fixed_check( back.gone == 0, "C RANGE: a value under min lands at min" );
@@ -242,7 +242,7 @@ void fixed_fx1_text_content( void )
         fixed_check( n == fx_root_fixed_measure( 1 ), "C text content: the record saves" );
 
         memset( &r, 0, sizeof( r ) );
-        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, &r ) == 1,
+        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
                      "C text content: the record reads" );
         fixed_check( r.malformed, cases[k].what );
         fixed_check( back.label_length == 2 && strcmp( back.label, "fx" ) == 0,
@@ -279,7 +279,7 @@ void fixed_fx1_text_content( void )
         v.label_length = 5;
         n = fx_root_fixed_save( &v, 1, file, (int64_t) sizeof( file ) );
         memset( &r, 0, sizeof( r ) );
-        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, &r ) == 1,
+        fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
                      "C text content: the well-formed record reads" );
         fixed_check( back.label_length == 5 && memcmp( back.label, "\xC3\xA9t\xC3\xA9", 5 ) == 0,
                      "C TEXT CONTENT: well-formed multi-byte UTF-8 rides whole" );
