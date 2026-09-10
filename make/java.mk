@@ -84,7 +84,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema
+build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit: its cook readers are the reason it is here — the two
@@ -101,6 +101,10 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	# plan compiled from the other side's layout.
 	./bin/schema generate --lang java --out build/tables-generated-java/fx1 test/tables/FX1.schema
 	./bin/schema generate --lang java --out build/tables-generated-java/fx2 test/tables/FX2.schema
+	# TEXT AND AN ENUM UNDER A UNION'S SECOND ARM: the shape the compiled plan
+	# had no fixture for, and the one that catches an op borrowing the guard's
+	# own byte (test/tables/UT.schema).
+	./bin/schema generate --lang java --out build/tables-generated-java/ut test/tables/UT.schema
 	@touch $@
 
 # The Java twin of the C++ "no serialize include path" build: a generated
@@ -255,6 +259,7 @@ build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedf
 		build/tables-generated-java/fx1/*.java build/tables-generated-java/fx2/*.java \
 		build/tables-generated-java/p1/*.java build/tables-generated-java/p3/*.java \
 		build/tables-generated-java/v1/*.java build/tables-generated-java/v2/*.java \
+		build/tables-generated-java/ut/*.java \
 		build/tables-generated-java/examples/*.java test/java-fixedform/src/Main.java
 	@touch $@
 
@@ -324,6 +329,47 @@ tables-java-fixedform-negative-control: build/java-fixed-corpus/.stamp
 	@grep -m1 "FAILED:" $(JAVA_FIXED_SABOTAGE)/log
 	@echo "negative control: one byte off the fixed write template reds the reference byte match"
 
+# THE ARM-TEXT CONTROL, and it plants the ENCODING this form replaced: the
+# text op's flavour written over `arg`, which is the ARM ORDINAL a guarded
+# entry is selected by. Under it a `string(N)` under a union's SECOND arm is
+# dropped on every compiled-plan read — the field never lands and no counter
+# moves — and nothing else about the record changes, which is why it went
+# unseen. So the control requires the arm-text conformance case
+# (test/tables/UT.schema) to go RED and to name the check that caught it.
+JAVA_ARM_SABOTAGE := build/java-arm-sabotage
+.PHONY: tables-java-fixedform-arm-negative-control
+tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.stamp
+	@rm -rf $(JAVA_ARM_SABOTAGE) && mkdir -p $(JAVA_ARM_SABOTAGE)
+	go run ./tools/sabotage -name fixed-form-java-arm-text-flavour \
+		-out $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext internal/codegen/javatable/fixedruntime.go
+	@grep -q SABOTAGED $(JAVA_ARM_SABOTAGE)/fixedruntime.gotext || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/javatable/fixedruntime.go":"%s/$(JAVA_ARM_SABOTAGE)/fixedruntime.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(JAVA_ARM_SABOTAGE)/overlay.json
+	go build -overlay $(JAVA_ARM_SABOTAGE)/overlay.json -o $(JAVA_ARM_SABOTAGE)/schema ./cmd/schema
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/ut test/tables/UT.schema
+	@grep -q "SABOTAGED" $(JAVA_ARM_SABOTAGE)/src/ut/TableFixed.java || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged runtime"; exit 1; }
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fx1 test/tables/FX1.schema
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fx2 test/tables/FX2.schema
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/p1 test/tables/P1.schema
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/p3 test/tables/P3.schema
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/v1 test/tables/V1.schema
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/v2 test/tables/V2.schema
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/examples tables/examples
+	$(JAVAC) --release 17 -nowarn -d $(JAVA_ARM_SABOTAGE)/classes \
+		$(JAVA_ARM_SABOTAGE)/src/*/*.java test/java-fixedform/src/Main.java
+	@if $(JAVA) -cp $(JAVA_ARM_SABOTAGE)/classes Main build/fixedform-corpus \
+			> $(JAVA_ARM_SABOTAGE)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a text entry on the guard's own lane left the fixed form green"; \
+		cat $(JAVA_ARM_SABOTAGE)/log; exit 1; \
+	fi
+	@grep -q "arm text: a COMPILED plan lands a text field under the SECOND arm" $(JAVA_ARM_SABOTAGE)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the leg went red, but not on the arm's text"; \
+		  cat $(JAVA_ARM_SABOTAGE)/log; exit 1; }
+	@grep -m1 "FAILED:" $(JAVA_ARM_SABOTAGE)/log
+	@echo "negative control: a text entry that borrows the guard's own byte drops the SECOND arm's text and reds"
+
 # THE BYTE-ORDER LEG. Java reads a block and a cook explicitly little-endian, so
 # this reader's order is a CONSTANT rather than the host's — and a file of the
 # other order is refused twice: its magic reads back byte-swapped and its order
@@ -388,6 +434,7 @@ tables-java-cook-extent-negative-control: build/cook-open/.stamp
 tables-java-release:
 	$(MAKE) tables-java-compile-all
 	$(MAKE) tables-java-fixedform-negative-control
+	$(MAKE) tables-java-fixedform-arm-negative-control
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control

@@ -234,6 +234,154 @@ public final class Main {
     }
 
     // ------------------------------------------------------------------
+    // TEXT AND AN ENUM UNDER A UNION'S SECOND ARM (test/tables/UT.schema)
+    // ------------------------------------------------------------------
+    //
+    // Every field inside a union arm rides a plan entry GUARDED on the
+    // WRITER's own tag, and the guard compares that entry's ARM ORDINAL. So an
+    // op that borrows the same byte for something of its own — a text entry's
+    // flavour — loses every text field under an arm past the FIRST: the guard
+    // then compares a flavour against a tag, the entry never fires, the field
+    // never lands and no counter moves. No corpus root carries text under a
+    // second arm, so the compiled path was never asked this question. This
+    // fixture asks it, and the only admissible answer is the identity path's.
+    //
+    // The enum beside it is the OTHER half, tonight's ruling: an ordinal past
+    // the last variant lands None (0) and counts one `clamped`, and a TAG past
+    // the last arm does the same.
+
+    static byte[] utRecord(String label, byte grade, int m, int tail) {
+        final tblut.UtRootFixed.Value[] v = { new tblut.UtRootFixed.Value() };
+        v[0].pick.type = tblut.UtPickFixed.b;
+        setText(v[0].pick.b.label, label);
+        v[0].pick.b.labelLength = bytesOf(label).length;
+        v[0].pick.b.grade = grade;
+        v[0].pick.b.m = m;
+        v[0].tail = tail;
+        final byte[] wire = new byte[tblut.UtRootFixed.measure(1)];
+        check(tblut.UtRootFixed.save(v, 1, wire) == wire.length, "arm text: save fills what measure says");
+        return wire;
+    }
+
+    /** one record read through a plan COMPILED from a layout that is my own. */
+    static tblut.UtRootFixed.Value utCompiled(byte[] wire, tblut.TableFixed.Report r) {
+        final tblut.UtRootFixed.Value out = new tblut.UtRootFixed.Value();
+        final tblut.TableFixed.Header head = new tblut.TableFixed.Header();
+        check(tblut.TableFixed.readHeader(wire, head, r), "arm text: the file's header reads");
+        final tblut.TableFixed.Layout theirs =
+                tblut.TableFixed.parse(wire, head.layoutAt, head.layoutLength, r);
+        final tblut.TableFixed.Layout mine = tblut.TableFixed.parse(
+                tblut.UtRootFixed.layout, 0, tblut.UtRootFixed.layout.length, r);
+        check(theirs != null && mine != null, "arm text: the layout parses on both sides");
+        if (theirs == null || mine == null) { return out; }
+        final tblut.TableFixed.Entry[] plan = tblut.TableFixed.plan(512);
+        final short[] remap = new short[512];
+        final int made = tblut.TableFixed.compile(theirs, mine, tblut.UtRootFixed.counted, plan, remap, r);
+        check(made > 0, "arm text: a plan compiles from my own layout");
+        final byte[] image = tblut.UtRootFixed.image();
+        System.arraycopy(tblut.UtRootFixed.defaults, 0, image, 0, tblut.UtRootFixed.bodyBytes);
+        tblut.TableFixed.run(plan, made, remap, wire, head.recordsAt + 8, (int) theirs.size(0), image, r);
+        tblut.UtRootFixed.scatter(image, 0, out, r);
+        return out;
+    }
+
+    /** two values compared by the bytes they save back, which is the only
+     *  comparison that reaches every field. */
+    static boolean utSame(tblut.UtRootFixed.Value x, tblut.UtRootFixed.Value y) {
+        final byte[] a = new byte[tblut.UtRootFixed.measure(1)];
+        final byte[] b = new byte[tblut.UtRootFixed.measure(1)];
+        tblut.UtRootFixed.save(new tblut.UtRootFixed.Value[] { x }, 1, a);
+        tblut.UtRootFixed.save(new tblut.UtRootFixed.Value[] { y }, 1, b);
+        return Arrays.equals(a, b);
+    }
+
+    /** the offset of one record's BODY inside the file. */
+    static int utBodyAt(byte[] wire) {
+        final tblut.TableFixed.Header head = new tblut.TableFixed.Header();
+        final tblut.TableFixed.Report r = new tblut.TableFixed.Report();
+        check(tblut.TableFixed.readHeader(wire, head, r), "arm text: the header reads for the plant");
+        return head.recordsAt + 8;
+    }
+
+    static void armTextUnderASecondArm() {
+        final byte[] wire = utRecord("hello", tblut.UT.UtGrade.gold, 42, 11);
+
+        // THE IDENTITY PATH
+        final tblut.UtRootFixed.Value[] id = { new tblut.UtRootFixed.Value() };
+        final tblut.TableFixed.Report r = new tblut.TableFixed.Report();
+        check(tblut.UtRootFixed.load(id, 1, wire, tblut.TableFixed.plan(512), new short[512],
+                tblut.UtRootFixed.image(), r) == 1, "arm text: the identity path reads the record");
+        check(!r.refused && !r.malformed && r.clamped == 0 && r.unknown == 0 && r.kindMismatch == 0,
+                "arm text: a clean read moves no counter");
+        check(id[0].pick.type == tblut.UtPickFixed.b, "arm text: the SECOND arm is the selected one");
+        check(textOf(id[0].pick.b.label, id[0].pick.b.labelLength).equals("hello"),
+                "arm text: the identity path lands the arm's text");
+
+        // THE COMPILED PATH, and it must land the same record
+        final tblut.TableFixed.Report rc = new tblut.TableFixed.Report();
+        final tblut.UtRootFixed.Value viaPlan = utCompiled(wire, rc);
+        check(textOf(viaPlan.pick.b.label, viaPlan.pick.b.labelLength).equals("hello"),
+                "arm text: a COMPILED plan lands a text field under the SECOND arm");
+        check(viaPlan.pick.b.grade == tblut.UT.UtGrade.gold && viaPlan.pick.b.m == 42 && viaPlan.tail == 11,
+                "arm text: and the rest of that arm with it");
+        check(rc.clamped == 0 && !rc.malformed && !rc.refused,
+                "arm text: the compiled read moves no counter either");
+        check(utSame(viaPlan, id[0]),
+                "arm text: a COMPILED plan lands exactly what the identity plan lands");
+
+        // A TAG PAST THE LAST ARM: None on both paths, and the identity path
+        // counts one clamped. THE COMPILED PLAN COUNTS NOTHING HERE and that
+        // is not an oversight: a plan says what a SELECTED arm does, so
+        // "no arm fired" is not an event any entry of it can see. The tag
+        // still lands None, because the prefill put None there and no entry
+        // wrote over it.
+        {
+            final byte[] bad = wire.clone();
+            final int body = utBodyAt(bad);
+            check(bad[body] == 2, "tag past the last arm: the tag sits where the layout says");
+            bad[body] = 7;
+
+            final tblut.UtRootFixed.Value[] v = { new tblut.UtRootFixed.Value() };
+            final tblut.TableFixed.Report r1 = new tblut.TableFixed.Report();
+            check(tblut.UtRootFixed.load(v, 1, bad, tblut.TableFixed.plan(512), new short[512],
+                    tblut.UtRootFixed.image(), r1) == 1, "tag past the last arm: the record still reads");
+            check(v[0].pick.type == tblut.UtPickFixed.none, "tag past the last arm: the union lands None");
+            check(r1.clamped == 1, "tag past the last arm: the identity path counts ONE clamped");
+            check(!r1.malformed && !r1.refused, "tag past the last arm: damage in a VALUE is not framing damage");
+
+            final tblut.TableFixed.Report r2 = new tblut.TableFixed.Report();
+            final tblut.UtRootFixed.Value bent = utCompiled(bad, r2);
+            check(bent.pick.type == tblut.UtPickFixed.none, "tag past the last arm: the compiled plan lands None too");
+            check(r2.clamped == 0, "tag past the last arm: no entry of a plan can see an arm that did not fire");
+        }
+
+        // AN ORDINAL PAST THE LAST VARIANT: None (0) on both paths, and BOTH
+        // count it — the identity scatter on its own read, and the plan's
+        // ordinal op on the compiled one.
+        {
+            final byte[] bad = wire.clone();
+            final int body = utBodyAt(bad);
+            final int at = body + 13; // the tag, then the arm's text, then the ordinal
+            check(bad[at] == tblut.UT.UtGrade.gold, "ordinal past the last variant: the ordinal is where the layout says");
+            bad[at] = 9;
+
+            final tblut.UtRootFixed.Value[] v = { new tblut.UtRootFixed.Value() };
+            final tblut.TableFixed.Report r1 = new tblut.TableFixed.Report();
+            check(tblut.UtRootFixed.load(v, 1, bad, tblut.TableFixed.plan(512), new short[512],
+                    tblut.UtRootFixed.image(), r1) == 1, "ordinal past the last variant: the record still reads");
+            check(v[0].pick.b.grade == tblut.UT.UtGrade.none, "ordinal past the last variant: it lands None");
+            check(r1.clamped == 1, "ordinal past the last variant: the identity path counts ONE clamped");
+
+            final tblut.TableFixed.Report r2 = new tblut.TableFixed.Report();
+            final tblut.UtRootFixed.Value bent = utCompiled(bad, r2);
+            check(bent.pick.b.grade == tblut.UT.UtGrade.none,
+                    "ordinal past the last variant: the compiled plan lands None too");
+            check(r2.clamped == 1, "ordinal past the last variant: and the plan's ordinal op counts it");
+            check(utSame(bent, v[0]), "ordinal past the last variant: the two paths land ONE record");
+        }
+    }
+
+    // ------------------------------------------------------------------
     // THE VERSIONING CONFORMANCE
     // ------------------------------------------------------------------
 
@@ -639,6 +787,7 @@ public final class Main {
         keyedWrite(dir);
         packWrite(dir);
         compiledSelfPlan(dir);
+        armTextUnderASecondArm();
         anOlderWriter(dir);
         aNewerWriter(dir);
         anOptional(dir);

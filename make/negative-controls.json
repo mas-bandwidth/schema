@@ -502,6 +502,7 @@
         "packet-utf8-java-negative-control",
         "packet-wide-java-negative-control",
         "tables-java-cook-extent-negative-control",
+        "tables-java-fixedform-arm-negative-control",
         "tables-java-fixedform-negative-control",
         "tables-java-fuzz-negative-control"
       ],

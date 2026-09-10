@@ -1065,8 +1065,15 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			g.pf("%s%s.scatter(%s, %s + %d, %s, %s);\n", ind, fixedClass(r.Name), buf, at, off, expr, rep)
 			return
 		case *ir.Enum:
-			g.pf("%s%s = (%s) TableFixed.getUint(%s, %s + %d, %d);\n", ind, expr, fixedIntType(r.StorageBits),
-				buf, at, off, r.StorageBits/8)
+			// AN ORDINAL PAST THE LAST VARIANT LANDS None (0) AND COUNTS ONE
+			// CLAMPED, which is the same answer the compiled plan's ordinal
+			// op lands (§3.4's one read): the ordinal is the variant's
+			// POSITION, so a value past the last one names nothing here.
+			g.pf("%s{\n", ind)
+			g.pf("%s    long q = TableFixed.getUint(%s, %s + %d, %d);\n", ind, buf, at, off, r.StorageBits/8)
+			g.pf("%s    if (q > %dL) { q = 0L; %s.clamped++; }\n", ind, len(r.Variants), rep)
+			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
+			g.pf("%s}\n", ind)
 			return
 		case *ir.Flags:
 			g.pf("%s%s = TableFixed.get64(%s, %s + %d);\n", ind, expr, buf, at, off)
@@ -1212,6 +1219,11 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 	g.pf("    /** the tag, then the selected arm; an unselected arm keeps what it held. */\n")
 	g.pf("    public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {\n")
 	g.pf("        v.type = (int) TableFixed.getUint(b, at, tagBytes);\n")
+	g.pf("        // A TAG PAST THE LAST ARM LANDS None AND COUNTS ONE CLAMPED: it\n")
+	g.pf("        // is a value this reader's own storage does not admit, and\n")
+	g.pf("        // landing it raw would hand a caller a `type` that names no arm\n")
+	g.pf("        // and that its own switch cannot answer.\n")
+	g.pf("        if (v.type > %d) { v.type = none; r.clamped++; }\n", len(un.Variants))
 	g.pf("        switch (v.type) {\n")
 	for i, v := range un.Variants {
 		if v.F == nil {

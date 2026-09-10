@@ -262,17 +262,25 @@ public final class TableFixed {
         public int guard = noGuard;
         /** which of the ops above. */
         public byte op;
-        /** the arm ordinal a guard compares, or a text entry's flavour. */
+        /** THE ARM ORDINAL A GUARD COMPARES, and nothing else ever. An
+         *  entry inside a union arm is selected by this byte against the
+         *  WRITER's own tag, so no op may borrow the lane: a text entry that
+         *  wrote its flavour here would drop every text field under an arm
+         *  past the first, silently, because the guard would then compare a
+         *  flavour against a tag. Its flavour rides in meta. */
         public byte arg;
         /** a widen's destination width. */
         public byte dstsize;
         /** a widen's source is two's complement, so it sign-extends. */
         public byte sign;
+        /** an op's OWN byte, which the guard never reads: a text entry's
+         *  flavour. */
+        public byte meta;
 
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
             src = 0; dst = 0; size = 0; aux = 0; guard = noGuard;
-            op = opCopy; arg = 0; dstsize = 0; sign = 0;
+            op = opCopy; arg = 0; dstsize = 0; sign = 0; meta = 0;
         }
     }
 
@@ -386,7 +394,7 @@ public final class TableFixed {
                     break;
                 }
                 case opText: {
-                    final int unit = (p.arg == textWide) ? 2 : 1;
+                    final int unit = (p.meta == textWide) ? 2 : 1;
                     final int cap = p.size / unit;
                     if (p.src + 4 + p.size > srcLength) { report.malformed = true; return; }
                     int v = get32(src, srcAt + p.src);
@@ -405,6 +413,13 @@ public final class TableFixed {
                     final int n = remap[p.aux] & 0xFFFF;
                     long v = 0;
                     if (raw != 0 && raw <= n) { v = remap[p.aux + (int) raw] & 0xFFFF; }
+                    // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT LANDS None
+                    // AND COUNTS: the writer's layout says how many variants
+                    // it has, so a value past them is damage rather than a
+                    // variant this reader happens not to know. A variant it
+                    // knows of and this reader does not lands None too — that
+                    // one is a version difference and counts nothing.
+                    if (raw > n) { report.clamped++; }
                     putUint(image, p.dst, v, p.dstsize);
                     break;
                 }
@@ -722,10 +737,15 @@ public final class TableFixed {
         Report report;
 
         void push(int src, int dst, int size, int aux, int guard, byte op, byte arg, byte dstsize, byte sign) {
+            push(src, dst, size, aux, guard, op, arg, dstsize, sign, (byte) 0);
+        }
+
+        void push(int src, int dst, int size, int aux, int guard, byte op, byte arg, byte dstsize, byte sign,
+                  byte meta) {
             if (count >= plan.length) { overflow = true; return; }
             final Entry e = plan[count];
             e.src = src; e.dst = dst; e.size = size; e.aux = aux; e.guard = guard;
-            e.op = op; e.arg = arg; e.dstsize = dstsize; e.sign = sign;
+            e.op = op; e.arg = arg; e.dstsize = dstsize; e.sign = sign; e.meta = meta;
             count++;
         }
 
@@ -896,8 +916,13 @@ public final class TableFixed {
             }
             case 12: case 33: { // text: the length, then min( their units, my units )
                 final int units = Math.min(mySize - 4, theirSize - 4);
-                c.push(theirAt, myAt, units, myAt + 4, guard, opText,
-                        myKind == 33 ? textWide : textUtf8, (byte) 0, (byte) 0);
+                // THE FLAVOUR RIDES IN meta AND THE ARM ORDINAL STAYS IN arg.
+                // A text field inside a union's arm is guarded like every
+                // other field in it and the guard compares arg, so a flavour
+                // written over arg is a text field under the SECOND arm that
+                // never lands and never counts.
+                c.push(theirAt, myAt, units, myAt + 4, guard, opText, arg, (byte) 0, (byte) 0,
+                        myKind == 33 ? textWide : textUtf8);
                 break;
             }
             default: {
@@ -951,6 +976,7 @@ public final class TableFixed {
                 final Entry dst = plan[out];
                 dst.src = e.src; dst.dst = e.dst; dst.size = e.size; dst.aux = e.aux;
                 dst.guard = e.guard; dst.op = e.op; dst.arg = e.arg; dst.dstsize = e.dstsize; dst.sign = e.sign;
+                dst.meta = e.meta;
             }
             out++;
         }
