@@ -1429,9 +1429,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("public static readonly byte[] %sFixedLayout = new byte[] {\n", name)
 	g.emitCsByteArray(block)
 	g.pf("};\n")
-	g.pf("public const long %sFixedLayoutBytes = %d;\n", name, len(block))
-	g.pf("public const long %sFixedBlockBytes = %sFixedLayoutBytes;\n", name, name)
-	g.pf("public static readonly byte[] %sFixedBlock = %sFixedLayout;\n\n", name, name)
+	g.pf("public const long %sFixedLayoutBytes = %d;\n\n", name, len(block))
 
 	g.pf("public static readonly TableFixedDst[] %sFixedDst = new TableFixedDst[] {\n", name)
 	for i, row := range b.dstRows {

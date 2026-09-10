@@ -396,8 +396,6 @@ const tableFixedWireSource = `
 
         public static bool ParseLayout(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view, out _);
 
-        public static bool ParseBlock(ReadOnlySpan<byte> bytes, out TableFixedLayoutView view) => ParseLayout(bytes, out view);
-
         private ref struct Compiler
         {
             public Span<TableFixedEntry> Plan;
