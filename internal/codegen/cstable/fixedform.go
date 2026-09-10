@@ -507,12 +507,12 @@ func (b *fixedRootBuild) pushPayloadBlockOnly(f *ir.Field, owner string, id uint
 	}
 }
 
-func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64) {
+func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg byte) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
-	id := ir.TableFieldWireId(f)
-	size := fixedFieldBytes(f)
 	fieldWireBase := *wireOff
+	size := fixedFieldBytes(f)
+	id := ir.TableFieldWireId(f)
 
 	if f.Type.Optional {
 		presentSlot := len(b.slots)
@@ -524,25 +524,26 @@ func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, 
 			kind:     fixedKindOptional,
 			size:     size,
 			children: 1,
-			note:     f.Name + " ?",
+			note:     f.Name + "?",
 		})
-		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(0, 0, %d, 0, 0)", presentSlot-baseSlot))
+		b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, 0, %d, 0, 0)", baseSlot, presentSlot-baseSlot))
 		b.plan = append(b.plan, fixedPlanEntry{
 			src:   fieldWireBase,
 			dst:   presentSlot,
 			size:  1,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    0,
+			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
-		b.buildPayload(owner, f, expr, baseSlot, wireOff, id, size-fixedPresentBytes)
+		b.buildPayload(owner, f, expr, baseSlot, id, wireOff, size-fixedPresentBytes, guard, arg)
 		return
 	}
 
-	b.buildPayload(owner, f, expr, baseSlot, wireOff, id, size)
+	b.buildPayload(owner, f, expr, baseSlot, id, wireOff, size, guard, arg)
 }
 
-func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, id uint64, size int64) {
+func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, id uint64, wireOff *int64, size int64, guard int64, arg byte) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
@@ -569,7 +570,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			}
 			elemWire := fieldWireBase + int64(k)*elemWireSize
 			*wireOff = elemWire
-			b.buildElementSlotsAndPlan(f, slotExpr, elemBaseSlot+k*elemSlots, kFixedNoGuard, 0, wireOff)
+			b.buildElementSlotsAndPlan(f, slotExpr, elemBaseSlot+k*elemSlots, guard, arg, wireOff)
 		}
 		*wireOff = fieldWireBase + size
 
@@ -582,8 +583,9 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			src:   fieldWireBase,
 			dst:   countSlot,
 			size:  f.ArrayBound,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    1,
+			arg:   arg,
 		})
 		elemWireSize := fixedElementBytes(f)
 		totalElemBytes := f.ArrayBound * elemWireSize
@@ -606,8 +608,9 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 				src:   fieldWireBase + fixedCountBytes,
 				dst:   elemBaseSlot,
 				size:  totalElemBytes,
-				guard: kFixedNoGuard,
+				guard: guard,
 				op:    kFixedOpFlat,
+				arg:   arg,
 			})
 		} else {
 			elemSlots := b.countElementSlots(f)
@@ -617,7 +620,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
 				elemWire := fieldWireBase + fixedCountBytes + int64(i)*elemWireSize
 				*wireOff = elemWire
-				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, guard, arg, wireOff)
 			}
 		}
 		*wireOff = fieldWireBase + size
@@ -644,8 +647,9 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 				src:   fieldWireBase,
 				dst:   elemBaseSlot,
 				size:  totalElemBytes,
-				guard: kFixedNoGuard,
+				guard: guard,
 				op:    kFixedOpFlat,
+				arg:   arg,
 			})
 		} else {
 			elemSlots := b.countElementSlots(f)
@@ -655,7 +659,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
 				elemWire := fieldWireBase + int64(i)*elemWireSize
 				*wireOff = elemWire
-				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, guard, arg, wireOff)
 			}
 		}
 		*wireOff = fieldWireBase + size
@@ -684,7 +688,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			dst:   lenSlot,
 			size:  f.Type.Size,
 			aux:   bufSlot,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    2,
 			arg:   3,
 		})
@@ -712,7 +716,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			dst:   lenSlot,
 			size:  f.Type.Size,
 			aux:   bufSlot,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    2,
 			arg:   1,
 		})
@@ -740,14 +744,14 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			dst:   lenSlot,
 			size:  2 * f.Type.Size,
 			aux:   bufSlot,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    2,
 			arg:   2,
 		})
 		*wireOff += size
 
 	default:
-		b.buildElement(f, fieldExpr, baseSlot, id, f.Name, kFixedNoGuard, 0, wireOff)
+		b.buildElement(f, fieldExpr, baseSlot, id, f.Name, guard, arg, wireOff)
 	}
 }
 
@@ -768,7 +772,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			})
 			b.dstRows = append(b.dstRows, fmt.Sprintf("new TableFixedDst(%d, 0, 0, 0, 0)", structBase-baseSlot))
 			for _, sub := range r.Fields {
-				b.buildField(r, sub, expr, structBase, wireOff)
+				b.buildField(r, sub, expr, structBase, wireOff, guard, arg)
 			}
 			return
 
@@ -898,7 +902,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			for _, sub := range r.Fields {
-				b.buildFieldSlotsAndPlan(r, sub, expr, baseSlot, wireOff)
+				b.buildFieldSlotsAndPlan(r, sub, expr, baseSlot, wireOff, guard, arg)
 			}
 			return
 		case *ir.Union:
@@ -973,7 +977,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 	*wireOff += w
 }
 
-func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64) {
+func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, guard int64, arg byte) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
@@ -988,18 +992,19 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 			src:   fieldWireBase,
 			dst:   presentSlot,
 			size:  1,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    0,
+			arg:   arg,
 		})
 		*wireOff += fixedPresentBytes
-		b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size-fixedPresentBytes)
+		b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size-fixedPresentBytes, guard, arg)
 		return
 	}
 
-	b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size)
+	b.buildPayloadSlotsAndPlan(owner, f, expr, baseSlot, wireOff, size, guard, arg)
 }
 
-func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, size int64) {
+func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field, expr string, baseSlot int, wireOff *int64, size int64, guard int64, arg byte) {
 	prop := member(f)
 	fieldExpr := expr + "." + prop
 	fieldWireBase := *wireOff
@@ -1016,7 +1021,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			}
 			elemWire := fieldWireBase + int64(k)*elemWireSize
 			*wireOff = elemWire
-			b.buildElementSlotsAndPlan(f, slotExpr, elemBaseSlot+k*elemSlots, kFixedNoGuard, 0, wireOff)
+			b.buildElementSlotsAndPlan(f, slotExpr, elemBaseSlot+k*elemSlots, guard, arg, wireOff)
 		}
 		*wireOff = fieldWireBase + size
 
@@ -1029,8 +1034,9 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			src:   fieldWireBase,
 			dst:   countSlot,
 			size:  f.ArrayBound,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    1,
+			arg:   arg,
 		})
 		elemWireSize := fixedElementBytes(f)
 		totalElemBytes := f.ArrayBound * elemWireSize
@@ -1044,8 +1050,9 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 				src:   fieldWireBase + fixedCountBytes,
 				dst:   elemBaseSlot,
 				size:  totalElemBytes,
-				guard: kFixedNoGuard,
+				guard: guard,
 				op:    kFixedOpFlat,
+				arg:   arg,
 			})
 		} else {
 			elemSlots := b.countElementSlots(f)
@@ -1053,7 +1060,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
 				elemWire := fieldWireBase + fixedCountBytes + int64(i)*elemWireSize
 				*wireOff = elemWire
-				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, guard, arg, wireOff)
 			}
 		}
 		*wireOff = fieldWireBase + size
@@ -1071,8 +1078,9 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 				src:   fieldWireBase,
 				dst:   elemBaseSlot,
 				size:  totalElemBytes,
-				guard: kFixedNoGuard,
+				guard: guard,
 				op:    kFixedOpFlat,
+				arg:   arg,
 			})
 		} else {
 			elemSlots := b.countElementSlots(f)
@@ -1080,7 +1088,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 				elemExpr := fmt.Sprintf("%s[%d]", fieldExpr, i)
 				elemWire := fieldWireBase + int64(i)*elemWireSize
 				*wireOff = elemWire
-				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, kFixedNoGuard, 0, wireOff)
+				b.buildElementSlotsAndPlan(f, elemExpr, elemBaseSlot+i*elemSlots, guard, arg, wireOff)
 			}
 		}
 		*wireOff = fieldWireBase + size
@@ -1099,7 +1107,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			dst:   lenSlot,
 			size:  f.Type.Size,
 			aux:   bufSlot,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    2,
 			arg:   3,
 		})
@@ -1119,7 +1127,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			dst:   lenSlot,
 			size:  f.Type.Size,
 			aux:   bufSlot,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    2,
 			arg:   1,
 		})
@@ -1139,14 +1147,14 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			dst:   lenSlot,
 			size:  2 * f.Type.Size,
 			aux:   bufSlot,
-			guard: kFixedNoGuard,
+			guard: guard,
 			op:    2,
 			arg:   2,
 		})
 		*wireOff += size
 
 	default:
-		b.buildElementSlotsAndPlan(f, fieldExpr, baseSlot, kFixedNoGuard, 0, wireOff)
+		b.buildElementSlotsAndPlan(f, fieldExpr, baseSlot, guard, arg, wireOff)
 	}
 }
 
@@ -1389,7 +1397,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	wireOff := int64(0)
 	for _, f := range st.Fields {
-		b.buildField(st, f, "t", 0, &wireOff)
+		b.buildField(st, f, "t", 0, &wireOff, kFixedNoGuard, 0)
 	}
 
 	block := fixedBlockBytes(b.entries)
