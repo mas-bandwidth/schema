@@ -9515,8 +9515,11 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 		return -1
 	}
 	if data[0] != TableFixedForm {
-		if data[0] < TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
 			return tableFixedRefuse(report, "previous_form")
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
 	}
@@ -9624,8 +9627,11 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 		return -1
 	}
 	if data[0] != TableFixedForm {
-		if data[0] < TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
 			return tableFixedRefuse(report, "previous_form")
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, "message_form_as_file")
 		}
 		return tableFixedRefuse(report, "newer_form")
 	}
