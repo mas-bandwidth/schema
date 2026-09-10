@@ -24,14 +24,14 @@ import (
 // lock must not carry.
 const base = `package lockdemo
 
-table ShipConfig
+fixed table ShipConfig
 {
     name    string(32)
     speed   float32
     armor   uint8
 }
 
-table Slot
+fixed table Slot
 {
     index uint16
     live  bool
@@ -217,7 +217,7 @@ func TestAppendRefusedUntilLocked(t *testing.T) {
 // nothing, so `schema lock` adds it — and until it has, the lock is behind the
 // unit and the compile is refused at the table's first entry.
 func TestNewTableRefusedUntilLocked(t *testing.T) {
-	after := base + "\ntable Beacon\n{\n    hz uint8\n}\n"
+	after := base + "\nfixed table Beacon\n{\n    hz uint8\n}\n"
 	dir, paths, errs := locked(t, after)
 	refuses(t, errs, "fixed table Beacon", "entry 1", "field hz",
 		"in the declaration and not in the lock", "write it with `schema lock`")
@@ -240,7 +240,7 @@ func TestNewTableRefusedUntilLocked(t *testing.T) {
 // name: a table with no fields is still a table the lock does not carry, and
 // the refusal names the table alone rather than inventing an entry for it.
 func TestNewFieldlessTableRefusedUntilLocked(t *testing.T) {
-	after := base + "\ntable Marker\n{\n}\n"
+	after := base + "\nfixed table Marker\n{\n}\n"
 	_, paths, errs := locked(t, after)
 	refuses(t, errs, "fixed table Marker is in the declaration and not in the lock",
 		"write it with `schema lock`")
@@ -340,14 +340,14 @@ func TestDeprecatedFieldStillHasItsSlot(t *testing.T) {
 // verbs refuse.
 const reordered = `package lockdemo
 
-table ShipConfig
+fixed table ShipConfig
 {
     name    string(32)
     armor   uint8
     speed   float32
 }
 
-table Slot
+fixed table Slot
 {
     index uint16
     live  bool
@@ -426,7 +426,7 @@ func TestUnDeprecateRefused(t *testing.T) {
 // TestTableGoneRefused: a fixed table's layout is a promise, and a promise is
 // not withdrawn — compaction is a new table under a new name.
 func TestTableGoneRefused(t *testing.T) {
-	after := strings.Replace(base, "table Slot\n{\n    index uint16\n    live  bool\n}\n", "", 1)
+	after := strings.Replace(base, "fixed table Slot\n{\n    index uint16\n    live  bool\n}\n", "", 1)
 	_, _, errs := locked(t, after)
 	refuses(t, errs, "fixed table Slot", "no longer declares it as a fixed table", "NEW table under a NEW name")
 }

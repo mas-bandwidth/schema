@@ -15,7 +15,7 @@ import (
 
 const deprecatedLive = `package depdemo
 
-table ShipConfig
+fixed table ShipConfig
 {
     name  string(16)
     armor uint8
@@ -25,7 +25,7 @@ table ShipConfig
 
 const deprecatedMarked = `package depdemo
 
-table ShipConfig
+fixed table ShipConfig
 {
     name  string(16)
     armor uint8 | deprecated
