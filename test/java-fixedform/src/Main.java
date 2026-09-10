@@ -124,9 +124,13 @@ public final class Main {
         check(v[0].linkPresent && v[0].link.value == 88, "p3.bin: an optional that is PRESENT");
         check(!v[1].linkPresent, "p3.bin: an optional that is ABSENT");
         // THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT (§3.4), which is
-        // exactly why `?T` and a plain `T` are ONE BYTE APART on this form.
-        check(v[1].link.value == 99 && textOf(v[1].link.tag, v[1].link.tagLength).equals("still"),
-                "p3.bin: an ABSENT optional's payload rides WHOLE all the same (§3.4)");
+        // exactly why `?T` and a plain `T` are ONE BYTE APART on this form —
+        // AND WHEN THE FLAG IS 0 WHAT RIDES IS ZERO. The corpus writer stains
+        // this payload deliberately (value 99, tag "still") behind an absent
+        // flag, so reading zeros here is the proof that a caller's untouched
+        // payload storage does not reach the wire.
+        check(v[1].link.value == 0 && v[1].link.tagLength == 0,
+                "p3.bin: an ABSENT optional's payload is the template's ZEROS (§3.4)");
         final byte[] back = new byte[tblp3.ChainFixed.measure(n)];
         check(tblp3.ChainFixed.save(v, n, back) == back.length, "p3.bin: save fills what measure says");
         check(Arrays.equals(back, golden), "p3.bin: the bytes are the C++ reference's, exactly");
@@ -148,8 +152,8 @@ public final class Main {
         check(v[1].hulls[2].turrets[0].damage == 16.0f, "keyed: a keyed array nested in a keyed array");
         check(v[1].hulls[0].turrets[0].gunnerPresent, "keyed: an optional section that is PRESENT");
         check(!v[1].hulls[0].turrets[1].gunnerPresent, "keyed: an optional section that is ABSENT");
-        check(v[1].hulls[0].turrets[1].gunner.reaction == 0.3f,
-                "keyed: an ABSENT optional's payload rides WHOLE all the same (§3.4)");
+        check(v[1].hulls[0].turrets[1].gunner.reaction == 0.0f && !v[1].hulls[0].turrets[1].gunner.tracking,
+                "keyed: an ABSENT optional's payload is the template's ZEROS (§3.4)");
         final byte[] back = new byte[tabledemo.KeyedConfigFixed.measure(n)];
         check(tabledemo.KeyedConfigFixed.save(v, n, back) == back.length, "keyed.bin: save fills what measure says");
         check(Arrays.equals(back, golden), "keyed.bin: the bytes are the C++ reference's, exactly");

@@ -890,13 +890,29 @@ func (g *fixedGen) emitCheckWrite(st *ir.Struct, cls string) {
 }
 
 func (g *fixedGen) emitWriteField(f *ir.Field, off int64, buf, at, val string, indent int) {
+	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
+		// is present, and when the flag is 0 what rides is zero. It is ONE `if`
+		// and no rule anywhere else, because the template already put the zeros
+		// there — so an absent optional costs the writer a branch and not one
+		// store, and a caller's untouched payload storage never reaches the
+		// wire. The C++ reference makes the same branch in the same place.
+		ind := strings.Repeat(" ", indent)
+		g.pf("%sTableFixed.put8(%s, %s + %d, %s.%sPresent ? 1 : 0);\n", ind, buf, at, off, val, javaName(f.Name))
+		g.pf("%sif (%s.%sPresent) {\n", ind, val, javaName(f.Name))
+		g.emitWritePayload(f, off+fixedPresentBytes, buf, at, val, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitWritePayload(f, off, buf, at, val, indent)
+}
+
+// emitWritePayload is the field's payload stores at the base given — the whole
+// of emitWriteField for a plain field, and the guarded half for an optional.
+func (g *fixedGen) emitWritePayload(f *ir.Field, base int64, buf, at, val string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	name := javaName(f.Name)
-	base := off
-	if f.Type.Optional {
-		g.pf("%sTableFixed.put8(%s, %s + %d, %s.%sPresent ? 1 : 0);\n", ind, buf, at, base, val, name)
-		base += fixedPresentBytes
-	}
 	switch {
 	case f.KeyEnum != "":
 		g.emitWriteLoop(f, base, f.KeyEnumRef.Max, buf, at, val+"."+name, indent)

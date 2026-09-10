@@ -74,7 +74,7 @@ enum
     kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
 };
 
-/* arg on a kTableFixedText entry */
+/* meta on a kTableFixedText entry */
 enum
 {
     kTableFixedTextUtf8  = 1,
@@ -176,7 +176,13 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+       must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+       entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+       shared one, and a string(N) under a union's arm then had to be either
+       guarded correctly or read with the right flavour and could not be both. */
     uint8_t arg;
+    uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
 } TableFixedEntry;
@@ -353,14 +359,14 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p->arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
-            if ( p->arg != kTableFixedTextBytes )
+            if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
                    unit longer than the bound for exactly this. A store, not a
@@ -823,7 +829,7 @@ typedef struct TableFixedDst
     uint32_t stride; /* an array entry's storage stride */
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
-    uint8_t arg;     /* a text field's flavour */
+    uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1110,7 +1116,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-                e.op = kTableFixedText; e.arg = d->arg;
+                e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
                 table_fixed_push( c, e );
                 break;
             }
@@ -1230,5 +1236,28 @@ static SCHEMA_UNUSED void table_fixed_put128_i( uint8_t * b, serialize_int128_t 
        know that (docs/SPEC-TABLES.md §3.4's constant-size table). */
     table_fixed_put64( b, (uint64_t) v.lo );
     table_fixed_put64( b + 8, (uint64_t) v.hi );
+}
+
+/* ---- the 128-bit COMPARE, for the read-side bounds -------------------------
+
+   The straight-line bounds pass (docs/SPEC-TABLES.md §3.4) compares a value
+   against its declared min and max. C++ writes that as < and >, because
+   serialize's 128-bit types carry the operators; C's are STRUCTS, so the same
+   two lines are these two functions. Each answers -1, 0 or 1, the high half
+   deciding first, and the SIGNED twin reads its high half as two's complement
+   — which is the whole difference between them. */
+static SCHEMA_UNUSED int table_fixed_cmp128_u( serialize_uint128_t a, uint64_t bhi, uint64_t blo )
+{
+    if ( (uint64_t) a.hi != bhi ) { return (uint64_t) a.hi < bhi ? -1 : 1; }
+    if ( (uint64_t) a.lo != blo ) { return (uint64_t) a.lo < blo ? -1 : 1; }
+    return 0;
+}
+static SCHEMA_UNUSED int table_fixed_cmp128_i( serialize_int128_t a, uint64_t bhi, uint64_t blo )
+{
+    const int64_t ah = (int64_t) a.hi;
+    const int64_t bh = (int64_t) bhi;
+    if ( ah != bh ) { return ah < bh ? -1 : 1; }
+    if ( (uint64_t) a.lo != blo ) { return (uint64_t) a.lo < blo ? -1 : 1; }
+    return 0;
 }
 `

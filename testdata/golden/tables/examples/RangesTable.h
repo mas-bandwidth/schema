@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -2346,7 +2351,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2400,7 +2405,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2522,14 +2533,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2952,7 +2963,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -3208,7 +3219,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -7937,8 +7948,9 @@ inline void RangedSignedFixedWriteBody( uint8_t * b, const RangedSigned & value 
     TableFixedPut64( b + 36, (uint64_t) value.i64_low );
     TableFixedPut64( b + 44, (uint64_t) value.i64_high );
     TableFixedPut64( b + 52, (uint64_t) value.i64_inside );
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 60, (uint32_t) value.edges_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.edges_count; ++i )
     {
         TableFixedPut16( b + 64 + i * 2 + 0, (uint16_t) value.edges[i] );
     }
@@ -7965,8 +7977,9 @@ inline void RangedUnsignedFixedWriteBody( uint8_t * b, const RangedUnsigned & va
     TableFixedPut64( b + 36, (uint64_t) value.u64_low );
     TableFixedPut64( b + 44, (uint64_t) value.u64_high );
     TableFixedPut64( b + 52, (uint64_t) value.u64_inside );
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 60, (uint32_t) value.counts_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.counts_count; ++i )
     {
         TableFixedPut64( b + 64 + i * 8 + 0, (uint64_t) value.counts[i] );
     }
@@ -7983,6 +7996,79 @@ inline void RangedWidthsFixedWriteBody( uint8_t * b, const RangedWidths & value 
     TableFixedPut64( b + 12, (uint64_t) value.b64 );
     TableFixedPut32( b + 20, (uint32_t) value.b12 );
     TableFixedPut64( b + 24, (uint64_t) value.b48 );
+}
+
+// RangedSigned's read-side bounds.
+inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.i8_low > 126 ) { value.i8_low = 126; clamped++; }
+    if ( value.i8_high < -127 ) { value.i8_high = -127; clamped++; }
+    if ( value.i8_inside < -127 ) { value.i8_inside = -127; clamped++; }
+    else if ( value.i8_inside > 126 ) { value.i8_inside = 126; clamped++; }
+    if ( value.i16_low > 32766 ) { value.i16_low = 32766; clamped++; }
+    if ( value.i16_high < -32767 ) { value.i16_high = -32767; clamped++; }
+    if ( value.i16_inside < -32767 ) { value.i16_inside = -32767; clamped++; }
+    else if ( value.i16_inside > 32766 ) { value.i16_inside = 32766; clamped++; }
+    if ( value.i32_low > 2147483646 ) { value.i32_low = 2147483646; clamped++; }
+    if ( value.i32_high < -2147483647 ) { value.i32_high = -2147483647; clamped++; }
+    if ( value.i32_inside < -2147483647 ) { value.i32_inside = -2147483647; clamped++; }
+    else if ( value.i32_inside > 2147483646 ) { value.i32_inside = 2147483646; clamped++; }
+    if ( value.i64_low > 9223372036854775806ll ) { value.i64_low = 9223372036854775806ll; clamped++; }
+    if ( value.i64_high < -9223372036854775807ll ) { value.i64_high = -9223372036854775807ll; clamped++; }
+    if ( value.i64_inside < -9223372036854775807ll ) { value.i64_inside = -9223372036854775807ll; clamped++; }
+    else if ( value.i64_inside > 9223372036854775806ll ) { value.i64_inside = 9223372036854775806ll; clamped++; }
+    for ( int64_t i = 0; i < (int64_t) value.edges_count; ++i )
+    {
+    }
+}
+
+// RangedUnsigned's read-side bounds.
+inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.u8_low > 254 ) { value.u8_low = 254; clamped++; }
+    if ( value.u8_high < 1 ) { value.u8_high = 1; clamped++; }
+    if ( value.u8_inside < 1 ) { value.u8_inside = 1; clamped++; }
+    else if ( value.u8_inside > 254 ) { value.u8_inside = 254; clamped++; }
+    if ( value.u16_low > 65534 ) { value.u16_low = 65534; clamped++; }
+    if ( value.u16_high < 1 ) { value.u16_high = 1; clamped++; }
+    if ( value.u16_inside < 1 ) { value.u16_inside = 1; clamped++; }
+    else if ( value.u16_inside > 65534 ) { value.u16_inside = 65534; clamped++; }
+    if ( value.u32_low > 4294967294 ) { value.u32_low = 4294967294; clamped++; }
+    if ( value.u32_high < 1 ) { value.u32_high = 1; clamped++; }
+    if ( value.u32_inside < 1 ) { value.u32_inside = 1; clamped++; }
+    else if ( value.u32_inside > 4294967294 ) { value.u32_inside = 4294967294; clamped++; }
+    if ( value.u64_low > 18446744073709551614ull ) { value.u64_low = 18446744073709551614ull; clamped++; }
+    if ( value.u64_high < 1ull ) { value.u64_high = 1ull; clamped++; }
+    if ( value.u64_inside < 1ull ) { value.u64_inside = 1ull; clamped++; }
+    else if ( value.u64_inside > 18446744073709551614ull ) { value.u64_inside = 18446744073709551614ull; clamped++; }
+    for ( int64_t i = 0; i < (int64_t) value.counts_count; ++i )
+    {
+    }
+}
+
+// RangedWidths's read-side bounds.
+inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.b8 > 255ull ) { value.b8 = 255ull; clamped++; } // bits(8) width clamp
+    if ( value.b16 > 65535ull ) { value.b16 = 65535ull; clamped++; } // bits(16) width clamp
+    if ( value.b12 > 4095ull ) { value.b12 = 4095ull; clamped++; } // bits(12) width clamp
+    if ( value.b48 > 281474976710655ull ) { value.b48 = 281474976710655ull; clamped++; } // bits(48) width clamp
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RangedSignedFixedClamp( RangedSigned & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RangedSignedFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RangedSigned, the fixed form ----
@@ -8053,10 +8139,10 @@ constexpr TableFixedDst RangedSignedFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RangedSignedFixedPlan[] = {
-    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // i8_span
-    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // i64_span
-    { 60u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // edges count
-    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // edges, whole
+    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // i8_span
+    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // i64_span
+    { 60u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // edges count
+    { 64u, 64u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // edges, whole
 };
 constexpr int32_t RangedSignedFixedPlanCount = 4;
 constexpr int32_t RangedSignedFixedPlanGuarded = 4;
@@ -8148,9 +8234,25 @@ inline int64_t RangedSignedFixedLoad( RangedSigned * values, int64_t capacity, c
         RangedSignedReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RangedSignedFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RangedUnsignedFixedClamp( RangedUnsigned & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RangedUnsignedFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RangedUnsigned, the fixed form ----
@@ -8221,10 +8323,10 @@ constexpr TableFixedDst RangedUnsignedFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RangedUnsignedFixedPlan[] = {
-    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // u8_span
-    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // u64_span
-    { 60u, 96u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // counts count
-    { 64u, 64u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // counts, whole
+    { 0u, 0u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // u8_span
+    { 28u, 32u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // u64_span
+    { 60u, 96u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // counts count
+    { 64u, 64u, 32u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // counts, whole
 };
 constexpr int32_t RangedUnsignedFixedPlanCount = 4;
 constexpr int32_t RangedUnsignedFixedPlanGuarded = 4;
@@ -8316,9 +8418,25 @@ inline int64_t RangedUnsignedFixedLoad( RangedUnsigned * values, int64_t capacit
         RangedUnsignedReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RangedUnsignedFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void RangedWidthsFixedClamp( RangedWidths & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    RangedWidthsFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- RangedWidths, the fixed form ----
@@ -8364,9 +8482,9 @@ constexpr TableFixedDst RangedWidthsFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RangedWidthsFixedPlan[] = {
-    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // b8
-    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // b64
-    { 24u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // b48
+    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // b8
+    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // b64
+    { 24u, 32u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // b48
 };
 constexpr int32_t RangedWidthsFixedPlanCount = 3;
 constexpr int32_t RangedWidthsFixedPlanGuarded = 3;
@@ -8458,6 +8576,9 @@ inline int64_t RangedWidthsFixedLoad( RangedWidths * values, int64_t capacity, c
         RangedWidthsReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        RangedWidthsFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;

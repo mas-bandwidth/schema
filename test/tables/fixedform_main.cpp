@@ -42,6 +42,8 @@
 #include "V2Table.h"
 #include "P1Table.h"
 #include "P3Table.h"
+#include "UT1Table.h"
+#include "UT2Table.h"
 
 static int failures = 0;
 
@@ -63,6 +65,12 @@ static void fx_case()
     one.gone = 654;
     one.nested.a = 111;
     one.nested.b = 222;
+    // A `bytes(N)` IS AN ARRAY OF u8 ON THIS WIRE (§3.4), so its destination row
+    // is an ARRAY's — the buffer, and the live length beside it — and not a
+    // text field's, which is the other way round. Only a COMPILED plan reads
+    // those columns, so only FX2's read of this record can tell.
+    one.blob[0] = 0xDE; one.blob[1] = 0xAD; one.blob[2] = 0xBE; one.blob[3] = 0xEF;
+    one.blob_length = 4;
 
     std::vector<uint8_t> w1( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
     check( tblfx1::FxRootFixedSave( &one, 1, w1.data(), (int64_t) w1.size() ) == (int64_t) w1.size(), "FX1 save" );
@@ -94,6 +102,10 @@ static void fx_case()
         check( back.added == 11, "MISSING: a field the writer does not carry takes its declared default" );
         check( back.extra.x == 0 && back.extra.y == 0, "MISSING: a whole nested type takes its defaults" );
         check( back.nested.a == 111 && back.nested.b == 222, "older writer: the nesting" );
+        check( back.blob_length == 4 && back.blob[0] == 0xDE && back.blob[1] == 0xAD &&
+               back.blob[2] == 0xBE && back.blob[3] == 0xEF,
+               "BYTES(N): the compiled plan lands the buffer in the buffer and the length in the length" );
+        check( back.blob[4] == 0 && back.blob[5] == 0, "BYTES(N): the slack past the live length is zero" );
         check( r.unknown == 1, "older writer: `gone` is the one field this reader cannot name" );
         check( r.kind_mismatch == 0 && !r.malformed && !r.refused, "older writer: nothing else fired" );
     }
@@ -241,7 +253,10 @@ static void negative_control()
     // here because it is also the check that a refusal MOVES NO COUNTER.
     {
         std::vector<uint8_t> broken = w2;
-        broken[tblfx1::kTableFixedHeaderBytes] ^= 0xFFu; // the entry count
+        // THE ENTRY COUNT, which is the layout's own first four bytes and not
+        // the u32 LENGTH in front of them: a length that no longer matches the
+        // file is a different rule with a different name.
+        broken[tblfx1::kTableFixedHeaderBytes + 4] ^= 0xFFu;
         tblfx1::FxRoot v;
         tblfx1::TableReport r3;
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, &r3 );
@@ -545,6 +560,441 @@ static void fuzz_case()
                  clean.size(), (long long) refused, (long long) damaged, (long long) read );
 }
 
+// ---------------------------------------------------------------------------
+
+// THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4). A `string(N)` shorter than N
+// and a `[..N]T` with unused slots are DECLARED bytes carrying no value, and
+// what rides in them is the TEMPLATE'S ZEROS — never whatever the writer's own
+// storage happened to hold past the used length or the live count.
+//
+// Copying the whole span instead is not a cosmetic difference: for an array of
+// a type with declared defaults, the unused slots put the ELEMENT'S DEFAULT
+// IMAGE on the wire, so a value nobody wrote rides as if somebody had; and for
+// text, a field written twice with two different values does not compare equal
+// on the second write. The Elixir port found both.
+//
+// THE CONTROL IS THE STAIN. The storage past the used length and the live count
+// is filled with a byte that appears nowhere else in a clean record; the test
+// first proves the stain IS there in the storage (or it would be checking
+// nothing), then proves the WIRE carries none of it, and then proves that a
+// whole-span copy of the same storage WOULD have carried it — which is the
+// wrong behaviour, watched failing.
+static void slack_case()
+{
+    tblfx1::FxRoot v;
+    tblfx1::FxRootReset( v );
+    v.keep = 11u;
+    v.narrow = 22u;
+    v.renamed = 33;
+    v.gone = 44;
+    v.nested.a = 55;
+    v.nested.b = 66;
+    std::memset( v.label, 0xAA, sizeof( v.label ) );
+    v.label[0] = 'h';
+    v.label[1] = 'i';
+    v.label_length = 2;
+    for ( int k = 0; k < 4; ++k ) { v.marks[k] = 0x5A5A5A5A; }
+    v.marks[0] = 7;
+    v.marks_count = 1;
+
+    // the stain is really in the storage, so nothing below is vacuous
+    check( (uint8_t) v.label[2] == 0xAAu, "CONTROL: the text slack really is stained in storage" );
+    check( v.marks[1] == 0x5A5A5A5A, "CONTROL: the array slack really is stained in storage" );
+
+    std::vector<uint8_t> file( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &v, 1, file.data(), (int64_t) file.size() ) == (int64_t) file.size(),
+           "slack: the record saves" );
+    const uint8_t * body = file.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+    const size_t body_bytes = (size_t) tblfx1::FxRootFixedBodyBytes;
+    check( std::memchr( body, 0xAA, body_bytes ) == NULL,
+           "SLACK IS ZERO: not one stained TEXT byte reached the wire" );
+    check( std::memchr( body, 0x5A, body_bytes ) == NULL,
+           "SLACK IS ZERO: not one stained ARRAY byte reached the wire" );
+
+    // NEGATIVE CONTROL: the same storage copied WHOLE — which is what the
+    // writer did before this fix — carries the stain, so the two checks above
+    // discriminate and are not passing for some other reason.
+    {
+        uint8_t whole[sizeof( v.label )];
+        std::memcpy( whole, v.label, sizeof( v.label ) );
+        check( std::memchr( whole, 0xAA, sizeof( whole ) ) != NULL,
+               "NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain" );
+        int32_t marks[4];
+        std::memcpy( marks, v.marks, sizeof( marks ) );
+        check( marks[3] == 0x5A5A5A5A,
+               "NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
+    }
+
+    // and the record still reads back as itself: the used length and the live
+    // count are what the reader validates, and both are inside the bound, so
+    // nothing clamps.
+    {
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, &r ) == 1,
+               "slack: the record reads" );
+        check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
+               "slack: the used length reads, and the buffer terminates at it" );
+        check( back.marks_count == 1 && back.marks[0] == 7, "slack: the live count reads" );
+        check( back.marks[1] == 0 && back.marks[2] == 0 && back.marks[3] == 0,
+               "slack: an unused slot lands as the wire's zero and not as some writer's leftover" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "slack: a clean read moves no counter" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// A `bytes(N)`'s DESTINATION ROW IS AN ARRAY'S (docs/SPEC-TABLES.md §3.4).
+// `bytes(N)` rides as an array of u8, so the plan compiler lands it through the
+// ARRAY case: the count goes to the row's aux and the elements to the row's
+// dst. A text field's row is the other way round — dst the length, aux the
+// buffer — and under that convention a `bytes(N)` hands the compiler a count
+// destination that is the BUFFER'S FIRST FOUR BYTES and an element destination
+// that is the LENGTH FIELD.
+//
+// THE NEGATIVE CONTROL IS THE OLD ROW, and it is built by swapping the two
+// columns back on a copy of this build's own rows and compiling the same plan
+// from the same layout. The row is found by its shape and not by its index —
+// stride one and a live count is a `bytes(N)` and nothing else — so the control
+// does not quietly stop pointing at it the day a field moves.
+static void bytes_row_case()
+{
+    tblfx1::FxRoot one;
+    tblfx1::FxRootReset( one );
+    one.blob[0] = 0xDE; one.blob[1] = 0xAD; one.blob[2] = 0xBE; one.blob[3] = 0xEF;
+    one.blob_length = 4;
+    std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "bytes row: FX1 save" );
+
+    const size_t rows = sizeof( tblfx2::FxRootFixedDst ) / sizeof( tblfx2::FxRootFixedDst[0] );
+    std::vector<tblfx2::TableFixedDst> swapped( tblfx2::FxRootFixedDst, tblfx2::FxRootFixedDst + rows );
+    size_t found = rows;
+    for ( size_t i = 0; i < rows; ++i )
+    {
+        if ( swapped[i].stride == 1u && swapped[i].counted != 0u ) { found = i; break; }
+    }
+    check( found != rows, "bytes row: the `bytes(N)` row is the one with stride one and a live count" );
+    const uint32_t d = swapped[found].dst;
+    swapped[found].dst = swapped[found].aux; // the TEXT convention, as it was
+    swapped[found].aux = d;
+
+    tblfx2::TableFixedLayoutView theirs;
+    tblfx2::TableMessageReason why = tblfx2::layout_malformed;
+    check( tblfx2::TableFixedParseLayout( tblfx1::FxRootFixedLayout, tblfx1::FxRootFixedLayoutBytes, theirs, why ),
+           "bytes row: FX1's layout parses" );
+
+    const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+    for ( int pass = 0; pass < 2; ++pass )
+    {
+        const tblfx2::TableFixedDst * rowset = pass == 0 ? tblfx2::FxRootFixedDst : swapped.data();
+        std::vector<tblfx2::TableFixedEntry> plan( 2048 );
+        int32_t guarded = 0;
+        tblfx2::TableReport compile_report;
+        const int32_t made = tblfx2::TableFixedCompile( theirs, tblfx2::FxRootFixedLayout, (int32_t) tblfx2::FxRootFixedLayoutBytes,
+                                                        rowset, plan.data(), 2048, &guarded, &compile_report );
+        check( made > 0, "bytes row: the plan compiles either way — the rows are not what refuses" );
+        // THE DESTINATION IS OVERSIZED ON PURPOSE. The wrong rows put an
+        // element destination where the LENGTH FIELD is, and six bytes of
+        // elements past a four-byte field is a step outside the storage — so
+        // the control gives it room to be wrong, and what reports the bug is
+        // the value that comes back rather than the sanitizer.
+        std::vector<uint64_t> storage( sizeof( tblfx2::FxRoot ) / 8 + 16, 0 );
+        tblfx2::FxRoot * back = (tblfx2::FxRoot *) (void *) storage.data();
+        tblfx2::FxRootReset( *back );
+        tblfx2::TableReport r;
+        tblfx2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) back, &r );
+        const bool right = back->blob_length == 4 && back->blob[0] == 0xDE && back->blob[1] == 0xAD &&
+                           back->blob[2] == 0xBE && back->blob[3] == 0xEF;
+        if ( pass == 0 )
+        {
+            check( right, "BYTES(N): the array row lands the buffer in the buffer and the length in the length" );
+        }
+        else
+        {
+            check( !right, "NEGATIVE CONTROL: the text row really does write the count into the buffer" );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// TWO LANES, BECAUSE THEY ARE TWO FACTS (docs/SPEC-TABLES.md §3.4). A plan
+// entry carries the ordinal the GUARD byte must hold for the entry to run, and
+// the argument the entry's OWN OP takes — for a text entry, its flavour. They
+// had one lane between them, and a `string(N)` under a union's arm could be
+// guarded correctly or read with the right flavour and could not be both.
+//
+// UT1's string sits under the SECOND arm on purpose: a `string(N)`'s flavour is
+// 1 and the second arm's ordinal is 2, so the collision does not merely lose a
+// fact — it turns a byte string into a WIDE one, halving the bound and
+// terminating two bytes at a time.
+static void union_text_case()
+{
+    tblut1::UtRoot one;
+    tblut1::UtRootReset( one );
+    one.head = 42;
+    one.tail = 99;
+    one.pick.type = tblut1::PickType::B;   // the SECOND arm
+    std::strcpy( one.pick.b.label, "seven77" ); // seven characters, so the slack is real
+    one.pick.b.label_length = 7;
+    one.pick.b.m = 1234;
+
+    std::vector<uint8_t> w( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+    check( tblut1::UtRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "UT1 save" );
+
+    // THE IDENTITY PLAN: the guard holds the arm ordinal, the flavour is the
+    // text op's own, and the two are read out of different lanes.
+    {
+        check( tblut1::UtRootFixedPlan[3].op == tblut1::kTableFixedText, "two lanes: the plan's fourth entry is the text" );
+        check( tblut1::UtRootFixedPlan[3].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
+        check( tblut1::UtRootFixedPlan[3].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes: the record reads" );
+        check( back.pick.type == tblut1::PickType::B, "two lanes: the arm" );
+        check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
+               "two lanes: the arm's string(8), whole" );
+        check( back.pick.b.m == 1234 && back.head == 42 && back.tail == 99, "two lanes: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes: a clean read moves no counter" );
+    }
+
+    // THE NEGATIVE CONTROL — the bug itself, watched failing. The flavour is
+    // put back into the guard's lane, which is exactly what the one shared lane
+    // did, and the SAME record read by the SAME loop comes out wrong: the arm's
+    // ordinal 2 reads as kTableFixedTextWide, so the length is halved and the
+    // terminator lands two bytes early.
+    {
+        std::vector<tblut1::TableFixedEntry> shared( tblut1::UtRootFixedPlan,
+                                                     tblut1::UtRootFixedPlan + tblut1::UtRootFixedPlanCount );
+        shared[3].meta = shared[3].arg; // ONE LANE, as it was
+        tblut1::UtRoot wrong;
+        tblut1::UtRootReset( wrong );
+        tblut1::TableReport r;
+        const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
+        tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
+                               body, (uint8_t *) &wrong, &r );
+        check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
+               "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
+    }
+
+    // A COMPILED PLAN: UT2 inserted an arm IN THE MIDDLE, so the same string is
+    // arm 3 here and arm 2 in the record. The guard must hold THEIR ordinal
+    // while the tag this reader stores is MY ordinal, and the flavour is
+    // neither number.
+    {
+        tblut2::UtRoot back;
+        tblut2::TableReport r;
+        std::vector<tblut2::TableFixedEntry> plan( 1024 );
+        check( tblut2::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes, compiled: the record reads" );
+        check( back.pick.type == tblut2::PickType::B, "two lanes, compiled: the arm is remapped by NAME, not by ordinal" );
+        check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
+               "two lanes, compiled: the arm's string(8), whole" );
+        check( back.pick.b.m == 1234 && back.head == 42 && back.tail == 99, "two lanes, compiled: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes, compiled: a clean read moves no counter" );
+    }
+
+    // and the other direction: UT1 reads a UT2 record whose arm is `b`, which
+    // in that record is ordinal 3.
+    {
+        tblut2::UtRoot two;
+        tblut2::UtRootReset( two );
+        two.head = 7;
+        two.tail = 8;
+        two.pick.type = tblut2::PickType::B;
+        std::strcpy( two.pick.b.label, "third" );
+        two.pick.b.label_length = 5;
+        two.pick.b.m = 555;
+        std::vector<uint8_t> w2( (size_t) tblut2::UtRootFixedMeasure( 1 ) );
+        check( tblut2::UtRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "UT2 save" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes, back: the record reads" );
+        check( back.pick.type == tblut1::PickType::B, "two lanes, back: arm 3 lands as arm 2, by name" );
+        check( back.pick.b.label_length == 5 && std::strcmp( back.pick.b.label, "third" ) == 0,
+               "two lanes, back: the arm's string(8), whole" );
+        check( back.pick.b.m == 555, "two lanes, back: the arm's other field" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4). A fixed
+// record is a positional image and the one read loop moves bytes: it asks
+// nothing about what they mean. Two things a declaration bounds are therefore
+// not the loop's at all — a RANGED SCALAR's declared min and max, and an
+// ORDINAL's set: a union tag past the arm count, an enum ordinal past the
+// enum's top value.
+//
+// They are held by STRAIGHT-LINE CODE in the generated decode, after the copy,
+// and never by plan entries: an entry per bounded field is a test on every read
+// of every record, which is the cost the identity plan exists to avoid. The
+// pass runs over STORAGE, so ONE pass covers the identity plan and a plan
+// compiled from a stranger's layout alike.
+//
+// THE POISON IS WRITTEN THROUGH THE WRITER, not poked into the bytes: the write
+// side's own bounds are debug-only by rule and a range is not one of them, so a
+// caller CAN put an out-of-range value on the wire and a reader is what has to
+// answer for it.
+static void bounds_case()
+{
+    // 1. A RANGED SCALAR, both ends, on the identity path.
+    tblfx1::FxRoot one;
+    tblfx1::FxRootReset( one );
+    one.keep = 1u;
+    one.renamed = 5000;  // declared | min = 0, max = 1000
+    one.gone = -7;       // and the low end of the same declaration
+    one.nested.a = 111;
+    one.nested.b = 222;
+    std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "bounds: FX1 save" );
+    {
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "bounds: the record reads" );
+        check( back.renamed == 1000, "RANGE: a value past max lands at max" );
+        check( back.gone == 0, "RANGE: a value under min lands at min" );
+        check( r.clamped == 2, "RANGE: two clamps, counted" );
+        check( back.nested.a == 111 && back.nested.b == 222, "RANGE: an in-range neighbour is untouched" );
+    }
+
+    // THE NEGATIVE CONTROL: the read loop ALONE, with no straight-line pass
+    // after it. The same record, the same plan, and the out-of-range value
+    // survives — which is what says the bound is held by the pass and not by
+    // something else that would have caught it anyway.
+    {
+        tblfx1::FxRoot loose;
+        tblfx1::FxRootReset( loose );
+        tblfx1::TableReport r;
+        const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+        tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
+                               body, (uint8_t *) &loose, &r );
+        check( loose.renamed == 5000 && loose.gone == -7,
+               "NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
+        check( r.clamped == 0, "NEGATIVE CONTROL: and counts nothing" );
+    }
+
+    // 2. THE SAME NUMBERS THROUGH A COMPILED PLAN. FX2 reads the same record
+    // through a plan compiled from FX1's layout, and the bound is the same one.
+    {
+        tblfx2::FxRoot back;
+        tblfx2::TableReport r;
+        std::vector<tblfx2::TableFixedEntry> plan( 2048 );
+        check( tblfx2::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 2048, &r ) == 1,
+               "bounds, compiled: the record reads" );
+        check( back.renamed_to == 1000, "RANGE, compiled: the same clamp through a compiled plan" );
+        check( r.clamped == 1, "RANGE, compiled: one clamp — `gone` is a field FX2 cannot name" );
+    }
+
+    // 3. A UNION TAG PAST THE ARM COUNT lands None and counts.
+    {
+        tblut1::UtRoot v;
+        tblut1::UtRootReset( v );
+        v.head = 1;
+        v.tail = 2;
+        v.pick.type = (tblut1::PickType) 7; // UT1 declares two arms
+        std::vector<uint8_t> uw( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+        check( tblut1::UtRootFixedSave( &v, 1, uw.data(), (int64_t) uw.size() ) == (int64_t) uw.size(), "bounds: UT1 save" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, uw.data(), (int64_t) uw.size(), plan.data(), 1024, &r ) == 1,
+               "bounds: the union record reads" );
+        check( back.pick.type == tblut1::PickType::None, "ORDINAL: a tag past the arm count lands None" );
+        check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
+        check( back.head == 1 && back.tail == 2, "ORDINAL: the rest of the record stands" );
+    }
+
+    // 4. AN ENUM ORDINAL PAST THE ENUM'S TOP VALUE lands None and counts.
+    {
+        tblv1::Cfg v;
+        tblv1::CfgReset( v );
+        v.grade = (tblv1::Grade) 9; // V1's Grade tops out at Gold
+        std::vector<uint8_t> vw( (size_t) tblv1::CfgFixedMeasure( 1 ) );
+        check( tblv1::CfgFixedSave( &v, 1, vw.data(), (int64_t) vw.size() ) == (int64_t) vw.size(), "bounds: V1 save" );
+
+        tblv1::Cfg back;
+        tblv1::TableReport r;
+        std::vector<tblv1::TableFixedEntry> plan( 8192 );
+        check( tblv1::CfgFixedLoad( &back, 1, vw.data(), (int64_t) vw.size(), plan.data(), 8192, &r ) == 1,
+               "bounds: the enum record reads" );
+        check( back.grade == tblv1::Grade::None, "ORDINAL: an ordinal past the enum's top value lands None" );
+        check( r.clamped == 1, "ORDINAL: and counts as a clamp" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS (docs/SPEC-TABLES.md
+// §3.4): the payload rides WHOLE whether or not it is present, and when the
+// flag is 0 what rides is ZERO. It is one `if` in the writer, and what it buys
+// is that a caller's untouched payload storage never reaches the wire — an
+// absent optional is a hole in the record and not a window into the writer's
+// memory.
+//
+// THE CONTROL IS THE STAIN, as it is for every other kind of slack: the payload
+// storage is filled with a byte a clean record carries nowhere, the test proves
+// the stain IS there, then proves the WIRE carries none of it, and then proves
+// the SAME payload PRESENT does put those bytes on the wire — so the check is
+// discriminating and not passing because the writer never wrote a payload at
+// all.
+static void absent_optional_case()
+{
+    tblp3::Chain v;
+    tblp3::ChainReset( v );
+    std::strcpy( v.name, "absent" );
+    v.name_length = 6;
+    v.link_present = false;
+    v.link.value = 0x5A5A5A;
+    std::memset( v.link.tag, 0x5A, sizeof( v.link.tag ) );
+    v.link.tag_length = 5;
+    check( (uint8_t) v.link.tag[0] == 0x5Au, "CONTROL: the absent payload really is stained in storage" );
+
+    std::vector<uint8_t> w( (size_t) tblp3::ChainFixedMeasure( 1 ) );
+    check( tblp3::ChainFixedSave( &v, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "absent optional: the record saves" );
+    const uint8_t * body = w.data() + tblp3::kTableFixedHeaderBytes + 4 + tblp3::ChainFixedLayoutBytes + 8;
+    const size_t body_bytes = (size_t) tblp3::ChainFixedBodyBytes;
+    check( std::memchr( body, 0x5A, body_bytes ) == NULL,
+           "ABSENT OPTIONAL: not one byte of the absent payload reached the wire" );
+
+    // and the reader reads what the flag says, with the payload at its defaults
+    {
+        tblp3::Chain back;
+        tblp3::TableReport r;
+        std::vector<tblp3::TableFixedEntry> plan( 1024 );
+        check( tblp3::ChainFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "absent optional: the record reads" );
+        check( !back.link_present, "absent optional: the flag" );
+        check( back.link.value == 0 && back.link.tag_length == 0, "absent optional: the payload reads as the wire's zeros" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "absent optional: a clean read moves no counter" );
+    }
+
+    // THE DISCRIMINATING HALF: the same payload, PRESENT. Those bytes do reach
+    // the wire, so the check above is about the flag and not about the writer
+    // never having written a payload.
+    {
+        tblp3::Chain present = v;
+        present.link_present = true;
+        present.link.tag_length = 4;
+        std::vector<uint8_t> pw( (size_t) tblp3::ChainFixedMeasure( 1 ) );
+        check( tblp3::ChainFixedSave( &present, 1, pw.data(), (int64_t) pw.size() ) == (int64_t) pw.size(),
+               "absent optional: the present twin saves" );
+        const uint8_t * pbody = pw.data() + tblp3::kTableFixedHeaderBytes + 4 + tblp3::ChainFixedLayoutBytes + 8;
+        check( std::memchr( pbody, 0x5A, (size_t) tblp3::ChainFixedBodyBytes ) != NULL,
+               "NEGATIVE CONTROL: the SAME payload PRESENT really does reach the wire" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -554,6 +1004,11 @@ int main()
     v_case();
     p_case();
     negative_control();
+    slack_case();
+    union_text_case();
+    bytes_row_case();
+    bounds_case();
+    absent_optional_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }

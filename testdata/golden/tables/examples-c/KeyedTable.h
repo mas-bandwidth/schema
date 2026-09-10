@@ -656,6 +656,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -699,7 +703,7 @@ enum
     kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
 };
 
-/* arg on a kTableFixedText entry */
+/* meta on a kTableFixedText entry */
 enum
 {
     kTableFixedTextUtf8  = 1,
@@ -801,7 +805,13 @@ typedef struct TableFixedEntry
     uint32_t aux;
     uint32_t guard;
     uint8_t op;
+    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+       must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+       entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+       shared one, and a string(N) under a union's arm then had to be either
+       guarded correctly or read with the right flavour and could not be both. */
     uint8_t arg;
+    uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
 } TableFixedEntry;
@@ -978,14 +988,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p->arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p->meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p->size / unit;
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
             if ( v < 0 ) { v = 0; (*clamped)++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; (*clamped)++; }
             memcpy( dst + p->dst, &v, 4 );
             table_fixed_copy_run( dst + p->aux, src + p->src + 4, p->size );
-            if ( p->arg != kTableFixedTextBytes )
+            if ( p->meta != kTableFixedTextBytes )
             {
                 /* the used length terminates the buffer, whose storage is one
                    unit longer than the bound for exactly this. A store, not a
@@ -1448,7 +1458,7 @@ typedef struct TableFixedDst
     uint32_t stride; /* an array entry's storage stride */
     uint32_t aux;    /* a text field's buffer offset */
     uint8_t counted; /* an array that carries a live count */
-    uint8_t arg;     /* a text field's flavour */
+    uint8_t meta;    /* a text field's flavour, which is the TEXT OP's own argument */
 } TableFixedDst;
 
 /* C HAS NO bool: want_guarded, overflow and hostile are ints holding 0 or 1,
@@ -1735,7 +1745,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-                e.op = kTableFixedText; e.arg = d->arg;
+                e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
                 table_fixed_push( c, e );
                 break;
             }
@@ -5023,8 +5033,9 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_co
 {
     (void) b; (void) value;
     table_fixed_put32( b + 0, (uint32_t) value->spawn_count );
+    schema_assert( value->banner_length >= 0 && value->banner_length <= 16 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 4, (uint32_t) value->banner_length );
-    memcpy( b + 8, value->banner, 16 );
+    memcpy( b + 8, value->banner, (size_t) ( value->banner_length ) );
 }
 
 /* GunnerConfig's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -5044,7 +5055,10 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_turret_
     table_fixed_putf32( b + 0, value->damage );
     table_fixed_putf32( b + 4, value->cooldown );
     table_fixed_put8( b + 8, value->gunner_present ? 1 : 0 );
-    schema_tabledemo_gunner_config_fixed_write_body_( b + 9, &value->gunner );
+    if ( value->gunner_present )
+    {
+        schema_tabledemo_gunner_config_fixed_write_body_( b + 9, &value->gunner );
+    }
 }
 
 /* HullConfig's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -5056,7 +5070,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_hull_co
     table_fixed_putf32( b + 4, value->mass );
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             schema_tabledemo_turret_config_fixed_write_body_( b + 8 + i * 14 + 0, &value->turrets[i] );
         }
@@ -5070,7 +5084,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_b
     (void) b; (void) value;
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             table_fixed_put32( b + 0 + i * 4 + 0, (uint32_t) value->per_team[i] );
         }
@@ -5084,19 +5098,68 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
     (void) b; (void) value;
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             schema_tabledemo_team_config_fixed_write_body_( b + 0 + i * 24 + 0, &value->teams[i] );
         }
     }
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             schema_tabledemo_hull_config_fixed_write_body_( b + 72 + i * 50 + 0, &value->hulls[i] );
         }
     }
     schema_tabledemo_score_board_fixed_write_body_( b + 222, &value->scores );
+}
+
+/* TeamConfig's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_config_fixed_clamp_body_( TeamConfig * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    if ( value->spawn_count < 0 ) { value->spawn_count = 0; (*clamped)++; }
+    else if ( value->spawn_count > 64 ) { value->spawn_count = 64; (*clamped)++; }
+}
+
+/* ScoreBoard's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_board_fixed_clamp_body_( ScoreBoard * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            if ( value->per_team[i] < 0 ) { value->per_team[i] = 0; (*clamped)++; }
+            else if ( value->per_team[i] > 100000 ) { value->per_team[i] = 100000; (*clamped)++; }
+        }
+    }
+}
+
+/* KeyedConfig's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_config_fixed_clamp_body_( KeyedConfig * value, int32_t * clamped )
+{
+    (void) value; (void) clamped;
+    {
+        int64_t i;
+        for ( i = 0; i < 3; ++i )
+        {
+            schema_tabledemo_team_config_fixed_clamp_body_( &value->teams[i], clamped );
+        }
+    }
+    schema_tabledemo_score_board_fixed_clamp_body_( &value->scores, clamped );
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_tabledemo_team_config_fixed_clamp_( TeamConfig * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_tabledemo_team_config_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
 }
 
 /* ---- TeamConfig, the fixed form ---- */
@@ -5134,8 +5197,8 @@ static SCHEMA_UNUSED const TableFixedDst team_config_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry team_config_fixed_plan[] = {
-    { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* spawn_count */
-    { 4u, 24u, 16u, 4u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* banner */
+    { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* spawn_count */
+    { 4u, 24u, 16u, 4u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* banner */
 };
 static SCHEMA_UNUSED const int32_t team_config_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t team_config_fixed_plan_guarded = 2;
@@ -5236,6 +5299,9 @@ static SCHEMA_UNUSED int64_t team_config_fixed_load( TeamConfig * values, int64_
         team_config_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_tabledemo_team_config_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
@@ -5276,7 +5342,7 @@ static SCHEMA_UNUSED const TableFixedDst gunner_config_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry gunner_config_fixed_plan[] = {
-    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
 };
 static SCHEMA_UNUSED const int32_t gunner_config_fixed_plan_count = 1;
 static SCHEMA_UNUSED const int32_t gunner_config_fixed_plan_guarded = 1;
@@ -5425,9 +5491,9 @@ static SCHEMA_UNUSED const TableFixedDst turret_config_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry turret_config_fixed_plan[] = {
-    { 0u, 0u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 8u, 16u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 9u, 8u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 0u, 0u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 8u, 16u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 9u, 8u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
 };
 static SCHEMA_UNUSED const int32_t turret_config_fixed_plan_count = 3;
 static SCHEMA_UNUSED const int32_t turret_config_fixed_plan_guarded = 3;
@@ -5593,15 +5659,15 @@ static SCHEMA_UNUSED const TableFixedDst hull_config_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry hull_config_fixed_plan[] = {
-    { 0u, 0u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* health */
-    { 16u, 24u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 17u, 16u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 22u, 28u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 30u, 44u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 31u, 36u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 36u, 48u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 44u, 64u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 45u, 56u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 0u, 0u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
+    { 16u, 24u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 17u, 16u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 22u, 28u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 30u, 44u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 31u, 36u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 36u, 48u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 44u, 64u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 45u, 56u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
 };
 static SCHEMA_UNUSED const int32_t hull_config_fixed_plan_count = 9;
 static SCHEMA_UNUSED const int32_t hull_config_fixed_plan_guarded = 9;
@@ -5707,6 +5773,19 @@ static SCHEMA_UNUSED int64_t hull_config_fixed_load( HullConfig * values, int64_
     return count;
 }
 
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_tabledemo_keyed_config_fixed_clamp_( KeyedConfig * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    schema_tabledemo_keyed_config_fixed_clamp_body_( value, &clamped );
+    report->clamped += clamped;
+}
+
 /* ---- KeyedConfig, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -5810,40 +5889,40 @@ static SCHEMA_UNUSED const TableFixedDst keyed_config_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry keyed_config_fixed_plan[] = {
-    { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* spawn_count */
-    { 4u, 24u, 16u, 4u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* banner */
-    { 24u, 28u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* spawn_count */
-    { 28u, 52u, 16u, 32u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* banner */
-    { 48u, 56u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* spawn_count */
-    { 52u, 80u, 16u, 60u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 1, 0, 0 }, /* banner */
-    { 72u, 84u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* health */
-    { 88u, 108u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 89u, 100u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 94u, 112u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 102u, 128u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 103u, 120u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 108u, 132u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 116u, 148u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 117u, 140u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 122u, 152u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* health */
-    { 138u, 176u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 139u, 168u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 144u, 180u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 152u, 196u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 153u, 188u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 158u, 200u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 166u, 216u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 167u, 208u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 172u, 220u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* health */
-    { 188u, 244u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 189u, 236u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 194u, 248u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 202u, 264u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 203u, 256u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 208u, 268u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* damage */
-    { 216u, 284u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
-    { 217u, 276u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* reaction */
-    { 222u, 288u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0 }, /* per_team, whole */
+    { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* spawn_count */
+    { 4u, 24u, 16u, 4u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* banner */
+    { 24u, 28u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* spawn_count */
+    { 28u, 52u, 16u, 32u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* banner */
+    { 48u, 56u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* spawn_count */
+    { 52u, 80u, 16u, 60u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0 }, /* banner */
+    { 72u, 84u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
+    { 88u, 108u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 89u, 100u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 94u, 112u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 102u, 128u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 103u, 120u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 108u, 132u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 116u, 148u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 117u, 140u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 122u, 152u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
+    { 138u, 176u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 139u, 168u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 144u, 180u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 152u, 196u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 153u, 188u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 158u, 200u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 166u, 216u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 167u, 208u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 172u, 220u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* health */
+    { 188u, 244u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 189u, 236u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 194u, 248u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 202u, 264u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 203u, 256u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 208u, 268u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* damage */
+    { 216u, 284u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* gunner present */
+    { 217u, 276u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* reaction */
+    { 222u, 288u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0 }, /* per_team, whole */
 };
 static SCHEMA_UNUSED const int32_t keyed_config_fixed_plan_count = 34;
 static SCHEMA_UNUSED const int32_t keyed_config_fixed_plan_guarded = 34;
@@ -5944,6 +6023,9 @@ static SCHEMA_UNUSED int64_t keyed_config_fixed_load( KeyedConfig * values, int6
         keyed_config_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_tabledemo_keyed_config_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;

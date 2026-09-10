@@ -12,6 +12,22 @@
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 #include "FixedTable.h"
 #include "serialize.h" // serialize::int128_t / uint128_t: the 128-bit storage
 #include "BenchTable.h"
@@ -2160,7 +2176,7 @@ enum : uint8_t
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
 };
 
-// arg on a kTableFixedText entry
+// meta on a kTableFixedText entry
 enum : uint8_t
 {
     kTableFixedTextUtf8  = 1,
@@ -2214,7 +2230,13 @@ struct TableFixedEntry
     uint32_t aux = 0;
     uint32_t guard = kTableFixedNoGuard;
     uint8_t op = 0;
+    // arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the byte at guard
+    // must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
+    // entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
+    // shared one, and a string(N) under a union's arm then had to be either
+    // guarded correctly or read with the right flavour and could not be both.
     uint8_t arg = 0;
+    uint8_t meta = 0;
     uint8_t dstsize = 0;
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
@@ -2336,14 +2358,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedText:
         {
-            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
             if ( v < 0 ) { v = 0; clamped++; }
             else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-            if ( p.arg != kTableFixedTextBytes )
+            if ( p.meta != kTableFixedTextBytes )
             {
                 // the used length terminates the buffer, whose storage is one
                 // unit longer than the bound for exactly this. A store, not a
@@ -2766,7 +2788,7 @@ struct TableFixedDst
     uint32_t stride = 0; // an array entry's storage stride
     uint32_t aux = 0;    // a text field's buffer offset
     uint8_t counted = 0; // an array that carries a live count
-    uint8_t arg = 0;     // a text field's flavour
+    uint8_t meta = 0;    // a text field's flavour, which is the TEXT OP's own argument
 };
 
 struct TableFixedCompiler
@@ -3022,7 +3044,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
             e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = d.arg;
+            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
@@ -3879,13 +3901,15 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     TableFixedPut64( b + 32, (uint64_t) value.world_time );
     TableFixedPut64( b + 40, (uint64_t) value.frame_tick );
     TableFixedPut32( b + 48, (uint32_t) value.server_time );
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 52, (uint32_t) value.entities_count );
-    for ( int64_t i = 0; i < 8; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
         MixedEntityFixedWriteBody( b + 56 + i * 51 + 0, value.entities[i] );
     }
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 464, (uint32_t) value.stats_count );
-    for ( int64_t i = 0; i < 80; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
     {
         MixedStatFixedWriteBody( b + 468 + i * 8 + 0, value.stats[i] );
     }
@@ -3909,14 +3933,16 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
         }
         default: break;
     }
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) 4; ++i )
     {
         TableFixedPut8( b + 1122 + i * 1 + 0, (uint8_t) value.loadout[i] );
     }
+    schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 1126, (uint32_t) value.player_name_length );
-    memcpy( b + 1130, value.player_name, 15 );
+    memcpy( b + 1130, value.player_name, (size_t) ( value.player_name_length ) );
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 1145, (uint32_t) value.payload_length );
-    memcpy( b + 1149, value.payload, 16 );
+    memcpy( b + 1149, value.payload, (size_t) ( value.payload_length ) );
     TableFixedPutF32( b + 1165, value.aim_x );
     TableFixedPutF32( b + 1169, value.aim_y );
     TableFixedPutF32( b + 1173, value.aim_z );
@@ -3937,6 +3963,144 @@ inline void FixedTableFixedWriteBody( uint8_t * b, const FixedTable & value )
 {
     (void) b; (void) value;
     BenchMixedFixedWriteBody( b + 0, value.value );
+}
+
+// MixedEntity's read-side bounds.
+inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.entity_id > 4095ull ) { value.entity_id = 4095ull; clamped++; } // bits(12) width clamp
+    if ( value.pos_x < -16383 ) { value.pos_x = -16383; clamped++; }
+    else if ( value.pos_x > 16383 ) { value.pos_x = 16383; clamped++; }
+    if ( value.pos_y < -16383 ) { value.pos_y = -16383; clamped++; }
+    else if ( value.pos_y > 16383 ) { value.pos_y = 16383; clamped++; }
+    if ( value.pos_z < -16383 ) { value.pos_z = -16383; clamped++; }
+    else if ( value.pos_z > 16383 ) { value.pos_z = 16383; clamped++; }
+    if ( value.yaw > 511ull ) { value.yaw = 511ull; clamped++; } // bits(9) width clamp
+    if ( value.pitch > 511ull ) { value.pitch = 511ull; clamped++; } // bits(9) width clamp
+    if ( value.vel_x < -2048 ) { value.vel_x = -2048; clamped++; }
+    else if ( value.vel_x > 2047 ) { value.vel_x = 2047; clamped++; }
+    if ( value.vel_y < -2048 ) { value.vel_y = -2048; clamped++; }
+    else if ( value.vel_y > 2047 ) { value.vel_y = 2047; clamped++; }
+    if ( value.vel_z < -2048 ) { value.vel_z = -2048; clamped++; }
+    else if ( value.vel_z > 2047 ) { value.vel_z = 2047; clamped++; }
+    if ( value.health < 0 ) { value.health = 0; clamped++; }
+    else if ( value.health > 1000 ) { value.health = 1000; clamped++; }
+    if ( (uint64_t) value.weapon > 15u ) { value.weapon = MixedWeapon::None; clamped++; }
+}
+
+// MixedStat's read-side bounds.
+inline void MixedStatFixedClampBody( MixedStat & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.stat_id > 255ull ) { value.stat_id = 255ull; clamped++; } // bits(8) width clamp
+    if ( value.delta < -512 ) { value.delta = -512; clamped++; }
+    else if ( value.delta > 511 ) { value.delta = 511; clamped++; }
+}
+
+// MixedHitEvent's read-side bounds.
+inline void MixedHitEventFixedClampBody( MixedHitEvent & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.target_id > 4095ull ) { value.target_id = 4095ull; clamped++; } // bits(12) width clamp
+    if ( value.damage < 0 ) { value.damage = 0; clamped++; }
+    else if ( value.damage > 4095 ) { value.damage = 4095; clamped++; }
+    if ( value.hit_kind < 0 ) { value.hit_kind = 0; clamped++; }
+    else if ( value.hit_kind > 7 ) { value.hit_kind = 7; clamped++; }
+}
+
+// MixedChatEvent's read-side bounds.
+inline void MixedChatEventFixedClampBody( MixedChatEvent & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.channel < 0 ) { value.channel = 0; clamped++; }
+    else if ( value.channel > 3 ) { value.channel = 3; clamped++; }
+    if ( value.speaker > 4095ull ) { value.speaker = 4095ull; clamped++; } // bits(12) width clamp
+}
+
+// MixedPickupEvent's read-side bounds.
+inline void MixedPickupEventFixedClampBody( MixedPickupEvent & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.item_id > 1023ull ) { value.item_id = 1023ull; clamped++; } // bits(10) width clamp
+    if ( value.amount < 0 ) { value.amount = 0; clamped++; }
+    else if ( value.amount > 255 ) { value.amount = 255; clamped++; }
+}
+
+// BenchMixed's read-side bounds.
+inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    if ( value.sequence > 65535ull ) { value.sequence = 65535ull; clamped++; } // bits(16) width clamp
+    if ( value.ack_sequence < 0 ) { value.ack_sequence = 0; clamped++; }
+    else if ( value.ack_sequence > 65535 ) { value.ack_sequence = 65535; clamped++; }
+    if ( value.world_time < -1000000000000ll ) { value.world_time = -1000000000000ll; clamped++; }
+    else if ( value.world_time > 1000000000000ll ) { value.world_time = 1000000000000ll; clamped++; }
+    if ( value.frame_tick > 281474976710655ull ) { value.frame_tick = 281474976710655ull; clamped++; } // bits(48) width clamp
+    if ( value.server_time < 0 ) { value.server_time = 0; clamped++; }
+    else if ( value.server_time > 16776960 ) { value.server_time = 16776960; clamped++; }
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
+    {
+        MixedEntityFixedClampBody( value.entities[i], clamped );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
+    {
+        MixedStatFixedClampBody( value.stats[i], clamped );
+    }
+    if ( (uint32_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; clamped++; }
+    switch ( value.game_event.type )
+    {
+        case MixedEventType::Hit:
+        {
+            MixedHitEventFixedClampBody( value.game_event.hit, clamped );
+            break;
+        }
+        case MixedEventType::Chat:
+        {
+            MixedChatEventFixedClampBody( value.game_event.chat, clamped );
+            break;
+        }
+        case MixedEventType::Pickup:
+        {
+            MixedPickupEventFixedClampBody( value.game_event.pickup, clamped );
+            break;
+        }
+        default: break;
+    }
+    if ( value.aim_x < -1.0f ) { value.aim_x = -1.0f; clamped++; }
+    else if ( value.aim_x > 1.0f ) { value.aim_x = 1.0f; clamped++; }
+    if ( value.aim_y < -1.0f ) { value.aim_y = -1.0f; clamped++; }
+    else if ( value.aim_y > 1.0f ) { value.aim_y = 1.0f; clamped++; }
+    if ( value.aim_z < -1.0f ) { value.aim_z = -1.0f; clamped++; }
+    else if ( value.aim_z > 1.0f ) { value.aim_z = 1.0f; clamped++; }
+    if ( value.flux < serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
+    else if ( value.flux > serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ) { value.flux = serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ); clamped++; }
+    if ( value.ping > 64000 ) { value.ping = 64000; clamped++; }
+    if ( value.crc_hint > 16777215ull ) { value.crc_hint = 16777215ull; clamped++; } // bits(24) width clamp
+    if ( value.extra < 0 ) { value.extra = 0; clamped++; }
+    else if ( value.extra > 255 ) { value.extra = 255; clamped++; }
+    if ( value.idle_ticks < 0 ) { value.idle_ticks = 0; clamped++; }
+    else if ( value.idle_ticks > 15 ) { value.idle_ticks = 15; clamped++; }
+}
+
+// FixedTable's read-side bounds.
+inline void FixedTableFixedClampBody( FixedTable & value, int32_t & clamped )
+{
+    (void) value; (void) clamped;
+    BenchMixedFixedClampBody( value.value, clamped );
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS.
+inline void FixedTableFixedClamp( FixedTable & value, TableReport * report )
+{
+    int32_t clamped = 0;
+    FixedTableFixedClampBody( value, clamped );
+    report->clamped += clamped;
 }
 
 // ---- FixedTable, the fixed form ----
@@ -4099,7 +4263,7 @@ constexpr TableFixedDst FixedTableFixedDst[] = {
     { (uint32_t) __builtin_offsetof( BenchMixed, loadout ), (uint32_t) sizeof( uint8_t ), 0, 0, 0 }, // loadout
     { 0, 0, 0, 0, 0 }, // element
     { (uint32_t) __builtin_offsetof( BenchMixed, player_name_length ), 0, (uint32_t) __builtin_offsetof( BenchMixed, player_name ), 0, 1 }, // player_name
-    { (uint32_t) __builtin_offsetof( BenchMixed, payload_length ), 1, (uint32_t) __builtin_offsetof( BenchMixed, payload ), 1, 3 }, // payload
+    { (uint32_t) __builtin_offsetof( BenchMixed, payload ), 1, (uint32_t) __builtin_offsetof( BenchMixed, payload_length ), 1, 3 }, // payload
     { 0, 0, 0, 0, 0 }, // u8
     { (uint32_t) __builtin_offsetof( BenchMixed, aim_x ), 0, 0, 0, 0 }, // aim_x
     { (uint32_t) __builtin_offsetof( BenchMixed, aim_y ), 0, 0, 0, 0 }, // aim_y
@@ -4122,38 +4286,38 @@ constexpr TableFixedDst FixedTableFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry FixedTableFixedPlan[] = {
-    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // sequence
-    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // session_id
-    { 24u, 32u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // nonce
-    { 52u, 576u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // entities count
-    { 56u, 64u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 97u, 112u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 107u, 128u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 148u, 176u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 158u, 192u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 199u, 240u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 209u, 256u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 250u, 304u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 260u, 320u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 301u, 368u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 311u, 384u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 352u, 432u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 362u, 448u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 403u, 496u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 413u, 512u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // entity_id
-    { 454u, 560u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // damage
-    { 464u, 1220u, 80u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0 }, // stats count
-    { 468u, 580u, 640u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // stats, whole
-    { 1108u, 1224u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // game_event tag
-    { 1122u, 1244u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // loadout, whole
-    { 1126u, 1264u, 15u, 1248u, kTableFixedNoGuard, kTableFixedText, 1, 0, 0 }, // player_name
-    { 1145u, 1284u, 16u, 1268u, kTableFixedNoGuard, kTableFixedText, 3, 0, 0 }, // payload
-    { 1165u, 1288u, 58u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // aim_x
-    { 1223u, 1348u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // crc_hint
-    { 1228u, 1356u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // extra
-    { 1109u, 1228u, 13u, 0u, 1108u, kTableFixedCopy, 1, 0, 0 }, // target_id
-    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 2, 0, 0 }, // channel
-    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 3, 0, 0 }, // item_id
+    { 0u, 0u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // sequence
+    { 12u, 16u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // session_id
+    { 24u, 32u, 28u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // nonce
+    { 52u, 576u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // entities count
+    { 56u, 64u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 97u, 112u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 107u, 128u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 148u, 176u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 158u, 192u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 199u, 240u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 209u, 256u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 250u, 304u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 260u, 320u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 301u, 368u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 311u, 384u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 352u, 432u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 362u, 448u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 403u, 496u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 413u, 512u, 41u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // entity_id
+    { 454u, 560u, 10u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // damage
+    { 464u, 1220u, 80u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0 }, // stats count
+    { 468u, 580u, 640u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // stats, whole
+    { 1108u, 1224u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // game_event tag
+    { 1122u, 1244u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // loadout, whole
+    { 1126u, 1264u, 15u, 1248u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0 }, // player_name
+    { 1145u, 1284u, 16u, 1268u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0 }, // payload
+    { 1165u, 1288u, 58u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // aim_x
+    { 1223u, 1348u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // crc_hint
+    { 1228u, 1356u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0 }, // extra
+    { 1109u, 1228u, 13u, 0u, 1108u, kTableFixedCopy, 1, 0, 0, 0 }, // target_id
+    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 2, 0, 0, 0 }, // channel
+    { 1109u, 1228u, 8u, 0u, 1108u, kTableFixedCopy, 3, 0, 0, 0 }, // item_id
 };
 constexpr int32_t FixedTableFixedPlanCount = 32;
 constexpr int32_t FixedTableFixedPlanGuarded = 29;
@@ -4245,6 +4409,9 @@ inline int64_t FixedTableFixedLoad( FixedTable * values, int64_t capacity, const
         FixedTableReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
+        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+        // storage it just wrote: the same pass for either plan (§3.4).
+        FixedTableFixedClamp( values[k], report );
         at += record_bytes;
     }
     return n;
