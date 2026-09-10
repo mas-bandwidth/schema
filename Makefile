@@ -5667,6 +5667,39 @@ test: tables-fixedform
 
 .PHONY: tables-fixedform
 
+# THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
+#
+# The C++ backend is the REFERENCE for this form, so the reference is what
+# writes the bytes and every port matches them — the same shape the paired
+# bench already pins. This target writes one form-3 FILE per root into
+# build/fixedform-corpus, with values set by hand so nothing passes by
+# accident, and a port's leg proves itself against them two ways: reading a
+# file and saving it back has to reproduce it BYTE FOR BYTE, and reading a file
+# written under ANOTHER schema's layout is the plan path, which is the whole of
+# what §3.4's versioning invariant is worth.
+#
+# It lives HERE rather than in a language's own make/<lang>.mk because it is
+# every port's oracle and none of theirs: a corpus one leg owns is a corpus the
+# next leg re-derives, and a golden a generator has to re-derive is not a
+# golden.
+build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	    -Ibuild/tables-generated/examples \
+	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
+
+build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
+	@rm -rf build/fixedform-corpus
+	@mkdir -p build/fixedform-corpus
+	./build/schema_test_fixedform_dump build/fixedform-corpus
+	@touch $@
+
+tables-fixedform-corpus: build/fixedform-corpus/.stamp
+	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
+
+.PHONY: tables-fixedform-corpus
+
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/w2 -I$(SERIALIZE) test/tables/was_control_main.cpp \
