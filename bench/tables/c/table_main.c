@@ -469,12 +469,12 @@ static void bench_table( const char * name, const char * golden, long base_iters
 
    The same 64 logical records, on the same table wire, in the form that spends
    no byte on ids, kinds, lengths or terminators. A FILE is the unit here and
-   not a record: the layout rides once, the records follow it to the
+   not a record: the LAYOUT rides once, the records follow it to the
    end, and every one of them is the same size — so the write is one call for
    all 64 and the read is one call back, and an OP is one RECORD of that call.
 
    The gates before the clock are the same three in a different spelling, plus
-   the one this form adds: THE BLOCK THIS BUILD EMITS IS THE CORPUS'S BLOCK,
+   the one this form adds: THE LAYOUT THIS BUILD EMITS IS THE CORPUS'S LAYOUT,
    byte for byte. That is the whole claim a port makes on this form — the
    record layout, the ids, the kinds and the hash are all in those bytes — so
    it is checked first and by itself. */
@@ -483,7 +483,7 @@ static void bench_table( const char * name, const char * golden, long base_iters
 static FixedTable g_fixed_values[FixedCount];
 static FixedTable g_fixed_out[FixedCount];
 /* the plan storage the caller owns; the identity path never touches it, and a
-   stranger's block compiles into it (§3.4: this codec never allocates) */
+   stranger's layout compiles into it (§3.4: this codec never allocates) */
 #define FixedPlanCapacity 4096
 static TableFixedEntry g_fixed_plan[FixedPlanCapacity];
 
@@ -498,9 +498,9 @@ static void bench_fixed( const char * name, long base_iters )
 {
     const long iters = g_iterations ? g_iterations : base_iters / IterScale;
     char path[512];
-    size_t file_bytes = 0, vocab_bytes = 0;
+    size_t file_bytes = 0, layout_bytes = 0;
     uint8_t * file = NULL;
-    uint8_t * vocab = NULL;
+    uint8_t * layout = NULL;
     uint8_t * twin = NULL;
     double bytes_per_op;
     double write_rates[MaxNumRuns];
@@ -512,30 +512,30 @@ static void bench_fixed( const char * name, long base_iters )
 
     snprintf( path, sizeof( path ), "%s/bench_fixed.bin", g_variant_dir );
     file = read_file( path, &file_bytes );
-    snprintf( path, sizeof( path ), "%s/bench_fixed.vocab", g_variant_dir );
-    vocab = read_file( path, &vocab_bytes );
-    if ( file == NULL || vocab == NULL || file_bytes == 0 )
+    snprintf( path, sizeof( path ), "%s/bench_fixed.layout", g_variant_dir );
+    layout = read_file( path, &layout_bytes );
+    if ( file == NULL || layout == NULL || file_bytes == 0 )
     {
         fprintf( stderr, "missing fixed corpus in %s — run from the schema repo root (or pass --variant-dir)\n", g_variant_dir );
         free( file );
-        free( vocab );
+        free( layout );
         failed = 1;
         return;
     }
     remember_golden( "bench_fixed.bin", file, file_bytes );
-    remember_golden( "bench_fixed.vocab", vocab, vocab_bytes );
+    remember_golden( "bench_fixed.layout", layout, layout_bytes );
     bytes_per_op = (double) file_bytes / FixedCount;
     twin = (uint8_t *) malloc( file_bytes );
-    if ( twin == NULL ) { free( file ); free( vocab ); failed = 1; return; }
+    if ( twin == NULL ) { free( file ); free( layout ); failed = 1; return; }
 
-    /* gate 1: THE BLOCK IS THE CORPUS'S BLOCK. Every other fact about the form
+    /* gate 1: THE LAYOUT IS THE CORPUS'S LAYOUT. Every other fact about the form
        — the positions, the ids, the kinds, the record's size, the hash every
        record carries — is settled by these bytes, so this one comparison is
        what says this leg speaks the reference's form and not a near miss. */
-    if ( vocab_bytes != (size_t) fixed_table_fixed_layout_bytes ||
-         memcmp( vocab, fixed_table_fixed_layout, vocab_bytes ) != 0 )
+    if ( layout_bytes != (size_t) fixed_table_fixed_layout_bytes ||
+         memcmp( layout, fixed_table_fixed_layout, layout_bytes ) != 0 )
     {
-        fail( name, "this build's layout is not the corpus's, byte for byte" );
+        fail( name, "this build's LAYOUT is not the corpus's, byte for byte" );
         goto done;
     }
 
@@ -621,7 +621,7 @@ static void bench_fixed( const char * name, long base_iters )
 
 done:
     free( file );
-    free( vocab );
+    free( layout );
     free( twin );
 }
 #endif /* BENCH_MATCHED */

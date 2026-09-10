@@ -63,6 +63,15 @@ static bool fx1_file( const char * dir )
     v[0].gone = 654;
     v[0].nested.a = 111;
     v[0].nested.b = 222;
+    // A SHORT STRING AND A PARTLY-USED ARRAY, which is where §3.4's "the slack
+    // is zero" is worth pinning: the bytes past the used length and past the
+    // live count are the template's zeros in every port or they are not the
+    // same bytes.
+    std::strcpy( v[0].label, "fx1" );
+    v[0].label_length = 3;
+    v[0].marks[0] = 101;
+    v[0].marks[1] = 202;
+    v[0].marks_count = 2;
     tblfx1::FxRootReset( v[1] );
     v[1].keep = 1u;
     v[1].narrow = 2u;
@@ -70,6 +79,8 @@ static bool fx1_file( const char * dir )
     v[1].gone = 4;
     v[1].nested.a = 5;
     v[1].nested.b = 6;
+    v[1].label_length = 0; // nothing used at all: the WHOLE span is slack
+    v[1].marks_count = 0;
     return emit( dir, "fx1.bin", v, tblfx1::FxRootFixedMeasure, tblfx1::FxRootFixedSave );
 }
 
@@ -85,6 +96,10 @@ static bool fx2_file( const char * dir )
     v[0].nested.b = 44;
     v[0].extra.x = 55;
     v[0].extra.y = 66;
+    std::strcpy( v[0].label, "fx2" );
+    v[0].label_length = 3;
+    v[0].marks[0] = 303;
+    v[0].marks_count = 1;
     return emit( dir, "fx2.bin", v, tblfx2::FxRootFixedMeasure, tblfx2::FxRootFixedSave );
 }
 

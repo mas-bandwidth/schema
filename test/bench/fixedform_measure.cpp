@@ -36,7 +36,7 @@ using namespace bench;
 
 // ---------------------------------------------------------------------------
 // THE FORM-3 RECORD, by hand, exactly as the spec section states it: an
-// 8-byte block hash, then every field at its declared storage width in
+// 8-byte layout hash, then every field at its declared storage width in
 // declared order, nothing padded between fields.
 // ---------------------------------------------------------------------------
 
@@ -557,7 +557,7 @@ int main( int argc, char ** argv )
         g_hash = FixedTableFixedHash;
         std::memset( g_template, 0, sizeof( g_template ) );
         std::memcpy( g_template, &g_hash, 8 );
-        const uint8_t * first = file.data() + 5 + FixedTableFixedLayoutBytes;
+        const uint8_t * first = file.data() + kTableFixedHeaderBytes + 4 + FixedTableFixedLayoutBytes;
         for ( size_t k = 0; k < count; ++k )
         {
             alignas( 8 ) uint8_t mine[RecordBytes];

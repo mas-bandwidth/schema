@@ -1,7 +1,7 @@
 // THE FIXED FORM'S VERSIONING CONFORMANCE (docs/SPEC-TABLES.md §3.4, "held by
 // test"). The invariant §3.4 states before anything else is that a fixed
-// record is positional BY PLAN and the positions are the WRITER's block, never
-// the reader's own layout — "we must not ever break versioning in fixed
+// record is positional BY PLAN and the positions are the WRITER's LAYOUT, never
+// the reader's own declaration — "we must not ever break versioning in fixed
 // tables", the project owner. This file is what that sentence is worth.
 //
 // Every case below reads a record through the ONE plan-driven path, and the
@@ -23,9 +23,14 @@
 //   8. THE NEGATIVE CONTROL  a reader given the WRONG PLAN for a record, which
 //                            must come out wrong. A test that never watched
 //                            the wrong plan fail never checked the right one.
-//   9. THE LAYOUT'S RULES    every named rule a layout is held to, broken one
-//                            at a time, each refused under ITS OWN NAME
-//  10. THE FUZZ              every byte of a form-3 file, one bit at a time
+//   9. THE LAYOUT'S OWN      one corrupted-layout case per NAMED RULE §3.4
+//      VALIDATION            holds an untrusted peer's layout to, each
+//                            breaking exactly one thing in a layout this
+//                            reader accepts and each refused under its own
+//                            name with nothing decoded
+//
+// THE LAYOUT is what form 1 called the vocabulary block. It is neither §7's
+// cooked block nor §19's block form.
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -37,6 +42,8 @@
 #include "V2Table.h"
 #include "P1Table.h"
 #include "P3Table.h"
+#include "UT1Table.h"
+#include "UT2Table.h"
 
 static int failures = 0;
 
@@ -75,7 +82,7 @@ static void fx_case()
                "same schema: a clean read moves no counter" );
     }
 
-    // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's block
+    // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's layout
     {
         tblfx2::FxRoot back;
         tblfx2::TableReport r;
@@ -253,9 +260,9 @@ static void negative_control()
     // the honest answer for.
     {
         struct { uint8_t form; tblfx1::TableMessageReason want; const char * what; } rows[3] = {
-            { 1, tblfx1::previous_form,        "REFUSED BY NAME: previous_form for the VARIABLE form" },
+            { 1, tblfx1::previous_form,      "REFUSED BY NAME: previous_form for the VARIABLE form" },
             { 2, tblfx1::message_form_as_file, "REFUSED BY NAME: message_form_as_file for a batch" },
-            { 6, tblfx1::newer_form,           "REFUSED BY NAME: newer_form for a byte no form defines" },
+            { 6, tblfx1::newer_form,         "REFUSED BY NAME: newer_form for a byte no form defines" },
         };
         for ( int i = 0; i < 3; ++i )
         {
@@ -329,14 +336,14 @@ static void put_entry( std::vector<uint8_t> & layout, uint64_t id, uint8_t kind,
     tblfx1::TableFixedPut32( layout.data() + at + 13, children );
 }
 
-// a FILE around a hand-built layout: the header, the layout's length, the
+// a FILE around a hand-built layout: the form byte, the layout's length, the
 // layout, and no records — every rule below refuses before a record is reached
 static std::vector<uint8_t> file_of( const std::vector<uint8_t> & layout )
 {
     std::vector<uint8_t> f( (size_t) tblfx1::kTableFixedHeaderBytes + 4, 0 );
     f[0] = 3; // the fixed form's byte
     tblfx1::TableFixedPut64( f.data() + tblfx1::kTableFixedHashAt,
-                             tblfx1::TableFixedHashOf( layout.data(), (int64_t) layout.size() ) );
+                             tblfx1::TableFixedHashOf( layout.data(), (uint32_t) layout.size() ) );
     tblfx1::TableFixedPut32( f.data() + tblfx1::kTableFixedHeaderBytes, (uint32_t) layout.size() );
     f.insert( f.end(), layout.begin(), layout.end() );
     return f;
@@ -498,7 +505,9 @@ static void fuzz_case()
     // reader of the other generation. The reader must answer one of three ways
     // and never a fourth — a refusal by name, a malformed read, or a read that
     // lands values. UNDER ASAN "never a fourth" includes never touching a byte
-    // outside the buffer, which is what this is really for.
+    // outside the buffer, which is what this is really for. The named rules
+    // above say which refusal a given break earns; this says there is no break
+    // that earns none of them.
     tblfx2::FxRoot two;
     tblfx2::FxRootReset( two );
     two.keep = 5150u;
@@ -538,6 +547,196 @@ static void fuzz_case()
                  clean.size(), (long long) refused, (long long) damaged, (long long) read );
 }
 
+// ---------------------------------------------------------------------------
+
+// THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4). A `string(N)` shorter than N
+// and a `[..N]T` with unused slots are DECLARED bytes carrying no value, and
+// what rides in them is the TEMPLATE'S ZEROS — never whatever the writer's own
+// storage happened to hold past the used length or the live count.
+//
+// Copying the whole span instead is not a cosmetic difference: for an array of
+// a type with declared defaults, the unused slots put the ELEMENT'S DEFAULT
+// IMAGE on the wire, so a value nobody wrote rides as if somebody had; and for
+// text, a field written twice with two different values does not compare equal
+// on the second write. The Elixir port found both.
+//
+// THE CONTROL IS THE STAIN. The storage past the used length and the live count
+// is filled with a byte that appears nowhere else in a clean record; the test
+// first proves the stain IS there in the storage (or it would be checking
+// nothing), then proves the WIRE carries none of it, and then proves that a
+// whole-span copy of the same storage WOULD have carried it — which is the
+// wrong behaviour, watched failing.
+static void slack_case()
+{
+    tblfx1::FxRoot v;
+    tblfx1::FxRootReset( v );
+    v.keep = 11u;
+    v.narrow = 22u;
+    v.renamed = 33;
+    v.gone = 44;
+    v.nested.a = 55;
+    v.nested.b = 66;
+    std::memset( v.label, 0xAA, sizeof( v.label ) );
+    v.label[0] = 'h';
+    v.label[1] = 'i';
+    v.label_length = 2;
+    for ( int k = 0; k < 4; ++k ) { v.marks[k] = 0x5A5A5A5A; }
+    v.marks[0] = 7;
+    v.marks_count = 1;
+
+    // the stain is really in the storage, so nothing below is vacuous
+    check( (uint8_t) v.label[2] == 0xAAu, "CONTROL: the text slack really is stained in storage" );
+    check( v.marks[1] == 0x5A5A5A5A, "CONTROL: the array slack really is stained in storage" );
+
+    std::vector<uint8_t> file( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &v, 1, file.data(), (int64_t) file.size() ) == (int64_t) file.size(),
+           "slack: the record saves" );
+    const uint8_t * body = file.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+    const size_t body_bytes = (size_t) tblfx1::FxRootFixedBodyBytes;
+    check( std::memchr( body, 0xAA, body_bytes ) == NULL,
+           "SLACK IS ZERO: not one stained TEXT byte reached the wire" );
+    check( std::memchr( body, 0x5A, body_bytes ) == NULL,
+           "SLACK IS ZERO: not one stained ARRAY byte reached the wire" );
+
+    // NEGATIVE CONTROL: the same storage copied WHOLE — which is what the
+    // writer did before this fix — carries the stain, so the two checks above
+    // discriminate and are not passing for some other reason.
+    {
+        uint8_t whole[sizeof( v.label )];
+        std::memcpy( whole, v.label, sizeof( v.label ) );
+        check( std::memchr( whole, 0xAA, sizeof( whole ) ) != NULL,
+               "NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain" );
+        int32_t marks[4];
+        std::memcpy( marks, v.marks, sizeof( marks ) );
+        check( marks[3] == 0x5A5A5A5A,
+               "NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
+    }
+
+    // and the record still reads back as itself: the used length and the live
+    // count are what the reader validates, and both are inside the bound, so
+    // nothing clamps.
+    {
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, &r ) == 1,
+               "slack: the record reads" );
+        check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
+               "slack: the used length reads, and the buffer terminates at it" );
+        check( back.marks_count == 1 && back.marks[0] == 7, "slack: the live count reads" );
+        check( back.marks[1] == 0 && back.marks[2] == 0 && back.marks[3] == 0,
+               "slack: an unused slot lands as the wire's zero and not as some writer's leftover" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "slack: a clean read moves no counter" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// TWO LANES, BECAUSE THEY ARE TWO FACTS (docs/SPEC-TABLES.md §3.4). A plan
+// entry carries the ordinal the GUARD byte must hold for the entry to run, and
+// the argument the entry's OWN OP takes — for a text entry, its flavour. They
+// had one lane between them, and a `string(N)` under a union's arm could be
+// guarded correctly or read with the right flavour and could not be both.
+//
+// UT1's string sits under the SECOND arm on purpose: a `string(N)`'s flavour is
+// 1 and the second arm's ordinal is 2, so the collision does not merely lose a
+// fact — it turns a byte string into a WIDE one, halving the bound and
+// terminating two bytes at a time.
+static void union_text_case()
+{
+    tblut1::UtRoot one;
+    tblut1::UtRootReset( one );
+    one.head = 42;
+    one.tail = 99;
+    one.pick.type = tblut1::PickType::B;   // the SECOND arm
+    std::strcpy( one.pick.b.label, "seven77" ); // seven characters, so the slack is real
+    one.pick.b.label_length = 7;
+    one.pick.b.m = 1234;
+
+    std::vector<uint8_t> w( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+    check( tblut1::UtRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "UT1 save" );
+
+    // THE IDENTITY PLAN: the guard holds the arm ordinal, the flavour is the
+    // text op's own, and the two are read out of different lanes.
+    {
+        check( tblut1::UtRootFixedPlan[3].op == tblut1::kTableFixedText, "two lanes: the plan's fourth entry is the text" );
+        check( tblut1::UtRootFixedPlan[3].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
+        check( tblut1::UtRootFixedPlan[3].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes: the record reads" );
+        check( back.pick.type == tblut1::PickType::B, "two lanes: the arm" );
+        check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
+               "two lanes: the arm's string(8), whole" );
+        check( back.pick.b.m == 1234 && back.head == 42 && back.tail == 99, "two lanes: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes: a clean read moves no counter" );
+    }
+
+    // THE NEGATIVE CONTROL — the bug itself, watched failing. The flavour is
+    // put back into the guard's lane, which is exactly what the one shared lane
+    // did, and the SAME record read by the SAME loop comes out wrong: the arm's
+    // ordinal 2 reads as kTableFixedTextWide, so the length is halved and the
+    // terminator lands two bytes early.
+    {
+        std::vector<tblut1::TableFixedEntry> shared( tblut1::UtRootFixedPlan,
+                                                     tblut1::UtRootFixedPlan + tblut1::UtRootFixedPlanCount );
+        shared[3].meta = shared[3].arg; // ONE LANE, as it was
+        tblut1::UtRoot wrong;
+        tblut1::UtRootReset( wrong );
+        tblut1::TableReport r;
+        const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
+        tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
+                               body, (uint8_t *) &wrong, &r );
+        check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
+               "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
+    }
+
+    // A COMPILED PLAN: UT2 inserted an arm IN THE MIDDLE, so the same string is
+    // arm 3 here and arm 2 in the record. The guard must hold THEIR ordinal
+    // while the tag this reader stores is MY ordinal, and the flavour is
+    // neither number.
+    {
+        tblut2::UtRoot back;
+        tblut2::TableReport r;
+        std::vector<tblut2::TableFixedEntry> plan( 1024 );
+        check( tblut2::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes, compiled: the record reads" );
+        check( back.pick.type == tblut2::PickType::B, "two lanes, compiled: the arm is remapped by NAME, not by ordinal" );
+        check( back.pick.b.label_length == 7 && std::strcmp( back.pick.b.label, "seven77" ) == 0,
+               "two lanes, compiled: the arm's string(8), whole" );
+        check( back.pick.b.m == 1234 && back.head == 42 && back.tail == 99, "two lanes, compiled: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "two lanes, compiled: a clean read moves no counter" );
+    }
+
+    // and the other direction: UT1 reads a UT2 record whose arm is `b`, which
+    // in that record is ordinal 3.
+    {
+        tblut2::UtRoot two;
+        tblut2::UtRootReset( two );
+        two.head = 7;
+        two.tail = 8;
+        two.pick.type = tblut2::PickType::B;
+        std::strcpy( two.pick.b.label, "third" );
+        two.pick.b.label_length = 5;
+        two.pick.b.m = 555;
+        std::vector<uint8_t> w2( (size_t) tblut2::UtRootFixedMeasure( 1 ) );
+        check( tblut2::UtRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "UT2 save" );
+
+        tblut1::UtRoot back;
+        tblut1::TableReport r;
+        std::vector<tblut1::TableFixedEntry> plan( 1024 );
+        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &r ) == 1,
+               "two lanes, back: the record reads" );
+        check( back.pick.type == tblut1::PickType::B, "two lanes, back: arm 3 lands as arm 2, by name" );
+        check( back.pick.b.label_length == 5 && std::strcmp( back.pick.b.label, "third" ) == 0,
+               "two lanes, back: the arm's string(8), whole" );
+        check( back.pick.b.m == 555, "two lanes, back: the arm's other field" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -547,6 +746,8 @@ int main()
     v_case();
     p_case();
     negative_control();
+    slack_case();
+    union_text_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
