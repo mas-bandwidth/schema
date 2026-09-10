@@ -334,7 +334,13 @@ func TestGoldenPacketWideSource(t *testing.T) {
 func TestWideTextIsRefusedByEveryOtherTarget(t *testing.T) {
 	u := loadCorpusDir(t, corpusWideDir)
 	for _, target := range compiler.New().Targets() {
-		if target == "cpp" || target == "c" || target == "cs" || target == "go" {
+		// THE TABLE-WIDE-TEXT CARRIERS. Dart joined them by landing kind 33 on
+		// §3.4's FIXED form — its block and its cook still refuse it, and
+		// internal/codegen/darttable scopes that refusal to the two
+		// accelerators by name. It still refuses THIS unit, for the unrelated
+		// reason that Caption.schema puts `was =` on a union arm, so leaving
+		// it in the loop below would only pin the wrong refusal.
+		if target == "cpp" || target == "c" || target == "cs" || target == "go" || target == "dart" {
 			continue
 		}
 		if _, err := schema.Generate(u, target, nil); err == nil {

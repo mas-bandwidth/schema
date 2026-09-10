@@ -5816,11 +5816,22 @@ tables-fixedform-run-copy-negative-control:
 # every port's oracle and none of theirs: a corpus one leg owns is a corpus the
 # next leg re-derives, and a golden a generator has to re-derive is not a
 # golden.
-build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp
+# THE WIDE-TEXT UNIT GETS ITS OWN GENERATION, for the reason examples-wide/
+# already has its own directory: kind 33 in a table closure is C, C++, C#, Dart
+# and Go today, and every SHARED schema list is pinned to targets that refuse
+# it. Naming the unit here rather than in tables_generate keeps it out of the
+# nine negative controls that regenerate that whole corpus.
+build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
+	@rm -rf build/tables-generated-fxw
+	@mkdir -p build/tables-generated-fxw
+	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
+	@touch $@
+
+build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -Ibuild/tables-generated/examples \
+	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
@@ -5833,6 +5844,24 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
 
 .PHONY: tables-fixedform-corpus
+
+# THE FIXED FORM'S BENCH CORPUS, also the C++ reference's (docs/SPEC-TABLES.md
+# §3.4's "held by test": the PAIRED CORPUS, sixty-four logical records on the
+# packet wire and on this one). The reference decodes the canonical packet
+# corpus, saves the same values with its form-3 writer, and states the VALUES
+# beside the bytes in a JSON oracle — because a reader and a writer that share
+# one offset mistake round trip perfectly and are both wrong.
+build/fixedform-bench-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
+	@mkdir -p build/fixedform-bench-corpus
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/fixedform-bench-corpus/corpus
+	./build/fixedform-bench-corpus/corpus bench/corpus/variants/bench_mixed.variants.bin \
+		build/fixedform-bench-corpus/bench_fixed.bin build/fixedform-bench-corpus/bench_fixed.oracle.json
+	@touch $@
+
+tables-fixedform-bench-corpus: build/fixedform-bench-corpus/.stamp
+	@echo "fixed form: the reference's paired bench corpus is in build/fixedform-bench-corpus"
+
+.PHONY: tables-fixedform-bench-corpus
 
 # THE THREE PROPERTIES (docs/SPEC-TABLES.md §3.4). A port that is wrong in both
 # directions at once passes every round-trip the versioning set has, and the
