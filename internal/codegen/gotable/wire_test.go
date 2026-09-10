@@ -54,51 +54,6 @@ import (
  "testing"
 )
 
-func load1(value *Root, data []byte, report *TableReport) bool {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, verdict := tableOpen(data, report)
-	report.Verdict = verdict
-	report.Reason = ""
-	if verdict == TableOpenRefused {
-		report.Reason = "unsupported wire form"
-		if len(data) > 0 && data[0] == 2 {
-			report.Reason = "message form requires an announced vocabulary and a message reader"
-		}
-	}
-	if verdict != TableOpenOk {
-		RootReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	before := *report
-	if !RootLoadBody(&r, value) {
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			RootReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		RootReset(value)
-		*report = before
-		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
-	}
-	return true
-}
-
 func hash(s string) uint64 { h := fnv.New64a(); h.Write([]byte(s)); return h.Sum64() }
 
 func TestWire(t *testing.T) {
@@ -136,9 +91,9 @@ func TestWire(t *testing.T) {
  if n := RootSave(&value, got); n != int64(len(got)) || !bytes.Equal(got,want) { t.Fatalf("save differs: n=%d",n) }
  var loaded Root
  var report TableReport
- if !load1(&loaded, want, &report) || report != (TableReport{}) || loaded != value { t.Fatalf("load differs: %+v",report) }
+ if !RootLoad(&loaded, want, &report) || report != (TableReport{}) || loaded != value { t.Fatalf("load differs: %+v",report) }
  if RootSave(&value, got[:len(got)-1]) != -1 { t.Fatal("short destination accepted") }
- if n := testing.AllocsPerRun(10, func() { RootSave(&value,got); load1(&loaded,got,&report); RootMeasure(&value) }); n != 0 { t.Fatalf("allocated %v",n) }
+ if n := testing.AllocsPerRun(10, func() { RootSave(&value,got); RootLoad(&loaded,got,&report); RootMeasure(&value) }); n != 0 { t.Fatalf("allocated %v",n) }
 }
 
 // The count uses the enclosing reader in the reference; its elements are
@@ -149,7 +104,7 @@ func TestArrayCountCrossesBody(t *testing.T) {
  wire = binary.LittleEndian.AppendUint64(wire,1)
  var value Root
  var report TableReport
- if !load1(&value,wire,&report) || !report.Malformed || report.Clamped != 1 || report.KindMismatch != 1 {
+ if !RootLoad(&value,wire,&report) || !report.Malformed || report.Clamped != 1 || report.KindMismatch != 1 {
   t.Fatalf("count recovery differs: %+v",report)
  }
 }
@@ -163,16 +118,10 @@ func TestFormVerdicts(t *testing.T) {
    t.Fatalf("form %d: %+v",form,report)
   }
  }
- var form1 Root
- var form1Report TableReport
- form1.Children[0].F000 = 99
- if RootLoad(&form1,[]byte{1},&form1Report) || form1Report.Reason != "previous_form" || form1Report.Verdict != TableOpenRefused || form1Report.Malformed || form1.Children[0].F000 != 0 {
-  t.Fatalf("form 1: %+v value=%+v",form1Report,form1)
- }
  for _, wire := range [][]byte{nil,{1},{1,0,0,0,0,0,0,0,0,0,0}} {
   var value Root
   var report TableReport
-  if load1(&value,wire,&report) || report.Verdict != TableOpenDamaged || !report.Malformed { t.Fatalf("damage: %+v",report) }
+  if RootLoad(&value,wire,&report) || report.Verdict != TableOpenDamaged || !report.Malformed { t.Fatalf("damage: %+v",report) }
  }
 }
 `

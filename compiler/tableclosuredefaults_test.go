@@ -184,13 +184,6 @@ int main(void) {
 
 const tableClosureDefaultsGo = `package probe
 import("bytes";"testing")
-func load1(value *Root, data []byte, report *TableReport) bool {
- r, verdict := tableOpen(data, report)
- report.Verdict = verdict
- if verdict != TableOpenOk { RootReset(value); if verdict == TableOpenDamaged { report.Malformed = true }; return false }
- if !RootLoadBody(&r, value) { return false }
- return r.Offset == int64(len(r.Buffer))
-}
 func TestDefaults(t *testing.T) {
  empty, full := []byte{@EMPTY@}, []byte{@FULL@}
  var value Root
@@ -201,7 +194,7 @@ func TestDefaults(t *testing.T) {
   wire:=empty; a,b:=int32(0),int32(0)
   if i%2==0 {wire=full;a=1;b=2}
   report=TableReport{}
-  if !load1(&value,wire,&report)||report!=(TableReport{}) {t.Fatalf("load: %+v",report)}
+  if !RootLoad(&value,wire,&report)||report!=(TableReport{}) {t.Fatalf("load: %+v",report)}
   p:=&value.Payload
   if p.Leaf.ValuesCount!=a || p.RowsCount!=a || p.Rows[0].ValuesCount!=b || p.Rows[1].ValuesCount!=0 || p.Leaf.Marker!=7 || p.Rows[0].Marker!=7 || p.Rows[1].Marker!=7 {t.Fatalf("defaults: %+v",p)}
   saved:=make([]byte,len(wire))

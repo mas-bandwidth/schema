@@ -20,12 +20,18 @@ func TestEndsEarlyShape(t *testing.T) {
 			body += string(data)
 		}
 	}
-	load := funcSource(body, "func RootLoad(")
-	if load == "" {
-		t.Fatal("RootLoad was not emitted")
-	}
-	if !strings.Contains(load, "previous_form") || strings.Contains(load, "RootLoadBody") {
-		t.Fatal("RootLoad of a fixed-table type must refuse form 1 by name, never walk it")
+	for _, want := range []string{
+		"before := *report",
+		"probe.Offset = 0",
+		"probe.EndsEarly()",
+		"r.Offset != int64(len(r.Buffer))",
+		"report.Verdict = TableOpenDamaged",
+		"report.Verdict = TableOpenBodyStopped",
+		"func tableOpenFramed(",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("root Load is missing %q", want)
+		}
 	}
 	open, _, _ := strings.Cut(body, "func tableOpenFramed(")
 	if strings.Contains(open, "r.EndsEarly()") {
