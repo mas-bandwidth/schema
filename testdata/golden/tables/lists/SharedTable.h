@@ -2180,21 +2180,21 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 // ---------------------------------------------------------------------------
 
-inline constexpr uint8_t kTableFixedForm = 3;
+constexpr uint8_t kTableFixedForm = 3;
 
 // THE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3, "THE FIRST
 // BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the form's own
 // EIGHT-BYTE HASH at offset 8, and the body at 16 — the alignment a
 // memory-mapped body needs. The fixed form does not need the alignment today;
-// it pads anyway, so the bytes do not move again the day the cook and the
-// block form join the registry under the same header.
+// it pads anyway, so the bytes do not move again the day the cook and the block
+// form join the registry under the same header.
 //
 // The hash here is the LAYOUT's. Each record still carries its own eight-byte
 // hash, which §3.4 has always said and which the header does not replace: the
 // header names the layout ONCE for the file, and a record names the layout it
 // was stamped by.
-inline constexpr int64_t kTableFixedHeaderBytes = 16;
-inline constexpr int64_t kTableFixedHashAt     = 8;
+constexpr int64_t kTableFixedHeaderBytes = 16;
+constexpr int64_t kTableFixedHashAt     = 8;
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
 // the other two are what a plan compiled from another writer's layout adds.
@@ -2217,7 +2217,28 @@ enum : uint8_t
     kTableFixedTextBytes = 3,
 };
 
-inline constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
+constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
+
+// THE PLAN'S SOURCE AND DESTINATION NEVER ALIAS: one is a record in a read
+// buffer and the other is the caller's own storage. Saying so is worth real
+// time in the read loop, and the spelling is the compiler's.
+#if defined( _MSC_VER )
+#define TABLE_RESTRICT __restrict
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define TABLE_RESTRICT __restrict__
+#else
+#define TABLE_RESTRICT
+#endif
+
+// THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
+// halves of the loop below, and a call there is the whole cost of the form.
+#if defined( _MSC_VER )
+#define TABLE_FIXED_INLINE __forceinline
+#elif defined( __GNUC__ ) || defined( __clang__ )
+#define TABLE_FIXED_INLINE inline __attribute__(( always_inline ))
+#else
+#define TABLE_FIXED_INLINE inline
+#endif
 
 // §4'S WIDENING RUNGS, and the fixed form spends no rule of its own on them: a
 // kind that GREW since the writer decodes at the writer's width and lands
@@ -2247,40 +2268,22 @@ struct TableFixedEntry
     uint8_t sign = 0; // a WIDEN's source is two's complement, so it sign-extends
 };
 
-template <int N> struct TableFixedPlan
-{
-    TableFixedEntry entries[N];
-    int32_t count;
-};
-
-// THE COALESCER, and it is the only optimization a plan compiler performs:
-// two neighbouring COPY entries whose source and destination both advance
-// together are one entry. It runs at COMPILE TIME on the identity plan and at
-// plan-compile time on any other, so the two are the same array read by the
-// same loop.
-template <int N, typename F> constexpr TableFixedPlan<N> TableFixedBuildPlan( F emit )
-{
-    TableFixedEntry raw[N] = {};
-    const int written = emit( raw, (uint32_t) 0, (uint32_t) 0 );
-    TableFixedPlan<N> out{};
-    out.count = 0;
-    for ( int i = 0; i < written; ++i )
-    {
-        if ( out.count > 0 &&
-             out.entries[out.count - 1].op == kTableFixedCopy && raw[i].op == kTableFixedCopy &&
-             out.entries[out.count - 1].guard == raw[i].guard &&
-             out.entries[out.count - 1].arg == raw[i].arg &&
-             out.entries[out.count - 1].src + out.entries[out.count - 1].size == raw[i].src &&
-             out.entries[out.count - 1].dst + out.entries[out.count - 1].size == raw[i].dst )
-        {
-            out.entries[out.count - 1].size += raw[i].size;
-            continue;
-        }
-        out.entries[out.count] = raw[i];
-        out.count++;
-    }
-    return out;
-}
+// A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
+// and "guarded" is where the second half starts. Entries are independent —
+// each writes its own bytes and a union's arms are mutually exclusive — so the
+// order is free, and what it buys is that the entries that are nearly all of
+// the plan never test a guard at all. Under a per-entry guard test the whole
+// read is 13% slower, measured (test/bench/fixedform_measure.cpp).
+//
+// THERE IS NO PLAN TYPE AND NO COMPILE-TIME PLAN BUILDER HERE, and there was
+// one: a constexpr walk of the type's leaves, coalesced by generic C++ code the
+// compiler ran at build time. THE SCHEMA COMPILER DOES THAT WALK NOW
+// (ir/fixedform.go) and every backend lays the finished plan down as static
+// data — an array, a count and the split — which is ONE answer for every port
+// instead of one per language, and it is what let the C leg carry this form at
+// all: C has no constexpr to run a walk with. The coalescer still exists at run
+// time, in TableFixedCompile below, because a plan compiled from a STRANGER's
+// layout can only be built when that layout arrives.
 
 // ---- the little-endian moves -----------------------------------------------
 
@@ -2290,13 +2293,6 @@ inline void TableFixedPut32( uint8_t * b, uint32_t v ) { for ( int i = 0; i < 4;
 inline void TableFixedPut64( uint8_t * b, uint64_t v ) { for ( int i = 0; i < 8; ++i ) { b[i] = (uint8_t)( v >> ( 8 * i ) ); } }
 inline void TableFixedPutF32( uint8_t * b, float v ) { uint32_t w; memcpy( &w, &v, 4 ); TableFixedPut32( b, w ); }
 inline void TableFixedPutF64( uint8_t * b, double v ) { uint64_t w; memcpy( &w, &v, 8 ); TableFixedPut64( b, w ); }
-template <typename T> inline void TableFixedPut128( uint8_t * b, T v )
-{
-    // sixteen bytes, the LOW 64-bit half first, which is this wire's order for
-    // the family everywhere else (docs/SPEC-TABLES.md §3)
-    TableFixedPut64( b, (uint64_t) v );
-    TableFixedPut64( b + 8, (uint64_t) ( v >> 64 ) );
-}
 inline uint32_t TableFixedGet32( const uint8_t * b )
 {
     uint32_t v = 0;
@@ -2330,7 +2326,7 @@ inline uint64_t TableFixedHashOf( const uint8_t * layout, int64_t bytes )
 // ONE reader path rests on a measurement, and with a runtime-length memcpy per
 // entry that same measurement is 3.1x instead of 1.3x
 // (test/bench/fixedform_measure.cpp).
-inline void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint32_t n )
+TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint32_t n )
 {
     if ( n <= 16 )
     {
@@ -2354,7 +2350,7 @@ inline void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint32_t n )
     }
     if ( n <= 64 )
     {
-        uint8_t w[32];
+        uint64_t w[4];
         memcpy( w, s, 16 ); memcpy( d, w, 16 );
         memcpy( w, s + 16, 16 ); memcpy( d + 16, w, 16 );
         memcpy( w, s + n - 32, 32 ); memcpy( d + n - 32, w, 32 );
@@ -2368,91 +2364,117 @@ inline void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint32_t n )
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
 // is the only thing that differs between reading this build's own record and
 // reading anybody else's.
-inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, const uint8_t * src, uint8_t * dst, TableReport * report )
+TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
+                             const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
+                             int32_t & clamped, int32_t & widened )
 {
-    for ( int32_t i = 0; i < count; ++i )
+    switch ( p.op )
+    {
+        case kTableFixedCopy:
+        {
+            TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
+            break;
+        }
+        case kTableFixedCount:
+        {
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 ) { v = 0; clamped++; }
+            else if ( v > (int32_t) p.size ) { v = (int32_t) p.size; clamped++; }
+            memcpy( dst + p.dst, &v, 4 );
+            break;
+        }
+        case kTableFixedText:
+        {
+            const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
+            const uint32_t cap = p.size / unit;
+            int32_t v = (int32_t) TableFixedGet32( src + p.src );
+            if ( v < 0 ) { v = 0; clamped++; }
+            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
+            memcpy( dst + p.dst, &v, 4 );
+            TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
+            if ( p.arg != kTableFixedTextBytes )
+            {
+                // the used length terminates the buffer, whose storage is one
+                // unit longer than the bound for exactly this. A store, not a
+                // call: memset of a runtime length is a call.
+                uint8_t * end = dst + p.aux + (uint32_t) v * unit;
+                end[0] = 0;
+                if ( unit == 2 ) { end[1] = 0; }
+            }
+            break;
+        }
+        case kTableFixedOrdinal:
+        {
+            // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
+            // enum gained a variant IN THE MIDDLE is remapped here and never
+            // reinterpreted. The table is the plan's own, laid down by the
+            // compiler above the entries.
+            uint32_t raw = 0;
+            memcpy( &raw, src + p.src, p.size );
+            const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
+            uint32_t v = 0;
+            if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }
+            memcpy( dst + p.dst, &v, p.dstsize );
+            break;
+        }
+        case kTableFixedWiden:
+        {
+            uint64_t raw = 0;
+            memcpy( &raw, src + p.src, p.size );
+            if ( p.sign != 0 )
+            {
+                // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole
+                // reason a widen is an op and not a short copy.
+                const unsigned bits = p.size * 8u;
+                const uint64_t top = 1ull << ( bits - 1 );
+                if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            }
+            memcpy( dst + p.dst, &raw, p.dstsize );
+            widened++;
+            break;
+        }
+        case kTableFixedWidenF:
+        {
+            float f = 0.0f;
+            memcpy( &f, src + p.src, 4 );
+            const double d = (double) f;
+            memcpy( dst + p.dst, &d, 8 );
+            widened++;
+            break;
+        }
+        case kTableFixedConst:
+        {
+            memcpy( dst + p.dst, &p.aux, p.size );
+            break;
+        }
+        default: break;
+    }
+}
+
+// A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
+// is the only thing that differs between reading this build's own record and
+// reading anybody else's.
+inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+                           const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
+                           TableReport * report )
+{
+    // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
+    // through is a pointer the compiler must assume aliases the destination,
+    // and every store to a field would then reload it.
+    int32_t clamped = 0;
+    int32_t widened = 0;
+    for ( int32_t i = 0; i < guarded; ++i )
+    {
+        TableFixedApply( plan[i], (const uint8_t *) plan, src, dst, clamped, widened );
+    }
+    for ( int32_t i = guarded; i < count; ++i )
     {
         const TableFixedEntry & p = plan[i];
-        if ( p.guard != kTableFixedNoGuard && src[p.guard] != p.arg ) { continue; }
-        switch ( p.op )
-        {
-            case kTableFixedCopy:
-            {
-                TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
-                break;
-            }
-            case kTableFixedCount:
-            {
-                int32_t v = (int32_t) TableFixedGet32( src + p.src );
-                if ( v < 0 ) { v = 0; report->clamped++; }
-                else if ( v > (int32_t) p.size ) { v = (int32_t) p.size; report->clamped++; }
-                memcpy( dst + p.dst, &v, 4 );
-                break;
-            }
-            case kTableFixedText:
-            {
-                const uint32_t unit = ( p.arg == kTableFixedTextWide ) ? 2u : 1u;
-                const uint32_t cap = p.size / unit;
-                int32_t v = (int32_t) TableFixedGet32( src + p.src );
-                if ( v < 0 ) { v = 0; report->clamped++; }
-                else if ( (uint32_t) v > cap ) { v = (int32_t) cap; report->clamped++; }
-                memcpy( dst + p.dst, &v, 4 );
-                TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
-                if ( p.arg != kTableFixedTextBytes )
-                {
-                    // the used length terminates the buffer, whose storage is
-                    // one unit longer than the bound for exactly this
-                    memset( dst + p.aux + (uint32_t) v * unit, 0, unit );
-                }
-                break;
-            }
-            case kTableFixedOrdinal:
-            {
-                // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer
-                // whose enum gained a variant IN THE MIDDLE is remapped here
-                // and never reinterpreted. The table is the plan's own, laid
-                // down by the compiler above the entries.
-                uint32_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
-                const uint16_t * table = (const uint16_t *) (const void *) ( (const uint8_t *) plan + p.aux );
-                uint32_t v = 0;
-                if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }
-                memcpy( dst + p.dst, &v, p.dstsize );
-                break;
-            }
-            case kTableFixedWiden:
-            {
-                uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
-                if ( p.sign != 0 )
-                {
-                    // TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the
-                    // whole reason a widen is an op and not a short copy.
-                    const unsigned bits = p.size * 8u;
-                    const uint64_t top = 1ull << ( bits - 1 );
-                    if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-                }
-                memcpy( dst + p.dst, &raw, p.dstsize );
-                report->widened++;
-                break;
-            }
-            case kTableFixedWidenF:
-            {
-                float f = 0.0f;
-                memcpy( &f, src + p.src, 4 );
-                const double d = (double) f;
-                memcpy( dst + p.dst, &d, 8 );
-                report->widened++;
-                break;
-            }
-            case kTableFixedConst:
-            {
-                memcpy( dst + p.dst, &p.aux, p.size );
-                break;
-            }
-            default: break;
-        }
+        if ( src[p.guard] != p.arg ) { continue; }
+        TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
+    report->clamped += clamped;
+    report->widened += widened;
 }
 
 // ---- THE LAYOUT ------------------------------------------------------------
@@ -2462,18 +2484,18 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, const ui
 // versions everything behind it, the layout's own format included, so a layout
 // format change is a NEW FORM BYTE and never a wider entry.
 
-inline constexpr int32_t kTableFixedEntryBytes = 17;
-inline constexpr int32_t kTableFixedLayoutHeaderBytes = 4; // the u32 entry count, and nothing else
+constexpr int32_t kTableFixedEntryBytes = 17;
+constexpr int32_t kTableFixedLayoutHeaderBytes = 4; // the u32 entry count, and nothing else
 
 // §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
 // the same reason the compiler holds a declaration to it: a record past it is
 // one this build will not decode.
-inline constexpr uint32_t kTableFixedRecordMaxBytes = 65536u;
+constexpr uint32_t kTableFixedRecordMaxBytes = 65536u;
 
 // A BOUND ON THE WALK, not on the wire: the validation below is recursive, so
 // a hostile layout of three thousand entries each claiming one child would
 // otherwise spend a reader's stack before any rule fired.
-inline constexpr int32_t kTableFixedMaxDepth = 64;
+constexpr int32_t kTableFixedMaxDepth = 64;
 
 struct TableFixedLayoutEntry
 {
@@ -2489,10 +2511,16 @@ struct TableFixedLayoutView
     int32_t count = 0;
 };
 
+// AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a layout
+// is arithmetic over child counts a STRANGER wrote, so the one place that can
+// hold the whole walk inside the buffer is the one place that touches it. An
+// out-of-range index answers kind 0xFF, which is a kind no declaration has and
+// nothing matches, so the walk that asked for it finds nothing and moves on.
 inline TableFixedLayoutEntry TableFixedEntryAt( const TableFixedLayoutView & b, int32_t i )
 {
-    const uint8_t * e = b.bytes + kTableFixedLayoutHeaderBytes + (int64_t) i * kTableFixedEntryBytes;
     TableFixedLayoutEntry out;
+    if ( b.bytes == NULL || i < 0 || i >= b.count ) { out.kind = 0xFFu; return out; }
+    const uint8_t * e = b.bytes + kTableFixedLayoutHeaderBytes + (int64_t) i * kTableFixedEntryBytes;
     out.id = TableFixedGet64( e );
     out.kind = e[8];
     out.size = TableFixedGet32( e + 9 );
@@ -2504,16 +2532,20 @@ inline TableFixedLayoutEntry TableFixedEntryAt( const TableFixedLayoutView & b, 
 // walk steps over a child it does not want without knowing what is in it.
 inline int32_t TableFixedSubtree( const TableFixedLayoutView & b, int32_t i )
 {
+    // ITERATIVE ON PURPOSE. A layout is a stranger's bytes, so a chain of
+    // single-child entries is a stack depth the wire gets to choose; this walk
+    // gives it none.
     if ( i < 0 || i >= b.count ) { return 1; }
-    const TableFixedLayoutEntry e = TableFixedEntryAt( b, i );
-    int32_t n = 1;
-    int32_t at = i + 1;
-    for ( uint32_t c = 0; c < e.children; ++c )
+    int64_t pending = 1;
+    int32_t n = 0;
+    int32_t at = i;
+    while ( pending > 0 && at < b.count )
     {
-        if ( at >= b.count ) { break; }
-        const int32_t sub = TableFixedSubtree( b, at );
-        at += sub;
-        n += sub;
+        pending--;
+        n++;
+        pending += (int64_t) TableFixedEntryAt( b, at ).children;
+        at++;
+        if ( pending > (int64_t) b.count ) { break; }
     }
     return n;
 }
@@ -2523,7 +2555,7 @@ inline uint32_t TableFixedUnionArmBytes( const TableFixedLayoutView & b, int32_t
     const TableFixedLayoutEntry e = TableFixedEntryAt( b, i );
     uint32_t widest = 0;
     int32_t at = i + 1;
-    for ( uint32_t k = 0; k < e.children; ++k )
+    for ( uint32_t k = 0; k < e.children && at < b.count; ++k )
     {
         const TableFixedLayoutEntry a = TableFixedEntryAt( b, at );
         if ( a.size > widest ) { widest = a.size; }
@@ -2762,6 +2794,9 @@ inline bool TableFixedParseLayout( const uint8_t * bytes, int64_t length, TableF
     return true;
 }
 
+
+
+
 // ---- THE PLAN COMPILER -----------------------------------------------------
 //
 // The SAME LOOP runs over this plan as over the identity plan. What the
@@ -2789,12 +2824,33 @@ struct TableFixedCompiler
     int32_t capacity = 0;
     int32_t count = 0;
     int32_t pool = 0; // bytes of remap table laid down from the TOP, downward
+    uint32_t record = 0; // the WRITER's declared body size: every entry is bounded by it
+    int32_t depth = 0;   // the nesting this walk is inside, capped below
+    bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
+    bool hostile = false;
     TableReport * report = NULL;
 };
 
-inline void TableFixedPush( TableFixedCompiler & c, const TableFixedEntry & e )
+inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 {
+    // THE WALK RUNS TWICE and each pass keeps its own half, which is how the
+    // plan comes out partitioned without a second array to partition it in.
+    if ( ( e.guard != kTableFixedNoGuard ) != c.want_guarded ) { return; }
+    // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
+    // side's whole defence: the plan's source offsets are arithmetic over sizes
+    // a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
+    // could otherwise name a byte past the record. A layout that does is refused
+    // WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4).
+    {
+        const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        if ( reach > (uint64_t) c.record ||
+             ( e.guard != kTableFixedNoGuard && e.guard >= c.record ) )
+        {
+            c.hostile = true;
+            return;
+        }
+    }
     const int32_t room = c.capacity - ( c.pool + (int32_t) sizeof( TableFixedEntry ) - 1 ) / (int32_t) sizeof( TableFixedEntry );
     if ( c.count >= room ) { c.overflow = true; return; }
     c.plan[c.count++] = e;
@@ -2830,12 +2886,12 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
     int32_t my_child = mi + 1;
-    for ( uint32_t k = 0; k < me.children; ++k )
+    for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
     {
         const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
         int32_t their_child = ti + 1;
         uint32_t their_off = their_at;
-        for ( uint32_t j = 0; j < te.children; ++j )
+        for ( uint32_t j = 0; j < te.children && their_child < theirs.count; ++j )
         {
             const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, their_child );
             if ( tc.id == mc.id )
@@ -2850,12 +2906,12 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
     }
     // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown
     int32_t tc_at = ti + 1;
-    for ( uint32_t j = 0; j < te.children; ++j )
+    for ( uint32_t j = 0; j < te.children && tc_at < theirs.count; ++j )
     {
         const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, tc_at );
         bool named = false;
         int32_t mc_at = mi + 1;
-        for ( uint32_t k = 0; k < me.children; ++k )
+        for ( uint32_t k = 0; k < me.children && mc_at < mine.count; ++k )
         {
             if ( TableFixedEntryAt( mine, mc_at ).id == tc.id ) { named = true; break; }
             mc_at += TableFixedSubtree( mine, mc_at );
@@ -2874,6 +2930,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
     const TableFixedDst & d = dst[mi];
     const uint32_t at = my_at + d.dst;
+    // THE NESTING A STRANGER'S LAYOUT CAN ASK FOR IS CAPPED. The language's own
+    // closure is nowhere near this deep, and a wire does not get to pick a
+    // recursion depth.
+    if ( c.depth > 64 ) { c.hostile = true; return; }
+    struct TableFixedDepth
+    {
+        TableFixedCompiler & owner;
+        explicit TableFixedDepth( TableFixedCompiler & o ) : owner( o ) { ++owner.depth; }
+        ~TableFixedDepth() { --owner.depth; }
+    } depth_guard( c );
+    (void) depth_guard;
     const uint32_t aux_at = my_at + d.aux;
     if ( te.kind != me.kind )
     {
@@ -2893,7 +2960,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     }
     switch ( me.kind )
     {
-        case 35: // the OPTIONAL wrapper (kTableFixedKindOptional): the present byte, then the payload whole
+        case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
             TableFixedEntry e;
             e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedCopy; e.arg = arg;
@@ -2935,12 +3002,12 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const int32_t tel = ti + 1 + TableFixedSubtree( theirs, ti + 1 );
             const int32_t mel = mi + 1 + TableFixedSubtree( mine, mi + 1 );
             const TableFixedLayoutEntry tee = TableFixedEntryAt( theirs, tel );
-            for ( uint32_t k = 0; k < mkey.children; ++k )
+            for ( uint32_t k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine.count; ++k )
             {
-                const uint64_t key_id = TableFixedEntryAt( mine, mi + 2 + k ).id;
-                for ( uint32_t j = 0; j < tkey.children; ++j )
+                const uint64_t key_id = TableFixedEntryAt( mine, mi + 2 + (int32_t) k ).id;
+                for ( uint32_t j = 0; j < tkey.children && ti + 2 + (int32_t) j < theirs.count; ++j )
                 {
-                    if ( TableFixedEntryAt( theirs, ti + 2 + j ).id != key_id ) { continue; }
+                    if ( TableFixedEntryAt( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                     TableFixedCompileEntry( c, theirs, tel, their_at + j * tee.size,
                                             mine, mel, dst, at + k * d.stride, guard, arg );
                     break;
@@ -2953,11 +3020,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             const uint32_t their_tag = TableFixedTagBytes( theirs, ti );
             const uint32_t my_tag = TableFixedTagBytes( mine, mi );
             int32_t my_arm = mi + 1;
-            for ( uint32_t k = 0; k < me.children; ++k )
+            for ( uint32_t k = 0; k < me.children && my_arm < mine.count; ++k )
             {
                 const TableFixedLayoutEntry ma = TableFixedEntryAt( mine, my_arm );
                 int32_t their_arm = ti + 1;
-                for ( uint32_t j = 0; j < te.children; ++j )
+                for ( uint32_t j = 0; j < te.children && their_arm < theirs.count; ++j )
                 {
                     const TableFixedLayoutEntry ta = TableFixedEntryAt( theirs, their_arm );
                     if ( ta.id == ma.id )
@@ -2979,13 +3046,14 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         }
         case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
+            if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
             uint16_t map[256];
             const uint32_t n = te.children < 255u ? te.children : 255u;
             for ( uint32_t j = 0; j < n; ++j )
             {
                 const uint64_t vid = TableFixedEntryAt( theirs, ti + 1 + (int32_t) j ).id;
                 uint16_t landed = 0;
-                for ( uint32_t k = 0; k < me.children; ++k )
+                for ( uint32_t k = 0; k < me.children && mi + 1 + (int32_t) k < mine.count; ++k )
                 {
                     if ( TableFixedEntryAt( mine, mi + 1 + (int32_t) k ).id == vid ) { landed = (uint16_t) ( k + 1 ); break; }
                 }
@@ -3033,23 +3101,35 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
 inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
                                   const uint8_t * my_layout, int32_t my_layout_bytes,
                                   const TableFixedDst * dst,
-                                  TableFixedEntry * plan, int32_t plan_capacity, TableReport * report )
+                                  TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
+                                  TableReport * report )
 {
     TableFixedLayoutView mine;
     TableMessageReason why = layout_malformed;
     if ( plan == NULL || plan_capacity <= 0 ) { return -1; }
+    // MY OWN layout goes through the same rules a stranger's does. It is this
+    // build's own bytes, so it cannot fail — and saying so in the one place
+    // both sides go through is what keeps that true.
     if ( !TableFixedParseLayout( my_layout, my_layout_bytes, mine, why ) ) { return -1; }
     TableFixedCompiler c;
     c.plan = plan;
     c.capacity = plan_capacity;
     c.report = report;
+    c.record = TableFixedEntryAt( theirs, 0 ).size;
+    c.want_guarded = false;
     TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
-    if ( c.overflow ) { return -1; }
-    // COALESCE, exactly as the identity plan is coalesced
+    const int32_t plain = c.count;
+    c.want_guarded = true;
+    c.report = NULL; // the unknown census is the first pass's; counting it twice would lie
+    TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
+    if ( c.overflow || c.hostile ) { return c.hostile ? -2 : -1; }
+    // COALESCE inside each half, never across the split
     int32_t out = 0;
+    int32_t split = 0;
     for ( int32_t i = 0; i < c.count; ++i )
     {
-        if ( out > 0 && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
+        if ( i == plain ) { split = out; }
+        if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
@@ -3059,6 +3139,8 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
         }
         plan[out++] = plan[i];
     }
+    if ( plain == c.count ) { split = out; }
+    if ( guarded != NULL ) { *guarded = split; }
     return out;
 }
 
@@ -8319,28 +8401,15 @@ inline bool AlbumLoadMessageBody( TableBitReader & r, const TableVocabulary & vo
 // ONE loop over ONE plan, the identity plan here and a plan compiled from
 // the writer's own layout for anybody else.
 
-constexpr int PhotoFixedLeaves( TableFixedEntry * out, uint32_t src, uint32_t dst );
+// THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
+// schema compiler rather than folded by this one, because they are the same
+// offsets every other port needs; these are that arithmetic checked against
+// this compiler's own, at build time, one line per fact the plans rest on.
+static_assert( sizeof( Photo ) == 8, "Photo: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( Photo, width ) == 0, "Photo.width: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( Photo, height ) == 4, "Photo.height: the fixed form's plan lands here" );
 
-// Photo's LEAVES: one entry per run of bytes that lands, at a base the caller
-// gives. TableFixedBuildPlan coalesces the adjacent ones, at compile time.
-constexpr int PhotoFixedLeaves( TableFixedEntry * out, uint32_t src, uint32_t dst )
-{
-    int n = 0;
-    (void) out; (void) src; (void) dst;
-    {
-        const uint32_t es = src + 0u;
-        const uint32_t ed = dst + (uint32_t) __builtin_offsetof( Photo, width );
-        out[n++] = TableFixedEntry{ es, ed, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0 };
-    }
-    {
-        const uint32_t es = src + 4u;
-        const uint32_t ed = dst + (uint32_t) __builtin_offsetof( Photo, height );
-        out[n++] = TableFixedEntry{ es, ed, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0 };
-    }
-    return n;
-}
-
-// Photo's stores. The template — the hash, then zeros — is memcpy'd first,
+// Photo's stores. The prefill — the hash, then zeros — is memcpy'd first,
 // which is also what zero-fills every byte of declared slack.
 inline void PhotoFixedWriteBody( uint8_t * b, const Photo & value )
 {
@@ -8353,38 +8422,46 @@ inline void PhotoFixedWriteBody( uint8_t * b, const Photo & value )
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
-inline constexpr int64_t PhotoFixedBodyBytes = 8;
-inline constexpr int64_t PhotoFixedRecordBytes = 8 + PhotoFixedBodyBytes; // the hash and the body
-inline constexpr uint64_t PhotoFixedHash = 0x80b2a2152ea36570ull; // fnv1a64 over the layout's bytes
+constexpr int64_t PhotoFixedBodyBytes = 8;
+constexpr int64_t PhotoFixedRecordBytes = 8 + PhotoFixedBodyBytes; // the hash and the body
+constexpr uint64_t PhotoFixedHash = 0x80b2a2152ea36570ull; // fnv1a64 over the layout's bytes
 
-// THE LAYOUT (form 1 called this the vocabulary block): 3 entries, a
+// THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
 // Every byte is settled by the compiler.
-inline constexpr uint8_t PhotoFixedLayout[] = {
+constexpr uint8_t PhotoFixedLayout[] = {
     0x03, 0x00, 0x00, 0x00, 0xc3, 0x64, 0x89, 0x50, 0xd2, 0x8d, 0xa7, 0xf1, 0x0d, 0x08, 0x00, 0x00,
     0x00, 0x02, 0x00, 0x00, 0x00, 0xbf, 0xe9, 0xd1, 0x2f, 0x93, 0xcd, 0xda, 0xdb, 0x08, 0x04, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0x72, 0x34, 0x7d, 0xf6, 0x0b, 0x72, 0x17, 0x08, 0x04,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
-inline constexpr int64_t PhotoFixedLayoutBytes = (int64_t) sizeof( PhotoFixedLayout );
+constexpr int64_t PhotoFixedLayoutBytes = (int64_t) sizeof( PhotoFixedLayout );
 
 // MY SIDE of the layout, one row per entry: the storage facts a layout
 // entry cannot carry, which is what a plan compiled from another writer's
-// layout
-// lands values through.
-inline constexpr TableFixedDst PhotoFixedDst[] = {
+// layout lands values through.
+constexpr TableFixedDst PhotoFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // Photo
     { (uint32_t) __builtin_offsetof( Photo, width ), 0, 0, 0, 0 }, // width
     { (uint32_t) __builtin_offsetof( Photo, height ), 0, 0, 0, 0 }, // height
 };
 
-// THE IDENTITY PLAN, coalesced at COMPILE TIME out of 2 leaves.
-inline constexpr auto PhotoFixedPlan = TableFixedBuildPlan<2>( PhotoFixedLeaves );
+// THE IDENTITY PLAN, coalesced out of 2 leaves by the schema compiler —
+// the one walk every backend lays down (ir/fixedform.go), so no two ports
+// can disagree about what the coalescer did; the asserts above tie every
+// destination in it to this compiler's own ABI. UNGUARDED ENTRIES FIRST,
+// then the arms: the entries that are nearly all of a plan never test a
+// guard at all.
+constexpr TableFixedEntry PhotoFixedPlan[] = {
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0 }, // width
+};
+constexpr int32_t PhotoFixedPlanCount = 1;
+constexpr int32_t PhotoFixedPlanGuarded = 1;
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
-inline constexpr int64_t PhotoFixedMeasure( int64_t count )
+constexpr int64_t PhotoFixedMeasure( int64_t count )
 {
     return kTableFixedHeaderBytes + 4 + PhotoFixedLayoutBytes + count * PhotoFixedRecordBytes;
 }
@@ -8402,7 +8479,7 @@ inline int64_t PhotoFixedSave( const Photo * values, int64_t count, uint8_t * bu
     for ( int64_t k = 0; k < count; ++k )
     {
         TableFixedPut64( at, PhotoFixedHash );
-        memset( at + 8, 0, (size_t) PhotoFixedBodyBytes ); // the template's zeros
+        memset( at + 8, 0, (size_t) PhotoFixedBodyBytes ); // the prefill's zeros
         PhotoFixedWriteBody( at + 8, values[k] );
         at += PhotoFixedRecordBytes;
     }
@@ -8435,8 +8512,9 @@ inline int64_t PhotoFixedLoad( Photo * values, int64_t capacity, const uint8_t *
     const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
     const uint8_t * at = layout + layout_bytes;
     const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
-    const TableFixedEntry * entries = PhotoFixedPlan.entries;
-    int32_t entry_count = PhotoFixedPlan.count;
+    const TableFixedEntry * entries = PhotoFixedPlan;
+    int32_t entry_count = PhotoFixedPlanCount;
+    int32_t entry_guarded = PhotoFixedPlanGuarded;
     int64_t record_bytes = PhotoFixedRecordBytes;
     if ( hash != PhotoFixedHash )
     {
@@ -8446,10 +8524,12 @@ inline int64_t PhotoFixedLoad( Photo * values, int64_t capacity, const uint8_t *
         TableFixedLayoutView parsed;
         TableMessageReason why = layout_malformed;
         if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
-        const int32_t made = TableFixedCompile( parsed, PhotoFixedLayout, (int32_t) PhotoFixedLayoutBytes, PhotoFixedDst, plan, plan_capacity, report );
-        if ( made < 0 ) { report->refused = true; report->reason = plan_too_large; return -1; }
+        int32_t compiled_guarded = 0;
+        const int32_t made = TableFixedCompile( parsed, PhotoFixedLayout, (int32_t) PhotoFixedLayoutBytes, PhotoFixedDst, plan, plan_capacity, &compiled_guarded, report );
+        if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
         entries = plan;
         entry_count = made;
+        entry_guarded = compiled_guarded;
         record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
     }
     // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
@@ -8464,7 +8544,7 @@ inline int64_t PhotoFixedLoad( Photo * values, int64_t capacity, const uint8_t *
     {
         PhotoReset( values[k] ); // the declared defaults, one prefill
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
-        TableFixedRun( entries, entry_count, at + 8, (uint8_t *) &values[k], report );
+        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         at += record_bytes;
     }
     return n;

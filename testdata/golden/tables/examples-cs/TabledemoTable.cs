@@ -2662,16 +2662,6 @@ namespace Tabledemo
                     Count = 0;
                     Graph = null;
                 }
-                public Ids(Span<ulong> values, Span<int> slots)
-                {
-                    Values = values;
-                    Slots = slots;
-                    if (!Slots.IsEmpty) { Slots.Clear(); }
-                    OrdinalSlots = default;
-                    OrdinalOf = default;
-                    Count = 0;
-                    Graph = null;
-                }
                 public Ids(Span<ulong> values, Span<int> slots, Span<uint> ordinalSlots, Span<int> ordinalOf)
                 {
                     Values = values;
