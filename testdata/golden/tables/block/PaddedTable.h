@@ -5645,7 +5645,7 @@ constexpr TableFixedDst PaddedFrameFixedDst[] = {
     { 0, 0, 0, 0, 0 }, // element
     { 0, 0, (uint32_t) __builtin_offsetof( PaddedRow, counter_present ), 0, 0 }, // counter ?
     { (uint32_t) __builtin_offsetof( PaddedRow, counter ), 0, 0, 0, 0 }, // counter
-    { (uint32_t) __builtin_offsetof( PaddedFrame, blob_length ), 1, (uint32_t) __builtin_offsetof( PaddedFrame, blob ), 1, 3 }, // blob
+    { (uint32_t) __builtin_offsetof( PaddedFrame, blob ), 1, (uint32_t) __builtin_offsetof( PaddedFrame, blob_length ), 1, 3 }, // blob
     { 0, 0, 0, 0, 0 }, // u8
 };
 

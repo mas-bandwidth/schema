@@ -432,10 +432,21 @@ func tableFixedWalkPayload(w *tableFixedWalk, owner string, f *Field, id uint64,
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindArray, Size: size, Children: 1, Note: f.Name}, spec)
 		tableFixedWalkElement(w, f, 0, "element", nil)
 	case f.Type.Kind == TBytes:
-		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, and the
-		// text flavour on the row is what makes the reader land it in one move
+		// `bytes(N)` is an ARRAY of u8 on this wire, as it is in §3, SO ITS
+		// DESTINATION ROW IS AN ARRAY'S: Dst is the buffer the elements land in
+		// and Aux is the live count beside it. It is stated here because the
+		// TEXT row above is the other way round — Dst the length, Aux the
+		// buffer — and a `bytes(N)` written under the text convention hands a
+		// plan compiled from a stranger's layout a count destination that is
+		// the buffer's first four bytes and an element destination that is the
+		// length field. The identity plan lands this field with the TEXT op and
+		// reads neither column, so only the compiled path saw it.
+		//
+		// Meta still carries the text flavour: the identity walk below spends
+		// it, and a port that lands `bytes(N)` in one move on the compiled path
+		// reads it from here rather than deriving it a second time.
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindArray, Size: size, Children: 1, Note: f.Name},
-			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name+"_length"), Stride1: true, Aux: tableFixedTerm1(owner, f.Name), Counted: 1, Meta: 3})
+			TableFixedDstSpec{Dst: tableFixedTerm1(owner, f.Name), Stride1: true, Aux: tableFixedTerm1(owner, f.Name+"_length"), Counted: 1, Meta: 3})
 		w.push(TableFixedLayoutEntry{ID: 0, Kind: TableKindU8, Size: 1, Children: 0, Note: "u8"}, TableFixedDstSpec{})
 	case f.Type.Kind == TString:
 		w.push(TableFixedLayoutEntry{ID: id, Kind: TableKindString, Size: size, Children: 0, Note: f.Name},

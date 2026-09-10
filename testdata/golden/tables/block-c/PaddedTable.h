@@ -4376,7 +4376,7 @@ static SCHEMA_UNUSED const TableFixedDst padded_frame_fixed_dst[] = {
     { 0, 0, 0, 0, 0 }, /* element */
     { 0, 0, 60, 0, 0 }, /* counter ? */
     { 56, 0, 0, 0, 0 }, /* counter */
-    { 4128, 1, 4116, 1, 3 }, /* blob */
+    { 4116, 1, 4128, 1, 3 }, /* blob */
     { 0, 0, 0, 0, 0 }, /* u8 */
 };
 

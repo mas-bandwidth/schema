@@ -3253,7 +3253,7 @@ static SCHEMA_UNUSED const TableFixedDst fixed_table_fixed_dst[] = {
     { 1244, 1, 0, 0, 0 }, /* loadout */
     { 0, 0, 0, 0, 0 }, /* element */
     { 1264, 0, 1248, 0, 1 }, /* player_name */
-    { 1284, 1, 1268, 1, 3 }, /* payload */
+    { 1268, 1, 1284, 1, 3 }, /* payload */
     { 0, 0, 0, 0, 0 }, /* u8 */
     { 1288, 0, 0, 0, 0 }, /* aim_x */
     { 1292, 0, 0, 0, 0 }, /* aim_y */

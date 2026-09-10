@@ -65,6 +65,12 @@ static void fx_case()
     one.gone = 654;
     one.nested.a = 111;
     one.nested.b = 222;
+    // A `bytes(N)` IS AN ARRAY OF u8 ON THIS WIRE (§3.4), so its destination row
+    // is an ARRAY's — the buffer, and the live length beside it — and not a
+    // text field's, which is the other way round. Only a COMPILED plan reads
+    // those columns, so only FX2's read of this record can tell.
+    one.blob[0] = 0xDE; one.blob[1] = 0xAD; one.blob[2] = 0xBE; one.blob[3] = 0xEF;
+    one.blob_length = 4;
 
     std::vector<uint8_t> w1( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
     check( tblfx1::FxRootFixedSave( &one, 1, w1.data(), (int64_t) w1.size() ) == (int64_t) w1.size(), "FX1 save" );
@@ -96,6 +102,10 @@ static void fx_case()
         check( back.added == 11, "MISSING: a field the writer does not carry takes its declared default" );
         check( back.extra.x == 0 && back.extra.y == 0, "MISSING: a whole nested type takes its defaults" );
         check( back.nested.a == 111 && back.nested.b == 222, "older writer: the nesting" );
+        check( back.blob_length == 4 && back.blob[0] == 0xDE && back.blob[1] == 0xAD &&
+               back.blob[2] == 0xBE && back.blob[3] == 0xEF,
+               "BYTES(N): the compiled plan lands the buffer in the buffer and the length in the length" );
+        check( back.blob[4] == 0 && back.blob[5] == 0, "BYTES(N): the slack past the live length is zero" );
         check( r.unknown == 1, "older writer: `gone` is the one field this reader cannot name" );
         check( r.kind_mismatch == 0 && !r.malformed && !r.refused, "older writer: nothing else fired" );
     }
@@ -243,7 +253,10 @@ static void negative_control()
     // here because it is also the check that a refusal MOVES NO COUNTER.
     {
         std::vector<uint8_t> broken = w2;
-        broken[tblfx1::kTableFixedHeaderBytes] ^= 0xFFu; // the entry count
+        // THE ENTRY COUNT, which is the layout's own first four bytes and not
+        // the u32 LENGTH in front of them: a length that no longer matches the
+        // file is a different rule with a different name.
+        broken[tblfx1::kTableFixedHeaderBytes + 4] ^= 0xFFu;
         tblfx1::FxRoot v;
         tblfx1::TableReport r3;
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, &r3 );
@@ -632,6 +645,80 @@ static void slack_case()
 
 // ---------------------------------------------------------------------------
 
+// A `bytes(N)`'s DESTINATION ROW IS AN ARRAY'S (docs/SPEC-TABLES.md §3.4).
+// `bytes(N)` rides as an array of u8, so the plan compiler lands it through the
+// ARRAY case: the count goes to the row's aux and the elements to the row's
+// dst. A text field's row is the other way round — dst the length, aux the
+// buffer — and under that convention a `bytes(N)` hands the compiler a count
+// destination that is the BUFFER'S FIRST FOUR BYTES and an element destination
+// that is the LENGTH FIELD.
+//
+// THE NEGATIVE CONTROL IS THE OLD ROW, and it is built by swapping the two
+// columns back on a copy of this build's own rows and compiling the same plan
+// from the same layout. The row is found by its shape and not by its index —
+// stride one and a live count is a `bytes(N)` and nothing else — so the control
+// does not quietly stop pointing at it the day a field moves.
+static void bytes_row_case()
+{
+    tblfx1::FxRoot one;
+    tblfx1::FxRootReset( one );
+    one.blob[0] = 0xDE; one.blob[1] = 0xAD; one.blob[2] = 0xBE; one.blob[3] = 0xEF;
+    one.blob_length = 4;
+    std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "bytes row: FX1 save" );
+
+    const size_t rows = sizeof( tblfx2::FxRootFixedDst ) / sizeof( tblfx2::FxRootFixedDst[0] );
+    std::vector<tblfx2::TableFixedDst> swapped( tblfx2::FxRootFixedDst, tblfx2::FxRootFixedDst + rows );
+    size_t found = rows;
+    for ( size_t i = 0; i < rows; ++i )
+    {
+        if ( swapped[i].stride == 1u && swapped[i].counted != 0u ) { found = i; break; }
+    }
+    check( found != rows, "bytes row: the `bytes(N)` row is the one with stride one and a live count" );
+    const uint32_t d = swapped[found].dst;
+    swapped[found].dst = swapped[found].aux; // the TEXT convention, as it was
+    swapped[found].aux = d;
+
+    tblfx2::TableFixedLayoutView theirs;
+    tblfx2::TableMessageReason why = tblfx2::layout_malformed;
+    check( tblfx2::TableFixedParseLayout( tblfx1::FxRootFixedLayout, tblfx1::FxRootFixedLayoutBytes, theirs, why ),
+           "bytes row: FX1's layout parses" );
+
+    const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+    for ( int pass = 0; pass < 2; ++pass )
+    {
+        const tblfx2::TableFixedDst * rowset = pass == 0 ? tblfx2::FxRootFixedDst : swapped.data();
+        std::vector<tblfx2::TableFixedEntry> plan( 2048 );
+        int32_t guarded = 0;
+        tblfx2::TableReport compile_report;
+        const int32_t made = tblfx2::TableFixedCompile( theirs, tblfx2::FxRootFixedLayout, (int32_t) tblfx2::FxRootFixedLayoutBytes,
+                                                        rowset, plan.data(), 2048, &guarded, &compile_report );
+        check( made > 0, "bytes row: the plan compiles either way — the rows are not what refuses" );
+        // THE DESTINATION IS OVERSIZED ON PURPOSE. The wrong rows put an
+        // element destination where the LENGTH FIELD is, and six bytes of
+        // elements past a four-byte field is a step outside the storage — so
+        // the control gives it room to be wrong, and what reports the bug is
+        // the value that comes back rather than the sanitizer.
+        std::vector<uint64_t> storage( sizeof( tblfx2::FxRoot ) / 8 + 16, 0 );
+        tblfx2::FxRoot * back = (tblfx2::FxRoot *) (void *) storage.data();
+        tblfx2::FxRootReset( *back );
+        tblfx2::TableReport r;
+        tblfx2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) back, &r );
+        const bool right = back->blob_length == 4 && back->blob[0] == 0xDE && back->blob[1] == 0xAD &&
+                           back->blob[2] == 0xBE && back->blob[3] == 0xEF;
+        if ( pass == 0 )
+        {
+            check( right, "BYTES(N): the array row lands the buffer in the buffer and the length in the length" );
+        }
+        else
+        {
+            check( !right, "NEGATIVE CONTROL: the text row really does write the count into the buffer" );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 // TWO LANES, BECAUSE THEY ARE TWO FACTS (docs/SPEC-TABLES.md §3.4). A plan
 // entry carries the ordinal the GUARD byte must hold for the entry to run, and
 // the argument the entry's OWN OP takes — for a text entry, its flavour. They
@@ -748,6 +835,7 @@ int main()
     negative_control();
     slack_case();
     union_text_case();
+    bytes_row_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }

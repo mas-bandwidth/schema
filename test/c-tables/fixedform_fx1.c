@@ -27,6 +27,12 @@ static void fill( FxRoot * value )
     value->label_length = 2;
     value->marks[0] = 7;
     value->marks_count = 1;
+    /* A `bytes(N)` IS AN ARRAY OF u8 ON THIS WIRE (§3.4), so its destination
+       row is an ARRAY's — the buffer, and the live length beside it — and not
+       a text field's, which is the other way round. Only a COMPILED plan reads
+       those columns, so only FX2's read of this record can tell. */
+    value->blob[0] = 0xDE; value->blob[1] = 0xAD; value->blob[2] = 0xBE; value->blob[3] = 0xEF;
+    value->blob_length = 4;
 }
 
 /* THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4), and this is the C twin of the

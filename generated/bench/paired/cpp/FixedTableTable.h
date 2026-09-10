@@ -4125,7 +4125,7 @@ constexpr TableFixedDst FixedTableFixedDst[] = {
     { (uint32_t) __builtin_offsetof( BenchMixed, loadout ), (uint32_t) sizeof( uint8_t ), 0, 0, 0 }, // loadout
     { 0, 0, 0, 0, 0 }, // element
     { (uint32_t) __builtin_offsetof( BenchMixed, player_name_length ), 0, (uint32_t) __builtin_offsetof( BenchMixed, player_name ), 0, 1 }, // player_name
-    { (uint32_t) __builtin_offsetof( BenchMixed, payload_length ), 1, (uint32_t) __builtin_offsetof( BenchMixed, payload ), 1, 3 }, // payload
+    { (uint32_t) __builtin_offsetof( BenchMixed, payload ), 1, (uint32_t) __builtin_offsetof( BenchMixed, payload_length ), 1, 3 }, // payload
     { 0, 0, 0, 0, 0 }, // u8
     { (uint32_t) __builtin_offsetof( BenchMixed, aim_x ), 0, 0, 0, 0 }, // aim_x
     { (uint32_t) __builtin_offsetof( BenchMixed, aim_y ), 0, 0, 0, 0 }, // aim_y
