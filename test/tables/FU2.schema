@@ -33,5 +33,9 @@ table FuRoot
     note  ?int32
     pick  Pick
     tail  int32 = 3
+    // THE WIDE SIDE OF THE SIGNED RUNG: FU1 declares this `int16` (see there).
+    mark  int32 = -1
+    // THE WIDE SIDE OF THE FLOAT RUNG: FU1 declares this `float32` (see there).
+    heat  float64 = 0
     extra int32 = 11
 }

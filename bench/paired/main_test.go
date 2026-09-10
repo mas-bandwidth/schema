@@ -104,6 +104,42 @@ func makePass(t *testing.T) string {
 	return dir
 }
 
+func TestTwinToleranceWithinBand(t *testing.T) {
+	dir := makePass(t)
+	twinTolerance = 10
+	if e := render(dir); e != nil {
+		t.Fatal(e)
+	}
+}
+
+func TestTwinToleranceRefusesWideGap(t *testing.T) {
+	dir := makePass(t)
+	twinTolerance = 10
+	for round := range 7 {
+		p := filepath.Join(dir, fmt.Sprintf("round-%d-c-table.csv", round))
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e := os.WriteFile(p, []byte(strings.ReplaceAll(string(b), "980000", "500000")), 0600); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if err := os.Remove(filepath.Join(dir, completionFile)); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if err := sealPassWithVerifier(dir, func(buildInfo) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	err := render(dir)
+	if err == nil {
+		t.Fatal("C at half C++ passed twin-tolerance 10%")
+	}
+	if !strings.Contains(err.Error(), "twin-tolerance") {
+		t.Fatalf("wrong refusal: %v", err)
+	}
+}
+
 func TestPairedPercentages(t *testing.T) {
 	dir := makePass(t)
 	if e := render(dir); e != nil {
@@ -270,8 +306,10 @@ func TestReuseRequiresRecordedHEAD(t *testing.T) {
 }
 
 // A TABLE-ONLY LANGUAGE IS A TABLE LEG AND NOTHING ELSE. It parses as one
-// wire, it is invoked as the driver's own build product, and it cannot reach
-// the confirmation pass, whose every row is half of a ratio.
+// wire, it is invoked the one way its own leg is invoked — rust as the
+// driver's own build product, java through its interpreter with the classpath
+// the build filled, js through node on the runner source — and it cannot
+// reach the confirmation pass, whose every row is half of a ratio.
 func TestTableOnlyLanguageIsTableWireOnly(t *testing.T) {
 	for _, lang := range tableOnlyLanguages {
 		if names[lang] == "" {
@@ -290,8 +328,20 @@ func TestTableOnlyLanguageIsTableWireOnly(t *testing.T) {
 			t.Fatal("a table leg keeps wire/API validation:", lang)
 		}
 		args := runner("table", lang, "--gate").args
-		if args[0] != binary("table", lang) {
-			t.Fatal(args)
+		switch lang {
+		case "java":
+			// The class, by name, on the classpath the build filled.
+			if args[0] != javaExecutable() || !contains(args, javaClassDir) || !contains(args, "TableMain") {
+				t.Fatal(args)
+			}
+		case "js":
+			if args[0] != nodeExecutable() || args[1] != binary("table", lang) {
+				t.Fatal(args)
+			}
+		default:
+			if args[0] != binary("table", lang) {
+				t.Fatal(args)
+			}
 		}
 		if !contains(args, "--indexed") || !contains(args, "bench/paired/corpus") {
 			t.Fatal(args)
@@ -325,6 +375,45 @@ func TestFixedFormRowFromATableOnlyLanguage(t *testing.T) {
 	// The same row with the type board's appended codec column is eighteen
 	// wide and must be refused rather than truncated.
 	if _, err := parseRowsForIterations([]byte(strings.ReplaceAll(data, ",unknown\n", ",unknown,flat\n")), "rust", "table", "table", raised, 0.2); err == nil {
+		t.Fatal("an eighteen-column row was accepted")
+	}
+}
+
+// THE SAME CLAIM FOR THE JAVA LEG, which reaches the parser down the other
+// road: it is slow enough to keep the standard 400,000 table iterations, so
+// its row is the unraised one, and its seventeen columns are still the
+// driver's seventeen — a row with the type board's codec column appended is
+// refused rather than truncated.
+func TestFixedFormRowFromTheJavaTableOnlyLeg(t *testing.T) {
+	row := "java,bench_fixed,%s,400000,1264.30,1,%d,%d,%d,0,0,table,table,class,contract,default,unknown\n"
+	data := header + "\n" + fmt.Sprintf(row, "write", 1795168, 1795168, 1795168) + fmt.Sprintf(row, "round_trip", 604972, 604972, 604972)
+	rows, err := parseRows([]byte(data), "java", "table", "table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].cols[1] != "bench_fixed" || rows[1].cols[2] != "round_trip" {
+		t.Fatal(rows)
+	}
+	if _, err := parseRows([]byte(strings.ReplaceAll(data, ",unknown\n", ",unknown,flat\n")), "java", "table", "table"); err == nil {
+		t.Fatal("an eighteen-column row was accepted")
+	}
+}
+
+// THE SAME CLAIM FOR THE JS LEG: it keeps the standard 400,000 table
+// iterations, linkage is `esm`, and its seventeen columns are the driver's
+// seventeen — a row with the type board's codec column appended is refused
+// rather than truncated.
+func TestFixedFormRowFromTheJsTableOnlyLeg(t *testing.T) {
+	row := "js,bench_fixed,%s,400000,1264.0625,1,%d,%d,%d,0,0,table,table,esm,contract,default,unknown\n"
+	data := header + "\n" + fmt.Sprintf(row, "write", 1795168, 1795168, 1795168) + fmt.Sprintf(row, "round_trip", 604972, 604972, 604972)
+	rows, err := parseRows([]byte(data), "js", "table", "table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].cols[1] != "bench_fixed" || rows[1].cols[2] != "round_trip" {
+		t.Fatal(rows)
+	}
+	if _, err := parseRows([]byte(strings.ReplaceAll(data, ",unknown\n", ",unknown,flat\n")), "js", "table", "table"); err == nil {
 		t.Fatal("an eighteen-column row was accepted")
 	}
 }

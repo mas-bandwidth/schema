@@ -30,6 +30,16 @@ The next representative corpus is a variable table. Message form, block form,
 and cooked save/load follow as separate measured operations. They do not acquire
 a performance result from this fixed-table pass.
 
+**The FIXED form (form 3) is measured through the paired driver, not through
+this board.** `bench/paired/main.go` names the fixed rows `bench_fixed` and
+answers them to the paired corpus's own id; `bench/tables/cpp`, `bench/tables/c`
+and `bench/tables/elixir` carry that path. The Elixir leg carries **form 3 and
+nothing else** — form 1 is deferred to schema#515, so it has no `bench_table`
+row and therefore no `leg` script on this board yet; `run.sh`'s row filter
+accepts `bench_table` only. That registration is the named follow-on, and it is
+what would put Elixir on the board below rather than only in a paired
+diagnostic.
+
 ## The corpus
 
 [`bench/corpus/BenchTable.schema`](../corpus/BenchTable.schema) declares
@@ -236,6 +246,18 @@ Stated so a reader knows what is not here, and why:
   names the same flags and emits the same CSV columns as the C++ reference, it
   is gated by `make tables-rust-fixed-matched`, and its rows are named
   `bench_fixed`. When a form-1 Rust wire lands, its `leg` lands with it.
+
+- **`bench/tables/js` has a runner and NO `leg`.** `run.sh` discovers a leg by
+  the path `bench/tables/<lang>/leg`, and this page's leg measures the
+  TOLERANT wire — which JavaScript does not have (schema#516: the backend
+  carries form 3 and only form 3). So there is nothing here for this pass to
+  run, and registering a command that could only ever SKIP would put a row of
+  noise on the board. `bench/tables/js/table_main.mjs` is instead the FIXED
+  form's leg for [`bench/paired`](../paired/README.md), where it is a
+  table-only language: it names the same flags and emits the same CSV columns
+  as the C++ reference, it is gated by `make tables-js-fixed-matched`, and it
+  is a leg whose rows are named `bench_fixed`. When a form-1 JavaScript wire
+  lands, its `leg` lands with it.
 
 - **The `inline` column stays `unknown`** for both legs. The §4 verdict pass
   has no branch for the generated table codec, which is the same open item the

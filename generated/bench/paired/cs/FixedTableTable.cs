@@ -7,6 +7,8 @@
 // unit's protocol id.
 
 using System;
+using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 
 namespace Bench
 {
@@ -166,6 +168,1089 @@ namespace Bench
         public static long FixedTableToJson(FixedTable value, Span<byte> buffer)
         {
             return TableJson.Write(value, FixedTableTableType(), buffer, false);
+        }
+
+        // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+        //
+        // A record is an eight-byte hash of the writer's vocabulary block and then
+        // the values in declared order, every field at its declared storage width.
+        // The writer is the constant bytes memcpy'd and then stores; the reader is
+        // ONE loop over ONE plan, the identity plan here and a plan compiled from
+        // the writer's own block for anybody else.
+
+        // MixedEntity's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedEntityFixedWriteBody(Span<byte> b, MixedEntity value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.EntityId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.PosX);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.PosY);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), (int)value.PosZ);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(16), (uint)value.Yaw);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(20), (uint)value.Pitch);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(24), (int)value.VelX);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(28), (int)value.VelY);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(32), (int)value.VelZ);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(36), (int)value.Health);
+            b.Slice(40)[0] = (byte)value.Weapon;
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(41), (ulong)value.Damage);
+            b.Slice(49)[0] = (byte)(value.Moving ? 1 : 0);
+            b.Slice(50)[0] = (byte)(value.Firing ? 1 : 0);
+        }
+
+        // MixedStat's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedStatFixedWriteBody(Span<byte> b, MixedStat value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.StatId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Delta);
+        }
+
+        // MixedHitEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedHitEventFixedWriteBody(Span<byte> b, MixedHitEvent value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.TargetId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Damage);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.HitKind);
+            b.Slice(12)[0] = (byte)(value.Crit ? 1 : 0);
+        }
+
+        // MixedChatEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedChatEventFixedWriteBody(Span<byte> b, MixedChatEvent value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Channel);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(4), (uint)value.Speaker);
+        }
+
+        // MixedPickupEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedPickupEventFixedWriteBody(Span<byte> b, MixedPickupEvent value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.ItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Amount);
+        }
+
+        // BenchMixed's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void BenchMixedFixedWriteBody(Span<byte> b, BenchMixed value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.Sequence);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.AckSequence);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(8), (uint)value.AckBits);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(12), (long)value.SessionId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), (int)value.ClientId);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(24), (long)value.Nonce);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), (long)value.WorldTime);
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(40), (ulong)value.FrameTick);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(48), (uint)value.ServerTime);
+            int count_entities = value.EntitiesCount;
+            System.Diagnostics.Debug.Assert(count_entities >= 0 && count_entities <= 8); // the declared count is the bound (§3.4)
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), count_entities);
+            if (value.Entities != null)
+            {
+                for (int i = 0; i < count_entities && i < value.Entities.Length; ++i)
+                {
+                    MixedEntityFixedWriteBody(b.Slice(56 + i * 51), value.Entities[i]);
+                }
+            }
+            int count_stats = value.StatsCount;
+            System.Diagnostics.Debug.Assert(count_stats >= 0 && count_stats <= 80); // the declared count is the bound (§3.4)
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(464), count_stats);
+            if (value.Stats != null)
+            {
+                for (int i = 0; i < count_stats && i < value.Stats.Length; ++i)
+                {
+                    MixedStatFixedWriteBody(b.Slice(468 + i * 8), value.Stats[i]);
+                }
+            }
+            if (value.GameEvent != null)
+            {
+                b.Slice(1108)[0] = (byte)value.GameEvent.Type;
+                switch (value.GameEvent.Type)
+                {
+                    case MixedEventType.Hit:
+                        MixedHitEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Hit);
+                        break;
+                    case MixedEventType.Chat:
+                        MixedChatEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Chat);
+                        break;
+                    case MixedEventType.Pickup:
+                        MixedPickupEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Pickup);
+                        break;
+                    default: break;
+                }
+            }
+            if (value.Loadout != null) { value.Loadout.AsSpan(0, Math.Min(value.Loadout.Length, 4)).CopyTo(b.Slice(1122)); }
+            int len_player_name = value.PlayerName != null ? value.PlayerNameLength : 0;
+            System.Diagnostics.Debug.Assert(len_player_name <= 15);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1126), len_player_name);
+            if (len_player_name > 0) { value.PlayerName.AsSpan(0, len_player_name).CopyTo(b.Slice(1130)); }
+            int len_payload = value.Payload != null ? value.PayloadLength : 0;
+            System.Diagnostics.Debug.Assert(len_payload <= 16);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1145), len_payload);
+            if (len_payload > 0) { value.Payload.AsSpan(0, len_payload).CopyTo(b.Slice(1149)); }
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1165), value.AimX);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1169), value.AimY);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1173), value.AimZ);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1177), value.Recoil);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1181), value.Drift);
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189), (ulong)(unchecked((UInt128)value.WideKey)));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189).Slice(8), (ulong)(unchecked((UInt128)value.WideKey) >> 64));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205), (ulong)(unchecked((UInt128)(Int128)value.Flux)));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205).Slice(8), (ulong)(unchecked((UInt128)(Int128)value.Flux) >> 64));
+            BinaryPrimitives.WriteUInt16LittleEndian(b.Slice(1221), (ushort)value.Ping);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(1223), (uint)value.CrcHint);
+            b.Slice(1227)[0] = (byte)(value.HasExtra ? 1 : 0);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1228), (int)value.Extra);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1232), (int)value.IdleTicks);
+        }
+
+        // FixedTable's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void FixedTableFixedWriteBody(Span<byte> b, FixedTable value)
+        {
+            if (value == null) return;
+            BenchMixedFixedWriteBody(b, value.Value);
+        }
+
+        // ---- FixedTable, the fixed form ----
+
+        public const long FixedTableFixedBodyBytes = 1236;
+        public const long FixedTableFixedRecordBytes = 8 + FixedTableFixedBodyBytes;
+        public const ulong FixedTableFixedHash = 0x32f1c4a302a224ebul;
+
+        public static readonly byte[] FixedTableFixedLayout = new byte[] {
+            0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
+            0x00, 0x01, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xd4, 0x04,
+            0x00, 0x00, 0x1b, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b,
+            0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7,
+            0xb7, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98,
+            0x7b, 0x6d, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71,
+            0x4c, 0xa9, 0x73, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x85, 0xfc, 0x54, 0xbe,
+            0x51, 0x6b, 0xee, 0x3e, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x01, 0x6d,
+            0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0x69,
+            0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x16, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a,
+            0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x9c, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x33, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00,
+            0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c,
+            0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed,
+            0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4,
+            0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20,
+            0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x0c, 0xcf, 0x66, 0x27,
+            0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x84, 0xda,
+            0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x95, 0x8a,
+            0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf1,
+            0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8,
+            0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda,
+            0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe,
+            0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa7, 0x3d, 0x24, 0xd1,
+            0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xca, 0x31, 0x90,
+            0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x99,
+            0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x84, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+            0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0x0e, 0x00, 0x00, 0x00, 0x03,
+            0x00, 0x00, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x0d, 0x00, 0x00, 0x00,
+            0x04, 0x00, 0x00, 0x00, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01,
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2,
+            0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01,
+            0xa5, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
+            0xf1, 0xfb, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x65, 0xb7, 0xec, 0x86, 0x1c,
+            0xa4, 0xa3, 0x9f, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x56, 0xbd, 0x4f, 0x86,
+            0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+            0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0xb5,
+            0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x14, 0x00, 0x00, 0x00, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3,
+            0x13, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b,
+            0xd6, 0x12, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0,
+            0x30, 0xbf, 0x1a, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0x51, 0xd8, 0xcc, 0x27,
+            0x65, 0x0d, 0x56, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x86, 0xfd, 0x6c,
+            0x17, 0x92, 0x82, 0xc0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xcb, 0x79,
+            0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
+            0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public const long FixedTableFixedLayoutBytes = 1279;
+
+        public static readonly TableFixedDst[] FixedTableFixedDst = new TableFixedDst[] {
+            new TableFixedDst(0, 0, 0, 0, 0), // FixedTable
+            new TableFixedDst(0, 0, 0, 0, 0), // value
+            new TableFixedDst(0, 0, 0, 0, 0), // sequence
+            new TableFixedDst(1, 0, 0, 0, 0), // ack_sequence
+            new TableFixedDst(2, 0, 0, 0, 0), // ack_bits
+            new TableFixedDst(3, 0, 0, 0, 0), // session_id
+            new TableFixedDst(4, 0, 0, 0, 0), // client_id
+            new TableFixedDst(5, 0, 0, 0, 0), // nonce
+            new TableFixedDst(6, 0, 0, 0, 0), // world_time
+            new TableFixedDst(7, 0, 0, 0, 0), // frame_tick
+            new TableFixedDst(8, 0, 0, 0, 0), // server_time
+            new TableFixedDst(10, 14, 9, 1, 0), // entities
+            new TableFixedDst(0, 0, 0, 0, 0), // element
+            new TableFixedDst(0, 0, 0, 0, 0), // entity_id
+            new TableFixedDst(0, 0, 0, 0, 0), // pos_x
+            new TableFixedDst(0, 0, 0, 0, 0), // pos_y
+            new TableFixedDst(0, 0, 0, 0, 0), // pos_z
+            new TableFixedDst(0, 0, 0, 0, 0), // yaw
+            new TableFixedDst(0, 0, 0, 0, 0), // pitch
+            new TableFixedDst(0, 0, 0, 0, 0), // vel_x
+            new TableFixedDst(0, 0, 0, 0, 0), // vel_y
+            new TableFixedDst(0, 0, 0, 0, 0), // vel_z
+            new TableFixedDst(0, 0, 0, 0, 0), // health
+            new TableFixedDst(0, 0, 0, 0, 0), // weapon
+            new TableFixedDst(0, 0, 0, 0, 0), // Fists
+            new TableFixedDst(0, 0, 0, 0, 0), // Pistol
+            new TableFixedDst(0, 0, 0, 0, 0), // Shotgun
+            new TableFixedDst(0, 0, 0, 0, 0), // Rifle
+            new TableFixedDst(0, 0, 0, 0, 0), // Sniper
+            new TableFixedDst(0, 0, 0, 0, 0), // Smg
+            new TableFixedDst(0, 0, 0, 0, 0), // Rocket
+            new TableFixedDst(0, 0, 0, 0, 0), // Grenade
+            new TableFixedDst(0, 0, 0, 0, 0), // Plasma
+            new TableFixedDst(0, 0, 0, 0, 0), // Railgun
+            new TableFixedDst(0, 0, 0, 0, 0), // Flamer
+            new TableFixedDst(0, 0, 0, 0, 0), // Mine
+            new TableFixedDst(0, 0, 0, 0, 0), // Turret
+            new TableFixedDst(0, 0, 0, 0, 0), // Drone
+            new TableFixedDst(0, 0, 0, 0, 0), // Repair
+            new TableFixedDst(0, 0, 0, 0, 0), // damage
+            new TableFixedDst(0, 0, 0, 0, 0), // moving
+            new TableFixedDst(0, 0, 0, 0, 0), // firing
+            new TableFixedDst(123, 2, 122, 1, 0), // stats
+            new TableFixedDst(0, 0, 0, 0, 0), // element
+            new TableFixedDst(0, 0, 0, 0, 0), // stat_id
+            new TableFixedDst(0, 0, 0, 0, 0), // delta
+            new TableFixedDst(284, 0, 283, 0, 0), // game_event
+            new TableFixedDst(0, 0, 0, 0, 0), // hit
+            new TableFixedDst(0, 0, 0, 0, 0), // target_id
+            new TableFixedDst(1, 0, 0, 0, 0), // damage
+            new TableFixedDst(2, 0, 0, 0, 0), // hit_kind
+            new TableFixedDst(3, 0, 0, 0, 0), // crit
+            new TableFixedDst(4, 0, 0, 0, 0), // chat
+            new TableFixedDst(0, 0, 0, 0, 0), // channel
+            new TableFixedDst(1, 0, 0, 0, 0), // speaker
+            new TableFixedDst(6, 0, 0, 0, 0), // pickup
+            new TableFixedDst(0, 0, 0, 0, 0), // item_id
+            new TableFixedDst(1, 0, 0, 0, 0), // amount
+            new TableFixedDst(292, 0, 0, 0, 0), // loadout
+            new TableFixedDst(0, 0, 0, 0, 0), // element
+            new TableFixedDst(293, 0, 294, 0, 1), // player_name
+            new TableFixedDst(296, 1, 295, 1, 3), // payload
+            new TableFixedDst(0, 0, 0, 0, 0), // u8
+            new TableFixedDst(297, 0, 0, 0, 0), // aim_x
+            new TableFixedDst(298, 0, 0, 0, 0), // aim_y
+            new TableFixedDst(299, 0, 0, 0, 0), // aim_z
+            new TableFixedDst(300, 0, 0, 0, 0), // recoil
+            new TableFixedDst(301, 0, 0, 0, 0), // drift
+            new TableFixedDst(302, 0, 0, 0, 0), // wide_key
+            new TableFixedDst(303, 0, 0, 0, 0), // flux
+            new TableFixedDst(304, 0, 0, 0, 0), // ping
+            new TableFixedDst(305, 0, 0, 0, 0), // crc_hint
+            new TableFixedDst(306, 0, 0, 0, 0), // has_extra
+            new TableFixedDst(307, 0, 0, 0, 0), // extra
+            new TableFixedDst(308, 0, 0, 0, 0), // idle_ticks
+        };
+
+        public static readonly TableFixedSlot<FixedTable>[] FixedTableFixedSlots = new TableFixedSlot<FixedTable>[] {
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Sequence = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckSequence = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckBits = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.SessionId = unchecked((ulong)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ClientId = unchecked((uint)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Nonce = unchecked((ulong)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WorldTime = unchecked((long)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.FrameTick = (ulong)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ServerTime = (int)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.EntitiesCount = (int)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].EntityId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Yaw = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Pitch = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Health = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[0].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[0].Weapon = (MixedWeapon)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Damage = v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Moving = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Firing = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].EntityId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Yaw = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Pitch = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Health = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[1].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[1].Weapon = (MixedWeapon)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Damage = v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Moving = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Firing = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].EntityId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Yaw = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Pitch = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Health = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[2].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[2].Weapon = (MixedWeapon)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Damage = v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Moving = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Firing = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].EntityId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Yaw = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Pitch = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Health = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[3].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[3].Weapon = (MixedWeapon)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Damage = v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Moving = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Firing = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].EntityId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Yaw = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Pitch = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Health = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[4].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[4].Weapon = (MixedWeapon)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Damage = v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Moving = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Firing = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].EntityId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Yaw = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Pitch = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Health = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[5].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[5].Weapon = (MixedWeapon)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Damage = v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Moving = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Firing = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].EntityId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Yaw = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Pitch = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Health = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[6].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[6].Weapon = (MixedWeapon)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Damage = v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Moving = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Firing = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].EntityId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Yaw = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Pitch = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelX = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelY = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelZ = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Health = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[7].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[7].Weapon = (MixedWeapon)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Damage = v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Moving = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Firing = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.StatsCount = (int)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].StatId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].Delta = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 3) { t.Value.GameEvent.Type = (MixedEventType)0; if (rep != null) rep.Clamped++; } else { t.Value.GameEvent.Type = (MixedEventType)v; } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.TargetId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.Damage = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.HitKind = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.Crit = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Channel = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Speaker = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.ItemId = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.Amount = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Value.Loadout.Length)).CopyTo(t.Value.Loadout); }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.PlayerNameLength = (int)v),
+            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.PlayerName != null) b.Slice(0, Math.Min(b.Length, t.Value.PlayerName.Length)).CopyTo(t.Value.PlayerName); }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.PayloadLength = (int)v),
+            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.Payload != null) b.Slice(0, Math.Min(b.Length, t.Value.Payload.Length)).CopyTo(t.Value.Payload); }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimX = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimX = (float)d),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimY = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimY = (float)d),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimZ = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimZ = (float)d),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Recoil = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.Recoil = (float)d),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Drift = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Value.Drift = d),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WideKey = unchecked((System.UInt128)v), setWide: (t, w) => t.Value.WideKey = unchecked((System.UInt128)w)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Flux = unchecked((System.Int128)v), setWide: (t, w) => t.Value.Flux = unchecked((System.Int128)w)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Ping = (ushort)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.CrcHint = (uint)v),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.HasExtra = v != 0),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Extra = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.IdleTicks = unchecked((int)v)),
+        };
+
+        public static readonly TableFixedPlan FixedTableFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
+            new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(8u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(12u, 3u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(20u, 4u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(24u, 5u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(32u, 6u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(40u, 7u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(48u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(52u, 9u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0),
+            new TableFixedEntry(56u, 10u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(60u, 11u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(64u, 12u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(68u, 13u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(72u, 14u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(76u, 15u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(80u, 16u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(84u, 17u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(88u, 18u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(92u, 19u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(96u, 20u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(97u, 21u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(105u, 22u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(106u, 23u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(107u, 24u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(111u, 25u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(115u, 26u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(119u, 27u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(123u, 28u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(127u, 29u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(131u, 30u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(135u, 31u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(139u, 32u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(143u, 33u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(147u, 34u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(148u, 35u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(156u, 36u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(157u, 37u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(158u, 38u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(162u, 39u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(166u, 40u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(170u, 41u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(174u, 42u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(178u, 43u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(182u, 44u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(186u, 45u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(190u, 46u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(194u, 47u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(198u, 48u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(199u, 49u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(207u, 50u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(208u, 51u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(209u, 52u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(213u, 53u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(217u, 54u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(221u, 55u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(225u, 56u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(229u, 57u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(233u, 58u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(237u, 59u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(241u, 60u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(245u, 61u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(249u, 62u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(250u, 63u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(258u, 64u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(259u, 65u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(260u, 66u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(264u, 67u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(268u, 68u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(272u, 69u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(276u, 70u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(280u, 71u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(284u, 72u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(288u, 73u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(292u, 74u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(296u, 75u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(300u, 76u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(301u, 77u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(309u, 78u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(310u, 79u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(311u, 80u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(315u, 81u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(319u, 82u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(323u, 83u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(327u, 84u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(331u, 85u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(335u, 86u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(339u, 87u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(343u, 88u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(347u, 89u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(351u, 90u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(352u, 91u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(360u, 92u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(361u, 93u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(362u, 94u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(366u, 95u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(370u, 96u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(374u, 97u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(378u, 98u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(382u, 99u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(386u, 100u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(390u, 101u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(394u, 102u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(398u, 103u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(402u, 104u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(403u, 105u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(411u, 106u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(412u, 107u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(413u, 108u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(417u, 109u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(421u, 110u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(425u, 111u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(429u, 112u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(433u, 113u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(437u, 114u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(441u, 115u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(445u, 116u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(449u, 117u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(453u, 118u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(454u, 119u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(462u, 120u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(463u, 121u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(464u, 122u, 80u, 0u, TableFixedWire.NoGuard, TableFixedWire.Count, 0, 0, 0, 0),
+            new TableFixedEntry(468u, 123u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(472u, 124u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(476u, 125u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(480u, 126u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(484u, 127u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(488u, 128u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(492u, 129u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(496u, 130u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(500u, 131u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(504u, 132u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(508u, 133u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(512u, 134u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(516u, 135u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(520u, 136u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(524u, 137u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(528u, 138u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(532u, 139u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(536u, 140u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(540u, 141u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(544u, 142u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(548u, 143u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(552u, 144u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(556u, 145u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(560u, 146u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(564u, 147u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(568u, 148u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(572u, 149u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(576u, 150u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(580u, 151u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(584u, 152u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(588u, 153u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(592u, 154u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(596u, 155u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(600u, 156u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(604u, 157u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(608u, 158u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(612u, 159u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(616u, 160u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(620u, 161u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(624u, 162u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(628u, 163u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(632u, 164u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(636u, 165u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(640u, 166u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(644u, 167u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(648u, 168u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(652u, 169u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(656u, 170u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(660u, 171u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(664u, 172u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(668u, 173u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(672u, 174u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(676u, 175u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(680u, 176u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(684u, 177u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(688u, 178u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(692u, 179u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(696u, 180u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(700u, 181u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(704u, 182u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(708u, 183u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(712u, 184u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(716u, 185u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(720u, 186u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(724u, 187u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(728u, 188u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(732u, 189u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(736u, 190u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(740u, 191u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(744u, 192u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(748u, 193u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(752u, 194u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(756u, 195u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(760u, 196u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(764u, 197u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(768u, 198u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(772u, 199u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(776u, 200u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(780u, 201u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(784u, 202u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(788u, 203u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(792u, 204u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(796u, 205u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(800u, 206u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(804u, 207u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(808u, 208u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(812u, 209u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(816u, 210u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(820u, 211u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(824u, 212u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(828u, 213u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(832u, 214u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(836u, 215u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(840u, 216u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(844u, 217u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(848u, 218u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(852u, 219u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(856u, 220u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(860u, 221u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(864u, 222u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(868u, 223u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(872u, 224u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(876u, 225u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(880u, 226u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(884u, 227u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(888u, 228u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(892u, 229u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(896u, 230u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(900u, 231u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(904u, 232u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(908u, 233u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(912u, 234u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(916u, 235u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(920u, 236u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(924u, 237u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(928u, 238u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(932u, 239u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(936u, 240u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(940u, 241u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(944u, 242u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(948u, 243u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(952u, 244u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(956u, 245u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(960u, 246u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(964u, 247u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(968u, 248u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(972u, 249u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(976u, 250u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(980u, 251u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(984u, 252u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(988u, 253u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(992u, 254u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(996u, 255u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1000u, 256u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1004u, 257u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1008u, 258u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1012u, 259u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1016u, 260u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1020u, 261u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1024u, 262u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1028u, 263u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1032u, 264u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1036u, 265u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1040u, 266u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1044u, 267u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1048u, 268u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1052u, 269u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1056u, 270u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1060u, 271u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1064u, 272u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1068u, 273u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1072u, 274u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1076u, 275u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1080u, 276u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1084u, 277u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1088u, 278u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1092u, 279u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1096u, 280u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1100u, 281u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1104u, 282u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1108u, 283u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1109u, 284u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0),
+            new TableFixedEntry(1113u, 285u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0),
+            new TableFixedEntry(1117u, 286u, 4u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0),
+            new TableFixedEntry(1121u, 287u, 1u, 0u, 1108u, TableFixedWire.Copy, 1, 0, 0, 0),
+            new TableFixedEntry(1109u, 288u, 4u, 0u, 1108u, TableFixedWire.Copy, 2, 0, 0, 0),
+            new TableFixedEntry(1113u, 289u, 4u, 0u, 1108u, TableFixedWire.Copy, 2, 0, 0, 0),
+            new TableFixedEntry(1109u, 290u, 4u, 0u, 1108u, TableFixedWire.Copy, 3, 0, 0, 0),
+            new TableFixedEntry(1113u, 291u, 4u, 0u, 1108u, TableFixedWire.Copy, 3, 0, 0, 0),
+            new TableFixedEntry(1122u, 292u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Flat, 0, 0, 0, 0),
+            new TableFixedEntry(1126u, 293u, 15u, 294u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 1),
+            new TableFixedEntry(1145u, 295u, 16u, 296u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 3),
+            new TableFixedEntry(1165u, 297u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1169u, 298u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1173u, 299u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1177u, 300u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1181u, 301u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1189u, 302u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1205u, 303u, 16u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1221u, 304u, 2u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1223u, 305u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1227u, 306u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1228u, 307u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(1232u, 308u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+        });
+
+        public static long FixedTableFixedMeasure(long count)
+        {
+            return TableFixedWire.HeaderBytes + 4 + FixedTableFixedLayoutBytes + count * FixedTableFixedRecordBytes;
+        }
+
+        public static long FixedTableFixedSave(ReadOnlySpan<FixedTable> values, Span<byte> buffer)
+        {
+            long need = FixedTableFixedMeasure(values.Length);
+            if (values.Length < 0 || buffer.Length < need) { return -1; }
+            buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
+            buffer[0] = TableFixedWire.Form;
+            BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), FixedTableFixedHash);
+            BinaryPrimitives.WriteUInt32LittleEndian(buffer.Slice(TableFixedWire.HeaderBytes), (uint)FixedTableFixedLayoutBytes);
+            FixedTableFixedLayout.CopyTo(buffer.Slice(TableFixedWire.HeaderBytes + 4));
+            Span<byte> at = buffer.Slice(TableFixedWire.HeaderBytes + 4 + (int)FixedTableFixedLayoutBytes);
+            for (int k = 0; k < values.Length; ++k)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(at, FixedTableFixedHash);
+                at.Slice(8, (int)FixedTableFixedBodyBytes).Clear();
+                FixedTableFixedWriteBody(at.Slice(8), values[k]);
+                at = at.Slice((int)FixedTableFixedRecordBytes);
+            }
+            return need;
+        }
+
+        public static long FixedTableFixedSave(FixedTable[] values, Span<byte> buffer)
+        {
+            return FixedTableFixedSave((ReadOnlySpan<FixedTable>)values, buffer);
+        }
+
+        public static long FixedTableFixedSave(FixedTable value, Span<byte> buffer)
+        {
+            ReadOnlySpan<FixedTable> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
+            return FixedTableFixedSave(span, buffer);
+        }
+
+        public static long FixedTableFixedLoad(
+            Span<FixedTable> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report = null)
+        {
+            if (data.Length < TableFixedWire.HeaderBytes + 4)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            if (data[0] != TableFixedWire.Form)
+            {
+                if (report != null)
+                {
+                    report.Refused = true;
+                    report.Reason = data[0] == 2 ? "message_form_as_file"
+                                  : data[0] < TableFixedWire.Form ? "previous_form"
+                                  : "newer_form";
+                    report.Verdict = TableWire.Verdict.Refused;
+                }
+                return -1;
+            }
+            uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));
+            if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
+            ulong hash = TableFixedWire.HashOf(layout);
+            ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
+            int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
+            ReadOnlySpan<TableFixedEntry> entries = FixedTableFixedPlan;
+            long record_bytes = FixedTableFixedRecordBytes;
+            ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            if (hash != FixedTableFixedHash)
+            {
+                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                int made = TableFixedWire.Compile(parsed, FixedTableFixedLayout, FixedTableFixedDst, plan, report);
+                if (made < 0)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                entries = plan.Slice(0, made);
+                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
+                planBytes = MemoryMarshal.AsBytes(plan);
+            }
+            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (record_bytes <= 8 || rest % record_bytes != 0)
+            {
+                if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }
+                return -1;
+            }
+            long n = rest / record_bytes;
+            if (n > values.Length)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                if (values[k] == null) { values[k] = new FixedTable(); }
+                TableReset(values[k]);
+                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+                TableFixedWire.Run(entries, FixedTableFixedSlots, at.Slice(8), values[k], report, planBytes);
+                at = at.Slice((int)record_bytes);
+            }
+            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            return n;
+        }
+
+        public static long FixedTableFixedLoad(FixedTable[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            return FixedTableFixedLoad((Span<FixedTable>)values, data, plan, report);
+        }
+
+        public static long FixedTableFixedLoad(FixedTable value, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)
+        {
+            Span<FixedTable> span = MemoryMarshal.CreateSpan(ref value, 1);
+            return FixedTableFixedLoad(span, data, plan, report);
+        }
+
+        public static void TableFixedRun(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<byte> src,
+            FixedTable dst,
+            TableReport report = null,
+            ReadOnlySpan<byte> planBytes = default)
+        {
+            TableFixedWire.Run(plan, FixedTableFixedSlots, src, dst, report, planBytes);
         }
     }
 

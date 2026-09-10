@@ -1,0 +1,120 @@
+#!/bin/sh
+# THE ARM-TEXT CONTROL (docs/SPEC-TABLES.md §3.4): plants the old encoding
+# where the text op's flavour was written over `arg`, which is the ARM ORDINAL
+# a guarded entry is selected by. Under it, a text field under a union's
+# SECOND arm is silently dropped on every compiled-plan read.
+# The control requires the arm-text conformance case (test/tables/UT.schema)
+# to fail and report the expected error.
+set -eu
+dotnet=$1
+control=build/cs-armtext-control
+rm -rf "$control"
+mkdir -p "$control"
+
+cat > "$control/control.csproj" <<'PROJECT'
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs"/>
+    <Compile Include="generated/ut/*.cs"/>
+    <Compile Include="../../../serialize.cs/src/Serialize.cs"/>
+    <Compile Include="../../../serialize.cs/src/Int128Pair.cs"/>
+  </ItemGroup>
+</Project>
+PROJECT
+
+cat > "$control/Program.cs" <<'CS'
+using System;
+using System.Text;
+using Tblut;
+
+class Program
+{
+    static void Check(bool ok, string what)
+    {
+        if (!ok)
+        {
+            Console.WriteLine("FAILED: " + what);
+            Environment.Exit(1);
+        }
+    }
+
+    static UtRoot UtCompiled(byte[] wire, TableReport r)
+    {
+        UtRoot outVal = new UtRoot();
+        Schema.TableReset(outVal);
+
+        uint layoutBytes = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(
+            wire.AsSpan(Schema.TableFixedWire.HeaderBytes));
+        ReadOnlySpan<byte> layout = wire.AsSpan(Schema.TableFixedWire.HeaderBytes + 4, (int)layoutBytes);
+        Check(Schema.TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed),
+              "arm text: the layout parses");
+
+        Span<TableFixedEntry> plan = new TableFixedEntry[512];
+        int made = Schema.TableFixedWire.Compile(parsed, Schema.UtRootFixedLayout, Schema.UtRootFixedDst, plan, r);
+        Check(made > 0, "arm text: a plan compiles from my own layout");
+
+        ReadOnlySpan<byte> planBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(plan);
+        ReadOnlySpan<byte> at = wire.AsSpan(Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
+        Schema.TableFixedWire.Run(plan.Slice(0, made), Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes);
+        return outVal;
+    }
+
+    static int Main()
+    {
+        UtRoot root = new UtRoot();
+        Schema.TableReset(root);
+        root.Pick.Type = UtPickType.B;
+        byte[] labelBytes = Encoding.UTF8.GetBytes("hello");
+        labelBytes.CopyTo(root.Pick.B.Label.AsSpan());
+        root.Pick.B.LabelLength = labelBytes.Length;
+        root.Pick.B.Grade = UtGrade.gold;
+        root.Pick.B.M = 42;
+        root.Tail = 11;
+
+        byte[] wire = new byte[Schema.UtRootFixedMeasure(1)];
+        Check(Schema.UtRootFixedSave(root, wire) == wire.Length, "arm text: save fills what measure says");
+
+        TableReport rc = new TableReport();
+        UtRoot viaPlan = UtCompiled(wire, rc);
+        Check(Encoding.UTF8.GetString(viaPlan.Pick.B.Label.AsSpan(0, viaPlan.Pick.B.LabelLength)) == "hello",
+              "arm text: a COMPILED plan lands a text field under the SECOND arm");
+        return 0;
+    }
+}
+CS
+
+# 1. Positive run with unsabotaged compiler
+./bin/schema generate --lang cs --out "$control/generated/ut" test/tables/UT.schema
+"$dotnet" run --project "$control/control.csproj" > "$control/positive.log" 2>&1 || \
+    { echo "POSITIVE RUN FAILED:"; cat "$control/positive.log"; exit 1; }
+
+# 2. Sabotage the runtime
+go run ./tools/sabotage -name fixed-form-cs-arm-text-flavour \
+    -out "$control/fixedruntime.gotext" internal/codegen/cstable/fixedruntime.go
+grep -q SABOTAGED "$control/fixedruntime.gotext" || \
+    { echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+
+printf '{"Replace":{"%s/internal/codegen/cstable/fixedruntime.go":"%s/%s/fixedruntime.gotext"}}\n' \
+    "$PWD" "$PWD" "$control" > "$control/overlay.json"
+go build -overlay="$control/overlay.json" -o "$control/schema" ./cmd/schema
+
+"$control/schema" generate --lang cs --out "$control/generated/ut" test/tables/UT.schema
+grep -q SABOTAGED "$control/generated/ut/TblutTable.cs" || \
+    { echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged runtime"; exit 1; }
+
+"$dotnet" build "$control/control.csproj" -v q > "$control/build.log" 2>&1
+if "$dotnet" run --project "$control/control.csproj" --no-build > "$control/run.log" 2>&1; then
+    echo "NEGATIVE CONTROL FAILED: sabotaged text arm passed"; exit 1
+fi
+grep -q "arm text: a COMPILED plan lands a text field under the SECOND arm" "$control/run.log" || \
+    { echo "NEGATIVE CONTROL FAILED: failed for another reason"; cat "$control/run.log"; exit 1; }
+grep -m1 "FAILED:" "$control/run.log"
+echo "negative control: a text entry that borrows the guard's own byte drops the SECOND arm's text and reds"

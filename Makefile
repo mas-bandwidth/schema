@@ -4398,6 +4398,31 @@ tables-fixed-matched: build/schema_test_bench_paired_table_cpp build/schema_test
 
 test: tables-fixed-matched
 
+# THE C / C++ FIXED RUNTIME TWIN GATE (bench/paired/TWIN.md). Emit both
+# paired headers, normalise the fixed runtimes through the documented token
+# map, and diff the rest. Any leftover line that is not one of the three
+# named differences is a failure. The negative control plants an extra
+# enumerator so a map that swallowed every divergence has no blade.
+tables-fixed-twin: generated/bench/paired/c/.stamp generated/bench/paired/cpp/.stamp
+	go test ./tools/fixedtwin -count=1
+	go run ./tools/fixedtwin generated/bench/paired/c/FixedTableTable.h generated/bench/paired/cpp/FixedTableTable.h
+	$(MAKE) tables-fixed-twin-negative-control
+
+.PHONY: tables-fixed-twin
+
+test: tables-fixed-twin
+
+.PHONY: tables-fixed-twin-negative-control
+tables-fixed-twin-negative-control: generated/bench/paired/c/.stamp generated/bench/paired/cpp/.stamp
+	@mkdir -p build/fixed-twin-nc
+	@sed 's/kTableFixedCopy    = 0/kTableFixedCopy    = 99/' generated/bench/paired/c/FixedTableTable.h > build/fixed-twin-nc/FixedTableTable.h
+	@cmp -s generated/bench/paired/c/FixedTableTable.h build/fixed-twin-nc/FixedTableTable.h && { echo 'NEGATIVE CONTROL: the planted op patched nothing'; exit 1; } || true
+	@if go run ./tools/fixedtwin build/fixed-twin-nc/FixedTableTable.h generated/bench/paired/cpp/FixedTableTable.h; then \
+		echo 'NEGATIVE CONTROL FAILED: planted leftover line passed the twin gate'; \
+		exit 1; \
+	fi
+	@echo 'fixed twin negative control: planted leftover line reds'
+
 # THE FIXED FORM'S RULING MEASUREMENT (docs/SPEC-TABLES.md §3.4). One reader
 # path is a design decision with a price, and this is the price: the
 # plan-driven reader running its identity plan against straight-line
@@ -5830,13 +5855,13 @@ tables-fixedform-run-copy-negative-control:
 # THE FIXED FORM'S CROSS-LANGUAGE BYTE ORACLE (docs/SPEC-TABLES.md §3.4).
 #
 # The C++ backend is the REFERENCE for this form, so the reference is what
-# writes the bytes and every port matches them — the same shape the paired
-# bench already pins. This target writes one form-3 FILE per root into
-# build/fixedform-corpus, with values set by hand so nothing passes by
-# accident, and a port's leg proves itself against them two ways: reading a
-# file and saving it back has to reproduce it BYTE FOR BYTE, and reading a file
-# written under ANOTHER schema's layout is the plan path, which is the whole of
-# what §3.4's versioning invariant is worth.
+# writes the bytes and every port matches them — Glenn's rule for this class,
+# and the same shape the paired bench already pins. This target writes one
+# form-3 FILE per root into build/fixedform-corpus, with values set by hand so
+# nothing passes by accident, and a port's leg proves itself against them two
+# ways: reading a file and saving it back has to reproduce it BYTE FOR BYTE,
+# and reading a file written under ANOTHER schema's layout is the plan path,
+# which is the whole of what §3.4's versioning invariant is worth.
 #
 # It lives HERE rather than in a language's own make/<lang>.mk because it is
 # every port's oracle and none of theirs: a corpus one leg owns is a corpus the
@@ -5903,11 +5928,23 @@ tables-fixedform-pin: build/schema_test_fixedform_pin
 
 .PHONY: tables-fixedform-oracle tables-fixedform-pin
 
-build/schema_test_fixedform_dump: build/tables-generated/.stamp test/tables/fixedform_dump.cpp
+
+# THE WIDE-TEXT UNIT GETS ITS OWN GENERATION, for the reason examples-wide/
+# already has its own directory: kind 33 in a table closure is C, C++, C#, Dart
+# and Go today, and every SHARED schema list is pinned to targets that refuse
+# it. Naming the unit here rather than in tables_generate keeps it out of the
+# nine negative controls that regenerate that whole corpus.
+build/tables-generated-fxw/.stamp: bin/schema test/tables/FXW.schema
+	@rm -rf build/tables-generated-fxw
+	@mkdir -p build/tables-generated-fxw
+	./bin/schema generate --lang cpp --out build/tables-generated-fxw/fxw test/tables/FXW.schema
+	@touch $@
+
+build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-generated-fxw/.stamp test/tables/fixedform_dump.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
-	    -Ibuild/tables-generated/examples \
+	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
@@ -5920,6 +5957,69 @@ tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
 
 .PHONY: tables-fixedform-corpus
+
+# THE FIXED FORM'S BENCH CORPUS, also the C++ reference's (docs/SPEC-TABLES.md
+# §3.4's "held by test": the PAIRED CORPUS, sixty-four logical records on the
+# packet wire and on this one). The reference decodes the canonical packet
+# corpus, saves the same values with its form-3 writer, and states the VALUES
+# beside the bytes in a JSON oracle — because a reader and a writer that share
+# one offset mistake round trip perfectly and are both wrong.
+build/fixedform-bench-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
+	@mkdir -p build/fixedform-bench-corpus
+	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/fixedform-bench-corpus/corpus
+	./build/fixedform-bench-corpus/corpus bench/corpus/variants/bench_mixed.variants.bin \
+		build/fixedform-bench-corpus/bench_fixed.bin build/fixedform-bench-corpus/bench_fixed.oracle.json
+	@touch $@
+
+tables-fixedform-bench-corpus: build/fixedform-bench-corpus/.stamp
+	@echo "fixed form: the reference's paired bench corpus is in build/fixedform-bench-corpus"
+
+.PHONY: tables-fixedform-bench-corpus
+
+# THE THREE PROPERTIES (docs/SPEC-TABLES.md §3.4). A port that is wrong in both
+# directions at once passes every round-trip the versioning set has, and the
+# coverage matrix's named reds were found one fixture at a time. This binary
+# asks the same three questions of every fixed-form fixture:
+#
+#   P1  identity plan == compiled plan, on every field and every counter
+#   P2  write-read-write is byte-identical
+#   P3  every byte of every record, mutated to {00,01,02,7f,80,ff}, both paths:
+#       every landed field is within its bound or the read is a named refusal,
+#       and a correction moves a counter. Under ASan+UBSan.
+#
+# A KNOWN-RED is printed by name on a green run. A listed case that starts
+# PASSING turns the run red — delete it from known_red[] as part of landing
+# the fix. A new red that is not on the list fails the target.
+FIXEDFORM_PROP_INCLUDES := \
+	-Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 \
+	-Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	-Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
+	-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	-Ibuild/tables-generated/fn1 -Ibuild/tables-generated/fn2 \
+	-Ibuild/tables-generated/fm1 -Ibuild/tables-generated/fm2 \
+	-Ibuild/tables-generated/f1 \
+	-I$(SERIALIZE)
+
+build/schema_test_fixedform_properties: build/tables-generated/.stamp test/tables/fixedform_properties.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) $(FIXEDFORM_PROP_INCLUDES) \
+	    test/tables/fixedform_properties.cpp -o $@
+
+build/schema_test_fixedform_properties_asan: build/tables-generated/.stamp test/tables/fixedform_properties.cpp
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    -fno-omit-frame-pointer -g -DSCHEMA_FIXEDFORM_SANITIZED \
+	    $(FIXEDFORM_PROP_INCLUDES) test/tables/fixedform_properties.cpp -o $@
+
+tables-fixed-properties: build/schema_test_fixedform_properties build/schema_test_fixedform_properties_asan
+	./build/schema_test_fixedform_properties
+	./build/schema_test_fixedform_properties_asan
+	@echo "fixed form properties: P1 P2 P3 green, known-reds named"
+
+test: tables-fixed-properties
+
+.PHONY: tables-fixed-properties
 
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc

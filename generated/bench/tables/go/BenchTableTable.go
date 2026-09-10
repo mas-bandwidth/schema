@@ -1620,6 +1620,654 @@ type TableMessageWriter struct {
 	IndexBits int64
 }
 
+const TableFixedForm uint8 = 3
+const TableFixedHeaderBytes = 16
+const TableFixedHashAt = 8
+
+const (
+	tableFixedCopy uint8 = iota
+	tableFixedCount
+	tableFixedText
+	tableFixedOrdinal
+	tableFixedWiden
+	tableFixedConst
+	tableFixedWidenF
+	tableFixedBool
+	tableFixedTag
+)
+
+const (
+	tableFixedTextUtf8  uint8 = 1
+	tableFixedTextWide  uint8 = 2
+	tableFixedTextBytes uint8 = 3
+)
+
+const tableFixedNoGuard uint32 = 0xFFFFFFFF
+const tableFixedEntryBytes int32 = 17
+
+// Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
+// it. Meta is a text entry's flavour (tableFixedTextUtf8/Wide/Bytes). They
+// shared one lane until reference-fix 12; compiling a string under a union
+// arm overwrote the guard with the flavour and the read skipped the string.
+// tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
+// not this in-memory plan row — Meta does not ride the wire.
+type TableFixedEntry struct {
+	Src, Dst, Size, Aux, Guard   uint32
+	Op, Arg, DstSize, Sign, Meta uint8
+}
+
+type TableFixedDst struct {
+	Dst, Stride, Aux   uint32
+	Counted, Arg, Meta uint8
+}
+
+type tableFixedPlan struct {
+	Entries []TableFixedEntry
+	Count   int32
+}
+
+func tableFixedWidens(from, to uint8) bool {
+	if from >= 6 && from <= 9 && to >= 6 && to <= 9 {
+		return to > from
+	}
+	if from >= 2 && from <= 5 && to >= 2 && to <= 5 {
+		return to > from
+	}
+	return from == 10 && to == 11
+}
+func tableFixedSignedKind(kind uint8) bool { return kind >= 2 && kind <= 5 }
+func tableFixedKindKnown(kind uint8) bool  { return kind <= 33 || kind == 35 }
+
+// tableFixedRuns is whether an op advances src and dst together one byte at a
+// time, which is the whole of what lets two adjacent entries become one.
+func tableFixedRuns(op uint8) bool { return op == tableFixedCopy || op == tableFixedBool }
+
+func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
+	raw := make([]TableFixedEntry, n)
+	written := emit(raw, 0, 0)
+	out := 0
+	for i := 0; i < written; i++ {
+		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
+			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
+			raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
+			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
+			raw[out-1].Size += raw[i].Size
+			continue
+		}
+		raw[out] = raw[i]
+		out++
+	}
+	return tableFixedPlan{Entries: raw[:out], Count: int32(out)}
+}
+
+func tableFixedPut8(b []byte, v uint8)         { b[0] = v }
+func tableFixedPut16(b []byte, v uint16)       { binary.LittleEndian.PutUint16(b, v) }
+func tableFixedPut32(b []byte, v uint32)       { binary.LittleEndian.PutUint32(b, v) }
+func tableFixedPut64(b []byte, v uint64)       { binary.LittleEndian.PutUint64(b, v) }
+func tableFixedPutF32(b []byte, v float32)     { tableFixedPut32(b, math.Float32bits(v)) }
+func tableFixedPutF64(b []byte, v float64)     { tableFixedPut64(b, math.Float64bits(v)) }
+func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFixedPut64(b[8:], hi) }
+func tableFixedGet32(b []byte) uint32          { return binary.LittleEndian.Uint32(b) }
+func tableFixedGet64(b []byte) uint64          { return binary.LittleEndian.Uint64(b) }
+
+func tableFixedHashOf(layout []byte) uint64 {
+	h := uint64(0xcbf29ce484222325)
+	for _, c := range layout {
+		h ^= uint64(c)
+		h *= 0x100000001b3
+	}
+	return h
+}
+
+func tableFixedCopyRun(d, s []byte, n uint32) {
+	if n == 0 {
+		return
+	}
+	if n <= 16 {
+		if n >= 8 {
+			a := binary.LittleEndian.Uint64(s)
+			b := binary.LittleEndian.Uint64(s[n-8:])
+			binary.LittleEndian.PutUint64(d, a)
+			binary.LittleEndian.PutUint64(d[n-8:], b)
+		} else if n >= 4 {
+			a := binary.LittleEndian.Uint32(s)
+			b := binary.LittleEndian.Uint32(s[n-4:])
+			binary.LittleEndian.PutUint32(d, a)
+			binary.LittleEndian.PutUint32(d[n-4:], b)
+		} else {
+			d[0] = s[0]
+			d[n>>1] = s[n>>1]
+			d[n-1] = s[n-1]
+		}
+		return
+	}
+	copy(d[:n], s[:n])
+}
+
+func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) {
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		if p.Guard != tableFixedNoGuard && src[p.Guard] != p.Arg {
+			continue
+		}
+		switch p.Op {
+		case tableFixedCopy:
+			tableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
+		case tableFixedTag:
+			// A UNION TAG NAMING NO ARM LANDS AS None AND COUNTS UNKNOWN,
+			// which is what form 1 does with an arm id it does not know
+			// (docs/SPEC-TABLES.md §4). Copied raw it would land as a
+			// discriminant no variant spells, and every arm's guard would
+			// then decline to fill it — a value that is neither None nor an
+			// arm. Aux is the reader's own arm count.
+			var tag uint64
+			for k := uint32(0); k < p.Size; k++ {
+				tag |= uint64(src[p.Src+k]) << (8 * k)
+			}
+			if tag > uint64(p.Aux) {
+				tag = 0
+				report.Unknown++
+			}
+			for k := uint32(0); k < p.Size; k++ {
+				dst[p.Dst+k] = byte(tag >> (8 * k))
+			}
+		case tableFixedBool:
+			// A GO bool IS NOT A BYTE. A Go true is the byte 1 (v == true,
+			// array equality). if v is TESTB (nonzero) on amd64 and TBZ bit
+			// 0 on arm64, so a hostile 2 reads true on one and false on the
+			// other. The wire says nonzero is true (docs/SPEC-TABLES.md §3);
+			// normalise here (byte != 0 -> 1) and never copy.
+			for k := uint32(0); k < p.Size; k++ {
+				v := byte(0)
+				if src[p.Src+k] != 0 {
+					v = 1
+				}
+				dst[p.Dst+k] = v
+			}
+		case tableFixedCount:
+			v := int32(tableFixedGet32(src[p.Src:]))
+			if v < 0 {
+				v = 0
+				report.Clamped++
+			} else if v > int32(p.Size) {
+				v = int32(p.Size)
+				report.Clamped++
+			}
+			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
+		case tableFixedText:
+			unit := uint32(1)
+			if p.Meta == tableFixedTextWide {
+				unit = 2
+			}
+			capn := p.Size / unit
+			v := int32(tableFixedGet32(src[p.Src:]))
+			if v < 0 {
+				v = 0
+				report.Clamped++
+			} else if uint32(v) > capn {
+				v = int32(capn)
+				report.Clamped++
+			}
+			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
+			tableFixedCopyRun(dst[p.Aux:], src[p.Src+4:], p.Size)
+			if p.Meta != tableFixedTextBytes && uint32(v) < capn {
+				off := p.Aux + uint32(v)*unit
+				dst[off] = 0
+				if unit == 2 {
+					dst[off+1] = 0
+				}
+			}
+		case tableFixedOrdinal:
+			var raw uint32
+			switch p.Size {
+			case 1:
+				raw = uint32(src[p.Src])
+			case 2:
+				raw = uint32(binary.LittleEndian.Uint16(src[p.Src:]))
+			default:
+				raw = binary.LittleEndian.Uint32(src[p.Src:])
+			}
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
+			table := unsafe.Slice(p16, int(*p16)+1)
+			var v uint32
+			if raw != 0 && raw <= uint32(table[0]) {
+				v = uint32(table[raw])
+			}
+			switch p.DstSize {
+			case 1:
+				dst[p.Dst] = uint8(v)
+			case 2:
+				binary.LittleEndian.PutUint16(dst[p.Dst:], uint16(v))
+			default:
+				binary.LittleEndian.PutUint32(dst[p.Dst:], v)
+			}
+		case tableFixedWiden:
+			var raw uint64
+			for i := uint32(0); i < p.Size; i++ {
+				raw |= uint64(src[p.Src+i]) << (8 * i)
+			}
+			if p.Sign != 0 {
+				bits := p.Size * 8
+				top := uint64(1) << (bits - 1)
+				if raw&top != 0 {
+					raw |= ^((top << 1) - 1)
+				}
+			}
+			for i := uint8(0); i < p.DstSize; i++ {
+				dst[p.Dst+uint32(i)] = byte(raw >> (8 * i))
+			}
+			report.Widened++
+		case tableFixedWidenF:
+			f := math.Float32frombits(tableFixedGet32(src[p.Src:]))
+			tableFixedPutF64(dst[p.Dst:], float64(f))
+			report.Widened++
+		case tableFixedConst:
+			aux := p.Aux
+			for i := uint32(0); i < p.Size; i++ {
+				dst[p.Dst+i] = byte(aux >> (8 * i))
+			}
+		}
+	}
+}
+
+type tableFixedLayoutEntry struct {
+	Id             uint64
+	Size, Children uint32
+	Kind           uint8
+}
+type tableFixedLayoutView struct {
+	Bytes []byte
+	Count int32
+}
+
+func tableFixedEntryAt(b tableFixedLayoutView, i int32) tableFixedLayoutEntry {
+	e := b.Bytes[4+int64(i)*int64(tableFixedEntryBytes):]
+	return tableFixedLayoutEntry{
+		Id:       tableFixedGet64(e),
+		Kind:     e[8],
+		Size:     tableFixedGet32(e[9:]),
+		Children: tableFixedGet32(e[13:]),
+	}
+}
+
+func tableFixedSubtree(b tableFixedLayoutView, i int32) int32 {
+	if i < 0 || i >= b.Count {
+		return 1
+	}
+	e := tableFixedEntryAt(b, i)
+	n := int32(1)
+	at := i + 1
+	for c := uint32(0); c < e.Children; c++ {
+		if at >= b.Count {
+			break
+		}
+		sub := tableFixedSubtree(b, at)
+		at += sub
+		n += sub
+	}
+	return n
+}
+
+func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
+	e := tableFixedEntryAt(b, i)
+	var widest uint32
+	at := i + 1
+	for k := uint32(0); k < e.Children; k++ {
+		a := tableFixedEntryAt(b, at)
+		if a.Size > widest {
+			widest = a.Size
+		}
+		at += tableFixedSubtree(b, at)
+	}
+	return widest
+}
+
+func tableFixedTagBytes(b tableFixedLayoutView, i int32) uint32 {
+	return tableFixedEntryAt(b, i).Size - tableFixedUnionArmBytes(b, i)
+}
+
+func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, bool) {
+	var out tableFixedLayoutView
+	if len(bytes) < 4 {
+		return out, false
+	}
+	count := tableFixedGet32(bytes)
+	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+4 != int64(len(bytes)) {
+		return out, false
+	}
+	out.Bytes = bytes
+	out.Count = int32(count)
+	if tableFixedSubtree(out, 0) != out.Count {
+		return tableFixedLayoutView{}, false
+	}
+	for i := int32(0); i < out.Count; i++ {
+		if !tableFixedKindKnown(tableFixedEntryAt(out, i).Kind) {
+			return tableFixedLayoutView{}, false
+		}
+	}
+	return out, true
+}
+
+type tableFixedCompiler struct {
+	plan                  []TableFixedEntry
+	capacity, count, pool int32
+	overflow              bool
+	report                *TableReport
+}
+
+func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
+	room := c.capacity - (c.pool+int32(unsafe.Sizeof(TableFixedEntry{}))-1)/int32(unsafe.Sizeof(TableFixedEntry{}))
+	if c.count >= room {
+		c.overflow = true
+		return
+	}
+	c.plan[c.count] = e
+	c.count++
+}
+
+func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 {
+	bytes := (n + 1) * 2
+	total := int32(unsafe.Sizeof(TableFixedEntry{})) * c.capacity
+	c.pool += bytes
+	if total-c.pool < c.count*int32(unsafe.Sizeof(TableFixedEntry{})) {
+		c.overflow = true
+		return 0
+	}
+	at := uint32(total - c.pool)
+	dst := unsafe.Slice((*uint16)(unsafe.Add(unsafe.Pointer(&c.plan[0]), uintptr(at))), n+1)
+	dst[0] = uint16(n)
+	copy(dst[1:], values[:n])
+	return at
+}
+
+func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint8) {
+	te := tableFixedEntryAt(theirs, ti)
+	me := tableFixedEntryAt(mine, mi)
+	myChild := mi + 1
+	for k := uint32(0); k < me.Children; k++ {
+		mc := tableFixedEntryAt(mine, myChild)
+		theirChild := ti + 1
+		theirOff := theirAt
+		for j := uint32(0); j < te.Children; j++ {
+			tc := tableFixedEntryAt(theirs, theirChild)
+			if tc.Id == mc.Id {
+				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg)
+				break
+			}
+			theirOff += tc.Size
+			theirChild += tableFixedSubtree(theirs, theirChild)
+		}
+		myChild += tableFixedSubtree(mine, myChild)
+	}
+	tcAt := ti + 1
+	for j := uint32(0); j < te.Children; j++ {
+		tc := tableFixedEntryAt(theirs, tcAt)
+		named := false
+		mcAt := mi + 1
+		for k := uint32(0); k < me.Children; k++ {
+			if tableFixedEntryAt(mine, mcAt).Id == tc.Id {
+				named = true
+				break
+			}
+			mcAt += tableFixedSubtree(mine, mcAt)
+		}
+		if !named && c.report != nil {
+			c.report.Unknown++
+		}
+		tcAt += tableFixedSubtree(theirs, tcAt)
+	}
+}
+
+func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint8) {
+	te := tableFixedEntryAt(theirs, ti)
+	me := tableFixedEntryAt(mine, mi)
+	d := dst[mi]
+	at := myAt + d.Dst
+	auxAt := myAt + d.Aux
+	if te.Kind != me.Kind {
+		if tableFixedWidens(te.Kind, me.Kind) {
+			e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, DstSize: uint8(me.Size), Guard: guard, Arg: arg}
+			if te.Kind == 10 {
+				e.Op = tableFixedWidenF
+			} else {
+				e.Op = tableFixedWiden
+			}
+			if tableFixedSignedKind(te.Kind) {
+				e.Sign = 1
+			}
+			tableFixedPush(c, e)
+			return
+		}
+		if c.report != nil {
+			c.report.KindMismatch++
+		}
+		return
+	}
+	switch me.Kind {
+	case 35:
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedBool, Arg: arg})
+		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg)
+	case 13:
+		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg)
+	case 14:
+		tel := tableFixedEntryAt(theirs, ti+1)
+		mel := tableFixedEntryAt(mine, mi+1)
+		head := uint32(0)
+		if d.Counted != 0 {
+			head = 4
+		}
+		var theirN, myN uint32
+		if tel.Size != 0 {
+			theirN = (te.Size - head) / tel.Size
+		}
+		if mel.Size != 0 {
+			myN = (me.Size - head) / mel.Size
+		}
+		theirBase := theirAt + head
+		if d.Counted != 0 {
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myN, Guard: guard, Op: tableFixedCount, Arg: arg})
+		}
+		n := theirN
+		if myN < n {
+			n = myN
+		}
+		for i := uint32(0); i < n; i++ {
+			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg)
+		}
+	case 16:
+		tkey := tableFixedEntryAt(theirs, ti+1)
+		mkey := tableFixedEntryAt(mine, mi+1)
+		tel := ti + 1 + tableFixedSubtree(theirs, ti+1)
+		mel := mi + 1 + tableFixedSubtree(mine, mi+1)
+		tee := tableFixedEntryAt(theirs, tel)
+		for k := uint32(0); k < mkey.Children; k++ {
+			keyId := tableFixedEntryAt(mine, mi+2+int32(k)).Id
+			for j := uint32(0); j < tkey.Children; j++ {
+				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId {
+					continue
+				}
+				tableFixedCompileEntry(c, theirs, tel, theirAt+j*tee.Size, mine, mel, dst, at+k*d.Stride, guard, arg)
+				break
+			}
+		}
+	case 15:
+		theirTag := tableFixedTagBytes(theirs, ti)
+		myTag := tableFixedTagBytes(mine, mi)
+		myArm := mi + 1
+		for k := uint32(0); k < me.Children; k++ {
+			ma := tableFixedEntryAt(mine, myArm)
+			theirArm := ti + 1
+			for j := uint32(0); j < te.Children; j++ {
+				ta := tableFixedEntryAt(theirs, theirArm)
+				if ta.Id == ma.Id {
+					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint8(j + 1)})
+					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint8(j+1))
+					break
+				}
+				theirArm += tableFixedSubtree(theirs, theirArm)
+			}
+			myArm += tableFixedSubtree(mine, myArm)
+		}
+	case 30:
+		var m [256]uint16
+		n := te.Children
+		if n > 255 {
+			n = 255
+		}
+		for j := uint32(0); j < n; j++ {
+			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id
+			var landed uint16
+			for k := uint32(0); k < me.Children; k++ {
+				if tableFixedEntryAt(mine, mi+1+int32(k)).Id == vid {
+					landed = uint16(k + 1)
+					break
+				}
+			}
+			m[j] = landed
+		}
+		e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard, Op: tableFixedOrdinal, Arg: arg, DstSize: uint8(me.Size)}
+		e.Aux = tableFixedLayTable(c, m[:], int32(n))
+		tableFixedPush(c, e)
+	case 12, 33:
+		units := me.Size - 4
+		if te.Size-4 < units {
+			units = te.Size - 4
+		}
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: units, Aux: auxAt, Guard: guard, Op: tableFixedText, Arg: arg, Meta: d.Meta})
+	default:
+		e := TableFixedEntry{Src: theirAt, Dst: at, Guard: guard, Arg: arg}
+		if te.Size == me.Size {
+			e.Size = me.Size
+			e.Op = tableFixedCopy
+			if me.Kind == 1 {
+				e.Op = tableFixedBool
+			}
+			tableFixedPush(c, e)
+		} else if te.Size < me.Size && me.Size <= 8 {
+			e.Size = te.Size
+			e.DstSize = uint8(me.Size)
+			e.Op = tableFixedWiden
+			tableFixedPush(c, e)
+		} else if c.report != nil {
+			c.report.KindMismatch++
+		}
+	}
+}
+
+func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []TableFixedDst, plan []TableFixedEntry, report *TableReport) int32 {
+	if len(plan) == 0 {
+		return -1
+	}
+	mine, ok := tableFixedParseLayout(myLayout)
+	if !ok {
+		return -1
+	}
+	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report}
+	tableFixedMatchChildren(&c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0)
+	if c.overflow {
+		return -1
+	}
+	out := int32(0)
+	for i := int32(0); i < c.count; i++ {
+		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
+			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
+			plan[out-1].Meta == plan[i].Meta &&
+			plan[out-1].Src+plan[out-1].Size == plan[i].Src &&
+			plan[out-1].Dst+plan[out-1].Size == plan[i].Dst {
+			plan[out-1].Size += plan[i].Size
+			continue
+		}
+		plan[out] = plan[i]
+		out++
+	}
+	return out
+}
+
+// tableFixedHole is one dst range the winning plan does not land. Load copies
+// declared defaults into exactly these, from one Reset image. Identity's list
+// on Go is ABI padding and unselected union arms.
+type tableFixedHole struct {
+	Off, Size uint32
+}
+
+func tableFixedLand(cover []byte, off, n uint32) {
+	if n == 0 {
+		return
+	}
+	end := uint32(len(cover))
+	if off >= end {
+		return
+	}
+	last := off + n
+	if last > end {
+		last = end
+	}
+	for i := off; i < last; i++ {
+		cover[i] = 1
+	}
+}
+
+// tableFixedHoles is the complement of the unguarded dest writes. Guarded
+// entries (union arms, compiled tag consts) are not always written, so they
+// stay holes and keep the defaults. The write sizes match tableFixedRun.
+func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tableFixedHole {
+	if dstSize == 0 {
+		return nil
+	}
+	cover := make([]byte, dstSize)
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		if p.Guard != tableFixedNoGuard {
+			continue
+		}
+		switch p.Op {
+		case tableFixedCopy, tableFixedBool, tableFixedTag, tableFixedConst:
+			tableFixedLand(cover, p.Dst, p.Size)
+		case tableFixedCount:
+			tableFixedLand(cover, p.Dst, 4)
+		case tableFixedText:
+			tableFixedLand(cover, p.Dst, 4)
+			tableFixedLand(cover, p.Aux, p.Size)
+		case tableFixedWiden:
+			tableFixedLand(cover, p.Dst, uint32(p.DstSize))
+		case tableFixedWidenF:
+			tableFixedLand(cover, p.Dst, 8)
+		case tableFixedOrdinal:
+			n := uint32(4)
+			if p.DstSize == 1 || p.DstSize == 2 {
+				n = uint32(p.DstSize)
+			}
+			tableFixedLand(cover, p.Dst, n)
+		}
+	}
+	var holes []tableFixedHole
+	i := uint32(0)
+	for i < dstSize {
+		if cover[i] != 0 {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < dstSize && cover[j] == 0 {
+			j++
+		}
+		holes = append(holes, tableFixedHole{Off: i, Size: j - i})
+		i = j
+	}
+	return holes
+}
+
+func tableFixedRefuse(report *TableReport, reason string) int64 {
+	report.Verdict = TableOpenRefused
+	report.Reason = reason
+	return -1
+}
+
+func tableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte {
+	return unsafe.Slice((*byte)(ptr), n)
+}
+
 const tableCookBuildVersion uint64 = 0xa9aa850e9c82a97f
 
 // TableByteOrder selects the target order, independently of the writing host.
@@ -2738,6 +3386,9 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 	}
 }
 
+// TableEntity also carries the fixed form (form 3), because its closure lays out
+// fixed — but nobody DECLARED it fixed, so this reader still reads form 1.
+// A `fixed table` (docs/SPEC-TABLES.md §3.4, #823) refuses form 1 by name.
 func TableEntityLoad(value *TableEntity, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -3723,6 +4374,9 @@ func TableStatLoadBody(r *TableReader, value *TableStat) bool {
 	}
 }
 
+// TableStat also carries the fixed form (form 3), because its closure lays out
+// fixed — but nobody DECLARED it fixed, so this reader still reads form 1.
+// A `fixed table` (docs/SPEC-TABLES.md §3.4, #823) refuses form 1 by name.
 func TableStatLoad(value *TableStat, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -8722,6 +9376,576 @@ func TablePickupEventLoadMessages(values []TablePickupEvent, vocabulary *TableVo
 		}
 	}
 	return count, tableMessageBatchClose(&r)
+}
+
+// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+//
+// A record is an eight-byte hash of the writer's layout and then the values
+// in declared order, every field at its declared storage width. The writer is
+// constant-offset stores; the reader is ONE loop over ONE plan.
+
+func TableEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.EntityId))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.PosX))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.PosY))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.PosZ))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 16
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Yaw))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 20
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Pitch))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 24
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.VelX))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 28
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.VelY))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 32
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.VelZ))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 36
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Health))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 40
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Weapon))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 41
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Damage))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 49
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Moving))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	{
+		es := src + 50
+		ed := dst + uint32(unsafe.Offsetof(TableEntity{}.Firing))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	return n
+}
+
+func TableEntityFixedWriteBody(b []byte, value *TableEntity) {
+	tableFixedPut32(b[0:], uint32(value.EntityId))
+	tableFixedPut32(b[4:], uint32(value.PosX))
+	tableFixedPut32(b[8:], uint32(value.PosY))
+	tableFixedPut32(b[12:], uint32(value.PosZ))
+	tableFixedPut32(b[16:], uint32(value.Yaw))
+	tableFixedPut32(b[20:], uint32(value.Pitch))
+	tableFixedPut32(b[24:], uint32(value.VelX))
+	tableFixedPut32(b[28:], uint32(value.VelY))
+	tableFixedPut32(b[32:], uint32(value.VelZ))
+	tableFixedPut32(b[36:], uint32(value.Health))
+	tableFixedPut8(b[40:], uint8(value.Weapon))
+	tableFixedPut64(b[41:], uint64(value.Damage))
+	{
+		p := uint8(0)
+		if value.Moving {
+			p = 1
+		}
+		tableFixedPut8(b[49:], p)
+	}
+	{
+		p := uint8(0)
+		if value.Firing {
+			p = 1
+		}
+		tableFixedPut8(b[50:], p)
+	}
+}
+
+func TableStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(TableStat{}.StatId))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(TableStat{}.Delta))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func TableStatFixedWriteBody(b []byte, value *TableStat) {
+	tableFixedPut32(b[0:], uint32(value.StatId))
+	tableFixedPut32(b[4:], uint32(value.Delta))
+}
+
+// TableEntity's read-side bounds.
+func TableEntityFixedClampBody(value *TableEntity, clamped *int32) {
+	_, _ = value, clamped
+	if value.EntityId > 4095 {
+		value.EntityId = 4095
+		(*clamped)++
+	}
+	if value.PosX < -16383 {
+		value.PosX = -16383
+		(*clamped)++
+	} else if value.PosX > 16383 {
+		value.PosX = 16383
+		(*clamped)++
+	}
+	if value.PosY < -16383 {
+		value.PosY = -16383
+		(*clamped)++
+	} else if value.PosY > 16383 {
+		value.PosY = 16383
+		(*clamped)++
+	}
+	if value.PosZ < -16383 {
+		value.PosZ = -16383
+		(*clamped)++
+	} else if value.PosZ > 16383 {
+		value.PosZ = 16383
+		(*clamped)++
+	}
+	if value.Yaw > 511 {
+		value.Yaw = 511
+		(*clamped)++
+	}
+	if value.Pitch > 511 {
+		value.Pitch = 511
+		(*clamped)++
+	}
+	if value.VelX < -2048 {
+		value.VelX = -2048
+		(*clamped)++
+	} else if value.VelX > 2047 {
+		value.VelX = 2047
+		(*clamped)++
+	}
+	if value.VelY < -2048 {
+		value.VelY = -2048
+		(*clamped)++
+	} else if value.VelY > 2047 {
+		value.VelY = 2047
+		(*clamped)++
+	}
+	if value.VelZ < -2048 {
+		value.VelZ = -2048
+		(*clamped)++
+	} else if value.VelZ > 2047 {
+		value.VelZ = 2047
+		(*clamped)++
+	}
+	if value.Health < 0 {
+		value.Health = 0
+		(*clamped)++
+	} else if value.Health > 1000 {
+		value.Health = 1000
+		(*clamped)++
+	}
+	if uint64(value.Weapon) > 15 {
+		value.Weapon = TableWeaponNone
+		(*clamped)++
+	}
+}
+
+// TableStat's read-side bounds.
+func TableStatFixedClampBody(value *TableStat, clamped *int32) {
+	_, _ = value, clamped
+	if value.StatId > 255 {
+		value.StatId = 255
+		(*clamped)++
+	}
+	if value.Delta < -512 {
+		value.Delta = -512
+		(*clamped)++
+	} else if value.Delta > 511 {
+		value.Delta = 511
+		(*clamped)++
+	}
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
+// count, not its slack; an optional's payload only when present; a union's
+// set arm, not the others.
+func TableEntityFixedClamp(value *TableEntity, report *TableReport) {
+	clamped := int32(0)
+	TableEntityFixedClampBody(value, &clamped)
+	report.Clamped += clamped
+}
+
+// ---- TableEntity, the fixed form ----
+
+const TableEntityFixedBodyBytes = 51
+const TableEntityFixedRecordBytes = 8 + TableEntityFixedBodyBytes
+const TableEntityFixedHash = 0x46b300904afc1aa9
+
+var TableEntityFixedLayout = []byte{
+	0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
+	0x00, 0x0e, 0x00, 0x00, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04,
+	0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb,
+	0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d,
+	0xb5, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6,
+	0xa9, 0x53, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6,
+	0xe6, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb,
+	0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60,
+	0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9,
+	0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+	0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00,
+	0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89,
+	0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f,
+	0x8d, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d,
+	0xcd, 0xd9, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae,
+	0x16, 0xdc, 0x04, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41,
+	0xc3, 0x3b, 0xe5, 0x35, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde,
+	0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3,
+	0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0,
+	0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00,
+}
+
+var TableEntityFixedDst = []TableFixedDst{
+	{0, 0, 0, 0, 0, 0}, // TableEntity
+	{uint32(unsafe.Offsetof(TableEntity{}.EntityId)), 0, 0, 0, 0, 0}, // entity_id
+	{uint32(unsafe.Offsetof(TableEntity{}.PosX)), 0, 0, 0, 0, 0},     // pos_x
+	{uint32(unsafe.Offsetof(TableEntity{}.PosY)), 0, 0, 0, 0, 0},     // pos_y
+	{uint32(unsafe.Offsetof(TableEntity{}.PosZ)), 0, 0, 0, 0, 0},     // pos_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Yaw)), 0, 0, 0, 0, 0},      // yaw
+	{uint32(unsafe.Offsetof(TableEntity{}.Pitch)), 0, 0, 0, 0, 0},    // pitch
+	{uint32(unsafe.Offsetof(TableEntity{}.VelX)), 0, 0, 0, 0, 0},     // vel_x
+	{uint32(unsafe.Offsetof(TableEntity{}.VelY)), 0, 0, 0, 0, 0},     // vel_y
+	{uint32(unsafe.Offsetof(TableEntity{}.VelZ)), 0, 0, 0, 0, 0},     // vel_z
+	{uint32(unsafe.Offsetof(TableEntity{}.Health)), 0, 0, 0, 0, 0},   // health
+	{uint32(unsafe.Offsetof(TableEntity{}.Weapon)), 0, 0, 0, 0, 0},   // weapon
+	{0, 0, 0, 0, 0, 0}, // Fists
+	{0, 0, 0, 0, 0, 0}, // Pistol
+	{0, 0, 0, 0, 0, 0}, // Shotgun
+	{0, 0, 0, 0, 0, 0}, // Rifle
+	{0, 0, 0, 0, 0, 0}, // Sniper
+	{0, 0, 0, 0, 0, 0}, // Smg
+	{0, 0, 0, 0, 0, 0}, // Rocket
+	{0, 0, 0, 0, 0, 0}, // Grenade
+	{0, 0, 0, 0, 0, 0}, // Plasma
+	{0, 0, 0, 0, 0, 0}, // Railgun
+	{0, 0, 0, 0, 0, 0}, // Flamer
+	{0, 0, 0, 0, 0, 0}, // Mine
+	{0, 0, 0, 0, 0, 0}, // Turret
+	{0, 0, 0, 0, 0, 0}, // Drone
+	{0, 0, 0, 0, 0, 0}, // Repair
+	{uint32(unsafe.Offsetof(TableEntity{}.Damage)), 0, 0, 0, 0, 0}, // damage
+	{uint32(unsafe.Offsetof(TableEntity{}.Moving)), 0, 0, 0, 0, 0}, // moving
+	{uint32(unsafe.Offsetof(TableEntity{}.Firing)), 0, 0, 0, 0, 0}, // firing
+}
+
+var TableEntityFixedPlan = tableFixedBuildPlan(TableEntityFixedLeaves, 14)
+
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
+func TableEntityFixedMeasure(count int64) int64 {
+	return TableFixedHeaderBytes + 4 + int64(len(TableEntityFixedLayout)) + count*TableEntityFixedRecordBytes
+}
+
+func TableEntityFixedSave(values []TableEntity, buffer []byte) int64 {
+	need := TableEntityFixedMeasure(int64(len(values)))
+	if int64(len(buffer)) < need {
+		return -1
+	}
+	clear(buffer[:TableFixedHeaderBytes])
+	buffer[0] = TableFixedForm
+	tableFixedPut64(buffer[TableFixedHashAt:], TableEntityFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TableEntityFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], TableEntityFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(TableEntityFixedLayout):]
+	for k := range values {
+		tableFixedPut64(at, TableEntityFixedHash)
+		clear(at[8 : 8+TableEntityFixedBodyBytes])
+		TableEntityFixedWriteBody(at[8:], &values[k])
+		at = at[TableEntityFixedRecordBytes:]
+	}
+	return need
+}
+
+func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	if report == nil {
+		var local TableReport
+		report = &local
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	if data[0] != TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
+			return tableFixedRefuse(report, "previous_form")
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, "message_form_as_file")
+		}
+		return tableFixedRefuse(report, "newer_form")
+	}
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+		return tableFixedRefuse(report, "layout_malformed")
+	}
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	hash := tableFixedHashOf(layout)
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	entries := TableEntityFixedPlan.Entries
+	entryCount := TableEntityFixedPlan.Count
+	recordBytes := int64(TableEntityFixedRecordBytes)
+	identity := hash == TableEntityFixedHash
+	if !identity {
+		parsed, ok := tableFixedParseLayout(layout)
+		if !ok {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
+		made := tableFixedCompile(parsed, TableEntityFixedLayout, TableEntityFixedDst, plan, report)
+		if made < 0 {
+			return tableFixedRefuse(report, "plan_too_large")
+		}
+		entries = plan
+		entryCount = made
+		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if recordBytes <= 8 || rest%recordBytes != 0 {
+		report.Malformed = true
+		return -1
+	}
+	n := rest / recordBytes
+	if n > int64(len(values)) {
+		return tableFixedRefuse(report, "batch_too_large")
+	}
+	var def TableEntity
+	var defBytes []byte
+	var holes []tableFixedHole
+	if n > 0 {
+		TableEntityReset(&def)
+		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
+	}
+	for k := int64(0); k < n; k++ {
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+		}
+		if tableFixedGet64(at) != hash {
+			return tableFixedRefuse(report, "no_layout")
+		}
+		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4).
+		TableEntityFixedClamp(&values[k], report)
+		at = at[recordBytes:]
+	}
+	return n
+}
+
+// THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+// declared min and max, and an ORDINAL's set — a union tag past the arm
+// count, an enum ordinal past the enum's top value. Straight-line, after
+// the copy, over STORAGE, so the identity plan and a plan compiled from a
+// stranger's layout are held to the same numbers by the same pass. Every
+// clamp COUNTS. The pass walks LIVE elements only: a counted array's live
+// count, not its slack; an optional's payload only when present; a union's
+// set arm, not the others.
+func TableStatFixedClamp(value *TableStat, report *TableReport) {
+	clamped := int32(0)
+	TableStatFixedClampBody(value, &clamped)
+	report.Clamped += clamped
+}
+
+// ---- TableStat, the fixed form ----
+
+const TableStatFixedBodyBytes = 8
+const TableStatFixedRecordBytes = 8 + TableStatFixedBodyBytes
+const TableStatFixedHash = 0x7a16907ec6b21ece
+
+var TableStatFixedLayout = []byte{
+	0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
+	0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+var TableStatFixedDst = []TableFixedDst{
+	{0, 0, 0, 0, 0, 0}, // TableStat
+	{uint32(unsafe.Offsetof(TableStat{}.StatId)), 0, 0, 0, 0, 0}, // stat_id
+	{uint32(unsafe.Offsetof(TableStat{}.Delta)), 0, 0, 0, 0, 0},  // delta
+}
+
+var TableStatFixedPlan = tableFixedBuildPlan(TableStatFixedLeaves, 2)
+
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
+func TableStatFixedMeasure(count int64) int64 {
+	return TableFixedHeaderBytes + 4 + int64(len(TableStatFixedLayout)) + count*TableStatFixedRecordBytes
+}
+
+func TableStatFixedSave(values []TableStat, buffer []byte) int64 {
+	need := TableStatFixedMeasure(int64(len(values)))
+	if int64(len(buffer)) < need {
+		return -1
+	}
+	clear(buffer[:TableFixedHeaderBytes])
+	buffer[0] = TableFixedForm
+	tableFixedPut64(buffer[TableFixedHashAt:], TableStatFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(TableStatFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], TableStatFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(TableStatFixedLayout):]
+	for k := range values {
+		tableFixedPut64(at, TableStatFixedHash)
+		clear(at[8 : 8+TableStatFixedBodyBytes])
+		TableStatFixedWriteBody(at[8:], &values[k])
+		at = at[TableStatFixedRecordBytes:]
+	}
+	return need
+}
+
+func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	if report == nil {
+		var local TableReport
+		report = &local
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		return -1
+	}
+	if data[0] != TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
+			return tableFixedRefuse(report, "previous_form")
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, "message_form_as_file")
+		}
+		return tableFixedRefuse(report, "newer_form")
+	}
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+		return tableFixedRefuse(report, "layout_malformed")
+	}
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	hash := tableFixedHashOf(layout)
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	entries := TableStatFixedPlan.Entries
+	entryCount := TableStatFixedPlan.Count
+	recordBytes := int64(TableStatFixedRecordBytes)
+	identity := hash == TableStatFixedHash
+	if !identity {
+		parsed, ok := tableFixedParseLayout(layout)
+		if !ok {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
+		made := tableFixedCompile(parsed, TableStatFixedLayout, TableStatFixedDst, plan, report)
+		if made < 0 {
+			return tableFixedRefuse(report, "plan_too_large")
+		}
+		entries = plan
+		entryCount = made
+		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if recordBytes <= 8 || rest%recordBytes != 0 {
+		report.Malformed = true
+		return -1
+	}
+	n := rest / recordBytes
+	if n > int64(len(values)) {
+		return tableFixedRefuse(report, "batch_too_large")
+	}
+	var def TableStat
+	var defBytes []byte
+	var holes []tableFixedHole
+	if n > 0 {
+		TableStatReset(&def)
+		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
+	}
+	for k := int64(0); k < n; k++ {
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+		}
+		if tableFixedGet64(at) != hash {
+			return tableFixedRefuse(report, "no_layout")
+		}
+		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+		// storage it just wrote: the same pass for either plan (§3.4).
+		TableStatFixedClamp(&values[k], report)
+		at = at[recordBytes:]
+	}
+	return n
 }
 
 // ---- reflection descriptors (tables only, docs/SPEC-TABLES.md §8) ----
