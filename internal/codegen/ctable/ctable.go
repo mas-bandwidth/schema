@@ -264,10 +264,21 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 
 `
 
+// tableFixedAssertHook is the ASSERT half of the hooks, on its own. The keyed
+// accessor above carries BOTH halves because its refusal ABORTS; the fixed
+// form's write-side bounds are debug-only and nothing stands after them, so a
+// unit that has the form and no keyed array defines schema_assert alone. The
+// #ifndef is what lets the two blocks meet in a unit that has both.
+const tableFixedAssertHook = `
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+`
+
 // tablePrimitives is the shared runtime, emitted into every Table.h behind a
 // per-package guard — one definition per TU whatever the include order, and a
 // lone Table.h works standalone.
-func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime string, fixedForm bool, wide bool) string {
+func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime string, fixedForm bool, wide bool, writeBound bool) string {
 	// THE FIXED FORM'S RUNTIME RIDES IN THE PRIMITIVES BLOCK (docs/SPEC-TABLES.md
 	// §3.4) and not beside the codecs that use it, because this block carries the
 	// per-package guard: whichever <Base>Table.h a translation unit includes
@@ -275,7 +286,15 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, wireRuntime st
 	// headers carried and others did not would depend on include order.
 	fixed := ""
 	if fixedForm {
-		fixed = strings.ReplaceAll(tableFixedRuntime, "@INLINE@", tableInlineMacro(pkg))
+		if writeBound {
+			// THE FIXED FORM'S WRITE-SIDE BOUNDS, and only the ASSERT: they are
+			// debug-only and nothing aborts behind them, so this unit defines
+			// schema_assert and not schema_fatal (docs/SPEC-TABLES.md §3.4).
+			// A unit that also has the keyed accessor already has both, and the
+			// #ifndef is what makes the two blocks meet without a redefinition.
+			fixed = tableFixedAssertHook
+		}
+		fixed += strings.ReplaceAll(tableFixedRuntime, "@INLINE@", tableInlineMacro(pkg))
 		if wide {
 			fixed += tableFixedRuntime128
 		}
@@ -727,6 +746,12 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		// needs <stdlib.h> whether or not NDEBUG keeps the assert.
 		h.WriteString("#include <assert.h> /* the keyed accessor's None refusal, in a debug build */\n")
 		h.WriteString("#include <stdlib.h> /* and its abort, which NDEBUG does not remove */\n")
+	} else if ir.TableFixedHasWriteBound(u) {
+		// THE FIXED FORM'S WRITE-SIDE BOUNDS need the assert and NOTHING after
+		// it (docs/SPEC-TABLES.md §3.4): a text field's used length and a
+		// counted array's live count, debug-only, with no abort behind them —
+		// so this unit takes <assert.h> and not <stdlib.h>.
+		h.WriteString("#include <assert.h> /* the fixed form's write-side bounds, in a debug build */\n")
 	}
 	fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 	if unitHasWideStorage(u) {

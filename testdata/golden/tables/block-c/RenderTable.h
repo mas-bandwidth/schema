@@ -656,6 +656,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 

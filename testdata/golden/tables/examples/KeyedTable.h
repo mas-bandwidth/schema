@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -6881,8 +6886,9 @@ inline void TeamConfigFixedWriteBody( uint8_t * b, const TeamConfig & value )
 {
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.spawn_count );
+    schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.banner_length );
-    memcpy( b + 8, value.banner, 16 );
+    memcpy( b + 8, value.banner, (size_t) ( value.banner_length ) );
 }
 
 // GunnerConfig's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -6912,7 +6918,7 @@ inline void HullConfigFixedWriteBody( uint8_t * b, const HullConfig & value )
     (void) b; (void) value;
     TableFixedPutF32( b + 0, value.health );
     TableFixedPutF32( b + 4, value.mass );
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TurretConfigFixedWriteBody( b + 8 + i * 14 + 0, value.turrets.slots[i] );
     }
@@ -6923,7 +6929,7 @@ inline void HullConfigFixedWriteBody( uint8_t * b, const HullConfig & value )
 inline void ScoreBoardFixedWriteBody( uint8_t * b, const ScoreBoard & value )
 {
     (void) b; (void) value;
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut32( b + 0 + i * 4 + 0, (uint32_t) value.per_team[i] );
     }
@@ -6934,11 +6940,11 @@ inline void ScoreBoardFixedWriteBody( uint8_t * b, const ScoreBoard & value )
 inline void KeyedConfigFixedWriteBody( uint8_t * b, const KeyedConfig & value )
 {
     (void) b; (void) value;
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TeamConfigFixedWriteBody( b + 0 + i * 24 + 0, value.teams.slots[i] );
     }
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         HullConfigFixedWriteBody( b + 72 + i * 50 + 0, value.hulls.slots[i] );
     }

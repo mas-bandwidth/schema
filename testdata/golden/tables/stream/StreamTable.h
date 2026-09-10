@@ -12,6 +12,22 @@
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 // schema_allocate / schema_release — what "no allocator handed in" means for
 // this program. schema_allocate hands back ZEROED bytes and NULL on failure:
 // an arena segment is copied whole, padding included, so anything left
@@ -7984,8 +8000,9 @@ static_assert( (uint32_t) __builtin_offsetof( Header, name_length ) == 20, "Head
 inline void HeaderFixedWriteBody( uint8_t * b, const Header & value )
 {
     (void) b; (void) value;
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.name_length );
-    memcpy( b + 4, value.name, 16 );
+    memcpy( b + 4, value.name, (size_t) ( value.name_length ) );
 }
 
 // ---- Header, the fixed form ----

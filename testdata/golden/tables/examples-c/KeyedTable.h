@@ -656,6 +656,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -5023,8 +5027,9 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_team_co
 {
     (void) b; (void) value;
     table_fixed_put32( b + 0, (uint32_t) value->spawn_count );
+    schema_assert( value->banner_length >= 0 && value->banner_length <= 16 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 4, (uint32_t) value->banner_length );
-    memcpy( b + 8, value->banner, 16 );
+    memcpy( b + 8, value->banner, (size_t) ( value->banner_length ) );
 }
 
 /* GunnerConfig's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -5056,7 +5061,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_hull_co
     table_fixed_putf32( b + 4, value->mass );
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             schema_tabledemo_turret_config_fixed_write_body_( b + 8 + i * 14 + 0, &value->turrets[i] );
         }
@@ -5070,7 +5075,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_score_b
     (void) b; (void) value;
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             table_fixed_put32( b + 0 + i * 4 + 0, (uint32_t) value->per_team[i] );
         }
@@ -5084,14 +5089,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
     (void) b; (void) value;
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             schema_tabledemo_team_config_fixed_write_body_( b + 0 + i * 24 + 0, &value->teams[i] );
         }
     }
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             schema_tabledemo_hull_config_fixed_write_body_( b + 72 + i * 50 + 0, &value->hulls[i] );
         }

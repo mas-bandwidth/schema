@@ -656,6 +656,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -6797,17 +6801,18 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
 {
     (void) b; (void) value;
     table_fixed_put8( b + 0, (uint8_t) value->grade );
+    schema_assert( value->grades_count >= 0 && value->grades_count <= 4 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 1, (uint32_t) value->grades_count );
     {
         int64_t i;
-        for ( i = 0; i < 4; ++i )
+        for ( i = 0; i < (int64_t) value->grades_count; ++i )
         {
             table_fixed_put8( b + 5 + i * 1 + 0, (uint8_t) value->grades[i] );
         }
     }
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             table_fixed_put8( b + 9 + i * 1 + 0, (uint8_t) value->podium[i] );
         }
@@ -6816,15 +6821,16 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_loadout
     schema_tabledemo_weapon_config_fixed_write_body_( b + 20, &value->primary );
     {
         int64_t i;
-        for ( i = 0; i < 2; ++i )
+        for ( i = 0; i < (int64_t) 2; ++i )
         {
             schema_tabledemo_weapon_config_fixed_write_body_( b + 42 + i * 22 + 0, &value->backups[i] );
         }
     }
+    schema_assert( value->attachments_count >= 0 && value->attachments_count <= 8 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 86, (uint32_t) value->attachments_count );
     {
         int64_t i;
-        for ( i = 0; i < 8; ++i )
+        for ( i = 0; i < (int64_t) value->attachments_count; ++i )
         {
             schema_tabledemo_attachment_fixed_write_body_( b + 90 + i * 8 + 0, &value->attachments[i] );
         }

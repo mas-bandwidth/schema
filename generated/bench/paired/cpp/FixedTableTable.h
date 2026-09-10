@@ -12,6 +12,22 @@
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 #include "FixedTable.h"
 #include "serialize.h" // serialize::int128_t / uint128_t: the 128-bit storage
 #include "BenchTable.h"
@@ -3879,13 +3895,15 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     TableFixedPut64( b + 32, (uint64_t) value.world_time );
     TableFixedPut64( b + 40, (uint64_t) value.frame_tick );
     TableFixedPut32( b + 48, (uint32_t) value.server_time );
+    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 52, (uint32_t) value.entities_count );
-    for ( int64_t i = 0; i < 8; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
         MixedEntityFixedWriteBody( b + 56 + i * 51 + 0, value.entities[i] );
     }
+    schema_assert( value.stats_count >= 0 && value.stats_count <= 80 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 464, (uint32_t) value.stats_count );
-    for ( int64_t i = 0; i < 80; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.stats_count; ++i )
     {
         MixedStatFixedWriteBody( b + 468 + i * 8 + 0, value.stats[i] );
     }
@@ -3909,14 +3927,16 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
         }
         default: break;
     }
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) 4; ++i )
     {
         TableFixedPut8( b + 1122 + i * 1 + 0, (uint8_t) value.loadout[i] );
     }
+    schema_assert( value.player_name_length >= 0 && value.player_name_length <= 15 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 1126, (uint32_t) value.player_name_length );
-    memcpy( b + 1130, value.player_name, 15 );
+    memcpy( b + 1130, value.player_name, (size_t) ( value.player_name_length ) );
+    schema_assert( value.payload_length >= 0 && value.payload_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 1145, (uint32_t) value.payload_length );
-    memcpy( b + 1149, value.payload, 16 );
+    memcpy( b + 1149, value.payload, (size_t) ( value.payload_length ) );
     TableFixedPutF32( b + 1165, value.aim_x );
     TableFixedPutF32( b + 1169, value.aim_y );
     TableFixedPutF32( b + 1173, value.aim_z );

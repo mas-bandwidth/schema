@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -5369,13 +5374,14 @@ inline void PaddedRowFixedWriteBody( uint8_t * b, const PaddedRow & value )
     TableFixedPutF64( b + 1, value.value );
     TableFixedPut8( b + 9, value.flag ? 1 : 0 );
     TableFixedPut32( b + 10, (uint32_t) value.id );
+    schema_assert( value.label_length >= 0 && value.label_length <= 15 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 14, (uint32_t) value.label_length );
-    memcpy( b + 18, value.label, 15 );
-    for ( int64_t i = 0; i < 4; ++i )
+    memcpy( b + 18, value.label, (size_t) ( value.label_length ) );
+    for ( int64_t i = 0; i < (int64_t) 4; ++i )
     {
         TableFixedPut16( b + 33 + i * 2 + 0, (uint16_t) value.slots[i] );
     }
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) 4; ++i )
     {
         TableFixedPut8( b + 41 + i * 1 + 0, (uint8_t) value.teams.slots[i] );
     }
@@ -5390,13 +5396,15 @@ inline void PaddedFrameFixedWriteBody( uint8_t * b, const PaddedFrame & value )
     (void) b; (void) value;
     TableFixedPut8( b + 0, (uint8_t) value.marker );
     TableFixedPut64( b + 1, (uint64_t) value.stamp );
+    schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 9, (uint32_t) value.rows_count );
-    for ( int64_t i = 0; i < 64; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.rows_count; ++i )
     {
         PaddedRowFixedWriteBody( b + 13 + i * 50 + 0, value.rows[i] );
     }
+    schema_assert( value.blob_length >= 0 && value.blob_length <= 12 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 3213, (uint32_t) value.blob_length );
-    memcpy( b + 3217, value.blob, 12 );
+    memcpy( b + 3217, value.blob, (size_t) ( value.blob_length ) );
 }
 
 // ---- PaddedRow, the fixed form ----

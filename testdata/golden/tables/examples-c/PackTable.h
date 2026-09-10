@@ -656,6 +656,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -4951,8 +4955,9 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_gunner_
     (void) b; (void) value;
     table_fixed_putf32( b + 0, value->reaction );
     table_fixed_put8( b + 4, value->tracking ? 1 : 0 );
+    schema_assert( value->callsign_length >= 0 && value->callsign_length <= 24 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 5, (uint32_t) value->callsign_length );
-    memcpy( b + 9, value->callsign, 24 );
+    memcpy( b + 9, value->callsign, (size_t) ( value->callsign_length ) );
 }
 
 /* ShipEntry's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -4960,14 +4965,16 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_gunner_
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ship_entry_fixed_write_body_( uint8_t * b, const ShipEntry * value )
 {
     (void) b; (void) value;
+    schema_assert( value->display_name_length >= 0 && value->display_name_length <= 32 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 0, (uint32_t) value->display_name_length );
-    memcpy( b + 4, value->display_name, 32 );
+    memcpy( b + 4, value->display_name, (size_t) ( value->display_name_length ) );
     table_fixed_putf32( b + 36, value->health );
     table_fixed_putf32( b + 40, value->mass );
+    schema_assert( value->hardpoints_count >= 0 && value->hardpoints_count <= 4 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 44, (uint32_t) value->hardpoints_count );
     {
         int64_t i;
-        for ( i = 0; i < 4; ++i )
+        for ( i = 0; i < (int64_t) value->hardpoints_count; ++i )
         {
             table_fixed_put32( b + 48 + i * 4 + 0, (uint32_t) value->hardpoints[i] );
         }
@@ -4983,11 +4990,12 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_global_
     (void) b; (void) value;
     table_fixed_put32( b + 0, (uint32_t) value->tick_rate );
     table_fixed_put8( b + 4, (uint8_t) value->difficulty );
+    schema_assert( value->build_note_length >= 0 && value->build_note_length <= 48 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 5, (uint32_t) value->build_note_length );
-    memcpy( b + 9, value->build_note, 48 );
+    memcpy( b + 9, value->build_note, (size_t) ( value->build_note_length ) );
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             table_fixed_putf32( b + 57 + i * 4 + 0, value->spawn_delays[i] );
         }
@@ -5003,22 +5011,23 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_co
     schema_tabledemo_global_settings_fixed_write_body_( b + 4, &value->global );
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             schema_tabledemo_ship_entry_fixed_write_body_( b + 73 + i * 98 + 0, &value->ships[i] );
         }
     }
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) 3; ++i )
         {
             table_fixed_put32( b + 367 + i * 4 + 0, (uint32_t) value->thresholds[i] );
         }
     }
+    schema_assert( value->reserves_count >= 0 && value->reserves_count <= 3 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 379, (uint32_t) value->reserves_count );
     {
         int64_t i;
-        for ( i = 0; i < 3; ++i )
+        for ( i = 0; i < (int64_t) value->reserves_count; ++i )
         {
             schema_tabledemo_ship_entry_fixed_write_body_( b + 383 + i * 98 + 0, &value->reserves[i] );
         }

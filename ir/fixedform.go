@@ -938,3 +938,54 @@ func TableFixedEmitted(u *Unit, st *Struct) bool {
 	}
 	return TableFixedLeafCount(u, st) <= TableFixedLeafCap
 }
+
+// TableFixedHasWriteBound answers whether any fixed table of the unit has a
+// number the WRITE side bounds: a text field's used length, or a counted
+// array's live count. Those are the only two write-side checks this form has,
+// and they are DEBUG-ONLY (schema_assert), so a unit of plain scalars declares
+// no bound and pays for no assert hook at all — the zero-cost gate (§2.2).
+func TableFixedHasWriteBound(u *Unit) bool {
+	seen := map[string]bool{}
+	var has func(st *Struct) bool
+	has = func(st *Struct) bool {
+		if seen[st.Name] {
+			return false
+		}
+		seen[st.Name] = true
+		for _, f := range st.Fields {
+			switch {
+			case f.Array == ArrayCounted:
+				return true
+			case f.Type.Kind == TString, f.Type.Kind == TWString, f.Type.Kind == TBytes:
+				return true
+			}
+			if f.Type.Kind != TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *Struct:
+				if has(r) {
+					return true
+				}
+			case *Union:
+				for _, v := range r.Variants {
+					if v.F == nil {
+						continue
+					}
+					if s2, ok := v.F.Type.Ref.(*Struct); ok && v.F.Type.Kind == TNamed && has(s2) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if TableFixedEmitted(u, st) && has(st) {
+				return true
+			}
+		}
+	}
+	return false
+}

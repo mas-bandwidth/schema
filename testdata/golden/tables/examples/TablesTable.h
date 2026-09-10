@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -8782,23 +8787,25 @@ inline void LoadoutConfigFixedWriteBody( uint8_t * b, const LoadoutConfig & valu
 {
     (void) b; (void) value;
     TableFixedPut8( b + 0, (uint8_t) value.grade );
+    schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 1, (uint32_t) value.grades_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.grades_count; ++i )
     {
         TableFixedPut8( b + 5 + i * 1 + 0, (uint8_t) value.grades[i] );
     }
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut8( b + 9 + i * 1 + 0, (uint8_t) value.podium[i] );
     }
     TableFixedPut64( b + 12, (uint64_t) value.perks );
     WeaponConfigFixedWriteBody( b + 20, value.primary );
-    for ( int64_t i = 0; i < 2; ++i )
+    for ( int64_t i = 0; i < (int64_t) 2; ++i )
     {
         WeaponConfigFixedWriteBody( b + 42 + i * 22 + 0, value.backups[i] );
     }
+    schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 86, (uint32_t) value.attachments_count );
-    for ( int64_t i = 0; i < 8; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.attachments_count; ++i )
     {
         AttachmentFixedWriteBody( b + 90 + i * 8 + 0, value.attachments[i] );
     }

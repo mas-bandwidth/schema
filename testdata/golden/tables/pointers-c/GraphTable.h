@@ -655,6 +655,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -7398,8 +7402,9 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_meta_fi
 {
     (void) b; (void) value;
     table_fixed_put32( b + 0, (uint32_t) value->build );
+    schema_assert( value->tag_length >= 0 && value->tag_length <= 8 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 4, (uint32_t) value->tag_length );
-    memcpy( b + 8, value->tag, 8 );
+    memcpy( b + 8, value->tag, (size_t) ( value->tag_length ) );
 }
 
 /* Settings's stores. The template — the hash, then zeros — is memcpy'd first,
@@ -7408,8 +7413,9 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
 {
     (void) b; (void) value;
     table_fixed_put32( b + 0, (uint32_t) value->quality );
+    schema_assert( value->label_length >= 0 && value->label_length <= 16 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 4, (uint32_t) value->label_length );
-    memcpy( b + 8, value->label, 16 );
+    memcpy( b + 8, value->label, (size_t) ( value->label_length ) );
 }
 
 /* ---- Meta, the fixed form ---- */

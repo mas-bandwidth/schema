@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -6089,21 +6094,23 @@ inline void SimStateFixedWriteBody( uint8_t * b, const SimState & value )
     TableFixedPut128( b + 82, value.energy );
     TableFixedPut128( b + 98, value.entity_id );
     TableFixedPut32( b + 114, (uint32_t) value.scale );
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut32( b + 118 + i * 4 + 0, (uint32_t) value.samples[i] );
     }
+    schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 130, (uint32_t) value.weights_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.weights_count; ++i )
     {
         TableFixedPut16( b + 134 + i * 2 + 0, (uint16_t) value.weights[i] );
     }
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut64( b + 142 + i * 8 + 0, (uint64_t) value.axes.slots[i] );
     }
+    schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 166, (uint32_t) value.seeds_count );
-    for ( int64_t i = 0; i < 2; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.seeds_count; ++i )
     {
         TableFixedPut128( b + 170 + i * 16 + 0, value.seeds[i] );
     }

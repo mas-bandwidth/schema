@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
+#include <assert.h> /* the fixed form's write-side bounds, in a debug build */
 
 #include "Bench.h"
 
@@ -641,6 +642,10 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
 }
+
+#ifndef schema_assert
+#define schema_assert assert
+#endif
 
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)

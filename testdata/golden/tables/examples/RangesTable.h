@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -7937,8 +7942,9 @@ inline void RangedSignedFixedWriteBody( uint8_t * b, const RangedSigned & value 
     TableFixedPut64( b + 36, (uint64_t) value.i64_low );
     TableFixedPut64( b + 44, (uint64_t) value.i64_high );
     TableFixedPut64( b + 52, (uint64_t) value.i64_inside );
+    schema_assert( value.edges_count >= 0 && value.edges_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 60, (uint32_t) value.edges_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.edges_count; ++i )
     {
         TableFixedPut16( b + 64 + i * 2 + 0, (uint16_t) value.edges[i] );
     }
@@ -7965,8 +7971,9 @@ inline void RangedUnsignedFixedWriteBody( uint8_t * b, const RangedUnsigned & va
     TableFixedPut64( b + 36, (uint64_t) value.u64_low );
     TableFixedPut64( b + 44, (uint64_t) value.u64_high );
     TableFixedPut64( b + 52, (uint64_t) value.u64_inside );
+    schema_assert( value.counts_count >= 0 && value.counts_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 60, (uint32_t) value.counts_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.counts_count; ++i )
     {
         TableFixedPut64( b + 64 + i * 8 + 0, (uint64_t) value.counts[i] );
     }

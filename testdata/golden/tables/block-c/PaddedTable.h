@@ -657,6 +657,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -4083,18 +4087,19 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
     table_fixed_putf64( b + 1, value->value );
     table_fixed_put8( b + 9, value->flag ? 1 : 0 );
     table_fixed_put32( b + 10, (uint32_t) value->id );
+    schema_assert( value->label_length >= 0 && value->label_length <= 15 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 14, (uint32_t) value->label_length );
-    memcpy( b + 18, value->label, 15 );
+    memcpy( b + 18, value->label, (size_t) ( value->label_length ) );
     {
         int64_t i;
-        for ( i = 0; i < 4; ++i )
+        for ( i = 0; i < (int64_t) 4; ++i )
         {
             table_fixed_put16( b + 33 + i * 2 + 0, (uint16_t) value->slots[i] );
         }
     }
     {
         int64_t i;
-        for ( i = 0; i < 4; ++i )
+        for ( i = 0; i < (int64_t) 4; ++i )
         {
             table_fixed_put8( b + 41 + i * 1 + 0, (uint8_t) value->teams[i] );
         }
@@ -4110,16 +4115,18 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_padded_
     (void) b; (void) value;
     table_fixed_put8( b + 0, (uint8_t) value->marker );
     table_fixed_put64( b + 1, (uint64_t) value->stamp );
+    schema_assert( value->rows_count >= 0 && value->rows_count <= 64 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 9, (uint32_t) value->rows_count );
     {
         int64_t i;
-        for ( i = 0; i < 64; ++i )
+        for ( i = 0; i < (int64_t) value->rows_count; ++i )
         {
             schema_blockdemo_padded_row_fixed_write_body_( b + 13 + i * 50 + 0, &value->rows[i] );
         }
     }
+    schema_assert( value->blob_length >= 0 && value->blob_length <= 12 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 3213, (uint32_t) value->blob_length );
-    memcpy( b + 3217, value->blob, 12 );
+    memcpy( b + 3217, value->blob, (size_t) ( value->blob_length ) );
 }
 
 /* ---- PaddedRow, the fixed form ---- */

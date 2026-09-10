@@ -545,6 +545,89 @@ static void fuzz_case()
                  clean.size(), (long long) refused, (long long) damaged, (long long) read );
 }
 
+// ---------------------------------------------------------------------------
+
+// THE SLACK IS ZERO (docs/SPEC-TABLES.md §3.4). A `string(N)` shorter than N
+// and a `[..N]T` with unused slots are DECLARED bytes carrying no value, and
+// what rides in them is the TEMPLATE'S ZEROS — never whatever the writer's own
+// storage happened to hold past the used length or the live count.
+//
+// Copying the whole span instead is not a cosmetic difference: for an array of
+// a type with declared defaults, the unused slots put the ELEMENT'S DEFAULT
+// IMAGE on the wire, so a value nobody wrote rides as if somebody had; and for
+// text, a field written twice with two different values does not compare equal
+// on the second write. The Elixir port found both.
+//
+// THE CONTROL IS THE STAIN. The storage past the used length and the live count
+// is filled with a byte that appears nowhere else in a clean record; the test
+// first proves the stain IS there in the storage (or it would be checking
+// nothing), then proves the WIRE carries none of it, and then proves that a
+// whole-span copy of the same storage WOULD have carried it — which is the
+// wrong behaviour, watched failing.
+static void slack_case()
+{
+    tblfx1::FxRoot v;
+    tblfx1::FxRootReset( v );
+    v.keep = 11u;
+    v.narrow = 22u;
+    v.renamed = 33;
+    v.gone = 44;
+    v.nested.a = 55;
+    v.nested.b = 66;
+    std::memset( v.label, 0xAA, sizeof( v.label ) );
+    v.label[0] = 'h';
+    v.label[1] = 'i';
+    v.label_length = 2;
+    for ( int k = 0; k < 4; ++k ) { v.marks[k] = 0x5A5A5A5A; }
+    v.marks[0] = 7;
+    v.marks_count = 1;
+
+    // the stain is really in the storage, so nothing below is vacuous
+    check( (uint8_t) v.label[2] == 0xAAu, "CONTROL: the text slack really is stained in storage" );
+    check( v.marks[1] == 0x5A5A5A5A, "CONTROL: the array slack really is stained in storage" );
+
+    std::vector<uint8_t> file( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &v, 1, file.data(), (int64_t) file.size() ) == (int64_t) file.size(),
+           "slack: the record saves" );
+    const uint8_t * body = file.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+    const size_t body_bytes = (size_t) tblfx1::FxRootFixedBodyBytes;
+    check( std::memchr( body, 0xAA, body_bytes ) == NULL,
+           "SLACK IS ZERO: not one stained TEXT byte reached the wire" );
+    check( std::memchr( body, 0x5A, body_bytes ) == NULL,
+           "SLACK IS ZERO: not one stained ARRAY byte reached the wire" );
+
+    // NEGATIVE CONTROL: the same storage copied WHOLE — which is what the
+    // writer did before this fix — carries the stain, so the two checks above
+    // discriminate and are not passing for some other reason.
+    {
+        uint8_t whole[sizeof( v.label )];
+        std::memcpy( whole, v.label, sizeof( v.label ) );
+        check( std::memchr( whole, 0xAA, sizeof( whole ) ) != NULL,
+               "NEGATIVE CONTROL: a whole-span copy WOULD have carried the text stain" );
+        int32_t marks[4];
+        std::memcpy( marks, v.marks, sizeof( marks ) );
+        check( marks[3] == 0x5A5A5A5A,
+               "NEGATIVE CONTROL: a whole-span copy WOULD have carried the array stain" );
+    }
+
+    // and the record still reads back as itself: the used length and the live
+    // count are what the reader validates, and both are inside the bound, so
+    // nothing clamps.
+    {
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, &r ) == 1,
+               "slack: the record reads" );
+        check( back.label_length == 2 && back.label[0] == 'h' && back.label[1] == 'i' && back.label[2] == 0,
+               "slack: the used length reads, and the buffer terminates at it" );
+        check( back.marks_count == 1 && back.marks[0] == 7, "slack: the live count reads" );
+        check( back.marks[1] == 0 && back.marks[2] == 0 && back.marks[3] == 0,
+               "slack: an unused slot lands as the wire's zero and not as some writer's leftover" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "slack: a clean read moves no counter" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -554,6 +637,7 @@ int main()
     v_case();
     p_case();
     negative_control();
+    slack_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }

@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stddef.h> /* offsetof, for the reflection descriptors */
 #include <string.h> /* memcpy, memset — the prefill and the wire's raw moves */
+#include <assert.h> /* the fixed form's write-side bounds, in a debug build */
 
 #include "FixedTable.h"
 
@@ -642,6 +643,10 @@ static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
 }
+
+#ifndef schema_assert
+#define schema_assert assert
+#endif
 
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
@@ -3009,18 +3014,20 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     table_fixed_put64( b + 32, (uint64_t) value->world_time );
     table_fixed_put64( b + 40, (uint64_t) value->frame_tick );
     table_fixed_put32( b + 48, (uint32_t) value->server_time );
+    schema_assert( value->entities_count >= 0 && value->entities_count <= 8 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 52, (uint32_t) value->entities_count );
     {
         int64_t i;
-        for ( i = 0; i < 8; ++i )
+        for ( i = 0; i < (int64_t) value->entities_count; ++i )
         {
             schema_bench_mixed_entity_fixed_write_body_( b + 56 + i * 51 + 0, &value->entities[i] );
         }
     }
+    schema_assert( value->stats_count >= 0 && value->stats_count <= 80 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 464, (uint32_t) value->stats_count );
     {
         int64_t i;
-        for ( i = 0; i < 80; ++i )
+        for ( i = 0; i < (int64_t) value->stats_count; ++i )
         {
             schema_bench_mixed_stat_fixed_write_body_( b + 468 + i * 8 + 0, &value->stats[i] );
         }
@@ -3047,15 +3054,17 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     }
     {
         int64_t i;
-        for ( i = 0; i < 4; ++i )
+        for ( i = 0; i < (int64_t) 4; ++i )
         {
             table_fixed_put8( b + 1122 + i * 1 + 0, (uint8_t) value->loadout[i] );
         }
     }
+    schema_assert( value->player_name_length >= 0 && value->player_name_length <= 15 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 1126, (uint32_t) value->player_name_length );
-    memcpy( b + 1130, value->player_name, 15 );
+    memcpy( b + 1130, value->player_name, (size_t) ( value->player_name_length ) );
+    schema_assert( value->payload_length >= 0 && value->payload_length <= 16 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 1145, (uint32_t) value->payload_length );
-    memcpy( b + 1149, value->payload, 16 );
+    memcpy( b + 1149, value->payload, (size_t) ( value->payload_length ) );
     table_fixed_putf32( b + 1165, value->aim_x );
     table_fixed_putf32( b + 1169, value->aim_y );
     table_fixed_putf32( b + 1173, value->aim_z );

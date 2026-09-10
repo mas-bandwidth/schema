@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -6626,8 +6631,9 @@ inline void GunnerSettingsFixedWriteBody( uint8_t * b, const GunnerSettings & va
     (void) b; (void) value;
     TableFixedPutF32( b + 0, value.reaction );
     TableFixedPut8( b + 4, value.tracking ? 1 : 0 );
+    schema_assert( value.callsign_length >= 0 && value.callsign_length <= 24 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 5, (uint32_t) value.callsign_length );
-    memcpy( b + 9, value.callsign, 24 );
+    memcpy( b + 9, value.callsign, (size_t) ( value.callsign_length ) );
 }
 
 // ShipEntry's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -6635,12 +6641,14 @@ inline void GunnerSettingsFixedWriteBody( uint8_t * b, const GunnerSettings & va
 inline void ShipEntryFixedWriteBody( uint8_t * b, const ShipEntry & value )
 {
     (void) b; (void) value;
+    schema_assert( value.display_name_length >= 0 && value.display_name_length <= 32 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.display_name_length );
-    memcpy( b + 4, value.display_name, 32 );
+    memcpy( b + 4, value.display_name, (size_t) ( value.display_name_length ) );
     TableFixedPutF32( b + 36, value.health );
     TableFixedPutF32( b + 40, value.mass );
+    schema_assert( value.hardpoints_count >= 0 && value.hardpoints_count <= 4 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 44, (uint32_t) value.hardpoints_count );
-    for ( int64_t i = 0; i < 4; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
     {
         TableFixedPut32( b + 48 + i * 4 + 0, (uint32_t) value.hardpoints[i] );
     }
@@ -6655,9 +6663,10 @@ inline void GlobalSettingsFixedWriteBody( uint8_t * b, const GlobalSettings & va
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.tick_rate );
     TableFixedPut8( b + 4, (uint8_t) value.difficulty );
+    schema_assert( value.build_note_length >= 0 && value.build_note_length <= 48 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 5, (uint32_t) value.build_note_length );
-    memcpy( b + 9, value.build_note, 48 );
-    for ( int64_t i = 0; i < 3; ++i )
+    memcpy( b + 9, value.build_note, (size_t) ( value.build_note_length ) );
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPutF32( b + 57 + i * 4 + 0, value.spawn_delays[i] );
     }
@@ -6670,16 +6679,17 @@ inline void PackConfigFixedWriteBody( uint8_t * b, const PackConfig & value )
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.version );
     GlobalSettingsFixedWriteBody( b + 4, value.global );
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         ShipEntryFixedWriteBody( b + 73 + i * 98 + 0, value.ships.slots[i] );
     }
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
     {
         TableFixedPut32( b + 367 + i * 4 + 0, (uint32_t) value.thresholds.slots[i] );
     }
+    schema_assert( value.reserves_count >= 0 && value.reserves_count <= 3 ); // the declared count is the bound (§3.4)
     TableFixedPut32( b + 379, (uint32_t) value.reserves_count );
-    for ( int64_t i = 0; i < 3; ++i )
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
     {
         ShipEntryFixedWriteBody( b + 383 + i * 98 + 0, value.reserves[i] );
     }

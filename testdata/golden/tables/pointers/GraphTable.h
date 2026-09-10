@@ -16,8 +16,13 @@
 //
 // schema_assert — the runtime's own assert, and the refusal a debugger reads.
 // NDEBUG removes it, exactly as it removes assert. A caller who already routes
-// serialize's asserts writes `#define schema_assert serialize_assert` before
-// including this header and both halves land in one handler.
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
 #ifndef schema_assert
 #include <assert.h>
 #define schema_assert assert
@@ -10618,8 +10623,9 @@ inline void MetaFixedWriteBody( uint8_t * b, const Meta & value )
 {
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.build );
+    schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.tag_length );
-    memcpy( b + 8, value.tag, 8 );
+    memcpy( b + 8, value.tag, (size_t) ( value.tag_length ) );
 }
 
 // Settings's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -10628,8 +10634,9 @@ inline void SettingsFixedWriteBody( uint8_t * b, const Settings & value )
 {
     (void) b; (void) value;
     TableFixedPut32( b + 0, (uint32_t) value.quality );
+    schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 4, (uint32_t) value.label_length );
-    memcpy( b + 8, value.label, 16 );
+    memcpy( b + 8, value.label, (size_t) ( value.label_length ) );
 }
 
 // ---- Meta, the fixed form ----

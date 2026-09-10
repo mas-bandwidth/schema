@@ -28,6 +28,7 @@ package ctable
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -170,32 +171,59 @@ func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, 
 	}
 	switch {
 	case f.KeyEnum != "":
-		g.emitFixedWriteLoop(f, base, f.KeyEnumRef.Max, buf, val+f.Name, indent)
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): no count, no slack.
+		g.emitFixedWriteLoop(f, base, strconv.FormatInt(f.KeyEnumRef.Max, 10), buf, val+f.Name, indent)
 	case f.Array == ir.ArrayFixed:
-		g.emitFixedWriteLoop(f, base, f.ArrayBound, buf, val+f.Name, indent)
+		// AND EVERY ELEMENT OF `[N]T` IS LIVE: min equals max.
+		g.emitFixedWriteLoop(f, base, strconv.FormatInt(f.ArrayBound, 10), buf, val+f.Name, indent)
 	case f.Array == ir.ArrayCounted:
+		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4), exactly as the reference does it.
+		g.fixedWriteBound(fmt.Sprintf("%s%s_count", val, f.Name), f.ArrayBound, "count", ind)
 		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_count );\n", ind, buf, base, val, f.Name)
-		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, f.ArrayBound, buf, val+f.Name, indent)
+		g.emitFixedWriteLoop(f, base+ir.TableFixedCountBytes, fmt.Sprintf("%s%s_count", val, f.Name), buf, val+f.Name, indent)
 	case f.Type.Kind == ir.TString:
-		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_length );\n", ind, buf, base, val, f.Name)
-		g.pf("%smemcpy( %s + %d, %s%s, %d );\n", ind, buf, base+4, val, f.Name, f.Type.Size)
+		g.emitFixedWriteText(f, base, buf, val, ind, 1)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_length );\n", ind, buf, base, val, f.Name)
-		g.pf("%smemcpy( %s + %d, %s%s, %d );\n", ind, buf, base+4, val, f.Name, 2*f.Type.Size)
+		g.emitFixedWriteText(f, base, buf, val, ind, 2)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_length );\n", ind, buf, base, val, f.Name)
-		g.pf("%smemcpy( %s + %d, %s%s, %d );\n", ind, buf, base+4, val, f.Name, f.Type.Size)
+		g.emitFixedWriteText(f, base, buf, val, ind, 1)
 	default:
 		g.emitFixedWriteElement(f, base, buf, val+f.Name, indent)
 	}
 }
 
-func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, count int64, buf, expr string, indent int) {
+func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base int64, count string, buf, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	elem := ir.TableFixedElementBytes(f)
-	g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < %d; ++i )\n%s    {\n", ind, ind, ind, count, ind)
+	g.pf("%s{\n%s    int64_t i;\n%s    for ( i = 0; i < (int64_t) %s; ++i )\n%s    {\n", ind, ind, ind, count, ind)
 	g.emitFixedWriteElement(f, 0, fmt.Sprintf("%s + %d + i * %d", buf, base, elem), expr+"[i]", indent+8)
 	g.pf("%s    }\n%s}\n", ind, ind)
+}
+
+/*
+emitFixedWriteText is the C twin of the reference's text store: the used
+
+	LENGTH, then that many UNITS onto the template's zeros (§3.4).
+*/
+func (g *tableGen) emitFixedWriteText(f *ir.Field, base int64, buf, val, ind string, unit int64) {
+	g.fixedWriteBound(fmt.Sprintf("%s%s_length", val, f.Name), f.Type.Size, "length", ind)
+	g.pf("%stable_fixed_put32( %s + %d, (uint32_t) %s%s_length );\n", ind, buf, base, val, f.Name)
+	scale := ""
+	if unit != 1 {
+		scale = fmt.Sprintf("%d * ", unit)
+	}
+	g.pf("%smemcpy( %s + %d, %s%s, (size_t) ( %s%s%s_length ) );\n", ind, buf, base+4, val, f.Name, scale, val, f.Name)
+}
+
+/*
+fixedWriteBound is the WRITE-SIDE CHECK, DEBUG-ONLY BY RULE: NDEBUG removes
+
+	schema_assert exactly as it removes assert. The read side checks the same
+	number in every build and counts the clamp.
+*/
+func (g *tableGen) fixedWriteBound(expr string, bound int64, what, ind string) {
+	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); /* the declared %s is the bound (§3.4) */\n", ind, expr, expr, bound, what)
 }
 
 func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr string, indent int) {

@@ -33,6 +33,7 @@ int64_t fixed_v1_bytes( void );
 
 /* ...and each reads the other's, through the ONE plan-driven path. */
 void fixed_fx1_read_own( const uint8_t * data, int64_t bytes );
+void fixed_fx1_slack( void );
 void fixed_fx1_read_fx2( const uint8_t * data, int64_t bytes );
 void fixed_fx2_read_fx1( const uint8_t * data, int64_t bytes );
 void fixed_v2_read_v1( const uint8_t * data, int64_t bytes );

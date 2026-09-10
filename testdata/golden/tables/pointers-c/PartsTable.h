@@ -653,6 +653,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -4883,8 +4887,9 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
 static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_fixed_write_body_( uint8_t * b, const Stamp * value )
 {
     (void) b; (void) value;
+    schema_assert( value->tag_length >= 0 && value->tag_length <= 8 ); /* the declared length is the bound (§3.4) */
     table_fixed_put32( b + 0, (uint32_t) value->tag_length );
-    memcpy( b + 4, value->tag, 8 );
+    memcpy( b + 4, value->tag, (size_t) ( value->tag_length ) );
     table_fixed_put32( b + 12, (uint32_t) value->seq );
 }
 

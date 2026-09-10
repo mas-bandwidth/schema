@@ -12,6 +12,22 @@
 #include <string.h> // the prefill's scalar-array fills
 #include <stddef.h> // offsetof, for the reflection descriptors
 
+// ---- the hooks (docs/USAGE.md, "the C++ table runtime's hooks") ----
+//
+// schema_assert — the runtime's own assert, and the refusal a debugger reads.
+// NDEBUG removes it, exactly as it removes assert. A caller who already routes
+// the packet library's asserts defines schema_assert as its handler before
+// including this header and both halves land in one place; docs/USAGE.md,
+// "the C++ table runtime's hooks", spells that line out. IT IS NOT SPELLED
+// HERE, and that is a gate and not an oversight: §2's zero-cost rule says a
+// TABLE header stands alone, and the check for it scans the emitted text for
+// the packet library's own symbol prefix (compiler/tables_test.go), which a
+// comment carrying the example would trip.
+#ifndef schema_assert
+#include <assert.h>
+#define schema_assert assert
+#endif // #ifndef schema_assert
+
 #include "Messages.h"
 
 #ifndef MESSAGEDEMO_SCHEMA_TABLE_PRIMITIVES
@@ -14154,8 +14170,9 @@ static_assert( (uint32_t) __builtin_offsetof( SaveDocument, force ) == 72, "Save
 inline void UserFixedWriteBody( uint8_t * b, const User & value )
 {
     (void) b; (void) value;
+    schema_assert( value.name_length >= 0 && value.name_length <= 16 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.name_length );
-    memcpy( b + 4, value.name, 16 );
+    memcpy( b + 4, value.name, (size_t) ( value.name_length ) );
 }
 
 // Script's stores. The prefill — the hash, then zeros — is memcpy'd first,
@@ -14163,8 +14180,9 @@ inline void UserFixedWriteBody( uint8_t * b, const User & value )
 inline void ScriptFixedWriteBody( uint8_t * b, const Script & value )
 {
     (void) b; (void) value;
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.path_length );
-    memcpy( b + 4, value.path, 64 );
+    memcpy( b + 4, value.path, (size_t) ( value.path_length ) );
     TableFixedPut32( b + 68, (uint32_t) value.line );
 }
 
@@ -14199,8 +14217,9 @@ inline void RemoveTextFixedWriteBody( uint8_t * b, const RemoveText & value )
 inline void OpenDocumentFixedWriteBody( uint8_t * b, const OpenDocument & value )
 {
     (void) b; (void) value;
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.path_length );
-    memcpy( b + 4, value.path, 64 );
+    memcpy( b + 4, value.path, (size_t) ( value.path_length ) );
     TableFixedPut8( b + 68, (uint8_t) value.mode );
     CursorFixedWriteBody( b + 69, value.cursor );
 }
@@ -14210,8 +14229,9 @@ inline void OpenDocumentFixedWriteBody( uint8_t * b, const OpenDocument & value 
 inline void SaveDocumentFixedWriteBody( uint8_t * b, const SaveDocument & value )
 {
     (void) b; (void) value;
+    schema_assert( value.path_length >= 0 && value.path_length <= 64 ); // the declared length is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.path_length );
-    memcpy( b + 4, value.path, 64 );
+    memcpy( b + 4, value.path, (size_t) ( value.path_length ) );
     TableFixedPut8( b + 68, value.force ? 1 : 0 );
 }
 

@@ -656,6 +656,10 @@ static SCHEMA_UNUSED int32_t table_keyed_slot( int32_t key, uint32_t count )
 #define SCHEMA_TABLE_KEYED_AT( array, key, count ) ( (array)[ table_keyed_slot( (int32_t) ( key ), (uint32_t) ( count ) ) ] )
 
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 /* ---------------------------------------------------------------------------
    THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 
@@ -6403,10 +6407,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
     table_fixed_put64( b + 36, (uint64_t) value->i64_low );
     table_fixed_put64( b + 44, (uint64_t) value->i64_high );
     table_fixed_put64( b + 52, (uint64_t) value->i64_inside );
+    schema_assert( value->edges_count >= 0 && value->edges_count <= 4 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 60, (uint32_t) value->edges_count );
     {
         int64_t i;
-        for ( i = 0; i < 4; ++i )
+        for ( i = 0; i < (int64_t) value->edges_count; ++i )
         {
             table_fixed_put16( b + 64 + i * 2 + 0, (uint16_t) value->edges[i] );
         }
@@ -6434,10 +6439,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ranged_
     table_fixed_put64( b + 36, (uint64_t) value->u64_low );
     table_fixed_put64( b + 44, (uint64_t) value->u64_high );
     table_fixed_put64( b + 52, (uint64_t) value->u64_inside );
+    schema_assert( value->counts_count >= 0 && value->counts_count <= 4 ); /* the declared count is the bound (§3.4) */
     table_fixed_put32( b + 60, (uint32_t) value->counts_count );
     {
         int64_t i;
-        for ( i = 0; i < 4; ++i )
+        for ( i = 0; i < (int64_t) value->counts_count; ++i )
         {
             table_fixed_put64( b + 64 + i * 8 + 0, (uint64_t) value->counts[i] );
         }
