@@ -25,25 +25,104 @@ use crate::*;
 //
 // THE TAG NAMES THE LIVE ARM, and that is the type's whole contract — the
 // same one the C reference's storage carries, where reading `as.hit` with
-// `type != HIT` is equally wrong and equally unchecked. Rust says it out
-// loud: a READ of an arm is `unsafe` and every one of them in this crate is
-// guarded by the tag. A WRITE of an arm is safe and needs no guard.
+// `type != HIT` is equally wrong and equally unchecked.
+//
+// RUST WILL NOT LET THAT CONTRACT BE A COMMENT. A public tag beside a public
+// overlay, with safe functions reading the arm the tag names, is UNSOUND as
+// an API: nothing stops a caller setting the tag and not the arm, and the
+// next safe read is then a `bool` built out of a byte that is neither 0 nor
+// 1 — undefined behaviour with no `unsafe` block anywhere near the caller.
+// So THE TAG AND THE OVERLAY ARE THE CRATE'S, not the caller's, and the
+// public surface is a CHECKED ACCESSOR PAIR per arm: `x()` hands back the
+// arm only when the tag names it, and `set_x()` is the only way to move the
+// tag at all — so tag and arm cannot disagree. Inside the crate the
+// generated codecs still read the overlay directly under `unsafe`, guarded
+// by the tag they just matched, exactly as the C reference's switch is.
 // `Row` and `RowArms` are CLAIMED suffixes (docs/SPEC-TABLES.md §11).
 
 // MixedEvent — the union twin: 20 bytes, aligned 4; a 1-byte tag, the arms at 4.
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct MixedEventRow {
-    pub tag: u8, // 0 is None (the empty union); then each arm in declared order
-    pub arms: MixedEventRowArms,
+    // THE CRATE'S, not the caller's: the pair has to move together or the
+    // type's contract is a comment. The checked accessors below are the
+    // whole public surface.
+    pub(crate) tag: u8, // 0 is None (the empty union); then each arm in declared order
+    pub(crate) arms: MixedEventRowArms,
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub union MixedEventRowArms {
-    pub hit: MixedHitEventRow, // MixedHitEvent
-    pub chat: MixedChatEventRow, // MixedChatEvent
-    pub pickup: MixedPickupEventRow, // MixedPickupEvent
+    pub(crate) hit: MixedHitEventRow, // MixedHitEvent
+    pub(crate) chat: MixedChatEventRow, // MixedChatEvent
+    pub(crate) pickup: MixedPickupEventRow, // MixedPickupEvent
+}
+
+impl MixedEventRow {
+    /// The live arm's ordinal, from 1 in declared order; 0 is None.
+    pub fn tag(&self) -> u8 {
+        self.tag
+    }
+
+    /// `hit` when the tag names it, and None otherwise. THE CHECK IS WHAT
+    /// MAKES THE READ SAFE: the overlay holds one arm and the tag says which.
+    pub fn hit(&self) -> Option<MixedHitEventRow> {
+        if self.tag == 1 {
+            // SAFETY: the tag was just matched against `hit`.
+            Some(unsafe { self.arms.hit })
+        } else {
+            None
+        }
+    }
+
+    /// Selects `hit`: the ARM AND THE TAG MOVE TOGETHER, which is the only
+    /// way the tag moves at all, so the two can never disagree.
+    pub fn set_hit(&mut self, value: MixedHitEventRow) {
+        self.arms.hit = value; // a WRITE of a union field, which is safe
+        self.tag = 1;
+    }
+
+    /// `chat` when the tag names it, and None otherwise. THE CHECK IS WHAT
+    /// MAKES THE READ SAFE: the overlay holds one arm and the tag says which.
+    pub fn chat(&self) -> Option<MixedChatEventRow> {
+        if self.tag == 2 {
+            // SAFETY: the tag was just matched against `chat`.
+            Some(unsafe { self.arms.chat })
+        } else {
+            None
+        }
+    }
+
+    /// Selects `chat`: the ARM AND THE TAG MOVE TOGETHER, which is the only
+    /// way the tag moves at all, so the two can never disagree.
+    pub fn set_chat(&mut self, value: MixedChatEventRow) {
+        self.arms.chat = value; // a WRITE of a union field, which is safe
+        self.tag = 2;
+    }
+
+    /// `pickup` when the tag names it, and None otherwise. THE CHECK IS WHAT
+    /// MAKES THE READ SAFE: the overlay holds one arm and the tag says which.
+    pub fn pickup(&self) -> Option<MixedPickupEventRow> {
+        if self.tag == 3 {
+            // SAFETY: the tag was just matched against `pickup`.
+            Some(unsafe { self.arms.pickup })
+        } else {
+            None
+        }
+    }
+
+    /// Selects `pickup`: the ARM AND THE TAG MOVE TOGETHER, which is the only
+    /// way the tag moves at all, so the two can never disagree.
+    pub fn set_pickup(&mut self, value: MixedPickupEventRow) {
+        self.arms.pickup = value; // a WRITE of a union field, which is safe
+        self.tag = 3;
+    }
+
+    /// The empty union: tag 0, no arm.
+    pub fn set_none(&mut self) {
+        *self = Self::default();
+    }
 }
 
 impl Default for MixedEventRow {
@@ -191,8 +270,8 @@ pub struct BenchMixedRow {
     pub aim_z: f32,
     pub recoil: f32,
     pub drift: f64,
-    pub wide_key: u128,
-    pub flux: i128,
+    pub wide_key: TableU128,
+    pub flux: TableI128,
     pub ping: u16,
     pub crc_hint: u32,
     pub has_extra: bool,

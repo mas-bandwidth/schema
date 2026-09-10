@@ -7094,11 +7094,17 @@ inline void StampFixedWriteBody( uint8_t * b, const Stamp & value )
 }
 
 // Stamp's read-side bounds.
-inline void StampFixedClampBody( Stamp & value, int32_t & clamped )
+inline void StampFixedClampBody( Stamp & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.seq < 0 ) { value.seq = 0; clamped++; }
-    else if ( value.seq > 1000 ) { value.seq = 1000; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) )
+    {
+        memset( value.tag, 0, sizeof( value.tag ) );
+        value.tag_length = 0;
+        damaged++;
+    }
+    clamped += (int) ( value.seq < 0 ) | (int) ( value.seq > 1000 );
+    value.seq = ( value.seq < 0 ) ? 0 : ( ( value.seq > 1000 ) ? 1000 : value.seq );
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -7110,8 +7116,13 @@ inline void StampFixedClampBody( Stamp & value, int32_t & clamped )
 inline void StampFixedClamp( Stamp & value, TableReport * report )
 {
     int32_t clamped = 0;
-    StampFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    StampFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- Stamp, the fixed form ----

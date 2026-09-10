@@ -526,6 +526,19 @@ func fixedOpName(op int) string {
 
 // ---- the read-side bounds --------------------------------------------------
 //
+// THE CLAMP IS BRANCHLESS AND THE COUNT IS AN ADD. A bounds pass over a record
+// that is nearly always in range is a pass of branches that are nearly always
+// not taken, and a predictor that is right every time still spends the slots;
+// worse, a branch in the body of an array loop is what stops the loop
+// vectorizing at all. Written as a select and an add the whole pass folds into
+// straight-line SIMD over an array, which is what a form that trades bytes for
+// speed owes its own read path (test/bench/fixedform_measure.cpp).
+//
+// The two lines re-read the storage rather than naming a temporary, and that is
+// deliberate: the C leg has no `auto` and this walk knows every field's DECLARED
+// width but not its spelled storage type, so a temporary would mean a second
+// type table to keep in step with the first. A compiler folds the reload.
+//
 // A fixed record is a positional image, so the ONE read loop moves bytes and
 // asks nothing about what they mean. What a declaration bounds is held HERE,
 // as straight-line code in the generated decode, after the copy — never as plan
@@ -549,8 +562,8 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 	}
 	g.fixedOwner = st
 	g.pf("// %s's read-side bounds.\n", st.Name)
-	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped )\n{\n", st.Name, st.Name)
-	g.pf("    (void) value; (void) clamped;\n")
+	g.pf("inline void %sFixedClampBody( %s & value, int32_t & clamped, int32_t & damaged )\n{\n", st.Name, st.Name)
+	g.pf("    (void) value; (void) clamped; (void) damaged;\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value", 4)
 	}
@@ -571,8 +584,13 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 	g.pf("// clamp COUNTS.\n")
 	g.pf("inline void %sFixedClamp( %s & value, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    int32_t clamped = 0;\n")
-	g.pf("    %sFixedClampBody( value, clamped );\n", st.Name)
-	g.pf("    report->clamped += clamped;\n}\n\n")
+	g.pf("    int32_t damaged = 0;\n")
+	g.pf("    %sFixedClampBody( value, clamped, damaged );\n", st.Name)
+	g.pf("    report->clamped += clamped;\n")
+	g.pf("    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the\n")
+	g.pf("    // one flag and not on a counter: the field read its declared default\n")
+	g.pf("    // and the rest of the record stands.\n")
+	g.pf("    if ( damaged != 0 ) { report->malformed = true; }\n}\n\n")
 }
 
 func (g *tableGen) emitFixedClampField(f *ir.Field, val string, indent int) {
@@ -610,9 +628,43 @@ func (g *tableGen) emitFixedClampPayload(f *ir.Field, val string, indent int) {
 		g.pf("%sfor ( int64_t i = 0; i < (int64_t) %s.%s_count; ++i )\n%s{\n", ind, val, f.Name, ind)
 		g.emitFixedClampElement(f, val+"."+f.Name+"[i]", indent+4)
 		g.pf("%s}\n", ind)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		g.emitFixedTextContent(f, val, ind)
 	default:
 		g.emitFixedClampElement(f, val+"."+f.Name, indent)
 	}
+}
+
+// emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), on this
+// form's terms. A `string(N)`'s used bytes are well-formed UTF-8 with no zero
+// among them and a `wstring(N)`'s used units are paired UTF-16 with no zero
+// unit; the check runs over the USED LENGTH and over nothing else, because the
+// slack carries no meaning and reading it would be the cost this form exists to
+// avoid.
+//
+// A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and it is the same
+// verdict every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
+// `malformed` counts, and the rest of the record stands. It is what SPEC.md
+// §4.7 and §4.12 put on the packet wire, where the whole read refuses — here
+// the record is positional, so the damage is one field's and the reader does
+// not lose the others to it.
+func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
+	call := fmt.Sprintf("TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s.%s_length )", val, f.Name, val, f.Name)
+	if f.Type.Kind == ir.TWString {
+		// THE SAME BYTES THE COPY MOVED. A wstring's units ride little-endian
+		// and land as a raw copy, so the validator reads the storage as the
+		// wire it came from.
+		call = fmt.Sprintf("TableUtf16Valid( (const uint8_t *) %s.%s, (int64_t) %s.%s_length )", val, f.Name, val, f.Name)
+	}
+	g.pf("%sif ( !%s )\n%s{\n", ind, call, ind)
+	g.pf("%s    memset( %s.%s, 0, sizeof( %s.%s ) );\n", ind, val, f.Name, val, f.Name)
+	if f.Type.Kind == ir.TString && hasByteDefault(f) {
+		g.pf("%s    memcpy( %s.%s, %s, %d ); // the declared default\n", ind, val, f.Name, cStringLit(f.DefBytes), len(f.DefBytes))
+		g.pf("%s    %s.%s_length = %d;\n", ind, val, f.Name, len(f.DefBytes))
+	} else {
+		g.pf("%s    %s.%s_length = 0;\n", ind, val, f.Name)
+	}
+	g.pf("%s    damaged++;\n%s}\n", ind, ind)
 }
 
 func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
@@ -621,7 +673,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if ir.TableFixedClampNeeded(r) {
-				g.pf("%s%sFixedClampBody( %s, clamped );\n", ind, r.Name, expr)
+				g.pf("%s%sFixedClampBody( %s, clamped, damaged );\n", ind, r.Name, expr)
 			}
 			return
 		case *ir.Union:
@@ -632,6 +684,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// counts.
 			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
 				ind, expr, r.Max, expr, f.Type.Name)
+			if !ir.TableFixedClampNeededUnionArm(r) {
+				return
+			}
 			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
 			for _, v := range r.Variants {
 				if v.F == nil || !ir.TableFixedClampNeededField(v.F) {
@@ -658,11 +713,9 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	width := int(ir.TableFixedStorageBytes(f.Type))
 	switch {
 	case f.Type.Kind == ir.TFloat32 && f.HasFloatRange:
-		g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMin, true))
-		g.pf("%selse if ( %s > %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMax, true), expr, formatFloat(f.FMax, true))
+		g.fixedClampBoth(expr, formatFloat(f.FMin, true), formatFloat(f.FMax, true), ind)
 	case f.Type.Kind == ir.TFloat64 && f.HasFloatRange:
-		g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMin, false))
-		g.pf("%selse if ( %s > %s ) { %s = %s; clamped++; }\n", ind, expr, formatFloat(f.FMax, false), expr, formatFloat(f.FMax, false))
+		g.fixedClampBoth(expr, formatFloat(f.FMin, false), formatFloat(f.FMax, false), ind)
 	default:
 		signed := ir.TableKindSigned(ir.TableScalarKind(f))
 		// A FIXED-POINT FIELD'S BOUNDS ARE IN VALUE UNITS and its storage is
@@ -670,22 +723,39 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		// spelled — the same numbers the variable form's codec clamps at.
 		if rlo, rhi, ok := ir.TableRawRange(f); ok {
 			low, high := tableClampEnds(f, width)
-			if low {
-				lo := tableIntLit(rlo, signed, width)
-				g.pf("%sif ( %s < %s ) { %s = %s; clamped++; }\n", ind, expr, lo, expr, lo)
-			}
-			if high {
-				hi := tableIntLit(rhi, signed, width)
-				lead := "if"
-				if low {
-					lead = "else if"
-				}
-				g.pf("%s%s ( %s > %s ) { %s = %s; clamped++; }\n", ind, lead, expr, hi, expr, hi)
+			switch {
+			case low && high:
+				g.fixedClampBoth(expr, tableIntLit(rlo, signed, width), tableIntLit(rhi, signed, width), ind)
+			case low:
+				g.fixedClampEnd(expr, "<", tableIntLit(rlo, signed, width), ind)
+			case high:
+				g.fixedClampEnd(expr, ">", tableIntLit(rhi, signed, width), ind)
 			}
 		}
 		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
 			maxv := (uint64(1) << f.Type.Width) - 1
-			g.pf("%sif ( %s > %dull ) { %s = %dull; clamped++; } // bits(%d) width clamp\n", ind, expr, maxv, expr, maxv, f.Type.Width)
+			g.pf("%s// bits(%d) width clamp\n", ind, f.Type.Width)
+			g.fixedClampEnd(expr, ">", fmt.Sprintf("%dull", maxv), ind)
 		}
 	}
+}
+
+// fixedClampBoth is a two-ended clamp: the select, then the count as an add.
+func (g *tableGen) fixedClampBoth(expr, lo, hi, ind string) {
+	// THE COUNT IS AN OR OF THE TWO ENDS, and the casts are what say the `|` is
+	// meant: clang reads a bitwise operator between two comparisons as a
+	// mistyped `||` and reds it (-Wbitwise-instead-of-logical), which is a good
+	// warning about code that is not this. A sum would silence it too and is
+	// measurably slower — the or folds to a mask the compiler keeps in a
+	// vector lane, and the add does not (test/bench/fixedform_measure.cpp).
+	g.pf("%sclamped += (int) ( %s < %s ) | (int) ( %s > %s );\n", ind, expr, lo, expr, hi)
+	g.pf("%s%s = ( %s < %s ) ? %s : ( ( %s > %s ) ? %s : %s );\n", ind, expr, expr, lo, lo, expr, hi, hi, expr)
+}
+
+// fixedClampEnd is the one-ended twin: an end the storage's own width already
+// holds is an end the emitter drops (tableClampEnds), so a great many bounded
+// fields spend one compare and not two.
+func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
+	g.pf("%sclamped += ( %s %s %s );\n", ind, expr, op, bound)
+	g.pf("%s%s = ( %s %s %s ) ? %s : %s;\n", ind, expr, expr, op, bound, bound, expr)
 }

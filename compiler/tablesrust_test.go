@@ -3,12 +3,14 @@
 package compiler
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestRustEmitsTableModules: the rust target adds the table accelerator
@@ -218,36 +220,52 @@ table FixedProbe
 }
 `
 
-// TestRustFixedFormBlockIsTheCppReferenceByteForByte is what keeps this port's
-// §3.4 layout walk from becoming a SECOND WIRE.
+// TestRustFixedFormLayoutIsIrsByteForByte is what keeps this port's §3.4 layout
+// from becoming a SECOND WIRE.
 //
-// The vocabulary block is the form's whole self-description and its fnv1a64 is
-// the eight bytes every record carries, so two backends whose blocks differ
-// anywhere are two backends that never read each other's records — silently,
-// as `no_block`, which looks like a deployment problem and is not one. The C++
-// backend is the REFERENCE for this form (internal/codegen/cpptable/
-// fixedform.go), so this generates the SAME unit for both and requires the
-// bytes and the hash to be identical, per root.
+// The LAYOUT is the form's whole self-description and its fnv1a64 is the eight
+// bytes every record carries, so two backends whose layouts differ anywhere are
+// two backends that never read each other's records — silently, as `no_layout`,
+// which looks like a deployment problem and is not one.
 //
-// It is the both-directions form the registry scans already use: every root
-// C++ emits a block for that Rust also emits one for is compared, and the
-// comparison set has to be non-empty or the test, not the emitter, is what
-// broke.
-func TestRustFixedFormBlockIsTheCppReferenceByteForByte(t *testing.T) {
+// THE ORACLE IS ir, AND IT IS ir BECAUSE ANOTHER BACKEND IS NOT AN ORACLE. This
+// test used to generate the same unit for C++ and for Rust and diff the two
+// emitters' TEXT. That compares two renderings and not either one against the
+// law: it passes the day both ports drift together, it fails the day the
+// reference merely RENAMES its constant, and it says nothing at all about the
+// walk. ir/fixedform.go IS the law — the constant size of every field, the
+// pre-order walk and the hash over it, in one place because it produces BYTES —
+// so the bytes this port emits are compared against the bytes ir produces, per
+// root, and the C++ backend is not in the room.
+func TestRustFixedFormLayoutIsIrsByteForByte(t *testing.T) {
 	unit := unitFromSource(t, fixedFormSrc)
-	cppFiles, err := New().Generate(unit, "cpp", Options{})
-	if err != nil {
-		t.Fatalf("--lang cpp: %v", err)
-	}
-	rustFiles, err := New().Generate(unitFromSource(t, fixedFormSrc), "rust", Options{})
+	rustFiles, err := New().Generate(unit, "rust", Options{})
 	if err != nil {
 		t.Fatalf("--lang rust: %v", err)
 	}
-	cppBlocks, cppHashes := cppFixedBlocks(join(cppFiles))
 	rustBlocks, rustHashes := rustFixedBlocks(join(rustFiles))
 	if len(rustBlocks) == 0 {
-		t.Fatal("the Rust backend emitted no fixed-form block at all for a unit of fixed tables — " +
+		t.Fatal("the Rust backend emitted no fixed-form layout at all for a unit of fixed tables — " +
 			"the scan, or the emitter, is what broke")
+	}
+	// ir's own answer, per root, from the walk every port renders
+	want := map[string]string{}
+	wantHash := map[string]string{}
+	for _, st := range ir.TableFixedRoots(unit) {
+		if !ir.TableFixedEmitted(unit, st) {
+			continue
+		}
+		layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+		hex := make([]string, 0, len(layout))
+		for _, b := range layout {
+			hex = append(hex, fmt.Sprintf("0x%02x", b))
+		}
+		key := screamingOf(st.Name)
+		want[key] = strings.Join(hex, " ")
+		wantHash[key] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout))
+	}
+	if len(want) == 0 {
+		t.Fatal("ir names no fixed root in a unit of fixed tables — the fixture, not the emitter, is what broke")
 	}
 	names := make([]string, 0, len(rustBlocks))
 	for name := range rustBlocks {
@@ -256,24 +274,28 @@ func TestRustFixedFormBlockIsTheCppReferenceByteForByte(t *testing.T) {
 	sort.Strings(names)
 	compared := 0
 	for _, name := range names {
-		want, ok := cppBlocks[name]
+		golden, ok := want[name]
 		if !ok {
-			t.Errorf("the Rust backend emits a fixed-form block for %s and the C++ REFERENCE does not — "+
-				"a port may carry fewer shapes than the reference, never more", name)
+			t.Errorf("the Rust backend emits a fixed-form layout for %s and ir does not name it a fixed root — "+
+				"a port may carry fewer shapes than the law, never more", name)
 			continue
 		}
 		compared++
-		if want != rustBlocks[name] {
-			t.Errorf("%s's vocabulary block differs from the C++ reference's:\n  cpp  %s\n  rust %s",
-				name, want, rustBlocks[name])
+		if golden != rustBlocks[name] {
+			t.Errorf("%s's layout differs from ir's:\n  ir   %s\n  rust %s", name, golden, rustBlocks[name])
 		}
-		if cppHashes[name] != rustHashes[name] {
-			t.Errorf("%s's fixed-form hash differs from the C++ reference's: cpp %s, rust %s — "+
-				"a record written by one is `no_block` to the other", name, cppHashes[name], rustHashes[name])
+		if wantHash[name] != rustHashes[name] {
+			t.Errorf("%s's fixed-form hash differs from ir's: ir %s, rust %s — "+
+				"a record written against the law is `no_layout` to this port", name, wantHash[name], rustHashes[name])
 		}
 	}
 	if compared == 0 {
-		t.Fatal("no root was compared against the reference at all")
+		t.Fatal("no root was compared against ir at all")
+	}
+	for name := range want {
+		if _, ok := rustBlocks[name]; !ok {
+			t.Errorf("ir names %s a fixed root and the Rust backend emits no layout for it", name)
+		}
 	}
 }
 
@@ -287,31 +309,15 @@ func join(files map[string][]byte) string {
 }
 
 var (
-	// THE REFERENCE SPELLS THE LAYOUT `FixedLayout` (internal/codegen/cpptable/
-	// fixedform.go); Rust spells the same bytes `<ROOT>_FIXED_BLOCK`. The two
-	// spellings are compared, never assumed equal, because the BYTES are the
-	// contract and the identifier is each target's own.
-	cppFixedBlockRe = regexp.MustCompile(`(?s)constexpr uint8_t (\w+)FixedLayout\[\] = \{(.*?)\};`)
-	cppFixedHashRe  = regexp.MustCompile(`constexpr uint64_t (\w+)FixedHash = (0x[0-9a-f]+)ull;`)
-	rsFixedBlockRe  = regexp.MustCompile(`(?s)pub const ([A-Z0-9_]+)_FIXED_BLOCK: \[u8; \d+\] = \[(.*?)\];`)
-	rsFixedHashRe   = regexp.MustCompile(`pub const ([A-Z0-9_]+)_FIXED_HASH: u64 = (0x[0-9a-f]+);`)
-	fixedByteRe     = regexp.MustCompile(`0x[0-9a-f]{2}`)
+	// Rust spells the layout `<ROOT>_FIXED_BLOCK`; ir produces the bytes. The
+	// identifier is this target's own and the BYTES are the contract.
+	rsFixedBlockRe = regexp.MustCompile(`(?s)pub const ([A-Z0-9_]+)_FIXED_BLOCK: \[u8; \d+\] = \[(.*?)\];`)
+	rsFixedHashRe  = regexp.MustCompile(`pub const ([A-Z0-9_]+)_FIXED_HASH: u64 = (0x[0-9a-f]+);`)
+	fixedByteRe    = regexp.MustCompile(`0x[0-9a-f]{2}`)
 )
 
-// cppFixedBlocks and rustFixedBlocks key on the SCREAMING spelling, which is
-// the one shape both targets can be mapped onto without either one's naming
-// rules leaking into the other's.
-func cppFixedBlocks(text string) (map[string]string, map[string]string) {
-	blocks, hashes := map[string]string{}, map[string]string{}
-	for _, m := range cppFixedBlockRe.FindAllStringSubmatch(text, -1) {
-		blocks[screamingOf(m[1])] = strings.Join(fixedByteRe.FindAllString(m[2], -1), " ")
-	}
-	for _, m := range cppFixedHashRe.FindAllStringSubmatch(text, -1) {
-		hashes[screamingOf(m[1])] = m[2]
-	}
-	return blocks, hashes
-}
-
+// rustFixedBlocks keys on the SCREAMING spelling, which is what
+// ir.RustConstName gives a root and what the emitted constant carries.
 func rustFixedBlocks(text string) (map[string]string, map[string]string) {
 	blocks, hashes := map[string]string{}, map[string]string{}
 	for _, m := range rsFixedBlockRe.FindAllStringSubmatch(text, -1) {

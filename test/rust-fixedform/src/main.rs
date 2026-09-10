@@ -48,17 +48,6 @@ fn slurp(dir: &str, name: &str) -> Vec<u8> {
     }
 }
 
-fn records_at(data: &[u8]) -> usize {
-    let h = tblfx1::TABLE_FIXED_HEADER_BYTES;
-    h + 4 + u32::from_le_bytes(data[h..h + 4].try_into().expect("four bytes")) as usize
-}
-
-fn layout_of(data: &[u8]) -> &[u8] {
-    let h = tblfx1::TABLE_FIXED_HEADER_BYTES;
-    let n = u32::from_le_bytes(data[h..h + 4].try_into().expect("four bytes")) as usize;
-    &data[h + 4..h + 4 + n]
-}
-
 // ---------------------------------------------------------------------------
 // THE WRITE: read the reference's file, save it back, and the bytes must be
 // identical. One macro because the shape is the same for every root and the
@@ -140,9 +129,19 @@ fn the_write(dir: &str) {
     check(v.hulls[1].turrets[2].cooldown == 0.75, "keyed: a keyed array nested in a keyed array");
     check(v.hulls[0].turrets[0].gunner_present, "keyed: an optional section that is PRESENT");
     check(!v.hulls[0].turrets[1].gunner_present, "keyed: an optional section that is ABSENT");
+    // AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS (§3.4). The payload
+    // rides WHOLE whether or not the flag is set, and when the flag is 0 what
+    // rides is ZERO — not the writer's untouched storage, and not the field's
+    // declared default either: `reaction` declares 0.3 and the PRESENT turret
+    // beside this one carries it, so a 0.0 here is the absent one's hole and
+    // not a default that failed to land.
     check(
         v.hulls[0].turrets[1].gunner.reaction == 0.0,
-        "keyed: an ABSENT optional's payload is the template's zeros (§3.4)",
+        "keyed: an ABSENT optional's payload is the template's ZEROS (§3.4)",
+    );
+    check(
+        v.hulls[0].turrets[0].gunner.reaction != 0.0,
+        "NEGATIVE CONTROL: the PRESENT optional beside it carries a payload, so the zero above is absence",
     );
 
     // the packed corpus's root: COUNTED arrays, an enum with a declared
@@ -199,7 +198,8 @@ macro_rules! compiled_self_plan {
         let n = $krate::$load(&mut want, &golden, &mut plan, &mut remap, &mut report).unwrap_or(0);
 
         // and what a plan COMPILED from the same block lands
-        let theirs = $krate::TableFixedBlock::parse(layout_of(&golden));
+        let block_bytes = layout_bytes(&golden);
+        let theirs = $krate::TableFixedBlock::parse(&golden[LAYOUT_AT..LAYOUT_AT + block_bytes]);
         let mine = $krate::TableFixedBlock::parse(&$krate::$block);
         check(
             theirs.is_some() && mine.is_some(),
@@ -224,7 +224,7 @@ macro_rules! compiled_self_plan {
             compiled > 1,
             concat!($file, ": the compiled plan is a REAL plan — text, count, ordinal and the keyed walk break the runs"),
         );
-        let rest = &golden[records_at(&golden)..];
+        let rest = &golden[LAYOUT_AT + block_bytes..];
         let record = $krate::$body + 8;
         let mut got = [$krate::$row::default(); $cap];
         for k in 0..n {
@@ -367,7 +367,7 @@ fn the_negative_controls(dir: &str) {
     //    by name: nothing decoded, no counter moved.
     {
         let mut damaged = slurp(dir, "fx1.bin");
-        damaged[tblfx1::TABLE_FIXED_HEADER_BYTES + 4] ^= 0xFF; // the layout's entry count, so the tree cannot close
+        damaged[LAYOUT_AT] ^= 0xFF; // the entry count, so the tree cannot close
         let mut values = [tblfx1::FxRootRow::default(); 8];
         let mut plan = [tblfx1::TableFixedEntry::default(); 512];
         let mut remap = [0u16; 512];
@@ -384,20 +384,87 @@ fn the_negative_controls(dir: &str) {
         );
     }
 
-    // 3. A FORM BYTE THIS BUILD DOES NOT CARRY is `newer_form`.
+    // 2b. A HEADER THAT LIES ABOUT THE LAYOUT BEHIND IT. The pinned header
+    //     names the layout ONCE (docs/SPEC-TABLES.md §3) and a record names the
+    //     layout it was stamped by; a header whose hash is not the hash of the
+    //     layout it carries is refused, and it is checked LAST so a broken
+    //     layout refuses under its own name first.
     {
-        let mut future = slurp(dir, "fx1.bin");
-        future[0] = 4;
+        let mut lying = slurp(dir, "fx1.bin");
+        lying[HASH_AT] ^= 0xFF;
         let mut values = [tblfx1::FxRootRow::default(); 8];
         let mut plan = [tblfx1::TableFixedEntry::default(); 512];
         let mut remap = [0u16; 512];
         let mut report = tblfx1::TableFixedReport::default();
-        let n = tblfx1::fx_root_fixed_load(&mut values, &future, &mut plan, &mut remap, &mut report);
-        check(n.is_none(), "newer_form: refused");
+        let n = tblfx1::fx_root_fixed_load(&mut values, &lying, &mut plan, &mut remap, &mut report);
+        check(n.is_none(), "the header's hash: a lying header is refused");
         check(
-            report.reason == tblfx1::TableFixedReason::NewerForm,
-            "newer_form: refused BY NAME",
+            report.refused && report.reason == tblfx1::TableFixedReason::BlockMalformed,
+            "the header's hash: refused BY NAME",
         );
+        // AND THE NEGATIVE CONTROL FOR IT: the same file untouched loads.
+        let clean = slurp(dir, "fx1.bin");
+        let mut report = tblfx1::TableFixedReport::default();
+        check(
+            tblfx1::fx_root_fixed_load(&mut values, &clean, &mut plan, &mut remap, &mut report)
+                == Some(2),
+            "NEGATIVE CONTROL: the untouched file loads, so the refusal above is the forgery",
+        );
+    }
+
+    // 3. A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE, AND
+    //    THE NAME SAYS WHICH DIRECTION (docs/SPEC-TABLES.md §3, §3.4). The registry
+    //    is ordered, so a fixed reader handed form `1` has been handed the
+    //    VARIABLE form, which is OLDER: calling that `newer_form` would send a
+    //    caller looking for a build that does not exist. Form `4` is the byte no
+    //    form defines or reserves, which is the only kind of byte `newer_form` is
+    //    the honest answer for.
+    {
+        let rows: [(u8, tblfx1::TableFixedReason, &str); 3] = [
+            (
+                1,
+                tblfx1::TableFixedReason::PreviousForm,
+                "previous_form for the VARIABLE form",
+            ),
+            (
+                2,
+                tblfx1::TableFixedReason::MessageFormAsFile,
+                "message_form_as_file for a batch",
+            ),
+            (
+                4,
+                tblfx1::TableFixedReason::NewerForm,
+                "newer_form for a byte no form defines",
+            ),
+        ];
+        for (form, want, what) in rows {
+            let mut other = slurp(dir, "fx1.bin");
+            other[0] = form;
+            let mut values = [tblfx1::FxRootRow::default(); 8];
+            let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+            let mut remap = [0u16; 512];
+            let mut report = tblfx1::TableFixedReport::default();
+            let n = tblfx1::fx_root_fixed_load(
+                &mut values,
+                &other,
+                &mut plan,
+                &mut remap,
+                &mut report,
+            );
+            check(n.is_none(), what);
+            check(
+                report.refused && report.reason == want,
+                &format!("REFUSED BY NAME: {what}"),
+            );
+            check(!report.malformed, "REFUSED BY NAME: never damage");
+            check(
+                report.unknown == 0
+                    && report.kind_mismatch == 0
+                    && report.widened == 0
+                    && report.clamped == 0,
+                "REFUSED BY NAME: a form-byte refusal moves no counter",
+            );
+        }
     }
 
     // 4. A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE is `plan_too_large`:
@@ -473,21 +540,37 @@ const BENCH_RECORDS: usize = 64;
 const EVENT_TAG: usize = 1108;
 const EVENT_ARM: usize = 1109;
 
+// THE PINNED FILE HEADER (docs/SPEC-TABLES.md §3, "THE FIRST BYTE"): the FORM
+// BYTE at 0, seven RESERVED ZERO bytes, the LAYOUT's own eight-byte hash at 8,
+// and the body at 16 — one rule for all five forms. The layout rides behind its
+// u32 length at 16, and the records back to back behind that.
+const HEADER_BYTES: usize = 16;
+const HASH_AT: usize = 8;
+const LAYOUT_AT: usize = HEADER_BYTES + 4;
+
+fn layout_bytes(f: &[u8]) -> usize {
+    u32_at(f, HEADER_BYTES) as usize
+}
+
+fn records_at(f: &[u8]) -> usize {
+    LAYOUT_AT + layout_bytes(f)
+}
+
 fn u32_at(b: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(b[at..at + 4].try_into().expect("four bytes"))
 }
 
 fn the_bench_corpus(dir: &str) {
     let golden = slurp(dir, "bench_fixed.bin");
-    let vocab = slurp(dir, "bench_fixed.layout");
+    let layout = slurp(dir, "bench_fixed.layout");
 
     // THE BLOCK IS THE CORPUS'S BLOCK, and that one comparison is what says
     // this leg speaks the form and not a near miss: the positions, the ids, the
     // kinds, the record's size and the hash every record carries are all
     // settled by these bytes.
     check(
-        vocab == benchfixed::FIXED_TABLE_FIXED_BLOCK,
-        "bench_fixed: this build's vocabulary block IS the corpus's, byte for byte",
+        layout == benchfixed::FIXED_TABLE_FIXED_BLOCK,
+        "bench_fixed: this build's LAYOUT IS the corpus's, byte for byte",
     );
     check(
         benchfixed::FIXED_TABLE_FIXED_HASH == 0x32f1_c4a3_02a2_24eb,
@@ -545,17 +628,17 @@ fn the_bench_corpus(dir: &str) {
         let body = &rest[k * record + 8..(k + 1) * record];
         let event = values[k].value.game_event;
         check(
-            event.tag == body[EVENT_TAG],
+            event.tag() == body[EVENT_TAG],
             "bench_fixed: the tag landed as the record carries it",
         );
-        if event.tag != 1 {
+        if event.tag() != 1 {
             continue; // `game_event` is STRUCTURE, pinned to `hit` in every record
         }
         hits += 1;
         // SAFETY: the tag is 1, which names `hit`; the twin's contract is that
         // the tag names the live arm, and the scatter that landed this value is
         // what set both.
-        let hit = unsafe { event.arms.hit };
+        let hit = event.hit().expect("the tag names `hit`");
         check(
             hit.target_id == u32_at(body, EVENT_ARM)
                 && hit.damage == u32_at(body, EVENT_ARM + 4) as i32
@@ -598,28 +681,24 @@ fn the_bench_corpus(dir: &str) {
 
 fn the_ordinal_slide() {
     // FE1 writes: Gold with a `ward`, and Bronze with a `boost`.
-    let older = [
-        tblfe1::FeRootRow {
+    // THE ARM AND THE TAG MOVE TOGETHER, which is the only way they move at
+    // all: `set_ward` is the whole of "tag 2, ward 41" and the two cannot be
+    // set apart.
+    let older = {
+        let mut gold = tblfe1::FeRootRow {
             grade: 3, // Gold
-            effect: tblfe1::EffectRow {
-                tag: 2, // ward
-                arms: tblfe1::EffectRowArms {
-                    ward: tblfe1::WardRow { charge: 41 },
-                },
-            },
             tail: 99,
-        },
-        tblfe1::FeRootRow {
+            ..Default::default()
+        };
+        gold.effect.set_ward(tblfe1::WardRow { charge: 41 });
+        let mut bronze = tblfe1::FeRootRow {
             grade: 1, // Bronze
-            effect: tblfe1::EffectRow {
-                tag: 1, // boost
-                arms: tblfe1::EffectRowArms {
-                    boost: tblfe1::BoostRow { power: 17 },
-                },
-            },
             tail: 100,
-        },
-    ];
+            ..Default::default()
+        };
+        bronze.effect.set_boost(tblfe1::BoostRow { power: 17 });
+        [gold, bronze]
+    };
     let mut slide = vec![0u8; tblfe1::fe_root_fixed_measure(older.len())];
     check(
         tblfe1::fe_root_fixed_save(&older, &mut slide) == Some(slide.len()),
@@ -633,19 +712,19 @@ fn the_ordinal_slide() {
     let n = tblfe2::fe_root_fixed_load(&mut values, &slide, &mut plan, &mut remap, &mut report);
     check(n == Some(2), "the slide: FE2 reads both of FE1's records");
     check(values[0].grade == 4, "the slide: the enum's Gold slid 3 -> 4 and was REMAPPED");
-    check(values[0].effect.tag == 3, "the slide: the union's `ward` tag slid 2 -> 3");
+    check(values[0].effect.tag() == 3, "the slide: the union's `ward` tag slid 2 -> 3");
     // SAFETY: the tag is 3, which is FE2's `ward`; the scatter set both.
     check(
-        unsafe { values[0].effect.arms.ward }.charge == 41,
+        values[0].effect.ward().expect("the tag names `ward`").charge == 41,
         "the slide: and the ARM BEHIND the slid tag landed",
     );
     check(
-        values[1].grade == 1 && values[1].effect.tag == 1,
+        values[1].grade == 1 && values[1].effect.tag() == 1,
         "the slide: Bronze did not slide, and neither did the `boost` arm",
     );
     // SAFETY: the tag is 1, which is FE2's `boost`.
     check(
-        unsafe { values[1].effect.arms.boost }.power == 17,
+        values[1].effect.boost().expect("the tag names `boost`").power == 17,
         "the slide: the unslid arm's payload",
     );
     check(
@@ -665,16 +744,15 @@ fn the_ordinal_slide() {
     // AND BACK: FE1 reading FE2. `Electrum` and `shield` are variants this
     // reader has no name for, so the ordinal resolves to NONE and the arm is
     // simply never a source.
-    let newer = [tblfe2::FeRootRow {
-        grade: 2, // Electrum, which FE1 cannot name
-        effect: tblfe2::EffectRow {
-            tag: 2, // shield, which FE1 cannot name
-            arms: tblfe2::EffectRowArms {
-                shield: tblfe2::ShieldRow { plating: 5 },
-            },
-        },
-        tail: 8,
-    }];
+    let newer = {
+        let mut one = tblfe2::FeRootRow {
+            grade: 2, // Electrum, which FE1 cannot name
+            tail: 8,
+            ..Default::default()
+        };
+        one.effect.set_shield(tblfe2::ShieldRow { plating: 5 }); // which FE1 cannot name either
+        [one]
+    };
     let mut back = vec![0u8; tblfe2::fe_root_fixed_measure(newer.len())];
     tblfe2::fe_root_fixed_save(&newer, &mut back);
 
@@ -686,7 +764,7 @@ fn the_ordinal_slide() {
     check(n == Some(1), "coming back: FE1 reads FE2's record");
     check(values[0].grade == 0, "coming back: a variant this reader cannot name resolves to None");
     check(
-        values[0].effect.tag == 0,
+        values[0].effect.tag() == 0,
         "coming back: an ARM this reader cannot name leaves the tag at None",
     );
     check(values[0].tail == 8, "coming back: and the field past it still lands");
@@ -722,7 +800,7 @@ fn the_union_controls(dir: &str) {
     );
     check(n == Some(1), "a forged tag: the record still reads");
     check(
-        values[0].value.game_event.tag == 0,
+        values[0].value.game_event.tag() == 0,
         "a forged tag: a tag past the arm count lands as None",
     );
     check(report.clamped == 1, "a forged tag: and it counts ONE clamped");
@@ -744,16 +822,15 @@ fn the_union_controls(dir: &str) {
     // this case lands None and counts NOTHING, where the identity path above
     // counts one clamped.
     {
-        let older = [tblfe1::FeRootRow {
-            grade: 1,
-            effect: tblfe1::EffectRow {
-                tag: 2, // ward
-                arms: tblfe1::EffectRowArms {
-                    ward: tblfe1::WardRow { charge: 41 },
-                },
-            },
-            tail: 77,
-        }];
+        let older = {
+            let mut one = tblfe1::FeRootRow {
+                grade: 1,
+                tail: 77,
+                ..Default::default()
+            };
+            one.effect.set_ward(tblfe1::WardRow { charge: 41 });
+            [one]
+        };
         let mut file = vec![0u8; tblfe1::fe_root_fixed_measure(1)];
         tblfe1::fe_root_fixed_save(&older, &mut file);
         // FE1's body is `grade`, then the union, then `tail`: the tag leads the
@@ -769,7 +846,7 @@ fn the_union_controls(dir: &str) {
             tblfe2::fe_root_fixed_load(&mut values, &file, &mut plan, &mut remap, &mut report);
         check(n == Some(1), "a forged tag, compiled plan: the record still reads");
         check(
-            values[0].effect.tag == 0,
+            values[0].effect.tag() == 0,
             "a forged tag, compiled plan: a tag no arm of the WRITER's names lands as None",
         );
         check(
@@ -793,7 +870,7 @@ fn the_union_controls(dir: &str) {
         &mut clean,
     );
     check(
-        values[0].value.game_event.tag == 1 && clean.clamped == 0,
+        values[0].value.game_event.tag() == 1 && clean.clamped == 0,
         "NEGATIVE CONTROL: the same record unforged lands `hit` and clamps nothing",
     );
 }
@@ -821,37 +898,30 @@ fn the_union_controls(dir: &str) {
 fn the_text_under_an_arm() {
     // FU1 writes: the LABELLED arm — the union's SECOND — with a scalar either
     // side of the text, and the `plain` arm beside it so both are exercised.
-    let older = [
-        tblfu1::FuRootRow {
+    let older = {
+        let mut labelled = tblfu1::FuRootRow {
             flag: true,
             note: 44,
             note_present: true,
-            pick: tblfu1::PickRow {
-                tag: 2, // labelled
-                arms: tblfu1::PickRowArms {
-                    labelled: tblfu1::LabelledRow {
-                        lead: 101,
-                        label: *b"hello\0\0\0\0",
-                        label_length: 5,
-                        trail: 202,
-                    },
-                },
-            },
             tail: 11,
-        },
-        tblfu1::FuRootRow {
+            ..Default::default()
+        };
+        labelled.pick.set_labelled(tblfu1::LabelledRow {
+            lead: 101,
+            label: *b"hello\0\0\0\0",
+            label_length: 5,
+            trail: 202,
+        });
+        let mut plain = tblfu1::FuRootRow {
             flag: false,
             note: 0,
             note_present: false,
-            pick: tblfu1::PickRow {
-                tag: 1, // plain
-                arms: tblfu1::PickRowArms {
-                    plain: tblfu1::PlainRow { n: 303 },
-                },
-            },
             tail: 12,
-        },
-    ];
+            ..Default::default()
+        };
+        plain.pick.set_plain(tblfu1::PlainRow { n: 303 });
+        [labelled, plain]
+    };
     let mut file = vec![0u8; tblfu1::fu_root_fixed_measure(older.len())];
     check(
         tblfu1::fu_root_fixed_save(&older, &mut file) == Some(file.len()),
@@ -870,9 +940,9 @@ fn the_text_under_an_arm() {
         "text under an arm: its own layout is the identity plan, and it moves no counter",
     );
     // SAFETY: the tag is 2, which names `labelled`; the scatter set both.
-    let id_arm = unsafe { mine[0].pick.arms.labelled };
+    let id_arm = mine[0].pick.labelled().expect("the tag names `labelled`");
     check(
-        mine[0].pick.tag == 2 && id_arm.label_length == 5 && &id_arm.label[..5] == b"hello",
+        mine[0].pick.tag() == 2 && id_arm.label_length == 5 && &id_arm.label[..5] == b"hello",
         "text under an arm: the IDENTITY read lands the text",
     );
     check(
@@ -898,8 +968,8 @@ fn the_text_under_an_arm() {
     // read that landed '' while the identity read landed 'hello' passed every
     // other assertion in this file.
     // SAFETY: both tags are 2, which names `labelled` in both builds.
-    let arm = unsafe { theirs[0].pick.arms.labelled };
-    check(theirs[0].pick.tag == 2, "text under an arm: the tag agrees");
+    let arm = theirs[0].pick.labelled().expect("the tag names `labelled`");
+    check(theirs[0].pick.tag() == 2, "text under an arm: the tag agrees");
     check(arm.lead == id_arm.lead && arm.lead == 101, "text under an arm: the scalar BEFORE the text agrees");
     check(
         arm.label_length == id_arm.label_length && arm.label_length == 5,
@@ -923,9 +993,9 @@ fn the_text_under_an_arm() {
     // accident for ordinal 1 and wrong from 2 up.
     // SAFETY: both tags are 1, which names `plain`.
     check(
-        theirs[1].pick.tag == 1
-            && unsafe { theirs[1].pick.arms.plain }.n == unsafe { mine[1].pick.arms.plain }.n
-            && unsafe { theirs[1].pick.arms.plain }.n == 303,
+        theirs[1].pick.tag() == 1
+            && theirs[1].pick.plain().expect("the tag names `plain`").n == mine[1].pick.plain().expect("the tag names `plain`").n
+            && theirs[1].pick.plain().expect("the tag names `plain`").n == 303,
         "text under an arm: the FIRST arm agrees as well",
     );
     check(theirs[1].tail == 12, "text under an arm: and its tail");
@@ -1003,16 +1073,15 @@ fn the_text_under_an_arm() {
 // ---------------------------------------------------------------------------
 
 fn the_enum_extent() {
-    let older = [tblfe1::FeRootRow {
-        grade: 3, // Gold
-        effect: tblfe1::EffectRow {
-            tag: 1, // boost
-            arms: tblfe1::EffectRowArms {
-                boost: tblfe1::BoostRow { power: 17 },
-            },
-        },
-        tail: 55,
-    }];
+    let older = {
+        let mut one = tblfe1::FeRootRow {
+            grade: 3, // Gold
+            tail: 55,
+            ..Default::default()
+        };
+        one.effect.set_boost(tblfe1::BoostRow { power: 17 });
+        [one]
+    };
     let mut file = vec![0u8; tblfe1::fe_root_fixed_measure(1)];
     tblfe1::fe_root_fixed_save(&older, &mut file);
     let grade_at = records_at(&file) + 8; // FE1's body leads with `grade`
@@ -1036,7 +1105,7 @@ fn the_enum_extent() {
         "a forged ordinal: nothing else fired — an out-of-range ordinal is not damage",
     );
     check(
-        values[0].tail == 55 && values[0].effect.tag == 1,
+        values[0].tail == 55 && values[0].effect.tag() == 1,
         "a forged ordinal: every field beside it still landed",
     );
 
@@ -1075,6 +1144,251 @@ fn the_enum_extent() {
 }
 
 // ---------------------------------------------------------------------------
+// THE GUARD IS THE TAG, AT THE TAG'S OWN WIDTH.
+//
+// A plan entry that belongs to a union arm runs only when the writer's tag holds
+// the writer's ordinal for that arm. The tag is one, two, four or eight bytes
+// wide — the width its variant count derives (§3.4) — and the loop used to
+// compare only the FIRST of them. On a two-byte tag that made 0x0101 read as
+// arm 1: an ordinal NO ARM of the writer's build names, running the arm's
+// entries over a stranger's record and landing a value nobody wrote.
+//
+// Every union in this corpus has a ONE-byte tag, so nothing here reaches the
+// wide case by schema. The plan is data, so the case is reached by BUILDING THE
+// ENTRY — which is what the plan compiler builds for a wide tag — and running
+// the loop over it. The control is the stain: the same entry at width one DOES
+// fire on the same bytes, which is the wrong behaviour, watched working.
+// ---------------------------------------------------------------------------
+
+fn the_guard_is_the_whole_tag() {
+    // a record body whose first two bytes are a TWO-BYTE tag of 0x0101 = 257,
+    // and four bytes of payload behind it
+    let body: [u8; 6] = [0x01, 0x01, 0xAA, 0xBB, 0xCC, 0xDD];
+
+    let arm_one = |argw: u8| tblfu1::TableFixedEntry {
+        src: 2,
+        dst: 0,
+        size: 4,
+        guard: 0,
+        arg: 1, // arm 1, in the writer's declared order
+        argw,
+        op: tblfu1::TableFixedOp::Copy,
+        ..tblfu1::TableFixedEntry::default()
+    };
+
+    let mut image = [0u8; 4];
+    let mut report = tblfu1::TableFixedReport::default();
+    tblfu1::table_fixed_run(&[arm_one(2)], &[], &body, &mut image, &mut report);
+    check(
+        image == [0u8; 4] && !report.malformed,
+        "the guard: a two-byte tag of 0x0101 is NOT arm 1, so the arm's entry does not fire",
+    );
+
+    // and the arm the tag DOES name still fires: 0x0001 at two bytes is 1
+    let named: [u8; 6] = [0x01, 0x00, 0xAA, 0xBB, 0xCC, 0xDD];
+    let mut image = [0u8; 4];
+    let mut report = tblfu1::TableFixedReport::default();
+    tblfu1::table_fixed_run(&[arm_one(2)], &[], &named, &mut image, &mut report);
+    check(
+        image == [0xAA, 0xBB, 0xCC, 0xDD] && !report.malformed,
+        "the guard: 0x0001 at two bytes IS arm 1, and the entry fires",
+    );
+
+    // NEGATIVE CONTROL: the same entry comparing ONE byte fires on 0x0101 —
+    // the behaviour the fix removed, watched doing the wrong thing.
+    let mut image = [0u8; 4];
+    let mut report = tblfu1::TableFixedReport::default();
+    tblfu1::table_fixed_run(&[arm_one(1)], &[], &body, &mut image, &mut report);
+    check(
+        image == [0xAA, 0xBB, 0xCC, 0xDD],
+        "NEGATIVE CONTROL: comparing one byte of a two-byte tag DOES fire arm 1 on 0x0101",
+    );
+
+    // and a guard past the end of the record is framing damage, not a panic
+    let mut image = [0u8; 4];
+    let mut report = tblfu1::TableFixedReport::default();
+    let past = tblfu1::TableFixedEntry {
+        guard: 5,
+        argw: 4,
+        arg: 1,
+        ..arm_one(4)
+    };
+    tblfu1::table_fixed_run(&[past], &[], &body, &mut image, &mut report);
+    check(
+        report.malformed && image == [0u8; 4],
+        "the guard: a tag whose width runs past the record is malformed and lands nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4).
+//
+// A fixed record is a positional image and the one read loop moves bytes: it
+// asks nothing about what they mean. An ENUM ORDINAL past the enum's top value
+// and a UNION TAG past the arm count are held in the SCATTER, above. What is
+// left is the RANGED SCALAR, and it cannot ride there for the reason the other
+// two can: an `| min = -127` field's SLACK is zero and zero is in range, but a
+// field whose range excludes zero would count a clamp on every clean read if
+// the pass walked storage nobody wrote. So the range pass walks only what a
+// read can have written, and this is what pins it.
+// ---------------------------------------------------------------------------
+
+fn the_declared_range() {
+    let mut one = tabledemo::RangedSignedRow::default();
+    one.i8_inside = 5; // well inside [-127, 126]
+    one.i8_low = 5;
+    let values = [one];
+    let mut file = vec![0u8; tabledemo::ranged_signed_fixed_measure(1)];
+    check(
+        tabledemo::ranged_signed_fixed_save(&values, &mut file) == Some(file.len()),
+        "the range: the record writes",
+    );
+
+    // THE CLEAN READ FIRST, so the clamp below is the forgery and not the pass.
+    let mut back = [tabledemo::RangedSignedRow::default(); 2];
+    let mut plan = [tabledemo::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tabledemo::TableFixedReport::default();
+    let n =
+        tabledemo::ranged_signed_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "the range: the clean record reads");
+    check(
+        back[0].i8_inside == 5 && report.clamped == 0,
+        "NEGATIVE CONTROL: a value inside the range lands untouched and clamps NOTHING",
+    );
+
+    // AND NOW THE FORGERY: `i8_inside` declares [-127, 126] and sits at offset
+    // 3 of the body, so -128 is a value the declaration says cannot exist.
+    let body = records_at(&file) + 8;
+    let mut forged = file.clone();
+    forged[body + 3] = 0x80; // -128
+    let mut report = tabledemo::TableFixedReport::default();
+    let n = tabledemo::ranged_signed_fixed_load(
+        &mut back,
+        &forged,
+        &mut plan,
+        &mut remap,
+        &mut report,
+    );
+    check(n == Some(1), "the range: the forged record still reads");
+    check(
+        back[0].i8_inside == -127,
+        "the range: a value under the declared min lands AT the min",
+    );
+    check(
+        report.clamped == 1 && !report.malformed && !report.refused,
+        "the range: and counts ONE clamped — not damage, and not a refusal",
+    );
+
+    // the other end, on the field whose range excludes only the top
+    let mut forged = file.clone();
+    forged[body + 1] = 0x7F; // 127, past i8_low's max of 126
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_signed_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].i8_low == 126 && report.clamped == 1,
+        "the range: a value over the declared max lands AT the max, and counts one",
+    );
+
+    // A SPAN THAT IS THE STORAGE'S OWN IS NOT A BOUND, and no comparison is
+    // emitted for it: `i8_span` declares [-128, 127], which every int8 holds.
+    let mut forged = file.clone();
+    forged[body] = 0x80; // -128, and legal
+    let mut report = tabledemo::TableFixedReport::default();
+    tabledemo::ranged_signed_fixed_load(&mut back, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        back[0].i8_span == -128 && report.clamped == 0,
+        "the range: a bound ON the storage width's own limit clamps nothing",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4).
+//
+// A `string(N)`'s used bytes are well-formed UTF-8 with NO ZERO among them. A
+// payload that is not the text its kind says it is is DAMAGE and not data, and
+// the verdict is the one every other form reaches: the field reads its DECLARED
+// DEFAULT, one `malformed` is raised, and the rest of the record stands.
+//
+// `bytes(N)` has no content rule at all, and the control below proves it: the
+// same forgery in a `bytes(6)` is data and passes through untouched.
+// ---------------------------------------------------------------------------
+
+fn the_text_content_rule(dir: &str) {
+    let golden = slurp(dir, "fx1.bin");
+    let body = records_at(&golden) + 8;
+    let mut values = [tblfx1::FxRootRow::default(); 8];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+
+    // THE CLEAN READ FIRST, so what follows is the forgery and not the pass.
+    let mut report = tblfx1::TableFixedReport::default();
+    let n =
+        tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
+    check(
+        n == Some(2) && !report.malformed,
+        "NEGATIVE CONTROL: the reference's own text is well formed and raises nothing",
+    );
+    check(
+        values[0].label[..3] == *b"fx1" && values[0].label_length == 3,
+        "the content rule: the clean record's text lands",
+    );
+
+    // A LONE CONTINUATION BYTE is not UTF-8. FX1's `label` is a `string(8)`
+    // whose used length rides at body+22 and whose bytes start at body+26.
+    let mut forged = golden.clone();
+    forged[body + 26] = 0x80;
+    let mut report = tblfx1::TableFixedReport::default();
+    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        report.malformed,
+        "the content rule: a lone continuation byte is DAMAGE and raises malformed",
+    );
+    check(
+        values[0].label[..2] == *b"fx" && values[0].label_length == 2,
+        "the content rule: and the field reads its DECLARED DEFAULT, not the damage",
+    );
+    check(
+        values[0].keep == 4242 && values[0].renamed == 321,
+        "the content rule: the rest of the record stands — the damage is one field's",
+    );
+
+    // AN INTERIOR NULL is legal UTF-8 and is not legal on this wire.
+    let mut forged = golden.clone();
+    forged[body + 27] = 0x00; // inside the three used bytes of "fx1"
+    let mut report = tblfx1::TableFixedReport::default();
+    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        report.malformed && values[0].label_length == 2,
+        "the content rule: an interior NUL is damage too, and takes the default",
+    );
+
+    // AND THE SLACK CARRIES NO MEANING: the same byte PAST the used length is
+    // not read at all, so it is not damage.
+    let mut forged = golden.clone();
+    forged[body + 26 + 5] = 0x80; // past `label_length` of 3
+    let mut report = tblfx1::TableFixedReport::default();
+    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        !report.malformed && values[0].label[..3] == *b"fx1",
+        "the content rule: a byte past the USED LENGTH means nothing and is not judged",
+    );
+
+    // AND `bytes(N)` IS BYTES. FX1's `blob` is a `bytes(6)` whose payload starts
+    // at body+58; the same forgery in it is data and passes straight through.
+    let mut forged = golden.clone();
+    forged[body + 58] = 0x80;
+    let mut report = tblfx1::TableFixedReport::default();
+    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        !report.malformed && values[0].blob[0] == 0x80,
+        "the content rule: a `bytes(N)` has NO content rule — the same byte is data",
+    );
+}
+
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE.
 //
 // Identity's hole list is empty because the identity plan is one Copy of the
@@ -1099,8 +1413,8 @@ fn the_prefill_holes(dir: &str) {
         let mut values = [tblfx1::FxRootRow::default(); 8];
         for v in &mut values {
             v.keep = 0xFFFF_FFFF;
-            v.gone = 12345;
-            v.renamed = -99;
+            v.gone = 999;
+            v.renamed = 999;
             v.narrow = 0xFFFF;
         }
         let mut plan = [tblfx1::TableFixedEntry::default(); 512];
@@ -1230,7 +1544,7 @@ fn the_write_slack() {
     let mut file = vec![0u8; tblfx1::fx_root_fixed_measure(1)];
     let wrote = tblfx1::fx_root_fixed_save(&[v], &mut file);
     check(wrote == Some(file.len()), "slack: the record saves");
-    let body_at = tblfx1::TABLE_FIXED_HEADER_BYTES + 4 + tblfx1::FX_ROOT_FIXED_BLOCK.len() + 8;
+    let body_at = records_at(&file) + 8;
     let body = &file[body_at..body_at + tblfx1::FX_ROOT_FIXED_BODY_BYTES];
     check(
         !body.contains(&0xAA),
@@ -1325,6 +1639,9 @@ fn main() {
     the_enum_extent();
     the_negative_controls(&dir);
     the_union_controls(&bench);
+    the_guard_is_the_whole_tag();
+    the_declared_range();
+    the_text_content_rule(&dir);
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
         println!("rust fixed form: {failures} FAILED");

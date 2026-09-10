@@ -4805,11 +4805,11 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_f
 }
 
 /* Tally's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_fixed_clamp_body_( Tally * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_fixed_clamp_body_( Tally * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->hits < 0 ) { value->hits = 0; (*clamped)++; }
-    else if ( value->hits > 10000 ) { value->hits = 10000; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += (int) ( value->hits < 0 ) | (int) ( value->hits > 10000 );
+    value->hits = ( value->hits < 0 ) ? 0 : ( ( value->hits > 10000 ) ? 10000 : value->hits );
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -4821,8 +4821,13 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_tally_f
 static SCHEMA_UNUSED void schema_graphdemo_tally_fixed_clamp_( Tally * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_graphdemo_tally_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_graphdemo_tally_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- Tally, the fixed form ---- */

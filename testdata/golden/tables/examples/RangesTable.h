@@ -7999,63 +7999,87 @@ inline void RangedWidthsFixedWriteBody( uint8_t * b, const RangedWidths & value 
 }
 
 // RangedSigned's read-side bounds.
-inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & clamped )
+inline void RangedSignedFixedClampBody( RangedSigned & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.i8_low > 126 ) { value.i8_low = 126; clamped++; }
-    if ( value.i8_high < -127 ) { value.i8_high = -127; clamped++; }
-    if ( value.i8_inside < -127 ) { value.i8_inside = -127; clamped++; }
-    else if ( value.i8_inside > 126 ) { value.i8_inside = 126; clamped++; }
-    if ( value.i16_low > 32766 ) { value.i16_low = 32766; clamped++; }
-    if ( value.i16_high < -32767 ) { value.i16_high = -32767; clamped++; }
-    if ( value.i16_inside < -32767 ) { value.i16_inside = -32767; clamped++; }
-    else if ( value.i16_inside > 32766 ) { value.i16_inside = 32766; clamped++; }
-    if ( value.i32_low > 2147483646 ) { value.i32_low = 2147483646; clamped++; }
-    if ( value.i32_high < -2147483647 ) { value.i32_high = -2147483647; clamped++; }
-    if ( value.i32_inside < -2147483647 ) { value.i32_inside = -2147483647; clamped++; }
-    else if ( value.i32_inside > 2147483646 ) { value.i32_inside = 2147483646; clamped++; }
-    if ( value.i64_low > 9223372036854775806ll ) { value.i64_low = 9223372036854775806ll; clamped++; }
-    if ( value.i64_high < -9223372036854775807ll ) { value.i64_high = -9223372036854775807ll; clamped++; }
-    if ( value.i64_inside < -9223372036854775807ll ) { value.i64_inside = -9223372036854775807ll; clamped++; }
-    else if ( value.i64_inside > 9223372036854775806ll ) { value.i64_inside = 9223372036854775806ll; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += ( value.i8_low > 126 );
+    value.i8_low = ( value.i8_low > 126 ) ? 126 : value.i8_low;
+    clamped += ( value.i8_high < -127 );
+    value.i8_high = ( value.i8_high < -127 ) ? -127 : value.i8_high;
+    clamped += (int) ( value.i8_inside < -127 ) | (int) ( value.i8_inside > 126 );
+    value.i8_inside = ( value.i8_inside < -127 ) ? -127 : ( ( value.i8_inside > 126 ) ? 126 : value.i8_inside );
+    clamped += ( value.i16_low > 32766 );
+    value.i16_low = ( value.i16_low > 32766 ) ? 32766 : value.i16_low;
+    clamped += ( value.i16_high < -32767 );
+    value.i16_high = ( value.i16_high < -32767 ) ? -32767 : value.i16_high;
+    clamped += (int) ( value.i16_inside < -32767 ) | (int) ( value.i16_inside > 32766 );
+    value.i16_inside = ( value.i16_inside < -32767 ) ? -32767 : ( ( value.i16_inside > 32766 ) ? 32766 : value.i16_inside );
+    clamped += ( value.i32_low > 2147483646 );
+    value.i32_low = ( value.i32_low > 2147483646 ) ? 2147483646 : value.i32_low;
+    clamped += ( value.i32_high < -2147483647 );
+    value.i32_high = ( value.i32_high < -2147483647 ) ? -2147483647 : value.i32_high;
+    clamped += (int) ( value.i32_inside < -2147483647 ) | (int) ( value.i32_inside > 2147483646 );
+    value.i32_inside = ( value.i32_inside < -2147483647 ) ? -2147483647 : ( ( value.i32_inside > 2147483646 ) ? 2147483646 : value.i32_inside );
+    clamped += ( value.i64_low > 9223372036854775806ll );
+    value.i64_low = ( value.i64_low > 9223372036854775806ll ) ? 9223372036854775806ll : value.i64_low;
+    clamped += ( value.i64_high < -9223372036854775807ll );
+    value.i64_high = ( value.i64_high < -9223372036854775807ll ) ? -9223372036854775807ll : value.i64_high;
+    clamped += (int) ( value.i64_inside < -9223372036854775807ll ) | (int) ( value.i64_inside > 9223372036854775806ll );
+    value.i64_inside = ( value.i64_inside < -9223372036854775807ll ) ? -9223372036854775807ll : ( ( value.i64_inside > 9223372036854775806ll ) ? 9223372036854775806ll : value.i64_inside );
     for ( int64_t i = 0; i < (int64_t) value.edges_count; ++i )
     {
     }
 }
 
 // RangedUnsigned's read-side bounds.
-inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & clamped )
+inline void RangedUnsignedFixedClampBody( RangedUnsigned & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.u8_low > 254 ) { value.u8_low = 254; clamped++; }
-    if ( value.u8_high < 1 ) { value.u8_high = 1; clamped++; }
-    if ( value.u8_inside < 1 ) { value.u8_inside = 1; clamped++; }
-    else if ( value.u8_inside > 254 ) { value.u8_inside = 254; clamped++; }
-    if ( value.u16_low > 65534 ) { value.u16_low = 65534; clamped++; }
-    if ( value.u16_high < 1 ) { value.u16_high = 1; clamped++; }
-    if ( value.u16_inside < 1 ) { value.u16_inside = 1; clamped++; }
-    else if ( value.u16_inside > 65534 ) { value.u16_inside = 65534; clamped++; }
-    if ( value.u32_low > 4294967294 ) { value.u32_low = 4294967294; clamped++; }
-    if ( value.u32_high < 1 ) { value.u32_high = 1; clamped++; }
-    if ( value.u32_inside < 1 ) { value.u32_inside = 1; clamped++; }
-    else if ( value.u32_inside > 4294967294 ) { value.u32_inside = 4294967294; clamped++; }
-    if ( value.u64_low > 18446744073709551614ull ) { value.u64_low = 18446744073709551614ull; clamped++; }
-    if ( value.u64_high < 1ull ) { value.u64_high = 1ull; clamped++; }
-    if ( value.u64_inside < 1ull ) { value.u64_inside = 1ull; clamped++; }
-    else if ( value.u64_inside > 18446744073709551614ull ) { value.u64_inside = 18446744073709551614ull; clamped++; }
+    (void) value; (void) clamped; (void) damaged;
+    clamped += ( value.u8_low > 254 );
+    value.u8_low = ( value.u8_low > 254 ) ? 254 : value.u8_low;
+    clamped += ( value.u8_high < 1 );
+    value.u8_high = ( value.u8_high < 1 ) ? 1 : value.u8_high;
+    clamped += (int) ( value.u8_inside < 1 ) | (int) ( value.u8_inside > 254 );
+    value.u8_inside = ( value.u8_inside < 1 ) ? 1 : ( ( value.u8_inside > 254 ) ? 254 : value.u8_inside );
+    clamped += ( value.u16_low > 65534 );
+    value.u16_low = ( value.u16_low > 65534 ) ? 65534 : value.u16_low;
+    clamped += ( value.u16_high < 1 );
+    value.u16_high = ( value.u16_high < 1 ) ? 1 : value.u16_high;
+    clamped += (int) ( value.u16_inside < 1 ) | (int) ( value.u16_inside > 65534 );
+    value.u16_inside = ( value.u16_inside < 1 ) ? 1 : ( ( value.u16_inside > 65534 ) ? 65534 : value.u16_inside );
+    clamped += ( value.u32_low > 4294967294 );
+    value.u32_low = ( value.u32_low > 4294967294 ) ? 4294967294 : value.u32_low;
+    clamped += ( value.u32_high < 1 );
+    value.u32_high = ( value.u32_high < 1 ) ? 1 : value.u32_high;
+    clamped += (int) ( value.u32_inside < 1 ) | (int) ( value.u32_inside > 4294967294 );
+    value.u32_inside = ( value.u32_inside < 1 ) ? 1 : ( ( value.u32_inside > 4294967294 ) ? 4294967294 : value.u32_inside );
+    clamped += ( value.u64_low > 18446744073709551614ull );
+    value.u64_low = ( value.u64_low > 18446744073709551614ull ) ? 18446744073709551614ull : value.u64_low;
+    clamped += ( value.u64_high < 1ull );
+    value.u64_high = ( value.u64_high < 1ull ) ? 1ull : value.u64_high;
+    clamped += (int) ( value.u64_inside < 1ull ) | (int) ( value.u64_inside > 18446744073709551614ull );
+    value.u64_inside = ( value.u64_inside < 1ull ) ? 1ull : ( ( value.u64_inside > 18446744073709551614ull ) ? 18446744073709551614ull : value.u64_inside );
     for ( int64_t i = 0; i < (int64_t) value.counts_count; ++i )
     {
     }
 }
 
 // RangedWidths's read-side bounds.
-inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & clamped )
+inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
-    if ( value.b8 > 255ull ) { value.b8 = 255ull; clamped++; } // bits(8) width clamp
-    if ( value.b16 > 65535ull ) { value.b16 = 65535ull; clamped++; } // bits(16) width clamp
-    if ( value.b12 > 4095ull ) { value.b12 = 4095ull; clamped++; } // bits(12) width clamp
-    if ( value.b48 > 281474976710655ull ) { value.b48 = 281474976710655ull; clamped++; } // bits(48) width clamp
+    (void) value; (void) clamped; (void) damaged;
+    // bits(8) width clamp
+    clamped += ( value.b8 > 255ull );
+    value.b8 = ( value.b8 > 255ull ) ? 255ull : value.b8;
+    // bits(16) width clamp
+    clamped += ( value.b16 > 65535ull );
+    value.b16 = ( value.b16 > 65535ull ) ? 65535ull : value.b16;
+    // bits(12) width clamp
+    clamped += ( value.b12 > 4095ull );
+    value.b12 = ( value.b12 > 4095ull ) ? 4095ull : value.b12;
+    // bits(48) width clamp
+    clamped += ( value.b48 > 281474976710655ull );
+    value.b48 = ( value.b48 > 281474976710655ull ) ? 281474976710655ull : value.b48;
 }
 
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -8067,8 +8091,13 @@ inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & clamped 
 inline void RangedSignedFixedClamp( RangedSigned & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RangedSignedFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RangedSignedFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RangedSigned, the fixed form ----
@@ -8251,8 +8280,13 @@ inline int64_t RangedSignedFixedLoad( RangedSigned * values, int64_t capacity, c
 inline void RangedUnsignedFixedClamp( RangedUnsigned & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RangedUnsignedFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RangedUnsignedFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RangedUnsigned, the fixed form ----
@@ -8435,8 +8469,13 @@ inline int64_t RangedUnsignedFixedLoad( RangedUnsigned * values, int64_t capacit
 inline void RangedWidthsFixedClamp( RangedWidths & value, TableReport * report )
 {
     int32_t clamped = 0;
-    RangedWidthsFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    RangedWidthsFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- RangedWidths, the fixed form ----

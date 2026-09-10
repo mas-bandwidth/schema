@@ -7425,19 +7425,31 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
 }
 
 /* Meta's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_meta_fixed_clamp_body_( Meta * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_meta_fixed_clamp_body_( Meta * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->build < 0 ) { value->build = 0; (*clamped)++; }
-    else if ( value->build > 1000 ) { value->build = 1000; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += (int) ( value->build < 0 ) | (int) ( value->build > 1000 );
+    value->build = ( value->build < 0 ) ? 0 : ( ( value->build > 1000 ) ? 1000 : value->build );
+    if ( !table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) )
+    {
+        memset( value->tag, 0, sizeof( value->tag ) );
+        value->tag_length = 0;
+        (*damaged)++;
+    }
 }
 
 /* Settings's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_settings_fixed_clamp_body_( Settings * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_settings_fixed_clamp_body_( Settings * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->quality < 0 ) { value->quality = 0; (*clamped)++; }
-    else if ( value->quality > 4 ) { value->quality = 4; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += (int) ( value->quality < 0 ) | (int) ( value->quality > 4 );
+    value->quality = ( value->quality < 0 ) ? 0 : ( ( value->quality > 4 ) ? 4 : value->quality );
+    if ( !table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) )
+    {
+        memset( value->label, 0, sizeof( value->label ) );
+        value->label_length = 0;
+        (*damaged)++;
+    }
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -7449,8 +7461,13 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
 static SCHEMA_UNUSED void schema_graphdemo_meta_fixed_clamp_( Meta * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_graphdemo_meta_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_graphdemo_meta_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- Meta, the fixed form ---- */
@@ -7607,8 +7624,13 @@ static SCHEMA_UNUSED int64_t meta_fixed_load( Meta * values, int64_t capacity, c
 static SCHEMA_UNUSED void schema_graphdemo_settings_fixed_clamp_( Settings * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_graphdemo_settings_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_graphdemo_settings_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- Settings, the fixed form ---- */

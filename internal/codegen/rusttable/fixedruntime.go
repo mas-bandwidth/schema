@@ -28,20 +28,51 @@ const fixedRuntimeBody = `//
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 
-/// The form byte. Forms 1 and 2 do not move and nothing here touches them.
+/// The form byte. Forms 1 and 2 do not move; a byte that is not this one is
+/// refused by name, and the name says which direction (§3, §3.4).
 pub const TABLE_FIXED_FORM: u8 = 3;
 
-/// THE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3, "THE FIRST
-/// BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the form's own
-/// EIGHT-BYTE HASH at offset 8, and the body at 16. The hash here is the
-/// LAYOUT's. Each record still carries its own eight-byte hash, which the
-/// header does not replace.
+/// THE PINNED FILE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3,
+/// "THE FIRST BYTE"): the FORM BYTE at 0, seven RESERVED ZERO bytes, the form's
+/// own EIGHT-BYTE HASH at 8, and the body at 16 — the alignment a memory-mapped
+/// body needs. The fixed form does not need that alignment today; it pads
+/// anyway, so the bytes do not move again the day the other forms join the
+/// registry under the same header.
 pub const TABLE_FIXED_HEADER_BYTES: usize = 16;
+/// Where the header carries the LAYOUT's hash. A record still carries its own.
 pub const TABLE_FIXED_HASH_AT: usize = 8;
 
 /// A plan entry that belongs to no union arm carries this instead of a tag
 /// offset, and the loop runs it unconditionally.
 pub const TABLE_FIXED_NO_GUARD: u32 = u32::MAX;
+
+// ---- the 128-bit row slot ---------------------------------------------------
+//
+// A 128-BIT SLOT IS SIXTEEN BYTES ALIGNED SIXTEEN, on every target. That is
+// ir's C ABI model (ir/blocklayout.go) and the ` + "`alignas( 16 )`" + ` the C++
+// reference spells on such a member (docs/SPEC-TABLES.md §7.2, §19.3).
+//
+// RUST'S OWN ` + "`u128`" + ` DOES NOT PROMISE IT. Its alignment is the TARGET's C
+// alignment for __int128, which is sixteen on x86-64 and aarch64 and EIGHT on
+// s390x — so a bare ` + "`u128`" + ` in a Row sits at a different offset there, the
+// layout const asserts fail the build, and the record this port lays down is
+// not the record the reference lays down. The wrapper pins the alignment, and
+// ` + "`.0`" + ` is the integer.
+
+/// An unsigned 128-bit row slot, sixteen bytes aligned sixteen everywhere.
+#[repr(C, align(16))]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct TableU128(pub u128);
+
+/// A signed 128-bit row slot, sixteen bytes aligned sixteen everywhere.
+#[repr(C, align(16))]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct TableI128(pub i128);
+
+const _: () = assert!(core::mem::size_of::<TableU128>() == 16);
+const _: () = assert!(core::mem::align_of::<TableU128>() == 16);
+const _: () = assert!(core::mem::size_of::<TableI128>() == 16);
+const _: () = assert!(core::mem::align_of::<TableI128>() == 16);
 
 /// THE OPS ARE THE WHOLE SET. A plan for a record of plain scalars carries only
 /// the first, and the identity plan carries exactly ONE of them.
@@ -74,7 +105,15 @@ pub struct TableFixedEntry {
     pub aux: u32,
     pub guard: u32,
     pub op: TableFixedOp,
-    pub arg: u8,
+    /// THE GUARD'S TAG and nothing else: the ordinal the tag at ` + "`guard`" + ` must
+    /// hold for this entry to run. It is meaningless on an unguarded entry.
+    pub arg: u32,
+    /// THE GUARD'S WIDTH IN BYTES, and it is load-bearing: a union tag is one,
+    /// two, four or eight bytes wide, and comparing only the FIRST of them
+    /// fires arm 1 on a foreign tag of 0x0101 — an ordinal no arm of this
+    /// build names. The tag is compared at the width its own layout entry
+    /// declares (§3.4).
+    pub argw: u8,
     pub dstsize: u8,
     /// a WIDEN's source is two's complement, so it sign-extends
     pub sign: u8,
@@ -90,6 +129,7 @@ impl Default for TableFixedEntry {
             guard: TABLE_FIXED_NO_GUARD,
             op: TableFixedOp::Copy,
             arg: 0,
+            argw: 1,
             dstsize: 0,
             sign: 0,
         }
@@ -112,8 +152,18 @@ pub struct TableFixedHole {
 pub enum TableFixedReason {
     #[default]
     None,
-    /// a form byte this build does not carry
+    /// a FORM BYTE this reader does not carry (§3) — a byte no form defines
     NewerForm,
+    /// A FORM BYTE THIS FORM IS AHEAD OF (docs/SPEC-TABLES.md §3, §3.4). The
+    /// registry is ordered, so a reader meeting a byte it does not carry can
+    /// say WHICH DIRECTION it is: form 1 handed to a fixed reader is the VARIABLE
+    /// form, which is older, and calling that NewerForm would send a caller
+    /// looking for a build that does not exist. The bytes are the same refusal
+    /// either way — nothing decoded, no counter moved — and only the name of it
+    /// differs.
+    PreviousForm,
+    /// a form 2 wire where a FILE was expected: its table is somewhere else
+    MessageFormAsFile,
     /// a record whose hash names no block this reader holds
     NoBlock,
     /// bytes handed to this form as a block that are not one
@@ -159,7 +209,64 @@ pub fn table_fixed_hash(block: &[u8]) -> u64 {
     h
 }
 
+// ---- THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4) ---------
+//
+// A ` + "`string(N)`" + `'s used bytes are well-formed UTF-8 with NO ZERO among them, and
+// a ` + "`wstring(N)`" + `'s used units are paired UTF-16 with no zero unit. A payload
+// that is not the text its kind says it is is DAMAGE and not data. ` + "`bytes(N)`" + `
+// has no content rule at all — it is bytes.
+//
+// The checks run over the USED LENGTH and over nothing else: the slack carries
+// no meaning, and reading a whole declared bound to judge bytes that mean
+// nothing is the cost this form exists to avoid.
+
+/// Well-formed UTF-8 with no zero byte among the used bytes.
+pub fn table_utf8_valid(bytes: &[u8]) -> bool {
+    // THE ZERO RULE IS THIS WIRE'S AND NOT UTF-8's: a NUL is a perfectly legal
+    // code point and this wire does not carry one, so it is checked beside the
+    // encoding rather than folded into it.
+    !bytes.contains(&0) && core::str::from_utf8(bytes).is_ok()
+}
+
+/// Paired UTF-16 with no zero unit among the used units.
+pub fn table_utf16_valid(units: &[u16]) -> bool {
+    let mut i = 0;
+    while i < units.len() {
+        let unit = units[i];
+        if unit == 0 {
+            return false;
+        }
+        if (0xD800..=0xDBFF).contains(&unit) {
+            // a HIGH surrogate takes its low half, and there has to be one
+            if i + 1 >= units.len() {
+                return false;
+            }
+            if !(0xDC00..=0xDFFF).contains(&units[i + 1]) {
+                return false;
+            }
+            i += 2;
+            continue;
+        }
+        if (0xDC00..=0xDFFF).contains(&unit) {
+            return false; // a LOW surrogate first
+        }
+        i += 1;
+    }
+    true
+}
+
 // ---- the little-endian loads ------------------------------------------------
+
+/// A UNION TAG AT ITS OWN WIDTH, little-endian, one to eight bytes. The slice
+/// is the tag's whole span and never a prefix of it, which is what keeps a
+/// foreign 0x0101 from reading as arm 1.
+fn table_fixed_tag(b: &[u8]) -> u64 {
+    let mut v = 0u64;
+    for (i, byte) in b.iter().enumerate().take(8) {
+        v |= (*byte as u64) << (8 * i);
+    }
+    v
+}
 
 fn get32(b: &[u8], at: usize) -> u32 {
     match b.get(at..at + 4) {
@@ -215,8 +322,14 @@ pub fn table_fixed_run(
 ) {
     for p in plan {
         if p.guard != TABLE_FIXED_NO_GUARD {
-            match src.get(p.guard as usize) {
-                Some(tag) if *tag == p.arg => {}
+            // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag
+            // whose low byte happens to be 1 is not arm 1: it is an ordinal
+            // this build has no arm for, and reading only the first byte let
+            // 0x0101 run arm 1's entries over a stranger's record.
+            let g = p.guard as usize;
+            let w = p.argw as usize;
+            match src.get(g..g + w) {
+                Some(tag) if table_fixed_tag(tag) == p.arg as u64 => {}
                 Some(_) => continue,
                 None => {
                     report.malformed = true;
@@ -581,7 +694,7 @@ pub fn table_fixed_compile(
         remap_used: 0,
         overflow: false,
     };
-    match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, TABLE_FIXED_NO_GUARD, 0, 0, report);
+    match_children(&mut c, theirs, 0, 0, mine, 0, 0, counted, TABLE_FIXED_NO_GUARD, 0, 1, 0, report);
     if c.overflow {
         return None;
     }
@@ -596,6 +709,7 @@ pub fn table_fixed_compile(
             && c.plan[i].op == TableFixedOp::Copy
             && c.plan[out - 1].guard == c.plan[i].guard
             && c.plan[out - 1].arg == c.plan[i].arg
+            && c.plan[out - 1].argw == c.plan[i].argw
             && c.plan[out - 1].src + c.plan[out - 1].size == c.plan[i].src
             && c.plan[out - 1].dst + c.plan[out - 1].size == c.plan[i].dst
         {
@@ -619,7 +733,8 @@ fn match_children(
     my_at: u32,
     counted: &[u8],
     guard: u32,
-    arg: u8,
+    arg: u32,
+    argw: u8,
     depth: u32,
     report: &mut TableFixedReport,
 ) {
@@ -639,7 +754,7 @@ fn match_children(
             let tc = theirs.entry(their_child);
             if tc.id == mc.id {
                 compile_entry(
-                    c, theirs, their_child, their_off, mine, my_child, my_off, counted, guard, arg,
+                    c, theirs, their_child, their_off, mine, my_child, my_off, counted, guard, arg, argw,
                     depth + 1, report,
                 );
                 break;
@@ -682,7 +797,8 @@ fn compile_entry(
     my_at: u32,
     counted: &[u8],
     guard: u32,
-    arg: u8,
+    arg: u32,
+    argw: u8,
     depth: u32,
     report: &mut TableFixedReport,
 ) {
@@ -701,6 +817,7 @@ fn compile_entry(
                 dstsize: me.size as u8,
                 guard,
                 arg,
+                argw,
                 op: if te.kind == 10 {
                     TableFixedOp::WidenF
                 } else {
@@ -724,16 +841,17 @@ fn compile_entry(
                 size: 1,
                 guard,
                 arg,
+                argw,
                 op: TableFixedOp::Copy,
                 ..TableFixedEntry::default()
             });
             compile_entry(
-                c, theirs, ti + 1, their_at + 1, mine, mi + 1, my_at + 1, counted, guard, arg,
+                c, theirs, ti + 1, their_at + 1, mine, mi + 1, my_at + 1, counted, guard, arg, argw,
                 depth + 1, report,
             );
         }
         13 => match_children(
-            c, theirs, ti, their_at, mine, mi, my_at, counted, guard, arg, depth + 1, report,
+            c, theirs, ti, their_at, mine, mi, my_at, counted, guard, arg, argw, depth + 1, report,
         ),
         14 => {
             // an array: the count, then min( their bound, my bound ) elements
@@ -753,6 +871,7 @@ fn compile_entry(
                     size: my_n,
                     guard,
                     arg,
+                    argw,
                     op: TableFixedOp::Count,
                     ..TableFixedEntry::default()
                 });
@@ -770,6 +889,7 @@ fn compile_entry(
                     counted,
                     guard,
                     arg,
+                    argw,
                     depth + 1,
                     report,
                 );
@@ -802,6 +922,7 @@ fn compile_entry(
                         counted,
                         guard,
                         arg,
+                        argw,
                         depth + 1,
                         report,
                     );
@@ -828,7 +949,8 @@ fn compile_entry(
                             size: my_tag,
                             aux: k as u32 + 1,
                             guard: their_at,
-                            arg: (j + 1) as u8,
+                            arg: j as u32 + 1,
+                            argw: their_tag as u8,
                             op: TableFixedOp::Const,
                             ..TableFixedEntry::default()
                         });
@@ -842,7 +964,8 @@ fn compile_entry(
                             my_at + my_tag,
                             counted,
                             their_at,
-                            (j + 1) as u8,
+                            j as u32 + 1,
+                            their_tag as u8,
                             depth + 1,
                             report,
                         );
@@ -877,6 +1000,7 @@ fn compile_entry(
                 aux,
                 guard,
                 arg,
+                argw,
                 op: TableFixedOp::Ordinal,
                 dstsize: me.size as u8,
                 ..TableFixedEntry::default()
@@ -893,6 +1017,7 @@ fn compile_entry(
                 aux: me.size.saturating_sub(4).checked_div(unit).unwrap_or(0),
                 guard,
                 arg,
+                argw,
                 op: TableFixedOp::Text,
                 ..TableFixedEntry::default()
             });
@@ -905,6 +1030,7 @@ fn compile_entry(
                     size: me.size,
                     guard,
                     arg,
+                    argw,
                     op: TableFixedOp::Copy,
                     ..TableFixedEntry::default()
                 });
@@ -916,6 +1042,7 @@ fn compile_entry(
                     dstsize: me.size as u8,
                     guard,
                     arg,
+                    argw,
                     op: TableFixedOp::Widen,
                     sign: u8::from(signed_kind(te.kind)),
                     ..TableFixedEntry::default()

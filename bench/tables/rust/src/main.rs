@@ -336,7 +336,7 @@ against a corpus whose variant 0 is not the pinned instance",
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
 // ------------------------------------------------------------------------
 //
-// A FILE is the unit here and not a record: the vocabulary block rides once,
+// A FILE is the unit here and not a record: the LAYOUT rides once,
 // the records follow it to the end, and every one of them is the same size —
 // so the write is one call for all 64 and the read is one call back, and an OP
 // is one RECORD of that call.
@@ -358,7 +358,7 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
         ctx.failed = true;
         return;
     };
-    let Some(vocab) = ctx.read_corpus(&variant_dir, "bench_fixed.layout") else {
+    let Some(layout) = ctx.read_corpus(&variant_dir, "bench_fixed.layout") else {
         ctx.failed = true;
         return;
     };
@@ -370,10 +370,10 @@ fn bench_fixed(ctx: &mut Ctx, name: &str, base_iters: i64) {
     let mut twin = vec![0u8; file.len()];
 
     // gate 1: THE BLOCK IS THE CORPUS'S BLOCK.
-    if vocab != FIXED_TABLE_FIXED_BLOCK {
+    if layout != FIXED_TABLE_FIXED_BLOCK {
         ctx.fail(
             name,
-            "this build's vocabulary block is not the corpus's, byte for byte",
+            "this build's LAYOUT is not the corpus's, byte for byte",
         );
         return;
     }

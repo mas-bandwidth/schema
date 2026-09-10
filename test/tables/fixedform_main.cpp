@@ -995,6 +995,96 @@ static void absent_optional_case()
     }
 }
 
+// ---------------------------------------------------------------------------
+
+// THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4), on this
+// form's terms. A `string(N)`'s used bytes are well-formed UTF-8 with no zero
+// among them — the same rule SPEC.md §4.7 puts on the packet wire, where the
+// whole read refuses. HERE THE RECORD IS POSITIONAL, so the damage is one
+// field's and the reader does not lose the others to it: THE FIELD READS ITS
+// DECLARED DEFAULT, one `malformed` counts, and the rest of the record stands.
+//
+// The check runs over the USED LENGTH and over nothing else. The slack carries
+// no meaning, and reading a whole declared bound to check bytes that mean
+// nothing is the cost this form exists to avoid.
+//
+// THE POISON IS WRITTEN THROUGH THE WRITER, because it can be: the write side's
+// bounds are the used length and the live count, both debug-only, and neither
+// is a content rule. A caller CAN put a byte on this wire that is not text, and
+// the reader is what has to answer for it.
+static void text_content_case()
+{
+    struct Case { const char * what; const char * bytes; int32_t length; };
+    const Case cases[] = {
+        { "a lone 0xFF is no lead byte",            "\xFF",     1 },
+        { "a truncated two-byte sequence",          "\xC3",     1 },
+        { "a bare continuation byte",               "\x80",     1 },
+        { "an overlong encoding of NUL",            "\xC0\x80", 2 },
+        { "an INTERIOR NULL among the used bytes",  "a\0b",     3 },
+    };
+    for ( size_t k = 0; k < sizeof( cases ) / sizeof( cases[0] ); ++k )
+    {
+        tblfx1::FxRoot v;
+        tblfx1::FxRootReset( v );
+        v.keep = 1234u;
+        v.nested.a = 7;
+        std::memcpy( v.label, cases[k].bytes, (size_t) cases[k].length );
+        v.label_length = cases[k].length;
+
+        std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+        check( tblfx1::FxRootFixedSave( &v, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(),
+               "text content: the record saves" );
+
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "text content: the record reads" );
+        check( r.malformed, cases[k].what );
+        check( back.label_length == 2 && std::strcmp( back.label, "fx" ) == 0,
+               "TEXT CONTENT: the damaged field reads its DECLARED DEFAULT" );
+        check( back.keep == 1234u && back.nested.a == 7,
+               "TEXT CONTENT: and the rest of the record stands — the damage is one field's" );
+        check( !r.refused, "TEXT CONTENT: damage is not a refusal" );
+
+        // THE NEGATIVE CONTROL: the read loop alone, with no content pass after
+        // it. The same record, the same plan, and the bytes that are not text
+        // stand in the storage with nothing said.
+        if ( k == 0 )
+        {
+            tblfx1::FxRoot loose;
+            tblfx1::FxRootReset( loose );
+            tblfx1::TableReport r2;
+            const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+            tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
+                                   body, (uint8_t *) &loose, &r2 );
+            check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
+                   "NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
+            check( !r2.malformed, "NEGATIVE CONTROL: and says nothing about it" );
+        }
+    }
+
+    // AND WELL-FORMED TEXT IS UNTOUCHED, which is what makes the cases above
+    // discriminating: multi-byte UTF-8 inside the bound reads back whole.
+    {
+        tblfx1::FxRoot v;
+        tblfx1::FxRootReset( v );
+        std::memcpy( v.label, "\xC3\xA9t\xC3\xA9", 5 ); // "été"
+        v.label_length = 5;
+        std::vector<uint8_t> w( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+        tblfx1::FxRootFixedSave( &v, 1, w.data(), (int64_t) w.size() );
+
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, &r ) == 1,
+               "text content: the well-formed record reads" );
+        check( back.label_length == 5 && std::memcmp( back.label, "\xC3\xA9t\xC3\xA9", 5 ) == 0,
+               "TEXT CONTENT: well-formed multi-byte UTF-8 rides whole" );
+        check( !r.malformed && r.clamped == 0, "TEXT CONTENT: and moves no counter" );
+    }
+}
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -1009,6 +1099,7 @@ int main()
     bytes_row_case();
     bounds_case();
     absent_optional_case();
+    text_content_case();
     layout_validation();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }

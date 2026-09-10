@@ -53,17 +53,25 @@ pub fn fixed_table_fixed_scatter(b: &[u8], value: &mut FixedTableRow, report: &m
     }
 }
 
+/// FixedTable's read-side bounds: every RANGED SCALAR held to its declared min
+/// and max, over the storage a read can have written.
+pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, clamped: &mut i32, damaged: &mut i32) {
+    let _ = (&clamped, &damaged);
+    bench_mixed_fixed_clamp_body(&mut value.value, clamped, damaged);
+}
+
 // ---- FixedTable, the fixed form ----
 
 /// The body is the SAME SIZE for every value the type can hold, so a measure
 /// is a constant and not a walk (docs/SPEC-TABLES.md §3.4).
 pub const FIXED_TABLE_FIXED_BODY_BYTES: usize = 1236;
 pub const FIXED_TABLE_FIXED_RECORD_BYTES: usize = 8 + FIXED_TABLE_FIXED_BODY_BYTES; // the hash and the body
-/// fnv1a64 over the block's bytes, exactly as written.
+/// fnv1a64 over the layout's bytes, exactly as written.
 pub const FIXED_TABLE_FIXED_HASH: u64 = 0x32f1c4a302a224eb;
 
-/// THE VOCABULARY BLOCK: 75 entries, a PRE-ORDER walk of the closure in the
-/// writer's declared order. Every byte is settled by the compiler.
+/// THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
+/// PRE-ORDER walk of the closure in the writer's declared order. Every byte
+/// is settled by the compiler, and by ir's walk — the one every port renders.
 pub const FIXED_TABLE_FIXED_BLOCK: [u8; 1279] = [
     0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
     0x00, 0x01, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xd4, 0x04,
@@ -230,9 +238,9 @@ pub const FIXED_TABLE_FIXED_DEFAULTS: [u8; 1236] = [
     0x00, 0x00, 0x00, 0x00,
 ];
 
-/// MY side of the block, one byte an entry: whether the entry is an array
+/// MY side of the layout, one byte an entry: whether the entry is an array
 /// that carries a live COUNT in front of it, which is the one storage fact
-/// a block entry cannot state and the plan compiler needs.
+/// a layout entry cannot state and the plan compiler needs.
 pub const FIXED_TABLE_FIXED_COUNTED: [u8; 75] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0,
@@ -250,13 +258,15 @@ pub const FIXED_TABLE_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {
     guard: TABLE_FIXED_NO_GUARD,
     op: TableFixedOp::Copy,
     arg: 0,
+    argw: 1,
     dstsize: 0,
     sign: 0,
 }];
 
-/// A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
-/// — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
-/// then the layout behind its u32 length, then the records to the end of it.
+/// A FILE: THE PINNED HEADER (docs/SPEC-TABLES.md §3, one rule for all five
+/// forms) — the form byte, seven RESERVED ZERO bytes, the LAYOUT HASH at 8
+/// and the body at 16 — then the layout behind its u32 length, then the
+/// records back to back to the end of it (§3.4).
 pub const fn fixed_table_fixed_measure(count: usize) -> usize {
     TABLE_FIXED_HEADER_BYTES + 4 + FIXED_TABLE_FIXED_BLOCK.len() + count * FIXED_TABLE_FIXED_RECORD_BYTES
 }
@@ -270,12 +280,13 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
     }
     buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header
     buffer[0] = TABLE_FIXED_FORM;
-    buffer[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8].copy_from_slice(&FIXED_TABLE_FIXED_HASH.to_le_bytes());
+    buffer[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
+        .copy_from_slice(&FIXED_TABLE_FIXED_HASH.to_le_bytes()); // the header names the layout ONCE
     buffer[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]
         .copy_from_slice(&(FIXED_TABLE_FIXED_BLOCK.len() as u32).to_le_bytes());
-    buffer[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + FIXED_TABLE_FIXED_BLOCK.len()]
-        .copy_from_slice(&FIXED_TABLE_FIXED_BLOCK);
-    let mut at = TABLE_FIXED_HEADER_BYTES + 4 + FIXED_TABLE_FIXED_BLOCK.len();
+    let mut at = TABLE_FIXED_HEADER_BYTES + 4;
+    buffer[at..at + FIXED_TABLE_FIXED_BLOCK.len()].copy_from_slice(&FIXED_TABLE_FIXED_BLOCK);
+    at += FIXED_TABLE_FIXED_BLOCK.len();
     for value in values {
         buffer[at..at + 8].copy_from_slice(&FIXED_TABLE_FIXED_HASH.to_le_bytes());
         let body = &mut buffer[at + 8..at + FIXED_TABLE_FIXED_RECORD_BYTES];
@@ -310,18 +321,27 @@ pub fn fixed_table_fixed_load(
         report.malformed = true;
         return None;
     }
+    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
+    // the registry is ordered, so a byte this reader does not carry is named
+    // by where it sits relative to this form and never by one word for both.
     if data[0] != TABLE_FIXED_FORM {
-        return report.refuse(TableFixedReason::NewerForm);
+        return report.refuse(match data[0] {
+            1 => TableFixedReason::PreviousForm,      // the VARIABLE form, which is older
+            2 => TableFixedReason::MessageFormAsFile, // a batch where a FILE was expected
+            _ => TableFixedReason::NewerForm,         // a byte no form defines
+        });
     }
-    let layout_bytes = u32::from_le_bytes(
-        data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4].try_into().expect("four bytes"),
+    let block_bytes = u32::from_le_bytes(
+        data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]
+            .try_into()
+            .expect("four bytes"),
     ) as usize;
-    if layout_bytes > data.len() - (TABLE_FIXED_HEADER_BYTES + 4) {
+    if block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {
         return report.refuse(TableFixedReason::BlockMalformed);
     }
-    let layout = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes];
-    let hash = table_fixed_hash(layout);
-    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + layout_bytes..];
+    let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + block_bytes];
+    let hash = table_fixed_hash(block);
+    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + block_bytes..];
 
     // WHICH PLAN, and that is the only thing that differs between reading this
     // build's own record and reading anybody else's.
@@ -329,7 +349,7 @@ pub fn fixed_table_fixed_load(
     let mut record_bytes = FIXED_TABLE_FIXED_RECORD_BYTES;
     let identity = hash == FIXED_TABLE_FIXED_HASH;
     if !identity {
-        let theirs = match TableFixedBlock::parse(layout) {
+        let theirs = match TableFixedBlock::parse(block) {
             Some(b) => b,
             None => return report.refuse(TableFixedReason::BlockMalformed),
         };
@@ -343,10 +363,15 @@ pub fn fixed_table_fixed_load(
         };
         record_bytes = 8 + theirs.entry(0).size as usize;
     }
-    // THE HEADER NAMES THE LAYOUT ONCE. A header whose hash is not the hash of
-    // the layout behind it is refused, after the layout's own rules have had
-    // their say, so a broken layout is never reported as a lying header.
-    if u64::from_le_bytes(data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8].try_into().expect("eight bytes")) != hash {
+    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
+    // the layout's own rules each refuse under their own name first, so a
+    // broken layout is never reported as a lying header (§3).
+    if u64::from_le_bytes(
+        data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
+            .try_into()
+            .expect("eight bytes"),
+    ) != hash
+    {
         return report.refuse(TableFixedReason::BlockMalformed);
     }
     if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
@@ -379,6 +404,21 @@ pub fn fixed_table_fixed_load(
         }
         table_fixed_run(entries, remap, &record[8..], &mut image, report);
         fixed_table_fixed_scatter(&image, &mut values[k], report);
+        // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the
+        // storage the scatter just wrote: the same pass for either plan,
+        // and only over what a read can have written (§3.4).
+        {
+            let mut clamped = 0i32;
+            let mut damaged = 0i32;
+            fixed_table_fixed_clamp_body(&mut values[k], &mut clamped, &mut damaged);
+            report.clamped += clamped as u32;
+            // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on
+            // the one FLAG and not on a counter: the field read its declared
+            // default and the rest of the record stands.
+            if damaged != 0 {
+                report.malformed = true;
+            }
+        }
     }
     Some(n)
 }

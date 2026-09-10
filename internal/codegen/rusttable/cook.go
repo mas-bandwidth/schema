@@ -524,9 +524,19 @@ func (g *gen) emitUnionRows(unions []*ir.Union) {
 	g.pf("//\n")
 	g.pf("// THE TAG NAMES THE LIVE ARM, and that is the type's whole contract — the\n")
 	g.pf("// same one the C reference's storage carries, where reading `as.hit` with\n")
-	g.pf("// `type != HIT` is equally wrong and equally unchecked. Rust says it out\n")
-	g.pf("// loud: a READ of an arm is `unsafe` and every one of them in this crate is\n")
-	g.pf("// guarded by the tag. A WRITE of an arm is safe and needs no guard.\n")
+	g.pf("// `type != HIT` is equally wrong and equally unchecked.\n")
+	g.pf("//\n")
+	g.pf("// RUST WILL NOT LET THAT CONTRACT BE A COMMENT. A public tag beside a public\n")
+	g.pf("// overlay, with safe functions reading the arm the tag names, is UNSOUND as\n")
+	g.pf("// an API: nothing stops a caller setting the tag and not the arm, and the\n")
+	g.pf("// next safe read is then a `bool` built out of a byte that is neither 0 nor\n")
+	g.pf("// 1 — undefined behaviour with no `unsafe` block anywhere near the caller.\n")
+	g.pf("// So THE TAG AND THE OVERLAY ARE THE CRATE'S, not the caller's, and the\n")
+	g.pf("// public surface is a CHECKED ACCESSOR PAIR per arm: `x()` hands back the\n")
+	g.pf("// arm only when the tag names it, and `set_x()` is the only way to move the\n")
+	g.pf("// tag at all — so tag and arm cannot disagree. Inside the crate the\n")
+	g.pf("// generated codecs still read the overlay directly under `unsafe`, guarded\n")
+	g.pf("// by the tag they just matched, exactly as the C reference's switch is.\n")
 	g.pf("// `Row` and `RowArms` are CLAIMED suffixes (docs/SPEC-TABLES.md §11).\n\n")
 	for _, un := range unions {
 		g.emitUnionRow(un)
@@ -537,14 +547,39 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 	size, align, tag, armOffset := ir.UnionLayout(g.unit, un)
 	g.pf("// %s — the union twin: %d bytes, aligned %d; a %d-byte tag, the arms at %d.\n",
 		un.Name, size, align, tag, armOffset)
+	tagType := rustUint(ir.StorageBitsFor(un.Max))
 	g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub struct %sRow {\n", un.Name)
-	g.pf("    pub tag: %s, // 0 is None (the empty union); then each arm in declared order\n", rustUint(ir.StorageBitsFor(un.Max)))
-	g.pf("    pub arms: %sRowArms,\n", un.Name)
+	g.pf("    // THE CRATE'S, not the caller's: the pair has to move together or the\n")
+	g.pf("    // type's contract is a comment. The checked accessors below are the\n")
+	g.pf("    // whole public surface.\n")
+	g.pf("    pub(crate) tag: %s, // 0 is None (the empty union); then each arm in declared order\n", tagType)
+	g.pf("    pub(crate) arms: %sRowArms,\n", un.Name)
 	g.pf("}\n\n")
 	g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub union %sRowArms {\n", un.Name)
 	for _, v := range un.Variants {
-		g.pf("    pub %s: %s, // %s\n", v.Name, cookElemType(v.F), tableFieldTypeName(v.F))
+		g.pf("    pub(crate) %s: %s, // %s\n", v.Name, cookElemType(v.F), tableFieldTypeName(v.F))
 	}
+	g.pf("}\n\n")
+	g.pf("impl %sRow {\n", un.Name)
+	g.pf("    /// The live arm's ordinal, from 1 in declared order; 0 is None.\n")
+	g.pf("    pub fn tag(&self) -> %s {\n        self.tag\n    }\n\n", tagType)
+	for i, v := range un.Variants {
+		arm := cookElemType(v.F)
+		g.pf("    /// `%s` when the tag names it, and None otherwise. THE CHECK IS WHAT\n", v.Name)
+		g.pf("    /// MAKES THE READ SAFE: the overlay holds one arm and the tag says which.\n")
+		g.pf("    pub fn %s(&self) -> Option<%s> {\n", v.Name, arm)
+		g.pf("        if self.tag == %d {\n", i+1)
+		g.pf("            // SAFETY: the tag was just matched against `%s`.\n", v.Name)
+		g.pf("            Some(unsafe { self.arms.%s })\n", v.Name)
+		g.pf("        } else {\n            None\n        }\n    }\n\n")
+		g.pf("    /// Selects `%s`: the ARM AND THE TAG MOVE TOGETHER, which is the only\n", v.Name)
+		g.pf("    /// way the tag moves at all, so the two can never disagree.\n")
+		g.pf("    pub fn set_%s(&mut self, value: %s) {\n", v.Name, arm)
+		g.pf("        self.arms.%s = value; // a WRITE of a union field, which is safe\n", v.Name)
+		g.pf("        self.tag = %d;\n    }\n\n", i+1)
+	}
+	g.pf("    /// The empty union: tag 0, no arm.\n")
+	g.pf("    pub fn set_none(&mut self) {\n        *self = Self::default();\n    }\n")
 	g.pf("}\n\n")
 	for _, name := range []string{un.Name + "Row", un.Name + "RowArms"} {
 		g.pf("impl Default for %s {\n", name)
@@ -609,6 +644,14 @@ func (g *gen) emitCookRowField(f *ir.Field) {
 		g.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
 		g.pf("    pub %s_length: i32,\n", f.Name)
+	case f.Type.Kind == ir.TWString:
+		// WIDE TEXT's cooked storage (docs/SPEC-TABLES.md §7.2, and ir's own
+		// model in blocklayout.go): char16_t[N + 1] at two, then the int32 used
+		// length in CODE UNITS. Without this case a `wstring(N)` fell to the
+		// default and got a scalar slot of the wrong width entirely.
+		g.pf("    pub %s: [u16; %d], // wstring(%s): UTF-16 code units, used length beside it\n",
+			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))
+		g.pf("    pub %s_length: i32,\n", f.Name)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("    pub %s: [u8; %d], // bytes(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -649,6 +692,18 @@ func cookElemType(f *ir.Field) string {
 		// int32 for fixed(24, 8) and uint16 for ufixed(8, 8). The wire carries
 		// the raw integer too, so the slot and the wire are one value here and
 		// nothing scales on the way in or out.
+		//
+		// AND THE 128-BIT SLOT IS THE ALIGNED WRAPPER, not the bare integer:
+		// ir's model puts a 128-bit integer at SIXTEEN ALIGNED SIXTEEN — the
+		// `alignas( 16 )` the C++ reference spells — while Rust's own u128
+		// takes the TARGET's C alignment, which is EIGHT on s390x. See
+		// TableU128 in the fixed runtime.
+		if f.Type.Width > 64 {
+			if f.Type.Signed {
+				return "TableI128"
+			}
+			return "TableU128"
+		}
 		if f.Type.Signed {
 			return rustInt(f.Type.Width)
 		}
@@ -717,7 +772,7 @@ func cookRowMembers(f *ir.Field) []string {
 	names = append(names, f.Name)
 	switch {
 	case f.Type.Pointer:
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		names = append(names, f.Name+"_count")

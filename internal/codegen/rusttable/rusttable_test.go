@@ -331,6 +331,9 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		"CONFIG_FIXED_HASH", "CONFIG_FIXED_BLOCK", "CONFIG_FIXED_DEFAULTS",
 		"CONFIG_FIXED_PLAN", "config_fixed_save", "config_fixed_load",
 		"config_fixed_write_body", "config_fixed_scatter",
+		"TableFixedReason::PreviousForm",
+		"TableFixedReason::MessageFormAsFile",
+		"TableFixedReason::NewerForm",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the fixed form's surface is missing %s", want)
@@ -369,9 +372,19 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 	urecords := string(union["probe_records.rs"])
 	for _, want := range []string{
 		"pub struct EffectRow {",
-		"pub tag: u8,",
-		"pub arms: EffectRowArms,",
+		// THE TAG AND THE OVERLAY ARE THE CRATE'S. A public tag beside a public
+		// overlay, with safe functions reading the arm the tag names, is unsound
+		// as an API: nothing stops a caller moving one without the other, and
+		// the next safe read builds a `bool` out of a byte that is neither 0 nor
+		// 1. The public surface is the CHECKED ACCESSOR PAIR below.
+		"pub(crate) tag: u8,",
+		"pub(crate) arms: EffectRowArms,",
 		"pub union EffectRowArms {",
+		"pub fn tag(&self) -> u8 {",
+		"pub fn boost(&self) -> Option<BoostRow> {",
+		"        if self.tag == 1 {",
+		"pub fn set_boost(&mut self, value: BoostRow) {",
+		"pub fn set_none(&mut self) {",
 		"const _: () = assert!(core::mem::offset_of!(EffectRow, tag) == 0,",
 		"const _: () = assert!(core::mem::offset_of!(EffectRowArms, boost) == 0,",
 		"pub effect: EffectRow,",
@@ -500,8 +513,12 @@ func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
 	for _, want := range []string{
 		"pub server_time: i32,",
 		"pub ping: u16,",
-		"pub wide_key: u128,",
-		"pub flux: i128,",
+		// AND THE 128-BIT SLOTS ARE THE ALIGNED WRAPPERS: ir's model puts a
+		// 128-bit integer at sixteen ALIGNED SIXTEEN, and Rust's own u128 takes
+		// the target's C alignment — eight on s390x — so the bare type would
+		// move the field there and the layout asserts say so.
+		"pub wide_key: TableU128,",
+		"pub flux: TableI128,",
 	} {
 		if !strings.Contains(rows, want) {
 			t.Errorf("the row does not carry %q", want)
@@ -518,6 +535,76 @@ func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
 		}
+	}
+}
+
+// wideTextFixed is a `wstring(8)` inside a fixed root, with a scalar either
+// side of it so the field's own span is pinned by its neighbours.
+//
+// THE COMPILER STILL REFUSES THIS UNIT for --lang rust (compiler/widetext.go:
+// table wide text is a named follow-on for this port, because the two
+// ACCELERATORS have no kind-33 column). This test reaches the emitter directly,
+// which is the only way to hold the fixed form to the shape before the
+// follow-on lands — and the shape is what was wrong: with no TWString case the
+// field fell to the scalar default, got a `u8` row slot and a store of ZERO
+// BYTES, `b[at..at + 0]`, which does not compile and would have silently
+// skipped the field if it had.
+const wideTextFixed = `package probe
+
+table Caption
+{
+    lead  int32
+    wide  wstring(8)
+    trail int32
+}
+`
+
+func TestFixedFormCarriesWideText(t *testing.T) {
+	out := generate(t, wideTextFixed)
+
+	// THE ROW is ir's own model (ir/blocklayout.go): char16_t[N + 1] at two,
+	// then the int32 used length in CODE UNITS.
+	rows := string(out["probe_records.rs"])
+	for _, want := range []string{
+		"pub wide: [u16; 9], // wstring(8): UTF-16 code units, used length beside it",
+		"pub wide_length: i32,",
+		"const _: () = assert!(core::mem::offset_of!(CaptionRow, wide_length) == 24,",
+	} {
+		if !strings.Contains(rows, want) {
+			t.Errorf("the row does not carry %q", want)
+		}
+	}
+
+	fixed := string(out["probe_fixed.rs"])
+	if strings.Contains(fixed, "at + 0]") {
+		t.Error("a zero-width store survived: the wstring fell to the scalar default again")
+	}
+	for _, want := range []string{
+		// the WRITE: the used length, then that many TWO-BYTE units onto the
+		// template's zeros — never the whole declared span
+		"value.wide_length >= 0 && value.wide_length <= 8,",
+		"b[4..8].copy_from_slice(&(value.wide_length as u32).to_le_bytes());",
+		"let n = value.wide_length.clamp(0, 8) as usize;",
+		"b[at..at + 2].copy_from_slice(&value.wide[i].to_le_bytes());",
+		// and the SCATTER, unit by unit back into the buffer
+		"value.wide = [0u16; 9];",
+		"value.wide[i] = u16::from_le_bytes(b[at..at + 2].try_into().expect(\"two bytes\"));",
+		"value.wide[value.wide_length as usize] = 0;",
+	} {
+		if !strings.Contains(fixed, want) {
+			t.Errorf("the fixed form's wide text is missing %q", want)
+		}
+	}
+
+	// AND THE SPAN IS ir's: 4 for the lead, then 4 + 2 * 8 for the text, so the
+	// trailing scalar sits at 24 and the body is 28. A `wstring(N)` that had
+	// been measured as a scalar would put `trail` somewhere else entirely.
+	if !strings.Contains(fixed, "pub const CAPTION_FIXED_BODY_BYTES: usize = 28;") {
+		t.Error("the body is not 4 + (4 + 2 * 8) + 4 — the wstring's constant size is not ir's")
+	}
+	if !strings.Contains(fixed, "b[24..24 + 4].copy_from_slice(&(value.trail as u32).to_le_bytes());") &&
+		!strings.Contains(fixed, "let at = 24;") {
+		t.Error("the field after the wstring does not start at 24")
 	}
 }
 
@@ -571,9 +658,6 @@ func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
 	if strings.Contains(loop, "identity") {
 		t.Error("the load loop still branches on identity; an empty hole list is what skips work")
 	}
-	if strings.Contains(loop, "if !identity") {
-		t.Error("the load loop still skips the prefill on the identity path")
-	}
 	runtime := string(out[FixedRuntimeModule+".rs"])
 	for _, want := range []string{
 		"struct TableFixedHole",
@@ -613,14 +697,14 @@ func TestFixedFormWriteIsLiveCountAndLength(t *testing.T) {
 		t.Fatal("probe_fixed_write_body was not emitted")
 	}
 	for _, want := range []string{
-		"for i in 0..(value.marks_count as usize)",
-		"let n = value.blob_length as usize;",
+		"for i in 0..value.marks_count.clamp(0, 4) as usize",
+		"let n = value.blob_length.clamp(0, 6) as usize;",
 		"copy_from_slice(&value.blob[..n]);",
-		"let n = value.label_length as usize;",
+		"let n = value.label_length.clamp(0, 8) as usize;",
 		"copy_from_slice(&value.label[..n]);",
-		"debug_assert!(value.marks_count >= 0 && value.marks_count <= 4)",
-		"debug_assert!(value.blob_length >= 0 && value.blob_length <= 6)",
-		"debug_assert!(value.label_length >= 0 && value.label_length <= 8)",
+		"value.marks_count >= 0 && value.marks_count <= 4,",
+		"value.blob_length >= 0 && value.blob_length <= 6,",
+		"value.label_length >= 0 && value.label_length <= 8,",
 	} {
 		if !strings.Contains(write, want) {
 			t.Errorf("the writer is missing live count/length %q", want)

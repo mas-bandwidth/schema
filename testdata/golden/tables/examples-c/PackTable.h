@@ -5043,56 +5043,102 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_co
     }
 }
 
-/* ShipEntry's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ship_entry_fixed_clamp_body_( ShipEntry * value, int32_t * clamped )
+/* GunnerSettings's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_gunner_settings_fixed_clamp_body_( GunnerSettings * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
+    if ( !table_wire_utf8( (const uint8_t *) value->callsign, (uint64_t) value->callsign_length ) )
+    {
+        memset( value->callsign, 0, sizeof( value->callsign ) );
+        value->callsign_length = 0;
+        (*damaged)++;
+    }
+}
+
+/* ShipEntry's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_ship_entry_fixed_clamp_body_( ShipEntry * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    if ( !table_wire_utf8( (const uint8_t *) value->display_name, (uint64_t) value->display_name_length ) )
+    {
+        memset( value->display_name, 0, sizeof( value->display_name ) );
+        value->display_name_length = 0;
+        (*damaged)++;
+    }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->hardpoints_count; ++i )
         {
-            if ( value->hardpoints[i] < 0 ) { value->hardpoints[i] = 0; (*clamped)++; }
-            else if ( value->hardpoints[i] > 8 ) { value->hardpoints[i] = 8; (*clamped)++; }
+            (*clamped) += (int) ( value->hardpoints[i] < 0 ) | (int) ( value->hardpoints[i] > 8 );
+            value->hardpoints[i] = ( value->hardpoints[i] < 0 ) ? 0 : ( ( value->hardpoints[i] > 8 ) ? 8 : value->hardpoints[i] );
         }
+    }
+    if ( value->gunner_present )
+    {
+        schema_tabledemo_gunner_settings_fixed_clamp_body_( &value->gunner, clamped, damaged );
     }
 }
 
 /* GlobalSettings's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_global_settings_fixed_clamp_body_( GlobalSettings * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_global_settings_fixed_clamp_body_( GlobalSettings * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->tick_rate < 1 ) { value->tick_rate = 1; (*clamped)++; }
-    else if ( value->tick_rate > 240 ) { value->tick_rate = 240; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += (int) ( value->tick_rate < 1 ) | (int) ( value->tick_rate > 240 );
+    value->tick_rate = ( value->tick_rate < 1 ) ? 1 : ( ( value->tick_rate > 240 ) ? 240 : value->tick_rate );
     if ( (uint64_t) value->difficulty > 3u ) { value->difficulty = DIFFICULTY_NONE; (*clamped)++; }
+    if ( !table_wire_utf8( (const uint8_t *) value->build_note, (uint64_t) value->build_note_length ) )
+    {
+        memset( value->build_note, 0, sizeof( value->build_note ) );
+        value->build_note_length = 0;
+        (*damaged)++;
+    }
 }
 
 /* PackConfig's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_config_fixed_clamp_body_( PackConfig * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_pack_config_fixed_clamp_body_( PackConfig * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    schema_tabledemo_global_settings_fixed_clamp_body_( &value->global, clamped );
+    (void) value; (void) clamped; (void) damaged;
+    schema_tabledemo_global_settings_fixed_clamp_body_( &value->global, clamped, damaged );
     {
         int64_t i;
         for ( i = 0; i < 3; ++i )
         {
-            schema_tabledemo_ship_entry_fixed_clamp_body_( &value->ships[i], clamped );
+            schema_tabledemo_ship_entry_fixed_clamp_body_( &value->ships[i], clamped, damaged );
         }
     }
     {
         int64_t i;
         for ( i = 0; i < 3; ++i )
         {
-            if ( value->thresholds[i] < 0 ) { value->thresholds[i] = 0; (*clamped)++; }
-            else if ( value->thresholds[i] > 1000 ) { value->thresholds[i] = 1000; (*clamped)++; }
+            (*clamped) += (int) ( value->thresholds[i] < 0 ) | (int) ( value->thresholds[i] > 1000 );
+            value->thresholds[i] = ( value->thresholds[i] < 0 ) ? 0 : ( ( value->thresholds[i] > 1000 ) ? 1000 : value->thresholds[i] );
         }
     }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->reserves_count; ++i )
         {
-            schema_tabledemo_ship_entry_fixed_clamp_body_( &value->reserves[i], clamped );
+            schema_tabledemo_ship_entry_fixed_clamp_body_( &value->reserves[i], clamped, damaged );
         }
     }
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS. */
+static SCHEMA_UNUSED void schema_tabledemo_gunner_settings_fixed_clamp_( GunnerSettings * value, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_gunner_settings_fixed_clamp_body_( value, &clamped, &damaged );
+    report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- GunnerSettings, the fixed form ---- */
@@ -5234,6 +5280,9 @@ static SCHEMA_UNUSED int64_t gunner_settings_fixed_load( GunnerSettings * values
         gunner_settings_reset( values + k ); /* the declared defaults, one prefill */
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). */
+        schema_tabledemo_gunner_settings_fixed_clamp_( values + k, report );
         at += record_bytes;
     }
     return count;
@@ -5248,8 +5297,13 @@ static SCHEMA_UNUSED int64_t gunner_settings_fixed_load( GunnerSettings * values
 static SCHEMA_UNUSED void schema_tabledemo_ship_entry_fixed_clamp_( ShipEntry * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_ship_entry_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_ship_entry_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- ShipEntry, the fixed form ---- */
@@ -5427,8 +5481,13 @@ static SCHEMA_UNUSED int64_t ship_entry_fixed_load( ShipEntry * values, int64_t 
 static SCHEMA_UNUSED void schema_tabledemo_global_settings_fixed_clamp_( GlobalSettings * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_global_settings_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_global_settings_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- GlobalSettings, the fixed form ---- */
@@ -5598,8 +5657,13 @@ static SCHEMA_UNUSED int64_t global_settings_fixed_load( GlobalSettings * values
 static SCHEMA_UNUSED void schema_tabledemo_pack_config_fixed_clamp_( PackConfig * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_tabledemo_pack_config_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_tabledemo_pack_config_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- PackConfig, the fixed form ---- */

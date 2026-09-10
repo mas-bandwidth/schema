@@ -4900,11 +4900,17 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
 }
 
 /* Stamp's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_fixed_clamp_body_( Stamp * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_fixed_clamp_body_( Stamp * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
-    if ( value->seq < 0 ) { value->seq = 0; (*clamped)++; }
-    else if ( value->seq > 1000 ) { value->seq = 1000; (*clamped)++; }
+    (void) value; (void) clamped; (void) damaged;
+    if ( !table_wire_utf8( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) )
+    {
+        memset( value->tag, 0, sizeof( value->tag ) );
+        value->tag_length = 0;
+        (*damaged)++;
+    }
+    (*clamped) += (int) ( value->seq < 0 ) | (int) ( value->seq > 1000 );
+    value->seq = ( value->seq < 0 ) ? 0 : ( ( value->seq > 1000 ) ? 1000 : value->seq );
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -4916,8 +4922,13 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
 static SCHEMA_UNUSED void schema_graphdemo_stamp_fixed_clamp_( Stamp * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_graphdemo_stamp_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_graphdemo_stamp_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- Stamp, the fixed form ---- */
