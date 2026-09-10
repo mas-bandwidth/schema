@@ -523,7 +523,13 @@ func hostileRecord(t *testing.T) []byte {
 
 func wantHostile(t *testing.T, what string, v Host, r TableReport) {
 	t.Helper()
-	// v == true compares the byte against 1. if v does not, on amd64.
+	// The op's contract is the dest BYTE is 1. if v and v == true are both
+	// TESTB (nonzero) on linux amd64, so a raw 2 already reads as a Go true
+	// there — those comparisons cannot tell the op ran.
+	raw := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
+	if raw[unsafe.Offsetof(v.On)] != 1 {
+		t.Fatalf("%s: hostile 2 was not normalised to a Go true (1), dest=%d", what, raw[unsafe.Offsetof(v.On)])
+	}
 	if v.On != true {
 		t.Fatalf("%s: a hostile 2 in a bool landed as false", what)
 	}
@@ -579,9 +585,10 @@ func TestHostileBoolOnThePlanPath(t *testing.T) {
 }
 
 // THE NEGATIVE CONTROL, in the same file: sabotage tableFixedBool to a copy
-// (the op it replaced) and require a raw 2 not to land as a Go true. if v
-// is TESTB on amd64, so a planted 2 reads true there and the control would
-// claim the op was never needed; v == true compares against 1 on both.
+// (the op it replaced) and require the dest BYTE to stay the planted 2, not
+// the normalised 1. if v and v == true are both TESTB (nonzero) on linux
+// amd64, so a planted 2 reads as a Go true there and a truthiness check
+// falsely claims the op was never needed (c4eec5b9, CI red on ffa5da4b).
 func TestHostileBoolNegativeControl(t *testing.T) {
 	buf := hostileRecord(t)
 	record := buf[len(buf)-HostFixedRecordBytes:]
@@ -603,14 +610,17 @@ func TestHostileBoolNegativeControl(t *testing.T) {
 	var v Host
 	HostReset(&v)
 	var r TableReport
-	tableFixedRun(plan, int32(len(plan)), record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &r)
-	if v.On == true {
-		t.Fatal("NEGATIVE CONTROL FAILED: a raw 2 copied into a Go bool read as true, so the op it replaced was never needed")
+	dst := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
+	tableFixedRun(plan, int32(len(plan)), record[8:], dst, &r)
+	if dst[unsafe.Offsetof(v.On)] == 1 {
+		t.Fatal("NEGATIVE CONTROL FAILED: sabotaged copy still wrote a Go true (1); the bool op was not what ran")
 	}
-	raw := tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v))
-	raw[unsafe.Offsetof(v.On)] = record[8+bodyOn] // the copy the op replaced
-	if v.On == true {
-		t.Fatal("NEGATIVE CONTROL FAILED: a raw 2 copied into a Go bool read as true, so the op it replaced was never needed")
+	if dst[unsafe.Offsetof(v.On)] != 2 {
+		t.Fatalf("NEGATIVE CONTROL FAILED: planted 2, dest byte is %d", dst[unsafe.Offsetof(v.On)])
+	}
+	dst[unsafe.Offsetof(v.On)] = record[8+bodyOn] // the copy the op replaced
+	if dst[unsafe.Offsetof(v.On)] != 2 {
+		t.Fatal("NEGATIVE CONTROL FAILED: the planted 2 did not survive a raw store")
 	}
 }
 `)

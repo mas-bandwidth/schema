@@ -1064,7 +1064,8 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	entries := FixedTableFixedPlan.Entries
 	entryCount := FixedTableFixedPlan.Count
 	recordBytes := int64(FixedTableFixedRecordBytes)
-	if hash != FixedTableFixedHash {
+	identity := hash == FixedTableFixedHash
+	if !identity {
 		parsed, ok := tableFixedParseLayout(layout)
 		if !ok {
 			return tableFixedRefuse(report, "layout_malformed")
@@ -1085,12 +1086,27 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, "batch_too_large")
 	}
+	var def FixedTable
+	var defBytes []byte
+	var holes []tableFixedHole
+	if !identity && n > 0 {
+		FixedTableReset(&def)
+		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
+	}
 	for k := int64(0); k < n; k++ {
-		FixedTableReset(&values[k])
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		if identity {
+			FixedTableReset(&values[k])
+		} else {
+			for i := range holes {
+				h := holes[i]
+				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+			}
+		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
 		at = at[recordBytes:]
 	}

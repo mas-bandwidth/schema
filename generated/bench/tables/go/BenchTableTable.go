@@ -2184,6 +2184,79 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	return out
 }
 
+// tableFixedHole is one dst range the plan does not land. Compiled Load copies
+// declared defaults into exactly these; identity does not use the list.
+type tableFixedHole struct {
+	Off, Size uint32
+}
+
+func tableFixedLand(cover []byte, off, n uint32) {
+	if n == 0 {
+		return
+	}
+	end := uint32(len(cover))
+	if off >= end {
+		return
+	}
+	last := off + n
+	if last > end {
+		last = end
+	}
+	for i := off; i < last; i++ {
+		cover[i] = 1
+	}
+}
+
+// tableFixedHoles is the complement of the unguarded dest writes. Guarded
+// entries (union arms, compiled tag consts) are not always written, so they
+// stay holes and keep the defaults. The write sizes match tableFixedRun.
+func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tableFixedHole {
+	if dstSize == 0 {
+		return nil
+	}
+	cover := make([]byte, dstSize)
+	for i := int32(0); i < count; i++ {
+		p := plan[i]
+		if p.Guard != tableFixedNoGuard {
+			continue
+		}
+		switch p.Op {
+		case tableFixedCopy, tableFixedBool, tableFixedTag, tableFixedConst:
+			tableFixedLand(cover, p.Dst, p.Size)
+		case tableFixedCount:
+			tableFixedLand(cover, p.Dst, 4)
+		case tableFixedText:
+			tableFixedLand(cover, p.Dst, 4)
+			tableFixedLand(cover, p.Aux, p.Size)
+		case tableFixedWiden:
+			tableFixedLand(cover, p.Dst, uint32(p.DstSize))
+		case tableFixedWidenF:
+			tableFixedLand(cover, p.Dst, 8)
+		case tableFixedOrdinal:
+			n := uint32(4)
+			if p.DstSize == 1 || p.DstSize == 2 {
+				n = uint32(p.DstSize)
+			}
+			tableFixedLand(cover, p.Dst, n)
+		}
+	}
+	var holes []tableFixedHole
+	i := uint32(0)
+	for i < dstSize {
+		if cover[i] != 0 {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < dstSize && cover[j] == 0 {
+			j++
+		}
+		holes = append(holes, tableFixedHole{Off: i, Size: j - i})
+		i = j
+	}
+	return holes
+}
+
 func tableFixedRefuse(report *TableReport, reason string) int64 {
 	report.Verdict = TableOpenRefused
 	report.Reason = reason
@@ -9585,7 +9658,8 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	entries := TableEntityFixedPlan.Entries
 	entryCount := TableEntityFixedPlan.Count
 	recordBytes := int64(TableEntityFixedRecordBytes)
-	if hash != TableEntityFixedHash {
+	identity := hash == TableEntityFixedHash
+	if !identity {
 		parsed, ok := tableFixedParseLayout(layout)
 		if !ok {
 			return tableFixedRefuse(report, "layout_malformed")
@@ -9606,12 +9680,27 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, "batch_too_large")
 	}
+	var def TableEntity
+	var defBytes []byte
+	var holes []tableFixedHole
+	if !identity && n > 0 {
+		TableEntityReset(&def)
+		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
+	}
 	for k := int64(0); k < n; k++ {
-		TableEntityReset(&values[k])
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		if identity {
+			TableEntityReset(&values[k])
+		} else {
+			for i := range holes {
+				h := holes[i]
+				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+			}
+		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
 		at = at[recordBytes:]
 	}
@@ -9697,7 +9786,8 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	entries := TableStatFixedPlan.Entries
 	entryCount := TableStatFixedPlan.Count
 	recordBytes := int64(TableStatFixedRecordBytes)
-	if hash != TableStatFixedHash {
+	identity := hash == TableStatFixedHash
+	if !identity {
 		parsed, ok := tableFixedParseLayout(layout)
 		if !ok {
 			return tableFixedRefuse(report, "layout_malformed")
@@ -9718,12 +9808,27 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, "batch_too_large")
 	}
+	var def TableStat
+	var defBytes []byte
+	var holes []tableFixedHole
+	if !identity && n > 0 {
+		TableStatReset(&def)
+		defBytes = tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
+	}
 	for k := int64(0); k < n; k++ {
-		TableStatReset(&values[k])
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		if identity {
+			TableStatReset(&values[k])
+		} else {
+			for i := range holes {
+				h := holes[i]
+				copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+			}
+		}
 		if tableFixedGet64(at) != hash {
 			return tableFixedRefuse(report, "no_layout")
 		}
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		tableFixedRun(entries, entryCount, at[8:], dst, report)
 		at = at[recordBytes:]
 	}
