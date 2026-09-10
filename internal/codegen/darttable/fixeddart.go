@@ -536,11 +536,17 @@ func (g *fixedGen) emitTextDefaultBytes(f *ir.Field, ind, target string) {
 // which is also what zero-fills every byte of declared slack without this
 // function touching it.
 //
-// A BOUND IS WRITTEN WHOLE. A string's N bytes, an array's MAX elements and an
-// optional's payload all ride however much of them is used, which is the C++
-// reference's own write and what makes a read-then-save reproduce a record
-// BYTE FOR BYTE: the read landed the peer's slack in this storage, so writing
-// the storage back writes the peer's slack back.
+// A BOUND IS WRITTEN WHOLE. A string's N bytes and an array's MAX elements
+// ride however much of them is used, which is what makes a read-then-save
+// reproduce a record BYTE FOR BYTE: the read landed the peer's slack in this
+// storage, so writing the storage back writes the peer's slack back.
+//
+// AN ABSENT OPTIONAL'S PAYLOAD IS THE ONE EXCEPTION, and it is §3.4's own:
+// under a present flag of `0` the payload is SLACK, and slack is ZERO ON
+// WRITE. So the payload's stores stand under the flag and the template's
+// zeros ride when it is clear. Byte identity is unmoved over CONFORMING
+// input — a conforming peer wrote zeros there, and this reader read them —
+// and over input that put meaning under a clear flag it was never owed.
 func (g *fixedGen) emitWriteBody(st *ir.Struct) {
 	g.pf("/// %s's stores. Every offset is a constant of the type and nothing is\n", st.Name)
 	g.pf("/// measured: on this form MeasureBody is a constant, not a walk.\n")
@@ -560,7 +566,22 @@ func (g *fixedGen) emitWriteField(f *ir.Field, base string, at int64, val, ind s
 		g.call(ind, "", "view.setUint8",
 			[]string{fixedOff(base, at), val + "." + name + "Present ? 1 : 0"}, ";")
 		at += fixedPresentBytes
+		// AN ABSENT OPTIONAL'S PAYLOAD IS SLACK, AND SLACK IS ZERO ON WRITE
+		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not
+		// it is present, and when the flag is 0 what rides is zeros. The
+		// template already laid them down, so the write is the one this
+		// branch does NOT do — it costs the writer nothing, which is the
+		// spec's own reason for the rule.
+		g.pf("%sif (%s.%sPresent) {\n", ind, val, name)
+		g.emitWritePayload(f, base, at, val, name, ind+"  ")
+		g.pf("%s}\n", ind)
+		return
 	}
+	g.emitWritePayload(f, base, at, val, name, ind)
+}
+
+// emitWritePayload is the field's own stores, past any present flag.
+func (g *fixedGen) emitWritePayload(f *ir.Field, base string, at int64, val, name, ind string) {
 	switch {
 	case f.KeyEnum != "":
 		g.emitWriteLoop(f, base, at, f.KeyEnumRef.Max, val+"."+name, ind)

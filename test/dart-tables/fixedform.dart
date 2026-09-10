@@ -276,17 +276,16 @@ void corpusFiles(String dir) {
     );
     check(text(values[1].name, values[1].nameLength) == 'absent', 'p3[1].name');
     check(!values[1].linkPresent, 'p3[1]: the present flag is clear');
-    // THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT (§3.4), which is
-    // exactly why a read-then-save reproduces the file: the absent record's
-    // payload bytes are on the wire and this reader kept them.
+    // THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT (§3.4) — its bytes
+    // are on the wire and the read moves them — AND UNDER A CLEAR FLAG WHAT
+    // RIDES IS ZEROS, because there the payload is SLACK and slack is ZERO ON
+    // WRITE. So the absent record's link reads as zeros, and read-then-save
+    // reproduces the file because the file is what a conforming writer wrote.
     check(
-      values[1].link.value == 99,
-      'p3[1]: an absent optional\'s payload still rode',
+      values[1].link.value == 0,
+      'p3[1]: an absent optional\'s payload is zeros',
     );
-    check(
-      text(values[1].link.tag, values[1].link.tagLength) == 'still',
-      'p3[1].link.tag',
-    );
+    check(values[1].link.tagLength == 0, 'p3[1].link.tag is empty');
     final out = Uint8List(p3.chainFixedMeasure(n));
     check(p3.chainFixedSave(values, n, out) == out.length, 'p3: save');
     sameBytes(out, file, 'p3');
@@ -353,9 +352,17 @@ void corpusFiles(String dir) {
             turret.gunnerPresent == ((h + w) % 2 == 0),
             'keyed[$k]…turrets[$w].gunner present',
           );
+          // A PAYLOAD UNDER A CLEAR FLAG IS SLACK AND READS AS ZEROS (§3.4):
+          // a present gunner carries its values, an absent one carries none —
+          // not even the declared default `reaction = 0.2`, which is meaning.
           check(
-            turret.gunner.tracking == (w % 2 == 1),
+            turret.gunner.tracking == (turret.gunnerPresent && (w % 2 == 1)),
             'keyed[$k]…turrets[$w].gunner.tracking',
+          );
+          check(
+            turret.gunnerPresent || turret.gunner.reaction == 0.0,
+            'keyed[$k]…turrets[$w]: an absent gunner is zeros, '
+            'not the declared 0.2',
           );
         }
       }
@@ -425,9 +432,17 @@ void corpusFiles(String dir) {
           ship.gunnerPresent == (s % 2 == 0),
           'pack[$k].ships[$s] gunner present',
         );
+        // as in keyed: an absent gunner's payload is slack, so it is zeros
+        // and its callsign is empty (§3.4)
         check(
-          text(ship.gunner.callsign, ship.gunner.callsignLength) == calls[s],
+          text(ship.gunner.callsign, ship.gunner.callsignLength) ==
+              (ship.gunnerPresent ? calls[s] : ''),
           'pack[$k].ships[$s].gunner.callsign',
+        );
+        check(
+          ship.gunnerPresent || ship.gunner.reaction == 0.0,
+          'pack[$k].ships[$s]: an absent gunner is zeros, '
+          'not the declared 0.2',
         );
         check(v.thresholds[s] == 100 * (s + 1) + k, 'pack[$k].thresholds[$s]');
       }
@@ -446,6 +461,10 @@ void corpusFiles(String dir) {
         check(
           !v.reserves[r].gunnerPresent,
           'pack[$k].reserves[$r] gunner absent',
+        );
+        check(
+          v.reserves[r].gunner.reaction == 0.0,
+          'pack[$k].reserves[$r]: the absent gunner\'s payload is zeros',
         );
       }
     }
@@ -942,6 +961,70 @@ void pCase() {
   );
 }
 
+// 8. AN ABSENT OPTIONAL'S PAYLOAD IS SLACK, AND SLACK IS ZERO ON WRITE
+// (docs/SPEC-TABLES.md §3.4). The payload rides WHOLE whether or not it is
+// present — the bytes are always there and the body is always the same size —
+// but under a present flag of `0` what rides is ZEROS. So a value whose
+// storage holds a stale or a merely DEFAULT payload behind a clear flag writes
+// zeros there, and two writers holding different rubbish under a clear flag
+// write the SAME record. Read-then-save byte identity is over CONFORMING
+// input, which is exactly what this rule makes reproducible.
+void absentOptionalCase() {
+  final one = p3home.Chain();
+  one.name.setRange(0, 5, 'dirty'.codeUnits);
+  one.nameLength = 5;
+  // a payload set, and then the flag CLEARED: the storage still holds it
+  one.linkPresent = true;
+  one.link.value = 777;
+  one.link.tag.setRange(0, 5, 'stale'.codeUnits);
+  one.link.tagLength = 5;
+  one.linkPresent = false;
+
+  final w = Uint8List(p3.chainFixedMeasure(1));
+  check(
+    p3.chainFixedSave(<p3home.Chain>[one], 1, w) == w.length,
+    'absent save',
+  );
+
+  // the record's body, past the eight-byte hash
+  final at = p3.chainFixedHeaderBytes + 8;
+  final body = w.sublist(at, at + p3.chainFixedBodyBytes);
+  // name (4 + 16) then the present flag, then the payload to the body's end
+  check(body[20] == 0, 'absent: the present flag is 0');
+  var rubbish = 0;
+  for (var i = 21; i < body.length; i++) {
+    if (body[i] != 0) {
+      rubbish++;
+    }
+  }
+  check(
+    rubbish == 0,
+    'ABSENT OPTIONAL: the payload is ZEROS on the wire, '
+    'not the storage this writer happened to hold (got $rubbish non-zero)',
+  );
+
+  // and a PRESENT payload still rides whole, so the rule cost nothing
+  one.linkPresent = true;
+  check(
+    p3.chainFixedSave(<p3home.Chain>[one], 1, w) == w.length,
+    'present save',
+  );
+  final back = <p3home.Chain>[p3home.Chain()];
+  final r = p3home.TableFixedReport();
+  check(
+    p3.chainFixedLoad(back, 1, w, w.length, p3.chainFixedNewPlan(), r) == 1,
+    'present: one record read',
+  );
+  check(
+    back[0].linkPresent && back[0].link.value == 777,
+    'PRESENT OPTIONAL: the payload rides whole, as it always did',
+  );
+  check(
+    text(back[0].link.tag, back[0].link.tagLength) == 'stale',
+    'PRESENT OPTIONAL: the payload\'s text rides whole',
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
@@ -1430,6 +1513,7 @@ void main(List<String> args) {
   fxCase();
   vCase();
   pCase();
+  absentOptionalCase();
   negativeControl();
   layoutValidation();
 

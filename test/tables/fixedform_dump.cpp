@@ -116,10 +116,12 @@ static bool p3_file( const char * dir )
     std::strcpy( v[1].name, "absent" );
     v[1].name_length = 6;
     v[1].link_present = false;
-    // the payload rides WHOLE whether or not it is present (§3.4)
-    v[1].link.value = 99;
-    std::strcpy( v[1].link.tag, "still" );
-    v[1].link.tag_length = 5;
+    // THE PAYLOAD RIDES WHOLE WHETHER OR NOT IT IS PRESENT, AND UNDER A CLEAR
+    // FLAG WHAT RIDES IS ZEROS (docs/SPEC-TABLES.md §3.4): the payload is
+    // SLACK there, and slack is ZERO ON WRITE. So the fixture leaves the
+    // absent record's link FRESH — putting meaning under a clear flag would
+    // make this oracle non-conforming input, which is the one thing a
+    // reference corpus must never be.
     return emit( dir, "p3.bin", v, tblp3::ChainFixedMeasure, tblp3::ChainFixedSave );
 }
 
@@ -148,8 +150,22 @@ static bool keyed_file( const char * dir )
                 v[k].hulls.slots[h].turrets.slots[w].damage = 10.0f + (float) ( h * 3 + w );
                 v[k].hulls.slots[h].turrets.slots[w].cooldown = 0.25f * (float) ( w + 1 );
                 v[k].hulls.slots[h].turrets.slots[w].gunner_present = ( ( h + w ) % 2 ) == 0;
-                v[k].hulls.slots[h].turrets.slots[w].gunner.reaction = 0.2f + 0.1f * (float) w;
-                v[k].hulls.slots[h].turrets.slots[w].gunner.tracking = ( w % 2 ) == 1;
+                // AN ABSENT OPTIONAL'S PAYLOAD IS SLACK, AND SLACK IS ZERO ON
+                // WRITE (docs/SPEC-TABLES.md §3.4): only a PRESENT gunner
+                // carries values, so this corpus stays conforming input.
+                if ( v[k].hulls.slots[h].turrets.slots[w].gunner_present )
+                {
+                    v[k].hulls.slots[h].turrets.slots[w].gunner.reaction = 0.2f + 0.1f * (float) w;
+                    v[k].hulls.slots[h].turrets.slots[w].gunner.tracking = ( w % 2 ) == 1;
+                }
+                else
+                {
+                    // Reset lands the DECLARED DEFAULT (reaction = 0.2), which
+                    // under a clear flag is meaning in slack. A conforming
+                    // record has zeros there, so the fixture puts them there.
+                    v[k].hulls.slots[h].turrets.slots[w].gunner.reaction = 0.0f;
+                    v[k].hulls.slots[h].turrets.slots[w].gunner.tracking = false;
+                }
             }
         }
     }
@@ -182,14 +198,30 @@ static bool pack_file( const char * dir )
             v[k].ships.slots[s].hardpoints_count = s + 1;
             for ( int h = 0; h < s + 1; ++h ) { v[k].ships.slots[s].hardpoints[h] = h + 1; }
             v[k].ships.slots[s].gunner_present = ( s % 2 ) == 0;
-            v[k].ships.slots[s].gunner.reaction = 0.2f + 0.05f * (float) s;
-            v[k].ships.slots[s].gunner.tracking = ( s % 2 ) == 1;
-            const char * calls[3] = { "ace", "hammer", "ghost" };
-            std::strcpy( v[k].ships.slots[s].gunner.callsign, calls[s] );
-            v[k].ships.slots[s].gunner.callsign_length = (int32_t) std::strlen( calls[s] );
+            // as above: a payload under a CLEAR present flag is slack, and a
+            // conforming writer leaves zeros there (docs/SPEC-TABLES.md §3.4)
+            if ( v[k].ships.slots[s].gunner_present )
+            {
+                v[k].ships.slots[s].gunner.reaction = 0.2f + 0.05f * (float) s;
+                v[k].ships.slots[s].gunner.tracking = ( s % 2 ) == 1;
+                const char * calls[3] = { "ace", "hammer", "ghost" };
+                std::strcpy( v[k].ships.slots[s].gunner.callsign, calls[s] );
+                v[k].ships.slots[s].gunner.callsign_length = (int32_t) std::strlen( calls[s] );
+            }
+            else
+            {
+                // as in keyed_file: Reset's declared default is meaning, and a
+                // clear present flag says this payload carries none
+                v[k].ships.slots[s].gunner.reaction = 0.0f;
+                v[k].ships.slots[s].gunner.tracking = false;
+            }
             v[k].thresholds.slots[s] = 100 * ( s + 1 ) + k;
         }
         v[k].reserves_count = 2;
+        // EVERY reserve slot, the two used and the one past the count alike:
+        // a clear present flag makes the payload slack, and Reset lands the
+        // DECLARED DEFAULT (reaction = 0.2) there (docs/SPEC-TABLES.md §3.4).
+        for ( int r = 0; r < 3; ++r ) { v[k].reserves[r].gunner.reaction = 0.0f; }
         for ( int r = 0; r < 2; ++r )
         {
             const char * names[2] = { "spare-a", "spare-b" };
