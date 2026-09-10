@@ -808,7 +808,7 @@ func renderReport(dir string, writeOutputs bool) error {
 	return nil
 }
 func main() {
-	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, run confirmation, or render")
+	mode := flag.String("mode", "gate", "build, gate, fast diagnostic, table report, run confirmation, or render")
 	out := flag.String("out", "", "new results directory (or existing directory for render)")
 	langsFlag := flag.String("langs", "cpp,c,go,cs", "comma-separated required build/gate languages")
 	rounds := flag.Int("rounds", 7, "interleaved measured rounds")
@@ -819,6 +819,10 @@ func main() {
 	tableIters := flag.Int64("table-iters", 200000, "initial Table iterations per warmup/sample, fast mode only")
 	fastTimeout := flag.Duration("fast-timeout", 5*time.Minute, "whole fast-mode deadline, at most 5m including gates")
 	noise := flag.String("noise-note", "uncontrolled diagnostic; no quiet-window claim", "operator context recorded by fast mode")
+	// Recorded, never applied: the caller pins the sitting (bench/paired/nine.sh
+	// runs the whole pass under `bench-lane <core>` so every runner inherits it)
+	// and this only carries that fact into the rendered header.
+	lane := flag.String("lane", "", "core this sitting was pinned to, recorded in the table header, table mode only")
 	flag.Parse()
 	fail := func(e error) { fmt.Fprintln(os.Stderr, "paired:", e); os.Exit(1) }
 	if _, e := os.Stat("bench/corpus/Bench.schema"); e != nil {
@@ -838,8 +842,19 @@ func main() {
 		}
 		return
 	}
-	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" {
+	// Discovery answers before any build, because the wrapper uses it to
+	// decide what to build.
+	if *mode == "table-langs" {
+		if e := reportTableLanguages(); e != nil {
+			fail(e)
+		}
+		return
+	}
+	if *mode != "build" && *mode != "gate" && *mode != "run" && *mode != "fast" && *mode != "table" && *mode != "table-langs" {
 		fail(errors.New("unknown mode"))
+	}
+	if *lane != "" && *mode != "table" {
+		fail(errors.New("-lane is recorded by table mode only"))
 	}
 	if *mode == "run" && strings.TrimSpace(*receipt) == "" {
 		fail(errors.New("run requires -quiet-window with the operator’s READY/START receipt or reference"))
@@ -849,11 +864,21 @@ func main() {
 		if len(langs) != 4 {
 			fail(errors.New("fast mode requires all four languages"))
 		}
+	}
+	// Table mode takes its languages from the tree, not from -langs: the point
+	// of the one command is that the same line runs everywhere and the tree
+	// answers for what it carries.
+	if *mode == "table" {
+		if *langsFlag != flag.Lookup("langs").DefValue {
+			fail(errors.New("table mode discovers its languages from bench/tables; -langs does not apply"))
+		}
+	}
+	if *mode == "fast" || *mode == "table" {
 		if e := fast.validate(); e != nil {
 			fail(e)
 		}
 	}
-	if !*reuse && *mode != "fast" {
+	if !*reuse && *mode != "fast" && *mode != "table" {
 		if e := generateAndBuild(langs); e != nil {
 			fail(e)
 		}
@@ -864,6 +889,12 @@ func main() {
 	}
 	if *mode == "fast" {
 		if e := fastMeasure(langs, *out, info, fast); e != nil {
+			fail(e)
+		}
+		return
+	}
+	if *mode == "table" {
+		if e := tablePass(*out, info, fast, *lane); e != nil {
 			fail(e)
 		}
 		return
