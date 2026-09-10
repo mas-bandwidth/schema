@@ -55,6 +55,22 @@ func (elixirTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 
 func init() {
 	registerPacketValueDefaultCarrier("elixir")
+	// AND THE TABLE HALF (SPEC §4.2). The three table forms this backend emits
+	// each answer "absent field" with the declared value:
+	//
+	//   - the FIXED form (§3.4) has one place an absent field is answered, the
+	//     PREFILL, and the prefill is this type's declared defaults laid out as
+	//     record bytes (internal/codegen/elixirtable/fixeddefaults.go) — a
+	//     string, bytes or flags default among them. It is the WRITE template
+	//     too, so the same bytes are what a writer stores over.
+	//   - the BLOCK (§19) and COOKED (§7) forms are read halves over a DENSE
+	//     image: every field of the image is present by construction, so there
+	//     is no absent field for a default to answer and nothing to elide.
+	//
+	// The id-table wire (§3) is NOT emitted for this backend (schema#515), so
+	// its elision rule is not this port's to carry today; when #515 lands, the
+	// codec it brings has to keep this claim true.
+	registerTableValueDefaultCarrier("elixir")
 	registerWideTextCarrier("elixir")
 	registerBuiltin(elixirTarget{}, true, false, false, false)
 }
