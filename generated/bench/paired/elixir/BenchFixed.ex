@@ -16,6 +16,28 @@ defmodule Bench.BenchFixed do
 
   alias Bench.FixedRuntime, as: R
 
+  @r_mixed_entity_pos_x {-16_383, 16_383}
+  @r_mixed_entity_pos_y {-16_383, 16_383}
+  @r_mixed_entity_pos_z {-16_383, 16_383}
+  @r_mixed_entity_vel_x {-2048, 2047}
+  @r_mixed_entity_vel_y {-2048, 2047}
+  @r_mixed_entity_vel_z {-2048, 2047}
+  @r_mixed_entity_health {0, 1000}
+  @r_mixed_stat_delta {-512, 511}
+  @r_mixed_hit_event_damage {0, 4095}
+  @r_mixed_hit_event_hit_kind {0, 7}
+  @r_mixed_chat_event_channel {0, 3}
+  @r_mixed_pickup_event_amount {0, 255}
+  @r_bench_mixed_ack_sequence {0, 65_535}
+  @r_bench_mixed_nonce {0, 18_446_744_073_709_551_615}
+  @r_bench_mixed_world_time {-1_000_000_000_000, 1_000_000_000_000}
+  @r_bench_mixed_server_time {0, 16_776_960}
+  @r_bench_mixed_flux {-1_267_650_600_228_229_401_496_703_205_376,
+                       1_267_650_600_228_229_401_496_703_205_376}
+  @r_bench_mixed_ping {0, 64_000}
+  @r_bench_mixed_extra {0, 255}
+  @r_bench_mixed_idle_ticks {0, 15}
+
   # union MixedEvent: the TAG ORDINAL at its own storage width, then the WIDEST ARM,
   # the slack behind a narrower arm zero-filled. TAG 0 IS None.
   def mixed_event_fixed_write_arm(value) do
@@ -56,13 +78,18 @@ defmodule Bench.BenchFixed do
   # MixedEntity's body: 51 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
   def mixed_entity_fixed_write_body(value) do
-    <<value.entity_id::little-unsigned-32, value.pos_x::little-signed-32,
-      value.pos_y::little-signed-32, value.pos_z::little-signed-32, value.yaw::little-unsigned-32,
-      value.pitch::little-unsigned-32, value.vel_x::little-signed-32,
-      value.vel_y::little-signed-32, value.vel_z::little-signed-32,
-      value.health::little-signed-32, value.weapon::little-unsigned-8,
-      value.damage::little-unsigned-64, if(value.moving, do: 1, else: 0)::unsigned-8,
-      if(value.firing, do: 1, else: 0)::unsigned-8>>
+    <<R.fits(value.entity_id, 32, false)::little-unsigned-32,
+      R.ranged(value.pos_x, @r_mixed_entity_pos_x)::little-signed-32,
+      R.ranged(value.pos_y, @r_mixed_entity_pos_y)::little-signed-32,
+      R.ranged(value.pos_z, @r_mixed_entity_pos_z)::little-signed-32,
+      R.fits(value.yaw, 32, false)::little-unsigned-32,
+      R.fits(value.pitch, 32, false)::little-unsigned-32,
+      R.ranged(value.vel_x, @r_mixed_entity_vel_x)::little-signed-32,
+      R.ranged(value.vel_y, @r_mixed_entity_vel_y)::little-signed-32,
+      R.ranged(value.vel_z, @r_mixed_entity_vel_z)::little-signed-32,
+      R.ranged(value.health, @r_mixed_entity_health)::little-signed-32,
+      value.weapon::little-unsigned-8, value.damage::little-unsigned-64,
+      if(value.moving, do: 1, else: 0)::unsigned-8, if(value.firing, do: 1, else: 0)::unsigned-8>>
   end
 
   # MixedEntity's projection: ONE binary pattern match over its 51 bytes of record
@@ -95,7 +122,8 @@ defmodule Bench.BenchFixed do
   # MixedStat's body: 8 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
   def mixed_stat_fixed_write_body(value) do
-    <<value.stat_id::little-unsigned-32, value.delta::little-signed-32>>
+    <<R.fits(value.stat_id, 32, false)::little-unsigned-32,
+      R.ranged(value.delta, @r_mixed_stat_delta)::little-signed-32>>
   end
 
   # MixedStat's projection: ONE binary pattern match over its 8 bytes of record
@@ -109,8 +137,10 @@ defmodule Bench.BenchFixed do
   # MixedHitEvent's body: 13 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
   def mixed_hit_event_fixed_write_body(value) do
-    <<value.target_id::little-unsigned-32, value.damage::little-signed-32,
-      value.hit_kind::little-signed-32, if(value.crit, do: 1, else: 0)::unsigned-8>>
+    <<R.fits(value.target_id, 32, false)::little-unsigned-32,
+      R.ranged(value.damage, @r_mixed_hit_event_damage)::little-signed-32,
+      R.ranged(value.hit_kind, @r_mixed_hit_event_hit_kind)::little-signed-32,
+      if(value.crit, do: 1, else: 0)::unsigned-8>>
   end
 
   # MixedHitEvent's projection: ONE binary pattern match over its 13 bytes of record
@@ -130,7 +160,8 @@ defmodule Bench.BenchFixed do
   # MixedChatEvent's body: 8 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
   def mixed_chat_event_fixed_write_body(value) do
-    <<value.channel::little-signed-32, value.speaker::little-unsigned-32>>
+    <<R.ranged(value.channel, @r_mixed_chat_event_channel)::little-signed-32,
+      R.fits(value.speaker, 32, false)::little-unsigned-32>>
   end
 
   # MixedChatEvent's projection: ONE binary pattern match over its 8 bytes of record
@@ -144,7 +175,8 @@ defmodule Bench.BenchFixed do
   # MixedPickupEvent's body: 8 bytes, the values in DECLARED ORDER, every field at its
   # declared storage width, nothing padded between fields.
   def mixed_pickup_event_fixed_write_body(value) do
-    <<value.item_id::little-unsigned-32, value.amount::little-signed-32>>
+    <<R.fits(value.item_id, 32, false)::little-unsigned-32,
+      R.ranged(value.amount, @r_mixed_pickup_event_amount)::little-signed-32>>
   end
 
   # MixedPickupEvent's projection: ONE binary pattern match over its 8 bytes of record
@@ -159,24 +191,33 @@ defmodule Bench.BenchFixed do
   # declared storage width, nothing padded between fields.
   def bench_mixed_fixed_write_body(value) do
     [
-      <<value.sequence::little-unsigned-32, value.ack_sequence::little-signed-32,
-        value.ack_bits::little-unsigned-32, value.session_id::little-unsigned-64,
-        value.client_id::little-unsigned-32, value.nonce::little-unsigned-64,
-        value.world_time::little-signed-64, value.frame_tick::little-unsigned-64,
-        value.server_time::little-signed-32, length(value.entities)::little-signed-32>>,
+      <<R.fits(value.sequence, 32, false)::little-unsigned-32,
+        R.ranged(value.ack_sequence, @r_bench_mixed_ack_sequence)::little-signed-32,
+        R.fits(value.ack_bits, 32, false)::little-unsigned-32,
+        R.fits(value.session_id, 64, false)::little-unsigned-64,
+        R.fits(value.client_id, 32, false)::little-unsigned-32,
+        R.ranged(value.nonce, @r_bench_mixed_nonce)::little-unsigned-64,
+        R.ranged(value.world_time, @r_bench_mixed_world_time)::little-signed-64,
+        R.fits(value.frame_tick, 64, false)::little-unsigned-64,
+        R.ranged(value.server_time, @r_bench_mixed_server_time)::little-signed-32,
+        R.count(value.entities, 1, 8)::little-signed-32>>,
       R.pad(Enum.map(value.entities, &mixed_entity_fixed_write_body/1), 408),
-      <<length(value.stats)::little-signed-32>>,
+      <<R.count(value.stats, 0, 80)::little-signed-32>>,
       R.pad(Enum.map(value.stats, &mixed_stat_fixed_write_body/1), 640),
       mixed_event_fixed_write_arm(value.game_event),
-      R.pad(Enum.map(value.loadout, fn e -> <<e::little-unsigned-8>> end), 4),
+      R.pad(Enum.map(value.loadout, fn e -> <<R.fits(e, 8, false)::little-unsigned-8>> end), 4),
       <<byte_size(value.player_name)::little-signed-32, R.fill(value.player_name, 15)::binary,
         byte_size(value.payload)::little-signed-32, R.fill(value.payload, 16)::binary,
         R.f32_bits(value.aim_x)::little-unsigned-32, R.f32_bits(value.aim_y)::little-unsigned-32,
         R.f32_bits(value.aim_z)::little-unsigned-32, R.f32_bits(value.recoil)::little-unsigned-32,
-        R.f64_bits(value.drift)::little-unsigned-64, value.wide_key::little-unsigned-128,
-        value.flux::little-signed-128, value.ping::little-unsigned-16,
-        value.crc_hint::little-unsigned-32, if(value.has_extra, do: 1, else: 0)::unsigned-8,
-        value.extra::little-signed-32, value.idle_ticks::little-signed-32>>
+        R.f64_bits(value.drift)::little-unsigned-64,
+        R.fits(value.wide_key, 128, false)::little-unsigned-128,
+        R.ranged(value.flux, @r_bench_mixed_flux)::little-signed-128,
+        R.ranged(value.ping, @r_bench_mixed_ping)::little-unsigned-16,
+        R.fits(value.crc_hint, 32, false)::little-unsigned-32,
+        if(value.has_extra, do: 1, else: 0)::unsigned-8,
+        R.ranged(value.extra, @r_bench_mixed_extra)::little-signed-32,
+        R.ranged(value.idle_ticks, @r_bench_mixed_idle_ticks)::little-signed-32>>
     ]
   end
 

@@ -43,4 +43,16 @@ table FuRoot
 {
     pick Pick
     tail int32 = 3
+    // THE SIGNED WIDENING RUNG (SPEC §4), which nothing else in this corpus
+    // reaches: FX1/FX2 widens a `uint16` into a `uint32` and every other pair
+    // moves fields around. A signed rung is its own code path — the source is
+    // read SIGN-EXTENDED at the writer's width and re-imaged at mine — and a
+    // rung that only ever carried positive numbers would pass while reading
+    // the sign wrong. FU2 declares the same field an `int32`.
+    mark int16 = -1
+    // AND THE FLOAT RUNG (SPEC §4), f32 into f64, for the same reason: it is
+    // the one rung that is not a re-imaged integer, and the pattern it has to
+    // get right is a SIGNALLING NaN — which the reference's `(double) f`
+    // QUIETS, because every hardware convert does. FU2 declares it a `float64`.
+    heat float32 = 0
 }

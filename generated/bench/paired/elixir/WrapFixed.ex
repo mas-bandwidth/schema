@@ -467,13 +467,14 @@ defmodule Bench.WrapFixed do
 
   defp fixed_table_fixed_records(stated, layout, records, report, opts) do
     hash = R.hash(layout)
+    copy = Keyword.get(opts, :copy, false)
 
     with {:ok, plan, size, report} <- fixed_table_fixed_plan_for(hash, layout, report, opts),
          :ok <- fixed_table_fixed_header_names_it(stated, hash),
          {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
       {values, report} =
         Enum.map_reduce(bodies, report, fn body, report ->
-          {image, report} = R.run(plan, body, @fixed_table_prefill, report)
+          {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
           {fixed_table_fixed_decode(image), report}
         end)
 
@@ -497,7 +498,9 @@ defmodule Bench.WrapFixed do
     case Keyword.get(opts, :plan) || R.cached(__MODULE__, hash) do
       {_plan, _size, made} when made > cap ->
         # THE PLAN'S CAPACITY IS THE CALLER'S BOUND AND NOT THE CACHE'S, so a
-        # plan already held for this peer is refused by the same name.
+        # plan already held for this peer is refused by the same name — and by
+        # the SAME NUMBER the compiler measured, which is what keeps a caller
+        # with a small capacity from inheriting a plan minted under a large one.
         {:error, :plan_too_large, report}
 
       {plan, size, _made} ->
@@ -510,9 +513,9 @@ defmodule Bench.WrapFixed do
           mine = R.my_layout(__MODULE__, @fixed_table_layout)
 
           case R.compile(theirs, mine, @fixed_table_dst, cap, report) do
-            {:ok, plan, report} ->
+            {:ok, plan, made, report} ->
               size = R.size_at(theirs, 0)
-              R.cache(__MODULE__, hash, {plan, size, length(plan)})
+              R.cache(__MODULE__, hash, {plan, size, made})
               {:ok, plan, size, report}
 
             {:error, why, report} ->

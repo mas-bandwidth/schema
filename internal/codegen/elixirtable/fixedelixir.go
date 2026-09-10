@@ -43,6 +43,9 @@ type fixedGen struct {
 	ns   string
 	file *ir.File
 	body strings.Builder
+	// owner is the snake name of the declaration whose body is being emitted:
+	// what a ranged leaf's bounds attribute is named after.
+	owner string
 }
 
 func (g *fixedGen) pf(format string, args ...any) {
@@ -155,13 +158,17 @@ func (g *fixedGen) module(roots, closure []*ir.Struct) []byte {
 	g.pf("  length, and then the records back to back to the end of it.\n")
 	g.pf("  \"\"\"\n\n")
 	g.pf("  alias %s.FixedRuntime, as: R\n\n", g.ns)
+	g.emitRangeAttrs(here, unions)
 
 	for _, u := range unions {
+		g.owner = ir.RustSnake(u.Name)
 		g.unionHelpers(u)
 	}
 	for _, st := range here {
+		g.owner = ir.RustSnake(st.Name)
 		g.typeHelpers(st)
 	}
+	g.owner = ""
 	for _, st := range myRoots {
 		g.rootSurface(st)
 	}
@@ -261,8 +268,11 @@ func (g *fixedGen) writeField(f *ir.Field, val string) []wseg {
 	case f.Array == ir.ArrayFixed:
 		out = append(out, g.writeElements(f, name, f.ArrayBound*fixedElementBytes(f)))
 	case f.Array == ir.ArrayCounted:
-		// THE COUNT, THEN MAX ELEMENTS, the slack zero-filled.
-		out = append(out, wseg{inline: fmt.Sprintf("length(%s)::little-signed-32", name)})
+		// THE COUNT, THEN MAX ELEMENTS, the slack zero-filled. The count is
+		// HELD TO ITS DECLARED RANGE on the way out: the variable leg raises
+		// on the same number, and `R.pad/2` alone would miss a short one.
+		out = append(out, wseg{inline: fmt.Sprintf("R.count(%s, %d, %d)::little-signed-32",
+			name, f.ArrayMin, f.ArrayBound)})
 		out = append(out, g.writeElements(f, name, f.ArrayBound*fixedElementBytes(f)))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		// THE LENGTH, THEN THE UNITS ONTO THE ZEROED TEMPLATE, and no clamp: a
@@ -285,26 +295,17 @@ func (g *fixedGen) writeField(f *ir.Field, val string) []wseg {
 // intermediate binary on their way into the record.
 func (g *fixedGen) writeElements(f *ir.Field, name string, size int64) wseg {
 	elems := call("Enum.map", raw(name), g.elementWriter(f))
-	// THE SLACK BEHIND A SHORT ARRAY IS THE ELEMENT'S DEFAULT IMAGE and not
-	// zeros, because that is what the C++ reference writes: its writer stores
-	// all Max elements out of storage, and storage that has been Reset holds
-	// the declared defaults. Where the default IS zeros the two collapse and
-	// nothing is spelled twice.
-	def := fixedElementDefault(f)
-	if fixedAllZero(def) {
-		return wseg{block: call("R.pad", elems, rawf("%d", size))}
-	}
-	return wseg{block: call("R.pad", elems, rawf("%d", size), raw(fixedBinaryLiteral(def, 0)))}
-}
-
-// fixedAllZero reports a run of bytes that is entirely zero.
-func fixedAllZero(b []byte) bool {
-	for _, v := range b {
-		if v != 0 {
-			return false
-		}
-	}
-	return true
+	// THE SLACK BEHIND A SHORT ARRAY IS ZERO (docs/SPEC-TABLES.md §3.4), and
+	// the ruling is the reference's: the bytes past the LIVE COUNT are the
+	// template's zeros and never the writer's leftovers.
+	//
+	// This port once filled the slack with the ELEMENT'S DEFAULT IMAGE,
+	// reasoning that the C++ writer looped all Max elements out of storage and
+	// that Reset storage holds the declared defaults. That reasoning described
+	// a bug, not a rule: an unused slot carrying `health = 100.0` is a value
+	// nobody wrote riding as if somebody had, and the reference stopped doing
+	// it. There is nothing to spell here now — the pad is zeros.
+	return wseg{block: call("R.pad", elems, rawf("%d", size))}
 }
 
 // elementWriter is the function `Enum.map` runs over one element: a CAPTURE
@@ -367,10 +368,77 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 	case ir.TFloat64:
 		return fmt.Sprintf("R.f64_bits(%s)::little-unsigned-64", name)
 	}
+	// AN INTEGER LEAF IS HELD TO ITS RANGE ON THE WAY OUT. The reference spends
+	// a debug-only `schema_assert` on a writer's contract; the BEAM has no
+	// compile-out assert, so this port raises, which is exactly what its own
+	// packet codec does for the same field. Without it a value past the
+	// DECLARED range rides and the peer clamps it — and a value past the
+	// STORAGE WIDTH is truncated by the binary construction in silence.
+	//
+	// A DECLARED RANGE RIDES AS A NAMED CONSTANT and the storage domain as the
+	// WIDTH itself, for one reason: a bound can be a thirty-nine-digit number
+	// (`int128 | min = ..., max = ...`), and two of them spelled inside a
+	// binary segment make a line no shape of this emitter's could keep inside
+	// the formatter's width.
+	sign := "unsigned"
 	if f.Type.Signed {
-		return fmt.Sprintf("%s::little-signed-%d", name, width)
+		sign = "signed"
 	}
-	return fmt.Sprintf("%s::little-unsigned-%d", name, width)
+	if f.HasIntRange {
+		return fmt.Sprintf("R.ranged(%s, %s)::little-%s-%d", name, g.rangeAttr(f), sign, width)
+	}
+	return fmt.Sprintf("R.fits(%s, %d, %t)::little-%s-%d", name, width, f.Type.Signed, sign, width)
+}
+
+// rangeAttr is the module attribute one ranged leaf's DECLARED bounds ride in,
+// named for the declaration that owns the field so two types in one file cannot
+// collide. It is defined by emitRangeAttrs before any helper that uses it.
+func (g *fixedGen) rangeAttr(f *ir.Field) string {
+	return fmt.Sprintf("@r_%s_%s", g.owner, ir.RustSnake(f.Name))
+}
+
+// emitRangeAttrs defines every ranged leaf's bounds for the declarations this
+// module carries. A declaration's own fields are the whole of it: a nested type
+// whose body is INLINED into this one is flat by definition, and a flat type
+// has no ranged field in it (fixedFlatField).
+func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
+	seen := map[string]bool{}
+	one := func(owner string, f *ir.Field) {
+		if !f.HasIntRange {
+			return
+		}
+		g.owner = owner
+		name := g.rangeAttr(f)
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		lo, hi := fixedRangeOf(f)
+		// A 128-BIT BOUND IS THIRTY-NINE DIGITS AND TWO OF THEM DO NOT FIT, so
+		// the pair breaks where the formatter breaks it: the second bound
+		// aligned under the first, inside the brace that opened the tuple.
+		if one := fmt.Sprintf("  %s {%s, %s}", name, lo, hi); len(one) <= formatWidth {
+			g.pf("%s\n", one)
+			return
+		}
+		g.pf("  %s {%s,\n%s%s}\n", name, lo, strings.Repeat(" ", len(name)+4), hi)
+	}
+	for _, u := range unions {
+		for _, v := range u.Variants {
+			if v.F != nil {
+				one(ir.RustSnake(u.Name), v.F)
+			}
+		}
+	}
+	for _, st := range here {
+		for _, f := range st.Fields {
+			one(ir.RustSnake(st.Name), f)
+		}
+	}
+	if len(seen) > 0 {
+		g.pf("\n")
+	}
+	g.owner = ""
 }
 
 // writeBodyNode joins the segments into constructions and the blocks between
@@ -844,13 +912,14 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  end\n\n")
 
 	g.pf("  defp %s_fixed_records(stated, layout, records, report, opts) do\n", snake)
-	g.pf("    hash = R.hash(layout)\n\n")
+	g.pf("    hash = R.hash(layout)\n")
+	g.pf("    copy = Keyword.get(opts, :copy, false)\n\n")
 	g.pf("    with {:ok, plan, size, report} <- %s_fixed_plan_for(hash, layout, report, opts),\n", snake)
 	g.pf("         :ok <- %s_fixed_header_names_it(stated, hash),\n", snake)
 	g.pf("         {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
 	g.pf("      {values, report} =\n")
 	g.pf("        Enum.map_reduce(bodies, report, fn body, report ->\n")
-	g.pf("          {image, report} = R.run(plan, body, @%s_prefill, report)\n", snake)
+	g.pf("          {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)\n", snake)
 	g.pf("          {%s_fixed_decode(image), report}\n", snake)
 	g.pf("        end)\n\n")
 	g.pf("      {:ok, values, report}\n")
@@ -871,7 +940,9 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    case Keyword.get(opts, :plan) || R.cached(__MODULE__, hash) do\n")
 	g.pf("      {_plan, _size, made} when made > cap ->\n")
 	g.pf("        # THE PLAN'S CAPACITY IS THE CALLER'S BOUND AND NOT THE CACHE'S, so a\n")
-	g.pf("        # plan already held for this peer is refused by the same name.\n")
+	g.pf("        # plan already held for this peer is refused by the same name — and by\n")
+	g.pf("        # the SAME NUMBER the compiler measured, which is what keeps a caller\n")
+	g.pf("        # with a small capacity from inheriting a plan minted under a large one.\n")
 	g.pf("        {:error, :plan_too_large, report}\n\n")
 	g.pf("      {plan, size, _made} ->\n")
 	g.pf("        {:ok, plan, size, report}\n\n")
@@ -881,9 +952,9 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("        with {:ok, theirs} <- R.parse_layout(layout) do\n")
 	g.pf("          mine = R.my_layout(__MODULE__, @%s_layout)\n\n", snake)
 	g.pf("          case R.compile(theirs, mine, @%s_dst, cap, report) do\n", snake)
-	g.pf("            {:ok, plan, report} ->\n")
+	g.pf("            {:ok, plan, made, report} ->\n")
 	g.pf("              size = R.size_at(theirs, 0)\n")
-	g.pf("              R.cache(__MODULE__, hash, {plan, size, length(plan)})\n")
+	g.pf("              R.cache(__MODULE__, hash, {plan, size, made})\n")
 	g.pf("              {:ok, plan, size, report}\n\n")
 	g.pf("            {:error, why, report} ->\n")
 	g.pf("              {:error, why, report}\n")

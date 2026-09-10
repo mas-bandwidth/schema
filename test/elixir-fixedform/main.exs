@@ -279,12 +279,161 @@ Leg.check(
     nil
 )
 
+# ---------------------------------------------------------------------------
+# THE PLAN CACHE IS BOUNDED, AND A CACHED PLAN IS HELD TO THE CALLER'S CAPACITY
+# ---------------------------------------------------------------------------
+#
+# A LAYOUT COMES FROM A PEER, so an unbounded cache is a peer's lever on this
+# node: every new layout is one `:persistent_term.put/2`, and every put makes
+# EVERY PROCESS IN THE VM scan its heap. The cache fills once and then stops —
+# past the bound a new peer's plan is compiled per load and written nowhere, so
+# minting layouts buys an attacker no global scans at all.
+Leg.section("the plan cache: bounded, forgettable, and held to the caller's capacity")
+
+Leg.eq(
+  "the cache states its bound",
+  is_integer(Tblfx2.FixedRuntime.plan_cache_max()) and Tblfx2.FixedRuntime.plan_cache_max() > 0,
+  true
+)
+
+# MINT MORE LAYOUTS THAN THE BOUND, each a real one this reader will compile
+# against: FX1's own layout with the ROOT'S NOTE-FREE id left alone and one
+# entry's id moved, which is a layout that parses and compiles to a plan.
+fx1_layout = Tblfx1.FX1Fixed.fx_root_fixed_layout()
+
+mint = fn i ->
+  # entry 1's id lives at 4 (the header) + 17 (the root entry), eight bytes wide
+  <<head::binary-size(21), _id::little-unsigned-64, tail::binary>> = fx1_layout
+  <<head::binary, 0xF000 + i::little-unsigned-64, tail::binary>>
+end
+
+Tblfx2.FixedRuntime.forget(Tblfx2.FX2Fixed)
+
+Leg.eq(
+  "forget/1 empties the module's cache",
+  :persistent_term.get({Tblfx2.FX2Fixed, :fixed_plans}, []),
+  []
+)
+
+records = fn layout ->
+  IO.iodata_to_binary([
+    Tblfx1.FixedRuntime.file_header(Tblfx1.FixedRuntime.hash(layout), byte_size(layout)),
+    layout,
+    <<Tblfx1.FixedRuntime.hash(layout)::little-unsigned-64,
+      0::size(Tblfx1.FX1Fixed.fx_root_fixed_body_bytes())-unit(8)>>
+  ])
+end
+
+bound = Tblfx2.FixedRuntime.plan_cache_max()
+
+for i <- 1..(bound + 8) do
+  {:ok, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_load(records.(mint.(i)))
+end
+
+Leg.eq(
+  "a peer minting layouts fills the cache and no further",
+  length(:persistent_term.get({Tblfx2.FX2Fixed, :fixed_plans}, [])),
+  bound
+)
+
+# AND A READ PAST THE BOUND STILL ANSWERS: the plan is compiled per load and
+# written nowhere, so the cost is an attacker's and never this node's memory.
+{:ok, [past | _], past_report} = Tblfx2.FX2Fixed.fx_root_fixed_load(records.(mint.(9_999)))
+Leg.eq("a read past the bound still lands its values", past.keep, 7)
+Leg.eq("and moves no `malformed`", past_report.malformed, false)
+
+Tblfx2.FixedRuntime.forget(Tblfx2.FX2Fixed)
+
+# A CACHED PLAN IS REFUSED BY THE NUMBER THE COMPILER MEASURED, not by the
+# length of the coalesced list — which is smaller, and would admit a caller
+# that compiling fresh would have been told `plan_too_large`.
+{:ok, _, _} = Tblfx2.FX2Fixed.fx_root_fixed_load(read.("fx1.bin"))
+
+Leg.eq(
+  "a cached plan is held to THIS caller's capacity",
+  Tblfx2.FX2Fixed.fx_root_fixed_load(read.("fx1.bin"), plan_capacity: 1) |> elem(1),
+  :plan_too_large
+)
+
+# ---------------------------------------------------------------------------
+# WHAT A LOADED VALUE HOLDS: `copy: true` detaches a record from its file
+# ---------------------------------------------------------------------------
+#
+# A record whose plan is the identity plan needs no image built — the body IS
+# the image, a REFERENCE into the file — and the projection then binds each text
+# field as a sub-binary of that. On the BEAM a sub-binary keeps its whole parent
+# alive, so a small field lifted out of a big file holds the big file. That is
+# the right default for a caller that uses the values and drops them; `copy:
+# true` is for the other shape, and it has to land the SAME VALUES.
+Leg.section("`copy: true`: the same values, detached from the file")
+
+{:ok, shared, _} = Tblp1.P1Fixed.chain_fixed_load(read.("p1.bin"))
+{:ok, copied, _} = Tblp1.P1Fixed.chain_fixed_load(read.("p1.bin"), copy: true)
+Leg.eq("copy: true lands the same values", copied, shared)
+
+Leg.bytes_eq(
+  "and saves back to the same bytes",
+  Tblp1.P1Fixed.chain_fixed_save(copied),
+  read.("p1.bin")
+)
+
+# ---------------------------------------------------------------------------
+# THE WRITE SIDE'S OWN CONTRACT: a caller's bug RAISES rather than riding
+# ---------------------------------------------------------------------------
+#
+# The C++ reference spends a DEBUG-ONLY `schema_assert` on the same questions,
+# which NDEBUG compiles out; the BEAM has no compile-out assert, so this port
+# does what its own packet codec does — an O(1) check that raises. It is the
+# debug-assert equivalent here and never the thing that keeps the wire safe:
+# the READ side checks the same numbers in every build and counts the clamp.
+Leg.section("the write side's contract: a caller's bug raises, it does not ride")
+
+raises = fn name, f ->
+  Leg.check(name, match?({:error, _}, try(do: {:ok, f.()}, rescue: (e -> {:error, e}))))
+end
+
+fu_one = fn over -> %Tblfu1.FuRoot{tail: 3, mark: over, heat: 0.0} end
+
+raises.("an integer past its DECLARED STORAGE WIDTH raises rather than truncating", fn ->
+  Tblfu1.FU1Fixed.fu_root_fixed_save([fu_one.(70_000)])
+end)
+
+raises.("and so does one below it", fn ->
+  Tblfu1.FU1Fixed.fu_root_fixed_save([fu_one.(-70_000)])
+end)
+
+# AND A DECLARED RANGE IS A RANGE. FX1's `renamed` is `| min = 0, max = 1000`,
+# which is narrower than its int32 storage: the reader CLAMPS a peer's value to
+# it and counts one, and the writer refuses its own caller's.
+raises.("an integer past its DECLARED RANGE raises where a peer's would clamp", fn ->
+  Tblfx1.FX1Fixed.fx_root_fixed_save([%Tblfx1.FxRoot{renamed: 1001}])
+end)
+
+raises.("text past its declared bound raises", fn ->
+  Tblfx1.FX1Fixed.fx_root_fixed_save([%Tblfx1.FxRoot{label: "far too long for eight"}])
+end)
+
+raises.("a counted array past its declared bound raises", fn ->
+  Tblfx1.FX1Fixed.fx_root_fixed_save([%Tblfx1.FxRoot{marks: [1, 2, 3, 4, 5]}])
+end)
+
+# A `{:nonfinite, bits}` CARRYING A FINITE PATTERN is a caller who tagged an
+# ordinary number, and the packet codec has always refused it. The fixed form's
+# runtime had dropped that half of the contract.
+raises.("a {:nonfinite, _} carrying a FINITE float32 pattern raises", fn ->
+  Tblfu1.FU1Fixed.fu_root_fixed_save([
+    %Tblfu1.FuRoot{tail: 3, mark: 0, heat: {:nonfinite, 0x3F800000}}
+  ])
+end)
+
 # A PLAN COMPILED FROM A LAYOUT THAT IS MINE, BYTE FOR BYTE, MUST LAND EXACTLY
 # WHAT THE IDENTITY PLAN LANDS. That is what reaches `count`, `text`, `ordinal`
 # and the keyed walk, which the cross-schema cases above do not touch.
 compiled_is_identity = fn name, layout, dst, plan, prefill, decode, values ->
   {:ok, mine} = Tblp1.FixedRuntime.parse_layout(layout)
-  {:ok, made, _} = Tblp1.FixedRuntime.compile(mine, mine, dst, 4096, Tblp1.FixedRuntime.report())
+
+  {:ok, made, _n, _} =
+    Tblp1.FixedRuntime.compile(mine, mine, dst, 4096, Tblp1.FixedRuntime.report())
 
   bodies =
     Enum.map(values, fn body ->
@@ -408,9 +557,18 @@ fu =
         type: 2,
         labelled: %Tblfu1.Labelled{lead: 5, label: "hello", trail: 9}
       },
-      tail: 3
+      tail: 3,
+      mark: -12_345,
+      # A SIGNALLING NaN: exponent all ones, payload 1, and the QUIET BIT CLEAR.
+      # No BEAM float term holds it, which is why it travels as {:nonfinite, _}.
+      heat: {:nonfinite, 0x7F800001}
     },
-    %Tblfu1.FuRoot{pick: %Tblfu1.Pick{type: 1, plain: %Tblfu1.Plain{n: 7}}, tail: 4}
+    %Tblfu1.FuRoot{
+      pick: %Tblfu1.Pick{type: 1, plain: %Tblfu1.Plain{n: 7}},
+      tail: 4,
+      mark: 12_345,
+      heat: 1.5
+    }
   ])
 
 {:ok, [i_arm2, i_arm1], fu_ident} = Tblfu1.FU1Fixed.fu_root_fixed_load(fu)
@@ -442,6 +600,45 @@ Leg.eq("arm 1, compiled: `extra` takes its declared default", c_arm1.extra, 11)
 Leg.eq("text under an arm moves no counter, identity", fu_ident.clamped, 0)
 Leg.eq("text under an arm moves no counter, compiled", fu_comp.clamped, 0)
 Leg.eq("nothing was damaged either way", {fu_ident.malformed, fu_comp.malformed}, {false, false})
+
+# THE SIGNED WIDENING RUNG (SPEC §4). FU1 declares `mark` an `int16` and FU2 an
+# `int32`, so FU2's COMPILED plan reads the writer's two bytes SIGN-EXTENDED and
+# re-images them at four. A NEGATIVE value is the whole test: an unsigned read of
+# the same two bytes lands 53_191 and a rung that only carried positives would
+# never say so.
+Leg.eq("the signed rung, identity: int16 stays int16", i_arm2.mark, -12_345)
+Leg.eq("the signed rung, compiled: int16 -> int32 keeps the SIGN", c_arm2.mark, -12_345)
+Leg.eq("the signed rung: and a positive value is unmoved", c_arm1.mark, 12_345)
+# TWO RUNGS, TWO RECORDS: the signed one and the float one below, each counted.
+Leg.eq("a rung is COUNTED, once per rung per record", fu_comp.widened, 4)
+Leg.eq("the identity read widens nothing", fu_ident.widened, 0)
+
+# AND THE FLOAT RUNG, f32 into f64 — where the reference is a `(double) f` and
+# every hardware convert QUIETS A SIGNALLING NaN: the payload is carried into
+# the wide mantissa and the quiet bit is SET. Preserving the signalling state
+# would put a pattern on this side of the rung the reference cannot produce.
+Leg.eq(
+  "the float rung, identity: the sNaN pattern is untouched",
+  i_arm2.heat,
+  {:nonfinite, 0x7F800001}
+)
+
+Leg.eq(
+  "the float rung, compiled: f32 -> f64 QUIETS an sNaN, as `(double) f` does",
+  c_arm2.heat,
+  {:nonfinite, 0x7FF8000020000000}
+)
+
+# THE CONTROL: carrying the signalling state instead would land this, which is
+# the pattern the reference cannot produce and the one this rung used to make.
+Leg.check(
+  "the float rung: and it is NOT the signalling pattern",
+  c_arm2.heat != {:nonfinite, 0x7FF0000020000000}
+)
+
+# A FINITE FLOAT IS NOT A NaN and keeps its zero payload: an infinity quieted
+# would be a NaN nobody wrote, and an ordinary number just widens.
+Leg.eq("the float rung: a finite value widens exactly", c_arm1.heat, 1.5)
 
 # ---------------------------------------------------------------------------
 # WHAT A HOSTILE ORDINAL, A HOSTILE FLAG AND A HOSTILE BOOL LAND AS
@@ -697,12 +894,17 @@ Leg.eq(
 
 # A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS `no_layout`: nothing
 # is decoded, no counter moves, `malformed` does not fire.
+#
+# THE BODY IS THE DECLARED ONE and its length is asked for rather than typed:
+# a record short of `body_bytes` is a RAGGED TAIL and refuses as `malformed`
+# before the hash is ever looked up, so a hand-written length is a test that
+# silently stops testing `no_layout` the day a field joins FxRoot.
 {:error, why, no_layout_report} =
   Tblfx1.FX1Fixed.fx_root_fixed_load(
     IO.iodata_to_binary([
       Tblfx1.FixedRuntime.file_header(stated, byte_size(layout)),
       layout,
-      <<0::little-unsigned-64, 0::size(22)-unit(8)>>
+      <<0::little-unsigned-64, 0::size(Tblfx1.FX1Fixed.fx_root_fixed_body_bytes())-unit(8)>>
     ])
   )
 
