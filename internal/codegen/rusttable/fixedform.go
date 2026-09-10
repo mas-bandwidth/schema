@@ -137,7 +137,7 @@ func fixedDefaultField(out []byte, f *ir.Field) {
 
 func fixedDefaultSlots(out []byte, f *ir.Field, count int64) {
 	elem := ir.TableFixedElementBytes(f)
-	for i := int64(0); i < count; i++ {
+	for i := range count {
 		fixedDefaultElement(out[i*elem:(i+1)*elem], f)
 	}
 }
@@ -968,10 +968,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 
 func (g *gen) emitFixedByteArray(b []byte) {
 	for i := 0; i < len(b); i += 16 {
-		end := i + 16
-		if end > len(b) {
-			end = len(b)
-		}
+		end := min(i+16, len(b))
 		var sb strings.Builder
 		sb.WriteString("   ")
 		for _, v := range b[i:end] {
