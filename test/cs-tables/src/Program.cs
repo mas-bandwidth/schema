@@ -1811,6 +1811,7 @@ static partial class Program
         TestMalformed();
         TestReflection();
         TestCrossFile();
+        TestFixedForm();
 
         if (failed)
         {
