@@ -403,6 +403,10 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   const n = (rest / recordBytes) | 0;
   if (n > capacity) { report.refused = TableFixedRefusal.BatchTooLarge; return -1; }
   const image = plan.image, imageView = plan.view;
+  // ONE VIEW OVER THE FILE, MADE ONCE PER READ AND NEVER PER RECORD: the
+  // read loop moves a run in 32-bit lanes and a DataView is what has an
+  // unaligned word move in this language (§3.4).
+  const srcView = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   let at = layoutAt + layoutBytes;
   for (let k = 0; k < n; k++) {
     // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
@@ -412,7 +416,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
       report.refused = TableFixedRefusal.NoLayout; return -1;
     }
     image.set(FixedTableFixedPrefill);            // the declared defaults, one prefill
-    TableFixedRun(entries, entryCount, bytes, at + 8, image, remap, report);
+    TableFixedRun(entries, entryCount, bytes, srcView, at + 8, image, imageView, remap, report);
     FixedTableFixedDecode(values[k], imageView, 0, report);
     at += recordBytes;
   }

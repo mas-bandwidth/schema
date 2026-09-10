@@ -481,9 +481,10 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     const wrong = [new fx1home.FxRoot()];
     const wr = new fx1home.TableFixedReport();
     const body = w2.subarray(LAYOUT_AT + fx2.FxRootFixedLayoutBytes + 8);
+    const bodyView = new DataView(body.buffer, body.byteOffset, body.length);
     plan.image.set(new Uint8Array(plan.image.length)); // the prefill
     fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0]),
-      1, body, 0, plan.image, null, wr);
+      1, body, bodyView, 0, plan.image, plan.view, null, wr);
     fx1home.FxRootFixedDecode(wrong[0], plan.view, 0, wr);
     check(wrong[0].Keep !== right[0].Keep || wrong[0].Renamed !== right[0].Renamed ||
       wrong[0].Nested.A !== right[0].Nested.A || wrong[0].Nested.B !== right[0].Nested.B,
