@@ -536,7 +536,7 @@
     {
       "name": "go-containers",
       "when": "pull-request",
-      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, and bounded retention.",
+      "why": "Go generated runtime controls: containers, block fill races, caller allocation ownership and the pinned managed allocation floor, bounded retention, and the FIXED FORM's byte oracle against the C++ reference's own corpus (docs/SPEC-TABLES.md §3.4).",
       "targets": [
         "tables-go-containers-negative-controls",
         "tables-go-block-race-negative-control",
@@ -545,7 +545,8 @@
         "tables-go-allocator-runtime-negative-control",
         "tables-go-retain-negative-controls",
         "tables-go-builders-negative-control",
-        "tables-go-measure-negative-controls"
+        "tables-go-measure-negative-controls",
+        "tables-go-fixed-form-negative-control"
       ]
     },
     {
