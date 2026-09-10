@@ -8100,9 +8100,9 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
 }
 
 /* TableEntity's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_entity_fixed_clamp_body_( TableEntity * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_entity_fixed_clamp_body_( TableEntity * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     /* bits(12) width clamp */
     (*clamped) += ( value->entity_id > 4095ull );
     value->entity_id = ( value->entity_id > 4095ull ) ? 4095ull : value->entity_id;
@@ -8130,9 +8130,9 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
 }
 
 /* TableStat's read-side bounds. */
-static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_stat_fixed_clamp_body_( TableStat * value, int32_t * clamped )
+static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table_stat_fixed_clamp_body_( TableStat * value, int32_t * clamped, int32_t * damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     /* bits(8) width clamp */
     (*clamped) += ( value->stat_id > 255ull );
     value->stat_id = ( value->stat_id > 255ull ) ? 255ull : value->stat_id;
@@ -8149,8 +8149,13 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
 static SCHEMA_UNUSED void schema_benchtable_table_entity_fixed_clamp_( TableEntity * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_benchtable_table_entity_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_benchtable_table_entity_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- TableEntity, the fixed form ---- */
@@ -8363,8 +8368,13 @@ static SCHEMA_UNUSED int64_t table_entity_fixed_load( TableEntity * values, int6
 static SCHEMA_UNUSED void schema_benchtable_table_stat_fixed_clamp_( TableStat * value, TableReport * report )
 {
     int32_t clamped = 0;
-    schema_benchtable_table_stat_fixed_clamp_body_( value, &clamped );
+    int32_t damaged = 0;
+    schema_benchtable_table_stat_fixed_clamp_body_( value, &clamped, &damaged );
     report->clamped += clamped;
+    /* ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+       one flag and not on a counter: the field read its declared default
+       and the rest of the record stands. */
+    if ( damaged != 0 ) { report->malformed = 1; }
 }
 
 /* ---- TableStat, the fixed form ---- */

@@ -1264,6 +1264,90 @@ fn the_declared_range() {
 }
 
 // ---------------------------------------------------------------------------
+// THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4).
+//
+// A `string(N)`'s used bytes are well-formed UTF-8 with NO ZERO among them. A
+// payload that is not the text its kind says it is is DAMAGE and not data, and
+// the verdict is the one every other form reaches: the field reads its DECLARED
+// DEFAULT, one `malformed` is raised, and the rest of the record stands.
+//
+// `bytes(N)` has no content rule at all, and the control below proves it: the
+// same forgery in a `bytes(6)` is data and passes through untouched.
+// ---------------------------------------------------------------------------
+
+fn the_text_content_rule(dir: &str) {
+    let golden = slurp(dir, "fx1.bin");
+    let body = records_at(&golden) + 8;
+    let mut values = [tblfx1::FxRootRow::default(); 8];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+
+    // THE CLEAN READ FIRST, so what follows is the forgery and not the pass.
+    let mut report = tblfx1::TableFixedReport::default();
+    let n =
+        tblfx1::fx_root_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
+    check(
+        n == Some(2) && !report.malformed,
+        "NEGATIVE CONTROL: the reference's own text is well formed and raises nothing",
+    );
+    check(
+        values[0].label[..3] == *b"fx1" && values[0].label_length == 3,
+        "the content rule: the clean record's text lands",
+    );
+
+    // A LONE CONTINUATION BYTE is not UTF-8. FX1's `label` is a `string(8)`
+    // whose used length rides at body+22 and whose bytes start at body+26.
+    let mut forged = golden.clone();
+    forged[body + 26] = 0x80;
+    let mut report = tblfx1::TableFixedReport::default();
+    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        report.malformed,
+        "the content rule: a lone continuation byte is DAMAGE and raises malformed",
+    );
+    check(
+        values[0].label[..2] == *b"fx" && values[0].label_length == 2,
+        "the content rule: and the field reads its DECLARED DEFAULT, not the damage",
+    );
+    check(
+        values[0].keep == 4242 && values[0].renamed == 321,
+        "the content rule: the rest of the record stands — the damage is one field's",
+    );
+
+    // AN INTERIOR NULL is legal UTF-8 and is not legal on this wire.
+    let mut forged = golden.clone();
+    forged[body + 27] = 0x00; // inside the three used bytes of "fx1"
+    let mut report = tblfx1::TableFixedReport::default();
+    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        report.malformed && values[0].label_length == 2,
+        "the content rule: an interior NUL is damage too, and takes the default",
+    );
+
+    // AND THE SLACK CARRIES NO MEANING: the same byte PAST the used length is
+    // not read at all, so it is not damage.
+    let mut forged = golden.clone();
+    forged[body + 26 + 5] = 0x80; // past `label_length` of 3
+    let mut report = tblfx1::TableFixedReport::default();
+    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        !report.malformed && values[0].label[..3] == *b"fx1",
+        "the content rule: a byte past the USED LENGTH means nothing and is not judged",
+    );
+
+    // AND `bytes(N)` IS BYTES. FX1's `blob` is a `bytes(6)` whose payload starts
+    // at body+58; the same forgery in it is data and passes straight through.
+    let mut forged = golden.clone();
+    forged[body + 58] = 0x80;
+    let mut report = tblfx1::TableFixedReport::default();
+    tblfx1::fx_root_fixed_load(&mut values, &forged, &mut plan, &mut remap, &mut report);
+    check(
+        !report.malformed && values[0].blob[0] == 0x80,
+        "the content rule: a `bytes(N)` has NO content rule — the same byte is data",
+    );
+}
+
+// ---------------------------------------------------------------------------
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -1294,6 +1378,7 @@ fn main() {
     the_union_controls(&bench);
     the_guard_is_the_whole_tag();
     the_declared_range();
+    the_text_content_rule(&dir);
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
         println!("rust fixed form: {failures} FAILED");

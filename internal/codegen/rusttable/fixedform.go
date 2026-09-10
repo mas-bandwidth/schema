@@ -983,8 +983,13 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        // and only over what a read can have written (§3.4).\n")
 		g.pf("        {\n")
 		g.pf("            let mut clamped = 0i32;\n")
-		g.pf("            %s(&mut values[k], &mut clamped);\n", fn(st.Name, "fixed_clamp_body"))
+		g.pf("            let mut damaged = 0i32;\n")
+		g.pf("            %s(&mut values[k], &mut clamped, &mut damaged);\n", fn(st.Name, "fixed_clamp_body"))
 		g.pf("            report.clamped += clamped as u32;\n")
+		g.pf("            // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on\n")
+		g.pf("            // the one FLAG and not on a counter: the field read its declared\n")
+		g.pf("            // default and the rest of the record stands.\n")
+		g.pf("            if damaged != 0 {\n                report.malformed = true;\n            }\n")
 		g.pf("        }\n")
 	}
 	g.pf("    }\n    Some(n)\n}\n\n")
@@ -1070,6 +1075,13 @@ func fixedRangeClampField(f *ir.Field, seen map[string]bool) bool {
 		}
 		return false // an enum's ordinal and a union's tag are the scatter's
 	}
+	// TEXT CARRIES THE ONE CONTENT RULE THE WIRE HAS (§3, §4): a `string(N)`'s
+	// used bytes are well-formed UTF-8 with no zero among them, and a
+	// `wstring(N)`'s used units are paired UTF-16 with no zero unit. `bytes(N)`
+	// has no content rule — it is bytes.
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
+		return true
+	}
 	if f.HasFloatRange {
 		return true
 	}
@@ -1111,7 +1123,9 @@ func (g *gen) emitFixedClampBody(st *ir.Struct) {
 	}
 	g.pf("/// %s's read-side bounds: every RANGED SCALAR held to its declared min\n", st.Name)
 	g.pf("/// and max, over the storage a read can have written.\n")
-	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
+	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32, damaged: &mut i32) {\n", fn(st.Name, "fixed_clamp_body"), st.Name)
+	// a type with only one kind of bound in it uses only one of the two
+	g.pf("    let _ = (&clamped, &damaged);\n")
 	for _, f := range st.Fields {
 		g.emitFixedClampField(f, "value."+f.Name, 4)
 	}
@@ -1125,7 +1139,8 @@ func (g *gen) emitFixedClampUnion(un *ir.Union) {
 	}
 	g.pf("/// %s's read-side bounds: the arm THE TAG NAMES, and no other — the\n", un.Name)
 	g.pf("/// overlay behind a narrower arm is bytes nobody wrote.\n")
-	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
+	g.pf("pub fn %s(value: &mut %sRow, clamped: &mut i32, damaged: &mut i32) {\n", fn(un.Name, "fixed_clamp_body"), un.Name)
+	g.pf("    let _ = (&clamped, &damaged);\n")
 	var bounded []int
 	for i, v := range un.Variants {
 		if fixedRangeClampField(v.F, map[string]bool{}) {
@@ -1208,11 +1223,63 @@ func (g *gen) emitFixedClampPayload(f *ir.Field, expr string, indent int) {
 		g.pf("%sfor i in 0..value.%s_count.clamp(0, %d) as usize {\n", ind, f.Name, f.ArrayBound)
 		g.emitFixedClampElement(f, expr+"[i]", indent+4)
 		g.pf("%s}\n", ind)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
-		// a text field's used length is held by the scatter's `count`
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		// the used LENGTH is held by the scatter's `count`; what is held here
+		// is the CONTENT
+		g.emitFixedTextContent(f, ind)
+	case f.Type.Kind == ir.TBytes:
+		// `bytes(N)` has no content rule at all — it is bytes
 	default:
 		g.emitFixedClampElement(f, expr, indent)
 	}
+}
+
+// emitFixedTextContent is THE ONE CONTENT RULE THE WIRE HAS (§3, §4), on this
+// form's terms — over the USED LENGTH and over nothing else, because the slack
+// carries no meaning and reading it would be the cost this form exists to avoid.
+//
+// A PAYLOAD THAT IS NOT TEXT IS DAMAGE AND NOT DATA, and the verdict is the one
+// every other form reaches: THE FIELD READS ITS DECLARED DEFAULT, one
+// `malformed` is raised, and the rest of the record stands. The packet wire
+// refuses the whole read; here the record is positional, so the damage is one
+// field's and the reader does not lose the others to it.
+func (g *gen) emitFixedTextContent(f *ir.Field, ind string) {
+	used := fmt.Sprintf("value.%s_length.clamp(0, %d) as usize", f.Name, f.Type.Size)
+	call := fmt.Sprintf("table_utf8_valid(&value.%s[..%s])", f.Name, used)
+	zero := fmt.Sprintf("value.%s = [0u8; %d];", f.Name, f.Type.Size+1)
+	if f.Type.Kind == ir.TWString {
+		call = fmt.Sprintf("table_utf16_valid(&value.%s[..%s])", f.Name, used)
+		zero = fmt.Sprintf("value.%s = [0u16; %d];", f.Name, f.Type.Size+1)
+	}
+	g.pf("%sif !%s {\n", ind, call)
+	g.pf("%s    %s\n", ind, zero)
+	if f.Type.Kind == ir.TString && f.HasDefault && len(f.DefBytes) > 0 {
+		g.pf("%s    value.%s[..%d].copy_from_slice(b%s); // the declared default\n",
+			ind, f.Name, len(f.DefBytes), fixedRustByteString(f.DefBytes))
+		g.pf("%s    value.%s_length = %d;\n", ind, f.Name, len(f.DefBytes))
+	} else {
+		g.pf("%s    value.%s_length = 0;\n", ind, f.Name)
+	}
+	g.pf("%s    *damaged += 1;\n%s}\n", ind, ind)
+}
+
+// fixedRustByteString renders a declared default as a Rust byte-string literal.
+func fixedRustByteString(b []byte) string {
+	var sb strings.Builder
+	sb.WriteByte('"')
+	for _, c := range b {
+		switch {
+		case c == '\\' || c == '"':
+			sb.WriteByte('\\')
+			sb.WriteByte(c)
+		case c >= 0x20 && c < 0x7f:
+			sb.WriteByte(c)
+		default:
+			fmt.Fprintf(&sb, "\\x%02x", c)
+		}
+	}
+	sb.WriteByte('"')
+	return sb.String()
 }
 
 // emitFixedClampElement is ONE element: a call for a declaration, a comparison
@@ -1223,11 +1290,11 @@ func (g *gen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
 			if fixedRangeClampNeeded(r) {
-				g.pf("%s%s(&mut %s, clamped);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s(&mut %s, clamped, damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
 			}
 		case *ir.Union:
 			if fixedRangeClampUnion(r) {
-				g.pf("%s%s(&mut %s, clamped);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
+				g.pf("%s%s(&mut %s, clamped, damaged);\n", ind, fn(r.Name, "fixed_clamp_body"), expr)
 			}
 		}
 		return

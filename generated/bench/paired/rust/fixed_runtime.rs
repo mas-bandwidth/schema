@@ -170,6 +170,52 @@ pub fn table_fixed_hash(block: &[u8]) -> u64 {
     h
 }
 
+// ---- THE ONE CONTENT RULE THE WIRE HAS (docs/SPEC-TABLES.md §3, §4) ---------
+//
+// A `string(N)`'s used bytes are well-formed UTF-8 with NO ZERO among them, and
+// a `wstring(N)`'s used units are paired UTF-16 with no zero unit. A payload
+// that is not the text its kind says it is is DAMAGE and not data. `bytes(N)`
+// has no content rule at all — it is bytes.
+//
+// The checks run over the USED LENGTH and over nothing else: the slack carries
+// no meaning, and reading a whole declared bound to judge bytes that mean
+// nothing is the cost this form exists to avoid.
+
+/// Well-formed UTF-8 with no zero byte among the used bytes.
+pub fn table_utf8_valid(bytes: &[u8]) -> bool {
+    // THE ZERO RULE IS THIS WIRE'S AND NOT UTF-8's: a NUL is a perfectly legal
+    // code point and this wire does not carry one, so it is checked beside the
+    // encoding rather than folded into it.
+    !bytes.contains(&0) && core::str::from_utf8(bytes).is_ok()
+}
+
+/// Paired UTF-16 with no zero unit among the used units.
+pub fn table_utf16_valid(units: &[u16]) -> bool {
+    let mut i = 0;
+    while i < units.len() {
+        let unit = units[i];
+        if unit == 0 {
+            return false;
+        }
+        if (0xD800..=0xDBFF).contains(&unit) {
+            // a HIGH surrogate takes its low half, and there has to be one
+            if i + 1 >= units.len() {
+                return false;
+            }
+            if !(0xDC00..=0xDFFF).contains(&units[i + 1]) {
+                return false;
+            }
+            i += 2;
+            continue;
+        }
+        if (0xDC00..=0xDFFF).contains(&unit) {
+            return false; // a LOW surrogate first
+        }
+        i += 1;
+    }
+    true
+}
+
 // ---- the little-endian loads ------------------------------------------------
 
 /// A UNION TAG AT ITS OWN WIDTH, little-endian, one to eight bytes. The slice

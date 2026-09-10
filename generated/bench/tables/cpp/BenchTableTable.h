@@ -9872,9 +9872,9 @@ inline void TableStatFixedWriteBody( uint8_t * b, const TableStat & value )
 }
 
 // TableEntity's read-side bounds.
-inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped )
+inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     // bits(12) width clamp
     clamped += ( value.entity_id > 4095ull );
     value.entity_id = ( value.entity_id > 4095ull ) ? 4095ull : value.entity_id;
@@ -9902,9 +9902,9 @@ inline void TableEntityFixedClampBody( TableEntity & value, int32_t & clamped )
 }
 
 // TableStat's read-side bounds.
-inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped )
+inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped, int32_t & damaged )
 {
-    (void) value; (void) clamped;
+    (void) value; (void) clamped; (void) damaged;
     // bits(8) width clamp
     clamped += ( value.stat_id > 255ull );
     value.stat_id = ( value.stat_id > 255ull ) ? 255ull : value.stat_id;
@@ -9921,8 +9921,13 @@ inline void TableStatFixedClampBody( TableStat & value, int32_t & clamped )
 inline void TableEntityFixedClamp( TableEntity & value, TableReport * report )
 {
     int32_t clamped = 0;
-    TableEntityFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    TableEntityFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- TableEntity, the fixed form ----
@@ -10126,8 +10131,13 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
 inline void TableStatFixedClamp( TableStat & value, TableReport * report )
 {
     int32_t clamped = 0;
-    TableStatFixedClampBody( value, clamped );
+    int32_t damaged = 0;
+    TableStatFixedClampBody( value, clamped, damaged );
     report->clamped += clamped;
+    // ILL-FORMED TEXT IS FRAMING-CLASS DAMAGE (§3, §4), so it lands on the
+    // one flag and not on a counter: the field read its declared default
+    // and the rest of the record stands.
+    if ( damaged != 0 ) { report->malformed = true; }
 }
 
 // ---- TableStat, the fixed form ----
