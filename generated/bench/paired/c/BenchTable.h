@@ -2069,7 +2069,11 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     c.want_guarded = 1;
     c.report = NULL; /* the unknown census is the first pass's; counting it twice would lie */
     table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLE_FIXED_NO_GUARD, 0 );
-    if ( c.overflow || c.hostile ) { return c.hostile ? -2 : -1; }
+    if ( c.overflow || c.hostile )
+    {
+        if ( c.hostile && report != NULL ) { report->reason = SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE; }
+        return c.hostile ? -2 : -1;
+    }
     /* COALESCE inside each half, never across the split. THIS IS THE SAME PASS
        THE C++ REFERENCE RUNS AT COMPILE TIME on its identity plan, and running
        it here is what keeps a stranger's plan and this build's own plan the
