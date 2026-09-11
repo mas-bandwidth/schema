@@ -71,7 +71,7 @@ func goTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]gotable.Fixe
 			out[st.Name] = append(out[st.Name], gotable.FixedLineageEntry{
 				Wire:    e.Wire,
 				Layout:  e.Layout,
-				Record:  fixedLineageRecordBytes(e.Record),
+				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
 			})

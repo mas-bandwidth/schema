@@ -83,7 +83,7 @@ func jsTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]jstable.Fixe
 			out[st.Name] = append(out[st.Name], jstable.FixedLineageEntry{
 				Wire:    e.Wire,
 				Layout:  e.Layout,
-				Record:  fixedLineageRecordBytes(e.Record),
+				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
 			})

@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -30,12 +32,12 @@ import (
 )
 
 // fixedLineageShipTargets are the targets whose table backend takes the
-// lineage as data today: `go`, `js` and `rust` through `GenerateLineage`, and
-// `cpp` through the lock the driver now opens for it. Every other built-in
-// target's table backend has no second entry point yet (c, cs, dart, elixir,
+// lineage as data today: `c`, `go`, `js` and `rust` through `GenerateLineage`,
+// and `cpp` through the lock the driver now opens for it. Every other built-in
+// target's table backend has no second entry point yet (cs, dart, elixir,
 // java); their `GenerateLineage` lives on the open port branches, and the day
 // one lands its target joins this list and nothing else changes.
-var fixedLineageShipTargets = []string{"cpp", "go", "js", "rust"}
+var fixedLineageShipTargets = []string{"c", "cpp", "go", "js", "rust"}
 
 // fixedLineageHashSpelling is ONE layout hash as the target's emitted source
 // writes it. It is a per-target needle and not a per-target assertion: the
@@ -98,7 +100,14 @@ func fixedLineageShipHash(t *testing.T, u *ir.Unit) uint64 {
 // as static data. A target still on the plain `Generate` carries one, and is
 // named here rather than asserted about, because its backend has no second
 // entry point yet.
-func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
+// fixedLineageShipLockedUnit is THE OPERATOR'S THREE COMMANDS as a fixture —
+// `schema lock`, a widening, `schema lock` again — so the committed lock holds a
+// lineage of TWO: the older layout first, the declaration's own last. It returns
+// the driver, the unit loaded from the locked tree, the two wire hashes and the
+// LOCK'S OWN ENTRIES, and it checks the premise every assertion rests on before
+// handing them back.
+func fixedLineageShipLockedUnit(t *testing.T) (*Compiler, *ir.Unit, uint64, uint64, []lockfile.LineageEntry) {
+	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "Lineage.schema")
 	if err := os.WriteFile(path, []byte(fixedLineageShipSchema("    a int32\n")), 0o600); err != nil {
@@ -152,6 +161,17 @@ func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return c, u, older, current, lin
+}
+
+// TestFixedLineageIsShippedByEveryTargetThatTakesIt is step 1 of #921: a unit
+// with a LOCKED LINEAGE OF TWO, generated through the public driver, and every
+// target whose table backend exports `GenerateLineage` must carry BOTH hashes
+// as static data. A target still on the plain `Generate` carries one, and is
+// named here rather than asserted about, because its backend has no second
+// entry point yet.
+func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
+	c, u, older, current, _ := fixedLineageShipLockedUnit(t)
 
 	// EVERY TARGET WHOSE TABLE BACKEND TAKES THE LINEAGE. cpp is here too: its
 	// backend reads the lock itself (§5.8 row 1's interim), so it is the
@@ -179,6 +199,92 @@ func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("%s: the emitted source carries no entry for the CURRENT layout 0x%016x", target, current)
+		}
+	}
+}
+
+// fixedLineageShipKnownRecord is, PER LEG, the known-layout line the leg writes
+// for ONE lineage entry, with the record size as its one capture. Each leg
+// spells the static data in its own language and nothing shared can be grepped
+// for, so the shapes are written out here — the `cpp` one is the REFERENCE's,
+// against which the other four are read.
+var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
+	// internal/codegen/gotable/fixedform.go: Hash, an optional RETIRED note,
+	// then Record.
+	"go": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`Hash:\s+0x%016x,\n(?:\s*//[^\n]*\n)?\s*Record:\s*(\d+),`, h))
+	},
+	// internal/codegen/ctable/fixedform.go: one brace-initialized row, the
+	// layout's length taken by sizeof, the record size last.
+	"c": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`\{ 0x%016xull, \w+, \(int64_t\) sizeof\( \w+ \), (\d+) \}`, h))
+	},
+	// internal/codegen/cpptable/fixedform.go: hash, layout, layout_bytes,
+	// record_bytes — §5.9 #19's four members in order.
+	"cpp": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`\{ 0x%016xull, \w+, \d+, (\d+) \}`, h))
+	},
+	// internal/codegen/rusttable/fixedform.go: a struct literal, one field per
+	// line, record after layout.
+	"rust": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`hash: 0x%016x,\n\s*layout: [^\n]*\n\s*record: (\d+),`, h))
+	},
+	// internal/codegen/jstable/fixedmodule.go: one constructor call per entry,
+	// the hash as the LOW and HIGH u32 lanes this language compares against the
+	// file's two 32-bit reads, then the layout — the current one by name, an
+	// OLDER one as base64 through `TableFixedDecodeLayout`, which puts a newline
+	// inside the call — then the layout's byte length and the record size last.
+	"js": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`new TableFixedKnownLayout\(0x%08x, 0x%08x, (?:\w+FixedLayout|TableFixedDecodeLayout\(\s*"[^"]*"\)), \d+, (\d+)\)`, uint32(h), uint32(h>>32)))
+	},
+}
+
+// TestFixedLineageRecordSizeIsTheWholeRecord is what the Java wiring found
+// (#920): §5.2's `record_bytes` is THE WHOLE RECORD — `8 + C(root)`, the
+// record's own eight hash bytes and then the body — and the LOCK records the
+// BODY (internal/lockfile/lineage.go, `LineageEntry.Record`,
+// `ir.TableFixedTypeBytes`). Every leg's own entry for its own layout is
+// `8 + body` already, so a driver that passed the lock's number through
+// unchanged shipped a LOCKED unit's older entries EIGHT BYTES SHORT — and step
+// 9 divides the tail behind the layout by that number, so every record of a
+// file written by the older peer is misread or the read is refused as ragged.
+//
+// It is invisible in every harness fixture because none of them carries a lock,
+// and invisible for the CURRENT layout because the leg's own entry wins for it.
+// So the assertion is on the OLDER entry of a REAL LOCK, read back out of the
+// emitted source by the shape each leg writes it in.
+func TestFixedLineageRecordSizeIsTheWholeRecord(t *testing.T) {
+	c, u, older, _, lin := fixedLineageShipLockedUnit(t)
+	body := lin[0].Record
+	if body <= 0 {
+		t.Fatalf("the lock records the older layout's body size: %d", body)
+	}
+	want := 8 + body
+	for _, target := range fixedLineageShipTargets {
+		files, err := c.Generate(u, target, nil)
+		if err != nil {
+			t.Fatalf("%s: generate: %v", target, err)
+		}
+		shape, ok := fixedLineageShipKnownRecord[target]
+		if !ok {
+			t.Fatalf("%s: every target that takes the lineage has a known-layout shape here", target)
+		}
+		re := shape(older)
+		matches := 0
+		for name, data := range files {
+			for _, m := range re.FindAllStringSubmatch(string(data), -1) {
+				matches++
+				got, err := strconv.ParseInt(m[1], 10, 64)
+				if err != nil {
+					t.Fatalf("%s: %s: the record size is a number: %q", target, name, m[1])
+				}
+				if got != want {
+					t.Errorf("%s: %s: the OLDER layout 0x%016x is emitted with record_bytes %d, and §5.2's record_bytes is THE WHOLE RECORD — 8 + the lock's body size %d = %d. The lock records the BODY and the driver must add the eight hash bytes once, for every leg (docs/FIXED-FORM-ALGORITHM.md §5.2, compiler/lineage.go)", target, name, older, got, body, want)
+				}
+			}
+		}
+		if matches == 0 {
+			t.Errorf("%s: no known-layout line for the OLDER layout 0x%016x was found in the emitted source — the lineage did not ship, or this leg's line has changed shape and the grep in fixedLineageShipKnownRecord has to change with it", target, older)
 		}
 	}
 }
