@@ -1,7 +1,7 @@
 schema-lock 7
 package scalardemo
 
-fixed table SimState layout=0x7b8a31b17495f6d5
+fixed table SimState layout=0x7b8a31b17495f6d5 lineage=0x06937abd927b8388
     field tilt id=0x1e5088ef2e9bafc6 kind=20 width=1 default=0 min=-8 max=7 frac=4 ibits=4
     field angle id=0x401ab8cd06158638 kind=22 width=4 default=0 min=-180 max=180 frac=16 ibits=16
     field position id=0x4cbf3a26fca1d74a kind=23 width=8 default=0 min=-30000 max=30000 frac=16 ibits=48

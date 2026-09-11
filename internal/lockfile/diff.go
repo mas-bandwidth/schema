@@ -52,13 +52,22 @@ const (
 // promises nothing. Under [Current] it is a stale lock, like any other drift.
 func Diff(locked, live *Unit, policy Policy) []error {
 	var errs []error
-	// THE LINEAGE IS NEVER THE ACCOUNT OF A CHANGE, only its consequence: a
-	// root's layout hash moves because a field moved or a nested type, enum,
-	// flags mask or union moved, and that is the sentence a person acts on. So
-	// these are held back and reported only when nothing else refused — which
-	// is the case the record itself is wrong in: a lineage a hand truncated, or
-	// a lock from a rendering that had none.
-	var lineage []error
+	// ONE LINEAGE FINDING IS A CONSEQUENCE AND IS HELD BACK: the declaration's
+	// own layout not being the lineage's LAST entry. A root's wire layout hash
+	// moves because a field moved, or a nested type, enum, flags mask or union
+	// moved — every one of those is inlined into the layout bytes — so that
+	// finding is the shadow of a finding below, and the sentence a person acts
+	// on is the other one. It is reported when nothing else refused, which is
+	// the case where the record itself is what is wrong.
+	//
+	// EVERY OTHER LINEAGE FINDING IS REPORTED UNCONDITIONALLY, because it is a
+	// fault OF THE RECORD and not a consequence of any change to the law: a
+	// `lineage=` roll-up that does not match the lines under it (diffRollup — a
+	// layout a hand DELETED, §11.8), and a lock that carries no lineage at all.
+	// Neither follows from a field moving, and holding either behind an
+	// unrelated refusal would mean a fleet's record could be broken in the same
+	// commit as an ordinary drift and be reported only once the drift was fixed.
+	var drift []error
 	// THE RETIRED TABLE'S BLOCKS (bill §11.5): a retired table whose declaration
 	// has been dropped, and the types, enums, flags and unions nothing live
 	// reaches any more because of it, are the record of something that shipped
@@ -76,6 +85,19 @@ func Diff(locked, live *Unit, policy Policy) []error {
 				lk.Decl, lk.Name, lk.Layout, got))
 			continue
 		}
+		// AND THE SET OF LINEAGE LINES, bound the same way (lineage.go): the
+		// `lineage=` roll-up and the lines under it are one statement written
+		// twice, so a DELETED layout — the one edit §11.8 forbids fleet-wide —
+		// is visible here and nowhere else. It is checked against the file's own
+		// token, so a lock from before the token is salvage rather than a
+		// refusal, and a table whose roll-up disagrees says nothing further that
+		// can be trusted.
+		if lk.Decl == DeclFixedTable && lk.rollupWritten && locked.Version == Version {
+			if err := diffRollup(lk); err != nil {
+				errs = append(errs, err)
+				continue
+			}
+		}
 		lv := live.Table(lk.Name)
 		if lv == nil || lv.Decl != lk.Decl {
 			if !orphans[lk.Name] {
@@ -89,9 +111,23 @@ func Diff(locked, live *Unit, policy Policy) []error {
 		}
 		// THE LINEAGE, after the law (lineage.go): the law says the declaration
 		// may stand where it stands, and the lineage says the record ends there.
+		//
+		// IT IS REPORTED UNCONDITIONALLY. A lineage finding used to be held back
+		// until nothing else refused, on the reading that the lineage is never
+		// the account of a change, only its consequence — a root's hash moves
+		// because a field or a nested type moved, and that is the sentence a
+		// person acts on. But the lineage is the RECORD, and a fault in it is a
+		// fault of its own however many other lines also moved: a truncated
+		// lineage, a lock from a rendering that had none, a declaration the
+		// record does not end with. A finding about the record is never a
+		// consequence of a finding about the law, so it says so here.
 		if lk.Decl == DeclFixedTable {
 			if err := diffLineage(lk, lv, policy); err != nil {
-				lineage = append(lineage, err)
+				if isLineageDrift(err) {
+					drift = append(drift, err)
+				} else {
+					errs = append(errs, err)
+				}
 			}
 		}
 	}
@@ -132,7 +168,7 @@ func Diff(locked, live *Unit, policy Policy) []error {
 		}
 	}
 	if len(errs) == 0 {
-		errs = lineage
+		errs = drift
 	}
 	return errs
 }

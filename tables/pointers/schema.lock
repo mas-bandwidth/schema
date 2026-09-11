@@ -1,21 +1,21 @@
 schema-lock 7
 package graphdemo
 
-fixed table Meta layout=0x2cdcbd59b87dddf0
+fixed table Meta layout=0x2cdcbd59b87dddf0 lineage=0x425e095bb3b79d39
     field build id=0x802517e298c70b03 kind=4 width=4 default=1 min=0 max=1000
     field tag id=0x56d7ab194448a4f3 kind=12 width=16 default=bytes: cap=8
     lineage wire=0x6a1246b224bde396 record=16 bytes=03000000186d9de4aeeaad6d0d1000000002000000030bc798e2172580040400000000000000f3a4484419abd7560c0c00000000000000
 
-fixed table Settings layout=0x678fde494d1ebbfd
+fixed table Settings layout=0x678fde494d1ebbfd lineage=0x6466bfcf71c4c09a
     field quality id=0x7a8060916400fe66 kind=4 width=4 default=2 min=0 max=4
     field label id=0x39f7fcec8fcb623d kind=12 width=24 default=bytes: cap=16
     lineage wire=0x34bfbe0ea79913f1 record=24 bytes=03000000c8c204b4a28a8b9d0d180000000200000066fe00649160807a0404000000000000003d62cb8fecfcf7390c1400000000000000
 
-fixed table Stamp layout=0xadff88288f0f0451
+fixed table Stamp layout=0xadff88288f0f0451 lineage=0x50da8da8334e5c27
     field tag id=0x56d7ab194448a4f3 kind=12 width=16 default=bytes: cap=8
     field seq id=0x823b8a195ce2133c kind=4 width=4 default=0 min=0 max=1000
     lineage wire=0x2aaaa93920374790 record=16 bytes=03000000a493dbb713913bae0d1000000002000000f3a4484419abd7560c0c000000000000003c13e25c198a3b82040400000000000000
 
-fixed table Tally layout=0xb806fdff4d4b3a3a
+fixed table Tally layout=0xb806fdff4d4b3a3a lineage=0x4630aadb49f14d7a
     field hits id=0x732dfbcc9b0cf0bb kind=4 width=4 default=0 min=0 max=10000
     lineage wire=0x772fc9106c65a1e0 record=4 bytes=020000003da742429034ff690d0400000001000000bbf00c9bccfb2d73040400000000000000

@@ -476,3 +476,80 @@ func TestLineageAccessorIsWhatCompileReads(t *testing.T) {
 		t.Error("a table nothing locked has no lineage")
 	}
 }
+
+// TestLineageSetIsBoundByTheRollup is the hole the roll-up closes, stated as
+// the hand that opens it: a lock with two layouts in its lineage, and one
+// HAND that deletes the OLDER line.
+//
+// Nothing in the entry lines moves, nothing in the declaration moves, and the
+// lineage's last entry is still the declaration's own layout — so every check
+// the file had before the `lineage=` token was silent, and `schema lock`
+// reported the file already current. What was lost is a SHIPPED layout: a
+// reader compiled from the truncated lock lays down no plan for it, and
+// yesterday's readable file answers `layout_newer` — "ship the reader" — for a
+// reader that was shipped. Bill §11.8 forbids exactly that deletion, fleet
+// wide, and the `lineage=` roll-up on the `fixed table` line is what makes a
+// deletion visible: it is one statement made twice, the way `layout=` binds
+// the entry lines.
+func TestLineageSetIsBoundByTheRollup(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    a int32\n    b int32"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(rowTable("    a int32\n    b int32\n    c int32")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("`schema lock` takes the widening: rewrote=%v err=%v", rewrote, err)
+	}
+	path := filepath.Join(dir, lockfile.FileName)
+	if got := lineageOf(t, path, "Row"); len(got) != 2 {
+		t.Fatalf("the fixture wants two layouts in the lineage, got %d", len(got))
+	}
+	// and the check is silent on the file as the compiler wrote it
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Fatalf("the committed lock passes its own check: %v", errs)
+	}
+
+	// THE HAND: the OLDEST lineage line, gone
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	dropped := false
+	for _, line := range strings.Split(string(data), "\n") {
+		if !dropped && strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
+			dropped = true
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if !dropped {
+		t.Fatal("this test deletes a lineage line")
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(kept, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	errs := lockfile.Check(load(t, paths), paths)
+	if len(errs) == 0 {
+		t.Fatal("a deleted lineage line is a DELETED SHIPPED LAYOUT: the check must refuse it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.8)")
+	}
+	if !strings.Contains(errs[0].Error(), "lineage=") {
+		t.Errorf("the refusal names the roll-up the file carries: %v", errs[0])
+	}
+
+	// and `schema lock` must not write over it either: the command that moves
+	// this file is the one that must not be a way to make the refusal go away
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err == nil || rewrote {
+		t.Fatalf("`schema lock` refuses a truncated lineage rather than reporting it current: rewrote=%v err=%v", rewrote, err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != strings.Join(kept, "\n") {
+		t.Error("a refusal writes nothing")
+	}
+}

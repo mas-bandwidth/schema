@@ -100,6 +100,68 @@ func lineageWireHash(layout, digest []byte) uint64 {
 	return ir.TableFixedLayoutHash(both)
 }
 
+// LineageHash is THE ROLL-UP: one number over the SET of lineage lines, in
+// order, written on the `fixed table` line as `lineage=0x...`.
+//
+// WHY IT EXISTS. Every other fact in this file is bound by something: a field
+// line by `layout=`, a lineage entry's wire hash by its own layout bytes and
+// digest (parseLineage), the declaration by the check. NOTHING BOUND THE SET.
+// A hand that deleted an older `lineage` line left a file whose entry lines
+// were untouched and whose last entry was still the declaration's own layout,
+// so [Check] was silent and `schema lock` reported the lock already current —
+// and a SHIPPED LAYOUT was gone. A reader compiled from that lock lays down no
+// plan for it, so yesterday's readable file answers `layout_newer` ("ship the
+// reader") for a reader that shipped, where the truth is `layout_unsupported`
+// at worst and a plain read at best. Bill §11.8 forbids that deletion fleet
+// wide — "a rendering-version bump SALVAGES, NEVER DELETES" — and a law nothing
+// checks is a law a hand breaks quietly.
+//
+// WHAT IT DIGESTS. The two facts of an entry that say what a reader SERVES: the
+// wire hash, which is what a file is matched on (§12.4), and the retired mark,
+// which is what moves the floor (§11.4 and [Floor]). In order, because the
+// order IS the record — oldest first, the current layout last — so a reordering
+// is caught as well as a deletion. The layout bytes, the digest and the record
+// size are already bound to the wire hash by parseLineage, and the reason is a
+// sentence rather than a fact COMPILE reads, so neither needs binding twice.
+//
+// It is the wire's own hash over the text, the way [LayoutHash] digests the
+// entry lines: one hash in this tree (§5).
+func LineageHash(entries []LineageEntry) uint64 {
+	var b strings.Builder
+	for _, e := range entries {
+		fmt.Fprintf(&b, "lineage wire=0x%016x", e.Wire)
+		if e.Retired {
+			b.WriteString(" retired")
+		}
+		b.WriteByte('\n')
+	}
+	return ir.TableWireId(b.String())
+}
+
+// diffRollup holds the roll-up to the lineage lines under it, the way [Diff]
+// holds `layout=` to the field lines: one statement made twice, and a hand that
+// moves one half without the other is caught here.
+//
+// It is the ONE refusal in this file about the SET of entries rather than one of
+// them, and the remedy it names is never "write it again": the entry a hand took
+// out is a layout that SHIPPED, and no command can recover the layout bytes of a
+// record nobody declares any more. Restore the file from version control.
+func diffRollup(lk *Table) error {
+	got := LineageHash(lk.Lineage)
+	if got == lk.lineageRollup {
+		return nil
+	}
+	return fmt.Errorf("fixed table %s: the lock records lineage=0x%016x over %d lineage %s that roll up to 0x%016x — the roll-up is one hash over every layout this table has shipped, in order, with its retired mark, so a line that has been DELETED, reordered or re-marked by hand is caught here. A lineage entry is a layout a reader in the field still carries: dropping one makes a file that reads today answer `layout_newer` tomorrow, and the bill forbids it fleet-wide (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.8). RESTORE THIS FILE FROM VERSION CONTROL — `schema lock` appends and cannot put a shipped layout back; to stop serving a layout, retire it (`schema lock --retire %s@<hash> --reason \"...\"`), which keeps the entry (§11.4)",
+		lk.Name, lk.lineageRollup, len(lk.Lineage), plural(len(lk.Lineage), "line", "lines"), got, lk.Name)
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
 // renderLineage is the LIVE entry: the one layout the declaration has right
 // now. A rendering knows one layout and the committed file knows the rest, so
 // [Render] produces a lineage of exactly one entry and [Update] is what carries
@@ -382,9 +444,22 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 	if last.Wire == cur.Wire {
 		return nil
 	}
-	return stale(lk.Decl, lk.Name,
+	return lineageDrift{stale(lk.Decl, lk.Name,
 		fmt.Sprintf("its layout hashes to 0x%016x", cur.Wire),
-		fmt.Sprintf("not the lineage's last entry (0x%016x): the declaration has a layout the record does not end with", last.Wire))
+		fmt.Sprintf("not the lineage's last entry (0x%016x): the declaration has a layout the record does not end with", last.Wire))}
+}
+
+// lineageDrift marks the one lineage finding that is a CONSEQUENCE rather than a
+// fault of the record: the declaration's layout is not the lineage's last entry,
+// which is what a moved field or a moved nested type looks like from here. [Diff]
+// holds it back behind any other refusal for that reason, and reports every
+// other lineage finding — a roll-up that does not match its lines, a missing
+// lineage — where it is found.
+type lineageDrift struct{ error }
+
+func isLineageDrift(err error) bool {
+	_, ok := err.(lineageDrift)
+	return ok
 }
 
 // retiredText is the tail a retired lineage entry or a retired table carries:

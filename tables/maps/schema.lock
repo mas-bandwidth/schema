@@ -1,11 +1,11 @@
 schema-lock 7
 package mapdemo
 
-fixed table Item layout=0xf8efefb09ce745f7
+fixed table Item layout=0xf8efefb09ce745f7 lineage=0x33365a114d3cb600
     field count id=0xb1e5e28e4479a274 kind=4 width=4 default=0
     lineage wire=0xd285587ad8f0ebdc record=4 bytes=0200000006684798d1a1cf520d040000000100000074a279448ee2e5b1040400000000000000
 
-fixed table ShipConfig layout=0x9cb4cc85c03c49b5
+fixed table ShipConfig layout=0x9cb4cc85c03c49b5 lineage=0x13c353afed5bcd85
     field name id=0xc4bcadba8e631b86 kind=12 width=72 default=bytes: cap=64
     field health id=0x7f69d4b5288ba9cf kind=4 width=4 default=0
     lineage wire=0x9579bc245248ed0f record=72 bytes=030000000d4fb1d1d25282750d4800000002000000861b638ebaadbcc40c4400000000000000cfa98b28b5d4697f040400000000000000
