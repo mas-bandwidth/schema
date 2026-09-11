@@ -199,6 +199,7 @@ func main() {
 		print := fs.Bool("print", false, "print the lock this unit would write, and write nothing")
 		retire := fs.String("retire", "", "retire a locked layout (`Table@0x<hash>`) or a whole locked table (`Table`) — the lock's one non-append edit: nothing is removed, the entry or the block stays with its reason, and a retired table's declaration may then be dropped (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4, §11.5)")
 		reason := fs.String("reason", "", "the sentence that goes in the file beside a `--retire` mark, read years later by whoever asks why")
+		allBelow := fs.Bool("all-below", false, "with `--retire Table@0x<hash>`: retire every OLDER lineage entry too, with the same reason. Without it a retire that would strand an unretired older entry is refused by name: the floor a reader is built with is an index cut, so retiring an entry stops every entry below it being served whether or not anybody said so (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4)")
 		fs.BoolVar(&verbose, "verbose", false, "name the file written")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		paths, err := compiler.GatherPaths(fs.Args())
@@ -216,7 +217,7 @@ func main() {
 		if *retire != "" {
 			// THE ONE NON-APPEND EDIT (bill §11.4, §11.5), and it is a verb of
 			// this command because the file has one writer.
-			path, rewrote, err := compiler.RetireSchemaLock(u, paths, *retire, *reason)
+			path, rewrote, err := compiler.RetireSchemaLock(u, paths, *retire, *reason, *allBelow)
 			if err != nil {
 				fail(err)
 			}
@@ -231,6 +232,9 @@ func main() {
 		}
 		if *reason != "" {
 			fail(fmt.Errorf("--reason belongs to --retire: every other write this command takes is an append, and an append declares nothing (docs/SPEC-TABLES.md §2.10)"))
+		}
+		if *allBelow {
+			fail(fmt.Errorf("--all-below belongs to `--retire Table@0x<hash>`: it is the word an operator says when a retirement should take every older layout with it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4)"))
 		}
 		path, rewrote, err := compiler.UpdateSchemaLock(u, paths)
 		if err != nil {

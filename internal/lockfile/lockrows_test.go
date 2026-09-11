@@ -648,3 +648,145 @@ func TestLockRenameWithoutWasRefuses(t *testing.T) {
 func TestLockRenameWithoutWasAllows(t *testing.T) {
 	rowUnchanged(t, rowTable("    a int32"), rowTable("    b int32 | was = \"a\""))
 }
+
+// ---- retire_strands_older (Rowan's ruling, bill §11.4) ----
+//
+// THE FLOOR IS AN INDEX CUT, not a set of hashes: a reader built from the lock
+// accepts lineage indices at or above one past the highest RETIRED entry
+// (docs/FIXED-FORM-ALGORITHM.md §5.2). So retiring entry 3 of 5 would stop
+// serving 0, 1 and 2 as well — three layouts retired by arithmetic, with no
+// mark and no reason beside them, and nothing in the file saying a person meant
+// it. These rows are the refusal that closes that, and the word an operator
+// says when the sweep is what they want.
+
+// fiveLayouts locks `Row` five times, each lock a lawful widening (one more
+// int32 field), and hands back the five wire hashes OLDEST FIRST plus the
+// unit's paths and the lock's path.
+func fiveLayouts(t *testing.T) (paths []string, path string, hashes []uint64) {
+	t.Helper()
+	dir, paths := fixture(t, rowTable("    a int32"))
+	fields := "    a int32"
+	for i := range 5 {
+		if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+			t.Fatalf("lock %d: %v", i, err)
+		}
+		h, _, _ := wireHashOf(t, paths, "Row")
+		hashes = append(hashes, h)
+		if i == 4 {
+			break
+		}
+		fields += fmt.Sprintf("\n    f%d int32", i)
+		if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(rowTable(fields)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path = filepath.Join(dir, lockfile.FileName)
+	if n := len(lineageOf(t, path, "Row")); n != 5 {
+		t.Fatalf("the fixture wants five lineage entries, got %d", n)
+	}
+	return paths, path, hashes
+}
+
+// TestLockRetireMiddleStrandsOlderRefuses is the ruling: retiring the MIDDLE
+// entry of five is refused, and the refusal names the stranded entries BY INDEX
+// AND HASH so the operator can read them off the sentence.
+func TestLockRetireMiddleStrandsOlderRefuses(t *testing.T) {
+	paths, path, hashes := fiveLayouts(t)
+	_, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", hashes[3]), "the 0.6 client is gone", false)
+	if err == nil {
+		t.Fatal("retiring entry 3 of 5 strands 0, 1 and 2: it must be refused")
+	}
+	got := err.Error()
+	for _, want := range []string{
+		"STRAND",
+		"3 unretired older entries",
+		fmt.Sprintf("index 0 (0x%016x)", hashes[0]),
+		fmt.Sprintf("index 1 (0x%016x)", hashes[1]),
+		fmt.Sprintf("index 2 (0x%016x)", hashes[2]),
+		"--all-below",
+		"§11.4",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the refusal must say %q: %v", want, got)
+		}
+	}
+	// and NOTHING is written: a refused retirement leaves the record alone
+	for i, e := range lineageOf(t, path, "Row") {
+		if e.Retired {
+			t.Errorf("a refused retirement writes nothing: entry %d is marked", i)
+		}
+	}
+}
+
+// TestLockRetireAllBelowRetiresThemToo is the other half: --all-below is the
+// word, and it marks every older entry with the SAME REASON, so the floor and
+// the file say the same thing.
+func TestLockRetireAllBelowRetiresThemToo(t *testing.T) {
+	paths, path, hashes := fiveLayouts(t)
+	const reason = "every client below 0.7 is gone"
+	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", hashes[3]), reason, true); err != nil || !rewrote {
+		t.Fatalf("--all-below takes the sweep: rewrote=%v err=%v", rewrote, err)
+	}
+	got := lineageOf(t, path, "Row")
+	if len(got) != 5 {
+		t.Fatalf("a retired entry STAYS in the lineage: %d entries", len(got))
+	}
+	for i := range 4 {
+		if !got[i].Retired {
+			t.Errorf("entry %d is retired by --all-below: %+v", i, got[i])
+		}
+		if got[i].Reason != reason {
+			t.Errorf("entry %d carries the same reason, got %q", i, got[i].Reason)
+		}
+	}
+	if got[4].Retired {
+		t.Errorf("the CURRENT entry is never retired: %+v", got[4])
+	}
+	if f := lockfile.Floor(readLock(t, path), "Row"); f != 4 {
+		t.Errorf("the floor is one past the highest retired index: %d", f)
+	}
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Fatalf("a retirement is not a break: %v", errs)
+	}
+}
+
+// TestLockRetireOldestAllowed is the case that strands nothing: the oldest
+// entry has nothing below it, so no flag is needed — and then the NEXT one up
+// is allowed too, because everything below IT is already retired.
+func TestLockRetireOldestAllowed(t *testing.T) {
+	paths, path, hashes := fiveLayouts(t)
+	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", hashes[0]), "the first client is gone", false); err != nil || !rewrote {
+		t.Fatalf("the oldest entry strands nothing: rewrote=%v err=%v", rewrote, err)
+	}
+	if f := lockfile.Floor(readLock(t, path), "Row"); f != 1 {
+		t.Errorf("floor after retiring index 0: %d", f)
+	}
+	// walking UP one at a time never strands: index 1's only older entry is
+	// already retired
+	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", hashes[1]), "and the second", false); err != nil || !rewrote {
+		t.Fatalf("index 1 over a retired index 0 strands nothing: rewrote=%v err=%v", rewrote, err)
+	}
+	if f := lockfile.Floor(readLock(t, path), "Row"); f != 2 {
+		t.Errorf("floor after retiring index 1: %d", f)
+	}
+	got := lineageOf(t, path, "Row")
+	if got[0].Reason == got[1].Reason {
+		t.Errorf("each retirement keeps its own sentence: %q %q", got[0].Reason, got[1].Reason)
+	}
+}
+
+// TestLockRetireCurrentStillRefused is the rule the ruling does not touch: the
+// current layout is never retired, with or without --all-below, because a
+// reader built from this lock reads its own records.
+func TestLockRetireCurrentStillRefused(t *testing.T) {
+	paths, _, hashes := fiveLayouts(t)
+	for _, allBelow := range []bool{false, true} {
+		_, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", hashes[4]), "no", allBelow)
+		if err == nil {
+			t.Fatalf("the CURRENT layout is never retired (--all-below=%v)", allBelow)
+		}
+		if !strings.Contains(err.Error(), "CURRENT layout") {
+			t.Errorf("the refusal names the current layout: %v", err)
+		}
+	}
+}

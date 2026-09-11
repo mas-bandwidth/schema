@@ -52,4 +52,11 @@ fixed table KeyedConfig
     teams  [Team]TeamConfig
     hulls  [Hull]HullConfig
     scores ScoreBoard
+    // THE SECOND LAYOUT. An appended field is the bill's plainest widening
+    // (§2, `field_append`), and it is here so this unit's committed lock
+    // carries a LINEAGE of two entries rather than one — which is what a real
+    // retirement needs: something older than the current layout to retire.
+    // docs/SPEC-TABLES.md §21's "Retiring a layout, the walk" is the operator's
+    // record of what was done with it.
+    season uint32 = 0
 }

@@ -32,8 +32,14 @@ func SchemaLockText(u *ir.Unit) string {
 // table's whole block stay in the file forever; what the mark buys is
 // `layout_unsupported` instead of `layout_newer` for the entry, and permission
 // to drop the declaration for the table.
-func RetireSchemaLock(u *ir.Unit, paths []string, target, reason string) (path string, rewrote bool, err error) {
-	return lockfile.Retire(u, paths, target, reason)
+//
+// allBelow is `--all-below`: retiring a lineage entry that still has an
+// UNRETIRED OLDER ENTRY below it is REFUSED by name, because the floor a reader
+// is built with is an index cut and would stop serving those entries with no
+// mark beside them; allBelow retires every older entry too, with the same
+// reason (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4).
+func RetireSchemaLock(u *ir.Unit, paths []string, target, reason string, allBelow bool) (path string, rewrote bool, err error) {
+	return lockfile.Retire(u, paths, target, reason, allBelow)
 }
 
 // SchemaLockWarnings is the committed lock's advisories — today the bill's

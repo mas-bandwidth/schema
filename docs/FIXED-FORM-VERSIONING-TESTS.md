@@ -68,6 +68,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `floor_at` | a file at the floor reads |
 | `floor_below` | a file one below the floor refuses `layout_unsupported`, no counter, nothing decoded |
 | `floor_raise_live` | the floor raised by one: the file that read yesterday refuses today, by name, and the lock's diff says which |
+| `retired_keyed` | THE REAL RETIREMENT, not a test-only floor setter: `tables/examples`' `KeyedConfig` widened by one appended field (`season uint32 = 0`) so its committed lock carries two lineage entries, then the OLDEST entry retired with `schema lock --retire KeyedConfig@0x39fbd26a1a70582b --reason "..."` and every leg regenerated. Three assertions per leg, and the third is the point: the file under the retired entry (`retired_keyed.bin`, hash `0x39fbd26a1a70582b`) refuses **`layout_unsupported`** BY NAME carrying the file's hash, a file under the NEWEST entry (`0xa357cf9e47e391b6`) still reads, and the retired hash is still KNOWN — `layout_unsupported` and never `layout_newer`, which is what tells a retirement apart from a deletion. The operator's walk is docs/SPEC-TABLES.md §21.7 |
 | `hash_unknown` | a hash in no lineage refuses `layout_newer` |
 | `hash_known_bytes_differ` | a known hash whose layout bytes differ from the lock's refuses `layout_malformed`; the seven §1.1 cases each written against a KNOWN hash land here, not in a runtime walk |
 | `hash_identity` | the reader's own hash selects the identity plan; no plan compiler runs (asserted by shape: no compile symbol reachable from load) |
@@ -129,8 +130,11 @@ leg asserts the exact one.
 | `nolayout_nested_append.bin` | `old_nested_append.bin`'s bytes, then record 0's first eight bytes (its per-record hash) bitwise INVERTED; the header's hash at file+8 untouched | `file=nolayout_nested_append.bin row=nested_append side=nolayout root=Lineage records=1 forged=r0.record_hash@<abs byte>=~<hash> values=r0.v.x=…,r0.v.y=…,r0.v.z=…,r0.seq=…` |
 | `hostile_enum_append.bin` | `old_enum_append.bin`'s bytes, then `r0.tier` OVERWRITTEN with `4` | `file=hostile_enum_append.bin row=enum_append side=hostile root=Lineage records=1 forged=r0.tier@<abs byte>=4 values=r0.tier=3,r0.seq=9` |
 | `old_unknown_census.bin` | the OLD build, one record: `lead`, `trail`, four `items` with `a` = `10 + i` and `drop` = `900 + i` | `file=old_unknown_census.bin row=unknown_census side=old root=Census records=1 values=r0.lead=…,r0.items[0].a=10,r0.items[0].drop=900,…,r0.trail=…` |
+| `retired_keyed.bin` | NOT written by the dump: the corpus dump writes under the layout that is CURRENT, and this file's whole subject is a layout that no longer is. It is `build/fixedform-corpus/keyed.bin` as the dump wrote it BEFORE `KeyedConfig` was widened, COMMITTED at `testdata/fixedform-retired/retired_keyed.bin` with its manifest line beside it at `testdata/fixedform-retired/manifest.txt` — the one corpus file version control holds rather than the build | `file=retired_keyed.bin row=retired_keyed side=retired root=KeyedConfig records=2 values=<keyed.bin's own values, verbatim>` |
 
-**Two additions to #32's grammar, and nothing else moves.** `side=` gains **`hostile`** and **`nolayout`** —
+**Three additions to #32's grammar, and nothing else moves.** `side=` gains **`hostile`**, **`nolayout`** and
+**`retired`** — the last naming a file written under a layout the lock has since retired, which is the one side
+the dump cannot produce and version control therefore carries —
 a leg's parser takes the side as a word and not as one of six — and a forged file carries one more field,
 **`forged=<path>@<absolute byte offset>=<wire value>`**, before `values=`, so a leg forges the same byte at the
 same place without computing a record offset out of the dump. **`values=` on a forged file is what the WRITER

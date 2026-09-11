@@ -48,7 +48,7 @@ namespace Tabledemo
             TableFieldInfo[] fields = ArchiveConfigTableType().Fields;
             n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
-            if (v.Count != 1) { n += TableWire.VarSize(ids.RefAt(97, 0xb1e5e28e4479a274ul)) + 5; }
+            if (v.Count != 1) { n += TableWire.VarSize(ids.RefAt(98, 0xb1e5e28e4479a274ul)) + 5; }
             return n;
         }
 
@@ -59,7 +59,7 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
             if (v.Count != 1)
             {
-                w.HeaderAt(97, 0xb1e5e28e4479a274ul, 4, ref ids);
+                w.HeaderAt(98, 0xb1e5e28e4479a274ul, 4, ref ids);
                 w.Fixed((ulong)(long)v.Count, 4);
             }
             w.Var(0);
@@ -96,13 +96,13 @@ namespace Tabledemo
 
         public static long ArchiveConfigMeasure(ArchiveConfig value)
         {
-            Span<ulong> ids = stackalloc ulong[155];
+            Span<ulong> ids = stackalloc ulong[156];
             return ArchiveConfigSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long ArchiveConfigSave(ArchiveConfig value, Span<byte> buffer)
         {
-            Span<ulong> ids = stackalloc ulong[155];
+            Span<ulong> ids = stackalloc ulong[156];
             return ArchiveConfigSaveTyped(value, buffer, ids, false);
         }
 

@@ -54,12 +54,61 @@ func TestCorpusLocksAreCurrent(t *testing.T) {
 			if err != nil {
 				t.Fatalf("the corpus does not compile: %v", err)
 			}
+			// THE LOCK IS CURRENT. This is the question, and `Check` is the
+			// thing that answers it for a lock WITH HISTORY as well as one
+			// without.
+			if errs := lockfile.Check(u, paths); len(errs) > 0 {
+				t.Errorf("%s is stale:\n  ./bin/schema lock %s\n%v", path, dir, errs[0])
+			}
+			// THE FILE IS IN THE COMPILER'S OWN FORM: parsed and written back,
+			// it is the same bytes. This is what catches a hand edit, a reflowed
+			// line or a stale rendering version.
+			locked, err := lockfile.Parse(path, want)
+			if err != nil {
+				t.Fatalf("%s: the compiler owns this file: %v", path, err)
+			}
+			if got := locked.Text(); got != string(want) {
+				t.Errorf("%s is not in the form `schema lock` writes — parsed and written back it moved:\n  ./bin/schema lock %s", path, dir)
+			}
+			// AND, FOR A UNIT WITH NO HISTORY, the stricter statement the
+			// original test made: a FRESH render of the declaration alone is
+			// byte for byte the committed file.
+			//
+			// It is conditional now because a fresh render has NO LINEAGE and no
+			// retired marks — it knows only today's declaration — so a unit whose
+			// lock carries a second lineage entry, or an entry an operator
+			// RETIRED, can never equal one, and did not before this test was
+			// read: `tables/examples` is the first unit in this corpus with
+			// history (docs/SPEC-TABLES.md §21.7), and it is what found this.
+			// The two assertions above are what carry such a unit.
+			if historied(locked) {
+				return
+			}
 			if got := lockfile.Render(u).Text(); got != string(want) {
 				t.Errorf("%s is stale — a fixed table's layout moved:\n  ./bin/schema lock %s\n--- committed ---\n%s\n--- current ---\n%s",
 					path, dir, want, got)
 			}
 		})
 	}
+}
+
+// historied is whether a committed lock holds anything a FRESH RENDER of the
+// declaration cannot hold: a lineage of more than one entry, or a retired mark
+// on an entry or a table. Such a lock is a RECORD OF THE PAST, and the past is
+// exactly what a render of today's schema does not have.
+func historied(locked *lockfile.Unit) bool {
+	for i := range locked.Tables {
+		t := &locked.Tables[i]
+		if t.Retired || len(t.Lineage) > 1 {
+			return true
+		}
+		for _, e := range t.Lineage {
+			if e.Retired {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // TestCorpusPassesItsOwnLock is the whole feature end to end over real

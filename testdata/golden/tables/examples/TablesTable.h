@@ -477,7 +477,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 155;
+    static const int32_t kCapacity = 156;
     static const int32_t kBuckets = 512;
 
     uint64_t ids[ kCapacity ];
@@ -1060,13 +1060,13 @@ static const int64_t kTableMessageRefBitsHere = 8;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 152;
+static const int64_t kTableMessageEntriesHere = 153;
 
 // The reserved NODE-TABLE id's own slot in this unit's vocabulary (§3.3). A
 // pointered body names the node table through it, and the node table is the
 // ROOT body's FIRST field because a pointer index's width is settled by the
 // node count it carries.
-static const uint64_t kTableNodeTableFieldSlot = 130;
+static const uint64_t kTableNodeTableFieldSlot = 131;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -1574,7 +1574,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 152 entries and 1727 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 153 entries and 1737 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -1592,10 +1592,10 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 1727;
+static const int64_t kTableAnnounceBytes = 1737;
 static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x4e, 0x0a, 0x10, 0xd9, 0x0e, 0x0f, 0x49, 0x31, 0x02,
-    0x0e, 0x97, 0x0d, 0x06, 0x94, 0x0d, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd,
+    0x01, 0x01, 0x09, 0x3b, 0xbb, 0x43, 0x4a, 0x4b, 0xf4, 0x8c, 0x7e, 0x02,
+    0x0e, 0xa1, 0x0d, 0x06, 0x9e, 0x0d, 0xc5, 0x67, 0xc4, 0xf0, 0x1f, 0xfd,
     0x54, 0xa3, 0x0d, 0x74, 0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04,
     0x01, 0x07, 0x00, 0xd1, 0x31, 0xfe, 0xf6, 0x18, 0x16, 0x77, 0x6a, 0x04,
     0x01, 0x03, 0x00, 0xe6, 0xb4, 0xe7, 0x8a, 0x35, 0xd1, 0xf9, 0xee, 0x0a,
@@ -1612,132 +1612,133 @@ static const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
     0x0b, 0x26, 0xf8, 0x84, 0x10, 0x03, 0x0d, 0x6d, 0xfa, 0xa8, 0xa5, 0x48,
     0xb0, 0xae, 0xba, 0x10, 0x03, 0x0d, 0xff, 0xd8, 0x94, 0x56, 0xc2, 0xc3,
     0x0a, 0xce, 0x10, 0x03, 0x0d, 0xb2, 0x0f, 0x40, 0x27, 0x0b, 0x6b, 0x98,
-    0x01, 0x0d, 0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0xc5,
-    0x99, 0xf7, 0x82, 0x76, 0x4e, 0x0a, 0xd9, 0x0e, 0x00, 0x04, 0x1e, 0x49,
-    0x25, 0xd7, 0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x03, 0x1e, 0x4a,
-    0xe5, 0x96, 0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x01, 0x03, 0x00, 0x39,
-    0xe9, 0x83, 0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x24, 0xcc, 0x8a, 0x11,
-    0xf5, 0xf0, 0x28, 0xde, 0x0e, 0x02, 0x02, 0x0d, 0x41, 0x9a, 0x24, 0x40,
-    0x03, 0xaa, 0x01, 0xf9, 0x0e, 0x00, 0x08, 0x0d, 0x37, 0xea, 0x08, 0x98,
-    0x2c, 0xc6, 0x62, 0xbb, 0x08, 0x00, 0xce, 0x49, 0x41, 0xb5, 0x57, 0x35,
-    0xb4, 0x7f, 0x0d, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x10,
-    0x03, 0x0d, 0x71, 0x15, 0x4e, 0x34, 0x0a, 0x94, 0xda, 0x9c, 0x10, 0x03,
-    0x04, 0x01, 0x0a, 0x00, 0x28, 0xc2, 0x01, 0xd2, 0xcc, 0x7f, 0x70, 0x77,
-    0x0e, 0x00, 0x03, 0x0d, 0x6f, 0x0c, 0x6f, 0x03, 0x0b, 0x79, 0x80, 0x65,
-    0x01, 0x40, 0x0e, 0x20, 0xa0, 0x8a, 0x49, 0x81, 0x22, 0x0a, 0x00, 0xbd,
-    0xcf, 0xaa, 0x55, 0x7f, 0x0e, 0x7f, 0x24, 0x01, 0x50, 0x50, 0xa2, 0x15,
-    0xc0, 0x9a, 0xbc, 0xb7, 0x04, 0x01, 0x0a, 0x00, 0xd4, 0x45, 0x18, 0xbd,
-    0xd8, 0x58, 0xc7, 0xb8, 0x0a, 0x00, 0xdd, 0x7c, 0x58, 0xd1, 0xba, 0xfb,
-    0xf8, 0x3b, 0x0c, 0x08, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4,
-    0x0c, 0x20, 0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x00,
-    0x10, 0x06, 0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab, 0x08,
-    0x00, 0xc6, 0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e, 0x02, 0x00, 0x75,
-    0x0f, 0xca, 0x90, 0x91, 0x82, 0x28, 0xb1, 0x03, 0x00, 0x03, 0x34, 0xf5,
-    0x8e, 0x33, 0x92, 0xdc, 0x5d, 0x05, 0x00, 0x18, 0x55, 0x09, 0xfe, 0x81,
-    0xa9, 0xbd, 0x10, 0x06, 0x00, 0xa6, 0x3f, 0x93, 0xa8, 0x0d, 0xdb, 0x2c,
-    0x8c, 0x07, 0x00, 0xa6, 0x6b, 0x6e, 0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09,
-    0x00, 0xf7, 0x05, 0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0xf9, 0xb0,
-    0x0c, 0x3d, 0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x04, 0x04, 0x0a, 0x00, 0x3c,
-    0x25, 0x8e, 0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0xa3, 0xb5, 0xbb, 0x86,
-    0x75, 0xce, 0x59, 0x57, 0x0d, 0xb5, 0x2e, 0x70, 0xbf, 0x11, 0x15, 0x12,
-    0x48, 0x02, 0x01, 0x08, 0xff, 0x01, 0x7d, 0x0f, 0x09, 0x68, 0x31, 0xfe,
-    0x2b, 0x94, 0x02, 0x01, 0x08, 0xff, 0x01, 0xd1, 0x5d, 0xb5, 0x05, 0xd1,
-    0xac, 0x82, 0xd1, 0x02, 0x01, 0x08, 0xfd, 0x01, 0x81, 0x2a, 0x91, 0xc8,
-    0x23, 0xed, 0x9d, 0xef, 0x02, 0x01, 0x08, 0xfd, 0x01, 0xb4, 0x60, 0x37,
-    0xa2, 0x4e, 0x57, 0x55, 0xb6, 0x03, 0x01, 0x10, 0xff, 0xff, 0x03, 0xde,
-    0x2b, 0x7a, 0x8d, 0xaf, 0xb3, 0x17, 0xd2, 0x03, 0x01, 0x10, 0xff, 0xff,
-    0x03, 0x00, 0x79, 0x12, 0xc9, 0x70, 0x2f, 0x65, 0x90, 0x03, 0x01, 0x10,
-    0xfd, 0xff, 0x03, 0x58, 0xb1, 0x4d, 0x35, 0x7c, 0x9d, 0x65, 0x6a, 0x03,
-    0x01, 0x10, 0xfd, 0xff, 0x03, 0xd6, 0x91, 0x2c, 0x53, 0x88, 0xbd, 0x93,
-    0xe6, 0x04, 0x01, 0x20, 0xff, 0xff, 0xff, 0xff, 0x0f, 0xb4, 0xfb, 0x99,
-    0xcf, 0x27, 0xe8, 0x5e, 0x06, 0x04, 0x01, 0x20, 0xff, 0xff, 0xff, 0xff,
-    0x0f, 0xee, 0x86, 0xa1, 0xc2, 0xc4, 0x21, 0xb1, 0xc9, 0x04, 0x01, 0x20,
-    0xfd, 0xff, 0xff, 0xff, 0x0f, 0x7a, 0xf2, 0xac, 0x65, 0xa4, 0xdf, 0x63,
-    0xd3, 0x04, 0x01, 0x20, 0xfd, 0xff, 0xff, 0xff, 0x0f, 0x6f, 0x9d, 0xc4,
-    0x00, 0x07, 0xc7, 0x49, 0x75, 0x05, 0x01, 0x40, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0xdb, 0x71, 0x97, 0x41, 0x17, 0x66,
-    0xce, 0x1c, 0x05, 0x01, 0x40, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0x01, 0x97, 0x55, 0x0b, 0x62, 0x60, 0xfa, 0x54, 0x3b, 0x05,
-    0x01, 0x40, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01,
-    0x23, 0x5d, 0xce, 0x8e, 0xb9, 0xfc, 0x08, 0xd3, 0x05, 0x01, 0x40, 0xfd,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0x7d, 0x19, 0xb6,
-    0x85, 0x6b, 0xde, 0x0c, 0xc7, 0x0e, 0x00, 0x04, 0x03, 0x01, 0x10, 0xff,
-    0xff, 0x03, 0x21, 0xc0, 0x37, 0x7f, 0x55, 0x97, 0x88, 0x0f, 0x06, 0x01,
-    0x08, 0x00, 0xa1, 0xa2, 0x00, 0x82, 0x3f, 0x55, 0x17, 0x2e, 0x06, 0x01,
-    0x08, 0x00, 0x7d, 0x1b, 0x30, 0xf9, 0x0d, 0xc6, 0xe5, 0xa0, 0x06, 0x01,
-    0x08, 0x01, 0x4d, 0x84, 0xf5, 0xa6, 0x73, 0xc0, 0xb2, 0x1c, 0x06, 0x01,
-    0x08, 0x01, 0x60, 0x09, 0x79, 0xb1, 0x50, 0xc1, 0xa0, 0x4c, 0x07, 0x01,
-    0x10, 0x00, 0xb2, 0x4c, 0xb0, 0x36, 0x68, 0x13, 0x52, 0xf2, 0x07, 0x01,
-    0x10, 0x00, 0x0c, 0x61, 0xe7, 0x16, 0xf2, 0xe1, 0x37, 0x4f, 0x07, 0x01,
-    0x10, 0x01, 0x04, 0x33, 0x8f, 0x97, 0x05, 0xb6, 0x76, 0xd1, 0x07, 0x01,
-    0x10, 0x01, 0xda, 0x9c, 0x47, 0xe7, 0x4d, 0x92, 0x0b, 0x20, 0x08, 0x01,
-    0x20, 0x00, 0xb0, 0xac, 0xb5, 0x31, 0x2a, 0x2f, 0x3d, 0xa5, 0x08, 0x01,
-    0x20, 0x00, 0xd2, 0xe3, 0xa4, 0xa1, 0x8e, 0xbe, 0x59, 0x97, 0x08, 0x01,
-    0x20, 0x01, 0x0e, 0x3c, 0x2e, 0x08, 0xfc, 0x15, 0xc5, 0x8d, 0x08, 0x01,
-    0x20, 0x01, 0x73, 0x89, 0xdf, 0xdb, 0x11, 0xef, 0xec, 0xbe, 0x09, 0x01,
-    0x40, 0x00, 0x27, 0xf2, 0xff, 0xe0, 0x66, 0xad, 0x17, 0x01, 0x09, 0x01,
-    0x40, 0x00, 0xdb, 0x89, 0x06, 0xb5, 0xf3, 0x5a, 0xb4, 0xf2, 0x09, 0x01,
-    0x40, 0x01, 0xf7, 0xca, 0xeb, 0x7e, 0x01, 0x12, 0x3e, 0x71, 0x09, 0x01,
-    0x40, 0x01, 0xe5, 0x51, 0xae, 0x5a, 0xbe, 0xfe, 0x41, 0xc3, 0x0e, 0x00,
-    0x04, 0x09, 0x01, 0x40, 0x00, 0xc7, 0x8d, 0x4d, 0xb5, 0x07, 0x0c, 0xa6,
-    0x08, 0x06, 0x01, 0x08, 0x00, 0xbe, 0x97, 0xad, 0x12, 0x19, 0x70, 0x95,
-    0xff, 0x07, 0x01, 0x10, 0x00, 0x70, 0x94, 0xb3, 0x12, 0x19, 0x5c, 0x9c,
-    0xff, 0x08, 0x01, 0x20, 0x00, 0xe7, 0x61, 0xab, 0x12, 0x19, 0x70, 0x92,
-    0xff, 0x09, 0x01, 0x40, 0x00, 0x8a, 0x9e, 0xad, 0x12, 0x19, 0x74, 0x95,
-    0xff, 0x07, 0x01, 0x0c, 0x00, 0xa1, 0x35, 0xa5, 0x12, 0x19, 0x68, 0x8b,
-    0xff, 0x09, 0x01, 0x30, 0x00, 0x94, 0xd3, 0x46, 0x87, 0x72, 0xc9, 0x67,
-    0x8a, 0x0c, 0x10, 0xb6, 0xab, 0x7f, 0xb8, 0x01, 0xd9, 0xcb, 0x41, 0x0e,
-    0x00, 0x08, 0x0d, 0x67, 0x67, 0x43, 0xc0, 0x1f, 0xe6, 0x81, 0x81, 0x0e,
-    0x00, 0x04, 0x0d, 0x60, 0x16, 0x0e, 0x9a, 0x73, 0xad, 0x0f, 0xf1, 0x10,
-    0x03, 0x04, 0x01, 0x11, 0x00, 0x5d, 0x5a, 0xbd, 0x66, 0xcd, 0xd7, 0x21,
-    0x2d, 0x0c, 0x20, 0x73, 0x2b, 0xa8, 0x9c, 0xe0, 0xcc, 0xd0, 0x95, 0x0e,
-    0x00, 0x04, 0x04, 0x01, 0x04, 0x00, 0xaa, 0x44, 0xcd, 0xc0, 0x48, 0xb6,
-    0xdb, 0x40, 0x0d, 0x74, 0xb6, 0x5d, 0xd6, 0xe2, 0x99, 0xec, 0xce, 0x04,
-    0x01, 0x07, 0x00, 0xcf, 0x0c, 0xa0, 0xc7, 0xb1, 0xda, 0xa0, 0xbc, 0x0c,
-    0x10, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x00, 0x48,
-    0x3d, 0x34, 0x53, 0x69, 0xbe, 0x2c, 0xdc, 0x0a, 0x00, 0xd2, 0xb1, 0xac,
-    0x02, 0x57, 0x05, 0x33, 0x17, 0x0a, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30,
-    0xc5, 0x31, 0x4f, 0x04, 0x01, 0x04, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a,
-    0x3e, 0x01, 0xa5, 0x06, 0x01, 0x06, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc,
-    0x87, 0x65, 0xad, 0x01, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36,
-    0x0f, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0xf0, 0xa2,
-    0x04, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x00, 0xf0,
-    0xa2, 0x04, 0x06, 0x00, 0xdc, 0xdd, 0x48, 0x3b, 0x6a, 0xca, 0xb1, 0xe3,
-    0x0e, 0x00, 0xf0, 0xa2, 0x04, 0x07, 0x00, 0x9b, 0x1f, 0xcd, 0x1c, 0x6c,
-    0x9e, 0x3d, 0x48, 0x00, 0x52, 0x8d, 0xf8, 0x30, 0x1d, 0x12, 0xf3, 0x9f,
-    0x00, 0x7c, 0x28, 0x87, 0x75, 0xd8, 0xb5, 0xc7, 0x58, 0x00, 0x91, 0xc5,
-    0xc4, 0xaa, 0x39, 0x77, 0x92, 0xc4, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde,
-    0x1a, 0xe5, 0xc3, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4,
-    0x00, 0xf4, 0x2c, 0x8c, 0xe8, 0xcb, 0xa6, 0x61, 0xae, 0x00, 0x1f, 0xbc,
-    0x0d, 0x42, 0xe1, 0x24, 0x4d, 0x33, 0x00, 0xdb, 0x23, 0x0e, 0xd0, 0xa3,
-    0x21, 0x23, 0x6c, 0x00, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0,
-    0x00, 0x8a, 0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0x00, 0xa5, 0xc1,
-    0x19, 0x57, 0x62, 0x3c, 0x57, 0x7d, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19,
-    0xde, 0xf1, 0x9f, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec,
-    0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x00, 0x7c, 0x76,
-    0x2e, 0x3b, 0xbe, 0xde, 0x54, 0x58, 0x00, 0xe3, 0x83, 0x45, 0x5a, 0x2e,
-    0x59, 0x28, 0xb5, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04,
-    0x00, 0xcc, 0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0xd7, 0x2f,
-    0x3d, 0xe7, 0xed, 0xc5, 0xcd, 0x13, 0x0d, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f,
-    0x00, 0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4,
-    0x7b, 0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf,
-    0x7b, 0x3e, 0x41, 0x00, 0x5b, 0x21, 0xce, 0xf6, 0xb1, 0xdf, 0xb1, 0xff,
-    0x00, 0x64, 0x1b, 0x41, 0x15, 0x46, 0xe0, 0xcb, 0x5f, 0x00, 0xaf, 0x37,
-    0x33, 0x25, 0xb2, 0x42, 0x68, 0xb7, 0x00, 0x90, 0x78, 0xbd, 0xdf, 0x30,
-    0xb1, 0x66, 0x30, 0x00, 0xcf, 0xee, 0x4d, 0xe9, 0xe4, 0x3a, 0x63, 0xd6,
-    0x00, 0xa1, 0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6, 0x00, 0x6e, 0x33,
-    0x14, 0xb1, 0x5d, 0x82, 0x2d, 0xd0, 0x00, 0x7b, 0x02, 0x29, 0x25, 0x1c,
-    0x2e, 0x18, 0x1c, 0x00, 0x78, 0xa7, 0x9d, 0x85, 0xb7, 0xfc, 0xff, 0x19,
-    0x00, 0x2e, 0xbe, 0x28, 0xda, 0x1d, 0x75, 0x79, 0xec, 0x00, 0xf1, 0x8b,
-    0xd2, 0xb7, 0xc4, 0xc0, 0x1e, 0x03, 0x00, 0xd7, 0x5e, 0x4f, 0x9e, 0x4e,
-    0x69, 0x59, 0xbf, 0x00, 0x87, 0x5e, 0xf4, 0xde, 0xf6, 0x43, 0x48, 0x5f,
-    0x00, 0x29, 0x1a, 0x17, 0xda, 0x11, 0x99, 0x1a, 0x1d, 0x00, 0x3a, 0x11,
-    0xfb, 0x11, 0x5d, 0x55, 0xf8, 0x1c, 0x00, 0x15, 0xad, 0xb2, 0x16, 0x0c,
-    0xba, 0x9d, 0x46, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d, 0x78, 0x77, 0x05,
-    0x00, 0x51, 0x64, 0x36, 0xd3, 0x61, 0x69, 0x6a, 0xab, 0x00, 0x00, 0xfe,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x0d, 0xf8, 0xa3, 0x9b, 0x75, 0xe2, 0xd5, 0xdf, 0x28, 0x08, 0x00,
+    0xd4, 0x8a, 0xc4, 0x77, 0x29, 0x9b, 0xa8, 0x32, 0x1e, 0xc5, 0x99, 0xf7,
+    0x82, 0x76, 0x4e, 0x0a, 0xd9, 0x0e, 0x00, 0x04, 0x1e, 0x49, 0x25, 0xd7,
+    0x23, 0x5a, 0xf4, 0x6f, 0xb4, 0x0e, 0x03, 0x03, 0x1e, 0x4a, 0xe5, 0x96,
+    0x70, 0x84, 0xf5, 0x06, 0x4b, 0x09, 0x01, 0x03, 0x00, 0x39, 0xe9, 0x83,
+    0xf7, 0x7f, 0x13, 0x31, 0xbf, 0x0d, 0x24, 0xcc, 0x8a, 0x11, 0xf5, 0xf0,
+    0x28, 0xde, 0x0e, 0x02, 0x02, 0x0d, 0x41, 0x9a, 0x24, 0x40, 0x03, 0xaa,
+    0x01, 0xf9, 0x0e, 0x00, 0x08, 0x0d, 0x37, 0xea, 0x08, 0x98, 0x2c, 0xc6,
+    0x62, 0xbb, 0x08, 0x00, 0xce, 0x49, 0x41, 0xb5, 0x57, 0x35, 0xb4, 0x7f,
+    0x0d, 0x44, 0xad, 0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x10, 0x03, 0x0d,
+    0x71, 0x15, 0x4e, 0x34, 0x0a, 0x94, 0xda, 0x9c, 0x10, 0x03, 0x04, 0x01,
+    0x0a, 0x00, 0x28, 0xc2, 0x01, 0xd2, 0xcc, 0x7f, 0x70, 0x77, 0x0e, 0x00,
+    0x03, 0x0d, 0x6f, 0x0c, 0x6f, 0x03, 0x0b, 0x79, 0x80, 0x65, 0x01, 0x40,
+    0x0e, 0x20, 0xa0, 0x8a, 0x49, 0x81, 0x22, 0x0a, 0x00, 0xbd, 0xcf, 0xaa,
+    0x55, 0x7f, 0x0e, 0x7f, 0x24, 0x01, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a,
+    0xbc, 0xb7, 0x04, 0x01, 0x0a, 0x00, 0xd4, 0x45, 0x18, 0xbd, 0xd8, 0x58,
+    0xc7, 0xb8, 0x0a, 0x00, 0xdd, 0x7c, 0x58, 0xd1, 0xba, 0xfb, 0xf8, 0x3b,
+    0x0c, 0x08, 0x86, 0x1b, 0x63, 0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x20,
+    0xf0, 0x92, 0x20, 0x6c, 0xc5, 0x4c, 0xff, 0xdb, 0x0e, 0x00, 0x10, 0x06,
+    0x00, 0x69, 0xb9, 0x80, 0x1f, 0x52, 0x6d, 0x8b, 0xab, 0x08, 0x00, 0xc6,
+    0xaf, 0x9b, 0x2e, 0xef, 0x88, 0x50, 0x1e, 0x02, 0x00, 0x75, 0x0f, 0xca,
+    0x90, 0x91, 0x82, 0x28, 0xb1, 0x03, 0x00, 0x03, 0x34, 0xf5, 0x8e, 0x33,
+    0x92, 0xdc, 0x5d, 0x05, 0x00, 0x18, 0x55, 0x09, 0xfe, 0x81, 0xa9, 0xbd,
+    0x10, 0x06, 0x00, 0xa6, 0x3f, 0x93, 0xa8, 0x0d, 0xdb, 0x2c, 0x8c, 0x07,
+    0x00, 0xa6, 0x6b, 0x6e, 0x19, 0xd1, 0x97, 0x96, 0xfc, 0x09, 0x00, 0xf7,
+    0x05, 0xbd, 0xba, 0xf5, 0x27, 0x84, 0x28, 0x0b, 0xf9, 0xb0, 0x0c, 0x3d,
+    0x8a, 0xeb, 0x21, 0xb9, 0x0e, 0x04, 0x04, 0x0a, 0x00, 0x3c, 0x25, 0x8e,
+    0x14, 0x0a, 0x5e, 0x6f, 0xa0, 0x01, 0xa3, 0xb5, 0xbb, 0x86, 0x75, 0xce,
+    0x59, 0x57, 0x0d, 0xb5, 0x2e, 0x70, 0xbf, 0x11, 0x15, 0x12, 0x48, 0x02,
+    0x01, 0x08, 0xff, 0x01, 0x7d, 0x0f, 0x09, 0x68, 0x31, 0xfe, 0x2b, 0x94,
+    0x02, 0x01, 0x08, 0xff, 0x01, 0xd1, 0x5d, 0xb5, 0x05, 0xd1, 0xac, 0x82,
+    0xd1, 0x02, 0x01, 0x08, 0xfd, 0x01, 0x81, 0x2a, 0x91, 0xc8, 0x23, 0xed,
+    0x9d, 0xef, 0x02, 0x01, 0x08, 0xfd, 0x01, 0xb4, 0x60, 0x37, 0xa2, 0x4e,
+    0x57, 0x55, 0xb6, 0x03, 0x01, 0x10, 0xff, 0xff, 0x03, 0xde, 0x2b, 0x7a,
+    0x8d, 0xaf, 0xb3, 0x17, 0xd2, 0x03, 0x01, 0x10, 0xff, 0xff, 0x03, 0x00,
+    0x79, 0x12, 0xc9, 0x70, 0x2f, 0x65, 0x90, 0x03, 0x01, 0x10, 0xfd, 0xff,
+    0x03, 0x58, 0xb1, 0x4d, 0x35, 0x7c, 0x9d, 0x65, 0x6a, 0x03, 0x01, 0x10,
+    0xfd, 0xff, 0x03, 0xd6, 0x91, 0x2c, 0x53, 0x88, 0xbd, 0x93, 0xe6, 0x04,
+    0x01, 0x20, 0xff, 0xff, 0xff, 0xff, 0x0f, 0xb4, 0xfb, 0x99, 0xcf, 0x27,
+    0xe8, 0x5e, 0x06, 0x04, 0x01, 0x20, 0xff, 0xff, 0xff, 0xff, 0x0f, 0xee,
+    0x86, 0xa1, 0xc2, 0xc4, 0x21, 0xb1, 0xc9, 0x04, 0x01, 0x20, 0xfd, 0xff,
+    0xff, 0xff, 0x0f, 0x7a, 0xf2, 0xac, 0x65, 0xa4, 0xdf, 0x63, 0xd3, 0x04,
+    0x01, 0x20, 0xfd, 0xff, 0xff, 0xff, 0x0f, 0x6f, 0x9d, 0xc4, 0x00, 0x07,
+    0xc7, 0x49, 0x75, 0x05, 0x01, 0x40, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0x01, 0xdb, 0x71, 0x97, 0x41, 0x17, 0x66, 0xce, 0x1c,
+    0x05, 0x01, 0x40, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x01, 0x97, 0x55, 0x0b, 0x62, 0x60, 0xfa, 0x54, 0x3b, 0x05, 0x01, 0x40,
+    0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0x23, 0x5d,
+    0xce, 0x8e, 0xb9, 0xfc, 0x08, 0xd3, 0x05, 0x01, 0x40, 0xfd, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01, 0x7d, 0x19, 0xb6, 0x85, 0x6b,
+    0xde, 0x0c, 0xc7, 0x0e, 0x00, 0x04, 0x03, 0x01, 0x10, 0xff, 0xff, 0x03,
+    0x21, 0xc0, 0x37, 0x7f, 0x55, 0x97, 0x88, 0x0f, 0x06, 0x01, 0x08, 0x00,
+    0xa1, 0xa2, 0x00, 0x82, 0x3f, 0x55, 0x17, 0x2e, 0x06, 0x01, 0x08, 0x00,
+    0x7d, 0x1b, 0x30, 0xf9, 0x0d, 0xc6, 0xe5, 0xa0, 0x06, 0x01, 0x08, 0x01,
+    0x4d, 0x84, 0xf5, 0xa6, 0x73, 0xc0, 0xb2, 0x1c, 0x06, 0x01, 0x08, 0x01,
+    0x60, 0x09, 0x79, 0xb1, 0x50, 0xc1, 0xa0, 0x4c, 0x07, 0x01, 0x10, 0x00,
+    0xb2, 0x4c, 0xb0, 0x36, 0x68, 0x13, 0x52, 0xf2, 0x07, 0x01, 0x10, 0x00,
+    0x0c, 0x61, 0xe7, 0x16, 0xf2, 0xe1, 0x37, 0x4f, 0x07, 0x01, 0x10, 0x01,
+    0x04, 0x33, 0x8f, 0x97, 0x05, 0xb6, 0x76, 0xd1, 0x07, 0x01, 0x10, 0x01,
+    0xda, 0x9c, 0x47, 0xe7, 0x4d, 0x92, 0x0b, 0x20, 0x08, 0x01, 0x20, 0x00,
+    0xb0, 0xac, 0xb5, 0x31, 0x2a, 0x2f, 0x3d, 0xa5, 0x08, 0x01, 0x20, 0x00,
+    0xd2, 0xe3, 0xa4, 0xa1, 0x8e, 0xbe, 0x59, 0x97, 0x08, 0x01, 0x20, 0x01,
+    0x0e, 0x3c, 0x2e, 0x08, 0xfc, 0x15, 0xc5, 0x8d, 0x08, 0x01, 0x20, 0x01,
+    0x73, 0x89, 0xdf, 0xdb, 0x11, 0xef, 0xec, 0xbe, 0x09, 0x01, 0x40, 0x00,
+    0x27, 0xf2, 0xff, 0xe0, 0x66, 0xad, 0x17, 0x01, 0x09, 0x01, 0x40, 0x00,
+    0xdb, 0x89, 0x06, 0xb5, 0xf3, 0x5a, 0xb4, 0xf2, 0x09, 0x01, 0x40, 0x01,
+    0xf7, 0xca, 0xeb, 0x7e, 0x01, 0x12, 0x3e, 0x71, 0x09, 0x01, 0x40, 0x01,
+    0xe5, 0x51, 0xae, 0x5a, 0xbe, 0xfe, 0x41, 0xc3, 0x0e, 0x00, 0x04, 0x09,
+    0x01, 0x40, 0x00, 0xc7, 0x8d, 0x4d, 0xb5, 0x07, 0x0c, 0xa6, 0x08, 0x06,
+    0x01, 0x08, 0x00, 0xbe, 0x97, 0xad, 0x12, 0x19, 0x70, 0x95, 0xff, 0x07,
+    0x01, 0x10, 0x00, 0x70, 0x94, 0xb3, 0x12, 0x19, 0x5c, 0x9c, 0xff, 0x08,
+    0x01, 0x20, 0x00, 0xe7, 0x61, 0xab, 0x12, 0x19, 0x70, 0x92, 0xff, 0x09,
+    0x01, 0x40, 0x00, 0x8a, 0x9e, 0xad, 0x12, 0x19, 0x74, 0x95, 0xff, 0x07,
+    0x01, 0x0c, 0x00, 0xa1, 0x35, 0xa5, 0x12, 0x19, 0x68, 0x8b, 0xff, 0x09,
+    0x01, 0x30, 0x00, 0x94, 0xd3, 0x46, 0x87, 0x72, 0xc9, 0x67, 0x8a, 0x0c,
+    0x10, 0xb6, 0xab, 0x7f, 0xb8, 0x01, 0xd9, 0xcb, 0x41, 0x0e, 0x00, 0x08,
+    0x0d, 0x67, 0x67, 0x43, 0xc0, 0x1f, 0xe6, 0x81, 0x81, 0x0e, 0x00, 0x04,
+    0x0d, 0x60, 0x16, 0x0e, 0x9a, 0x73, 0xad, 0x0f, 0xf1, 0x10, 0x03, 0x04,
+    0x01, 0x11, 0x00, 0x5d, 0x5a, 0xbd, 0x66, 0xcd, 0xd7, 0x21, 0x2d, 0x0c,
+    0x20, 0x73, 0x2b, 0xa8, 0x9c, 0xe0, 0xcc, 0xd0, 0x95, 0x0e, 0x00, 0x04,
+    0x04, 0x01, 0x04, 0x00, 0xaa, 0x44, 0xcd, 0xc0, 0x48, 0xb6, 0xdb, 0x40,
+    0x0d, 0x74, 0xb6, 0x5d, 0xd6, 0xe2, 0x99, 0xec, 0xce, 0x04, 0x01, 0x07,
+    0x00, 0xcf, 0x0c, 0xa0, 0xc7, 0xb1, 0xda, 0xa0, 0xbc, 0x0c, 0x10, 0xc0,
+    0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x0a, 0x00, 0x48, 0x3d, 0x34,
+    0x53, 0x69, 0xbe, 0x2c, 0xdc, 0x0a, 0x00, 0xd2, 0xb1, 0xac, 0x02, 0x57,
+    0x05, 0x33, 0x17, 0x0a, 0x00, 0x32, 0xe9, 0x13, 0x9e, 0x30, 0xc5, 0x31,
+    0x4f, 0x04, 0x01, 0x04, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01,
+    0xa5, 0x06, 0x01, 0x06, 0x00, 0x59, 0x3f, 0x2e, 0x60, 0xbc, 0x87, 0x65,
+    0xad, 0x01, 0x94, 0x43, 0xf2, 0x51, 0x3b, 0xc8, 0xc1, 0x36, 0x0f, 0x3d,
+    0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0xf0, 0xa2, 0x04, 0xe5,
+    0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x00, 0xf0, 0xa2, 0x04,
+    0x06, 0x00, 0xdc, 0xdd, 0x48, 0x3b, 0x6a, 0xca, 0xb1, 0xe3, 0x0e, 0x00,
+    0xf0, 0xa2, 0x04, 0x07, 0x00, 0x9b, 0x1f, 0xcd, 0x1c, 0x6c, 0x9e, 0x3d,
+    0x48, 0x00, 0x52, 0x8d, 0xf8, 0x30, 0x1d, 0x12, 0xf3, 0x9f, 0x00, 0x7c,
+    0x28, 0x87, 0x75, 0xd8, 0xb5, 0xc7, 0x58, 0x00, 0x91, 0xc5, 0xc4, 0xaa,
+    0x39, 0x77, 0x92, 0xc4, 0x00, 0x80, 0x25, 0xf1, 0xea, 0xde, 0x1a, 0xe5,
+    0xc3, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x00, 0xf4,
+    0x2c, 0x8c, 0xe8, 0xcb, 0xa6, 0x61, 0xae, 0x00, 0x1f, 0xbc, 0x0d, 0x42,
+    0xe1, 0x24, 0x4d, 0x33, 0x00, 0xdb, 0x23, 0x0e, 0xd0, 0xa3, 0x21, 0x23,
+    0x6c, 0x00, 0xc2, 0x85, 0x52, 0xc1, 0xc3, 0xf7, 0x11, 0xd0, 0x00, 0x8a,
+    0xcb, 0x54, 0xc5, 0xa1, 0x6a, 0x21, 0xa8, 0x00, 0xa5, 0xc1, 0x19, 0x57,
+    0x62, 0x3c, 0x57, 0x7d, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1,
+    0x9f, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x00, 0x1c,
+    0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x00, 0x7c, 0x76, 0x2e, 0x3b,
+    0xbe, 0xde, 0x54, 0x58, 0x00, 0xe3, 0x83, 0x45, 0x5a, 0x2e, 0x59, 0x28,
+    0xb5, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x00, 0xcc,
+    0x69, 0xe4, 0xe2, 0x9b, 0xbe, 0xb5, 0xff, 0x0d, 0xd7, 0x2f, 0x3d, 0xe7,
+    0xed, 0xc5, 0xcd, 0x13, 0x0d, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00, 0x58,
+    0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b, 0x26,
+    0xb0, 0x9d, 0x29, 0x5f, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf, 0x7b, 0x3e,
+    0x41, 0x00, 0x5b, 0x21, 0xce, 0xf6, 0xb1, 0xdf, 0xb1, 0xff, 0x00, 0x64,
+    0x1b, 0x41, 0x15, 0x46, 0xe0, 0xcb, 0x5f, 0x00, 0xaf, 0x37, 0x33, 0x25,
+    0xb2, 0x42, 0x68, 0xb7, 0x00, 0x90, 0x78, 0xbd, 0xdf, 0x30, 0xb1, 0x66,
+    0x30, 0x00, 0xcf, 0xee, 0x4d, 0xe9, 0xe4, 0x3a, 0x63, 0xd6, 0x00, 0xa1,
+    0xcc, 0x8d, 0xa2, 0xae, 0x0c, 0xaa, 0xa6, 0x00, 0x6e, 0x33, 0x14, 0xb1,
+    0x5d, 0x82, 0x2d, 0xd0, 0x00, 0x7b, 0x02, 0x29, 0x25, 0x1c, 0x2e, 0x18,
+    0x1c, 0x00, 0x78, 0xa7, 0x9d, 0x85, 0xb7, 0xfc, 0xff, 0x19, 0x00, 0x2e,
+    0xbe, 0x28, 0xda, 0x1d, 0x75, 0x79, 0xec, 0x00, 0xf1, 0x8b, 0xd2, 0xb7,
+    0xc4, 0xc0, 0x1e, 0x03, 0x00, 0xd7, 0x5e, 0x4f, 0x9e, 0x4e, 0x69, 0x59,
+    0xbf, 0x00, 0x87, 0x5e, 0xf4, 0xde, 0xf6, 0x43, 0x48, 0x5f, 0x00, 0x29,
+    0x1a, 0x17, 0xda, 0x11, 0x99, 0x1a, 0x1d, 0x00, 0x3a, 0x11, 0xfb, 0x11,
+    0x5d, 0x55, 0xf8, 0x1c, 0x00, 0x15, 0xad, 0xb2, 0x16, 0x0c, 0xba, 0x9d,
+    0x46, 0x00, 0xc3, 0xb0, 0xc4, 0x86, 0x0d, 0x78, 0x77, 0x05, 0x00, 0x51,
+    0x64, 0x36, 0xd3, 0x61, 0x69, 0x6a, 0xab, 0x00, 0x00, 0xfe, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
 // TableVocabulary is ONE DIRECTION's announced vocabulary (§3.3): the entries
@@ -5015,7 +5016,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 155;
+static const int32_t kTableRetainKnownIds = 156;
 static const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
     0x0117ad66e0fff227ull, 0x01986b0b27400fb2ull, 0x031ec0c4b7d28bf1ull, 0x04dc16aea8ff5276ull,
     0x0577780d86c4b0c3ull, 0x065ee827cf99fbb4ull, 0x08a60c07b54d8dc7ull, 0x09ae5613b0051271ull,
@@ -5023,39 +5024,39 @@ static const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
     0x1733055702acb1d2ull, 0x19fffcb7859da778ull, 0x1c182e1c2529027bull, 0x1cb2c073a6f5844dull,
     0x1cce6617419771dbull, 0x1cf8555d11fb113aull, 0x1d1a9911da171a29ull, 0x1e5088ef2e9bafc6ull,
     0x1f3757a2ce7b0ab1ull, 0x200b924de7479cdaull, 0x2281498aa0200e40ull, 0x247f0e7f55aacfbdull,
-    0x288427f5babd05f7ull, 0x294a5c4913e1ad44ull, 0x2a43bfa7e454ddacull, 0x2d21d7cd66bd5a5dull,
-    0x2e17553f8200a2a1ull, 0x2f2ec0474f1c4fe4ull, 0x3066b130dfbd7890ull, 0x32a89b2977c48ad4ull,
-    0x334d24e1420dbc1full, 0x36c1c83b51f24394ull, 0x38b429bf239b38dbull, 0x39f7fcec8fcb623dull,
-    0x3b54fa60620b5597ull, 0x3bf8fbbad1587cddull, 0x40dbb648c0cd44aaull, 0x413e7bcf261bc3c7ull,
-    0x41cbd901b87fabb6ull, 0x467f35a74c6e4a70ull, 0x469dba0c16b2ad15ull, 0x48121511bf702eb5ull,
-    0x483d9e6c1ccd1f9bull, 0x4b06f5847096e54aull, 0x4ca0c150b1790960ull, 0x4f31c5309e13e932ull,
-    0x4f37e1f216e7610cull, 0x52bb98fcd979eab7ull, 0x5759ce7586bbb5a3ull, 0x5854debe3b2e767cull,
-    0x58c7b5d87587287cull, 0x5bc44627b9848818ull, 0x5ddc92338ef53403ull, 0x5f4843f6def45e87ull,
-    0x5fcbe04615411b64ull, 0x6580790b036f0c6full, 0x6a659d7c354db158ull, 0x6a771618f6fe31d1ull,
-    0x6c2321a3d00e23dbull, 0x704be0d8faaffc58ull, 0x713e12017eebcaf7ull, 0x7549c70700c49d6full,
-    0x77707fccd201c228ull, 0x7d573c625719c1a5ull, 0x7f6308be8ab37fc0ull, 0x7f69d4b5288ba9cfull,
-    0x7fb43557b54149ceull, 0x8113fe7ea2b16969ull, 0x8181e61fc0436767ull, 0x84f8260bc283608cull,
-    0x8a67c9728746d394ull, 0x8c2cdb0da8933fa6ull, 0x8dc515fc082e3c0eull, 0x90652f70c9127900ull,
-    0x942bfe3168090f7dull, 0x95d0cce09ca82b73ull, 0x9759be8ea1a4e3d2ull, 0x9adc623a805c87c6ull,
-    0x9cda940a344e1571ull, 0x9ff1de19feac1b7cull, 0x9ff3121d30f88d52ull, 0xa06f5e0a148e253cull,
-    0xa0e5c60df9301b7dull, 0xa354fd1ff0c467c5ull, 0xa5013e9ad5caeda4ull, 0xa53d2f2a31b5acb0ull,
-    0xa65f859b617deaf3ull, 0xa6aa0caea28dcca1ull, 0xa6bf719a4602b0bcull, 0xa8216aa1c554cb8aull,
-    0xab6a6961d3366451ull, 0xab8b6d521f80b969ull, 0xad6587bc602e3f59ull, 0xae61a6cbe88c2cf4ull,
-    0xb128829190ca0f75ull, 0xb1e5e28e4479a274ull, 0xb46ff45a23d72549ull, 0xb528592e5a4583e3ull,
-    0xb655574ea23760b4ull, 0xb75aa3662201646aull, 0xb76842b2253337afull, 0xb7bc9ac015a25050ull,
-    0xb8c758d8bd1845d4ull, 0xb921eb8a3d0cb0f9ull, 0xbaaeb048a5a8fa6dull, 0xbb62c62c9808ea37ull,
-    0xbca0dab1c7a00ccfull, 0xbeecef11dbdf8973ull, 0xbf31137ff783e939ull, 0xbf59694e9e4f5ed7ull,
-    0xc341febe5aae51e5ull, 0xc3e51adeeaf12580ull, 0xc416c97e0d3218b3ull, 0xc4927739aac4c591ull,
-    0xc4bcadba8e631b86ull, 0xc70cde6b85b6197dull, 0xc9b121c4c2a186eeull, 0xce0ac3c25694d8ffull,
-    0xceec99e2d65db674ull, 0xcf00d78fd5953f1cull, 0xcfb8a9d063b5e9e5ull, 0xd011f7c3c15285c2ull,
-    0xd02d825db114336eull, 0xd176b605978f3304ull, 0xd182acd105b55dd1ull, 0xd217b3af8d7a2bdeull,
-    0xd308fcb98ece5d23ull, 0xd363dfa465acf27aull, 0xd6633ae4e94deecfull, 0xd90a4e7682f799c5ull,
-    0xdbff4cc56c2092f0ull, 0xdc2cbe6953343d48ull, 0xddfc86d2b1251528ull, 0xde28f0f5118acc24ull,
-    0xe3b1ca6a3b48dddcull, 0xe693bd88532c91d6ull, 0xec79751dda28be2eull, 0xecf3d3a7c1693e2dull,
-    0xeef9d1358ae7b4e6ull, 0xef9ded23c8912a81ull, 0xf10fad739a0e1660ull, 0xf252136836b04cb2ull,
-    0xf2b45af3b50689dbull, 0xf901aa0340249a41ull, 0xfc9697d1196e6ba6ull, 0xff8b681912a535a1ull,
-    0xff92701912ab61e7ull, 0xff95701912ad97beull, 0xff95741912ad9e8aull, 0xff9c5c1912b39470ull,
-    0xffb1dfb1f6ce215bull, 0xffb5be9be2e469ccull, 0xffffffffffffffffull,
+    0x288427f5babd05f7ull, 0x28dfd5e2759ba3f8ull, 0x294a5c4913e1ad44ull, 0x2a43bfa7e454ddacull,
+    0x2d21d7cd66bd5a5dull, 0x2e17553f8200a2a1ull, 0x2f2ec0474f1c4fe4ull, 0x3066b130dfbd7890ull,
+    0x32a89b2977c48ad4ull, 0x334d24e1420dbc1full, 0x36c1c83b51f24394ull, 0x38b429bf239b38dbull,
+    0x39f7fcec8fcb623dull, 0x3b54fa60620b5597ull, 0x3bf8fbbad1587cddull, 0x40dbb648c0cd44aaull,
+    0x413e7bcf261bc3c7ull, 0x41cbd901b87fabb6ull, 0x467f35a74c6e4a70ull, 0x469dba0c16b2ad15ull,
+    0x48121511bf702eb5ull, 0x483d9e6c1ccd1f9bull, 0x4b06f5847096e54aull, 0x4ca0c150b1790960ull,
+    0x4f31c5309e13e932ull, 0x4f37e1f216e7610cull, 0x52bb98fcd979eab7ull, 0x5759ce7586bbb5a3ull,
+    0x5854debe3b2e767cull, 0x58c7b5d87587287cull, 0x5bc44627b9848818ull, 0x5ddc92338ef53403ull,
+    0x5f4843f6def45e87ull, 0x5fcbe04615411b64ull, 0x6580790b036f0c6full, 0x6a659d7c354db158ull,
+    0x6a771618f6fe31d1ull, 0x6c2321a3d00e23dbull, 0x704be0d8faaffc58ull, 0x713e12017eebcaf7ull,
+    0x7549c70700c49d6full, 0x77707fccd201c228ull, 0x7d573c625719c1a5ull, 0x7f6308be8ab37fc0ull,
+    0x7f69d4b5288ba9cfull, 0x7fb43557b54149ceull, 0x8113fe7ea2b16969ull, 0x8181e61fc0436767ull,
+    0x84f8260bc283608cull, 0x8a67c9728746d394ull, 0x8c2cdb0da8933fa6ull, 0x8dc515fc082e3c0eull,
+    0x90652f70c9127900ull, 0x942bfe3168090f7dull, 0x95d0cce09ca82b73ull, 0x9759be8ea1a4e3d2ull,
+    0x9adc623a805c87c6ull, 0x9cda940a344e1571ull, 0x9ff1de19feac1b7cull, 0x9ff3121d30f88d52ull,
+    0xa06f5e0a148e253cull, 0xa0e5c60df9301b7dull, 0xa354fd1ff0c467c5ull, 0xa5013e9ad5caeda4ull,
+    0xa53d2f2a31b5acb0ull, 0xa65f859b617deaf3ull, 0xa6aa0caea28dcca1ull, 0xa6bf719a4602b0bcull,
+    0xa8216aa1c554cb8aull, 0xab6a6961d3366451ull, 0xab8b6d521f80b969ull, 0xad6587bc602e3f59ull,
+    0xae61a6cbe88c2cf4ull, 0xb128829190ca0f75ull, 0xb1e5e28e4479a274ull, 0xb46ff45a23d72549ull,
+    0xb528592e5a4583e3ull, 0xb655574ea23760b4ull, 0xb75aa3662201646aull, 0xb76842b2253337afull,
+    0xb7bc9ac015a25050ull, 0xb8c758d8bd1845d4ull, 0xb921eb8a3d0cb0f9ull, 0xbaaeb048a5a8fa6dull,
+    0xbb62c62c9808ea37ull, 0xbca0dab1c7a00ccfull, 0xbeecef11dbdf8973ull, 0xbf31137ff783e939ull,
+    0xbf59694e9e4f5ed7ull, 0xc341febe5aae51e5ull, 0xc3e51adeeaf12580ull, 0xc416c97e0d3218b3ull,
+    0xc4927739aac4c591ull, 0xc4bcadba8e631b86ull, 0xc70cde6b85b6197dull, 0xc9b121c4c2a186eeull,
+    0xce0ac3c25694d8ffull, 0xceec99e2d65db674ull, 0xcf00d78fd5953f1cull, 0xcfb8a9d063b5e9e5ull,
+    0xd011f7c3c15285c2ull, 0xd02d825db114336eull, 0xd176b605978f3304ull, 0xd182acd105b55dd1ull,
+    0xd217b3af8d7a2bdeull, 0xd308fcb98ece5d23ull, 0xd363dfa465acf27aull, 0xd6633ae4e94deecfull,
+    0xd90a4e7682f799c5ull, 0xdbff4cc56c2092f0ull, 0xdc2cbe6953343d48ull, 0xddfc86d2b1251528ull,
+    0xde28f0f5118acc24ull, 0xe3b1ca6a3b48dddcull, 0xe693bd88532c91d6ull, 0xec79751dda28be2eull,
+    0xecf3d3a7c1693e2dull, 0xeef9d1358ae7b4e6ull, 0xef9ded23c8912a81ull, 0xf10fad739a0e1660ull,
+    0xf252136836b04cb2ull, 0xf2b45af3b50689dbull, 0xf901aa0340249a41ull, 0xfc9697d1196e6ba6ull,
+    0xff8b681912a535a1ull, 0xff92701912ab61e7ull, 0xff95701912ad97beull, 0xff95741912ad9e8aull,
+    0xff9c5c1912b39470ull, 0xffb1dfb1f6ce215bull, 0xffb5be9be2e469ccull, 0xffffffffffffffffull,
 };
 
 inline bool TableRetainNameable( uint64_t id )
@@ -6459,7 +6460,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x31490f0ed9100a4eull;
+static const uint64_t BuildVersion = 0x7e8cf44b4a43bb3bull;
 
 } // namespace tabledemo
 
@@ -6836,9 +6837,9 @@ inline bool TableEnumRef( TableIds & ids, Grade value, uint64_t & ref )
     switch ( value )
     {
         case Grade::None: ref = 0; return true;
-        case Grade::Bronze: ref = ids.ref_at( 115, 0xc4927739aac4c591ull ); return true;
-        case Grade::Silver: ref = ids.ref_at( 113, 0xc3e51adeeaf12580ull ); return true;
-        case Grade::Gold: ref = ids.ref_at( 114, 0xc416c97e0d3218b3ull ); return true;
+        case Grade::Bronze: ref = ids.ref_at( 116, 0xc4927739aac4c591ull ); return true;
+        case Grade::Silver: ref = ids.ref_at( 114, 0xc3e51adeeaf12580ull ); return true;
+        case Grade::Gold: ref = ids.ref_at( 115, 0xc416c97e0d3218b3ull ); return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -6847,9 +6848,9 @@ inline bool TableEnumRef( TableRetainIds & ids, Grade value, uint64_t & ref )
     switch ( value )
     {
         case Grade::None: ref = 0; return true;
-        case Grade::Bronze: ref = ids.ref_at( 115, 0xc4927739aac4c591ull ); return true;
-        case Grade::Silver: ref = ids.ref_at( 113, 0xc3e51adeeaf12580ull ); return true;
-        case Grade::Gold: ref = ids.ref_at( 114, 0xc416c97e0d3218b3ull ); return true;
+        case Grade::Bronze: ref = ids.ref_at( 116, 0xc4927739aac4c591ull ); return true;
+        case Grade::Silver: ref = ids.ref_at( 114, 0xc3e51adeeaf12580ull ); return true;
+        case Grade::Gold: ref = ids.ref_at( 115, 0xc416c97e0d3218b3ull ); return true;
         default: return false;
     }
 }
@@ -6869,9 +6870,9 @@ inline bool TableEnumSlot( Grade value, uint64_t & slot )
     switch ( value )
     {
         case Grade::None: slot = 0; return true;
-        case Grade::Bronze: slot = 113; return true;
-        case Grade::Silver: slot = 114; return true;
-        case Grade::Gold: slot = 115; return true;
+        case Grade::Bronze: slot = 114; return true;
+        case Grade::Silver: slot = 115; return true;
+        case Grade::Gold: slot = 116; return true;
         default: return false; // no variant names this value: no wire identity
     }
 }
@@ -7081,21 +7082,21 @@ inline bool DebuffLoadMessageBodyRetain( TableBitReader & r, const TableVocabula
 inline int64_t WeaponConfigMeasureBody( TableIds & ids, const WeaponConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.damage != 21.0f ) { bytes += TableLebBytes( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
+    if ( value.damage != 21.0f ) { bytes += TableLebBytes( ids.ref_at( 67, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
     if ( value.speed != 500.0f ) { bytes += TableLebBytes( ids.ref_at( 12, 0x1733055702acb1d2ull ) ) + 1 + 4; } // speed
-    if ( value.penetration != 1 ) { bytes += TableLebBytes( ids.ref_at( 47, 0x4f31c5309e13e932ull ) ) + 1 + 4; } // penetration
-    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ) ) + 1 + 1; } // channel
-    if ( value.homing != false ) { bytes += TableLebBytes( ids.ref_at( 94, 0xad6587bc602e3f59ull ) ) + 1 + 1; } // homing
+    if ( value.penetration != 1 ) { bytes += TableLebBytes( ids.ref_at( 48, 0x4f31c5309e13e932ull ) ) + 1 + 4; } // penetration
+    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 87, 0xa5013e9ad5caeda4ull ) ) + 1 + 1; } // channel
+    if ( value.homing != false ) { bytes += TableLebBytes( ids.ref_at( 95, 0xad6587bc602e3f59ull ) ) + 1 + 1; } // homing
     if ( value.effect.type != EffectType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref_at( 33, 0x36c1c83b51f24394ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 34, 0x36c1c83b51f24394ull ) ) + 1;
         switch ( value.effect.type )
         {
             case EffectType::None: break;
             case EffectType::Buff:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref_at( 153, 0xffb5be9be2e469ccull );
+                const uint64_t arm_ref = ids.ref_at( 154, 0xffb5be9be2e469ccull );
                 {
                     const int64_t arm_body = BuffMeasureBody( ids, value.effect.buff );
                     if ( arm_body < 0 ) { return -1; }
@@ -7134,7 +7135,7 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, TableIds & id
 {
     if ( value.damage != 21.0f )
     {
-        w.header( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ), 10 ); // damage
+        w.header( ids.ref_at( 67, 0x7f6308be8ab37fc0ull ), 10 ); // damage
         w.put32( table_float_to_bits( value.damage ) );
     }
     if ( value.speed != 500.0f )
@@ -7144,27 +7145,27 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, TableIds & id
     }
     if ( value.penetration != 1 )
     {
-        w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
+        w.header( ids.ref_at( 48, 0x4f31c5309e13e932ull ), 4 ); // penetration
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
-        w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
+        w.header( ids.ref_at( 87, 0xa5013e9ad5caeda4ull ), 6 ); // channel
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
     {
-        w.header( ids.ref_at( 94, 0xad6587bc602e3f59ull ), 1 ); // homing
+        w.header( ids.ref_at( 95, 0xad6587bc602e3f59ull ), 1 ); // homing
         w.put8( value.homing ? 1 : 0 );
     }
     if ( value.effect.type != EffectType::None )
     {
-        w.header( ids.ref_at( 33, 0x36c1c83b51f24394ull ), 15 ); // effect
+        w.header( ids.ref_at( 34, 0x36c1c83b51f24394ull ), 15 ); // effect
         switch ( value.effect.type )
         {
             case EffectType::Buff:
             {
-                const uint64_t arm_ref = ids.ref_at( 153, 0xffb5be9be2e469ccull );
+                const uint64_t arm_ref = ids.ref_at( 154, 0xffb5be9be2e469ccull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = BuffMeasureBody( ids, value.effect.buff );
@@ -7518,43 +7519,43 @@ inline bool WeaponConfigSaveMessageBody( TableBitWriter & w, const WeaponConfig 
 {
     if ( value.damage != 21.0f )
     {
-        w.put( 100, kTableMessageRefBitsHere );
+        w.put( 101, kTableMessageRefBitsHere );
         w.put( (uint64_t) table_float_to_bits( value.damage ), 32 );
     }
     if ( value.speed != 500.0f )
     {
-        w.put( 102, kTableMessageRefBitsHere );
+        w.put( 103, kTableMessageRefBitsHere );
         w.put( (uint64_t) table_float_to_bits( value.speed ), 32 );
     }
     if ( value.penetration != 1 )
     {
-        w.put( 103, kTableMessageRefBitsHere );
+        w.put( 104, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.penetration ), 4 );
     }
     if ( value.channel != 0 )
     {
-        w.put( 104, kTableMessageRefBitsHere );
+        w.put( 105, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.channel ), 6 );
     }
     if ( value.homing != false )
     {
-        w.put( 105, kTableMessageRefBitsHere );
+        w.put( 106, kTableMessageRefBitsHere );
         w.put( value.homing ? 1 : 0, 1 );
     }
     if ( value.effect.type != EffectType::None )
     {
-        w.put( 106, kTableMessageRefBitsHere );
+        w.put( 107, kTableMessageRefBitsHere );
         switch ( value.effect.type )
         {
             case EffectType::Buff:
             {
-                w.put( 128, kTableMessageRefBitsHere );
+                w.put( 129, kTableMessageRefBitsHere );
                 if ( !BuffSaveMessageBody( w, value.effect.buff ) ) { return false; }
                 break;
             }
             case EffectType::Debuff:
             {
-                w.put( 129, kTableMessageRefBitsHere );
+                w.put( 130, kTableMessageRefBitsHere );
                 if ( !DebuffSaveMessageBody( w, value.effect.debuff ) ) { return false; }
                 break;
             }
@@ -7875,7 +7876,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
     if ( value.grade != Grade::Silver )
     {
         if ( !TableEnumNamed( value.grade ) ) { return -1; } // no variant names this value
-        const uint64_t ref_grade = ids.ref_at( 31, 0x32a89b2977c48ad4ull );
+        const uint64_t ref_grade = ids.ref_at( 32, 0x32a89b2977c48ad4ull );
         uint64_t variant_grade = 0;
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return -1; }
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
@@ -7883,7 +7884,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
     if ( value.grades_count < 0 || value.grades_count > 4 ) { return -1; } // storage invariant
     if ( value.grades_count > 0 )
     {
-        const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
+        const uint64_t ref_grades = ids.ref_at( 132, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
         body_grades += 1 + TableLebBytes( (uint64_t) ( value.grades_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.grades_count; elem_i++ )
@@ -7899,7 +7900,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.podium[i] != Grade::None ) { all_default_podium = false; break; } }
         if ( !all_default_podium )
         {
-            const uint64_t ref_podium = ids.ref_at( 98, 0xb46ff45a23d72549ull );
+            const uint64_t ref_podium = ids.ref_at( 99, 0xb46ff45a23d72549ull );
             int64_t body_podium = 0;
             body_podium += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 3; elem_i++ )
@@ -7911,17 +7912,17 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
             bytes += TableLebBytes( ref_podium ) + 1 + TableLebBytes( (uint64_t) ( body_podium ) ) + ( body_podium ); // podium
         }
     }
-    if ( value.perks != 0 ) { bytes += TableLebBytes( ids.ref_at( 45, 0x4b06f5847096e54aull ) ) + 1 + 8; } // perks
+    if ( value.perks != 0 ) { bytes += TableLebBytes( ids.ref_at( 46, 0x4b06f5847096e54aull ) ) + 1 + 8; } // perks
     {
         const int32_t mark_primary = ids.count;
-        const uint64_t ref_primary = ids.ref_at( 110, 0xbf31137ff783e939ull );
+        const uint64_t ref_primary = ids.ref_at( 111, 0xbf31137ff783e939ull );
         const int64_t body_primary = WeaponConfigMeasureBody( ids, value.primary );
         if ( body_primary < 0 ) { return -1; }
         if ( body_primary > 1 ) { bytes += TableLebBytes( ref_primary ) + 1 + TableLebBytes( (uint64_t) ( body_primary ) ) + ( body_primary ); } // primary
         else { ids.truncate( mark_primary ); } // an all-default nested table elides, and costs no entry
     }
     {
-        const uint64_t ref_backups = ids.ref_at( 135, 0xde28f0f5118acc24ull );
+        const uint64_t ref_backups = ids.ref_at( 136, 0xde28f0f5118acc24ull );
         int64_t body_backups = 0;
         body_backups += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -7935,7 +7936,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
     if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return -1; } // storage invariant
     if ( value.attachments_count > 0 )
     {
-        const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
+        const uint64_t ref_attachments = ids.ref_at( 146, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
         body_attachments += 1 + TableLebBytes( (uint64_t) ( value.attachments_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.attachments_count; elem_i++ )
@@ -7962,7 +7963,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.grade != Grade::Silver )
     {
         if ( !TableEnumNamed( value.grade ) ) { return false; }
-        const uint64_t ref_grade = ids.ref_at( 31, 0x32a89b2977c48ad4ull );
+        const uint64_t ref_grade = ids.ref_at( 32, 0x32a89b2977c48ad4ull );
         uint64_t variant_grade = 0;
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return false; }
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
@@ -7970,7 +7971,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; } // storage invariant
     if ( value.grades_count > 0 )
     {
-        const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
+        const uint64_t ref_grades = ids.ref_at( 132, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
         body_grades += 1 + TableLebBytes( (uint64_t) ( value.grades_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.grades_count; elem_i++ )
@@ -7995,7 +7996,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.podium[i] != Grade::None ) { all_default_podium = false; break; } }
         if ( !all_default_podium )
         {
-            const uint64_t ref_podium = ids.ref_at( 98, 0xb46ff45a23d72549ull );
+            const uint64_t ref_podium = ids.ref_at( 99, 0xb46ff45a23d72549ull );
             int64_t body_podium = 0;
             body_podium += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 3; elem_i++ )
@@ -8018,12 +8019,12 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.perks != 0 )
     {
-        w.header( ids.ref_at( 45, 0x4b06f5847096e54aull ), 9 ); // perks
+        w.header( ids.ref_at( 46, 0x4b06f5847096e54aull ), 9 ); // perks
         w.put64( uint64_t( value.perks ) );
     }
     {
         const int32_t mark_primary = ids.count;
-        const uint64_t ref_primary = ids.ref_at( 110, 0xbf31137ff783e939ull );
+        const uint64_t ref_primary = ids.ref_at( 111, 0xbf31137ff783e939ull );
         const int64_t body_primary = WeaponConfigMeasureBody( ids, value.primary );
         if ( body_primary < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_primary > 1 ) // all-default nested elides
@@ -8034,7 +8035,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         else { ids.truncate( mark_primary ); }
     }
     {
-        const uint64_t ref_backups = ids.ref_at( 135, 0xde28f0f5118acc24ull );
+        const uint64_t ref_backups = ids.ref_at( 136, 0xde28f0f5118acc24ull );
         int64_t body_backups = 0;
         // backups: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
@@ -8063,7 +8064,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return false; } // storage invariant
     if ( value.attachments_count > 0 )
     {
-        const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
+        const uint64_t ref_attachments = ids.ref_at( 146, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
         // attachments: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
@@ -8573,7 +8574,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
     if ( value.grade != Grade::Silver )
     {
         if ( !TableEnumNamed( value.grade ) ) { return false; }
-        w.put( 20, kTableMessageRefBitsHere );
+        w.put( 21, kTableMessageRefBitsHere );
         {
             uint64_t slot = 0;
             if ( !TableEnumSlot( value.grade, slot ) ) { return false; }
@@ -8583,7 +8584,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
     if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; } // storage invariant
     if ( value.grades_count > 0 )
     {
-        w.put( 21, kTableMessageRefBitsHere );
+        w.put( 22, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.grades_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.grades_count; i++ )
         {
@@ -8600,7 +8601,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.podium[i] != Grade::None ) { rides_podium = true; break; } }
         if ( rides_podium )
         {
-            w.put( 22, kTableMessageRefBitsHere );
+            w.put( 23, kTableMessageRefBitsHere );
             for ( int32_t i = 0; i < 3; i++ )
             {
                 if ( !TableEnumNamed( value.podium[i] ) ) { return false; }
@@ -8614,7 +8615,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
     }
     if ( value.perks != 0 )
     {
-        w.put( 23, kTableMessageRefBitsHere );
+        w.put( 24, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.perks ), 3 );
     }
     {
@@ -8622,7 +8623,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         if ( body_primary < 0 ) { return false; }
         if ( body_primary > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
-            w.put( 24, kTableMessageRefBitsHere );
+            w.put( 25, kTableMessageRefBitsHere );
             if ( !WeaponConfigSaveMessageBody( w, value.primary ) ) { return false; }
         }
     }
@@ -8630,7 +8631,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         const bool rides_backups = true; // position is identity in a fixed array of tables
         if ( rides_backups )
         {
-            w.put( 25, kTableMessageRefBitsHere );
+            w.put( 26, kTableMessageRefBitsHere );
             for ( int32_t i = 0; i < 2; i++ )
             {
                 if ( !WeaponConfigSaveMessageBody( w, value.backups[i] ) ) { return false; }
@@ -8640,7 +8641,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
     if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return false; } // storage invariant
     if ( value.attachments_count > 0 )
     {
-        w.put( 26, kTableMessageRefBitsHere );
+        w.put( 27, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.attachments_count ) - 0, 4 );
         for ( int32_t i = 0; i < value.attachments_count; i++ )
         {
@@ -8980,37 +8981,37 @@ inline int64_t ProfileConfigMeasureBody( TableIds & ids, const ProfileConfig & v
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
-    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 116, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 117, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.icon_length < 0 || value.icon_length > 16 ) { return -1; } // storage invariant
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
-        bytes += TableLebBytes( ids.ref_at( 132, 0xdbff4cc56c2092f0ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_icon ) ) + ( body_icon ); // icon
+        bytes += TableLebBytes( ids.ref_at( 133, 0xdbff4cc56c2092f0ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_icon ) ) + ( body_icon ); // icon
     }
-    if ( value.experience != 0 ) { bytes += TableLebBytes( ids.ref_at( 93, 0xab8b6d521f80b969ull ) ) + 1 + 4; } // experience
+    if ( value.experience != 0 ) { bytes += TableLebBytes( ids.ref_at( 94, 0xab8b6d521f80b969ull ) ) + 1 + 4; } // experience
     if ( value.tilt != 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x1e5088ef2e9bafc6ull ) ) + 1 + 1; } // tilt
-    if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref_at( 96, 0xb128829190ca0f75ull ) ) + 1 + 2; } // heading
-    if ( value.timestamp != 0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0x5ddc92338ef53403ull ) ) + 1 + 8; } // timestamp
+    if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref_at( 97, 0xb128829190ca0f75ull ) ) + 1 + 2; } // heading
+    if ( value.timestamp != 0 ) { bytes += TableLebBytes( ids.ref_at( 55, 0x5ddc92338ef53403ull ) ) + 1 + 8; } // timestamp
     if ( value.badge != 0 ) { bytes += TableLebBytes( ids.ref_at( 9, 0x10bda981fe095518ull ) ) + 1 + 1; } // badge
-    if ( value.port != 0 ) { bytes += TableLebBytes( ids.ref_at( 73, 0x8c2cdb0da8933fa6ull ) ) + 1 + 2; } // port
-    if ( value.epoch != 0 ) { bytes += TableLebBytes( ids.ref_at( 146, 0xfc9697d1196e6ba6ull ) ) + 1 + 8; } // epoch
+    if ( value.port != 0 ) { bytes += TableLebBytes( ids.ref_at( 74, 0x8c2cdb0da8933fa6ull ) ) + 1 + 2; } // port
+    if ( value.epoch != 0 ) { bytes += TableLebBytes( ids.ref_at( 147, 0xfc9697d1196e6ba6ull ) ) + 1 + 8; } // epoch
     if ( value.precision != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x288427f5babd05f7ull ) ) + 1 + 8; } // precision
     {
         bool all_default_ratings = true;
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.ratings[i] != 0.0f ) { all_default_ratings = false; break; } }
         if ( !all_default_ratings )
         {
-            const uint64_t ref_ratings = ids.ref_at( 105, 0xb921eb8a3d0cb0f9ull );
+            const uint64_t ref_ratings = ids.ref_at( 106, 0xb921eb8a3d0cb0f9ull );
             int64_t body_ratings = 0;
             body_ratings += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_ratings += (int64_t) ( 4 ) * 4;
             bytes += TableLebBytes( ref_ratings ) + 1 + TableLebBytes( (uint64_t) ( body_ratings ) ) + ( body_ratings ); // ratings
         }
     }
-    if ( value.has_loadout != false ) { bytes += TableLebBytes( ids.ref_at( 83, 0xa06f5e0a148e253cull ) ) + 1 + 1; } // has_loadout
+    if ( value.has_loadout != false ) { bytes += TableLebBytes( ids.ref_at( 84, 0xa06f5e0a148e253cull ) ) + 1 + 1; } // has_loadout
     {
         const int32_t mark_loadout = ids.count;
-        const uint64_t ref_loadout = ids.ref_at( 50, 0x5759ce7586bbb5a3ull );
+        const uint64_t ref_loadout = ids.ref_at( 51, 0x5759ce7586bbb5a3ull );
         const int64_t body_loadout = LoadoutConfigMeasureBody( ids, value.loadout );
         if ( body_loadout < 0 ) { return -1; }
         if ( body_loadout > 1 ) { bytes += TableLebBytes( ref_loadout ) + 1 + TableLebBytes( (uint64_t) ( body_loadout ) ) + ( body_loadout ); } // loadout
@@ -9032,7 +9033,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.header( ids.ref_at( 116, 0xc4bcadba8e631b86ull ), 12 ); // name
+        w.header( ids.ref_at( 117, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -9040,14 +9041,14 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
-        w.header( ids.ref_at( 132, 0xdbff4cc56c2092f0ull ), 14 ); // icon
+        w.header( ids.ref_at( 133, 0xdbff4cc56c2092f0ull ), 14 ); // icon
         w.putleb( (uint64_t) body_icon );
         w.put8( 6 ); w.putleb( (uint64_t) value.icon_length );
         w.raw( value.icon, value.icon_length );
     }
     if ( value.experience != 0 )
     {
-        w.header( ids.ref_at( 93, 0xab8b6d521f80b969ull ), 8 ); // experience
+        w.header( ids.ref_at( 94, 0xab8b6d521f80b969ull ), 8 ); // experience
         w.put32( uint32_t( value.experience ) );
     }
     if ( value.tilt != 0 )
@@ -9057,12 +9058,12 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.heading != 0 )
     {
-        w.header( ids.ref_at( 96, 0xb128829190ca0f75ull ), 3 ); // heading
+        w.header( ids.ref_at( 97, 0xb128829190ca0f75ull ), 3 ); // heading
         w.put16( uint16_t( value.heading ) );
     }
     if ( value.timestamp != 0 )
     {
-        w.header( ids.ref_at( 54, 0x5ddc92338ef53403ull ), 5 ); // timestamp
+        w.header( ids.ref_at( 55, 0x5ddc92338ef53403ull ), 5 ); // timestamp
         w.put64( uint64_t( value.timestamp ) );
     }
     if ( value.badge != 0 )
@@ -9072,12 +9073,12 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.port != 0 )
     {
-        w.header( ids.ref_at( 73, 0x8c2cdb0da8933fa6ull ), 7 ); // port
+        w.header( ids.ref_at( 74, 0x8c2cdb0da8933fa6ull ), 7 ); // port
         w.put16( uint16_t( value.port ) );
     }
     if ( value.epoch != 0 )
     {
-        w.header( ids.ref_at( 146, 0xfc9697d1196e6ba6ull ), 9 ); // epoch
+        w.header( ids.ref_at( 147, 0xfc9697d1196e6ba6ull ), 9 ); // epoch
         w.put64( uint64_t( value.epoch ) );
     }
     if ( value.precision != 0.0 )
@@ -9090,7 +9091,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.ratings[i] != 0.0f ) { all_default_ratings = false; break; } }
         if ( !all_default_ratings )
         {
-            const uint64_t ref_ratings = ids.ref_at( 105, 0xb921eb8a3d0cb0f9ull );
+            const uint64_t ref_ratings = ids.ref_at( 106, 0xb921eb8a3d0cb0f9ull );
             int64_t body_ratings = 0;
             body_ratings += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_ratings += (int64_t) ( 4 ) * 4;
@@ -9104,12 +9105,12 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBody( TableWriter & w, TableIds & i
     }
     if ( value.has_loadout != false )
     {
-        w.header( ids.ref_at( 83, 0xa06f5e0a148e253cull ), 1 ); // has_loadout
+        w.header( ids.ref_at( 84, 0xa06f5e0a148e253cull ), 1 ); // has_loadout
         w.put8( value.has_loadout ? 1 : 0 );
     }
     {
         const int32_t mark_loadout = ids.count;
-        const uint64_t ref_loadout = ids.ref_at( 50, 0x5759ce7586bbb5a3ull );
+        const uint64_t ref_loadout = ids.ref_at( 51, 0x5759ce7586bbb5a3ull );
         const int64_t body_loadout = LoadoutConfigMeasureBody( ids, value.loadout );
         if ( body_loadout < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_loadout > 1 ) // all-default nested elides
@@ -9662,7 +9663,7 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
     if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.put( 38, kTableMessageRefBitsHere );
+        w.put( 39, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.name_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -9670,49 +9671,49 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
     if ( value.icon_length < 0 || value.icon_length > 16 ) { return false; } // storage invariant
     if ( value.icon_length > 0 )
     {
-        w.put( 39, kTableMessageRefBitsHere );
+        w.put( 40, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.icon_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.icon, value.icon_length );
     }
     if ( value.experience != 0 )
     {
-        w.put( 40, kTableMessageRefBitsHere );
+        w.put( 41, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.experience ), 32 );
     }
     if ( value.tilt != 0 )
     {
-        w.put( 41, kTableMessageRefBitsHere );
+        w.put( 42, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.tilt ), 8 );
     }
     if ( value.heading != 0 )
     {
-        w.put( 42, kTableMessageRefBitsHere );
+        w.put( 43, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.heading ), 16 );
     }
     if ( value.timestamp != 0 )
     {
-        w.put( 43, kTableMessageRefBitsHere );
+        w.put( 44, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.timestamp ), 64 );
     }
     if ( value.badge != 0 )
     {
-        w.put( 44, kTableMessageRefBitsHere );
+        w.put( 45, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.badge ), 8 );
     }
     if ( value.port != 0 )
     {
-        w.put( 45, kTableMessageRefBitsHere );
+        w.put( 46, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.port ), 16 );
     }
     if ( value.epoch != 0 )
     {
-        w.put( 46, kTableMessageRefBitsHere );
+        w.put( 47, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.epoch ), 64 );
     }
     if ( value.precision != 0.0 )
     {
-        w.put( 47, kTableMessageRefBitsHere );
+        w.put( 48, kTableMessageRefBitsHere );
         w.put( table_double_to_bits( value.precision ), 64 );
     }
     {
@@ -9720,7 +9721,7 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.ratings[i] != 0.0f ) { rides_ratings = true; break; } }
         if ( rides_ratings )
         {
-            w.put( 48, kTableMessageRefBitsHere );
+            w.put( 49, kTableMessageRefBitsHere );
             for ( int32_t i = 0; i < 4; i++ )
             {
                 w.put( (uint64_t) table_float_to_bits( value.ratings[i] ), 32 );
@@ -9729,7 +9730,7 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
     }
     if ( value.has_loadout != false )
     {
-        w.put( 49, kTableMessageRefBitsHere );
+        w.put( 50, kTableMessageRefBitsHere );
         w.put( value.has_loadout ? 1 : 0, 1 );
     }
     {
@@ -9737,7 +9738,7 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
         if ( body_loadout < 0 ) { return false; }
         if ( body_loadout > kTableMessageRefBitsHere ) // an all-default nested table elides
         {
-            w.put( 50, kTableMessageRefBitsHere );
+            w.put( 51, kTableMessageRefBitsHere );
             if ( !LoadoutConfigSaveMessageBody( w, value.loadout ) ) { return false; }
         }
     }
@@ -10277,11 +10278,11 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return -1; } // storage invariant
-    if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
+    if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 73, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return -1; } // storage invariant
     if ( value.weapons_count > 0 )
     {
-        const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
+        const uint64_t ref_weapons = ids.ref_at( 41, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
         body_weapons += 1 + TableLebBytes( (uint64_t) ( value.weapons_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.weapons_count; elem_i++ )
@@ -10295,7 +10296,7 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
     if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return -1; } // storage invariant
     if ( value.profiles_count > 0 )
     {
-        const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
+        const uint64_t ref_profiles = ids.ref_at( 71, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
         body_profiles += 1 + TableLebBytes( (uint64_t) ( value.profiles_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.profiles_count; elem_i++ )
@@ -10322,14 +10323,14 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
     if ( value.version_note_length > 0 )
     {
-        w.header( ids.ref_at( 72, 0x8a67c9728746d394ull ), 12 ); // version_note
+        w.header( ids.ref_at( 73, 0x8a67c9728746d394ull ), 12 ); // version_note
         w.putleb( (uint64_t) value.version_note_length );
         w.raw( value.version_note, value.version_note_length );
     }
     if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return false; } // storage invariant
     if ( value.weapons_count > 0 )
     {
-        const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
+        const uint64_t ref_weapons = ids.ref_at( 41, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
         // weapons: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
@@ -10358,7 +10359,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
     if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return false; } // storage invariant
     if ( value.profiles_count > 0 )
     {
-        const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
+        const uint64_t ref_profiles = ids.ref_at( 71, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
         // profiles: the sizing loop's per-element lengths, kept for the write loop
         // below — the element's own length prefix is the number the parent's
@@ -10681,7 +10682,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
     if ( value.version_note_length > 0 )
     {
-        w.put( 91, kTableMessageRefBitsHere );
+        w.put( 92, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.version_note_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.version_note, value.version_note_length );
@@ -10689,7 +10690,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
     if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return false; } // storage invariant
     if ( value.weapons_count > 0 )
     {
-        w.put( 92, kTableMessageRefBitsHere );
+        w.put( 93, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.weapons_count ) - 0, 4 );
         for ( int32_t i = 0; i < value.weapons_count; i++ )
         {
@@ -10699,7 +10700,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
     if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return false; } // storage invariant
     if ( value.profiles_count > 0 )
     {
-        w.put( 93, kTableMessageRefBitsHere );
+        w.put( 94, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.profiles_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.profiles_count; i++ )
         {
@@ -10910,8 +10911,8 @@ inline bool RootConfigLoadMessages( RootConfig * values, int64_t * count, const 
 inline int64_t AttachmentMeasureBody( TableIds & ids, const Attachment & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0x6a771618f6fe31d1ull ) ) + 1 + 4; } // slot
-    if ( value.power != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
+    if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 60, 0x6a771618f6fe31d1ull ) ) + 1 + 4; } // slot
+    if ( value.power != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 141, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
     return bytes;
 }
 
@@ -10927,12 +10928,12 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBody( TableWriter & w, TableIds & ids,
 {
     if ( value.slot != 0 )
     {
-        w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
+        w.header( ids.ref_at( 60, 0x6a771618f6fe31d1ull ), 4 ); // slot
         w.put32( uint32_t( value.slot ) );
     }
     if ( value.power != 1.0f )
     {
-        w.header( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ), 10 ); // power
+        w.header( ids.ref_at( 141, 0xeef9d1358ae7b4e6ull ), 10 ); // power
         w.put32( table_float_to_bits( value.power ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11305,7 +11306,7 @@ inline bool AttachmentLoadMessages( Attachment * values, int64_t * count, const 
 inline int64_t BuffMeasureBody( TableIds & ids, const Buff & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.multiplier != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 79, 0x9adc623a805c87c6ull ) ) + 1 + 4; } // multiplier
+    if ( value.multiplier != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 80, 0x9adc623a805c87c6ull ) ) + 1 + 4; } // multiplier
     return bytes;
 }
 
@@ -11321,7 +11322,7 @@ TABLEDEMO_TABLE_INLINE bool BuffSaveBody( TableWriter & w, TableIds & ids, const
 {
     if ( value.multiplier != 1.0f )
     {
-        w.header( ids.ref_at( 79, 0x9adc623a805c87c6ull ), 10 ); // multiplier
+        w.header( ids.ref_at( 80, 0x9adc623a805c87c6ull ), 10 ); // multiplier
         w.put32( table_float_to_bits( value.multiplier ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11604,7 +11605,7 @@ inline bool BuffLoadMessages( Buff * values, int64_t * count, const TableVocabul
 inline int64_t DebuffMeasureBody( TableIds & ids, const Debuff & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 69, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
+    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 70, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     return bytes;
 }
 
@@ -11620,7 +11621,7 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBody( TableWriter & w, TableIds & ids, con
 {
     if ( value.amount != 0 )
     {
-        w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        w.header( ids.ref_at( 70, 0x8113fe7ea2b16969ull ), 4 ); // amount
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -14089,21 +14090,21 @@ inline int64_t RootConfigFixedLoad( RootConfig * values, int64_t capacity, const
 inline int64_t WeaponConfigMeasureBodyRetain( TableRetainIds & ids, const WeaponConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.damage != 21.0f ) { bytes += TableLebBytes( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
+    if ( value.damage != 21.0f ) { bytes += TableLebBytes( ids.ref_at( 67, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
     if ( value.speed != 500.0f ) { bytes += TableLebBytes( ids.ref_at( 12, 0x1733055702acb1d2ull ) ) + 1 + 4; } // speed
-    if ( value.penetration != 1 ) { bytes += TableLebBytes( ids.ref_at( 47, 0x4f31c5309e13e932ull ) ) + 1 + 4; } // penetration
-    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ) ) + 1 + 1; } // channel
-    if ( value.homing != false ) { bytes += TableLebBytes( ids.ref_at( 94, 0xad6587bc602e3f59ull ) ) + 1 + 1; } // homing
+    if ( value.penetration != 1 ) { bytes += TableLebBytes( ids.ref_at( 48, 0x4f31c5309e13e932ull ) ) + 1 + 4; } // penetration
+    if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 87, 0xa5013e9ad5caeda4ull ) ) + 1 + 1; } // channel
+    if ( value.homing != false ) { bytes += TableLebBytes( ids.ref_at( 95, 0xad6587bc602e3f59ull ) ) + 1 + 1; } // homing
     if ( value.effect.type != EffectType::None ) // None elides — the absence of the field is the None
     {
-        bytes += TableLebBytes( ids.ref_at( 33, 0x36c1c83b51f24394ull ) ) + 1;
+        bytes += TableLebBytes( ids.ref_at( 34, 0x36c1c83b51f24394ull ) ) + 1;
         switch ( value.effect.type )
         {
             case EffectType::None: break;
             case EffectType::Buff:
             {
                 int64_t arm_payload = 0;
-                const uint64_t arm_ref = ids.ref_at( 153, 0xffb5be9be2e469ccull );
+                const uint64_t arm_ref = ids.ref_at( 154, 0xffb5be9be2e469ccull );
                 {
                     const int64_t arm_body = BuffMeasureBodyRetain( ids, value.effect.buff, retain, TableRetainStepInto( path, 5, (uint32_t) ( 0 ) ) );
                     if ( arm_body < 0 ) { return -1; }
@@ -14135,7 +14136,7 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBodyRetain( TableWriter & w, TableRe
 {
     if ( value.damage != 21.0f )
     {
-        w.header( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ), 10 ); // damage
+        w.header( ids.ref_at( 67, 0x7f6308be8ab37fc0ull ), 10 ); // damage
         w.put32( table_float_to_bits( value.damage ) );
     }
     if ( value.speed != 500.0f )
@@ -14145,27 +14146,27 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBodyRetain( TableWriter & w, TableRe
     }
     if ( value.penetration != 1 )
     {
-        w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
+        w.header( ids.ref_at( 48, 0x4f31c5309e13e932ull ), 4 ); // penetration
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
-        w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
+        w.header( ids.ref_at( 87, 0xa5013e9ad5caeda4ull ), 6 ); // channel
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
     {
-        w.header( ids.ref_at( 94, 0xad6587bc602e3f59ull ), 1 ); // homing
+        w.header( ids.ref_at( 95, 0xad6587bc602e3f59ull ), 1 ); // homing
         w.put8( value.homing ? 1 : 0 );
     }
     if ( value.effect.type != EffectType::None )
     {
-        w.header( ids.ref_at( 33, 0x36c1c83b51f24394ull ), 15 ); // effect
+        w.header( ids.ref_at( 34, 0x36c1c83b51f24394ull ), 15 ); // effect
         switch ( value.effect.type )
         {
             case EffectType::Buff:
             {
-                const uint64_t arm_ref = ids.ref_at( 153, 0xffb5be9be2e469ccull );
+                const uint64_t arm_ref = ids.ref_at( 154, 0xffb5be9be2e469ccull );
                 int64_t arm_payload = 0;
                 {
                     const int64_t arm_body = BuffMeasureBodyRetain( ids, value.effect.buff, retain, TableRetainStepInto( path, 5, (uint32_t) ( 0 ) ) );
@@ -14644,7 +14645,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
     if ( value.grade != Grade::Silver )
     {
         if ( !TableEnumNamed( value.grade ) ) { return -1; } // no variant names this value
-        const uint64_t ref_grade = ids.ref_at( 31, 0x32a89b2977c48ad4ull );
+        const uint64_t ref_grade = ids.ref_at( 32, 0x32a89b2977c48ad4ull );
         uint64_t variant_grade = 0;
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return -1; }
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
@@ -14652,7 +14653,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
     if ( value.grades_count < 0 || value.grades_count > 4 ) { return -1; } // storage invariant
     if ( value.grades_count > 0 )
     {
-        const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
+        const uint64_t ref_grades = ids.ref_at( 132, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
         body_grades += 1 + TableLebBytes( (uint64_t) ( value.grades_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.grades_count; elem_i++ )
@@ -14668,7 +14669,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.podium[i] != Grade::None ) { all_default_podium = false; break; } }
         if ( !all_default_podium )
         {
-            const uint64_t ref_podium = ids.ref_at( 98, 0xb46ff45a23d72549ull );
+            const uint64_t ref_podium = ids.ref_at( 99, 0xb46ff45a23d72549ull );
             int64_t body_podium = 0;
             body_podium += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 3; elem_i++ )
@@ -14680,17 +14681,17 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
             bytes += TableLebBytes( ref_podium ) + 1 + TableLebBytes( (uint64_t) ( body_podium ) ) + ( body_podium ); // podium
         }
     }
-    if ( value.perks != 0 ) { bytes += TableLebBytes( ids.ref_at( 45, 0x4b06f5847096e54aull ) ) + 1 + 8; } // perks
+    if ( value.perks != 0 ) { bytes += TableLebBytes( ids.ref_at( 46, 0x4b06f5847096e54aull ) ) + 1 + 8; } // perks
     {
         const int32_t mark_primary = ids.count;
-        const uint64_t ref_primary = ids.ref_at( 110, 0xbf31137ff783e939ull );
+        const uint64_t ref_primary = ids.ref_at( 111, 0xbf31137ff783e939ull );
         const int64_t body_primary = WeaponConfigMeasureBodyRetain( ids, value.primary, retain, TableRetainStepInto( path, 4, (uint32_t) ( 0 ) ) );
         if ( body_primary < 0 ) { return -1; }
         if ( body_primary > 1 ) { bytes += TableLebBytes( ref_primary ) + 1 + TableLebBytes( (uint64_t) ( body_primary ) ) + ( body_primary ); } // primary
         else { ids.truncate( mark_primary ); } // an all-default nested table elides, and costs no entry
     }
     {
-        const uint64_t ref_backups = ids.ref_at( 135, 0xde28f0f5118acc24ull );
+        const uint64_t ref_backups = ids.ref_at( 136, 0xde28f0f5118acc24ull );
         int64_t body_backups = 0;
         body_backups += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -14704,7 +14705,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
     if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return -1; } // storage invariant
     if ( value.attachments_count > 0 )
     {
-        const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
+        const uint64_t ref_attachments = ids.ref_at( 146, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
         body_attachments += 1 + TableLebBytes( (uint64_t) ( value.attachments_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.attachments_count; elem_i++ )
@@ -14724,7 +14725,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
     if ( value.grade != Grade::Silver )
     {
         if ( !TableEnumNamed( value.grade ) ) { return false; }
-        const uint64_t ref_grade = ids.ref_at( 31, 0x32a89b2977c48ad4ull );
+        const uint64_t ref_grade = ids.ref_at( 32, 0x32a89b2977c48ad4ull );
         uint64_t variant_grade = 0;
         if ( !TableEnumRef( ids, value.grade, variant_grade ) ) { return false; }
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
@@ -14732,7 +14733,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
     if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; } // storage invariant
     if ( value.grades_count > 0 )
     {
-        const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
+        const uint64_t ref_grades = ids.ref_at( 132, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
         body_grades += 1 + TableLebBytes( (uint64_t) ( value.grades_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.grades_count; elem_i++ )
@@ -14757,7 +14758,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         for ( int32_t i = 0; i < 3; i++ ) { if ( value.podium[i] != Grade::None ) { all_default_podium = false; break; } }
         if ( !all_default_podium )
         {
-            const uint64_t ref_podium = ids.ref_at( 98, 0xb46ff45a23d72549ull );
+            const uint64_t ref_podium = ids.ref_at( 99, 0xb46ff45a23d72549ull );
             int64_t body_podium = 0;
             body_podium += 1 + TableLebBytes( (uint64_t) ( 3 ) ); // the element kind byte and the count
             for ( int32_t elem_i = 0; elem_i < 3; elem_i++ )
@@ -14780,12 +14781,12 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
     }
     if ( value.perks != 0 )
     {
-        w.header( ids.ref_at( 45, 0x4b06f5847096e54aull ), 9 ); // perks
+        w.header( ids.ref_at( 46, 0x4b06f5847096e54aull ), 9 ); // perks
         w.put64( uint64_t( value.perks ) );
     }
     {
         const int32_t mark_primary = ids.count;
-        const uint64_t ref_primary = ids.ref_at( 110, 0xbf31137ff783e939ull );
+        const uint64_t ref_primary = ids.ref_at( 111, 0xbf31137ff783e939ull );
         const int64_t body_primary = WeaponConfigMeasureBodyRetain( ids, value.primary, retain, TableRetainStepInto( path, 4, (uint32_t) ( 0 ) ) );
         if ( body_primary < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_primary > 1 ) // all-default nested elides
@@ -14796,7 +14797,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         else { ids.truncate( mark_primary ); }
     }
     {
-        const uint64_t ref_backups = ids.ref_at( 135, 0xde28f0f5118acc24ull );
+        const uint64_t ref_backups = ids.ref_at( 136, 0xde28f0f5118acc24ull );
         int64_t body_backups = 0;
         body_backups += 1 + TableLebBytes( (uint64_t) ( 2 ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < 2; elem_i++ )
@@ -14820,7 +14821,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
     if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return false; } // storage invariant
     if ( value.attachments_count > 0 )
     {
-        const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
+        const uint64_t ref_attachments = ids.ref_at( 146, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
         body_attachments += 1 + TableLebBytes( (uint64_t) ( value.attachments_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.attachments_count; elem_i++ )
@@ -15458,37 +15459,37 @@ inline int64_t ProfileConfigMeasureBodyRetain( TableRetainIds & ids, const Profi
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 32 ) { return -1; } // storage invariant
-    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 116, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 117, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.icon_length < 0 || value.icon_length > 16 ) { return -1; } // storage invariant
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
-        bytes += TableLebBytes( ids.ref_at( 132, 0xdbff4cc56c2092f0ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_icon ) ) + ( body_icon ); // icon
+        bytes += TableLebBytes( ids.ref_at( 133, 0xdbff4cc56c2092f0ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_icon ) ) + ( body_icon ); // icon
     }
-    if ( value.experience != 0 ) { bytes += TableLebBytes( ids.ref_at( 93, 0xab8b6d521f80b969ull ) ) + 1 + 4; } // experience
+    if ( value.experience != 0 ) { bytes += TableLebBytes( ids.ref_at( 94, 0xab8b6d521f80b969ull ) ) + 1 + 4; } // experience
     if ( value.tilt != 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x1e5088ef2e9bafc6ull ) ) + 1 + 1; } // tilt
-    if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref_at( 96, 0xb128829190ca0f75ull ) ) + 1 + 2; } // heading
-    if ( value.timestamp != 0 ) { bytes += TableLebBytes( ids.ref_at( 54, 0x5ddc92338ef53403ull ) ) + 1 + 8; } // timestamp
+    if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref_at( 97, 0xb128829190ca0f75ull ) ) + 1 + 2; } // heading
+    if ( value.timestamp != 0 ) { bytes += TableLebBytes( ids.ref_at( 55, 0x5ddc92338ef53403ull ) ) + 1 + 8; } // timestamp
     if ( value.badge != 0 ) { bytes += TableLebBytes( ids.ref_at( 9, 0x10bda981fe095518ull ) ) + 1 + 1; } // badge
-    if ( value.port != 0 ) { bytes += TableLebBytes( ids.ref_at( 73, 0x8c2cdb0da8933fa6ull ) ) + 1 + 2; } // port
-    if ( value.epoch != 0 ) { bytes += TableLebBytes( ids.ref_at( 146, 0xfc9697d1196e6ba6ull ) ) + 1 + 8; } // epoch
+    if ( value.port != 0 ) { bytes += TableLebBytes( ids.ref_at( 74, 0x8c2cdb0da8933fa6ull ) ) + 1 + 2; } // port
+    if ( value.epoch != 0 ) { bytes += TableLebBytes( ids.ref_at( 147, 0xfc9697d1196e6ba6ull ) ) + 1 + 8; } // epoch
     if ( value.precision != 0.0 ) { bytes += TableLebBytes( ids.ref_at( 24, 0x288427f5babd05f7ull ) ) + 1 + 8; } // precision
     {
         bool all_default_ratings = true;
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.ratings[i] != 0.0f ) { all_default_ratings = false; break; } }
         if ( !all_default_ratings )
         {
-            const uint64_t ref_ratings = ids.ref_at( 105, 0xb921eb8a3d0cb0f9ull );
+            const uint64_t ref_ratings = ids.ref_at( 106, 0xb921eb8a3d0cb0f9ull );
             int64_t body_ratings = 0;
             body_ratings += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_ratings += (int64_t) ( 4 ) * 4;
             bytes += TableLebBytes( ref_ratings ) + 1 + TableLebBytes( (uint64_t) ( body_ratings ) ) + ( body_ratings ); // ratings
         }
     }
-    if ( value.has_loadout != false ) { bytes += TableLebBytes( ids.ref_at( 83, 0xa06f5e0a148e253cull ) ) + 1 + 1; } // has_loadout
+    if ( value.has_loadout != false ) { bytes += TableLebBytes( ids.ref_at( 84, 0xa06f5e0a148e253cull ) ) + 1 + 1; } // has_loadout
     {
         const int32_t mark_loadout = ids.count;
-        const uint64_t ref_loadout = ids.ref_at( 50, 0x5759ce7586bbb5a3ull );
+        const uint64_t ref_loadout = ids.ref_at( 51, 0x5759ce7586bbb5a3ull );
         const int64_t body_loadout = LoadoutConfigMeasureBodyRetain( ids, value.loadout, retain, TableRetainStepInto( path, 12, (uint32_t) ( 0 ) ) );
         if ( body_loadout < 0 ) { return -1; }
         if ( body_loadout > 1 ) { bytes += TableLebBytes( ref_loadout ) + 1 + TableLebBytes( (uint64_t) ( body_loadout ) ) + ( body_loadout ); } // loadout
@@ -15503,7 +15504,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBodyRetain( TableWriter & w, TableR
     if ( value.name_length < 0 || value.name_length > 32 ) { return false; } // storage invariant
     if ( value.name_length > 0 )
     {
-        w.header( ids.ref_at( 116, 0xc4bcadba8e631b86ull ), 12 ); // name
+        w.header( ids.ref_at( 117, 0xc4bcadba8e631b86ull ), 12 ); // name
         w.putleb( (uint64_t) value.name_length );
         w.raw( value.name, value.name_length );
     }
@@ -15511,14 +15512,14 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBodyRetain( TableWriter & w, TableR
     if ( value.icon_length > 0 )
     {
         const int64_t body_icon = 1 + TableLebBytes( (uint64_t) value.icon_length ) + value.icon_length;
-        w.header( ids.ref_at( 132, 0xdbff4cc56c2092f0ull ), 14 ); // icon
+        w.header( ids.ref_at( 133, 0xdbff4cc56c2092f0ull ), 14 ); // icon
         w.putleb( (uint64_t) body_icon );
         w.put8( 6 ); w.putleb( (uint64_t) value.icon_length );
         w.raw( value.icon, value.icon_length );
     }
     if ( value.experience != 0 )
     {
-        w.header( ids.ref_at( 93, 0xab8b6d521f80b969ull ), 8 ); // experience
+        w.header( ids.ref_at( 94, 0xab8b6d521f80b969ull ), 8 ); // experience
         w.put32( uint32_t( value.experience ) );
     }
     if ( value.tilt != 0 )
@@ -15528,12 +15529,12 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBodyRetain( TableWriter & w, TableR
     }
     if ( value.heading != 0 )
     {
-        w.header( ids.ref_at( 96, 0xb128829190ca0f75ull ), 3 ); // heading
+        w.header( ids.ref_at( 97, 0xb128829190ca0f75ull ), 3 ); // heading
         w.put16( uint16_t( value.heading ) );
     }
     if ( value.timestamp != 0 )
     {
-        w.header( ids.ref_at( 54, 0x5ddc92338ef53403ull ), 5 ); // timestamp
+        w.header( ids.ref_at( 55, 0x5ddc92338ef53403ull ), 5 ); // timestamp
         w.put64( uint64_t( value.timestamp ) );
     }
     if ( value.badge != 0 )
@@ -15543,12 +15544,12 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBodyRetain( TableWriter & w, TableR
     }
     if ( value.port != 0 )
     {
-        w.header( ids.ref_at( 73, 0x8c2cdb0da8933fa6ull ), 7 ); // port
+        w.header( ids.ref_at( 74, 0x8c2cdb0da8933fa6ull ), 7 ); // port
         w.put16( uint16_t( value.port ) );
     }
     if ( value.epoch != 0 )
     {
-        w.header( ids.ref_at( 146, 0xfc9697d1196e6ba6ull ), 9 ); // epoch
+        w.header( ids.ref_at( 147, 0xfc9697d1196e6ba6ull ), 9 ); // epoch
         w.put64( uint64_t( value.epoch ) );
     }
     if ( value.precision != 0.0 )
@@ -15561,7 +15562,7 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBodyRetain( TableWriter & w, TableR
         for ( int32_t i = 0; i < 4; i++ ) { if ( value.ratings[i] != 0.0f ) { all_default_ratings = false; break; } }
         if ( !all_default_ratings )
         {
-            const uint64_t ref_ratings = ids.ref_at( 105, 0xb921eb8a3d0cb0f9ull );
+            const uint64_t ref_ratings = ids.ref_at( 106, 0xb921eb8a3d0cb0f9ull );
             int64_t body_ratings = 0;
             body_ratings += 1 + TableLebBytes( (uint64_t) ( 4 ) ); // the element kind byte and the count
             body_ratings += (int64_t) ( 4 ) * 4;
@@ -15575,12 +15576,12 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigSaveBodyRetain( TableWriter & w, TableR
     }
     if ( value.has_loadout != false )
     {
-        w.header( ids.ref_at( 83, 0xa06f5e0a148e253cull ), 1 ); // has_loadout
+        w.header( ids.ref_at( 84, 0xa06f5e0a148e253cull ), 1 ); // has_loadout
         w.put8( value.has_loadout ? 1 : 0 );
     }
     {
         const int32_t mark_loadout = ids.count;
-        const uint64_t ref_loadout = ids.ref_at( 50, 0x5759ce7586bbb5a3ull );
+        const uint64_t ref_loadout = ids.ref_at( 51, 0x5759ce7586bbb5a3ull );
         const int64_t body_loadout = LoadoutConfigMeasureBodyRetain( ids, value.loadout, retain, TableRetainStepInto( path, 12, (uint32_t) ( 0 ) ) );
         if ( body_loadout < 0 ) return false; // storage invariant, refused as measure refuses it
         if ( body_loadout > 1 ) // all-default nested elides
@@ -16453,11 +16454,11 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return -1; } // storage invariant
-    if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
+    if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 73, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return -1; } // storage invariant
     if ( value.weapons_count > 0 )
     {
-        const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
+        const uint64_t ref_weapons = ids.ref_at( 41, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
         body_weapons += 1 + TableLebBytes( (uint64_t) ( value.weapons_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.weapons_count; elem_i++ )
@@ -16471,7 +16472,7 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
     if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return -1; } // storage invariant
     if ( value.profiles_count > 0 )
     {
-        const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
+        const uint64_t ref_profiles = ids.ref_at( 71, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
         body_profiles += 1 + TableLebBytes( (uint64_t) ( value.profiles_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.profiles_count; elem_i++ )
@@ -16491,14 +16492,14 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
     if ( value.version_note_length < 0 || value.version_note_length > 16 ) { return false; } // storage invariant
     if ( value.version_note_length > 0 )
     {
-        w.header( ids.ref_at( 72, 0x8a67c9728746d394ull ), 12 ); // version_note
+        w.header( ids.ref_at( 73, 0x8a67c9728746d394ull ), 12 ); // version_note
         w.putleb( (uint64_t) value.version_note_length );
         w.raw( value.version_note, value.version_note_length );
     }
     if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return false; } // storage invariant
     if ( value.weapons_count > 0 )
     {
-        const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
+        const uint64_t ref_weapons = ids.ref_at( 41, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
         body_weapons += 1 + TableLebBytes( (uint64_t) ( value.weapons_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.weapons_count; elem_i++ )
@@ -16522,7 +16523,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
     if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return false; } // storage invariant
     if ( value.profiles_count > 0 )
     {
-        const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
+        const uint64_t ref_profiles = ids.ref_at( 71, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
         body_profiles += 1 + TableLebBytes( (uint64_t) ( value.profiles_count ) ); // the element kind byte and the count
         for ( int32_t elem_i = 0; elem_i < value.profiles_count; elem_i++ )
@@ -16879,8 +16880,8 @@ inline bool RootConfigLoadMessageBodyRetain( TableBitReader & r, const TableVoca
 inline int64_t AttachmentMeasureBodyRetain( TableRetainIds & ids, const Attachment & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0x6a771618f6fe31d1ull ) ) + 1 + 4; } // slot
-    if ( value.power != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
+    if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 60, 0x6a771618f6fe31d1ull ) ) + 1 + 4; } // slot
+    if ( value.power != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 141, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -16889,12 +16890,12 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBodyRetain( TableWriter & w, TableReta
 {
     if ( value.slot != 0 )
     {
-        w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
+        w.header( ids.ref_at( 60, 0x6a771618f6fe31d1ull ), 4 ); // slot
         w.put32( uint32_t( value.slot ) );
     }
     if ( value.power != 1.0f )
     {
-        w.header( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ), 10 ); // power
+        w.header( ids.ref_at( 141, 0xeef9d1358ae7b4e6ull ), 10 ); // power
         w.put32( table_float_to_bits( value.power ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -17111,7 +17112,7 @@ inline bool AttachmentLoadMessageBodyRetain( TableBitReader & r, const TableVoca
 inline int64_t BuffMeasureBodyRetain( TableRetainIds & ids, const Buff & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.multiplier != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 79, 0x9adc623a805c87c6ull ) ) + 1 + 4; } // multiplier
+    if ( value.multiplier != 1.0f ) { bytes += TableLebBytes( ids.ref_at( 80, 0x9adc623a805c87c6ull ) ) + 1 + 4; } // multiplier
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -17120,7 +17121,7 @@ TABLEDEMO_TABLE_INLINE bool BuffSaveBodyRetain( TableWriter & w, TableRetainIds 
 {
     if ( value.multiplier != 1.0f )
     {
-        w.header( ids.ref_at( 79, 0x9adc623a805c87c6ull ), 10 ); // multiplier
+        w.header( ids.ref_at( 80, 0x9adc623a805c87c6ull ), 10 ); // multiplier
         w.put32( table_float_to_bits( value.multiplier ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -17257,7 +17258,7 @@ inline bool BuffLoadMessageBodyRetain( TableBitReader & r, const TableVocabulary
 inline int64_t DebuffMeasureBodyRetain( TableRetainIds & ids, const Debuff & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 69, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
+    if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 70, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
 }
@@ -17266,7 +17267,7 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBodyRetain( TableWriter & w, TableRetainId
 {
     if ( value.amount != 0 )
     {
-        w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        w.header( ids.ref_at( 70, 0x8113fe7ea2b16969ull ), 4 ); // amount
         w.put32( uint32_t( value.amount ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

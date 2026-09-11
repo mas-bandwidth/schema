@@ -378,6 +378,15 @@ BASELINE(old, new):                      -- at a merge commit, run once per pare
     if T not in new or new[T] is not fixed:
       if not retired(old[T]):           REFUSE "T: fixed removed"  -- retire first (bill §11.5); the lineage stays
 
+RETIRE_ENTRY(T, h, all_below):           -- the ENTRY verb, held to the INDEX CUT the floor is (bill §11.4)
+  at := index of h in lineage(T)
+  if at not found:                       REFUSE "T has no layout h" -- a hash nothing locked is layout_newer already
+  if at = last:                          REFUSE "h is T's CURRENT layout" -- retire the TABLE instead (§11.5)
+  stranded := { i < at : not retired(lineage(T)[i]) }
+  if stranded non-empty and not all_below:
+                                         REFUSE naming every i in stranded BY INDEX AND HASH
+  mark at RETIRED with the reason, and every i in stranded too when all_below
+
 WIDENS(a, b):                            -- b may replace a
   LADDER(a, b) or kind(a) == kind(b)     or FAIL "kind changed"       -- LADDER: int into wider int same signedness, f32 into f64,
                                                                        -- ordinal/tag width wider, bits(N) into wider storage,
@@ -421,7 +430,7 @@ and still read (bill §12.3).
 | per entry: the LAYOUT BYTES, verbatim | `R.known[i].layout`, what LOAD compares and what PLAN walks |
 | per entry: the DEFINITIONS DIGEST | the hash's second input; it never rides the wire |
 | per entry: the record BODY size | `R.known[i].record_bytes` as **`8 + body`**: the lock stores the BODY, COMPILE adds the eight hash bytes ONCE, and a BACKEND ADDS NOTHING. Never read off the file |
-| per entry: a RETIRED mark and its reason (`schema lock --retire T@<hash>`) | the floor, and `layout_unsupported` |
+| per entry: a RETIRED mark and its reason (`schema lock --retire T@<hash>`, `--all-below` to take every older entry with it — without it a retirement that would strand an unretired older entry is refused by name, bill §11.4) | the floor, and `layout_unsupported` |
 | the defaults, the deprecation marks, the closure | the prefill image, §5.1, §5.5 |
 
 **`record_bytes` IS THE WHOLE RECORD AND THE LOCK'S NUMBER IS THE BODY** — two numbers, one addition, and the
@@ -520,6 +529,14 @@ the struct from this page alone and landing a different spelling breaks a gate r
 **The floor is one number and the lineage is one array**, so "retired" is an index cut and the operator's two
 answers stay distinct: below the floor is `layout_unsupported` (upgrade the client), outside the lineage is
 `layout_newer` (ship the reader). A retired entry stays in the lineage forever.
+
+**AND BECAUSE IT IS AN INDEX CUT, THE LOCK WILL NOT LET ONE BE MADE BY ACCIDENT** (bill §11.4, Rowan's
+ruling): marking entry 3 of 5 retired cuts 0, 1 and 2 off too, so `schema lock --retire T@0x<hash>` is
+REFUSED while any OLDER entry is unretired, and the refusal names those entries by index and hash.
+`--all-below` is the operator's word for the sweep and marks every older entry with the same reason —
+`lockfile.unretiredBelow` is the test, and after an `--all-below` the retired PREFIX and the floor say the
+same thing, which is the property the index cut needs and did not have. The oldest entry, and a walk upward
+one entry at a time, strand nothing and need no flag.
 
 **THE HASH.** The eight bytes a file's header and every record carry. **The digest is computed AT THE HASH
 SITE, from the schema** — the reference's signature is `ir.TableFixedLayoutHash(layout, st)` and there is no
