@@ -1459,16 +1459,26 @@ static void count_clamp_case()
     uint8_t * body = file.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
 
     // THE COUNT'S OFFSET IS FOUND BY THE PLAN'S OWN ROW, by shape and not by a
-    // number in this file: a `count` op whose bound is FOUR elements is `marks`
-    // and nothing else, where `blob`'s is six.
+    // number in this file: the identity plan carries exactly ONE `count` op and
+    // it is `marks`', because `blob`'s count rides in its own `text` row's `aux`
+    // and never as a `count` entry (§4.1, fix 10). So the row is found by its OP
+    // ALONE, and the bound it carries is then a REAL assertion: a `count` op's
+    // `size` IS the reader's own bound IN ELEMENTS (§4.1), which for
+    // `marks [..4]int32` is four — not four BYTES, which is what the same number
+    // would mean in a `copy` row.
     uint32_t count_at = 0xFFFFFFFFu;
-    int32_t bound = 0;
+    int32_t bound = -1;
+    int32_t count_rows = 0;
     for ( int32_t i = 0; i < tblfx1::FxRootFixedPlanCount; ++i )
     {
         const tblfx1::TableFixedEntry e = tblfx1::FxRootFixedPlan[i];
-        if ( e.op == tblfx1::kTableFixedCount && e.size == 4u ) { count_at = e.src; bound = (int32_t) e.size; }
+        if ( e.op != tblfx1::kTableFixedCount ) { continue; }
+        ++count_rows;
+        count_at = e.src;
+        bound = (int32_t) e.size;
     }
-    check( count_at != 0xFFFFFFFFu && bound == 4, "count clamp: the identity plan carries `marks`' count op, bound FOUR elements" );
+    check( count_rows == 1, "count clamp: the identity plan carries exactly ONE count op, so the row below is `marks`'" );
+    check( count_at != 0xFFFFFFFFu && bound == 4, "count clamp: and its bound is FOUR ELEMENTS — `marks [..4]int32`'s own Max" );
     check( (int32_t) tblfx1::TableFixedGet32( body + count_at ) == 2,
            "count clamp: and the offset it names is where the live count really is" );
 
@@ -1552,7 +1562,7 @@ static void partition_is_held( const tblfx1::TableFixedEntry * plan, int32_t cou
         const tblfx1::TableFixedEntry & b = plan[split];
         const bool mergeable = a.op == tblfx1::kTableFixedCopy && b.op == tblfx1::kTableFixedCopy &&
                                a.guard == b.guard && a.arg == b.arg &&
-                               a.src + a.size == b.src && a.dst + b.size == b.dst;
+                               a.src + a.size == b.src && a.dst + a.size == b.dst;
         std::snprintf( what, sizeof( what ), "W6: %s — the pair at the split was not coalesced across it", who );
         check( !mergeable, what );
     }
@@ -1651,19 +1661,48 @@ static void nested_union_case()
     // inner tag's byte and whose GUARD is the outer's: the two lanes of the same
     // nesting, and the assertion is that they are different numbers.
     bool saw_inner_tag = false;
+    uint32_t inner_tag_dst = 0xFFFFFFFFu;
+    uint8_t inner_arm_arg = 0;
     for ( int32_t i = 0; i < tblfh1::FhRootFixedPlanCount; ++i )
     {
         const tblfh1::TableFixedEntry e = tblfh1::FhRootFixedPlan[i];
         if ( e.guard == tblfh1::kTableFixedNoGuard ) { continue; }
-        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; }
+        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = e.arg; }
         check( e.guard != e.src || e.src == outer_tag_at,
                "W16: an inner entry is never guarded by the INNER tag's own byte" );
     }
     check( saw_inner_tag, "W16: the inner union's own tag byte is one of the entries the OUTER tag guards" );
 
-    // 2. AND THE RECORD SAYS IT. The outer tag selects B, so the inner union's
-    //    entries must not run: the inner arm's storage stays at the prefill's
-    //    default, which is the None the destination went in with.
+    // AND THE TWO ARMS SHARE STORAGE, which is what makes the record half below
+    // an assertion and not a hope: `Outer` is a real C++ union, so the OTHER
+    // arm's entry lands at the same destination the inner tag does. An inner
+    // entry that ran under the wrong tag would be READABLE IN THE OTHER ARM'S
+    // OWN FIELD, and that field reading back whole is the measurement.
+    uint32_t other_arm_dst = 0xFFFFFFFFu;
+    for ( int32_t i = 0; i < tblfh1::FhRootFixedPlanCount; ++i )
+    {
+        const tblfh1::TableFixedEntry e = tblfh1::FhRootFixedPlan[i];
+        if ( e.guard == tblfh1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
+        other_arm_dst = e.dst;
+    }
+    check( other_arm_dst != 0xFFFFFFFFu && other_arm_dst == inner_tag_dst,
+           "W16: the OTHER arm's field and the inner tag land at ONE destination — so that field is where a stray inner entry would show" );
+
+    // 2. AND THE RECORD SAYS IT. The outer tag selects B, so not one inner entry
+    //    may run — and the measurement of that is THE B ARM'S OWN FIELD, which
+    //    shares its destination with the inner tag (part 1): `m` reading back as
+    //    555 is the statement that no inner entry's byte landed in it.
+    //
+    //    WHAT THIS DOES NOT SAY, and why. A destination stained where the A arm
+    //    would keep the inner union's payload comes back STILL STAINED, not at
+    //    the default: for the identity plan the unwritten-range list is EMPTY
+    //    (§4.3), so an identity read prefills nothing and every storage byte no
+    //    entry lands keeps what the CALLER put there. "The inner arm returns to
+    //    its default" would be a claim about a prefill this form deliberately
+    //    does not pay; the reference's real guarantee is narrower and stronger —
+    //    the read writes the selected arm and NOTHING ELSE. So the stain is
+    //    asserted to SURVIVE, which is the same fact from the other side: a byte
+    //    the plan does not own is a byte the read does not touch.
     {
         tblfh1::FhRoot one;
         tblfh1::FhRootReset( one );
@@ -1680,17 +1719,43 @@ static void nested_union_case()
         back.pick.a.inner.type = tblfh1::InnerType::Other;
         back.pick.a.inner.other.k = 0x5A5A5A5A; // the stain, so nothing below is vacuous
         check( back.pick.a.inner.other.k == 0x5A5A5A5A, "CONTROL: the inner arm's storage really is stained" );
+        // the stain is read back AS BYTES, through the address taken while that
+        // arm was the live one: after the load the live arm is B, and the
+        // question here is about the BYTES at that address and not about a
+        // member of a union that is no longer selected.
+        const uint8_t * const stain_at = (const uint8_t *) (const void *) &back.pick.a.inner.other.k;
         tblfh1::TableReport r;
         std::vector<tblfh1::TableFixedEntry> plan( 1024 );
         check( tblfh1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
                "W16: the B record reads" );
-        check( back.pick.type == tblfh1::OuterType::B && back.pick.b.m == 555, "W16: the outer tag and its arm" );
+        check( back.pick.type == tblfh1::OuterType::B, "W16: the outer tag" );
+        check( back.pick.b.m == 555,
+               "W16: THE B ARM'S OWN FIELD IS WHOLE — no inner entry's bytes landed in the storage it shares with the inner tag" );
         check( back.tier == tblfh1::Tier::Silver && back.head == 77, "W16: the rest of the record" );
+        uint32_t stain_after = 0;
+        std::memcpy( &stain_after, stain_at, sizeof( stain_after ) );
+        check( stain_after == 0x5A5A5A5Au,
+               "W16: and the storage no entry of this read owns is UNTOUCHED — the identity plan prefills nothing (§4.3)" );
         check( r.clamped == 0 && !r.malformed && !r.refused, "W16: a clean read moves no counter" );
     }
 
     // 3. THE OTHER WAY: the outer tag selects A, and the inner union's arm lands
     //    whole — the stamp does not cost the inner selection.
+    //
+    //    AND THIS HALF IS BLUNT, and a different schema does not sharpen it. The
+    //    inner union's two arms are each a single int32, so the plan's two inner
+    //    arm entries are the same copy of the same source bytes to the same
+    //    destination: a read that ran BOTH is indistinguishable from one that
+    //    ran only the selected arm. Giving the arms different SHAPES was tried
+    //    (int16 + int8 against int32) and changes nothing — the stamp leaves both
+    //    inner arms guarded by the OUTER tag alone, so both entries still run,
+    //    and because each copies the same record offsets to the same storage
+    //    offsets the overlapping bytes are IDENTICAL and the selected arm still
+    //    reads back whole. Only an arm whose storage image maps the wire to
+    //    DIFFERENT offsets could separate the two, and that is a finding for the
+    //    card (an inner arm selection that is not guarded by the inner tag) and
+    //    not something this fixture can assert. What the case below holds is
+    //    that the inner selection ARRIVES.
     {
         tblfh1::FhRoot one;
         tblfh1::FhRootReset( one );

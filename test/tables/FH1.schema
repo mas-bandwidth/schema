@@ -9,9 +9,11 @@
 //
 //   W16  A UNION INSIDE A UNION. A union's guard is stamped over everything its
 //        arm produced, so an arm inside an arm answers to the OUTER tag — and a
-//        record whose outer tag selects the other arm must leave the inner
-//        arm's storage at its default. FU1/FU2 are the C leg's pair and are not
-//        this shape.
+//        record whose outer tag selects the other arm must not run ONE of the
+//        inner arm's entries: the other arm reads back whole, and storage no
+//        entry of that read owns is left exactly as the caller handed it in,
+//        since the identity plan prefills nothing (§4.3). FU1/FU2 are the C
+//        leg's pair and are not this shape.
 package tblfh1
 
 enum Tier
