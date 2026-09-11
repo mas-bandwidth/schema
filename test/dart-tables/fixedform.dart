@@ -194,6 +194,16 @@ void corpusFiles(String dir) {
     final out = Uint8List(fx1.fxRootFixedMeasure(n));
     check(fx1.fxRootFixedSave(values, n, out) == out.length, 'fx1: save');
     sameBytes(out, file, 'fx1');
+
+    // A DECLARED DEFAULT IS THE VALUE, NOT JUST ITS LENGTH. The round trip
+    // above cannot see this: a value READ from the file already has the
+    // record's bytes. C++ writes `char label[8 + 1] = "fx"`; a fresh FxRoot
+    // used to claim two used bytes of NULs.
+    final fresh = fx1home.FxRoot();
+    check(
+      fresh.labelLength == 2 && text(fresh.label, 2) == 'fx',
+      'fx1: a fresh FxRoot carries label "fx", not two NULs of length 2',
+    );
   }
 
   // ---- fx2.bin: one record of FX2's FxRoot, with the extra nested type ----

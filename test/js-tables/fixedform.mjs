@@ -78,6 +78,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
+  guardComparedAtArgW(check, fx1home);
   versioning(check, fx1, fx2, fx1home, fx2home);
   bytesArrayConvention(check, fx1, fx2, fx1home, fx2home, oracleDir);
   liveCountSlack(check, fx1, fx1home);
@@ -352,6 +353,43 @@ function f32bits(x) { CONV.setFloat32(0, x, true); return CONV.getUint32(0, true
 function f64bits(x) { CONV.setFloat64(0, x, true); return CONV.getBigUint64(0, true); }
 
 // ---------------------------------------------------------------------------
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX.
+// compiler/fixedguardwidth_test.go holds the IR stamp; this is the run loop.
+// A two-byte tag 0x0101 whose low byte is 1 is not arm 1. ONE PATH: this is
+// TableFixedRun, the same loop identity and compiled both take.
+// ---------------------------------------------------------------------------
+function guardComparedAtArgW(check, home) {
+  check(home.TableFixedLanes === 9,
+    `ArgW: a plan entry is nine int32 lanes, got ${home.TableFixedLanes}`);
+
+  const run = (lanes, srcBytes) => {
+    const src = new Uint8Array(srcBytes);
+    const srcView = new DataView(src.buffer, src.byteOffset, src.length);
+    const dst = new Uint8Array(1);
+    const dstView = new DataView(dst.buffer);
+    const r = new home.TableFixedReport();
+    // op=COPY src=2 dst=0 size=1 aux=0 guard=0 arg=1 meta=0 argw=lanes[8]
+    home.TableFixedRun(new Int32Array(lanes), 1, src, srcView, 0, dst, dstView, null, r);
+    return dst[0];
+  };
+  // COPY of the payload at byte 2, guarded at 0, answering to arm 1, width 2
+  const twoByte = [0, 2, 0, 1, 0, 0, 1, 0, 2];
+  check(run(twoByte, [0x01, 0x01, 0xAA]) === 0,
+    "ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1");
+  check(run(twoByte, [0x01, 0x00, 0xAA]) === 0xAA,
+    "ArgW: a two-byte tag 0x0001 DOES run arm 1");
+  // ArgW 0 means 1, as C++: only the first byte is the tag
+  const zeroMeansOne = [0, 2, 0, 1, 0, 0, 1, 0, 0];
+  check(run(zeroMeansOne, [0x01, 0x01, 0xAA]) === 0xAA,
+    "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0");
+  const fourByte = [0, 4, 0, 1, 0, 0, 1, 0, 4];
+  check(run(fourByte, [0x01, 0x01, 0x00, 0x00, 0xBB]) === 0,
+    "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
+  check(run(fourByte, [0x01, 0x00, 0x00, 0x00, 0xBB]) === 0xBB,
+    "ArgW: a four-byte tag 0x00000001 DOES run arm 1");
+}
+
+// ---------------------------------------------------------------------------
 // 3. THE VERSIONING CONFORMANCE — the twin of test/tables/fixedform_main.cpp
 // ---------------------------------------------------------------------------
 
@@ -489,7 +527,7 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     const body = w2.subarray(LAYOUT_AT + fx2.FxRootFixedLayoutBytes + 8);
     const bodyView = new DataView(body.buffer, body.byteOffset, body.length);
     plan.image.set(new Uint8Array(plan.image.length)); // the prefill
-    fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0]),
+    fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0, 1]),
       1, body, bodyView, 0, plan.image, plan.view, null, wr);
     fx1home.FxRootFixedDecode(wrong[0], plan.view, 0, wr);
     check(wrong[0].Keep !== right[0].Keep || wrong[0].Renamed !== right[0].Renamed ||
@@ -917,7 +955,7 @@ function liveCountSlack(check, fx1, fx1home) {
 // HOLE PREFILL: identity's hole list is empty (one COPY of the whole body).
 // Compiled FX2→FX1 has holes for Gone; a dirty image still reads the default.
 function holePrefill(check, fx1, fx2, fx1home, fx2home) {
-  const identity = new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0]);
+  const identity = new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0, 1]);
   const idPlan = fx1.FxRootFixedNewPlan();
   const idHoles = fx1home.TableFixedHoles(identity, 1, idPlan.cover, idPlan.holes);
   check(idHoles === 0, `hole prefill: identity's hole list is empty, got ${idHoles}`);
