@@ -5985,10 +5985,18 @@ build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump
 	@rm -rf build/fixedform-corpus
 	@mkdir -p build/fixedform-corpus
 	./build/schema_test_fixedform_dump build/fixedform-corpus
+# ---- rowan/corpus-manifest ----
+# THE MANIFEST IS PART OF THIS TARGET'S OUTPUT (docs/FIXED-FORM-ALGORITHM.md
+# §5.7 step 1, ruling #32): the dump writes it from the same values it writes
+# into the bytes, and a corpus without it is a corpus a port has to read the
+# emitter to use. Nothing under build/ is committed; the line below only refuses
+# to call the corpus finished when the manifest did not arrive.
+	@test -s build/fixedform-corpus/manifest.txt || { echo "corpus: manifest.txt missing" >&2; exit 1; }
 	@touch $@
 
 tables-fixedform-corpus: build/fixedform-corpus/.stamp
 	@echo "fixed form: the C++ reference's byte oracle is in build/fixedform-corpus"
+	@echo "fixed form: what each file holds is in build/fixedform-corpus/manifest.txt ($$(wc -l < build/fixedform-corpus/manifest.txt | tr -d ' ') lines)"
 
 .PHONY: tables-fixedform-corpus
 
