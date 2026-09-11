@@ -39,8 +39,8 @@ export const FixedTableFixedRecordBytes = 1244; // the hash and the body
 
 // fnv1a64 over the layout's bytes, carried as two uint32 lanes: a hash is
 // compared ONCE PER RECORD, and a BigInt there is one allocation per record.
-export const FixedTableFixedHashLo = 0x8ceacd29;
-export const FixedTableFixedHashHi = 0x98d3af4e;
+export const FixedTableFixedHashLo = 0x195f9ec9;
+export const FixedTableFixedHashHi = 0x6237c1dc;
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the
