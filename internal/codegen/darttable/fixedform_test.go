@@ -34,7 +34,7 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	const (
 		refEntries   = 75
 		refLayoutLen = fixedHeaderBytes + refEntries*fixedEntryBytes
-		refHash      = uint64(0x98d3af4e8ceacd29)
+		refHash      = uint64(0x6237c1dc195f9ec9)
 		refBodyBytes = int64(1236)
 	)
 	if len(w.entries) != refEntries {
@@ -453,8 +453,17 @@ table Config {
 	if !strings.Contains(load, "configFixedPrefill") {
 		t.Error("the load has no default image to copy into holes")
 	}
-	if !strings.Contains(load, "configFixedCover") {
-		t.Error("the load does not hand the cover to the plan compiler")
+	// THE COVER IS HANDED TO THE BUILD AND NO LONGER TO THE LOAD (§5.6 retires
+	// the compile on the load path): `tableFixedLineagePlans` takes it once, off
+	// every load path, from the bytes THE LOCK recorded. The assertion keeps its
+	// subject — the cover reaches the plan compiler — and moves to the call that
+	// still makes one.
+	if !strings.Contains(src, "configFixedCover,") ||
+		!strings.Contains(src, "tableFixedLineagePlans(") {
+		t.Error("the cover does not reach the plan compiler at build time")
+	}
+	if strings.Contains(load, "TableFixedCompiler.compile(") {
+		t.Error("the load still compiles a plan; §5.2 lays every plan down at build time")
 	}
 	if !strings.Contains(load, "fillCount = 0") {
 		t.Error("identity hole list is not the empty skip")

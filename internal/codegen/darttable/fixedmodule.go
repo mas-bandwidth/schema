@@ -20,7 +20,7 @@ import (
 // root the form is carried for, plus the unit's runtime home. A unit with no
 // fixed-form root at all gets nothing: a library holding only a refusal nobody
 // imports is a file nobody wants.
-func generateFixedFiles(u *ir.Unit, wide []string) (map[string][]byte, error) {
+func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	roots := map[string][]*ir.Struct{}
 	any := false
@@ -62,7 +62,7 @@ func generateFixedFiles(u *ir.Unit, wide []string) (map[string][]byte, error) {
 		if len(roots[f.Base]) == 0 && f.Base != home {
 			continue
 		}
-		g := newFixedModule(u, f, f.Base, f.Base == home, home, wide, mine)
+		g := newFixedModule(u, f, f.Base, f.Base == home, home, wide, mine, lineage)
 		g.emit(closure, roots[f.Base], f.Tables)
 		if g.home {
 			homeWritten = true
@@ -70,7 +70,7 @@ func generateFixedFiles(u *ir.Unit, wide []string) (map[string][]byte, error) {
 		out[f.Base+"Fixed.dart"] = g.assemble()
 	}
 	if !homeWritten {
-		g := newFixedModule(u, nil, home, true, home, wide, mine)
+		g := newFixedModule(u, nil, home, true, home, wide, mine, lineage)
 		g.emit(closure, nil, nil)
 		out[home+"Fixed.dart"] = g.assemble()
 	}
@@ -84,16 +84,17 @@ type fixedModule struct {
 	home     bool
 	homeBase string
 	wide     []string
-	mine     map[string]bool // the classes this emitter writes itself
+	mine     map[string]bool                // the classes this emitter writes itself
+	lineage  map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 	imports  map[string]map[string]bool
 	gen      fixedGen
 	body     strings.Builder
 }
 
 func newFixedModule(u *ir.Unit, f *ir.File, base string, home bool, homeBase string,
-	wide []string, mine map[string]bool) *fixedModule {
+	wide []string, mine map[string]bool, lineage map[string][]FixedLineageEntry) *fixedModule {
 	g := &fixedModule{unit: u, file: f, base: base, home: home, homeBase: homeBase,
-		wide: wide, mine: mine, imports: map[string]map[string]bool{}}
+		wide: wide, mine: mine, lineage: lineage, imports: map[string]map[string]bool{}}
 	g.gen.unit = u
 	g.gen.need = g.needClass
 	return g
@@ -249,7 +250,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// exactly the names the surface below spells, and no more: the analyzer
 	// refuses an unused shown name, and `dart analyze` is this leg's gate
 	g.needHome("tableFixedForm", "tableFixedRun", "tableFixedFillRun",
-		"TableFixedCompiler", "TableFixedLayout", "TableFixedLimits", "TableFixedPlan",
+		"tableFixedSelect", "tableFixedLineagePlans", "TableFixedKnownLayout",
+		"TableFixedLineagePlan", "TableFixedLimits", "TableFixedPlan",
 		"TableFixedRefusal", "TableFixedReport")
 	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode")
 
@@ -344,6 +346,61 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("]);\n")
 	g.pf("%s", fixedFormatOn)
 	g.pf("const int %sFixedIdentityCount = %d;\n\n", lower, len(plan))
+
+	// ---- THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2) ----
+	//
+	// It is the BUILD's data and never the wire's: a file is matched on its
+	// header's hash against these entries, and the layout it carries is held to
+	// a BYTE COMPARISON against the bytes the lock recorded, never walked.
+	entries, floor := g.fixedLineage(st, FixedLineageEntry{
+		Wire: hash, Layout: layout, Record: fixedHashBytes + body,
+	})
+	g.pf("/// THE LINEAGE: every layout of %s this build serves, OLDEST FIRST and\n", st.Name)
+	g.pf("/// THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash\n")
+	g.pf("/// against these and on nothing else; the layout it carries is COMPARED\n")
+	g.pf("/// with the bytes the lock recorded and never parsed. A hash no entry holds\n")
+	g.pf("/// is `layout_newer` — ship the reader.\n")
+	g.pf("%s", fixedFormatOff)
+	g.pf("final List<TableFixedKnownLayout> %sFixedKnown = <TableFixedKnownLayout>[\n", lower)
+	for _, e := range entries {
+		if e.Retired {
+			g.pf("  // RETIRED: %s\n", e.Reason)
+		}
+		g.pf("  TableFixedKnownLayout(%s, Uint8List.fromList(const <int>[\n", fixedDartHex(e.Wire))
+		g.emitBytes(e.Layout)
+		g.pf("  ]), %d, %d),\n", len(e.Layout), e.Record)
+	}
+	g.pf("];\n")
+	g.pf("%s\n", fixedFormatOn)
+	g.pf("/// THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below\n")
+	g.pf("/// it a layout this build once served is retired and the answer is\n")
+	g.pf("/// `layout_unsupported` — upgrade the client — rather than `layout_newer`.\n")
+	g.pf("const int %sFixedFloor = %d;\n\n", lower, floor)
+	g.pf("/// ONE PLAN PER LINEAGE ENTRY, built from THE LOCK'S bytes the first time\n")
+	g.pf("/// this list is read and never again (§5.9 #3): nothing on the load path\n")
+	g.pf("/// compiles, nothing on it parses a layout a file carried, and the load\n")
+	g.pf("/// cannot fail for want of a plan.\n")
+	// `dart format` is this leg's formatting authority and the gate compares
+	// against what it writes, so the call's shape is the one it would choose:
+	// the flat header while it fits inside eighty columns, the wrapped one once
+	// the table's name pushes it past.
+	ind := "  "
+	if len("final List<TableFixedLineagePlan> ")+len(lower)+len("FixedLineagePlans = tableFixedLineagePlans(") <= 80 {
+		g.pf("final List<TableFixedLineagePlan> %sFixedLineagePlans = tableFixedLineagePlans(\n", lower)
+	} else {
+		g.pf("final List<TableFixedLineagePlan> %sFixedLineagePlans =\n", lower)
+		g.pf("    tableFixedLineagePlans(\n")
+		ind = "      "
+	}
+	g.pf("%[1]s%[2]sFixedKnown,\n%[1]s%[2]sFixedLayout,\n", ind, lower)
+	g.pf("%[1]s%[2]sFixedDst,\n%[1]s%[2]sFixedCover,\n", ind, lower)
+	g.pf("%[1]s%[2]sFixedCoverCount,\n%[1]s%[2]sFixedBodyBytes,\n", ind, lower)
+	g.pf("%[1]s%[2]sFixedHash,\n", ind, lower)
+	if ind == "  " {
+		g.pf(");\n\n")
+	} else {
+		g.pf("    );\n\n")
+	}
 
 	// ---- the caller's plan storage ----
 	g.pf("/// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")
@@ -445,46 +502,64 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    report.refused = TableFixedRefusal.layoutMalformed;\n    return -1;\n  }\n")
 	g.call("  ", "final hash = ", "view.getUint64",
 		[]string{"TableFixedLimits.hashAt", "Endian.little"}, ";")
+	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
+	// layout_newer — ship the reader; below the floor is layout_unsupported —
+	// upgrade the client. BOTH report the FILE'S hash (§5.9 #7), and
+	// layout_newer reports it AND NOTHING ELSE.
+	g.pf("  // THE LINEAGE SELECT (§5.3 steps 5 and 6): the header's hash is taken as\n")
+	g.pf("  // GIVEN — the digest is not on the wire, so it cannot be re-derived from a\n")
+	g.pf("  // file — and it is matched against the layouts THE LOCK recorded. Nothing\n")
+	g.pf("  // parses a stranger's layout, on any path.\n")
+	g.pf("  final pick = tableFixedSelect(%sFixedKnown, hash);\n", lower)
+	g.pf("  if (pick < 0) {\n")
+	g.pf("    report.layoutHash = hash;\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutNewer;\n    return -1;\n  }\n")
+	g.pf("  if (pick < %sFixedFloor) {\n", lower)
+	g.pf("    report.layoutHash = hash;\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutUnsupported;\n    return -1;\n  }\n")
+	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference
+	// is ONE name — a lie about a known version — and §1.1's seven rules do not
+	// run at read time at all.
+	g.pf("  // THE BYTES THE LOCK RECORDED, compared and never walked: every §1.1\n")
+	g.pf("  // malformation under a KNOWN hash is one name, layout_malformed.\n")
+	g.pf("  final known = %sFixedKnown[pick];\n", lower)
+	g.pf("  if (layoutBytes != known.layoutBytes) {\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutMalformed;\n    return -1;\n  }\n")
+	g.pf("  for (var i = 0; i < layoutBytes; i++) {\n")
+	g.pf("    if (bytes[TableFixedLimits.layoutAt + i] != known.layout[i]) {\n")
+	g.pf("      report.refused = TableFixedRefusal.layoutMalformed;\n      return -1;\n    }\n")
+	g.pf("  }\n")
 	g.pf("  report.hash = hash; // the header's hash; digest is not on the wire\n")
+	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
+	g.pf("  // THE PLAN THIS PEER RESOLVES TO, and the record size FROM THE LOCK and\n")
+	g.pf("  // never from the file.\n")
 	g.pf("  var entries = %sFixedIdentity;\n", lower)
 	g.pf("  var entryCount = %sFixedIdentityCount;\n", lower)
-	g.pf("  var recordBytes = %sFixedRecordBytes;\n", lower)
+	g.pf("  var recordBytes = known.recordBytes;\n")
+	g.pf("  var fills = plan.fill;\n")
 	g.pf("  // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:\n")
 	g.pf("  // the rule is the type's value bytes minus what the plan lands, and the\n")
 	g.pf("  // identity plan lands all of them.\n")
 	g.pf("  var fillCount = 0;\n")
-	g.pf("  if (hash == %sFixedHash) {\n", lower)
-	g.pf("    if (layoutBytes != %sFixedLayout.length) {\n", lower)
-	g.pf("      report.refused = TableFixedRefusal.layoutMalformed;\n      return -1;\n    }\n")
-	g.pf("    for (var i = 0; i < layoutBytes; i++) {\n")
-	g.pf("      if (bytes[TableFixedLimits.layoutAt + i] != %sFixedLayout[i]) {\n", lower)
-	g.pf("        report.refused = TableFixedRefusal.layoutMalformed;\n        return -1;\n      }\n")
-	g.pf("    }\n")
-	g.pf("  } else {\n")
-	g.pf("    // ANOTHER WRITER: the same loop, over a plan compiled from its layout\n")
-	g.pf("    // and CACHED BY HASH, so the compile is paid once per peer and never\n")
-	g.pf("    // once per record. THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE\n")
-	g.pf("    // IS TOUCHED, and every rule it fails refuses under ITS OWN NAME.\n")
-	g.pf("    if (!plan.ready || plan.hash != hash) {\n")
-	g.pf("      if (!plan.theirs.parse(view, TableFixedLimits.layoutAt, layoutBytes)) {\n")
-	g.pf("        report.refused = plan.theirs.refusal;\n        return -1;\n      }\n")
-	g.pf("      final made = TableFixedCompiler.compile(\n")
-	g.pf("        plan,\n")
-	g.pf("        %sFixedLayout,\n", lower)
-	g.pf("        ByteData.sublistView(%sFixedLayout),\n", lower)
-	g.pf("        %sFixedDst,\n", lower)
-	g.pf("        %sFixedCover,\n", lower)
-	g.pf("        %sFixedCoverCount,\n", lower)
-	g.pf("        report,\n")
-	g.pf("      );\n")
-	g.pf("      if (made < 0) {\n")
-	g.pf("        report.refused = TableFixedRefusal.planTooLarge;\n        return -1;\n      }\n")
-	g.pf("      plan.recordBytes = 8 + plan.theirs.size(0);\n")
-	g.pf("      plan.hash = hash;\n      plan.ready = true;\n")
-	g.pf("    }\n")
-	g.pf("    entries = plan.entries;\n    entryCount = plan.count;\n")
-	g.pf("    recordBytes = plan.recordBytes;\n")
-	g.pf("    fillCount = plan.fillCount;\n")
+	g.pf("  var remap = plan.remap;\n")
+	g.pf("  // THE COMPILE CENSUS IS THE PLAN'S OWN NUMBERS, carried onto the report\n")
+	g.pf("  // ONCE after the record loop and only on a read that returns (§5.9 #6):\n")
+	g.pf("  // once per peer, never per record, and REFUSE moves no counter at all.\n")
+	g.pf("  var censusUnknown = 0;\n")
+	g.pf("  var censusKind = 0;\n")
+	g.pf("  if (hash != %sFixedHash) {\n", lower)
+	g.pf("    final lane = %sFixedLineagePlans[pick];\n", lower)
+	g.pf("    if (lane.why != TableFixedRefusal.none) {\n")
+	g.pf("      report.refused = lane.why;\n      return -1;\n    }\n")
+	g.pf("    // THE CALLER'S PLAN STAYS A CAPACITY DECLARATION and is no longer\n")
+	g.pf("    // written through (§5.9 #5): the entry count is checked against it and\n")
+	g.pf("    // a plan past it refuses by name.\n")
+	g.pf("    if (lane.count > plan.capacity) {\n")
+	g.pf("      report.refused = TableFixedRefusal.planTooLarge;\n      return -1;\n    }\n")
+	g.pf("    entries = lane.entries;\n    entryCount = lane.count;\n")
+	g.pf("    fills = lane.fill;\n    fillCount = lane.fillCount;\n")
+	g.pf("    remap = lane.remap;\n")
+	g.pf("    censusUnknown = lane.unknown;\n    censusKind = lane.kindMismatch;\n")
 	g.pf("  }\n")
 	g.pf("  // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout\n")
 	g.pf("  // against this build's; digest is not on the wire, so the header hash is\n")
@@ -505,15 +580,19 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    if (view.getUint64(at, Endian.little) != hash) {\n")
 	g.pf("      report.refused = TableFixedRefusal.noLayout;\n      return -1;\n    }\n")
 	g.call("    ", "", "tableFixedFillRun",
-		[]string{"plan.fill", "fillCount", lower + "FixedPrefill", "plan.image"}, ";")
+		[]string{"fills", "fillCount", lower + "FixedPrefill", "plan.image"}, ";")
 	g.pf("    tableFixedRun(\n")
 	g.pf("      entries,\n      entryCount,\n      bytes,\n      view,\n      at + 8,\n")
-	g.pf("      plan.image,\n      plan.imageView,\n      plan.remap,\n      plan.conv,\n")
+	g.pf("      plan.image,\n      plan.imageView,\n      remap,\n      plan.conv,\n")
 	g.pf("      report,\n    );\n")
 	g.call("    ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
 	g.pf("    at += recordBytes;\n")
-	g.pf("  }\n  return n;\n}\n\n")
+	g.pf("  }\n")
+	g.pf("  // THE CENSUS LANDS ONCE, HERE, on a read that returns (§5.4, §5.9 #6).\n")
+	g.pf("  report.unknown += censusUnknown;\n")
+	g.pf("  report.kindMismatch += censusKind;\n")
+	g.pf("  return n;\n}\n\n")
 }
 
 func (g *fixedModule) emitBytes(b []byte) {

@@ -242,6 +242,41 @@ jobs:
       - name: the fixed form's versioning suite reads the reference's bytes
         run: make tables-go-versioning
 
+      # THE SAME SUITE ON THE RUST LEG, and it is in THIS job rather than a Rust
+      # one because the harness is a Go test: internal/codegen/rusttable's
+      # fixedversioning_test.go generates one cargo workspace of probe crates and
+      # runs `cargo test` over it once, so the thing that must be installed is Go
+      # plus cargo, and the corpus the step above already knows how to build. The
+      # ubuntu runner image carries a stable cargo on PATH; $(RUSTUP_BIN) in
+      # make/rust.mk is a homebrew keg that does not exist here, and prepending a
+      # directory that is not there costs nothing and resolves the image's cargo.
+      #
+      # THE ../serialize.rs CHECKOUT IS THIS STEP'S OWN. Every probe crate depends
+      # on `serialize-official` by path, and the job's checkout block above clones
+      # the C, C++, C# and Go runtimes only — so the clone lives here, beside the
+      # one target that needs it, under the same pinned tag the rest of this file
+      # uses. Without it the suite fails by name on the missing sibling rather
+      # than skipping, which is the behaviour this whole gate is for.
+      - name: the fixed form's versioning suite on the Rust leg
+        run: |
+          if [ ! -d ../serialize.rs ]; then
+            git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
+              https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
+          fi
+          make tables-rust-versioning
+
+      # THE SAME SUITE ON THE DART LEG (§5.7 step 6: every leg owes BOTH gates,
+      # the bytes and the versioning rows). Its probes are generated Dart, one
+      # per row per column, so the job needs the SDK and nothing else — the
+      # corpus it reads is the one the step above already built, and
+      # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
+      # failure rather than a silent skip.
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - name: the Dart leg reads backward over every versioning row
+        run: make tables-dart-versioning DART=dart
+
       # THE SAME TWO COLUMNS ON THE C# LEG (§5, and §5.9 #11: every leg owes both
       # gates). The harness is a GO test — internal/codegen/cstable generates one
       # probe per row per column into a single C# assembly and runs it once — so it

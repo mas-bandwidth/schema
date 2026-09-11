@@ -517,35 +517,24 @@ once — and append, per field:
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
 | a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
-| a reader-side limit | `'L'`, then the limit as u64 LE |
+| a reader-side limit | `'L'`, then the limit as u64 LE. **RESERVED:** no table spelling of a reader-side limit exists; `--fixed-record-limit` is outside the law (§6) and does not emit this row. The row stays empty until a table-declared limit exists. The pin is `TestTableFixedDefinitionsDigestLReservedUntilALimitExists`. |
 | a nested `table` / `type` | recurse, once per type name |
 | a union | recurse into each arm's payload, in declared order |
 
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT, and the reference does not implement it yet.** Bill §13 says EVERY range —
-a float range and a fixed-point one included — and every reader-side limit, tag `'L'`. The reference at this
-head emits `'R'` for `HasIntRange` ALONE and emits no `'L'` anywhere (`ir/fixedform.go:610-652`), which is
-§5.8 row 10. **That row is an INTEROP BREAK and not a missed refusal.** Every other row of §5.8 is a reader
-being too kind; this one moves THE NUMBER — a leg that implements this table computes a different digest, so
-a different hash, for any table carrying a float range or a limit, and its files and the reference's do not
-match each other at all. **So the reference owes it BEFORE ANY LEG PORTS**: landing it moves every such hash
-once more and re-pins the corpus, and a lineage entry pinned under the old digest is a hash no later build
-can produce.
+**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) and
+`'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
+unions share one `seen` map keyed by bare name.**
 
 **The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, then the KIND TAG — `'B'`
 for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
 for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
 none, one, two or three of those, in that order and never another.
 
-**Flags are NOT deduped by name in the reference, and the contract says they must be.** The `seen` set guards
-STRUCTS only (`ir/fixedform.go:600-604`), so one flags type named by three fields writes its `'F'`, its bit
-count and its whole `'f'`/`fnv1a64(name)` run THREE times, where a struct named by three fields writes once.
-**The ruling is the contract's own words — each NAMED type emitted ONCE** — so a flags type is emitted once
-too, and §5.8 row 10 carries that fix beside the missing tags. **And a flags type's WIRE BIT COUNT falls back
-to `len(Variants)` when it is `0`** (636-640): a `flags` declared with no explicit width spends one bit per
-flag, and the digest records the count either way.
+**A flags type's WIRE BIT COUNT falls back to `len(Variants)` when it is `0`**: a `flags` declared with no
+explicit width spends one bit per flag, and the digest records the count either way.
 
 **`EMIT` switches on a KIND CODE**, and §1's kind-code table is the whole numbering — the fixed-point rungs
 `20..24` and `25..29` included. A port that invents its own numbering for the same set emits different layout
@@ -1314,7 +1303,7 @@ not transliterate.** Then **prove against the oracle, in this order**:
 
 | # | the proof |
 |---|---|
-| 1 | **`make tables-fixedform-corpus`** writes six form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements). **Read a file and save it back; the bytes must be identical** — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
+| 1 | **`make tables-fixedform-corpus`** writes nine form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements), `fxw` (the wide-text unit), `fu1`/`fu2` (text under a union arm, and §4's TWO WIDENING RUNGS — `mark int16` at `-1`, `INT16_MIN` and `INT16_MAX` into FU2's `int32`, and `heat float32` as two signalling NaNs and an ordinary `1.5` into FU2's `float64`; schema#876 cards 15 and 16). **Read a file and save it back; the bytes must be identical** — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
 | 2 | **read a file written under ANOTHER schema's layout** — `fx1`/`fx2` both directions, `p1` into `p3`. That is the plan path, and the whole of what the versioning invariant is worth |
 | 3 | **the negative controls, one per named rule and one per named refusal**: each of §1.1's seven, over a file that reads clean and is broken in exactly one place; `layout_malformed` for a header shorter than a layout and for a header hash that is not the hash of the layout behind it; `plan_too_large` for a one-entry plan slice; `batch_too_large` for a batch past the caller's room; `previous_form`, `message_form_as_file` and `newer_form` for form bytes `1`, `2` and `6`; `no_layout` for a record hash naming nothing; `malformed` for a ragged tail. **Each comes back under ITS OWN NAME, nothing decoded, no counter moved.** A validation nobody watched fail is a validation nobody has |
 | 4 | **the wrong plan must go red**, and so must each fix's own bug: this build's identity plan over another schema's record, the swapped `bytes(N)` row, the shared `arg`/`meta` lane, a whole-span copy over stained slack |
@@ -1331,8 +1320,10 @@ already names.
 
 | construct | fixture | cpp | c | go | cs | rust | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|---|---|
-| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack` | golden | | | | | | | | |
-| dump plan path, both directions | `fx1`↔`fx2`, `p1` into `p3` | golden | | | | | | | | |
+| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack`/`fxw`/`fu1`/`fu2` | golden | | | | | | | | |
+| dump plan path, both directions | `fx1`↔`fx2`, `p1` into `p3`, `fu1` into FU2 (NEW-READS-OLD) | golden | | | | | | | | |
+| the two widening rungs asserted after the compiled read | `fu1` into FU2: `mark int16`→`int32` SIGN-EXTENDED, `heat float32`→`float64` on the payload bits | golden | | | | | | | | |
+| OLD-REFUSES-NEW | `fu2` under FU1: `layout_newer`, the file's hash, nothing decoded (COMPILE from the lock) | golden | | | | | | | | |
 | widen, `was =`, unknown field, unknown nested type, slack, `bytes(6)` | `test/tables/FX1`/`FX2` | golden | | | | | | | | |
 | variant/arm inserted mid-list, keyed slots sliding, optional, moved kind | `V1`/`V2` | golden | | | | | | | | |
 | `?T` against a plain nesting | `P1`/`P3` | golden | | | | | | | | |
