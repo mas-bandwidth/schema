@@ -12,9 +12,9 @@
 // bounds follow the ordinary outward/inward law.
 //
 // Read these beside internal/codegen/gotable/fixedcfloat_test.go's
-// TestFixedCFloatResolutionIsNotInTheLayoutHash, which shows the fixed layout
-// hash does not carry `res` at all: the lock refuses a change the wire cannot
-// see.
+// TestFixedCFloatResolutionIsInTheLayoutHash: since #956 the fixed layout
+// hash carries `res` under 'Q', so the lock's refusal and the wire's identity
+// say the same thing.
 package lockfile_test
 
 import "testing"
@@ -52,42 +52,34 @@ func TestLockCFloatMinMovesInwardRefuses(t *testing.T) {
 		"range narrowed", "keeps its range")
 }
 
-// ---- the resolution: refused in BOTH directions, which is the finding ----
+// ---- the resolution: finer is a widening, coarser is refused ----
+//
+// The red team (#942) found the lock refusing a resolution change in BOTH
+// directions with the variable form's sentence, while the fixed layout hash
+// did not carry the resolution at all. The ruling (#956): the resolution is a
+// definition that only widens, FINER is lawful and COARSER is refused by name,
+// and the fixed layout hash carries the step under 'Q'. These pin the ruling.
 
-// THE RESOLUTION REFINES, 0.1 -> 0.01, with the bounds held. Under Rowan's rule
-// this is lawful; the tip refuses it, and the sentence it refuses with —
-// "the bounds and the resolution are the scale a stored value is read back at,
-// so moving them reads every record already written as a different number" — is
-// the VARIABLE form's reason, not the fixed form's. §3.4 says the fixed record
-// carries the float and no scale at all.
-func TestLockCFloatResolutionRefinedRefusedAtTheTip(t *testing.T) {
-	rowRefuses(t, cfRow(cfBase), cfRow("min = 0, max = 1, resolution = 0.01"),
-		"resolution changed", "keeps its range")
+// THE RESOLUTION REFINES, 0.1 -> 0.01, with the bounds held. Every value on the
+// old, coarser grid is a value the new reader holds exactly (§2): a widening,
+// carried by `schema lock`.
+func TestLockCFloatResolutionRefinedAllowed(t *testing.T) {
+	rowAllows(t, cfRow(cfBase), cfRow("min = 0, max = 1, resolution = 0.01"), "Row")
 }
 
-// THE RESOLUTION COARSENS, 0.1 -> 0.5. Refused by the same sentence, and here
-// the sentence is right for every form: a coarser grid is a narrower set.
+// THE RESOLUTION COARSENS, 0.1 -> 0.5: a coarser grid is a narrower set, and
+// the refusal names the two steps.
 func TestLockCFloatResolutionCoarsenedRefuses(t *testing.T) {
 	rowRefuses(t, cfRow(cfBase), cfRow("min = 0, max = 1, resolution = 0.5"),
-		"resolution changed", "keeps its range")
+		"resolution coarsened", "0.1 -> 0.5")
 }
 
-// THE WHOLE TRIPLE IS DROPPED and the field becomes a plain `float32`.
-//
-// A FINDING, AND A DEAD BRANCH. `monotone.go`'s rangeRule carries the rule
-// "a range removed is a widening" — `case want.ranged() && !got.ranged():
-// return "", true` — and for a COMPRESSED FLOAT that case is UNREACHABLE: the
-// `want.Res != got.Res` test stands ahead of it, an unranged entry carries no
-// Res, so dropping the triple is reported as "resolution changed" and refused
-// before the removal rule is ever consulted. The branch is live only for an
-// int-ranged field, where both sides carry an empty Res.
-//
-// It matters because in the fixed form dropping the triple moves NOT ONE BYTE —
-// a `float32` and a compressed `float32` are the same four bytes (§3.4) — so
-// this is the most obviously lawful edit of the six and the one whose refusal
-// names the wrong rule. Pinned as the tip's answer: the day the removal rule is
-// meant to reach a compressed float, this test is what says it did not.
-func TestLockCFloatRangeDroppedRefusedByTheResolutionCheckFirst(t *testing.T) {
-	rowRefuses(t, cfRow(cfBase), rowTable("    v float32"),
-		"resolution changed", "-> unranged")
+// THE WHOLE TRIPLE IS DROPPED and the field becomes a plain `float32`. In the
+// fixed form that moves not one byte (§3.4): a `float32` and a compressed
+// `float32` are the same four bytes, and every old value is inside an
+// unbounded field and lands exactly (§2's "or REMOVED"). The red team found
+// this refused by the resolution check standing ahead of the removal rule; the
+// removal rule now comes first, and this is the widening it always was.
+func TestLockCFloatRangeDroppedAllowed(t *testing.T) {
+	rowAllows(t, cfRow(cfBase), rowTable("    v float32"), "Row")
 }

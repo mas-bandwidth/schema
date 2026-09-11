@@ -306,35 +306,23 @@ func TestFixedCFloatPastOldMaxLandsUnderTheWidenedRange(t *testing.T) {
 	cfRead(t, cfWideBoth, []string{cfOld}, readOne(file, bits, 0))
 }
 
-// ---- case 7: THE RESOLUTION IS NOT IN THE FIXED LAYOUT HASH ---------------
+// ---- case 7: THE RESOLUTION IS IN THE FIXED LAYOUT HASH -------------------
 //
-// THE FINDING THAT MATTERS MOST, and it is not a value — it is an IDENTITY.
-// `ir.tableFixedDigestField` writes `'R'` and then `FMin` and `FMax` for a
-// compressed float and NEVER the RESOLUTION (ir/fixedform.go, the
-// HasFloatRange case). So refining `res` with the range held produces a
-// BYTE-IDENTICAL layout AND THE SAME LAYOUT HASH: to a fixed-form reader the
-// two generations are ONE generation. The range, by contrast, IS in the digest
-// and moves the hash.
+// THE FINDING THAT MATTERED MOST, and it was not a value but an IDENTITY.
+// When this red team was written, `ir.tableFixedDigestField` wrote `'R'` and
+// then `FMin` and `FMax` for a compressed float and never the RESOLUTION, so
+// refining `res` with the range held produced a byte-identical layout AND THE
+// SAME LAYOUT HASH: to a fixed-form reader the two generations were one
+// generation, while the lock refused the change by name and the cook digest
+// carried `step=`. Two peers could agree on a fixed hash and disagree on the
+// grid they would quantize that record onto at the message-form boundary.
 //
-// In the fixed form alone that is harmless and arguably right — `res` is not a
-// byte of the record, so there is nothing for a plan to do. What it breaks is
-// the LOCK's story: `internal/lockfile/monotone.go`'s rangeRule REFUSES any
-// resolution change by name ("resolution changed"), with the sentence "the
-// bounds and the resolution are the scale a stored value is read back at, so
-// moving them reads every record already written as a different number". For a
-// FIXED table that sentence is not true — §3.4 says the float rides whole —
-// and the hash agrees with §3.4, not with the lock. One of the two is wrong.
-//
-// The other half of the asymmetry: the §20 meaning table calls a compressed
-// float's resolution a MEANING fact (`step=`), and ir/buildversion.go's cook
-// digest does carry `step=`. So `res` moves the UNIT's id and not the fixed
-// table's layout hash, and two peers that agree on a fixed hash can still
-// disagree on the grid they will quantize that very record onto the moment it
-// is handed to the message form (§5's file-to-message round trip, which
-// reproduces a compressed float "only when the float already lies on the
-// announced grid").
-
-func TestFixedCFloatResolutionIsNotInTheLayoutHash(t *testing.T) {
+// The ruling (#956, docs/FIXED-FORM-ALGORITHM.md, the digest table): the
+// resolution goes into the definitions digest under `'Q'`, as the step's
+// IEEE-754 bits beside the `'R'` its min and max went into. The float still
+// rides whole (§3.4), so the RECORD does not move; the HASH does, and the lock,
+// the wire and the cook digest now say the same thing. This test pins that.
+func TestFixedCFloatResolutionIsInTheLayoutHash(t *testing.T) {
 	of := func(src string) FixedLineageEntry {
 		e, ok := FixedLineageOf(unitOf(t, src), "Reading")
 		if !ok {
@@ -343,15 +331,17 @@ func TestFixedCFloatResolutionIsNotInTheLayoutHash(t *testing.T) {
 		return e
 	}
 	old, fine := of(cfOld), of(cfFineRes)
-	// The resolution moved 0.1 -> 0.03 and the layout hash did not.
-	if old.Wire != fine.Wire {
-		t.Fatalf("the resolution is in the layout hash after all: %#016x -> %#016x", old.Wire, fine.Wire)
+	// The resolution moved 0.1 -> 0.03: the layout hash moved with it ('Q').
+	if old.Wire == fine.Wire {
+		t.Fatalf("the resolution is not in the layout hash: both %#016x", old.Wire)
 	}
+	// The float rides whole (§3.4): the record did not move.
 	if old.Record != fine.Record {
 		t.Fatalf("the record size moved on a resolution change: %d -> %d", old.Record, fine.Record)
 	}
-	// The RANGE is in it, which is the asymmetry.
-	if wide := of(cfWideMin); wide.Wire == old.Wire {
-		t.Fatalf("the range is NOT in the layout hash: both %#016x", old.Wire)
+	// The range is in it too ('R'), and moves it independently of the step.
+	wide := of(cfWideMin)
+	if wide.Wire == old.Wire || wide.Wire == fine.Wire {
+		t.Fatalf("the range is not in the layout hash: old %#016x fine %#016x wide %#016x", old.Wire, fine.Wire, wide.Wire)
 	}
 }
