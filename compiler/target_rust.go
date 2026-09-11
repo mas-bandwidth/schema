@@ -88,7 +88,7 @@ func rustTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]rusttable.
 			out[st.Name] = append(out[st.Name], rusttable.FixedLineageEntry{
 				Wire:    e.Wire,
 				Layout:  e.Layout,
-				Record:  e.Record,
+				Record:  fixedLineageRecordBytes(e.Record),
 				Retired: e.Retired,
 				Reason:  e.Reason,
 			})

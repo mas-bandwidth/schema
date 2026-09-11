@@ -45,6 +45,21 @@ type FixedLineage struct {
 	floor   map[string]int
 }
 
+// fixedLineageRecordBytes is the lock's BODY size as a table backend's
+// `FixedLineageEntry.Record` means it: THE WHOLE RECORD, the eight-byte layout
+// hash every record leads with plus the body (§5.3's record = hash + body). The
+// lock writes `ir.TableFixedTypeBytes` — the BODY alone — so the two are eight
+// bytes apart, and the translation belongs here, in the one place that reads the
+// lock, beside the wire-name translation above.
+//
+// THE JAVASCRIPT LEG FOUND THIS. Every backend's own `FixedLineageOf` spells the
+// entry `8 + TableFixedTypeBytes`, but #925's three helpers handed the lock's
+// number straight through, so every older entry in every generated reader
+// recorded a record eight bytes short. Only jstable checks the handed entry
+// against its layout (§5.9 #26), so only jstable said so; gotable and rusttable
+// emitted the short number in silence.
+func fixedLineageRecordBytes(body int64) int64 { return 8 + body }
+
 // lineageGenerator is the SECOND ENTRY POINT of §5.9 #1, as the driver sees it:
 // a generator that takes the lock's lineage as data. A target implements it when
 // its table backend exports `GenerateLineage`; a target that does not is called
