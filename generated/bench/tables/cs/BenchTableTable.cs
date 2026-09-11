@@ -286,6 +286,11 @@ namespace Benchtable
 
     // A PLAN ENTRY. Src and Dst are byte offsets or slot indices. Guard is the
     // byte offset of a union tag when the entry belongs to an arm, or NoGuard.
+    // Arg is THE GUARD'S TAG and nothing else. Meta is THE OP'S OWN ARGUMENT —
+    // a text entry's flavour. ArgW is THE GUARD'S WIDTH IN BYTES: a union tag
+    // is one, two, four or eight, and comparing only the FIRST of them fires
+    // arm 1 on a foreign tag of 0x0101. Zero is read as one. Flavour stays in
+    // Meta; they are two lanes because they are two facts.
     [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
     public struct TableFixedEntry
     {
@@ -295,12 +300,13 @@ namespace Benchtable
         public uint Aux;
         public uint Guard;
         public byte Op;
-        public byte Arg; // Arm ordinal compared by Guard
+        public byte Arg; // Arm ordinal compared by Guard, at ArgW bytes
         public byte DstSize;
         public byte Sign;
         public byte Meta; // Op metadata (e.g. text flavour: 1=utf8, 2=wide, 3=bytes)
+        public byte ArgW; // THE GUARD'S WIDTH IN BYTES. Zero is read as one.
 
-        public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0, byte meta = 0)
+        public TableFixedEntry(uint src, uint dst, uint size, uint aux, uint guard, byte op, byte arg, byte dstSize, byte sign = 0, byte meta = 0, byte argW = 1)
         {
             Src = src;
             Dst = dst;
@@ -312,6 +318,7 @@ namespace Benchtable
             DstSize = dstSize;
             Sign = sign;
             Meta = meta;
+            ArgW = argW;
         }
     }
 
@@ -5433,13 +5440,19 @@ namespace Benchtable
                     public int Pool;
                     public bool Overflow;
                     public TableReport Report;
+                    public byte ArgW; // the CURRENT union's tag width, stamped onto every guarded push
 
                     public void Push(in TableFixedEntry e)
                     {
+                        TableFixedEntry stamped = e;
+                        if (stamped.Guard != NoGuard)
+                        {
+                            stamped.ArgW = ArgW == 0 ? (byte)1 : ArgW;
+                        }
                         int entrySize = System.Runtime.CompilerServices.Unsafe.SizeOf<TableFixedEntry>();
                         int room = Capacity - (Pool + entrySize - 1) / entrySize;
                         if (Count >= room) { Overflow = true; return; }
-                        Plan[Count++] = e;
+                        Plan[Count++] = stamped;
                     }
 
                     public uint LayTable(ReadOnlySpan<ushort> values, int n)
@@ -5604,6 +5617,8 @@ namespace Benchtable
                         {
                             uint their_tag = TagBytes(theirs, ti);
                             uint my_tag = TagBytes(mine, mi);
+                            byte saved_argw = c.ArgW;
+                            c.ArgW = (their_tag >= 1u && their_tag <= 8u) ? (byte)their_tag : (byte)1;
                             int my_arm = mi + 1;
                             for (uint k = 0; k < me.Children; ++k)
                             {
@@ -5625,6 +5640,7 @@ namespace Benchtable
                                 }
                                 my_arm += Subtree(mine, my_arm);
                             }
+                            c.ArgW = saved_argw;
                             break;
                         }
                         case 30: // Enum
@@ -5689,11 +5705,39 @@ namespace Benchtable
                     {
                         Plan = plan,
                         Capacity = plan.Length,
-                        Report = report
+                        Report = report,
+                        ArgW = 1
                     };
                     MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0);
                     if (c.Overflow) { return -1; }
                     return c.Count;
+                }
+
+                // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose
+                // low byte happens to be 1 is not arm 1: it is an ordinal this build
+                // has no arm for, and reading only the first byte let 0x0101 run arm
+                // 1's entries over a stranger's record. ArgW 0 means 1, >8 clamps to
+                // 8. Little-endian, the same widths C#'s packet codec reads a tag at.
+                public static ulong TagAt(ReadOnlySpan<byte> src, uint guard, byte argw)
+                {
+                    int w = argw == 0 ? 1 : (argw > 8 ? 8 : argw);
+                    int at = (int)guard;
+                    switch (w)
+                    {
+                        case 1: return src[at];
+                        case 2: return BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                        case 4: return BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                        case 8: return BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                        default:
+                        {
+                            ulong v = 0;
+                            for (int i = 0; i < w; ++i)
+                            {
+                                v |= ((ulong)src[at + i]) << (8 * i);
+                            }
+                            return v;
+                        }
+                    }
                 }
 
                 public static void Run<T>(
@@ -5707,7 +5751,9 @@ namespace Benchtable
                     for (int i = 0; i < plan.Length; ++i)
                     {
                         ref readonly TableFixedEntry p = ref plan[i];
-                        if (p.Guard != NoGuard && src[(int)p.Guard] != p.Arg) { continue; }
+                        // an entry belonging to an ARM runs only under its own tag,
+                        // compared at ArgW bytes, never as a prefix
+                        if (p.Guard != NoGuard && TagAt(src, p.Guard, p.ArgW) != p.Arg) { continue; }
                         switch (p.Op)
                         {
                             case Copy:
@@ -7377,20 +7423,20 @@ namespace Benchtable
         };
 
         public static readonly TableFixedPlan TableEntityFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
-            new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(8u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(12u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(16u, 4u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(20u, 5u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(24u, 6u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(28u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(32u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(36u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(40u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(41u, 11u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(49u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(50u, 13u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(8u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(12u, 3u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(16u, 4u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(20u, 5u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(24u, 6u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(28u, 7u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(32u, 8u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(36u, 9u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(40u, 10u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(41u, 11u, 8u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(49u, 12u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(50u, 13u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
         });
 
         public static long TableEntityFixedMeasure(long count)
@@ -7561,8 +7607,8 @@ namespace Benchtable
         };
 
         public static readonly TableFixedPlan TableStatFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
-            new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
-            new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
+            new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
         });
 
         public static long TableStatFixedMeasure(long count)
