@@ -177,6 +177,12 @@ const fixedRuntimeBody = `  @moduledoc """
     {:ok, hash, layout, records}
   end
 
+  # STEP 1 BEFORE STEP 2 (§5.3): a file with no header in it at all is the
+  # RESIDUE — malformed, with no name — and the FORM BYTE is read only once there
+  # are bytes enough to carry one.
+  def read_file_header(data) when is_binary(data) and byte_size(data) < @file_header_bytes + 4,
+    do: {:error, :malformed}
+
   def read_file_header(<<1, _::binary>>), do: {:error, :previous_form}
   def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
   def read_file_header(<<@form, _::binary>>), do: {:error, :layout_malformed}
@@ -195,7 +201,15 @@ const fixedRuntimeBody = `  @moduledoc """
   none of them moves a counter and none of them fires ` + "`" + `malformed` + "`" + `.
   """
   def report do
-    %{malformed: false, unknown: 0, kind_mismatch: 0, clamped: 0, widened: 0, duplicate: 0}
+    %{
+      malformed: false,
+      unknown: 0,
+      kind_mismatch: 0,
+      clamped: 0,
+      widened: 0,
+      duplicate: 0,
+      layout_hash: 0
+    }
   end
 
   defp bump(report, key), do: Map.update!(report, key, &(&1 + 1))
@@ -213,6 +227,25 @@ const fixedRuntimeBody = `  @moduledoc """
   """
   def clamped(report, 0), do: report
   def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))
+
+  @doc """
+  The PLAN'S OWN CENSUS onto the report, ONCE, after the record loop (§5.9 #6).
+
+  unknown and kind_mismatch were fixed when the plan was built — §5.4 says once
+  per peer and never per record — so they ride in the lane and land here, on a
+  read that RETURNS and on no other. On a LAWFUL lineage they are both zero,
+  always (§5.9 #30): a newer reader names every field of every writer its lineage
+  can select, so the census is the report of an UNLAWFUL or HOSTILE entry only.
+  """
+  def census(report, 0, 0), do: report
+
+  def census(report, unknown, kind_mismatch) do
+    %{
+      report
+      | unknown: report.unknown + unknown,
+        kind_mismatch: report.kind_mismatch + kind_mismatch
+    }
+  end
 
   @doc """
   Set ` + "`" + `malformed` + "`" + ` when the projection's damage flag rode true, and the same
@@ -903,9 +936,18 @@ const fixedRuntimeBody = `  @moduledoc """
   # of them, is a kind that MOVED and is reported rather than reinterpreted.
   defp widens?(from, to) when from >= 6 and from <= 9 and to >= 6 and to <= 9, do: to > from
   defp widens?(from, to) when from >= 2 and from <= 5 and to >= 2 and to <= 5, do: to > from
+  # THE FIXED-POINT RUNGS, the SIGNED run 20..24 and the UNSIGNED run 25..29
+  # (docs/FIXED-FORM-ALGORITHM.md §1, §5.2 EMIT): a fixed-point whose I grew at
+  # equal F is a widen like any other, INSIDE its family and upward only.
+  defp widens?(from, to) when from >= 20 and from <= 24 and to >= 20 and to <= 24, do: to > from
+  defp widens?(from, to) when from >= 25 and from <= 29 and to >= 25 and to <= 29, do: to > from
   defp widens?(from, to), do: from == 10 and to == 11
 
-  defp signed_kind?(kind), do: kind >= 2 and kind <= 5
+  # A LADDER WIDEN'S SIGN IS THE WRITER'S KIND'S (§5.2): the signed integers
+  # 2..5 and the SIGNED fixed-point run 20..24 sign-extend and everything else
+  # zero-extends. The SAME-KIND widen has no sign at all and is not this
+  # function's question.
+  defp signed_kind?(kind), do: (kind >= 2 and kind <= 5) or (kind >= 20 and kind <= 24)
 
   defp compile_entry(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do
     their_kind = kind_at(theirs, ti)
@@ -914,36 +956,50 @@ const fixedRuntimeBody = `  @moduledoc """
     at = my_at + elem(row, 0)
     aux_at = my_at + elem(row, 2)
 
-    if their_kind != my_kind do
-      widen_entry(
-        theirs,
-        ti,
-        their_at,
-        mine,
-        mi,
-        at,
-        guard,
-        tag,
-        acc,
-        report
-      )
-    else
-      same_kind(
-        theirs,
-        ti,
-        their_at,
-        mine,
-        mi,
-        dst,
-        my_at,
-        at,
-        aux_at,
-        row,
-        guard,
-        tag,
-        acc,
-        report
-      )
+    cond do
+      # T INTO ?T (bill §12.8): the reader wrapped a field in an OPTIONAL the
+      # writer did not have. The present byte is a CONSTANT 1 — constant in its
+      # VALUE and still carrying the row's own guard and ordinal (§5.9 #13), so
+      # a present byte is never set for an arm the tag did not name — and then
+      # the PAYLOAD is emitted under that same guard, against the wrapper's one
+      # child rather than against the wrapper.
+      my_kind == 35 and their_kind != 35 ->
+        acc = guarded(acc, guard, tag, {:const, aux_at, 1, 1})
+
+        compile_entry(
+          theirs,
+          ti,
+          their_at,
+          mine,
+          mi + 1,
+          dst,
+          my_at,
+          guard,
+          tag,
+          acc,
+          report
+        )
+
+      their_kind != my_kind ->
+        widen_entry(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
+
+      true ->
+        same_kind(
+          theirs,
+          ti,
+          their_at,
+          mine,
+          mi,
+          dst,
+          my_at,
+          at,
+          aux_at,
+          row,
+          guard,
+          tag,
+          acc,
+          report
+        )
     end
   end
 
@@ -1222,7 +1278,25 @@ const fixedRuntimeBody = `  @moduledoc """
     |> Enum.reduce(0, fn arm, widest -> max(widest, size_at(layout, arm)) end)
   end
 
-  defp compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report) do
+  # A GROWN ORDINAL WIDTH IS A WIDEN, UNSIGNED (§5.2 EMIT kind 30, bill §12.7):
+  # the writer's enum rode in one byte and this reader's rides in two, so the
+  # ordinal decodes at the writer's width and lands exactly, counting one
+  # widened. ITS SIGN IS ZERO and not the kind's (§5.2: the same-kind widen and
+  # the enum widen both ZERO-extend).
+  defp compile_enum(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
+       when is_integer(ti) do
+    their_size = size_at(theirs, ti)
+    my_size = size_at(mine, mi)
+
+    if their_size < my_size do
+      entry = {:widen, their_at, at, their_size, my_size, false}
+      {guarded(acc, guard, tag, entry), report}
+    else
+      compile_enum_remap(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
+    end
+  end
+
+  defp compile_enum_remap(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report) do
     their_variants = children_at(theirs, ti)
     my_variants = children_at(mine, mi)
 
@@ -1668,6 +1742,128 @@ const fixedRuntimeBody = `  @moduledoc """
     end
 
     entry
+  end
+
+  # ---------------------------------------------------------------------------
+  # THE LINEAGE (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3)
+  # ---------------------------------------------------------------------------
+  #
+  # A FIXED TABLE READS BACKWARD AND NEVER FORWARD. A file is matched on the
+  # eight bytes of its header's hash against a lineage THE BUILD laid down —
+  # the lock's entries, OLDEST FIRST, the current layout last — and NOTHING
+  # PARSES A STRANGER'S LAYOUT, ON ANY PATH. A hash the lineage does not hold is
+  # :layout_newer (ship the reader); a hash below the FLOOR is
+  # :layout_unsupported (upgrade the client); a hash the lineage holds whose
+  # layout BYTES differ from the ones the lock recorded is ONE name,
+  # :layout_malformed — a lie about a known version, which is where §1.1's seven
+  # rules land once they are told about a layout this reader already knows.
+
+  @doc """
+  Select the lineage index a file's header hash resolves to (§5.3 steps 5 to 7).
+
+  {:ok, i}, or {:error, reason, the file's hash}. THE HEADER'S HASH IS TAKEN AS
+  GIVEN and nothing is recomputed from the wire: the definitions digest is not on
+  the wire, so the hash cannot be re-derived from the bytes behind it. BOTH
+  layout refusals report the file's hash (§5.9 #7).
+  """
+  def select(known, floor, hash, layout) do
+    case index_of(known, hash, 0) do
+      nil ->
+        {:error, :layout_newer, hash}
+
+      i when i < floor ->
+        {:error, :layout_unsupported, hash}
+
+      i ->
+        k = elem(known, i)
+
+        if byte_size(layout) == k.layout_bytes and layout == k.layout do
+          {:ok, i}
+        else
+          {:error, :layout_malformed, 0}
+        end
+    end
+  end
+
+  defp index_of(known, _hash, i) when i >= tuple_size(known), do: nil
+
+  defp index_of(known, hash, i) do
+    if elem(known, i).hash == hash, do: i, else: index_of(known, hash, i + 1)
+  end
+
+  @doc """
+  Build ONE PLAN PER LINEAGE ENTRY, at MODULE LOAD, from THE LOCK'S OWN BYTES.
+
+  §5.9 #3: plans built at package initialization from the lock's bytes ARE build
+  time for this page. That is not a run-time walk of a stranger's layout — the
+  bytes came from the lock, the walk happens ONCE PER PROCESS, off every load
+  path, and nothing on the load path compiles or parses a layout a file carried.
+  This leg's storage is :persistent_term, written from the module's @on_load,
+  which is the BEAM's one place that runs before any caller can reach the module.
+
+  ITS INIT CANNOT THROW. Every entry is a LANE WITH ITS OWN REFUSAL REASON: an
+  entry that is not a parseable layout, or whose plan does not fit the declared
+  capacity, carries {:error, name} and LOAD refuses by that name if a file ever
+  selects it (§5.9 #8, #26 for the run-time half; at BUILD the same fact is a
+  lock bug and the build fails). A lane is never an exception, so @on_load always
+  returns :ok and a module always loads.
+
+  OWN IS THE READER'S OWN WIRE HASH, handed in by the compiler as the number it
+  recorded for this build's layout — the same number the lineage is keyed on. IT
+  IS NOT DERIVABLE HERE: the wire hash folds the DEFINITIONS DIGEST in over the
+  layout bytes (ir.TableFixedLayoutHash, §5.9 #12), and the digest is not in the
+  bytes. This leg computed hash(my_bytes) instead — fnv1a64 over the layout ALONE
+  — so it matched no entry, NOTHING was ever identity, and §5.3 step 8's lane was
+  dead: every read, this build's own layout included, ran a compiled plan. It was
+  invisible in the answers, because the plan for your own layout IS the identity
+  projection.
+  """
+  def lineage_init(module, root, known, own, my_bytes, dst, capacity) do
+    mine = my_layout(module, my_bytes)
+
+    lanes =
+      for i <- 0..(tuple_size(known) - 1) do
+        lineage_lane_of(elem(known, i), own, mine, dst, capacity)
+      end
+
+    :persistent_term.put({module, :fixed_lineage, root}, List.to_tuple(lanes))
+    :ok
+  end
+
+  defp lineage_lane_of(%{hash: h}, own, _mine, _dst, _capacity) when h == own, do: :identity
+
+  defp lineage_lane_of(k, _own, mine, dst, capacity) do
+    case parse_layout(k.layout) do
+      {:ok, theirs} ->
+        # THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built
+        # (§5.9 #6): it rides in the lane, and LOAD carries it onto the report
+        # ONCE, after the record loop, on a read that RETURNS.
+        case compile(theirs, mine, dst, capacity, report()) do
+          {:ok, plan, made, census} ->
+            {:ok, plan, k.record_bytes - 8, made, census.unknown, census.kind_mismatch}
+
+          {:error, why, _census} ->
+            {:error, why}
+        end
+
+      {:error, _why} ->
+        # A LINEAGE ENTRY THAT IS NOT A LAYOUT IS A BUG IN THE LOCK and never a
+        # wire event (§5.9 #8): where it arrives at run time the entry still owes
+        # a NAME rather than a throw.
+        {:error, :layout_malformed}
+    end
+  rescue
+    _ -> {:error, :layout_malformed}
+  end
+
+  @doc """
+  The lane the build laid down for lineage index i of root.
+  """
+  def lineage_lane(module, root, i) do
+    case :persistent_term.get({module, :fixed_lineage, root}, nil) do
+      nil -> {:error, :layout_malformed}
+      lanes -> elem(lanes, i)
+    end
   end
 
   @doc """

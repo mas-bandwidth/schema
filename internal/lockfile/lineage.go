@@ -456,6 +456,39 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 		fmt.Sprintf("not the lineage's last entry (0x%016x): the declaration has a layout the record does not end with", last.Wire))}
 }
 
+// diffCeiling is THE FORM'S CEILING AS A MONOTONE FACT (docs/SPEC-TABLES.md
+// §3.4, docs/FIXED-FORM-BILL-READS-BACKWARD.md §2's `fixed` keyword row).
+//
+// Every size fact in this file only grows, and one of them has a number past
+// which growing STOPS BEING A VERSION: a record body past
+// [ir.TableFixedRecordMaxBytes] does not carry the fixed form at all
+// (ir.TableFixedFormRoots drops it), so the table keeps form 1, which it never
+// lost. That is the right answer for a table that was ALWAYS that large — §12.1's
+// render frame, §2.8's `WideBlob`, neither ever a form-3 table — and it is the
+// wrong answer for a table a fleet already reads: a bound grown across the
+// ceiling is every monotone fact widening legally while the WIRE changes
+// underneath, which the bill calls a form change and not a version ("a different
+// form, not a version"). The lock allowed it and the lineage kept appending: the
+// old readers hold a form-3 layout nothing writes any more, and what reaches
+// them is not `layout_newer` — a refusal that says "ship the reader" — but a
+// form byte their plan never had a branch for.
+//
+// So the ceiling is checked the way every other bound in this file is checked,
+// against WHAT SHIPPED: a table whose last shipped record was inside the ceiling
+// may not cross it. A table already past it crosses nothing and says nothing —
+// it never had the form this refusal protects.
+func diffCeiling(lk, lv *Table) error {
+	if len(lk.Lineage) == 0 || len(lv.Lineage) != 1 {
+		return nil
+	}
+	last, cur := lk.Lineage[len(lk.Lineage)-1], lv.Lineage[0]
+	if last.Record > ir.TableFixedRecordMaxBytes || cur.Record <= ir.TableFixedRecordMaxBytes {
+		return nil
+	}
+	return fmt.Errorf("fixed table %s: its record was %d bytes in the lock and is %d in the declaration: record past the form's %d-byte ceiling (%d -> %d) — past the ceiling a fixed table DOES NOT CARRY THE FIXED FORM (docs/SPEC-TABLES.md §3.4): it keeps form 1, so this is not a widening every reader can hold but a CHANGE OF FORM, and the readers compiled from this lineage would meet a form byte no plan of theirs has a branch for (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); shrink the bounds it declares back inside the ceiling, or start a new table under a new name",
+		lk.Name, last.Record, cur.Record, ir.TableFixedRecordMaxBytes, last.Record, cur.Record)
+}
+
 // lineageDrift marks the one lineage finding that is a CONSEQUENCE rather than a
 // fault of the record: the declaration's layout is not the lineage's last entry,
 // which is what a moved field or a moved nested type looks like from here. [Diff]

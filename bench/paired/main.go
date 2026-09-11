@@ -383,32 +383,38 @@ func binary(wire, lang string) string {
 const rustTargetDir = "build/paired/rust"
 
 // The Rust unit's manifest is tracked and hand-written (generated/bench/paired/
-// rust/Cargo.toml says why). pointRustManifest requires it and, when
-// SERIALIZE_RS names a checkout other than the sibling the manifest carries,
-// rewrites THAT ONE LINE — which dirties a tracked file on purpose: the
-// operator changed the build, and build.json's `dirty` should say so.
+// rust/Cargo.toml says why), and it names its serialize.rs dependency through
+// ONE SYMLINK UNDER build/ rather than through a checkout path. pointRustManifest
+// requires the manifest and points that symlink at SERIALIZE_RS — the sibling
+// `../serialize.rs` by default, which is the keeper's layout and resolves to the
+// very same crate the path used to name directly.
+//
+// NOTHING TRACKED IS WRITTEN. The old version rewrote the dependency line in
+// place, which dirtied a tracked file on every checkout that is not beside
+// serialize.rs — and `-mode fast`, `-mode table` and bench/paired/nine.sh all
+// refuse a dirty checkpoint, so the sitting could not start anywhere but the
+// keeper's own tree. `dirty` in build.json now means the operator changed
+// something, which is the only thing it was ever meant to mean.
 func pointRustManifest() error {
 	const manifest = "generated/bench/paired/rust/Cargo.toml"
-	b, e := os.ReadFile(manifest)
-	if e != nil {
+	if _, e := os.Stat(manifest); e != nil {
 		return fmt.Errorf("the paired rust unit's manifest is missing (%s); it is tracked build wiring, not generator output: %w", manifest, e)
 	}
-	override := os.Getenv("SERIALIZE_RS")
-	if strings.TrimSpace(override) == "" {
-		return nil
+	target := abs(setting("SERIALIZE_RS", "../serialize.rs"))
+	if _, e := os.Stat(filepath.Join(target, "Cargo.toml")); e != nil {
+		return fmt.Errorf("the paired rust leg needs a serialize.rs checkout at %s (set SERIALIZE_RS): %w", target, e)
 	}
-	lines := strings.Split(string(b), "\n")
-	found := false
-	for i, line := range lines {
-		if strings.HasPrefix(line, "serialize = ") {
-			lines[i] = "serialize = { package = \"serialize-official\", path = \"" + abs(override) + "\" }"
-			found = true
-		}
+	if e := os.MkdirAll(filepath.Join("build", "paired"), 0755); e != nil {
+		return e
 	}
-	if !found {
-		return fmt.Errorf("%s carries no serialize dependency line to point at SERIALIZE_RS", manifest)
+	// Replace the link rather than write through it: os.Symlink refuses an
+	// existing name, and a stale link from an earlier SERIALIZE_RS would
+	// otherwise decide this build.
+	link := filepath.Join("build", "paired", "serialize.rs")
+	if e := os.Remove(link); e != nil && !os.IsNotExist(e) {
+		return e
 	}
-	return os.WriteFile(manifest, []byte(strings.Join(lines, "\n")), 0644)
+	return os.Symlink(target, link)
 }
 func cargoExecutable() string { return rustupTool("CARGO", "cargo") }
 
@@ -735,9 +741,9 @@ func generateAndBuild(langs []string) error {
 			// THE MANIFEST IS BUILD WIRING AND IS TRACKED (the Rust emitter
 			// writes only .rs files; make/rust.mk says the same of every other
 			// Rust unit's Cargo.toml), so this step does not write it — it
-			// requires it, and repairs only the ONE line an operator can move:
-			// the serialize.rs sibling path, when SERIALIZE_RS names another
-			// checkout. Left alone, nothing under generated/ is touched.
+			// requires it, and points the ONE thing an operator can move: the
+			// build/ symlink the manifest names for serialize.rs. Nothing under
+			// generated/ is touched, on any checkout.
 			if e := pointRustManifest(); e != nil {
 				return e
 			}
