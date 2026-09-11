@@ -13,7 +13,7 @@ import (
 
 func TestFixedFormEmitsSurface(t *testing.T) {
 	files := generate(t, `package probe
-table Point {
+fixed table Point {
     x int32
     y int32
 }
@@ -48,17 +48,14 @@ table Point {
 	if strings.Contains(body, "block_malformed") {
 		t.Error("the layout is still named a block")
 	}
-	// DERIVED into the fixed mode, not declared fixed: the form-3 surface
-	// above is emitted, and the form-1 Load it never lost still reads.
-	load := funcSource(body, "func PointLoad(")
-	if load == "" {
+	// DECLARED fixed, because #823's keyword is the SELECTION POINT: the form
+	// follows the declaration and nothing is derived in either direction (§2.2,
+	// [ir.TableFixedRoots]), so the surface above exists for a `fixed table`
+	// and for nothing else. What <T>Load then is — a named form-1 refusal — is
+	// held next door by TestFixedFormForm1RefusalIsByTheKeyword, and the
+	// variable half by TestForm1OfVariableTableStillLoads.
+	if funcSource(body, "func PointLoad(") == "" {
 		t.Fatal("PointLoad was not emitted")
-	}
-	if !strings.Contains(load, "PointLoadBody") {
-		t.Error("PointLoad of a table nobody declared fixed must still walk form 1")
-	}
-	if strings.Contains(load, "previous_form") {
-		t.Error("PointLoad refuses form 1 on a table nobody declared fixed")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoad(")
 	if fixedLoad == "" {
@@ -89,8 +86,8 @@ table Point {
 // encodes as form 3 always, so a form-1 file handed to its Load is a named
 // refusal and never a slower read of the same records (Glenn 2026-09-09).
 func TestFixedFormForm1RefusalIsByTheKeyword(t *testing.T) {
-	files := generateFixed(t, `package probe
-table Point {
+	files := generate(t, `package probe
+fixed table Point {
     x int32
     y int32
 }
@@ -115,7 +112,7 @@ table Point {
 
 func TestFixedFormRoundTrip(t *testing.T) {
 	runGenerated(t, `package probe
-table Point {
+fixed table Point {
     x int32 = 1
     y int32 = 2
 }
@@ -425,8 +422,8 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 }
 
 func TestForm1OfFixedTableRefused(t *testing.T) {
-	runGeneratedFixed(t, `package probe
-table Point {
+	runGenerated(t, `package probe
+fixed table Point {
     x int32 = 1
     y int32 = 2
 }
@@ -525,7 +522,7 @@ func TestForm1VariableLoad(t *testing.T) {
 // build's.
 func TestFixedFormHostileBoolByte(t *testing.T) {
 	runGenerated(t, `package probe
-table Host {
+fixed table Host {
     on bool
     off bool
     maybe ?bool
@@ -682,7 +679,7 @@ union Pick
     hit  Hit
     chat Chat
 }
-table Host {
+fixed table Host {
     pick Pick
     tail int32 = 9
 }
@@ -764,7 +761,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     pick Pick
 }
 `
@@ -776,7 +773,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     pick Pick
     tail int32 = 7
 }
@@ -860,10 +857,10 @@ union Pick
     a ArmA
     b ArmB
 }
-table Writer {
+fixed table Writer {
     pick Pick
 }
-table Reader {
+fixed table Reader {
     pick Pick
     tail int32 = 7
 }
@@ -956,7 +953,7 @@ union Effect
     boost Boost
     ward Ward
 }
-table Cfg {
+fixed table Cfg {
     a int32 = 5 | min = 0, max = 1000
     effect Effect
     marks [..4]int32 | min = 0, max = 10
@@ -999,7 +996,7 @@ union Effect
     boost Boost
     ward Ward
 }
-table Cfg {
+fixed table Cfg {
     a int32 = 5 | min = 0, max = 1000
     effect Effect
 }
@@ -1024,7 +1021,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     n     int32 = 0 | min = 0, max = 10
     marks [..4]int32 | min = 0, max = 10
     note  ?int32 | min = 0, max = 10
