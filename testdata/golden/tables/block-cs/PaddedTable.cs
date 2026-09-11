@@ -467,7 +467,10 @@ namespace Blockdemo
             if (value.Slots != null) { MemoryMarshal.AsBytes(value.Slots.AsSpan(0, Math.Min(value.Slots.Length, 4))).CopyTo(b.Slice(33)); }
             if (value.Teams.Slots != null) { value.Teams.Slots.AsSpan(0, Math.Min(value.Teams.Slots.Length, 4)).CopyTo(b.Slice(41)); }
             b[45] = (byte)(value.CounterPresent ? 1 : 0);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(46), (int)value.Counter);
+            if (value.CounterPresent)
+            {
+                BinaryPrimitives.WriteInt32LittleEndian(b.Slice(46), (int)value.Counter);
+            }
         }
 
         // PaddedFrame's stores. The template — the hash, then zeros — is memcpy'd first,
