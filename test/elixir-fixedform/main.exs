@@ -944,15 +944,59 @@ Leg.eq(
 {:ok, stated, layout, records} = Tblfx1.FixedRuntime.read_file_header(read.("fx1.bin"))
 Leg.eq("the header names the layout it carries", stated, Tblfx1.FixedRuntime.hash(layout))
 
+# A VALIDATION NOBODY WATCHED FAIL IS A VALIDATION NOBODY HAS, so there is one
+# case per named rule, each taking a layout this reader accepts and breaking
+# EXACTLY ONE THING in it — and each asserting the other half of a refusal
+# beside the name: NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that
+# half-read a record would be the damage the refusal exists to prevent, which is
+# what the C++ reference asserts beside every case of its own
+# (test/tables/fixedform_main.cpp, `refuses`).
+refuse_file = fn name, data, want ->
+  case Tblfx1.FX1Fixed.fx_root_fixed_load(data) do
+    {:error, why, report} ->
+      Leg.eq(name, why, want)
+
+      Leg.eq(
+        "#{name}: a layout refusal sets nothing and counts nothing",
+        report,
+        Tblfx1.FixedRuntime.report()
+      )
+
+    {:ok, _values, _report} ->
+      Leg.eq(name, :accepted, want)
+  end
+end
+
+# THE HEADER'S HASH IS RECOMPUTED FROM THE BROKEN LAYOUT, never carried over
+# from the good one: §2 step 5 checks the header hash LAST, after the layout's
+# own seven rules, so a stale hash would not mask the rule under test — but a
+# hash that already agrees makes the case say so without leaning on the order.
 refuse = fn name, bad, want ->
-  data =
+  refuse_file.(
+    name,
     IO.iodata_to_binary([
       Tblfx1.FixedRuntime.file_header(Tblfx1.FixedRuntime.hash(bad), byte_size(bad)),
       bad,
       records
-    ])
+    ]),
+    want
+  )
+end
 
-  Leg.eq(name, Tblfx1.FX1Fixed.fx_root_fixed_load(data) |> elem(1), want)
+# AN ENTRY, AND A FILE AROUND A HAND-BUILT LAYOUT — the two rules no single
+# break of a real layout reaches need a layout written from nothing: seventeen
+# bytes an entry (id u64, kind u8, size u32, children u32, §1.1), and a file of
+# the form byte, the layout's own hash, its length, the layout, and NO RECORDS,
+# because every rule below refuses before a record byte is reached.
+entry = fn id, kind, size, children ->
+  <<id::little-unsigned-64, kind, size::little-unsigned-32, children::little-unsigned-32>>
+end
+
+file_of = fn built ->
+  IO.iodata_to_binary([
+    Tblfx1.FixedRuntime.file_header(Tblfx1.FixedRuntime.hash(built), byte_size(built)),
+    built
+  ])
 end
 
 <<_count::little-unsigned-32, entries::binary>> = layout
@@ -996,17 +1040,83 @@ bad_tree =
   <<binary_part(layout, 0, 17)::binary, 99, 0, 0, 0,
     binary_part(layout, 21, byte_size(layout) - 21)::binary>>
 
-Leg.check(
-  "a child count that does not close refuses by name",
-  Tblfx1.FX1Fixed.fx_root_fixed_load(
-    IO.iodata_to_binary([
-      Tblfx1.FixedRuntime.file_header(Tblfx1.FixedRuntime.hash(bad_tree), byte_size(bad_tree)),
-      bad_tree,
-      records
-    ])
-  )
-  |> elem(1)
-  |> then(&(&1 in [:layout_tree_unclosed, :layout_size_mismatch, :layout_kind_invalid]))
+# AND THE NAME IS `layout_tree_unclosed` ALONE, not one of three. §1.1's order
+# is LOAD-BEARING: inside the walk, per entry, INDEX IN RANGE (rule 5) is tested
+# before depth (7), kind (2), the entry's own size (6) and every shape rule — so
+# a root claiming a ninth child when the layout holds eight runs off the end of
+# the entry table and rule 5 is the FIRST reason, which is the one kept. Neither
+# `layout_size_mismatch` nor `layout_kind_invalid` can fire here: both are the
+# root's SHAPE rules, and the walk that would have summed its children to reach
+# them never returns (docs/FIXED-FORM-ALGORITHM.md §1.1).
+refuse.(
+  "a child count that does not close is `layout_tree_unclosed`",
+  bad_tree,
+  :layout_tree_unclosed
+)
+
+# THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk reaches.
+# It takes a hand-built layout to reach, and that is itself worth stating:
+# dropping a child of a TABLE is caught one rule sooner, by the size that no
+# longer sums, so the only subtree whose loss the size rule cannot see is one
+# that contributes NO size — an enum's variants, at kind 32 and size 0.
+unreached =
+  IO.iodata_to_binary([
+    <<4::little-unsigned-32>>,
+    entry.(1, 13, 4, 1),
+    entry.(2, 30, 4, 0),
+    entry.(3, 32, 0, 0),
+    entry.(4, 32, 0, 0)
+  ])
+
+refuse_file.(
+  "RULE: the layout outlasts the tree",
+  file_of.(unreached),
+  :layout_tree_unclosed
+)
+
+# THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW (rule 6). The
+# record carries no lengths, so every offset the plan uses is arithmetic over
+# the sizes the WRITER wrote down: a size past the bound is a record this reader
+# will not hold, and a size that wraps is a small number that then AGREES with
+# its parent (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §1.1).
+#
+# Entry 0's size is the four bytes at 4 + 9 — one past the bound, where the
+# neighbouring `bad_size` case above sat one BELOW it and was caught by the sum.
+too_large =
+  <<binary_part(layout, 0, 13)::binary, 65537::little-unsigned-32,
+    binary_part(layout, 17, byte_size(layout) - 17)::binary>>
+
+refuse.("RULE: a record size past 65536", too_large, :layout_record_too_large)
+
+# A SIZE THAT WOULD WRAP. The children's sizes are summed in 64 bits precisely
+# so a u32 that overflows is CAUGHT rather than wrapped into a small number that
+# then agrees with a parent. Entry 1's size is the four bytes at 4 + 17 + 9.
+wrapping =
+  <<binary_part(layout, 0, 30)::binary, 0xFFFFFFFF::little-unsigned-32,
+    binary_part(layout, 34, byte_size(layout) - 34)::binary>>
+
+refuse.("RULE: a size that would overflow the sum", wrapping, :layout_record_too_large)
+
+# NOTHING NESTED PAST THE READER'S WALK BOUND (rule 7). A BOUND ON THE WALK AND
+# NOT ON THE WIRE: the validation descends, so a layout of a thousand entries
+# each claiming one child would spend a reader's stack before any other rule
+# could fire. Nothing in §3.4 fixes the number. A table, then optional wrappers
+# all the way down, and a bool at the bottom — and the depth rule fires ahead of
+# the optional's own `size == sum + 1`, which the bottom of this chain breaks.
+chain_depth = 4096
+
+too_deep =
+  IO.iodata_to_binary([
+    <<chain_depth + 1::little-unsigned-32>>,
+    entry.(1, 13, chain_depth, 1),
+    for(i <- 1..(chain_depth - 1), do: entry.(1, 35, chain_depth - i, 1)),
+    entry.(2, 1, 1, 0)
+  ])
+
+refuse_file.(
+  "RULE: a nesting depth past the walk's own bound",
+  file_of.(too_deep),
+  :layout_too_deep
 )
 
 # A HEADER WHOSE HASH IS NOT THE HASH OF THE LAYOUT BEHIND IT is refused, and
