@@ -403,6 +403,12 @@ typedef struct TableReport
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
+       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
+       hash AND NOTHING ELSE, and layout_unsupported carries it too — the
+       operator's other answer, a layout this build served and has retired
+       (§5.9 #7). Zero on every other path, refusal or read. */
+    uint64_t layout_hash;
 } TableReport;
 
 enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };

@@ -144,7 +144,19 @@ enum
     SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED = 14,   /* the pre-order child walk does not consume exactly the entries */
     SCHEMA_TABLE_LAYOUT_TOO_DEEP = 15,        /* a nesting depth past what this reader walks: a bound on the WALK, not on the wire */
     SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE = 16, /* a record size past §3.4's 65536-byte bound: a size this build will not decode */
-    SCHEMA_TABLE_PREVIOUS_FORM = 17            /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
+    SCHEMA_TABLE_PREVIOUS_FORM = 17,           /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
+    /* THE BACKWARD-READ REFUSALS (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §4,
+       §6b). A hash this reader's LINEAGE does not hold is layout_newer — ship
+       the reader; a hash the lineage holds BELOW THE FLOOR is
+       layout_unsupported — upgrade the client. They are the operator's two
+       distinct answers and both carry the FILE'S hash (§5.9 #7).
+
+       THE VALUES ARE THIS LEG'S OWN AND THE NAMES ARE THE REFERENCE'S, which is
+       the rule the ten above already state: the C enum numbers a set the C++
+       enum orders, so a leg agrees on the NAME a peer is refused by and never
+       on the integer. These two take 18 and 19 in the order §5.3 names them. */
+    SCHEMA_TABLE_LAYOUT_NEWER = 18,
+    SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -211,6 +223,47 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
     e.guard = SCHEMA_TABLE_FIXED_NO_GUARD;
     e.argw = 1;
     return e;
+}
+
+/* ---- THE LINEAGE AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5.2) -------
+ *
+ * A fixed table reads BACKWARD and never forward. A file is matched on the
+ * eight bytes of its header's hash against the lineage THE BUILD laid down, and
+ * the layout it carries is held to a BYTE COMPARISON against the bytes the lock
+ * recorded — never walked. A hash the lineage does not hold is layout_newer; a
+ * hash it holds below the floor is layout_unsupported. NOTHING PARSES A
+ * STRANGER'S LAYOUT, ON ANY PATH (§5.6). */
+
+/* ONE LOCKED LAYOUT: the wire hash a file is matched on, the layout bytes
+   verbatim, and the RECORD SIZE taken from THE LOCK and never from the file. */
+typedef struct TableFixedKnownLayout
+{
+    uint64_t hash;
+    const uint8_t * layout;
+    int64_t layout_bytes;
+    int64_t record_bytes;
+} TableFixedKnownLayout;
+
+/* THE HEADER'S HASH SELECTS, and it is the FIRST index that holds it. A hash no
+   entry holds is -1, which LOAD names layout_newer (§5.3 step 5). */
+static SCHEMA_UNUSED int32_t table_fixed_select( const TableFixedKnownLayout * known, int32_t count, uint64_t hash )
+{
+    int32_t i;
+    for ( i = 0; i < count; ++i )
+    {
+        if ( known[i].hash == hash ) { return i; }
+    }
+    return -1;
+}
+
+/* THE TWO REFUSALS THAT REPORT THE FILE'S HASH (§5.3, §5.9 #7). REFUSE IS
+   TOTAL: no counter moves and not one destination byte is written. */
+static SCHEMA_UNUSED int64_t table_fixed_refuse_hash( TableReport * report, int reason, uint64_t hash )
+{
+    report->refused = 1;
+    report->reason = reason;
+    report->layout_hash = hash;
+    return -1;
 }
 
 /* A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -541,6 +594,25 @@ typedef struct TableFixedFill
     uint32_t dst;
     uint32_t size;
 } TableFixedFill;
+
+/* ONE LINEAGE ENTRY'S PLAN, laid down from THE LOCK'S BYTES and off every load
+   path. unknown and kind_mismatch are THE COMPILE CENSUS — a writer field no
+   reader field names is counted ONCE PER PEER and never per record (§5.4) — and
+   a load carries them onto the report once, after the record loop, only on a
+   read that RETURNS. reason is the name a lineage entry that could not be
+   planned refuses under if a file ever selects it (§5.9 #4, #8). */
+typedef struct TableFixedLineagePlan
+{
+    const TableFixedEntry * entries;
+    int32_t count;
+    int32_t guarded;
+    const TableFixedFill * fill;
+    int32_t fill_count;
+    int32_t unknown;
+    int32_t kind_mismatch;
+    int reason;
+} TableFixedLineagePlan;
+
 
 /* THE PREFILL ITSELF: the declared defaults, into the ranges named and nowhere
    else. The default image is the caller's own storage, reset once per read

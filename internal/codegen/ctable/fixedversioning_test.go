@@ -453,6 +453,15 @@ int main( void )
     if ( len < 20 ) { printf( "the corpus file is short\n" ); return 1; }
     memcpy( &want, data + 8, 8 );
 %s
+    /* THE PADDING IS ZEROED ON BOTH SIDES BEFORE RESET, which is what makes the
+       OLD-REFUSES-NEW byte comparison a statement at all: a generated struct's
+       padding is not a value reset covers, so two fresh values differ in their
+       slack unless the slack is settled first — the same reason the generated
+       load memsets its default image before it resets it (§5.3's "REFUSE writes
+       not one destination byte" is about VALUES, and this makes the check see
+       only those). */
+    memset( &fresh, 0, sizeof( fresh ) );
+    memset( back, 0, sizeof( back ) );
     %s( &fresh );
     for ( k = 0; k < 8; ++k ) { %s( &back[k] ); }
     memset( &r, 0, sizeof( r ) );
