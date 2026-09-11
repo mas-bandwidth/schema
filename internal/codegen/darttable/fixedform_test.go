@@ -288,6 +288,76 @@ table LiveRoot
 	}
 }
 
+// A STRING, BYTES, OR WSTRING WRITE COPIES LENGTH AND ZEROES SLACK
+// (docs/SPEC-TABLES.md §3.4). Writing all N units would put unwritten or
+// stale storage onto the wire instead of the used length. Slack is zeroed.
+func TestWriteStringAndBytesCopiesLengthAndZeroesSlack(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+table SpanRoot
+{
+    label string(8)
+    blob  bytes(6)
+    wide  wstring(4)
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "void spanRootFixedWriteBody(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no spanRootFixedWriteBody in the generated unit")
+	}
+	body := src
+	if i := strings.Index(src, "void spanRootFixedWriteBody("); i >= 0 {
+		body = src[i:]
+		if j := strings.Index(body[1:], "\nvoid "); j >= 0 {
+			body = body[:j+1]
+		}
+	}
+
+	// string(8): copies length bytes, not bound 8; zeroes slack
+	if !strings.Contains(body, "bytes.setRange(at + 4, at + 4 + value.labelLength, value.label);") {
+		t.Fatalf("string write must copy length bytes:\n%s", body)
+	}
+	if strings.Contains(body, "bytes.setRange(at + 4, at + 12, value.label);") {
+		t.Fatalf("string write still copies declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 4 + value.labelLength, at + 12, 0);") {
+		t.Fatalf("string write must zero slack:\n%s", body)
+	}
+
+	// bytes(6): copies length bytes, not bound 6; zeroes slack
+	if !strings.Contains(body, "bytes.setRange(at + 16, at + 16 + value.blobLength, value.blob);") {
+		t.Fatalf("bytes write must copy length bytes:\n%s", body)
+	}
+	if strings.Contains(body, "bytes.setRange(at + 16, at + 22, value.blob);") {
+		t.Fatalf("bytes write still copies declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 16 + value.blobLength, at + 22, 0);") {
+		t.Fatalf("bytes write must zero slack:\n%s", body)
+	}
+
+	// wstring(4): loops length code units, not bound 4; zeroes slack
+	if !strings.Contains(body, "for (var i = 0; i < value.wideLength; i++) {") {
+		t.Fatalf("wstring write must loop length code units:\n%s", body)
+	}
+	if strings.Contains(body, "for (var i = 0; i < 4; i++) {") {
+		t.Fatalf("wstring write still loops declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 26 + value.wideLength * 2, at + 34, 0);") {
+		t.Fatalf("wstring write must zero slack:\n%s", body)
+	}
+}
+
 // THE PREFILL IS THE DECLARED DEFAULTS, and the one this corpus carries is
 // `has_extra bool = true` — the byte that would silently read false if the
 // prefill were a zero fill.
