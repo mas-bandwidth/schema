@@ -225,10 +225,22 @@ struct Op {
     size  : u32   // bytes, or a bound — per op, below
     aux   : u32   // a SECOND destination, a side-table offset, or a constant
     guard : u32   // the offset of the TAG BYTE this entry is conditional on, or NO_GUARD
-    op : u8 ; arg : u8 ; meta : u8 ; dstsize : u8 ; sign : u8
+    op : u8 ; arg : u64 ; meta : u8 ; dstsize : u8 ; sign : u8 ; argw : u8
+    guard2 : u32 ; arg2 : u64 ; argw2 : u8   // the OUTER tag, CONJOINED with guard/arg
 }
 // arg is THE GUARD'S ORDINAL and nothing else; meta is THE OP'S OWN ARGUMENT (a text flavour).
 ```
+
+**`arg` IS FULL WIDTH AND SO IS `arg2`: no byte lane anywhere** (bill §12.7). A union past 255 arms has a
+two-byte tag, and a byte lane truncated arm 256 into arm 1's guard value — arm 1's entries then ran over arm
+256's bytes. `argw` is the guard's WIDTH and the compare is made at it, never on a prefix.
+
+**`guard2` / `arg2` / `argw2` ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS TO, CONJOINED with
+`guard`/`arg`**: the entry runs when BOTH tags hold their ordinal. The outer tag stamped OVER the inner one
+fired every inner arm the moment the outer one rode, the last arm winning; the inner tag alone landed an
+inner arm's bytes beneath an outer arm that never rode. `NO_GUARD` on `guard2` is "no second condition",
+which is every entry that is not nested. A THIRD nested union has a third condition two lanes cannot carry:
+the compiled plan REFUSES BY NAME rather than drop one, and a guard CHAIN is the follow-on.
 
 **`arg` and `meta` ARE TWO LANES BECAUSE THEY ARE TWO FACTS, and must never share one.** (fix 12) A `string(N)`
 under a union arm needs both, and one lane gives whichever was stamped last: a byte string under arm `2` read as
@@ -394,6 +406,10 @@ WIDENS(a, b):                            -- b may replace a
     [Enum]T:       Enum WIDENS (its own rule); element WIDENS
     int, float:    width(a) <= width(b), same ladder, same signedness   or FAIL "narrowed | ladder | signedness"
     ranged:        range(b) ⊇ range(a), or b unranged               or FAIL "range narrowed | added"
+    compressed float:  it RIDES AS THE FLOAT (SPEC §3.4), so min/max/resolution are DEFINITIONS, never wire:
+                   range(b) ⊇ range(a) by the `ranged` row above, and resolution(b) <= resolution(a) — FINER
+                   or equal, because a writer quantized to ITS step and those values sit on a grid a finer
+                   reader lands exactly                            or FAIL "resolution coarsened (0.01 -> 0.1)"
     bits(N):       N(a) <= N(b)                                     or FAIL "bits narrowed"
     fixed(I,F):    I(a) <= I(b) and F(a) == F(b)                     or FAIL "F changed"
     ?T vs T:       optional(a) implies optional(b)                     or FAIL "optional removed"
@@ -546,6 +562,7 @@ once — and append, per field:
 | the fact | the bytes |
 |---|---|
 | an integer, float or fixed-point RANGE | `'R'`, then min and max, each as an i64 LE |
+| a COMPRESSED FLOAT's RESOLUTION | `'Q'`, then the step as an f64's IEEE-754 bits, u64 LE, beside the `'R'` its min and max went into. It is here because a compressed float **rides as the float32** in this form (SPEC §3.4), so the step is nowhere in the layout bytes: without this row `resolution = 0.01` and `= 0.1` hash identically and a finer reader cannot refuse a coarsened peer. The pin is `TestTableFixedDefinitionsDigestResolutionMovesTheHash` |
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
 | a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
@@ -556,11 +573,12 @@ once — and append, per field:
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) and
-`'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
+**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point), `'Q'`
+for every compressed float's resolution, and `'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
 unions share one `seen` map keyed by bare name.**
 
-**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, then the KIND TAG — `'B'`
+**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, `'Q'` straight after it when
+that range is a compressed float's, then the KIND TAG — `'B'`
 for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
 for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
 none, one, two or three of those, in that order and never another.
@@ -1065,16 +1083,16 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 2 | the floor is hard-coded to one index for one test package (`lineageFloor`) | the floor is `1 +` the highest retired index, from `lockfile.Floor` |
 | 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
 | 4 | the `count` op's bound, the ranges, the variant and arm counts are the READER's (`e.size = my_n`) | the bounds are the WRITER's, per plan (bill §12.5) |
-| 5 | `arg`, the guard's ordinal, is still a BYTE lane (`uint8_t`), so a union past 255 arms cannot express its guard value — the tag is READ at its own width and the remap table is `uint16_t`, so only this lane is short | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
-| 6 | a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH | an arm inside an arm answers to the OUTER tag too (§4.1) |
-| 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
+| 5 | ~~`arg`, the guard's ordinal, is still a BYTE lane~~ **LANDED** (rowan/twin-full-width-lanes): `arg` and `arg2` are `uint64_t` on both twins, the emitted static plan carries them full width, and the compare is at the tag's own width | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
+| 6 | ~~a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH~~ **LANDED** (rowan/twin-full-width-lanes): the two tags are CONJOINED on a second guard lane — in ir's identity walk, in both emitters and in both compiled walks — and `None` carries the outer guard at the OUTER width. A THIRD nested union refuses by name; the guard CHAIN is the follow-on | an arm inside an arm answers to the OUTER tag too (§4.1) |
+| 7 | ~~the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`)~~ **LANDED** (rowan/twin-full-width-lanes): a 64-bit temporary on both twins, and the `const` op lands a tag of that width out of a temporary rather than out of the four-byte `aux` lane beside its guard | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
 | 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
-| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
+| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range, **a compressed float's resolution** and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range, **every resolution (tag `'Q'`)** and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
 | 11 | the `unknown` census is counted once per ELEMENT of an array of tables | once per field per peer |
 | 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `COUNT clamped` on both (§4.6) |
 | 13 | an entry reaching past the writer's declared record comes back through the compile's failure path as `layout_malformed`; the name `layout_record_too_large` is wired only to the 65536 bound and to a zero root size | `layout_record_too_large` for the entry too (fix 3) |
-| 14 | the enum remap table is CAPPED AT 255 entries, `n := min( te.children, 255 )`, and its length word is a `uint16_t` | the table is as long as the WRITER's variant count (§5.2): today a writer's 256th variant and beyond remap to `None` as though the reader did not name them — a SILENT wrong value, not a refusal |
+| 14 | ~~the enum remap table is CAPPED AT 255 entries~~ **LANDED** (rowan/twin-full-width-lanes): `n := te.children` on both twins, laid in the plan's own pool; past the `uint16_t` length word the plan refuses by name rather than answering a wrong value | the table is as long as the WRITER's variant count (§5.2): today a writer's 256th variant and beyond remap to `None` as though the reader did not name them — a SILENT wrong value, not a refusal |
 | 15 | there is no GENERATOR-SIDE COMPILE: every leg that cannot run a plan compiler at build carries the walk as emitted runtime text in its own language, so the plan is built from the lock's bytes once per process instead of being laid down as source | the plan is laid down AS DATA by the TOOLCHAIN, one shared COMPILE in the generator's language feeding every leg's emitter (§5.9 #20). **This row is the TOOLCHAIN's debt and not the C++ runtime's**, and it is the follow-on the C leg's shape names: until it exists, a leg with neither a package initializer nor a constant initializer owes the TIMING and the thread safety of its one build flag in its PR, and that is conforming |
 
 **What #910 and #909 settled, and this list no longer carries.** `BASELINE` exists: the monotone law is

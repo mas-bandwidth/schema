@@ -406,8 +406,18 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if argw == 0 {
 			argw = 1
 		}
-		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d }, /* %s */\n",
-			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, e.Note)
+		argw2 := e.ArgW2
+		if argw2 == 0 {
+			argw2 = 1
+		}
+		// THE SECOND GUARD LANE IS NAMED, never left to a zero: an entry whose
+		// guard2 reads 0 is an entry conditional on the byte at offset 0 (§5.8 row 6).
+		guard2 := "SCHEMA_TABLE_FIXED_NO_GUARD"
+		if e.Guard2 != ir.TableFixedNoGuard {
+			guard2 = fmt.Sprintf("%du", e.Guard2)
+		}
+		g.pf("    { %du, %du, %du, %du, %s, %s, %d, %d, 0, 0, %d, %s, %d, %d }, /* %s */\n",
+			e.Src, e.Dst, e.Size, e.Aux, guard, fixedOpName(e.Op), e.Arg, e.Meta, argw, guard2, e.Arg2, argw2, e.Note)
 	}
 	g.pf("};\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_plan_count = %d;\n", n, len(plan))
