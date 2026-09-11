@@ -248,9 +248,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 
 	// exactly the names the surface below spells, and no more: the analyzer
 	// refuses an unused shown name, and `dart analyze` is this leg's gate
-	g.needHome("tableFixedForm", "tableFixedRun", "TableFixedCompiler",
-		"TableFixedLayout", "TableFixedLimits", "TableFixedPlan", "TableFixedRefusal",
-		"TableFixedReport")
+	g.needHome("tableFixedForm", "tableFixedRun", "tableFixedFillRun",
+		"TableFixedCompiler", "TableFixedLayout", "TableFixedLimits", "TableFixedPlan",
+		"TableFixedRefusal", "TableFixedReport")
 	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode")
 
 	g.pf("// ---- %s, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----\n//\n", st.Name)
@@ -280,14 +280,31 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("/// length and the layout itself. The records begin here.\n")
 	g.pf("const int %sFixedHeaderBytes = %d;\n\n", lower, 16+4+len(layout))
 
-	g.pf("/// THE PREFILL: the declared defaults as a constant run of bytes, laid down\n")
-	g.pf("/// with one setRange. A field this record does not carry has no plan entry,\n")
-	g.pf("/// so it keeps what this put there and the loop never learns it existed.\n")
+	g.pf("/// THE PREFILL: the declared defaults as a constant run of bytes. A field\n")
+	g.pf("/// this record does not carry has no plan entry, so it keeps what this put\n")
+	g.pf("/// there and the loop never learns it existed. THE LOAD COPIES ONLY THE\n")
+	g.pf("/// RANGES THE PLAN DOES NOT LAND — identity's list is empty.\n")
 	g.pf("%s", fixedFormatOff)
 	g.pf("final Uint8List %sFixedPrefill = Uint8List.fromList(const <int>[\n", lower)
 	g.emitBytes(prefill)
 	g.pf("]);\n")
 	g.pf("%s\n", fixedFormatOn)
+
+	cover := fixedIdentityCover(plan)
+	g.pf("/// THE TYPE'S VALUE BYTES: every byte of this build's own image that holds\n")
+	g.pf("/// a DECLARED VALUE, sorted and merged. THE PREFILL IS THIS SET MINUS WHAT\n")
+	g.pf("/// A PLAN LANDS (§3.4), so against the identity plan it is empty and the\n")
+	g.pf("/// identity read writes no byte twice; a plan compiled from a stranger's\n")
+	g.pf("/// layout subtracts itself from it once, when the plan is compiled, and\n")
+	g.pf("/// prefills exactly the rest.\n")
+	g.pf("%s", fixedFormatOff)
+	g.pf("final Int32List %sFixedCover = Int32List.fromList(const <int>[\n", lower)
+	for _, r := range cover {
+		g.pf("  %d, %d,\n", r.dst, r.size)
+	}
+	g.pf("]);\n")
+	g.pf("%s", fixedFormatOn)
+	g.pf("const int %sFixedCoverCount = %d;\n\n", lower, len(cover))
 
 	g.pf("/// MY SIDE of the layout, five lanes per entry: the storage facts a layout\n")
 	g.pf("/// entry cannot carry. In C++ these are offsetof rows; the reader's own\n")
@@ -397,7 +414,13 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("/// flag, no fast path and no second reader to keep honest against the first,\n")
 	g.pf("/// which is the owner's own ruling — a form whose cost moved when a peer\n")
 	g.pf("/// shipped would be a cliff at exactly the moment a deployment cannot afford\n")
-	g.pf("/// one. Answers the records read, or -1 with the reason named in the report.\n")
+	g.pf("/// one.\n")
+	g.pf("///\n")
+	g.pf("/// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of\n")
+	g.pf("/// ranges the plan compiler works out once, and on the identity plan that\n")
+	g.pf("/// list is EMPTY — so this read writes no byte twice, and it is one rule for\n")
+	g.pf("/// both plans rather than a flag that asks which one this is. Answers the\n")
+	g.pf("/// records read, or -1 with the reason named in the report.\n")
 	g.emitFn("int", lower+"FixedLoad", []string{
 		"List<" + st.Name + "> values", "int capacity", "Uint8List bytes",
 		"int byteLength", "TableFixedPlan plan", "TableFixedReport report",
@@ -426,6 +449,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  var entries = %sFixedIdentity;\n", lower)
 	g.pf("  var entryCount = %sFixedIdentityCount;\n", lower)
 	g.pf("  var recordBytes = %sFixedRecordBytes;\n", lower)
+	g.pf("  // THE PREFILL'S RANGES. EMPTY ON THE IDENTITY PLAN, and not by a flag:\n")
+	g.pf("  // the rule is the type's value bytes minus what the plan lands, and the\n")
+	g.pf("  // identity plan lands all of them.\n")
+	g.pf("  var fillCount = 0;\n")
 	g.pf("  if (hash != %sFixedHash) {\n", lower)
 	g.pf("    // ANOTHER WRITER: the same loop, over a plan compiled from its layout\n")
 	g.pf("    // and CACHED BY HASH, so the compile is paid once per peer and never\n")
@@ -439,6 +466,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("        %sFixedLayout,\n", lower)
 	g.pf("        ByteData.sublistView(%sFixedLayout),\n", lower)
 	g.pf("        %sFixedDst,\n", lower)
+	g.pf("        %sFixedCover,\n", lower)
+	g.pf("        %sFixedCoverCount,\n", lower)
 	g.pf("        report,\n")
 	g.pf("      );\n")
 	g.pf("      if (made < 0) {\n")
@@ -448,6 +477,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    entries = plan.entries;\n    entryCount = plan.count;\n")
 	g.pf("    recordBytes = plan.recordBytes;\n")
+	g.pf("    fillCount = plan.fillCount;\n")
 	g.pf("  }\n")
 	g.pf("  // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:\n")
 	g.pf("  // the layout's own rules each refuse under their own name first, so a\n")
@@ -470,8 +500,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    // counter moves.\n")
 	g.pf("    if (view.getUint64(at, Endian.little) != hash) {\n")
 	g.pf("      report.refused = TableFixedRefusal.noLayout;\n      return -1;\n    }\n")
-	g.call("    ", "", "plan.image.setRange",
-		[]string{"0", lower + "FixedBodyBytes", lower + "FixedPrefill"}, ";")
+	g.call("    ", "", "tableFixedFillRun",
+		[]string{"plan.fill", "fillCount", lower + "FixedPrefill", "plan.image"}, ";")
 	g.pf("    tableFixedRun(\n")
 	g.pf("      entries,\n      entryCount,\n      bytes,\n      view,\n      at + 8,\n")
 	g.pf("      plan.image,\n      plan.imageView,\n      plan.remap,\n      plan.conv,\n")
