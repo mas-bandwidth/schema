@@ -331,15 +331,19 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
 			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
 			table := unsafe.Slice(p16, int(*p16)+1)
-			var v uint32
+			// THE OP LANDS THE RAW VALUE AND COUNTS NOTHING (§5.9 #27). A
+			// raw INSIDE the writer's table is remapped to the reader's
+			// ordinal; a raw PAST the writer's variant count lands as
+			// ITSELF, UNREMAPPED. The BOUNDS PASS over storage is what
+			// clamps an ordinal past the READER's extent to None and counts
+			// it clamped — the same pass for the identity plan and for this
+			// one (§3.4). A pass over storage cannot tell a forged None from
+			// a real one, so the raw must survive the op to reach it. The
+			// lock guarantees the raw fits the reader's storage, because
+			// widths only grow.
+			v := raw
 			if raw != 0 && raw <= uint64(table[0]) {
-				v = uint32(table[raw])
-			} else if raw != 0 {
-				// AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS
-				// CLAMPED (§5.4): the compiled plan counts it exactly as the
-				// identity plan's bounds pass does, which tests the READER's
-				// top value and so a remapped 0 never trips it.
-				report.Clamped++
+				v = uint64(table[raw])
 			}
 			switch p.DstSize {
 			case 1:
@@ -347,9 +351,9 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			case 2:
 				binary.LittleEndian.PutUint16(dst[p.Dst:], uint16(v))
 			case 8:
-				binary.LittleEndian.PutUint64(dst[p.Dst:], uint64(v))
+				binary.LittleEndian.PutUint64(dst[p.Dst:], v)
 			default:
-				binary.LittleEndian.PutUint32(dst[p.Dst:], v)
+				binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
 			}
 		case tableFixedWiden:
 			var raw uint64

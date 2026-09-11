@@ -997,23 +997,25 @@ void tableFixedRun(
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
         // enum gained a variant IN THE MIDDLE is remapped here and never
         // reinterpreted.
-        // AND THE ORDINAL IS UNSIGNED. A Dart int is 64-bit SIGNED, so an
-        // eight-byte ordinal with the high bit set — 0x8000000000000000 — comes
-        // out of this loop NEGATIVE, and a signed 'raw <= table[0]' then passes
-        // it straight into the remap as a NEGATIVE INDEX: a RangeError thrown
-        // out of the read loop at hostile bytes, which is the one thing the
-        // forgery oracle refuses (§5.4, §5.9 #8). Any raw the WRITER could not
-        // have written — past its variant count, the negative case included —
-        // is None AND COUNTED, on this plan exactly as on the identity one.
+        //
+        // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped through the
+        // writer's table while the raw is inside the table, and THE RAW
+        // ITSELF, UNREMAPPED, once it is past the writer's variant count.
+        // The op COUNTS NOTHING: the generated BOUNDS PASS over storage
+        // clamps any ordinal past THIS READER'S extent to None and counts it
+        // clamped there, on the identity plan and the compiled plan alike. A
+        // pass over storage cannot tell a forged None from a real one, so the
+        // raw value has to survive this op to reach the pass; the lock
+        // guarantees the raw fits the reader's storage, because widths only
+        // grow. The counter's place is the contract: the pass counts, the op
+        // does not, and a port that counts in both counts twice.
         var raw = 0;
         for (var k = 0; k < size; k++) {
           raw |= source[s + k] << (8 * k);
         }
         final remapAt = plan[b + TableFixedLane.aux];
-        var landed = 0;
-        if (raw < 0 || raw > remap[remapAt]) {
-          report.clamped++;
-        } else if (raw != 0) {
+        var landed = raw;
+        if (raw != 0 && raw <= remap[remapAt]) {
           landed = remap[remapAt + raw];
         }
         final ordinalWidth = plan[b + TableFixedLane.meta] & 0xff;

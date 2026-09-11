@@ -111,9 +111,15 @@ func TestForgedCountLandsTheWritersBound(t *testing.T) {
 `)
 }
 
-// ITEM 3. An ordinal past the writer's variant count lands None and COUNTS on
-// the compiled plan exactly as it does on the identity one (§5.4).
-func TestFixedForgedOrdinalCountsOnBothPlans(t *testing.T) {
+// ITEM 3. AN ORDINAL PAST THE WRITER'S VARIANT COUNT LANDS THE RAW VALUE, AND
+// THE BOUNDS PASS IS WHAT CLAMPS IT (§5.9 #27). The `ordinal` op counts
+// nothing: it remaps a raw inside the writer's table and lands a raw past the
+// writer's count as ITSELF, because a pass over storage cannot tell a forged
+// None from a real one — the raw has to survive the op to reach the pass. The
+// generated bounds pass over storage then clamps anything past the READER's
+// extent to None and counts `clamped`, the same pass on either plan (§3.4).
+// So the count is asserted AT THE PASS here, not at the op.
+func TestFixedForgedOrdinalLandsRawAndTheBoundsPassClamps(t *testing.T) {
 	runGenerated(t, `package probe
 enum Grade
 {
@@ -131,7 +137,7 @@ import (
 	"unsafe"
 )
 
-func TestForgedOrdinalCountsOnBothPlans(t *testing.T) {
+func TestForgedOrdinalLandsRawAndTheBoundsPassClamps(t *testing.T) {
 	buf := make([]byte, HostFixedMeasure(1))
 	if n := HostFixedSave([]Host{{Tail: 7}}, buf); n != int64(len(buf)) {
 		t.Fatalf("save %d", n)
@@ -139,6 +145,8 @@ func TestForgedOrdinalCountsOnBothPlans(t *testing.T) {
 	record := buf[len(buf)-HostFixedRecordBytes:]
 	record[8] = 9 // an ordinal past the writer's two variants
 
+	// THE WHOLE IDENTITY READ, bounds pass included: the forged 9 reaches
+	// storage and the pass clamps it to None and counts it once.
 	got := make([]Host, 1)
 	var identity TableReport
 	if n := HostFixedLoad(got, buf, make([]TableFixedEntry, 256), &identity); n != 1 {
@@ -161,11 +169,23 @@ func TestForgedOrdinalCountsOnBothPlans(t *testing.T) {
 	var v Host
 	HostReset(&v)
 	tableFixedRun(plan, made, record[8:], tableFixedOverlay(unsafe.Pointer(&v), unsafe.Sizeof(v)), &compiled)
+	// THE OP ALONE, the bounds pass not yet run (§5.9 #27): the forged 9 is
+	// past the writer's two variants, so it lands UNREMAPPED, as itself, and
+	// the op counts NOTHING.
+	if v.G != 9 {
+		t.Fatalf("compiled plan: the op owes the RAW ordinal, landed %d", v.G)
+	}
+	if compiled.Clamped != 0 {
+		t.Fatalf("compiled plan: the op counts nothing, got clamped=%d", compiled.Clamped)
+	}
+	// AND NOW THE BOUNDS PASS, the same one the identity read above ran: past
+	// the READER's extent, so None, and counted once.
+	HostFixedClamp(&v, &compiled)
 	if v.G != GradeNone {
-		t.Fatalf("compiled plan: a forged ordinal landed %d", v.G)
+		t.Fatalf("compiled plan: the bounds pass owes None, got %d", v.G)
 	}
 	if compiled.Clamped != 1 {
-		t.Fatalf("compiled plan: a forged ordinal counts clamped once, got %d", compiled.Clamped)
+		t.Fatalf("compiled plan: the bounds pass counts clamped once, got %d", compiled.Clamped)
 	}
 }
 `)
