@@ -82,6 +82,12 @@ table Point {
 	if strings.Contains(body, "PointFixedClamp") {
 		t.Error("a type that declares nothing bounded must not emit a clamp pass")
 	}
+	if strings.Contains(body, "src[p.Guard] != p.Arg") {
+		t.Error("the run loop still compares the union guard as one byte")
+	}
+	if !strings.Contains(body, "func tableFixedTagAt(") {
+		t.Error("the runtime never names tableFixedTagAt")
+	}
 }
 
 // TestFixedFormForm1RefusalIsByTheKeyword is the other half of the surface
@@ -914,6 +920,9 @@ func TestOldArgLaneControl(t *testing.T) {
 		if plan[i].Arg != 2 || plan[i].Meta != tableFixedTextUtf8 {
 			t.Fatalf("text entry is not arm-2/utf8: Arg=%d Meta=%d", plan[i].Arg, plan[i].Meta)
 		}
+		if plan[i].ArgW != 1 {
+			t.Fatalf("text under a two-arm union: ArgW=%d, the tag is one byte", plan[i].ArgW)
+		}
 		// OLD ENCODING: flavour in Arg, Meta unused
 		plan[i].Arg = plan[i].Meta
 		plan[i].Meta = 0
@@ -945,6 +954,110 @@ func tableFile(files map[string][]byte) string {
 		}
 	}
 	return body
+}
+
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX. A one-byte compare
+// fires arm 1 on a foreign 0x0101. The C++ leftover on this tip was that Go
+// still read src[p.Guard] as a single byte; tableFixedTagAt is the C++ twin
+// and ArgW carries the width the compiler stamps the way C++ stamps e.argw.
+// Flavour stays in Meta. Identity is a PLAN walked by the same loop.
+func TestFixedFormGuardComparedAtArgW(t *testing.T) {
+	files := generate(t, `package probe
+type ArmA { n int32 }
+type ArmB { n int32 }
+union Pick
+{
+    a ArmA
+    b ArmB
+}
+table Root {
+    pick Pick
+}
+`)
+	body := tableFile(files)
+	if !strings.Contains(body, "func tableFixedTagAt(") {
+		t.Error("the runtime never names tableFixedTagAt")
+	}
+	if strings.Contains(body, "src[p.Guard] != p.Arg") {
+		t.Error("the run loop still compares the union guard as one byte")
+	}
+	if !strings.Contains(body, "tableFixedTagAt(src, p.Guard, p.ArgW)") {
+		t.Error("the run loop does not compare the guard at ArgW")
+	}
+	if strings.Contains(body, "if identity {") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+	if !strings.Contains(body, "out[q].ArgW =") {
+		t.Error("identity leaf walk does not stamp ArgW")
+	}
+	if !strings.Contains(body, "theirTag >= 1 && theirTag <= 8") {
+		t.Error("the compiler does not stamp ArgW from the writer's tag width")
+	}
+	leaves := funcSource(body, "func RootFixedLeaves(")
+	if !strings.Contains(leaves, "out[q].ArgW = 1") {
+		t.Error("a two-arm union's identity plan must stamp ArgW=1 (one-byte tag)")
+	}
+	if !strings.Contains(body, "Op: tableFixedText, Arg: arg, Meta: d.Meta") {
+		t.Error("compiled text still needs Arg as the guard and Meta as the flavour")
+	}
+}
+
+// THE RUN LOOP, hand-built so the one-byte compare and the whole-width
+// compare meet the same record. compiler/fixedguardwidth_test.go holds the
+// IR stamp; this is TableFixedRun, the same loop identity and compiled both
+// take. A two-byte tag 0x0101 whose low byte is 1 is not arm 1.
+func TestFixedFormGuardWidthRun(t *testing.T) {
+	runGenerated(t, `package probe
+table Point {
+    x int32
+}
+`, `package probe
+import "testing"
+
+func TestGuardWidth(t *testing.T) {
+	run := func(argw uint8, src []byte) byte {
+		dst := []byte{0}
+		plan := []TableFixedEntry{{
+			Src:  uint32(len(src) - 1),
+			Dst:  0,
+			Size: 1,
+			Guard: 0,
+			Op:   tableFixedCopy,
+			Arg:  1,
+			ArgW: argw,
+		}}
+		var r TableReport
+		tableFixedRun(plan, 1, src, dst, &r)
+		return dst[0]
+	}
+	if run(2, []byte{0x01, 0x01, 0xAA}) != 0 {
+		t.Fatal("ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1")
+	}
+	if run(2, []byte{0x01, 0x00, 0xAA}) != 0xAA {
+		t.Fatal("ArgW: a two-byte tag 0x0001 DOES run arm 1")
+	}
+	if run(0, []byte{0x01, 0x01, 0xAA}) != 0xAA {
+		t.Fatal("ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0")
+	}
+	if run(4, []byte{0x01, 0x01, 0x00, 0x00, 0xBB}) != 0 {
+		t.Fatal("ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1")
+	}
+	if run(4, []byte{0x01, 0x00, 0x00, 0x00, 0xBB}) != 0xBB {
+		t.Fatal("ArgW: a four-byte tag 0x00000001 DOES run arm 1")
+	}
+	// NEGATIVE CONTROL — the bug itself, watched failing. ArgW=1 is the old
+	// one-byte compare, and the SAME 0x0101 record then fires arm 1.
+	if run(1, []byte{0x01, 0x01, 0xAA}) != 0xAA {
+		t.Fatal("NEGATIVE CONTROL FAILED: a one-byte compare did not fire arm 1 on 0x0101")
+	}
+
+	// identity plan for a two-arm union is not this Point, but the Point
+	// identity plan must still be a PLAN the same loop walks.
+	if PointFixedPlan.Count <= 0 {
+		t.Fatal("identity is not a plan")
+	}
+}
+`)
 }
 
 func TestFixedFormClampPassShape(t *testing.T) {
