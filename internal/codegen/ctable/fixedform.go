@@ -588,6 +588,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    int32_t fill_count = 0;\n")
 	g.pf("    %s defaults;\n", st.Name)
 	g.pf("    (void) plan; /* a CAPACITY DECLARATION now, never written through (§5.9 #5) */\n")
+	g.pf("    (void) plan_capacity; /* read where a lineage entry has a plan to measure */\n")
 	g.pf("    (void) cache; /* the plans are static: there is no cache to miss (§5.8 row 3) */\n")
 	g.pf("    memset( &local, 0, sizeof( local ) );\n")
 	g.pf("    if ( report == NULL ) { report = &local; }\n")
