@@ -288,6 +288,15 @@ void fixed_fx1_text_content( void )
         memset( &r, 0, sizeof( r ) );
         fixed_check( fx_root_fixed_load( &back, 1, file, n, g_plan, PlanCapacity, NULL, &r ) == 1,
                      "C text content: the record reads" );
+        /* THIS PINS §5.8 ROW 8, AND ROW 8 IS A DIVERGENCE AND NOT THE RULE.
+           docs/FIXED-FORM-ALGORITHM.md §5.3's condition table gives ill-formed
+           text in the USED units A REFUSAL BY NAME — the name reference-fix 11
+           owes, still being settled in the docs — while the green C++ reference
+           zeroes the field and sets `malformed` instead, which is exactly what
+           §5.8 row 8 records. What the three lines below assert is therefore the
+           REFERENCE's behaviour, byte for byte, and NOT the page's ruling: the
+           day fix 11's name lands, these flip together with the reference and
+           with §5.8 row 8, and not before. */
         fixed_check( r.malformed, cases[k].what );
         fixed_check( back.label_length == 2 && strcmp( back.label, "fx" ) == 0,
                      "C TEXT CONTENT: the damaged field reads its DECLARED DEFAULT" );

@@ -909,6 +909,7 @@ build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/ta
 
 C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
 	test/c-tables/fixedform_layout.c \
+	test/c-tables/fixedform_refusals.c \
 	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
 	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c \
 	test/c-tables/fixedform_fu1.c test/c-tables/fixedform_fu2.c
@@ -960,6 +961,39 @@ tables-c-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1 -run 'TestFixedVersioning'
 	@echo 'tables C versioning: §5 read both columns of every row against the C++ reference bytes'
 
+# ITS NEGATIVE CONTROL, AND IT IS OWED (§5.9 #11's second gate, §5.9 #39: a gate
+# nobody has watched fail may be comparing a file with itself). §5's whole
+# DIRECTION rides on ONE pair of names: a hash no lineage entry holds is
+# `layout_newer` — ship the reader — and a hash the lineage holds BELOW THE FLOOR
+# is `layout_unsupported` — upgrade the client. Swap the first for the second, on
+# a file OUTSIDE the lineage, and every OLD-REFUSES-NEW row must go red NAMING
+# IT: the two refusals report the same hash and clear the same counters, so the
+# name is the only thing left that tells the operator which of the two things to
+# do, and a gate that cannot see the names exchanged is not watching §5 at all.
+#
+# THE SABOTAGE IS AN OVERLAY AND NEVER AN EDIT: `go test -overlay` swaps the
+# emitter's file for the doctored copy under build/ for the length of one run, so
+# the tree the rest of this file compiles is untouched.
+.PHONY: tables-c-versioning-negative-control
+tables-c-versioning-negative-control: tables-fixedform-corpus
+	@rm -rf build/c-versioning-nc && mkdir -p build/c-versioning-nc
+	@sed 's|table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_NEWER, hash )|table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNSUPPORTED, hash )|' \
+		internal/codegen/ctable/fixedform.go > build/c-versioning-nc/fixedform.go.txt
+	@cmp -s internal/codegen/ctable/fixedform.go build/c-versioning-nc/fixedform.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/fixedform.go":"%s/build/c-versioning-nc/fixedform.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/c-versioning-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 go test -overlay build/c-versioning-nc/overlay.json \
+			./internal/codegen/ctable/ -count=1 -run 'TestFixedVersioningOldRefusesNew' \
+			> build/c-versioning-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the C versioning gate green"; \
+		cat build/c-versioning-nc/log; exit 1; \
+	fi
+	@grep -q 'owes layout_newer' build/c-versioning-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the C versioning gate went red for another reason"; \
+		  cat build/c-versioning-nc/log; exit 1; }
+	@echo 'negative control: the name a file BELOW THE FLOOR owes, given to one OUTSIDE the lineage, reds the C versioning gate'
+
 .PHONY: test-c
 test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) tables-c-wire-fuzz SEED=1 N=20000
@@ -977,6 +1011,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-ref-ordinal-negative-control
 	$(MAKE) tables-c-fixedform
 	$(MAKE) tables-c-versioning
+	$(MAKE) tables-c-versioning-negative-control
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
 	# nobody types is not in the chain.

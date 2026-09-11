@@ -42,6 +42,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -64,8 +65,28 @@ type cVersionRow struct {
 	// widens is a row that grows a WIDTH, so `widened` moves at least once;
 	// every other row is an APPEND and owes all six counters at zero (§5.9 #10).
 	widens bool
+	// widened is the EXACT count §5.4 owes where the row can name one. "at
+	// least once" is not the contract: §5.9 #33 says a widened run is NEVER
+	// FOLDED, so an array whose element grew owes `min(their_n, my_n)` widens
+	// and not one — a leg that folds first and widens lands the reader's
+	// declared defaults over the writer's values and leaves the counter at
+	// zero, which is exactly the bug the C# leg shipped. Zero here means the
+	// row only claims the counter moved.
+	widened int
 	// check is C asserting the landed values, over `back`.
 	check string
+	// rename is the WRITER's field name -> the READER's, for the one row whose
+	// edit renames a field. §5.9 #41: a field is paired BY WIRE ID and never by
+	// name — `was = "a"` keeps the old name's hash, so the bytes do not move and
+	// the manifest goes on holding the value under `a` while the reader spells
+	// the same storage `b`. The manifest is the VALUE oracle, not a spelling
+	// oracle.
+	rename map[string]string
+	// keyed names the fields whose manifest subscript is an enum KEY rather than
+	// a storage index: an enum-keyed array holds the key k at index k - 1
+	// (docs/SPEC-TABLES.md §2.4), and the manifest carries the key because that
+	// is what the slot means.
+	keyed []string
 	// poison writes 0x5A over every byte of `back` AFTER the reset and BEFORE
 	// the load (§5.7, and the C++ reference's own harness does it). A row that
 	// asserts an ELEMENT DEFAULT cannot prove the prefill WRITES unless the
@@ -80,7 +101,10 @@ type cVersionRow struct {
 
 var cVersionRows = []cVersionRow{
 	{row: "array_bounded_grow"},
-	{row: "array_elem_widen", widens: true},
+	// §5.9 #33: [1..4]int16 -> [1..8]int32 across a widen is FOUR widen
+	// entries, min(their_n = 4, my_n = 8), one per element — never one folded
+	// run, because the fold's premise (equal element widths) is gone.
+	{row: "array_elem_widen", widens: true, widened: 4},
 	{row: "array_fixed_grow", poison: true, check: `
     /* THE GROWN SLOTS ARE THE ELEMENT'S DECLARED DEFAULTS, not zeros and not the
        0x5A the storage held a line ago: [4]Vec -> [8]Vec, so slots 4..7 are
@@ -106,9 +130,10 @@ var cVersionRows = []cVersionRow{
 	{row: "constant_grow"},
 	{row: "enum_append"},
 	{row: "enum_width", widens: true},
+	// x, y and z are the MANIFEST's now (§5.9 #37); what stays hand-written is
+	// the one thing the old file cannot carry — the reader's appended tail,
+	// which is its DECLARED DEFAULT and lives in no manifest line.
 	{row: "field_append", check: `
-    if ( back[0].x != 11 || back[0].y != 22 || back[0].z != 33 )
-        { printf( "the old writer's values did not land: %d %d %d\n", back[0].x, back[0].y, back[0].z ); return 1; }
     if ( back[0].w != 77 )
         { printf( "the appended field is not its declared default: %d\n", back[0].w ); return 1; }`},
 	{row: "field_deprecate", sameHash: true},
@@ -116,18 +141,11 @@ var cVersionRows = []cVersionRow{
 	{row: "fixed_I_grow", widens: true},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
-	{row: "int_widen", widens: true, check: `
-    if ( n != 3 ) { printf( "the int_widen file carries three records, not %lld\n", (long long) n ); return 1; }
-    {
-        const int32_t want[3] = { -1, -32768, 32767 };
-        int k;
-        for ( k = 0; k < 3; ++k )
-        {
-            if ( (int32_t) back[k].v != want[k] ) { printf( "record %d widened wrong\n", k ); return 1; }
-            if ( back[k].lead != 0xAAAAAAAAu || back[k].trail != 0xBBBBBBBBu ) { printf( "record %d moved a neighbour\n", k ); return 1; }
-        }
-    }`},
-	{row: "keyed_array_enum_append", poison: true, check: `
+	// the three records, the three widened values and the brackets either side
+	// of each are all MANIFEST lines now (§5.9 #37) — this row is the reason the
+	// manifest carries `records=` at all.
+	{row: "int_widen", widens: true},
+	{row: "keyed_array_enum_append", poison: true, keyed: []string{"slots"}, check: `
     /* ONE VARIANT APPENDED TO THE KEY, so the array gains its last slot and that
        slot is §3.4's PREFILL: Qty.n = 7, over 0x5A and not over zeros. */
     if ( back[0].slots[TIER_MAX - 1].n != 7 )
@@ -144,7 +162,7 @@ var cVersionRows = []cVersionRow{
 	{row: "nested_append"},
 	{row: "optional_add"},
 	{row: "range_widen"},
-	{row: "rename_without_was", sameHash: true},
+	{row: "rename_without_was", sameHash: true, rename: map[string]string{"a": "b"}},
 	{row: "string_grow"},
 	{row: "uint_widen", widens: true},
 	{row: "union_append"},
@@ -162,17 +180,23 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 			newer := cReadSchema(t, "VNEW_"+r.row)
 			older := cReadSchema(t, "VOLD_"+r.row)
 			counters := `if ( r.widened != 0 ) { printf( "widened %d, and an append is not an event\n", r.widened ); return 1; }`
-			if r.widens {
+			switch {
+			case r.widened != 0:
+				counters = fmt.Sprintf(`if ( r.widened != %d ) { printf( "this row owes EXACTLY %d widens (§5.9 #33, min(their_n, my_n)), not %%d\n", r.widened ); return 1; }`,
+					r.widened, r.widened)
+			case r.widens:
 				counters = `if ( r.widened == 0 ) { printf( "a widening row moved no widened counter\n" ); return 1; }`
 			}
+			oracle := cManifestChecks(t, corpus, "old_"+r.row+".bin", r)
 			body := fmt.Sprintf(`
     if ( n < 1 ) { printf( "the newer reader refused the older writer's file: n=%%lld reason=%%d\n", (long long) n, r.reason ); return 1; }
     if ( r.reason != 0 || r.malformed || r.refused ) { printf( "a clean NEW-READS-OLD is not a refusal: reason=%%d malformed=%%d\n", r.reason, r.malformed ); return 1; }
     if ( r.unknown != 0 || r.kind_mismatch != 0 || r.clamped != 0 || r.duplicate != 0 )
         { printf( "counters moved on a clean backward read: u=%%d km=%%d c=%%d d=%%d\n", r.unknown, r.kind_mismatch, r.clamped, r.duplicate ); return 1; }
     %s
+%s
     %s
-`, counters, r.check)
+`, counters, oracle, r.check)
 			poison := ""
 			if r.poison {
 				// §5.7'S 0x5A, and it goes in AFTER the reset: the harness
@@ -260,6 +284,11 @@ func TestFixedVersioningFloor(t *testing.T) {
 		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 1, oldFile, `
     if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED )
         { printf( "a file below the floor owes layout_unsupported: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+    /* §5.9 #7: BOTH named layout refusals report the FILE'S hash, and what
+       belongs to layout_newer alone is "and nothing else". A leg that fills the
+       field on one of the two and not the other leaves the operator's second
+       answer — upgrade the client — with nothing to name the client by. */
+    if ( r.layout_hash != want ) { printf( "layout_unsupported reports THE FILE'S hash too (§5.9 #7)\n" ); return 1; }
     if ( r.malformed || r.widened != 0 || r.unknown != 0 || r.clamped != 0 ) { printf( "REFUSE is total\n" ); return 1; }
 `, "")
 		if err != nil {
@@ -272,6 +301,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 2, midFile, `
     if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED )
         { printf( "the floor raised by one: yesterday's file must refuse: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
+    if ( r.layout_hash != want ) { printf( "layout_unsupported reports THE FILE'S hash too (§5.9 #7)\n" ); return 1; }
 `, "")
 		if err != nil {
 			t.Fatalf("floor_raise_live: %v\n%s", err, out)
@@ -358,6 +388,251 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---- THE VALUE ORACLE IS THE CORPUS MANIFEST (§5.9 #32, #37) -----------------
+//
+// Every leg before this one INVENTED its oracle — a hand-written want[] per row
+// — and every leg that did opened `test/tables/fixedform_dump.cpp`, the one file
+// §5.7 forbids, to get the numbers: a row's `lead` and `trail` are 0xAAAAAAAA /
+// 0xBBBBBBBB on the wire while the schema declares 1 and 2, so the values are
+// not derivable from the schema at all. §5.9 #37's ruling is that the oracle is
+// `build/fixedform-corpus/manifest.txt` AND NOTHING ELSE: the emitter SAYS what
+// it wrote, one plain-text line per file, through the same expression that
+// performed the assignment — so the manifest cannot drift from the bytes.
+//
+// THE MANIFEST ALSO SETTLES THREE THINGS THIS HARNESS USED TO GUESS: a row's
+// record COUNT (`records=`), the ROOT a file was written from (`root=`, #9), and
+// which rows are not a pair (`side=`).
+//
+// A hand-written `check` survives only for what the OLD file cannot carry: the
+// reader's appended tail, the prefill over §5.7's 0x5A poison. Those are claims
+// about the READER's declared defaults and no manifest line holds them.
+
+type cManifestLine struct {
+	row     string
+	side    string
+	root    string
+	records int
+	// values in the manifest's own order, path and value verbatim
+	paths  []string
+	values []string
+}
+
+// cManifest reads every line of the corpus manifest, keyed by file name. The
+// format is §5.9 #32's: `values=` is LAST and runs to the end of the line, so
+// the head is split on spaces and everything after `values=` is taken whole —
+// a quoted value may carry spaces and the commas inside one are escaped.
+func cManifest(t *testing.T, corpus string) map[string]cManifestLine {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("§5.9 #37's value oracle is the corpus manifest and it is not here: %v "+
+			"(make tables-fixedform-corpus writes it)", err)
+	}
+	out := map[string]cManifestLine{}
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		head, values, _ := strings.Cut(line, " values=")
+		var l cManifestLine
+		file := ""
+		for _, kv := range strings.Fields(head) {
+			k, v, ok := strings.Cut(kv, "=")
+			if !ok {
+				continue
+			}
+			switch k {
+			case "file":
+				file = v
+			case "row":
+				l.row = v
+			case "side":
+				l.side = v
+			case "root":
+				l.root = v
+			case "records":
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					t.Fatalf("the manifest line for %s has no record count: %q", file, line)
+				}
+				l.records = n
+			}
+		}
+		if file == "" {
+			t.Fatalf("a manifest line names no file: %q", line)
+		}
+		for _, kv := range cManifestSplit(values) {
+			path, value, ok := strings.Cut(kv, "=")
+			if !ok {
+				continue
+			}
+			l.paths = append(l.paths, path)
+			l.values = append(l.values, value)
+		}
+		out[file] = l
+	}
+	return out
+}
+
+// cManifestSplit splits `values=` on the commas that SEPARATE pairs, leaving the
+// escaped ones (`\,`) inside a quoted value alone.
+func cManifestSplit(values string) []string {
+	var out []string
+	var b strings.Builder
+	for i := 0; i < len(values); i++ {
+		switch {
+		case values[i] == '\\' && i+1 < len(values) && values[i+1] == ',':
+			// ONLY the comma is escaped (§5.9 #32). A `\u` inside a quoted wide
+			// value is the manifest's own escape and belongs to the value.
+			b.WriteByte(',')
+			i++
+		case values[i] == ',':
+			out = append(out, b.String())
+			b.Reset()
+		default:
+			b.WriteByte(values[i])
+		}
+	}
+	if b.Len() > 0 {
+		out = append(out, b.String())
+	}
+	return out
+}
+
+// cManifestChecks turns one manifest line into the C this row's NEW-READS-OLD
+// column asserts: the record COUNT, then every value the file carries, at the
+// path the manifest holds it at.
+func cManifestChecks(t *testing.T, corpus, file string, r cVersionRow) string {
+	t.Helper()
+	l, ok := cManifest(t, corpus)[file]
+	if !ok {
+		t.Fatalf("the corpus manifest has no line for %s — every .bin owes one (§5.9 #32)", file)
+	}
+	if len(l.paths) == 0 {
+		t.Fatalf("the manifest line for %s carries no value at all", file)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "    if ( n != %d ) { printf( \"the manifest says %s carries %d records, not %%lld\\n\", (long long) n ); return 1; }\n",
+		l.records, file, l.records)
+	for i, path := range l.paths {
+		b.WriteString(cManifestCheck(t, file, path, l.values[i], r))
+	}
+	return b.String()
+}
+
+// cManifestCheck is ONE value, at ONE path. The manifest's path IS the C path
+// with two exceptions it names here and nowhere else:
+//
+//   - `r<i>.` is the record index, which on this leg is `back[<i>]`.
+//   - a UNION's arm rides under `as` in C — the tag is `pick.type` and the arm
+//     is `pick.as.alpha.x` — where the manifest writes the arm straight under
+//     the field, because the reference's own union has no named member between
+//     them. The tag is the one segment under a union that is not an arm.
+func cManifestCheck(t *testing.T, file, path, value string, r cVersionRow) string {
+	t.Helper()
+	rec, rest, ok := strings.Cut(path, ".")
+	if !ok || !strings.HasPrefix(rec, "r") {
+		t.Fatalf("%s: a manifest path is prefixed r<i> and %q is not", file, path)
+	}
+	expr := "back[" + strings.TrimPrefix(rec, "r") + "]." + cManifestArm(cManifestSpelling(rest, r))
+	switch {
+	case strings.HasPrefix(value, "u\""):
+		// WIDE TEXT, asserted code unit by code unit: the manifest spells it
+		// u"…" with anything not printable ASCII escaped \uXXXX, and a C wide
+		// string field holds exactly those units.
+		units := cManifestUnits(t, file, value[2:len(value)-1])
+		var b strings.Builder
+		for k, u := range units {
+			fmt.Fprintf(&b, "    if ( (uint16_t) %s[%d] != 0x%04Xu ) { printf( \"%s unit %d is not the manifest's 0x%04X\\n\" ); return 1; }\n",
+				expr, k, u, path, k, u)
+		}
+		return b.String()
+	case strings.HasPrefix(value, "\""):
+		lit := value[1 : len(value)-1]
+		return fmt.Sprintf("    if ( memcmp( %s, %q, %d ) != 0 ) { printf( \"%s is not the manifest's %s\\n\" ); return 1; }\n",
+			expr, lit, len(lit), path, lit)
+	case strings.HasPrefix(value, "nan|"):
+		// A SIGNALLING NaN's PAYLOAD IS THE VALUE, and the payload is the one
+		// manifest number this leg cannot hold: the only row carrying one
+		// widens f32 into f64, and C's own conversion does not promise the
+		// payload bits across that. What survives the widen is the NaN, so the
+		// NaN is what is asserted, and the bits are the reference's business on
+		// the row where the widths are equal.
+		return fmt.Sprintf("    if ( %s == %s ) { printf( \"%s is the manifest's %s: a NaN is not equal to itself\\n\" ); return 1; }\n",
+			expr, expr, path, value)
+	default:
+		if _, err := strconv.ParseInt(value, 10, 64); err != nil {
+			t.Fatalf("%s: the manifest value %q at %s is none of this leg's shapes", file, value, path)
+		}
+		return fmt.Sprintf("    if ( (long long) ( %s ) != %sll ) { printf( \"%s is not the manifest's %s: %%lld\\n\", (long long) ( %s ) ); return 1; }\n",
+			expr, value, path, value, expr)
+	}
+}
+
+// cManifestSpelling puts a manifest path in the READER's vocabulary: the renamed
+// field's own spelling, and an enum-keyed slot's STORAGE index. Both are facts
+// about the reader's declaration and neither is a value, which is why they live
+// on the row and not in the manifest.
+func cManifestSpelling(path string, r cVersionRow) string {
+	for from, to := range r.rename {
+		if path == from || strings.HasPrefix(path, from+".") || strings.HasPrefix(path, from+"[") {
+			path = to + path[len(from):]
+		}
+	}
+	for _, field := range r.keyed {
+		at := strings.Index(path, field+"[")
+		if at < 0 {
+			continue
+		}
+		open := at + len(field) + 1
+		close := strings.Index(path[open:], "]")
+		if close < 0 {
+			continue
+		}
+		key, err := strconv.Atoi(path[open : open+close])
+		if err != nil {
+			continue
+		}
+		path = path[:open] + strconv.Itoa(key-1) + path[open+close:]
+	}
+	return path
+}
+
+// cManifestArm inserts the `as` a C union's arm rides under; see cManifestCheck.
+func cManifestArm(path string) string {
+	cut := strings.LastIndex(path, ".")
+	if cut < 0 {
+		return path
+	}
+	head, leaf := path[:cut], path[cut+1:]
+	if at := strings.Index(head, "."); at >= 0 && head[at+1:] != "type" {
+		return head[:at] + ".as." + head[at+1:] + "." + leaf
+	}
+	return path
+}
+
+// cManifestUnits decodes the manifest's wide spelling into UTF-16 code units:
+// a printable ASCII byte is its own unit and \uXXXX is the unit it names.
+func cManifestUnits(t *testing.T, file, text string) []uint16 {
+	t.Helper()
+	var out []uint16
+	for i := 0; i < len(text); {
+		if text[i] == '\\' && i+5 < len(text) && text[i+1] == 'u' {
+			n, err := strconv.ParseUint(text[i+2:i+6], 16, 16)
+			if err != nil {
+				t.Fatalf("%s: the manifest's wide escape %q is not four hex digits", file, text[i:i+6])
+			}
+			out = append(out, uint16(n))
+			i += 6
+			continue
+		}
+		out = append(out, uint16(text[i]))
+		i++
+	}
+	return out
 }
 
 // ---- the harness ------------------------------------------------------------

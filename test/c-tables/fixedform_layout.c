@@ -23,14 +23,20 @@
    id (u64), kind (u8), size (u32), children (u32), every number
    little-endian.
 
-   THE HEADER'S HASH IS NOT RECOMPUTED AFTER A BREAK, and that is deliberate
-   rather than sloppy. Changing a byte inside the layout makes the hash at
-   offset 8 no longer the hash of the layout behind it, and the algorithm doc
-   §2 step 5 says that hash is checked LAST so the layout's own rules refuse
-   first. VERIFIED on this leg: the generated load (internal/codegen/ctable's
-   fixedform.go) parses and validates the layout in the not-my-hash branch and
-   only then compares the header hash, under a comment that says exactly that.
-   So each case below refuses by its own name and never as a lying header. */
+   THE READER THESE CASES ASSERT IS RETIRED, AND THE FUNCTION STAYS ANYWAY
+   (docs/FIXED-FORM-ALGORITHM.md §5.6, §5.9 #23). The words here used to say the
+   header's hash is checked LAST, so a byte broken inside the layout refused by
+   the layout's own rule rather than as a lying header — that was true of the
+   run-time walk of a stranger's layout, and §5.6 retired that walk. Under §5.3
+   the HASH IS STEP 5 and it is looked up FIRST: a hash no lineage entry holds
+   comes back `layout_newer` before one layout byte is touched, and the seven
+   §1.1 malformations under a KNOWN hash all come back as the one name
+   `layout_malformed`. So every case below would now answer by the HEADER and
+   never by its own rule, which is why fixedform_main.c SKIPS
+   fixed_fx1_layout_validation BY NAME and says where the coverage is owed
+   again: the LOCK's validation of what it records (internal/lockfile). The
+   function is not deleted — a deleted test is a coverage claim nobody can
+   audit — and it stays compiling, which is the whole of §5.9 #23's rule. */
 
 #include <string.h>
 

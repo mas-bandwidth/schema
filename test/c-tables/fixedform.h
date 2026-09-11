@@ -82,6 +82,15 @@ void fixed_guard_width( void );
    parameter the way they do for fixed_fx1_read_fx2. */
 void fixed_fx1_layout_validation( const uint8_t * data, int64_t bytes );
 
+/* §5.3'S CONDITION TABLE, THE ROWS THAT ARE ABOUT THE FILE AND NOT THE LAYOUT
+   (docs/FIXED-FORM-ALGORITHM.md §5.3). The layout's own rules are
+   fixed_fx1_layout_validation's; these are the seven rows beside them — the
+   form byte's three directions, the per-record hash, the caller's two
+   capacities, and the ragged tail that has no name at all. The file a probe
+   breaks is the one FX1 just wrote, so the good bytes arrive as a parameter the
+   way they do for fixed_fx1_read_own. */
+void fixed_fx1_refusal_names( const uint8_t * good, int64_t bytes );
+
 /* THE BYTE-FLIP FUZZ's reader (docs/SPEC-TABLES.md §3.4, "held by test"): it
    makes no claim about the values, only that the read answers one of the three
    ways the form allows and never leaves the buffer doing it. Every offset this
