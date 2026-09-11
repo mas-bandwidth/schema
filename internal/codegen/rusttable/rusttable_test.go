@@ -288,7 +288,7 @@ union Effect
     ward  Ward
 }
 
-table Holder
+fixed table Holder
 {
     effect Effect
     tail   int32
@@ -308,7 +308,7 @@ union Note
     tally int32
 }
 
-table Holder
+fixed table Holder
 {
     note Note
 }
@@ -456,7 +456,7 @@ func keysOf(out map[string][]byte) []string {
 // wide_key, flux and ping).
 const wideKinds = `package probe
 
-table Wide
+fixed table Wide
 {
     server_time fixed(24, 8)  | min = 0, max = 65535
     ping        ufixed(8, 8)  | min = 0, max = 250
@@ -551,7 +551,7 @@ func TestWideKindsAreRefusedByTheAcceleratorsAndCarriedByTheWire(t *testing.T) {
 // skipped the field if it had.
 const wideTextFixed = `package probe
 
-table Caption
+fixed table Caption
 {
     lead  int32
     wide  wstring(8)
@@ -677,7 +677,7 @@ func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
 // compiled both call it.
 const liveWriteSrc = `package probe
 
-table Probe
+fixed table Probe
 {
     marks [..4]int32
     blob  bytes(6)
