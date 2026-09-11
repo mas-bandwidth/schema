@@ -813,28 +813,34 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_strs( serialize_write_strea
     {
         return 0;
     }
+    serialize_assert( value->s_length >= 0 && value->s_length <= 8 );
     {
         int32_t i;
-        for ( i = 0; i < value->s_length; i++ )
+        const int32_t clamped_length = value->s_length < 0 ? 0 : ( value->s_length > ( 8 ) ? ( 8 ) : value->s_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        for ( i = 0; i < clamped_length; i++ )
         {
             serialize_assert( value->s[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
+        if ( !serialize_write_int( stream, clamped_length, 0, 8 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->s, (int) clamped_length ) )
+        {
+            return 0;
+        }
     }
-    if ( !serialize_write_int( stream, value->s_length, 0, 8 ) )
+    serialize_assert( value->b_length >= 0 && value->b_length <= 8 );
     {
-        return 0;
-    }
-    if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->s, (int) value->s_length ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_int( stream, value->b_length, 0, 8 ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_bytes( stream, value->b, (int) value->b_length ) )
-    {
-        return 0;
+        const int32_t clamped_length = value->b_length < 0 ? 0 : ( value->b_length > ( 8 ) ? ( 8 ) : value->b_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        if ( !serialize_write_int( stream, clamped_length, 0, 8 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bytes( stream, value->b, (int) clamped_length ) )
+        {
+            return 0;
+        }
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->tail, 3 ) )
     {

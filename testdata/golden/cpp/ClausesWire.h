@@ -498,16 +498,24 @@ SCHEMA_READ_INLINE bool ReadHoldsEmptyUnion( serialize::ReadStream & stream, Hol
 SCHEMA_WRITE_INLINE bool WriteStrs( serialize::WriteStream & stream, const Strs & value )
 {
     write_bits( stream, value.lead, 5 );
-    for ( int32_t i = 0; i < value.s_length; i++ )
+    serialize_assert( value.s_length >= 0 && value.s_length <= 8 );
     {
-        serialize_assert( value.s[i] != 0 );
+        const int32_t clamped_length = value.s_length < 0 ? 0 : ( value.s_length > ( 8 ) ? ( 8 ) : value.s_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            serialize_assert( value.s[i] != 0 );
+        }
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 8 ) );
+        write_bits( stream, uint32_t( clamped_length ), 4 );
+        write_bytes( stream, value.s, clamped_length );
     }
-    serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 8 ) );
-    write_bits( stream, uint32_t( value.s_length ), 4 );
-    write_bytes( stream, value.s, value.s_length );
-    serialize_assert( int32_t( value.b_length ) >= int32_t( 0 ) && int32_t( value.b_length ) <= int32_t( 8 ) );
-    write_bits( stream, uint32_t( value.b_length ), 4 );
-    write_bytes( stream, value.b, value.b_length );
+    serialize_assert( value.b_length >= 0 && value.b_length <= 8 );
+    {
+        const int32_t clamped_length = value.b_length < 0 ? 0 : ( value.b_length > ( 8 ) ? ( 8 ) : value.b_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 8 ) );
+        write_bits( stream, uint32_t( clamped_length ), 4 );
+        write_bytes( stream, value.b, clamped_length );
+    }
     write_bits( stream, value.tail, 3 );
     return true;
 }

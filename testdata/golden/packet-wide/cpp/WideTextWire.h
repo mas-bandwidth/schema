@@ -165,15 +165,19 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
 
 SCHEMA_WRITE_INLINE bool WriteWideSeven( serialize::WriteStream & stream, const WideSeven & value )
 {
-    for ( int32_t i = 0; i < value.text_length; i++ )
+    serialize_assert( value.text_length >= 0 && value.text_length <= 7 );
     {
-        serialize_assert( value.text[i] != 0 );
-    }
-    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( 7 ) );
-    write_bits( stream, uint32_t( value.text_length ), 3 );
-    for ( int32_t i = 0; i < value.text_length; i++ )
-    {
-        write_bits( stream, uint32_t( value.text[i] ), 32 );
+        const int32_t clamped_length = value.text_length < 0 ? 0 : ( value.text_length > ( 7 ) ? ( 7 ) : value.text_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            serialize_assert( value.text[i] != 0 );
+        }
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 7 ) );
+        write_bits( stream, uint32_t( clamped_length ), 3 );
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            write_bits( stream, uint32_t( value.text[i] ), 32 );
+        }
     }
     return true;
 }
@@ -211,15 +215,19 @@ SCHEMA_READ_INLINE bool ReadWideSeven( serialize::ReadStream & stream, WideSeven
 
 SCHEMA_WRITE_INLINE bool WriteWideFour( serialize::WriteStream & stream, const WideFour & value )
 {
-    for ( int32_t i = 0; i < value.text_length; i++ )
+    serialize_assert( value.text_length >= 0 && value.text_length <= 4 );
     {
-        serialize_assert( value.text[i] != 0 );
-    }
-    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( 4 ) );
-    write_bits( stream, uint32_t( value.text_length ), 3 );
-    for ( int32_t i = 0; i < value.text_length; i++ )
-    {
-        write_bits( stream, uint32_t( value.text[i] ), 32 );
+        const int32_t clamped_length = value.text_length < 0 ? 0 : ( value.text_length > ( 4 ) ? ( 4 ) : value.text_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            serialize_assert( value.text[i] != 0 );
+        }
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 4 ) );
+        write_bits( stream, uint32_t( clamped_length ), 3 );
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            write_bits( stream, uint32_t( value.text[i] ), 32 );
+        }
     }
     return true;
 }
@@ -257,13 +265,17 @@ SCHEMA_READ_INLINE bool ReadWideFour( serialize::ReadStream & stream, WideFour &
 
 SCHEMA_WRITE_INLINE bool WriteNarrowFifteen( serialize::WriteStream & stream, const NarrowFifteen & value )
 {
-    for ( int32_t i = 0; i < value.text_length; i++ )
+    serialize_assert( value.text_length >= 0 && value.text_length <= 15 );
     {
-        serialize_assert( value.text[i] != 0 );
+        const int32_t clamped_length = value.text_length < 0 ? 0 : ( value.text_length > ( 15 ) ? ( 15 ) : value.text_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            serialize_assert( value.text[i] != 0 );
+        }
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 15 ) );
+        write_bits( stream, uint32_t( clamped_length ), 4 );
+        write_bytes( stream, value.text, clamped_length );
     }
-    serialize_assert( int32_t( value.text_length ) >= int32_t( 0 ) && int32_t( value.text_length ) <= int32_t( 15 ) );
-    write_bits( stream, uint32_t( value.text_length ), 4 );
-    write_bytes( stream, value.text, value.text_length );
     return true;
 }
 
@@ -285,15 +297,19 @@ SCHEMA_READ_INLINE bool ReadNarrowFifteen( serialize::ReadStream & stream, Narro
 
 SCHEMA_WRITE_INLINE bool WriteWideInterop( serialize::WriteStream & stream, const WideInterop & value )
 {
-    for ( int32_t i = 0; i < value.caption_length; i++ )
+    serialize_assert( value.caption_length >= 0 && value.caption_length <= 7 );
     {
-        serialize_assert( value.caption[i] != 0 );
-    }
-    serialize_assert( int32_t( value.caption_length ) >= int32_t( 0 ) && int32_t( value.caption_length ) <= int32_t( 7 ) );
-    write_bits( stream, uint32_t( value.caption_length ), 3 );
-    for ( int32_t i = 0; i < value.caption_length; i++ )
-    {
-        write_bits( stream, uint32_t( value.caption[i] ), 32 );
+        const int32_t clamped_length = value.caption_length < 0 ? 0 : ( value.caption_length > ( 7 ) ? ( 7 ) : value.caption_length ); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            serialize_assert( value.caption[i] != 0 );
+        }
+        serialize_assert( int32_t( clamped_length ) >= int32_t( 0 ) && int32_t( clamped_length ) <= int32_t( 7 ) );
+        write_bits( stream, uint32_t( clamped_length ), 3 );
+        for ( int32_t i = 0; i < clamped_length; i++ )
+        {
+            write_bits( stream, uint32_t( value.caption[i] ), 32 );
+        }
     }
     return true;
 }

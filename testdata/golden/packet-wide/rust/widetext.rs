@@ -62,6 +62,7 @@ pub fn write_wide_seven(stream: &mut WriteStream<'_>, value: &WideSeven) -> Resu
     {
         let mut length = value.text_length;
         debug_assert!(length >= 0 && length <= 7, "text_length out of range [0, 7]");
+        length = length.clamp(0, 7); // release: an out-of-contract length writes the clamped length — never a trap (§5)
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -120,6 +121,7 @@ pub fn write_wide_four(stream: &mut WriteStream<'_>, value: &WideFour) -> Result
     {
         let mut length = value.text_length;
         debug_assert!(length >= 0 && length <= 4, "text_length out of range [0, 4]");
+        length = length.clamp(0, 4); // release: an out-of-contract length writes the clamped length — never a trap (§5)
         stream.serialize_int(&mut length, 0, 4)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -231,6 +233,7 @@ pub fn write_wide_interop(stream: &mut WriteStream<'_>, value: &WideInterop) -> 
     {
         let mut length = value.caption_length;
         debug_assert!(length >= 0 && length <= 7, "caption_length out of range [0, 7]");
+        length = length.clamp(0, 7); // release: an out-of-contract length writes the clamped length — never a trap (§5)
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.caption[..length as usize] {
             debug_assert!(unit != 0, "caption carries an interior null within its used length");

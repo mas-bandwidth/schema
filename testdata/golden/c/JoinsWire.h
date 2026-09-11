@@ -544,20 +544,22 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_arm_align( serialize_write_
     }
     if ( value->flag )
     {
+        serialize_assert( value->s_length >= 0 && value->s_length <= 4 );
         {
             int32_t i;
-            for ( i = 0; i < value->s_length; i++ )
+            const int32_t clamped_length = value->s_length < 0 ? 0 : ( value->s_length > ( 4 ) ? ( 4 ) : value->s_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+            for ( i = 0; i < clamped_length; i++ )
             {
                 serialize_assert( value->s[i] != 0 ); /* interior null on write (SPEC §4.7) */
             }
-        }
-        if ( !serialize_write_int( stream, value->s_length, 0, 4 ) )
-        {
-            return 0;
-        }
-        if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->s, (int) value->s_length ) )
-        {
-            return 0;
+            if ( !serialize_write_int( stream, clamped_length, 0, 4 ) )
+            {
+                return 0;
+            }
+            if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->s, (int) clamped_length ) )
+            {
+                return 0;
+            }
         }
     }
     else
@@ -1000,20 +1002,22 @@ static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int write_regain_after_align( seriali
             }
         }
     }
+    serialize_assert( value->s_length >= 0 && value->s_length <= 4 );
     {
         int32_t i;
-        for ( i = 0; i < value->s_length; i++ )
+        const int32_t clamped_length = value->s_length < 0 ? 0 : ( value->s_length > ( 4 ) ? ( 4 ) : value->s_length ); /* release: an out-of-contract length writes the clamped length — never a trap (SPEC §5) */
+        for ( i = 0; i < clamped_length; i++ )
         {
             serialize_assert( value->s[i] != 0 ); /* interior null on write (SPEC §4.7) */
         }
-    }
-    if ( !serialize_write_int( stream, value->s_length, 0, 4 ) )
-    {
-        return 0;
-    }
-    if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->s, (int) value->s_length ) )
-    {
-        return 0;
+        if ( !serialize_write_int( stream, clamped_length, 0, 4 ) )
+        {
+            return 0;
+        }
+        if ( !serialize_write_bytes( stream, (const serialize_uint8_t *) value->s, (int) clamped_length ) )
+        {
+            return 0;
+        }
     }
     if ( !serialize_write_bits( stream, (serialize_uint32_t) value->p, 32 ) )
     {
