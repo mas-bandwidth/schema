@@ -620,12 +620,9 @@ void uint_widen_case()
 // ---------------------------------------------------------------------------
 // 10. float_widen — float32 -> float64, BY THE BITS.
 //
-// THE FU RULING (#895, for #876 to settle): the fixed form's float rung is a
-// plain `(double) f`, so a SIGNALLING NaN comes back QUIET and the one payload
-// bit that said "signalling" is gone. §4's own TableWidenF32 does the bit
-// surgery and keeps it. This case pins WHAT THE REFERENCE DOES TODAY and asserts
-// the 22 payload bits BELOW THE QUIET BIT ride exactly — the half no ruling can
-// change — so the day the quiet bit is ruled on, one line moves.
+// ALGORITHM §4.5: widenf is exact by construction, NaN payloads included. The
+// same bit surgery as TableWidenF32: the sign rides, the 23 payload bits ride
+// at the top of the double's 52, and a signalling NaN stays signalling.
 
 uint64_t bits64( double d ) { uint64_t b; std::memcpy( &b, &d, 8 ); return b; }
 float f_from( uint32_t b ) { float f; std::memcpy( &f, &b, 4 ); return f; }
@@ -658,19 +655,15 @@ void float_widen_case()
         // the sign and the exponent: a NaN stays a NaN of the same sign
         check( ( got >> 63 ) == ( kSignalling >> 31 ), "float_widen/NEW-READS-OLD: the SIGN bit rides" );
         check( ( ( got >> 52 ) & 0x7FFull ) == 0x7FFull, "float_widen/NEW-READS-OLD: a NaN stays a NaN" );
-        // THE HALF NO RULING CAN MOVE: the 22 payload bits below f32's quiet
-        // bit, where they land in f64 (mantissa bits 51..30 of the double).
         // f32's mantissa bits 22..0 land in f64's 51..29: the quiet bit at 51,
-        // the 22 payload bits below it at 50..29.
-        const uint32_t payload22 = kSignalling & 0x003FFFFFu;
-        check( (uint32_t) ( ( got >> 29 ) & 0x003FFFFFull ) == payload22,
-               "float_widen/NEW-READS-OLD: the 22 payload bits BELOW the quiet bit ride exactly (the FU ruling)" );
+        // the 22 payload bits below it at 50..29. A signalling NaN keeps bit 51
+        // clear.
+        const uint32_t payload23 = kSignalling & 0x007FFFFFu;
+        check( (uint32_t) ( ( got >> 29 ) & 0x007FFFFFull ) == payload23,
+               "float_widen/NEW-READS-OLD: the 23 payload bits ride exactly (ALGORITHM §4.5)" );
         check( ( got & 0x1FFFFFFFull ) == 0, "float_widen/NEW-READS-OLD: the 29 bits f32 never had are zero" );
-        // AND THE QUIET BIT, pinned to what the reference does TODAY and named
-        // so the ruling in #876 moves ONE line.
-        const uint64_t quiet_today = 1ull << 51; // `(double) f` sets it; TableWidenF32 would not
-        check( ( got & ( 1ull << 51 ) ) == quiet_today,
-               "float_widen/NEW-READS-OLD: the QUIET BIT is what the reference does today (#876 to rule)" );
+        check( ( got & ( 1ull << 51 ) ) == 0,
+               "float_widen/NEW-READS-OLD: a signalling NaN stays signalling (TableWidenF32)" );
         check( r.widened == 1, "float_widen/NEW-READS-OLD: `widened` += 1" );
         check( r.unknown == 0 && r.kind_mismatch == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "float_widen/NEW-READS-OLD: nothing else fired" );

@@ -66,7 +66,7 @@ fixed table FuRoot
     mark int16 = -1
     // AND THE FLOAT RUNG (SPEC §4), f32 into f64, for the same reason: it is
     // the one rung that is not a re-imaged integer, and the pattern it has to
-    // get right is a SIGNALLING NaN — which the reference's `(double) f`
-    // QUIETS, because every hardware convert does. FU2 declares it a `float64`.
+    // get right is a SIGNALLING NaN — exact by construction, NaN payloads
+    // included (ALGORITHM §4.5). FU2 declares it a `float64`.
     heat float32 = 0
 }

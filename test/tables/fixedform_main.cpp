@@ -1742,25 +1742,13 @@ static std::vector<uint8_t> slurp( const char * dir, const char * name, bool & o
 static uint32_t bits32( float f ) { uint32_t b; std::memcpy( &b, &f, 4 ); return b; }
 static uint64_t bits64( double d ) { uint64_t b; std::memcpy( &b, &d, 8 ); return b; }
 
-// WHAT THIS FORM'S FLOAT RUNG ACTUALLY DOES TO A NaN, stated as arithmetic so
-// the claim is readable rather than inherited from the machine: the sign rides,
-// the 23 payload bits ride at the top of the double's 52 — AND THE QUIET BIT
-// COMES BACK SET, because `kTableFixedWidenF` is a plain `(double) f`
-// (internal/codegen/cpptable/fixedruntime.go:323) and every hardware convert
-// quiets.
-//
-// THAT IS NOT WHAT §4's OWN HELPER DOES. `TableWidenF32`, the rung on every
-// other projection, carries the comment "since the hardware conversion would
-// set the quiet bit" and does the bit surgery to keep a signalling NaN
-// signalling; test/tables/floatnan_main.cpp pins THAT answer over F1/F2. So the
-// same rung has two answers depending on the form, and FU1.schema's own note
-// ("which the reference's `(double) f` QUIETS") predicted this one. The oracle
-// pins what the reference does TODAY and names the divergence; which of the two
-// is the ruling is schema#876's to settle, and the day it settles this constant
-// is the one line that moves.
+// f32 into f64, exact: the sign rides, the 23 payload bits ride at the top of
+// the double's 52, and a signalling NaN stays signalling. Same arithmetic as
+// TableWidenF32 (internal/codegen/cpptable/widen.go). ALGORITHM §4.5: widenf
+// is exact by construction, NaN payloads included.
 static uint64_t widened_f32_nan( uint32_t narrow )
 {
-    return ( (uint64_t) ( narrow >> 31 ) << 63 ) | 0x7FF8000000000000ull
+    return ( (uint64_t) ( narrow >> 31 ) << 63 ) | 0x7FF0000000000000ull
          | ( (uint64_t) ( narrow & 0x007FFFFFu ) << 29 );
 }
 
@@ -1821,29 +1809,26 @@ static void fu_oracle_case( const char * dir )
                    "SIGNED RUNG: int16 into int32, SIGN-EXTENDED — -1 is -1 and never 65535" );
             check( wide[i].extra == 11, "oracle fu1: compiled, `extra` takes its declared default" );
         }
-        // THE FLOAT RUNG on the two NaNs: the payload and the sign ride, the
-        // quiet bit comes back set (see widened_f32_nan above)
+        // THE FLOAT RUNG on the two NaNs: the payload and the sign ride, and a
+        // signalling NaN stays signalling (see widened_f32_nan above)
         check( bits64( wide[0].heat ) == widened_f32_nan( heat_bits[0] ),
                "FLOAT RUNG: f32 into f64, the smallest NaN payload rides in the top of the 52" );
         check( bits64( wide[1].heat ) == widened_f32_nan( heat_bits[1] ),
                "FLOAT RUNG: f32 into f64, a NEGATIVE NaN's sign and rich payload ride" );
-        // THE 22 PAYLOAD BITS BELOW THE QUIET BIT SURVIVE EXACTLY, at the top of
-        // the double's 52 — that much both answers agree on. The 23rd, the f32
-        // QUIET BIT, lands on the double's quiet bit and comes back SET, so it
-        // is the ONE bit of the payload this form does not carry across: a
-        // signalling NaN arrives quiet and nothing in the report says so.
-        check( ( ( bits64( wide[0].heat ) >> 29 ) & 0x003FFFFFull ) == ( heat_bits[0] & 0x003FFFFFu ) &&
-               ( ( bits64( wide[1].heat ) >> 29 ) & 0x003FFFFFull ) == ( heat_bits[1] & 0x003FFFFFu ),
-               "FLOAT RUNG: the 22 payload bits below the quiet bit are where the narrow width had them" );
+        // ALL 23 PAYLOAD BITS RIDE, at the top of the double's 52 — the quiet
+        // bit of the f32 is the quiet bit of the f64, so a signalling NaN
+        // stays signalling. The 29 bits f32 never had stay zero.
+        check( ( ( bits64( wide[0].heat ) >> 29 ) & 0x007FFFFFull ) == ( heat_bits[0] & 0x007FFFFFu ) &&
+               ( ( bits64( wide[1].heat ) >> 29 ) & 0x007FFFFFull ) == ( heat_bits[1] & 0x007FFFFFu ),
+               "FLOAT RUNG: the 23 payload bits are where the narrow width had them" );
+        check( ( bits64( wide[0].heat ) & 0x1FFFFFFFull ) == 0 &&
+               ( bits64( wide[1].heat ) & 0x1FFFFFFFull ) == 0,
+               "FLOAT RUNG: the 29 bits f32 never had are zero" );
         check( ( heat_bits[0] & 0x00400000u ) == 0 && ( heat_bits[1] & 0x00400000u ) == 0,
                "FLOAT RUNG: both written NaNs are SIGNALLING at the narrow width" );
         check( ( bits64( wide[1].heat ) >> 63 ) == 1, "FLOAT RUNG: a negative NaN keeps its sign" );
-        // THE DIVERGENCE, PINNED BY NAME: this form quiets and §4's own
-        // TableWidenF32 does not (test/tables/floatnan_main.cpp). Pinned so the
-        // day it is ruled on, a test says so rather than a port discovering it.
-        check( ( bits64( wide[0].heat ) & 0x0008000000000000ull ) != 0,
-               "FLOAT RUNG, THE FIXED FORM'S ANSWER: `(double) f` QUIETS the signalling NaN — "
-               "§4's TableWidenF32 keeps it signalling, so the rung has two answers (schema#876)" );
+        check( ( bits64( wide[0].heat ) & 0x0008000000000000ull ) == 0,
+               "FLOAT RUNG: a signalling NaN stays signalling (TableWidenF32, ALGORITHM §4.5)" );
         // AND AN ORDINARY FLOAT, where the conversion is the whole of the rung
         check( wide[2].heat == 1.5, "FLOAT RUNG: an ordinary float widens to the same number" );
         check( bits64( wide[2].heat ) == 0x3FF8000000000000ull, "FLOAT RUNG: 1.5 widens to 1.5's bits" );
