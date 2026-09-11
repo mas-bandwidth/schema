@@ -18,7 +18,7 @@ import (
 // generateFixedFiles emits <Base>Table.js for every unit file that declares a
 // table, plus the unit's runtime home. A unit with no fixed-form root at all
 // gets no Table.js: nothing would be in it but a refusal nobody imports.
-func generateFixedFiles(u *ir.Unit, wide []string) (map[string][]byte, error) {
+func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	roots := map[string][]*ir.Struct{}
 	any := false
@@ -53,7 +53,7 @@ func generateFixedFiles(u *ir.Unit, wide []string) (map[string][]byte, error) {
 			continue
 		}
 		g := &fixedModule{unit: u, file: f, base: f.Base, home: f.Base == home, homeBase: home,
-			wide: wide, imports: map[string]map[string]bool{}}
+			wide: wide, imports: map[string]map[string]bool{}, lineage: lineage}
 		g.emit(closure, roots[f.Base], f.Tables)
 		if g.home {
 			homeWritten = true
@@ -62,7 +62,7 @@ func generateFixedFiles(u *ir.Unit, wide []string) (map[string][]byte, error) {
 	}
 	if !homeWritten {
 		g := &fixedModule{unit: u, base: home, home: true, homeBase: home,
-			wide: wide, imports: map[string]map[string]bool{}}
+			wide: wide, imports: map[string]map[string]bool{}, lineage: lineage}
 		g.emit(closure, nil, nil)
 		out[home+"Table.js"] = g.assemble()
 	}
@@ -76,6 +76,7 @@ type fixedModule struct {
 	home     bool
 	homeBase string
 	wide     []string
+	lineage  map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
 	imports  map[string]map[string]bool
 	gen      fixedGen
 	body     strings.Builder

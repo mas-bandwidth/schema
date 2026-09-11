@@ -182,6 +182,19 @@ func refuseFileCollisions(u *ir.Unit) error {
 // unit declares tables, and nothing when it does not — a table-free unit's
 // generated JavaScript is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is [Generate] with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #1). A nil map is a build with no
+// lock — a unit that was never locked promises nothing — and every table then
+// carries the one entry it can always compute: its own.
+//
+// THE BACKEND OPENS NO FILE: `lockfile.Open`, `lockfile.Lineage` and
+// `lockfile.Floor` are the CALLER's three calls, so the disk is read in one
+// place and a test can play the lock in one line.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -226,7 +239,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
 	// FIRST table wire. Form 1 is still deferred to #516 and nothing here
 	// reads or writes one.
-	fixed, err := generateFixedFiles(u, wide)
+	fixed, err := generateFixedFiles(u, wide, lineage)
 	if err != nil {
 		return nil, err
 	}
