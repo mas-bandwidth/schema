@@ -216,7 +216,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// emitted (§5.9 #8, #26): a layout that does not parse, or a record size
 	// that is not what the entry's own layout accounts for, is never a wire
 	// event and never a refusal at the first file that matches its hash.
-	if err := refuseFixedLineage(lineage); err != nil {
+	if err := refuseFixedLineage(u, lineage); err != nil {
 		return nil, err
 	}
 	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE

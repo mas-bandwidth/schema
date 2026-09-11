@@ -138,9 +138,27 @@ func jsFixedUnitRoots(u *ir.Unit) []*ir.Struct {
 // EXACTLY the entries. A generator check looser than the reader's would pass an
 // entry the reader then refuses at run time, which is the hole this closes; a
 // check stricter than it would fail a build over a layout that reads fine.
-func refuseFixedLineage(lineage map[string][]FixedLineageEntry) error {
+// AND IT IS THE EMITTED ROOTS' LINEAGE AND NOBODY ELSE'S. The lock is ONE file
+// five legs read, and it records a layout for EVERY fixed table — including one
+// this form is not emitted for: a body past §3.4's 65536-byte ceiling keeps form
+// 1 and carries no form-3 layout at all (ir.TableFixedRecordBounds warns by
+// name). Holding such an entry to this form's rules is reading the lock wrong in
+// the loudest possible way: the root's size is past the 65536 the READER caps a
+// record at, so the bytes "do not parse", and #8 then fails the build over a
+// lock that is correct — which is exactly how `tables/examples`' `WideBlob`
+// (280012 bytes) went red here and green in every other leg. A table with no
+// form has no entry OF THIS FORM to check, so the lineage this walks is
+// `fixedRoots`' and the rest of the map is not this form's business.
+func refuseFixedLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) error {
+	emitted := make(map[string]bool, len(lineage))
+	for _, st := range jsFixedUnitRoots(u) {
+		emitted[st.Name] = true
+	}
 	names := make([]string, 0, len(lineage))
 	for name := range lineage {
+		if !emitted[name] {
+			continue
+		}
 		names = append(names, name)
 	}
 	sort.Strings(names)
