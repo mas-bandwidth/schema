@@ -186,7 +186,10 @@ Adding but never removing?" Three.
    means). None of it breaks a read; it is the price. The escape, in Glenn's order: "You would just create a
    new table if it got too large. Then deprecate the old, clean out the cruft, and upgrade the backend first
    to read the new table and the old. Deploy it, then deploy the client." A new table is a fresh lineage
-   with its own lock entry; the old one stays readable for as long as its files exist.
+   with its own lock entry; the old one stays readable for as long as its files exist, "and once no clients
+   are live talking the old table, remove the old table that is deprecated." The layout hash is the
+   per-table version; the new table is the explicit bump (Glenn: "you can see in network next how I would
+   do this with per-table versions").
 
 ## 9. Open, for the cold read
 
