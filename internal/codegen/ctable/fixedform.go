@@ -486,13 +486,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("   §5.8 row 3 forbids — compiling from A FILE'S bytes into a cache a load\n")
 		g.pf("   can miss — is gone either way: the bytes here are the lock's. */\n")
 		g.pf("#define %s_FIXED_LINEAGE_STRIDE %d\n", strings.ToUpper(n), stride)
+		g.pf("%s", tableFixedOnce)
 		g.pf("static TableFixedEntry %s_fixed_lineage_storage[%d][%s_FIXED_LINEAGE_STRIDE];\n", n, len(lineage), strings.ToUpper(n))
 		g.pf("static TableFixedLineagePlan %s_fixed_lineage[%d];\n", n, len(lineage))
-		g.pf("static int %s_fixed_lineage_ready = 0;\n", n)
+		g.pf("static TableFixedOnce %s_fixed_lineage_ready = SCHEMA_TABLE_FIXED_ONCE_UNBUILT;\n", n)
 		g.pf("static SCHEMA_UNUSED void %s_fixed_lineage_build( void )\n{\n", n)
 		g.pf("    int32_t i;\n")
-		g.pf("    if ( %s_fixed_lineage_ready ) { return; }\n", n)
-		g.pf("    %s_fixed_lineage_ready = 1;\n", n)
+		g.pf("    /* THE FLAG IS PUBLISHED LAST, AFTER THE LOOP, and a racing load WAITS for\n")
+		g.pf("       it: a second thread that sees the plans unpublished must never read\n")
+		g.pf("       them, because an unbuilt TableFixedLineagePlan is all zeros — entries\n")
+		g.pf("       NULL, count 0 — and zeros are a plan step 8 accepts, landing a\n")
+		g.pf("       prefill-only record where the read owed a refusal. So: READY is an\n")
+		g.pf("       acquire load, the build is CLAIMED by one thread, every other thread\n")
+		g.pf("       waits on that acquire, and the publish is a release store of READY\n")
+		g.pf("       after the last entry is written (§5.9 #7). */\n")
+		g.pf("    if ( table_fixed_once_ready( &%s_fixed_lineage_ready ) ) { return; }\n", n)
+		g.pf("    if ( !table_fixed_once_claim( &%s_fixed_lineage_ready ) )\n    {\n", n)
+		g.pf("        table_fixed_once_wait( &%s_fixed_lineage_ready ); /* WAIT — never the zeroed plan */\n", n)
+		g.pf("        return;\n    }\n")
 		g.pf("    for ( i = 0; i < %s_fixed_known_count; ++i )\n    {\n", n)
 		g.pf("        TableFixedLayoutView parsed;\n        TableReport census;\n")
 		g.pf("        TableFixedEntry * dest = %s_fixed_lineage_storage[i];\n", n)
@@ -522,7 +533,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        /* THE COMPILE CENSUS, ONCE PER PEER and never per record (§5.4). */\n")
 		g.pf("        %s_fixed_lineage[i].unknown = census.unknown;\n", n)
 		g.pf("        %s_fixed_lineage[i].kind_mismatch = census.kind_mismatch;\n", n)
-		g.pf("    }\n}\n\n")
+		g.pf("    }\n")
+		g.pf("    /* AND THE FLAG LAST: every entry above is written before this store, and\n")
+		g.pf("       this store is what a waiting thread's acquire is waiting for. */\n")
+		g.pf("    table_fixed_once_publish( &%s_fixed_lineage_ready );\n}\n\n", n)
 	}
 
 	g.pf("/* A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)\n")
@@ -976,3 +990,84 @@ func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
 	g.pf("%s(*clamped) += ( %s );\n", ind, test)
 	g.pf("%s%s = ( %s ) ? %s : %s;\n", ind, expr, test, bound, expr)
 }
+
+// tableFixedOnce is THE ONCE-FLAG AND ITS PUBLICATION, emitted beside the lazy
+// build of the older lineage plans and nowhere else — a unit with no older peer
+// has no lazy build, so it carries not one line of this.
+//
+// THE BUG IT CLOSES: the flag used to be raised BEFORE the loop, which made a
+// second thread racing the first older-peer load return from the build with the
+// plans still zeros. A zeroed TableFixedLineagePlan is entries NULL, count 0 and
+// reason 0 — and step 8 of §5.3 accepts that: reason 0 is "this peer planned
+// fine", count 0 is "a plan with no entries", so the read would land a
+// PREFILL-ONLY record instead of refusing. The fix is the ordinary one: build
+// into the static storage first, publish the flag LAST, and make a load that
+// arrives before the publication WAIT for it rather than read what is not there.
+//
+// WHY NOT <stdatomic.h>: the generated headers compile under -std=c99 (the
+// Makefile's TABLES_CFLAGS), and the zero-cost gate in make/c.mk REFUSES the
+// string "stdatomic" in a value-only unit's header by name. So the acquire and
+// the release are the GNU/clang __atomic builtins, which C99 has and which name
+// no header; MSVC gets the interlocked intrinsic it already has; and a compiler
+// with neither falls back to a plain store AFTER THE LOOP, where the ordering
+// the comment asks for is the only ordering left to ask for.
+//
+// THE REMAINING WINDOW, NAMED, on that last fallback only: with no
+// compare-and-exchange there is nothing to claim with, so two threads can both
+// walk the build and write THE SAME BYTES into the same storage. No load ever
+// reads a zeroed plan — a thread reaches the plan only after its own build
+// returned — but the duplicate write is a data race in the abstract machine and
+// this leg owes the fix the spec already names: §5.9 #7's GENERATOR-SIDE
+// COMPILE, which lays every older peer's plan down as static const data at
+// generate time and deletes the lazy build, the flag and this whole block with
+// it. Until then the build is this, and the ordering is published.
+const tableFixedOnce = `
+#ifndef SCHEMA_TABLE_FIXED_ONCE
+#define SCHEMA_TABLE_FIXED_ONCE
+/* 0 = nobody has built, 1 = one thread is building, 2 = the plans are readable */
+#define SCHEMA_TABLE_FIXED_ONCE_UNBUILT 0
+#define SCHEMA_TABLE_FIXED_ONCE_BUILDING 1
+#define SCHEMA_TABLE_FIXED_ONCE_READY 2
+#if defined( __GNUC__ ) || defined( __clang__ )
+typedef int TableFixedOnce;
+#define table_fixed_once_ready( f ) ( __atomic_load_n( ( f ), __ATOMIC_ACQUIRE ) == SCHEMA_TABLE_FIXED_ONCE_READY )
+#define table_fixed_once_publish( f ) __atomic_store_n( ( f ), SCHEMA_TABLE_FIXED_ONCE_READY, __ATOMIC_RELEASE )
+static SCHEMA_UNUSED int table_fixed_once_claim( TableFixedOnce * f )
+{
+    int want = SCHEMA_TABLE_FIXED_ONCE_UNBUILT;
+    return __atomic_compare_exchange_n( f, &want, SCHEMA_TABLE_FIXED_ONCE_BUILDING, 0,
+                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE ) ? 1 : 0;
+}
+/* THE WAIT. The build is a BOUNDED walk over the lock's own bytes — no file, no
+   allocation, no lock of its own and no call out — so the thread that claimed it
+   always reaches the publish, and this spin always ends. It runs at most once
+   per process per table and never on the record loop. */
+static SCHEMA_UNUSED void table_fixed_once_wait( TableFixedOnce * f )
+{
+    while ( __atomic_load_n( f, __ATOMIC_ACQUIRE ) != SCHEMA_TABLE_FIXED_ONCE_READY )
+    {
+        /* nothing: the load is the whole body, and it is an acquire */
+    }
+}
+#elif defined( _MSC_VER )
+typedef long TableFixedOnce;
+#define table_fixed_once_ready( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_TABLE_FIXED_ONCE_READY, SCHEMA_TABLE_FIXED_ONCE_READY ) == SCHEMA_TABLE_FIXED_ONCE_READY )
+#define table_fixed_once_publish( f ) ( (void) _InterlockedExchange( ( f ), SCHEMA_TABLE_FIXED_ONCE_READY ) )
+#define table_fixed_once_claim( f ) ( _InterlockedCompareExchange( ( f ), SCHEMA_TABLE_FIXED_ONCE_BUILDING, SCHEMA_TABLE_FIXED_ONCE_UNBUILT ) == SCHEMA_TABLE_FIXED_ONCE_UNBUILT )
+#define table_fixed_once_wait( f ) do { while ( !table_fixed_once_ready( f ) ) { } } while ( 0 )
+#else
+/* NO ATOMIC ON THIS COMPILER, AND THE WINDOW IS NAMED. The publish is a plain
+   store AFTER the loop, so no thread can read a zeroed plan: a thread reaches
+   the plans only after its own build wrote them. What is left is that two
+   threads may build at once and write THE SAME BYTES twice — a race in the
+   abstract machine with one outcome in practice — and the fix is not a bigger
+   macro here, it is §5.9 #7's generator-side COMPILE, which lays these plans
+   down as static const data and removes the lazy build entirely. OWED. */
+typedef int TableFixedOnce;
+#define table_fixed_once_ready( f ) ( *( f ) == SCHEMA_TABLE_FIXED_ONCE_READY )
+#define table_fixed_once_publish( f ) ( *( f ) = SCHEMA_TABLE_FIXED_ONCE_READY )
+#define table_fixed_once_claim( f ) ( 1 )
+#define table_fixed_once_wait( f ) ( (void) ( f ) )
+#endif
+#endif
+`

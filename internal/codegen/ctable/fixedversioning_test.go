@@ -492,3 +492,81 @@ int main( void )
 }
 
 var _ = binary.LittleEndian
+
+// ---- THE ONCE-FLAG IS PUBLISHED AFTER THE LOOP ------------------------------
+//
+// This one asserts an ORDER IN THE EMITTED C and needs no corpus, no compiler
+// and no thread, because the bug it guards is not a timing bug in a test's eye:
+// the flag used to be raised BEFORE the walk that fills the plans, so a second
+// thread racing the first older-peer load returned from the build with
+// <name>_fixed_lineage still zeros — entries NULL, count 0, reason 0 — and step
+// 8 of §5.3 ACCEPTS that shape. The read would land a prefill-only record where
+// it owed a refusal. A race is a hard thing to catch twice; the order that makes
+// it impossible is one sentence about the generated text, so it is asserted as
+// one.
+func TestFixedLineageOnceFlagPublishedLast(t *testing.T) {
+	t.Parallel()
+	newer := cUnitOf(t, cReadSchema(t, "VNEW_field_append"))
+	older := cUnitOf(t, cReadSchema(t, "VOLD_field_append"))
+	lineage := map[string][]FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(older) {
+		e, ok := FixedLineageOf(older, st.Name)
+		if !ok {
+			t.Fatalf("no lineage entry for %s", st.Name)
+		}
+		lineage[st.Name] = append(lineage[st.Name], e)
+	}
+	files, err := GenerateLineage(newer, lineage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := ""
+	for name, data := range files {
+		if strings.HasSuffix(name, "Table.h") && !strings.Contains(name, "/") {
+			header = string(data)
+		}
+	}
+	if header == "" {
+		t.Fatal("no Table.h was generated")
+	}
+	// the build function's own text, and nothing else's
+	const open = "_fixed_lineage_build( void )\n{\n"
+	at := strings.Index(header, open)
+	if at < 0 {
+		t.Fatal("the lazy build of the older plans is not in the emitted C")
+	}
+	end := strings.Index(header[at:], "\n}\n")
+	if end < 0 {
+		t.Fatal("the lazy build has no end")
+	}
+	body := header[at+len(open) : at+end]
+
+	loop := strings.Index(body, "for ( i = 0; i < ")
+	publish := strings.Index(body, "table_fixed_once_publish(")
+	switch {
+	case loop < 0:
+		t.Fatal("the build no longer walks the lineage")
+	case publish < 0:
+		t.Fatal("the build never publishes the once-flag: nothing can tell a built plan from a zeroed one")
+	case publish < loop:
+		t.Fatalf("THE FLAG IS PUBLISHED BEFORE THE LOOP, so a racing load reads a zeroed "+
+			"TableFixedLineagePlan and lands a prefill-only record instead of refusing (§5.9 #7):\n%s", body)
+	}
+	// and it is published ONCE, after the loop — not also before it
+	if n := strings.Count(body, "table_fixed_once_publish("); n != 1 {
+		t.Fatalf("the once-flag is published %d times; the order is only a claim if there is one store", n)
+	}
+	// nothing else writes the flag: no plain assignment anywhere in the body
+	if strings.Contains(body, "_fixed_lineage_ready = ") {
+		t.Fatalf("the once-flag is assigned directly inside the build — the publish is the only store that may\n%s", body)
+	}
+	// a load that arrives before the publication WAITS for it rather than
+	// reading what is not there (the refuse-or-wait obligation, discharged by
+	// waiting: the build is a bounded walk over the lock's own bytes)
+	if !strings.Contains(body, "table_fixed_once_claim(") || !strings.Contains(body, "table_fixed_once_wait(") {
+		t.Fatalf("a racing load must claim the build or wait for it, never read the zeroed plan\n%s", body)
+	}
+	if claim, wait := strings.Index(body, "table_fixed_once_claim("), strings.Index(body, "table_fixed_once_wait("); claim > wait || wait > loop {
+		t.Fatalf("the claim comes first, then the wait, then the walk\n%s", body)
+	}
+}
