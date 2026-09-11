@@ -114,6 +114,17 @@ var cVersionRows = []cVersionRow{
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+    if ( n != 1 ) { printf( "the fixed_I_grow_element file carries one record, not %lld\n", (long long) n ); return 1; }
+    {
+        const int32_t want[4] = { -1, -2, -3, -4 };
+        int k;
+        for ( k = 0; k < 4; ++k )
+        {
+            if ( (int32_t) back[0].v[k] != want[k] ) { printf( "slot %d widened wrong: %d\n", k, (int) back[0].v[k] ); return 1; }
+        }
+        if ( back[0].lead != 0xAAAAAAAAu || back[0].trail != 0xBBBBBBBBu ) { printf( "the row moved a neighbour\n" ); return 1; }
+    }`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true, check: `
