@@ -5803,6 +5803,16 @@ toolchain-negative-control:
 # pointers read null, and the home vessel holds its declared default. The
 # positive half runs first, against the shipped W2, so the two answers are
 # read side by side.
+# ---- rowan/cpp-versioning-numbers: BEGIN ----
+# THE FLOOR'S TEST-ONLY SETTER, and nothing else, lives behind this define. It
+# is NOT `SCHEMA_HAS_FLOOR`: that one says a build HAS a floor, and a shipped
+# build that has one must not compile a way to lower it. Only the two fixedform
+# test binaries below pass it, so the emitter is to emit
+# `T##FixedSetFloorForTest` under this define alone (test/tables/versioning_numbers.cpp,
+# `floor_raise_live`; bill §6b, §9).
+FIXEDFORM_TEST_HOOKS = -DSCHEMA_FIXED_FLOOR_TEST_HOOKS
+# ---- rowan/cpp-versioning-numbers: END ----
+
 .PHONY: tables-was-negative-control
 # THE FIXED FORM'S VERSIONING CONFORMANCE (docs/SPEC-TABLES.md §3.4). One
 # binary, every case of §3.4's "held by test" row: the identity plan, an older
@@ -5827,7 +5837,7 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -Ibuild/tables-generated/vnum \
-	    $(VLISTS_INCLUDES) \
+	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
 	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
 
@@ -5846,7 +5856,7 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -Ibuild/tables-generated/vnum \
-	    $(VLISTS_INCLUDES) \
+	    $(VLISTS_INCLUDES) $(FIXEDFORM_TEST_HOOKS) \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
 	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
 

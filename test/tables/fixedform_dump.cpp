@@ -356,10 +356,17 @@ static bool versioning_numbers_files( const char * dir )
           v[0].lead = 0xAAAAAAAAu; v[0].vals_count = 8;
           for ( int i = 0; i < 8; ++i ) { v[0].vals[i] = 2000 + i; } v[0].trail = 0xBBBBBBBBu; );
 
+    // the element is a NESTED TYPE with NONZERO defaults (x = 7, y = 9), so the
+    // reader's slack slots can tell an ELEMENT-DEFAULT prefill (bill §12.6)
+    // apart from a plain zero fill. No written element is ever 7 or 9.
     VROW( vold_array_fixed_grow, ArrayFixedGrow, "old_array_fixed_grow.bin",
-          v[0].lead = 0xAAAAAAAAu; for ( int i = 0; i < 4; ++i ) { v[0].vals[i] = -500 - i; } v[0].trail = 0xBBBBBBBBu; );
+          v[0].lead = 0xAAAAAAAAu;
+          for ( int i = 0; i < 4; ++i ) { v[0].vals[i].x = -500 - i; v[0].vals[i].y = -600 - i; }
+          v[0].trail = 0xBBBBBBBBu; );
     VROW( vnew_array_fixed_grow, ArrayFixedGrow, "new_array_fixed_grow.bin",
-          v[0].lead = 0xAAAAAAAAu; for ( int i = 0; i < 8; ++i ) { v[0].vals[i] = 3000 + i; } v[0].trail = 0xBBBBBBBBu; );
+          v[0].lead = 0xAAAAAAAAu;
+          for ( int i = 0; i < 8; ++i ) { v[0].vals[i].x = 3000 + i; v[0].vals[i].y = 4000 + i; }
+          v[0].trail = 0xBBBBBBBBu; );
 
     VROW( vold_array_elem_widen, ArrayElemWiden, "old_array_elem_widen.bin",
           v[0].lead = 0xAAAAAAAAu; v[0].vals_count = 4; v[0].vals[0] = -1; v[0].vals[1] = INT16_MIN;

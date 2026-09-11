@@ -5,12 +5,25 @@
 // so a case in test/tables/versioning_numbers.cpp can say which change the read
 // answered for. `lead` and `trail` bracket the row's field: a mislaid size
 // moves a neighbour, and the equality check sees it.
+//
+// THE ELEMENT IS A NESTED TYPE WITH NONZERO DEFAULTS, and that is the whole
+// point of the row. A `[4]int32 -> [8]int32` grow asserting slots 4..7 == 0
+// passes under a plain zero fill just as well as under the ELEMENT-DEFAULT
+// prefill the bill (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.6) requires, so
+// it cannot tell the two apart. With x = 7 and y = 9 it can: a zero fill reads
+// 0, the law reads 7 and 9.
 
 package vnew_array_fixed_grow
+
+fixed table Vec
+{
+    x int32 = 7
+    y int32 = 9
+}
 
 fixed table ArrayFixedGrow
 {
     lead  uint32 = 1
-    vals  [8]int32
+    vals  [8]Vec
     trail uint32 = 2
 }

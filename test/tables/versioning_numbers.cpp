@@ -137,6 +137,14 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
 
 // OLD-REFUSES-NEW, one shape for every row: the OLD build's reader, the NEW
 // build's bytes. `layout_newer` before any record, no counter, nothing decoded.
+//
+// WHAT THIS SHAPE DOES NOT YET CHECK, and what it will. The refusal above says
+// only "newer"; it does not say WHICH layout the file carries. Bill §12.4 puts
+// the file's layout hash in the report, so when the floor and the report land
+// the green phase adds one more conjunct here: the reported hash equals the NEW
+// build's own `TBL##FixedHash`, which is what proves the reader refused because
+// it read the writer's hash rather than because it refused everything. The
+// assertion below is unchanged until §12.4's report field exists.
 #define OLD_REFUSES_NEW( OLDNS, TBL, ROW, newbytes )                                                    \
     do {                                                                                                \
         OLDNS::TBL back;  std::memset( &back, 0, sizeof( back ) );  OLDNS::TBL##Reset( back );           \
@@ -191,7 +199,7 @@ void array_bounded_grow_case()
         check( exact, "array_bounded_grow/NEW-READS-OLD: the four written elements, exact" );
         bool slack = true;
         for ( int i = 4; i < 8; ++i ) { slack = slack && back.vals[i] == 0; }
-        check( slack, "array_bounded_grow/NEW-READS-OLD: slots 4..7 take the element default" );
+        check( slack, "array_bounded_grow/NEW-READS-OLD: [..N] slack past the count is zeros (§12.6)" );
         check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "array_bounded_grow/NEW-READS-OLD: a bound that grew moves no counter (§5.2)" );
     }
@@ -206,7 +214,15 @@ void array_bounded_grow_case()
 }
 
 // ---------------------------------------------------------------------------
-// 2. array_fixed_grow — [4]int32 -> [8]int32
+// 2. array_fixed_grow — [4]Vec -> [8]Vec, and the element's DEFAULTS ARE NONZERO
+//
+// `Vec { x int32 = 7; y int32 = 9 }`, because that is the only way this row can
+// tell the law from an accident. With an int32 element, "slots 4..7 == 0" is
+// satisfied by a plain zero fill of the reader's struct just as well as by the
+// ELEMENT-DEFAULT prefill the bill requires (§12.6), so the case would pass
+// without the behaviour it names ever existing. With x = 7 and y = 9 the two
+// answers differ: a zero fill reads 0, §12.6 reads 7 and 9. No element the
+// writer sets is ever 7 or 9, so a stale read cannot fake the default either.
 
 void array_fixed_grow_case()
 {
@@ -216,7 +232,7 @@ void array_fixed_grow_case()
     vold_array_fixed_grow::ArrayFixedGrow old;
     vold_array_fixed_grow::ArrayFixedGrowReset( old );
     old.lead = 0xAAAAAAAAu;
-    for ( int i = 0; i < 4; ++i ) { old.vals[i] = -500 - i; }
+    for ( int i = 0; i < 4; ++i ) { old.vals[i].x = -500 - i; old.vals[i].y = -600 - i; }
     old.trail = 0xBBBBBBBBu;
     std::vector<uint8_t> ob = one( old, vold_array_fixed_grow::ArrayFixedGrowFixedMeasure,
                                    vold_array_fixed_grow::ArrayFixedGrowFixedSave, "array_fixed_grow: OLD save" );
@@ -231,17 +247,26 @@ void array_fixed_grow_case()
         check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
                "array_fixed_grow/NEW-READS-OLD: lead and trail bracket the row exactly" );
         bool exact = true;
-        for ( int i = 0; i < 4; ++i ) { exact = exact && back.vals[i] == -500 - i; }
+        for ( int i = 0; i < 4; ++i )
+        {
+            exact = exact && back.vals[i].x == -500 - i && back.vals[i].y == -600 - i;
+        }
         check( exact, "array_fixed_grow/NEW-READS-OLD: the writer's four slots, exact" );
+        // THE ELEMENT'S DEFAULTS, NOT ZERO. 7 and 9 are the only answer §12.6
+        // allows; 0 is the zero fill, and this is the case that separates them.
+        // It is GREEN on the C++ reference today, so it is a check(), not a red.
         bool slack = true;
-        for ( int i = 4; i < 8; ++i ) { slack = slack && back.vals[i] == 0; }
-        check( slack, "array_fixed_grow/NEW-READS-OLD: the reader defaults the rest (bill §2)" );
+        for ( int i = 4; i < 8; ++i )
+        {
+            slack = slack && back.vals[i].x == 7 && back.vals[i].y == 9;
+        }
+        check( slack, "array_fixed_grow/NEW-READS-OLD: slots 4..7 hold the ELEMENT's defaults (x = 7, y = 9), not zero (§12.6)" );
         check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "array_fixed_grow/NEW-READS-OLD: no counter moves" );
     }
     vnew_array_fixed_grow::ArrayFixedGrow nv;
     vnew_array_fixed_grow::ArrayFixedGrowReset( nv );
-    for ( int i = 0; i < 8; ++i ) { nv.vals[i] = 3000 + i; }
+    for ( int i = 0; i < 8; ++i ) { nv.vals[i].x = 3000 + i; nv.vals[i].y = 4000 + i; }
     std::vector<uint8_t> nb = one( nv, vnew_array_fixed_grow::ArrayFixedGrowFixedMeasure,
                                    vnew_array_fixed_grow::ArrayFixedGrowFixedSave, "array_fixed_grow: NEW save" );
     OLD_REFUSES_NEW( vold_array_fixed_grow, ArrayFixedGrow, "array_fixed_grow", nb );
@@ -633,9 +658,13 @@ void float_widen_case()
 
 void range_widen_case()
 {
+    // §13 (MERGED) rules that the hash covers a DEFINITIONS DIGEST, not only the
+    // byte layout, so a widened range IS an input to it and the hash WILL move.
+    // The red is the emitter's today, not the law's: promote this to check() the
+    // day the digest lands.
     red( vold_range_widen::RangeWidenFixedHash != vnew_range_widen::RangeWidenFixedHash,
-         "range_widen: the row changes the layout hash (bill §6a) — it does NOT: a range is not in the layout",
-         "the range in the layout, or a ruling that a range is outside the hash (bill §6a)" );
+         "range_widen: the row changes the layout hash (§13: the hash covers a definitions digest) — it does NOT today: the emitter hashes the byte layout only",
+         "§13's DEFINITIONS DIGEST in the hash, at which point this is promoted to check() (bill §6a)" );
 
     vold_range_widen::RangeWiden old;
     vold_range_widen::RangeWidenReset( old );
@@ -783,7 +812,7 @@ void optional_add_case()
         // "?T where x has T: present := 1, then the value". Neither happens.
         red( back.link_present && back.link.value == 777 && r.kind_mismatch == 0,
              "optional_add/NEW-READS-OLD: `present` == 1 and the payload exact — it does NOT: kind_mismatch, ABSENT, default",
-             "the T -> ?T plan row (bill §2, algorithm §5.2)" );
+             "§12.8 the `present` op (bill §2, algorithm §5.2's T -> ?T plan row)" );
         check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "optional_add/NEW-READS-OLD: nothing else fired" );
     }
@@ -816,7 +845,14 @@ void optional_add_case()
 // and, for `floor_raise_live` only, a TEST-ONLY setter, because a floor that can
 // only be chosen at build time cannot be raised inside one process:
 //
-//     void T##FixedSetFloorForTest( int32_t index );
+//     void T##FixedSetFloorForTest( int32_t index );   -- under SCHEMA_FIXED_FLOOR_TEST_HOOKS
+//
+// THE SETTER IS BEHIND ITS OWN DEFINE, not the floor's. `SCHEMA_HAS_FLOOR` says
+// this build HAS a floor; `SCHEMA_FIXED_FLOOR_TEST_HOOKS` says this build is a
+// TEST and may move it. Only the fixedform test rules in the Makefile pass
+// -DSCHEMA_FIXED_FLOOR_TEST_HOOKS, so a shipped unit that has a floor never
+// compiles a way to lower it, and the emitter must emit the setter ONLY under
+// that define. The call site below is guarded by both.
 //
 // Whether that setter is the right shape is the question the PR asks: the
 // alternative is two BUILDS of the same unit at different floors, which the
@@ -857,10 +893,10 @@ void floor_cases()
                "floor_at: a file AT the floor reads, and the reader's tail is the default" );
 #ifdef SCHEMA_HAS_FLOOR
         red( vnew_floor::FlooredFixedFloor == 1, "floor_at: the floor sits at lineage index 1",
-             "the floor (bill §6b, §9: the syntax is Glenn's to name)" );
+             "the floor declared at LINEAGE INDEX 1 on the *_floor chain (bill §6b, §9: the syntax is Glenn's to name)" );
 #else
         red( false, "floor_at: the floor sits at lineage index 1 — there is no floor to sit at",
-             "the floor (bill §6b, §9: the syntax is Glenn's to name)" );
+             "the floor declared at LINEAGE INDEX 1 on the *_floor chain (bill §6b, §9: the syntax is Glenn's to name)" );
 #endif
     }
 
@@ -877,7 +913,7 @@ void floor_cases()
              r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed &&
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
              "floor_below: a file ONE BELOW the floor refuses layout_unsupported, no counter, nothing decoded",
-             "layout_unsupported + the floor (bill §6b)" );
+             "layout_unsupported + the floor declared at LINEAGE INDEX 1 on the *_floor chain (bill §6b)" );
     }
 
     // floor_raise_live — THE FLOOR RAISED BY ONE: the file that read yesterday
@@ -890,17 +926,18 @@ void floor_cases()
         const int64_t read_yesterday = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
                                                                      plan.data(), 4096, NULL, &before );
         check( read_yesterday == 1, "floor_raise_live: the file read before the floor moved" );
-#ifdef SCHEMA_HAS_FLOOR
+// the floor must exist AND this build must be one that may move it
+#if defined( SCHEMA_HAS_FLOOR ) && defined( SCHEMA_FIXED_FLOOR_TEST_HOOKS )
         vnew_floor::FlooredFixedSetFloorForTest( 2 );
         vnew_floor::TableReport after;
         const int64_t today = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
                                                             plan.data(), 4096, NULL, &after );
         red( today < 0 && after.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, after.reason ),
              "floor_raise_live: the same file refuses after the floor is raised by one",
-             "the floor + a way to raise it (bill §6b, §9)" );
+             "the floor + the SCHEMA_FIXED_FLOOR_TEST_HOOKS setter (bill §6b, §9)" );
 #else
         red( false, "floor_raise_live: the same file refuses after the floor is raised by one",
-             "the floor + a way to raise it (bill §6b, §9)" );
+             "the floor + the SCHEMA_FIXED_FLOOR_TEST_HOOKS setter (bill §6b, §9)" );
 #endif
     }
 }
