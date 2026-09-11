@@ -111,6 +111,11 @@ remain the reader's straight-line validation on every build, and they still land
 
 ## 6. The monotone law, guaranteed by the lock
 
+**Ruling, Glenn 2026-09-11 02:12Z: "lock."** `schema.lock` is the law's home: it holds the monotone law
+(SPEC §2.10 already holds the list rows for fixed tables, with tests in `internal/lockfile`), the lineage
+and the floor (§6a, §6b). `tables.baseline` stays the save-game projection of §18 and gains nothing from
+this bill. The compiler refuses to generate against a lock the schema contradicts; CI runs the same check.
+
 Glenn: "how do we guarantee ONLY widening is allowed (enums can have entries added at end, no shuffling of
 entries for meaning, new entries at end...)". The lock records the last shape and the baseline refuses any
 commit that is not a widening of it. Per definition:
