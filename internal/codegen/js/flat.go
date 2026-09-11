@@ -36,6 +36,11 @@
 //   - Read: the buffer must extend at least FLAT_READ_SLACK = 8 bytes past
 //     the payload — 64-bit windows load unconditionally. Exactly-sized
 //     receive buffers copy into a persistent MaxBytes + 8 scratch first.
+//     That 8 is not this tier's own number: it is the READ BUFFER CONTRACT
+//     every target's caller owes (docs/SPEC.md §4.3), and this tier is one
+//     of the readers that spends it. A buffer short of it is a CALLER error
+//     and not a malformed payload, so the DataView's RangeError escaping
+//     the read is conforming (§5) — the terminal-refusal rule governs BYTES.
 //
 // Wire identity is not asserted here — it is proven by the golden legs: the
 // flat tier writes and reads every pinned corpus instance against the same
