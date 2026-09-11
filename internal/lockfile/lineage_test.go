@@ -305,7 +305,7 @@ func TestLockRetireEntry(t *testing.T) {
 	second, _, _ := wireHashOf(t, paths, "Row")
 
 	reason := "the 0.3 client is gone; nothing live writes this layout"
-	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", first), reason); err != nil || !rewrote {
+	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", first), reason, false); err != nil || !rewrote {
 		t.Fatalf("--retire takes one lineage entry: rewrote=%v err=%v", rewrote, err)
 	}
 	got := lineageOf(t, path, "Row")
@@ -326,15 +326,15 @@ func TestLockRetireEntry(t *testing.T) {
 	}
 	// the current layout cannot be retired: a reader built from this lock reads
 	// its own records
-	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", second), "no"); err == nil {
+	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", second), "no", false); err == nil {
 		t.Error("retiring the CURRENT layout is refused")
 	}
 	// and a hash nothing in the lineage carries is a refusal that says so
-	if _, _, err := lockfile.Retire(load(t, paths), paths, "Row@0x0000000000000001", "no"); err == nil {
+	if _, _, err := lockfile.Retire(load(t, paths), paths, "Row@0x0000000000000001", "no", false); err == nil {
 		t.Error("a hash the lineage does not carry is refused")
 	}
 	// a retirement is a declaration, so it wants a sentence
-	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", first), ""); err == nil {
+	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", first), "", false); err == nil {
 		t.Error("--retire wants --reason")
 	}
 }
@@ -369,7 +369,7 @@ func TestLockRetireTableThenRemoveTheDeclaration(t *testing.T) {
 		t.Fatal(err)
 	}
 	reason := "nothing live speaks Row: the last writer shipped 2026-01"
-	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, "Row", reason); err != nil || !rewrote {
+	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, "Row", reason, false); err != nil || !rewrote {
 		t.Fatalf("--retire takes a whole table: rewrote=%v err=%v", rewrote, err)
 	}
 	lk := readLock(t, path)
@@ -405,7 +405,7 @@ func TestLockRetireTableThenRemoveTheDeclaration(t *testing.T) {
 		t.Errorf("and the lock is current: %v", errs)
 	}
 	// a table nothing locked cannot be retired
-	if _, _, err := lockfile.Retire(load(t, paths), paths, "Nope", "no"); err == nil {
+	if _, _, err := lockfile.Retire(load(t, paths), paths, "Nope", "no", false); err == nil {
 		t.Error("a table the lock does not carry is refused")
 	}
 }
@@ -438,7 +438,7 @@ func TestLineageAccessorIsWhatCompileReads(t *testing.T) {
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", hashes[0]), "the first client is gone"); err != nil {
+	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", hashes[0]), "the first client is gone", false); err != nil {
 		t.Fatal(err)
 	}
 

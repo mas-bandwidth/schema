@@ -541,6 +541,17 @@ func splitRetired(line string) (head string, retired bool, reason string) {
 //     `layout_newer`, which means "ship the reader". The two answers point the
 //     operator in opposite directions, and that is why a retired entry is kept
 //     rather than dropped.
+//
+//     A RETIRE NEVER STRANDS AN OLDER ENTRY (bill §11.4). [Floor] is an INDEX
+//     CUT, not a set: the floor is one past the highest retired index, so
+//     retiring entry 3 of 5 would stop serving 0, 1 and 2 as well, with no mark
+//     and no reason beside them — three layouts silently retired by arithmetic.
+//     So retiring an entry with an UNRETIRED OLDER ENTRY below it is REFUSED,
+//     and the refusal names every stranded entry by index and hash. The
+//     operator who means it passes `allBelow` (`--all-below`), which retires
+//     every older entry too, with the same reason, so the file says out loud
+//     what the floor does.
+//
 //   - `schema lock --retire T --reason "..."` marks THE WHOLE TABLE retired. Its
 //     block and its lineage stay; what the mark buys is that the declaration may
 //     then be dropped, and that the "fixed removed" refusal applies only to a
@@ -555,7 +566,7 @@ func splitRetired(line string) (head string, retired bool, reason string) {
 // The lock must be CURRENT first: retiring is a statement about what the record
 // holds, so the record is brought up to date with `schema lock` before a person
 // makes one.
-func Retire(u *ir.Unit, paths []string, target, reason string) (path string, rewrote bool, err error) {
+func Retire(u *ir.Unit, paths []string, target, reason string, allBelow bool) (path string, rewrote bool, err error) {
 	if strings.TrimSpace(reason) == "" {
 		return "", false, fmt.Errorf("--retire wants --reason: retiring a layout says no reader will ever serve it again, which is the one DECLARATION this file holds and the one write that is not an append (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4)")
 	}
@@ -610,6 +621,18 @@ func Retire(u *ir.Unit, paths []string, target, reason string) (path string, rew
 		if at == len(t.Lineage)-1 {
 			return "", false, fmt.Errorf("%s: 0x%016x is fixed table %s's CURRENT layout — a reader built from this lock reads its own records, so the current entry is never retired; retire the table instead (`--retire %s`) when nothing live speaks it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4, §11.5)", path, h, name, name)
 		}
+		// A RETIRE NEVER STRANDS AN OLDER ENTRY. The floor is an index cut
+		// (see [Floor]), so marking `at` stops every entry below it too.
+		// Either the operator says so with --all-below and they are all
+		// marked with the same reason, or this is refused naming them.
+		if stranded := unretiredBelow(t.Lineage, at); len(stranded) > 0 {
+			if !allBelow {
+				return "", false, fmt.Errorf("%s: retiring fixed table %s's layout 0x%016x (lineage index %d) would STRAND %s: the floor a reader is built with is an INDEX CUT — one past the highest retired entry (docs/FIXED-FORM-ALGORITHM.md §5.2) — so every older entry stops being served too, with no mark and no reason beside it. Retire them deliberately: `schema lock --retire %s@0x%016x --all-below --reason \"...\"` marks this entry and every older one — %s — with this reason (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4)", path, name, h, at, strandedText(stranded), name, h, entryWord(len(stranded)+1))
+			}
+			for _, e := range stranded {
+				t.Lineage[e.at].Retired, t.Lineage[e.at].Reason = true, reason
+			}
+		}
 		t.Lineage[at].Retired, t.Lineage[at].Reason = true, reason
 	}
 	text := locked.Text()
@@ -620,6 +643,50 @@ func Retire(u *ir.Unit, paths []string, target, reason string) (path string, rew
 		return "", false, err
 	}
 	return path, true, nil
+}
+
+// strandedEntry is one lineage entry a retire would stop serving without
+// saying so: its index and its wire hash, which is how the refusal names it.
+type strandedEntry struct {
+	at   int
+	wire uint64
+}
+
+// unretiredBelow is the stranding test: every entry BELOW `at` that carries no
+// retired mark, oldest first. Empty when `at` is the oldest entry, or when
+// everything older is already retired — the two cases a retire is plainly safe.
+func unretiredBelow(lineage []LineageEntry, at int) []strandedEntry {
+	var out []strandedEntry
+	for i := 0; i < at && i < len(lineage); i++ {
+		if !lineage[i].Retired {
+			out = append(out, strandedEntry{at: i, wire: lineage[i].Wire})
+		}
+	}
+	return out
+}
+
+// strandedText names the stranded entries BY INDEX AND HASH, which is the whole
+// point of the refusal: the operator has to be able to read the entries off the
+// sentence and decide about each one.
+func strandedText(stranded []strandedEntry) string {
+	parts := make([]string, 0, len(stranded))
+	for _, e := range stranded {
+		parts = append(parts, fmt.Sprintf("index %d (0x%016x)", e.at, e.wire))
+	}
+	noun := "entries"
+	if len(parts) == 1 {
+		noun = "entry"
+	}
+	return fmt.Sprintf("%d unretired older %s — %s", len(parts), noun, strings.Join(parts, ", "))
+}
+
+// entryWord is the count --all-below would mark, said in words, so the remedy
+// sentence tells the operator how many entries the flag covers.
+func entryWord(n int) string {
+	if n == 1 {
+		return "1 entry"
+	}
+	return fmt.Sprintf("all %d entries", n)
 }
 
 // retiredOrphans names every locked block that is in this file ONLY because a

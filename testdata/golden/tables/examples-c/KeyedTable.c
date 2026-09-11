@@ -2855,9 +2855,10 @@ static const TableFieldInfo schema_tabledemo_keyed_config_fields_[] = {
     { "teams", "teams", "TeamConfig", 0xbaaeb048a5a8fa6dull, 13, 1, 0, 0, 0, (int32_t) TEAM_MAX, (uint32_t) offsetof( KeyedConfig, teams ), (uint32_t) sizeof( ( (KeyedConfig *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_team_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_tabledemo_keyed_config_teams_keys_, 3, NULL, "", TableDocNone, 0, NULL, 0, NULL },
     { "hulls", "hulls", "HullConfig", 0xce0ac3c25694d8ffull, 13, 1, 0, 0, 0, (int32_t) HULL_MAX, (uint32_t) offsetof( KeyedConfig, hulls ), (uint32_t) sizeof( ( (KeyedConfig *) 0 )->hulls[0] ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_hull_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Hull", schema_tabledemo_keyed_config_hulls_keys_, 3, NULL, "", TableDocNone, 0, NULL, 0, NULL },
     { "scores", "scores", "ScoreBoard", 0x01986b0b27400fb2ull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( KeyedConfig, scores ), (uint32_t) sizeof( ( (KeyedConfig *) 0 )->scores ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_score_board_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
+    { "season", "season", "uint32", 0x28dfd5e2759ba3f8ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( KeyedConfig, season ), (uint32_t) sizeof( ( (KeyedConfig *) 0 )->season ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TableDocNone, 0, NULL, 0, NULL },
 };
 
-const TableTypeInfo schema_tabledemo_keyed_config_info_ = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 3, schema_tabledemo_keyed_config_fields_, schema_tabledemo_keyed_config_reset_raw_, 0, TableDocNone, 0, NULL };
+const TableTypeInfo schema_tabledemo_keyed_config_info_ = { "KeyedConfig", (uint32_t) sizeof( KeyedConfig ), 4, schema_tabledemo_keyed_config_fields_, schema_tabledemo_keyed_config_reset_raw_, 0, TableDocNone, 0, NULL };
 
 static const TableVariantInfo schema_tabledemo_score_board_per_team_keys_[] = {
     { "None", 0x0000000000000000ull },

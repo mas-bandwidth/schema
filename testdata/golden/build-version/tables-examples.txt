@@ -1,4 +1,4 @@
-0x31490f0ed9100a4e
+0x7e8cf44b4a43bb3b
 schema-build-version 3
 protocol ba7b344f28584d33
 byteorder little
@@ -29,10 +29,11 @@ record HullConfig sizeof=68 alignof=4
     field 7f69d4b5288ba9cf kind=10 offset=0 size=4 default=100.0
     field 1f3757a2ce7b0ab1 kind=10 offset=4 size=4 default=1.0
     field 84f8260bc283608c kind=13 offset=8 size=60 type=TurretConfig elem=20 array=keyed bound=3 key=Weapon
-record KeyedConfig sizeof=300 alignof=4
+record KeyedConfig sizeof=304 alignof=4
     field baaeb048a5a8fa6d kind=13 offset=0 size=84 type=TeamConfig elem=28 array=keyed bound=3 key=Team
     field ce0ac3c25694d8ff kind=13 offset=84 size=204 type=HullConfig elem=68 array=keyed bound=3 key=Hull
     field 01986b0b27400fb2 kind=13 offset=288 size=12 type=ScoreBoard
+    field 28dfd5e2759ba3f8 kind=8 offset=300 size=4 default=0
 record LoadoutConfig sizeof=176 alignof=8
     field 32a89b2977c48ad4 kind=30 offset=0 size=1 enum=Grade default=Silver
     field d90a4e7682f799c5 kind=30 offset=1 size=11 enum=Grade elem=1 array=bounded bound=4

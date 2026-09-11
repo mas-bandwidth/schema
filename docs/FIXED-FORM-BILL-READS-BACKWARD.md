@@ -283,6 +283,16 @@ ruling below is a default, recorded on #898, and his to reverse.
    `layout_newer`; a retired entry stays in the lineage forever. A layout that never shipped is retired the
    same way. The two names point the operator in opposite directions (ship the reader, or upgrade the
    client) and both stay.
+
+   **A RETIRE NEVER STRANDS AN OLDER ENTRY** (Rowan's ruling, 2026-09-11). What shipped in #909 is an INDEX
+   CUT, not a set: `lockfile.Floor` is one past the highest retired index (algorithm §5.2), so retiring
+   entry 3 of 5 stops serving 0, 1 and 2 as well — three layouts retired by arithmetic, with no mark and no
+   reason beside them, and nothing in the file saying a person meant it. So **`schema lock --retire
+   Table@0x<hash>` REFUSES a retirement with an UNRETIRED OLDER ENTRY below it, and the refusal names every
+   stranded entry BY INDEX AND HASH.** The operator who means the sweep says so: **`--all-below` retires
+   every older entry too, with the same reason**, so the file says out loud what the floor does. Retiring the
+   OLDEST entry needs no flag, and neither does walking up one at a time — everything below is already
+   marked. The current entry is still never retired (§11.5's verb is for that), with or without the flag.
 5. **A table is retired, never removed, until nothing live speaks it.** `schema lock --retire Table` marks
    the whole table retired; its lineage stays; the schema may then drop the declaration, and §5.1's
    "fixed removed" refusal applies only to an unretired table. "Remove it" in §8a.3 means remove the
