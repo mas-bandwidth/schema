@@ -2684,33 +2684,30 @@ TABLES_CXXFLAGS := -std=c++17 -Wall -Wextra -Werror -Wshadow -ffp-contract=off -
 # content (docs/SPEC-TABLES.md §16.1): a consumer that calls FromJson/ToJson
 # compiles the generated <Base>Table.cpp, and one that never does compiles
 # nothing for it. Expanded in the recipe because these are build-time output.
-#
-# km1 is HELD OUT, and it is a GENERATOR BUG held open, not a schema quirk.
-# KM1's `angle` is `fixed(16, 16)`. Every fixed-point kind is one of the WIDE
-# kinds (ir.TableKindWide, kinds 18..29), so the message codec emits
-# `serialize::uint128_t` arithmetic for it (internal/codegen/cpptable/
-# messagecodec.go) — while the `#include "serialize.h"` and the header's own
-# "no serialize dependency" claim are decided by unitHas128
-# (internal/codegen/cpptable/cpptable.go), which asks only whether the closure
-# declares 128-bit STORAGE. KM1 is the first unit in this corpus with a
-# fixed-point field and nothing 128 bits wide, so it is the first header that
-# NAMES serialize:: without including it — and any user schema shaped that way
-# generates the same header. The range on `angle` is not the trigger and
-# cannot be dropped either: `fixed(N, M)` REQUIRES | min, max (SPEC §4.3).
-# The fix belongs in the generator and gets its own change; this hold-out
-# keeps THIS target honest until that lands, and the gate below fails loudly
-# once it does, so the hold-out cannot outlive the bug.
-TABLES_JSON_HELD_OUT := km1
-TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp | grep -v '^build/tables-generated/$(TABLES_JSON_HELD_OUT)/')
+TABLES_JSON_SOURCES = $$(ls build/tables-generated/*/*Table.cpp)
+
+# A Table header that NAMES serialize:: must INCLUDE serialize.h. #840 is the
+# bug this states as a rule: the message save gated its 128-bit arithmetic on
+# the wide kind FAMILY (kinds 18..29, which holds the whole fixed-point family)
+# while the include is gated on 128-bit STORAGE, so a unit with a narrow
+# `fixed` field and nothing 128 bits wide emitted a header that would not
+# compile. A compile proves it for the units in THIS corpus; this proves it for
+# every unit, cheaply, and names the rule where a new one would break it. It is
+# the CLASS the generator fix closed, held shut.
+.PHONY: tables-serialize-include-gate
+tables-serialize-include-gate: build/tables-generated/.stamp
+	@for h in build/tables-generated/*/*Table.h; do \
+		grep -q 'serialize::' $$h || continue; \
+		grep -q '#include "serialize.h"' $$h || { \
+		  echo "GENERATED HEADER NAMES serialize:: WITHOUT INCLUDING IT: $$h"; \
+		  echo "  the include is decided by unitHas128 (internal/codegen/cpptable/cpptable.go), on 128-bit STORAGE."; \
+		  echo "  some emitter is reaching for serialize:: on a WIDER condition than that — see #840."; \
+		  grep -n 'serialize::' $$h | head -3; exit 1; }; \
+	done
 
 build/schema_test_tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
-	@for h in build/tables-generated/$(TABLES_JSON_HELD_OUT)/*Table.h; do \
-		grep -q 'serialize::' $$h || { \
-		  echo "HOLD-OUT STALE: $$h no longer names serialize:: — delete TABLES_JSON_HELD_OUT and let the glob take it back"; exit 1; }; \
-		if grep -q '#include "serialize.h"' $$h; then \
-		  echo "HOLD-OUT STALE: $$h includes serialize.h now — the generator emits it, so delete TABLES_JSON_HELD_OUT and let the glob take it back"; exit 1; fi; \
-	done
+	$(MAKE) --no-print-directory tables-serialize-include-gate
 	$(CXX) $(TABLES_CXXFLAGS) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 # The SANITIZED twin (issue #277). The tables leg is where the pointer

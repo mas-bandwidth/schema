@@ -530,11 +530,30 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 		}
 		g.pf("%sw.put( (uint64_t) table_float_to_bits( %s ), 32 );\n", ind, expr)
 	default:
-		if ir.TableKindWide(int(kind)) {
+		if tableKindWidth(int(kind)) == 16 {
 			// A 128-BIT KIND at the width its shape states: the base subtracted
 			// at 128 bits, the low half first and the high half where the
 			// width reaches it, which is ONE arithmetic for measure, save and
 			// read (§3.3)
+			//
+			// THE GATE IS THE STORAGE WIDTH, NOT THE KIND FAMILY (#840). The
+			// wide FAMILY is kinds 18..29 — the 128-bit integers AND the whole
+			// fixed-point family, so `fixed(16, 16)` is in it at 32 bits of
+			// storage. Asking TableKindWide here sent an 8-, 16-, 32- or
+			// 64-bit fixed field through serialize::uint128_t arithmetic that
+			// its value can never need, and — because the `#include
+			// "serialize.h"` is decided by unitHas128, which asks whether the
+			// closure declares 128-bit STORAGE — a unit with a narrow
+			// fixed-point field and nothing 128 bits wide NAMED serialize::
+			// in a header that did not include it and would not compile.
+			// Every other 128-bit site in this backend already gates on the
+			// storage width: the element save (codecs.go), the cook write
+			// (cookwrite.go), and the message READ (messageload.go, on
+			// `bytesWide == 16`). Save was the lone outlier, which is why save
+			// and read disagreed. The bytes do not move: for a width of 64 or
+			// fewer bits the subtraction is modular and only the low `width`
+			// bits are written, and msgBase spells the same base's two's
+			// complement at 64 bits that tableWideLit spells at 128.
 			base := "serialize::uint128_t( 0 )"
 			if shape.Packing == ir.TableMessageRanged && shape.Base != nil && shape.Base.Sign() != 0 {
 				base = tableWideLit(shape.Base, false)
