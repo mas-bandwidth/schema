@@ -67,6 +67,11 @@ import '../../build/dart-fixed/v1/V1Fixed.dart' as v1;
 import '../../build/dart-fixed/v2/Tblv2Fixed.dart' as v2home;
 import '../../build/dart-fixed/v2/V2.dart' as v2decl;
 import '../../build/dart-fixed/v2/V2Fixed.dart' as v2;
+import '../../build/dart-fixed/ut1/UT1Fixed.dart' as ut1;
+import '../../build/dart-fixed/ut1/UT1.dart' as ut1decl;
+import '../../build/dart-fixed/ut1/Tblut1Fixed.dart' as ut1home;
+import '../../build/dart-fixed/ut2/UT2Fixed.dart' as ut2;
+import '../../build/dart-fixed/ut2/Tblut2Fixed.dart' as ut2home;
 
 var failed = false;
 
@@ -1633,6 +1638,160 @@ void layoutValidation() {
 
 // ---------------------------------------------------------------------------
 
+// W6: THE PLAN IS PARTITIONED: every unguarded entry first, then every guarded one,
+// and the plan states where the second half starts. This test checks that the
+// split is maintained correctly for both identity plans and compiled plans.
+void planPartitionCase() {
+  // UT1: identity plan with both unguarded and guarded entries
+  {
+    final plan = ut1.utRootFixedIdentity;
+    final count = ut1.utRootFixedIdentityCount;
+    final split = 1; // first guarded entry is at index 1
+    // Check entries below split have no guard
+    for (int i = 0; i < split; i++) {
+      check(
+        plan[i * ut1home.TableFixedLane.lanes + ut1home.TableFixedLane.guard] ==
+            ut1home.tableFixedNoGuard,
+        'UT1: entry $i below split has no guard',
+      );
+    }
+    // Check entries at/after split have guard
+    for (int i = split; i < count; i++) {
+      check(
+        plan[i * ut1home.TableFixedLane.lanes + ut1home.TableFixedLane.guard] !=
+            ut1home.tableFixedNoGuard,
+        'UT1: entry $i at/after split has a guard',
+      );
+    }
+    // Check boundary pair is not mergeable (coalescing check)
+    if (split > 0 && split < count) {
+      final aBase = (split - 1) * ut1home.TableFixedLane.lanes;
+      final bBase = split * ut1home.TableFixedLane.lanes;
+      final a = plan[aBase];
+      final b = plan[bBase];
+      final aGuard = plan[aBase + ut1home.TableFixedLane.guard];
+      final bGuard = plan[bBase + ut1home.TableFixedLane.guard];
+      // Not mergeable if one is guarded and the other is not
+      check(
+        (a == 0 && aGuard == ut1home.tableFixedNoGuard) ||
+            (b != 0 && bGuard != ut1home.tableFixedNoGuard),
+        'UT1: the pair at the split was not coalesced across it',
+      );
+    }
+  }
+
+  // UT2: identity plan (has guards)
+  {
+    final plan = ut2.utRootFixedIdentity;
+    final count = ut2.utRootFixedIdentityCount;
+    final split = 1; // first guarded entry is at index 1
+    // Check entries below split have no guard
+    for (int i = 0; i < split; i++) {
+      check(
+        plan[i * ut2home.TableFixedLane.lanes + ut2home.TableFixedLane.guard] ==
+            ut2home.tableFixedNoGuard,
+        'UT2: entry $i below split has no guard',
+      );
+    }
+    // Check entries at/after split have guard
+    for (int i = split; i < count; i++) {
+      check(
+        plan[i * ut2home.TableFixedLane.lanes + ut2home.TableFixedLane.guard] !=
+            ut2home.tableFixedNoGuard,
+        'UT2: entry $i at/after split has a guard',
+      );
+    }
+  }
+
+  // V1: identity plan (has guards)
+  {
+    final plan = v1.cfgFixedIdentity;
+    final count = v1.cfgFixedIdentityCount;
+    final split = 9; // first guarded entry is at index 9
+    // Check entries below split have no guard
+    for (int i = 0; i < split; i++) {
+      check(
+        plan[i * v1home.TableFixedLane.lanes + v1home.TableFixedLane.guard] ==
+            v1home.tableFixedNoGuard,
+        'V1: entry $i below split has no guard',
+      );
+    }
+    // Check entries at/after split have guard
+    for (int i = split; i < count; i++) {
+      check(
+        plan[i * v1home.TableFixedLane.lanes + v1home.TableFixedLane.guard] !=
+            v1home.tableFixedNoGuard,
+        'V1: entry $i at/after split has a guard',
+      );
+    }
+  }
+
+  // FX1: identity plan with NO guarded entries (split == count)
+  {
+    final plan = fx1.fxRootFixedIdentity;
+    final count = fx1.fxRootFixedIdentityCount;
+    final split = count; // all entries are unguarded
+    check(
+      split == count,
+      'FX1: a plan with no guarded entry has its split at the END',
+    );
+    // Check entries entries have no guard
+    for (int i = 0; i < count; i++) {
+      check(
+        plan[i * fx1home.TableFixedLane.lanes + fx1home.TableFixedLane.guard] ==
+            fx1home.tableFixedNoGuard,
+        'FX1: entry $i has no guard',
+      );
+    }
+  }
+
+  // COMPILED PLAN: UT2 reading UT1 through a compiled plan
+  {
+    final one = ut1home.UtRoot();
+    one.head = 42;
+    one.tail = 99;
+    one.pick.type = ut1decl.PickType.b;
+    one.pick.b.label.setRange(0, 7, 'seven77'.codeUnits);
+    one.pick.b.labelLength = 7;
+    one.pick.b.m = 1234;
+    final w = Uint8List(ut1.utRootFixedMeasure(1));
+    check(ut1.utRootFixedSave([one], 1, w) == w.length, 'UT1 saves');
+
+    final back = <ut2home.UtRoot>[ut2home.UtRoot()];
+    final report = ut2home.TableFixedReport();
+    final plan = ut2.utRootFixedNewPlan();
+    check(
+      ut2.utRootFixedLoad(back, 1, w, w.length, plan, report) == 1,
+      'UT2 reads UT1',
+    );
+
+    // Check guard ordering: once a guarded entry is seen, no unguarded follows
+    int seenGuarded = -1;
+    int guardedCount = 0;
+    for (int i = 0; i < plan.count; i++) {
+      final base = i * ut2home.TableFixedLane.lanes;
+      final guard = plan.entries[base + ut2home.TableFixedLane.guard];
+      if (guard != ut2home.tableFixedNoGuard) {
+        if (seenGuarded < 0) {
+          seenGuarded = i;
+        }
+        guardedCount++;
+      } else {
+        check(
+          seenGuarded < 0,
+          'UT2 reading UT1: unguarded entries come before guarded ones',
+        );
+      }
+    }
+    check(
+      guardedCount > 0,
+      'UT2 reading UT1: compiled plan has guarded entries',
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 void main(List<String> args) {
   final corpus = args.isNotEmpty ? args[0] : 'build/fixedform-corpus';
   final benchCorpus = args.length > 1
@@ -1650,6 +1809,7 @@ void main(List<String> args) {
   pCase();
   absentOptionalCase();
   negativeControl();
+  planPartitionCase();
   layoutValidation();
 
   if (failed) {
