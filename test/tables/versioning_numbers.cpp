@@ -214,6 +214,38 @@ void array_bounded_grow_case()
     OLD_REFUSES_NEW( vold_array_bounded_grow, ArrayBoundedGrow, "array_bounded_grow", nb );
 }
 
+// A forged count of 7 in the OLD file (writer declared [..4]), read by the
+// NEW reader ([..8]). The plan carries the WRITER's bound (bill §12.5): clamp
+// to 4, COUNT clamped, never land a count the old writer could not have written.
+void array_bounded_grow_hostile_case()
+{
+    vold_array_bounded_grow::ArrayBoundedGrow old;
+    vold_array_bounded_grow::ArrayBoundedGrowReset( old );
+    old.lead = 0xAAAAAAAAu;
+    old.vals_count = 4;
+    for ( int i = 0; i < 4; ++i ) { old.vals[i] = 1000 + i; }
+    old.trail = 0xBBBBBBBBu;
+    std::vector<uint8_t> ob = one( old, vold_array_bounded_grow::ArrayBoundedGrowFixedMeasure,
+                                   vold_array_bounded_grow::ArrayBoundedGrowFixedSave, "array_bounded_grow_hostile: OLD save" );
+    const size_t rec = (size_t) vold_array_bounded_grow::kTableFixedHeaderBytes + 4
+        + (size_t) vold_array_bounded_grow::ArrayBoundedGrowFixedLayoutBytes;
+    vold_array_bounded_grow::TableFixedPut32( ob.data() + rec + 8 + 4, 7u );
+    {
+        vnew_array_bounded_grow::ArrayBoundedGrow back;
+        vnew_array_bounded_grow::ArrayBoundedGrowReset( back );
+        vnew_array_bounded_grow::TableReport r;
+        std::vector<vnew_array_bounded_grow::TableFixedEntry> plan( 4096 );
+        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                                   plan.data(), 4096, NULL, &r ) == 1,
+               "array_bounded_grow_hostile: the forged file reads" );
+        check( back.vals_count == 4,
+               "array_bounded_grow_hostile: a count of 7 clamps to the WRITER's [..4], not the reader's [..8]" );
+        check( r.clamped >= 1, "array_bounded_grow_hostile: COUNT clamped" );
+        check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
+               "array_bounded_grow_hostile: lead and trail stand" );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 2. array_fixed_grow — [4]Vec -> [8]Vec, and the element's DEFAULTS ARE NONZERO
 //
@@ -704,6 +736,36 @@ void range_widen_case()
     OLD_REFUSES_NEW( vold_range_widen, RangeWiden, "range_widen", nb );
 }
 
+// A scalar past the OLD range (0..100), read by the NEW reader whose own range
+// is 0..200. The plan carries the WRITER's range (bill §12.5): clamp to 100,
+// COUNT clamped, never land 150.
+void range_widen_hostile_case()
+{
+    vold_range_widen::RangeWiden old;
+    vold_range_widen::RangeWidenReset( old );
+    old.lead = 1;
+    old.v = 100;
+    old.trail = 2;
+    std::vector<uint8_t> ob = one( old, vold_range_widen::RangeWidenFixedMeasure,
+                                   vold_range_widen::RangeWidenFixedSave, "range_widen_hostile: OLD save" );
+    const size_t rec = (size_t) vold_range_widen::kTableFixedHeaderBytes + 4
+        + (size_t) vold_range_widen::RangeWidenFixedLayoutBytes;
+    vold_range_widen::TableFixedPut32( ob.data() + rec + 8 + 4, 150u );
+    {
+        vnew_range_widen::RangeWiden back;
+        vnew_range_widen::RangeWidenReset( back );
+        vnew_range_widen::TableReport r;
+        std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
+        check( vnew_range_widen::RangeWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                      plan.data(), 4096, NULL, &r ) == 1,
+               "range_widen_hostile: the forged file reads" );
+        check( back.v == 100, "range_widen_hostile: 150 clamps to the WRITER's max 100, not the reader's 200" );
+        check( r.clamped >= 1, "range_widen_hostile: COUNT clamped" );
+        check( back.lead == 1 && back.trail == 2,
+               "range_widen_hostile: lead and trail stand" );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 12. bits_grow — bits(8) -> bits(12)
 
@@ -998,7 +1060,8 @@ void hash_cases()
     //
     // The file below is the reader's OWN (so its header hash is a hash the
     // lineage knows); each case breaks the layout BYTES and leaves that hash
-    // alone. Today every one of them comes back with its §1.1 name instead.
+    // alone. The seven land layout_malformed, one name for a lie about a
+    // known version.
     {
         vnew_floor::Floored own;
         vnew_floor::FlooredReset( own );
@@ -1117,6 +1180,7 @@ int versioning_numbers_cases()
 {
     std::printf( "\n=== the versioning law, the NUMBERS (docs/FIXED-FORM-VERSIONING-TESTS.md) ===\n" );
     array_bounded_grow_case();
+    array_bounded_grow_hostile_case();
     array_fixed_grow_case();
     array_elem_widen_case();
     constant_grow_case();
@@ -1127,6 +1191,7 @@ int versioning_numbers_cases()
     uint_widen_case();
     float_widen_case();
     range_widen_case();
+    range_widen_hostile_case();
     bits_grow_case();
     fixed_I_grow_case();
     optional_add_case();
