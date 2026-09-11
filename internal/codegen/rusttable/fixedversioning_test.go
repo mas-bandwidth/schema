@@ -81,6 +81,12 @@ type versionRow struct {
 	poison bool
 	// check is Rust source asserting the landed values, over `values` and `n`.
 	check string
+	// unported is the REFUSAL that stops this leg's language surface from
+	// holding the row's kind at all, cited by name. §5.9 #44: such a row is ⚪
+	// UNPORTED and skipped BY NAME, never 🔴 and NEVER FOLDED INTO A GREEN — a
+	// red is a debt §5 owes, an unported row is a debt another section owes,
+	// and a reviewer may not read either as "this row passed".
+	unported string
 }
 
 var versionRows = []versionRow{
@@ -159,8 +165,21 @@ var versionRows = []versionRow{
 	{row: "string_grow"},
 	{row: "uint_widen", widens: true},
 	{row: "union_append"},
-	{row: "union_arm_payload_widen"},
-	{row: "wstring_grow"},
+	{row: "union_arm_payload_widen", poison: true, check: `
+    // THE ARM'S APPENDED FIELD IS ITS DECLARED DEFAULT, 55, and the only thing
+    // that can land it is a PREFILL IMAGE whose union was reset ARM BY ARM at
+    // each arm's own overlay storage, in declared order, with the tag None last
+    // (§5.2's prefill, ruled an INSTRUCTION by §5.9 #38). A union zeroed whole
+    // lands 0 here and every value check but this one still passes.
+    let arm = values[0]
+        .pick
+        .alpha()
+        .unwrap_or_else(|| panic!("the old writer's record does not select the alpha arm: tag={}", values[0].pick.tag()));
+    assert!(
+        arm.y == 55,
+        "the field appended to the arm's payload is not its declared default: y={} (a union zeroed whole, not reset arm by arm)", arm.y
+    );`},
+	{row: "wstring_grow", unported: "kind 33 is not carried in a TABLE closure by this leg: compiler/widetext.go's tableWideTextTargets lists C, C++, C#, Dart and Go and NOT rust, so `refuseWideText` refuses a Rust unit that declares a wstring(N) field and there is no reader to generate. This harness reaches the backend directly and would BYPASS that refusal, which §5.9 #44 forbids folding into a green"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -169,6 +188,9 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 	out := versionRun(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
+			if r.unported != "" {
+				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
+			}
 			versionAssert(t, out, "v_"+r.row+"_new_reads_old")
 		})
 	}
@@ -180,6 +202,9 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	out := versionRun(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
+			if r.unported != "" {
+				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
+			}
 			versionAssert(t, out, "v_"+r.row+"_old_refuses_new")
 		})
 	}
@@ -210,6 +235,19 @@ func TestFixedVersioningHash(t *testing.T) {
 			versionAssert(t, out, "v_"+name)
 		})
 	}
+}
+
+// ---- the writer's text cap --------------------------------------------------
+//
+// §5.2 TEXT: the span is `min(me.size, te.size) - 4` and the cap is `span /
+// unit`, so the bound a forged length is held to is THE WRITER's and never this
+// reader's grown one. The row is `string_grow` — a writer at `string(8)`, a
+// reader at `string(16)` — with the length word forged to 12: inside the
+// reader's bound, past the writer's span, and it must clamp to 8 and COUNT.
+
+func TestFixedVersioningTextCap(t *testing.T) {
+	out := versionRun(t)
+	versionAssert(t, out, "v_string_grow_forged_length")
 }
 
 // ---- lineage_merge ----------------------------------------------------------
@@ -243,6 +281,13 @@ func versionProbeSet(corpus string) []versionProbe {
 	probes := make([]versionProbe, 0, 2*len(versionRows)+5)
 
 	for _, r := range versionRows {
+		if r.unported != "" {
+			// NO PROBE AT ALL for a row whose kind this leg's language surface
+			// cannot hold (§5.9 #44): generating one here would bypass the
+			// compiler's own refusal and publish a green for a row that has no
+			// reader. The mark and the reason live on the row.
+			continue
+		}
 		// NEW-READS-OLD: the newer unit is handed the OLDER unit's locked entry.
 		counters := `    assert!(
         report.widened == 0,
@@ -373,6 +418,48 @@ fn v_%[1]s_old_refuses_new() {
 `, r.row, filepath.Join(corpus, "new_"+r.row+".bin"), body)),
 		})
 	}
+
+	// THE WRITER'S TEXT CAP, FORGED. The only thing that can catch a cap taken
+	// from the READER's bound is a length BETWEEN the two bounds, so this probe
+	// forges one: lawful for the reader, past the writer's span, and owed a
+	// clamp to the writer's 8 with one `clamped` counted (§5.2 TEXT, §5.4).
+	probes = append(probes, versionProbe{
+		name:   "probe_string_grow_forged_length",
+		reader: "VNEW_string_grow",
+		older:  []string{"VOLD_string_grow"},
+		src: versionProbeSource(fmt.Sprintf(`
+/// string_grow, THE WRITER'S CAP: a forged length inside the READER's bound but
+/// past the WRITER's span clamps to the writer's span and counts one clamped.
+#[test]
+fn v_string_grow_forged_length() {
+    let mut data = std::fs::read(%q).expect("the reference's old_string_grow.bin");
+    // the records begin after the pinned header and the layout block
+    let block = u32::from_le_bytes(data[16..20].try_into().expect("four bytes")) as usize;
+    let at = 16 + 4 + block;
+    // the writer's body is lead(4), then the text's LENGTH word, then its 8 bytes
+    let len_at = at + 8 + 4;
+    data[len_at..len_at + 4].copy_from_slice(&12i32.to_le_bytes());
+    let mut values = vec![ROWTYPE::default(); 8];
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
+    let n = n.unwrap_or_else(|| panic!(
+        "a forged LENGTH is not a refusal: {} {:?}", report.reason.name(), report
+    ));
+    assert!(n >= 1, "the forged record still reads, not {n}");
+    assert_eq!(
+        values[0].text_length, 8,
+        "a length past THE WRITER's span must clamp to the writer's 8, not to this reader's 16"
+    );
+    assert_eq!(
+        report.clamped, 1,
+        "the clamp that fired must count ONE clamped: {:?}", report
+    );
+    assert!(!report.malformed, "a forged length is clamped, not damage: {:?}", report);
+}
+`, filepath.Join(corpus, "old_string_grow.bin"))),
+	})
 
 	// THE FLOOR. Nothing retired, entry 0 retired, entries 0 and 1 retired —
 	// three readers of one lineage, VOLD then VMID then VNEW's own.
