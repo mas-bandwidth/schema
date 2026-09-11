@@ -1304,7 +1304,14 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range bodies {
 		g.emitFixedWriteBody(st)
 	}
+	// THE BOUNDS PASS, one body per type and the root's entry point beside its
+	// load (§4.6, §5.3 step 11). The body set is the unit's order, so a type
+	// reached twice in a closure is spelled once.
+	for _, st := range bodies {
+		g.emitFixedClampBodyFn(st)
+	}
 	for _, st := range roots {
+		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
 	}
 }
@@ -1806,6 +1813,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
 	g.pf("        TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);\n", name)
+	// STEP 11's BOUNDS(out[rec]): straight-line code after the plan run, over
+	// STORAGE, so ONE pass covers BOTH plans (§4.6). A type that bounds nothing
+	// emits no pass and this line is not written at all.
+	if ir.TableFixedClampNeeded(st) {
+		g.pf("        %sFixedClamp(values[k], report);\n", name)
+	}
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
 	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
 	// returns n (§5.9 #6). Not inside the loop — §5.4 says once per peer — and

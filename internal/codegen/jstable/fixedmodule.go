@@ -334,7 +334,6 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// STEP 4: THE HEADER'S HASH, TAKEN AS GIVEN (§5.3). Nothing is recomputed
 	// from the wire: the definitions digest is not on the wire, so the hash
 	// cannot be re-derived from a file at all.
-	g.pf("  if (plan === null) { report.refused = TableFixedRefusal.NoLayout; return -1; }\n")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
 	// layout_newer — ship the reader; below the floor is layout_unsupported —
 	// upgrade the client. Both report THE FILE'S hash, and layout_newer reports
@@ -352,6 +351,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  }\n")
 	// STEP 8: the plan this peer resolves to — laid down at module load, never
 	// here — and the record size FROM THE LOCK and never from the file.
+	// THE CALLER'S CAPACITY IS CHECKED AFTER THE SELECT, NEVER BEFORE IT (§5.3's
+	// order, §5.9 #5). A caller that handed no plan at all declared a capacity of
+	// nothing, which is `plan_too_large` by name — and refusing it up here as
+	// `no_layout` gave a STRANGER'S file the name §5.3 reserves for a RECORD hash
+	// that is not the file's, where the answer it is owed is `layout_newer`.
+	g.pf("  if (plan === null) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }\n")
 	g.pf("  let entries = %sFixedIdentity, entryCount = 1, remap = null;\n", st.Name)
 	g.pf("  let censusUnknown = 0, censusKind = 0;\n")
 	g.pf("  const recordBytes = known.recordBytes;\n")

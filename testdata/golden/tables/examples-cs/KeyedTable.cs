@@ -1178,6 +1178,54 @@ namespace Tabledemo
             ScoreBoardFixedWriteBody(b.Slice(222), value.Scores);
         }
 
+        // TeamConfig's read-side bounds (§4.6).
+        public static void TeamConfigFixedClampBody(TeamConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.SpawnCount < 0) { value.SpawnCount = 0; clamped++; }
+            else if (value.SpawnCount > 64) { value.SpawnCount = 64; clamped++; }
+        }
+
+        // ScoreBoard's read-side bounds (§4.6).
+        public static void ScoreBoardFixedClampBody(ScoreBoard value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.PerTeam != null)
+            {
+                for (int i = 0; i < 3 && i < value.PerTeam.Length; ++i)
+                {
+                    if (value.PerTeam[i] < 0) { value.PerTeam[i] = 0; clamped++; }
+                    else if (value.PerTeam[i] > 100000) { value.PerTeam[i] = 100000; clamped++; }
+                }
+            }
+        }
+
+        // KeyedConfig's read-side bounds (§4.6).
+        public static void KeyedConfigFixedClampBody(KeyedConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Teams.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Teams.Slots.Length; ++i)
+                {
+                    TeamConfigFixedClampBody(value.Teams.Slots[i], ref clamped);
+                }
+            }
+            ScoreBoardFixedClampBody(value.Scores, ref clamped);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void TeamConfigFixedClamp(TeamConfig value, TableReport report)
+        {
+            int clamped = 0;
+            TeamConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- TeamConfig, the fixed form ----
 
         public const long TeamConfigFixedBodyBytes = 24;
@@ -1384,16 +1432,23 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new TeamConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TeamConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, TeamConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                TeamConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1632,13 +1687,19 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new GunnerConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GunnerConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, GunnerConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -1898,13 +1959,19 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new TurretConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TurretConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, TurretConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -2214,13 +2281,19 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new HullConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), HullConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, HullConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
@@ -2255,6 +2328,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, HullConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void KeyedConfigFixedClamp(KeyedConfig value, TableReport report)
+        {
+            int clamped = 0;
+            KeyedConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- KeyedConfig, the fixed form ----
@@ -2684,16 +2769,23 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new KeyedConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), KeyedConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, KeyedConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                KeyedConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)

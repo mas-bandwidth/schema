@@ -7243,6 +7243,7 @@ static SCHEMA_UNUSED int64_t gunner_settings_fixed_load( GunnerSettings * values
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    const uint8_t * scan;
     int32_t pick;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
@@ -7294,10 +7295,21 @@ static SCHEMA_UNUSED int64_t gunner_settings_fixed_load( GunnerSettings * values
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
-       the prefill, so a refusal has written not one destination byte (§5.3,
-       §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
-       record, and only where there is a range to prefill at all. It is the
+    /* 10b. THE HASH PRE-PASS: every record's leading hash is compared to the
+       file's BEFORE a single destination byte is written. In the landing loop
+       the same check fired only after records 0..k-1 had landed, so REFUSE was
+       not total on a file of many records. A file is ONE layout by
+       construction: this walk is paid only on a corrupt or hostile file. */
+    for ( scan = at, k = 0; k < count; ++k )
+    {
+        if ( table_fixed_get64( scan ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
+        scan += record_bytes;
+    }
+    /* 11. ONE RECORD LOOP, AND NO HASH CHECK IN IT — step 10b's pre-pass
+       already held every record in the tail, so a refusal cannot come after a
+       record has landed (§5.3, §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE
+       PER READ, not once per record, and only where there is a range to
+       prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
     if ( fill_count > 0 )
     {
@@ -7306,7 +7318,6 @@ static SCHEMA_UNUSED int64_t gunner_settings_fixed_load( GunnerSettings * values
     }
     for ( k = 0; k < count; ++k )
     {
-        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -7488,6 +7499,7 @@ static SCHEMA_UNUSED int64_t ship_entry_fixed_load( ShipEntry * values, int64_t 
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    const uint8_t * scan;
     int32_t pick;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
@@ -7539,10 +7551,21 @@ static SCHEMA_UNUSED int64_t ship_entry_fixed_load( ShipEntry * values, int64_t 
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
-       the prefill, so a refusal has written not one destination byte (§5.3,
-       §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
-       record, and only where there is a range to prefill at all. It is the
+    /* 10b. THE HASH PRE-PASS: every record's leading hash is compared to the
+       file's BEFORE a single destination byte is written. In the landing loop
+       the same check fired only after records 0..k-1 had landed, so REFUSE was
+       not total on a file of many records. A file is ONE layout by
+       construction: this walk is paid only on a corrupt or hostile file. */
+    for ( scan = at, k = 0; k < count; ++k )
+    {
+        if ( table_fixed_get64( scan ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
+        scan += record_bytes;
+    }
+    /* 11. ONE RECORD LOOP, AND NO HASH CHECK IN IT — step 10b's pre-pass
+       already held every record in the tail, so a refusal cannot come after a
+       record has landed (§5.3, §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE
+       PER READ, not once per record, and only where there is a range to
+       prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
     if ( fill_count > 0 )
     {
@@ -7551,7 +7574,6 @@ static SCHEMA_UNUSED int64_t ship_entry_fixed_load( ShipEntry * values, int64_t 
     }
     for ( k = 0; k < count; ++k )
     {
-        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -7724,6 +7746,7 @@ static SCHEMA_UNUSED int64_t global_settings_fixed_load( GlobalSettings * values
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    const uint8_t * scan;
     int32_t pick;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
@@ -7775,10 +7798,21 @@ static SCHEMA_UNUSED int64_t global_settings_fixed_load( GlobalSettings * values
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
-       the prefill, so a refusal has written not one destination byte (§5.3,
-       §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
-       record, and only where there is a range to prefill at all. It is the
+    /* 10b. THE HASH PRE-PASS: every record's leading hash is compared to the
+       file's BEFORE a single destination byte is written. In the landing loop
+       the same check fired only after records 0..k-1 had landed, so REFUSE was
+       not total on a file of many records. A file is ONE layout by
+       construction: this walk is paid only on a corrupt or hostile file. */
+    for ( scan = at, k = 0; k < count; ++k )
+    {
+        if ( table_fixed_get64( scan ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
+        scan += record_bytes;
+    }
+    /* 11. ONE RECORD LOOP, AND NO HASH CHECK IN IT — step 10b's pre-pass
+       already held every record in the tail, so a refusal cannot come after a
+       record has landed (§5.3, §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE
+       PER READ, not once per record, and only where there is a range to
+       prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
     if ( fill_count > 0 )
     {
@@ -7787,7 +7821,6 @@ static SCHEMA_UNUSED int64_t global_settings_fixed_load( GlobalSettings * values
     }
     for ( k = 0; k < count; ++k )
     {
-        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
@@ -8097,6 +8130,7 @@ static SCHEMA_UNUSED int64_t pack_config_fixed_load( PackConfig * values, int64_
     const uint8_t * at;
     uint64_t hash;
     int64_t rest, record_bytes, count, k;
+    const uint8_t * scan;
     int32_t pick;
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
@@ -8148,10 +8182,21 @@ static SCHEMA_UNUSED int64_t pack_config_fixed_load( PackConfig * values, int64_
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
-    /* 11. ONE RECORD LOOP, AND THE PER-RECORD HASH CHECK COMES FIRST — before
-       the prefill, so a refusal has written not one destination byte (§5.3,
-       §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per
-       record, and only where there is a range to prefill at all. It is the
+    /* 10b. THE HASH PRE-PASS: every record's leading hash is compared to the
+       file's BEFORE a single destination byte is written. In the landing loop
+       the same check fired only after records 0..k-1 had landed, so REFUSE was
+       not total on a file of many records. A file is ONE layout by
+       construction: this walk is paid only on a corrupt or hostile file. */
+    for ( scan = at, k = 0; k < count; ++k )
+    {
+        if ( table_fixed_get64( scan ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
+        scan += record_bytes;
+    }
+    /* 11. ONE RECORD LOOP, AND NO HASH CHECK IN IT — step 10b's pre-pass
+       already held every record in the tail, so a refusal cannot come after a
+       record has landed (§5.3, §5.8 row 9). THE DEFAULT IMAGE IS RESET ONCE
+       PER READ, not once per record, and only where there is a range to
+       prefill at all. It is the
        caller's own stack and this codec allocates nothing. */
     if ( fill_count > 0 )
     {
@@ -8160,7 +8205,6 @@ static SCHEMA_UNUSED int64_t pack_config_fixed_load( PackConfig * values, int64_
     }
     for ( k = 0; k < count; ++k )
     {
-        if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
         table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the

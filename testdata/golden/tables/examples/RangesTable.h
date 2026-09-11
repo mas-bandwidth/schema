@@ -11603,6 +11603,14 @@ inline int64_t RangedSignedFixedLoad( RangedSigned * values, int64_t capacity, c
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RangedSigned defaults;
     if ( fill_count > 0 )
     {
@@ -11611,7 +11619,9 @@ inline int64_t RangedSignedFixedLoad( RangedSigned * values, int64_t capacity, c
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RangedSignedFixedKnownRanges[lineage_at], RangedSignedFixedKnownRangeCounts[lineage_at],
@@ -11919,6 +11929,14 @@ inline int64_t RangedUnsignedFixedLoad( RangedUnsigned * values, int64_t capacit
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RangedUnsigned defaults;
     if ( fill_count > 0 )
     {
@@ -11927,7 +11945,9 @@ inline int64_t RangedUnsignedFixedLoad( RangedUnsigned * values, int64_t capacit
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RangedUnsignedFixedKnownRanges[lineage_at], RangedUnsignedFixedKnownRangeCounts[lineage_at],
@@ -12197,6 +12217,14 @@ inline int64_t RangedWidthsFixedLoad( RangedWidths * values, int64_t capacity, c
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
+    {
+        const uint8_t * scan = at;
+        for ( int64_t k = 0; k < n; ++k )
+        {
+            if ( TableFixedGet64( scan ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+            scan += record_bytes;
+        }
+    }
     RangedWidths defaults;
     if ( fill_count > 0 )
     {
@@ -12205,7 +12233,9 @@ inline int64_t RangedWidthsFixedLoad( RangedWidths * values, int64_t capacity, c
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        // NO PER-RECORD HASH CHECK HERE: step 10b's pre-pass already held
+        // every record in the tail, and a check in this loop could only
+        // refuse after earlier records had landed.
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         TableFixedClampKnownRanges( RangedWidthsFixedKnownRanges[lineage_at], RangedWidthsFixedKnownRangeCounts[lineage_at],

@@ -1605,6 +1605,120 @@ namespace Tabledemo
             }
         }
 
+        // Debuff's read-side bounds (§4.6).
+        public static void DebuffFixedClampBody(Debuff value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Amount < 0) { value.Amount = 0; clamped++; }
+            else if (value.Amount > 100) { value.Amount = 100; clamped++; }
+        }
+
+        // WeaponConfig's read-side bounds (§4.6).
+        public static void WeaponConfigFixedClampBody(WeaponConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Penetration < 0) { value.Penetration = 0; clamped++; }
+            else if (value.Penetration > 10) { value.Penetration = 10; clamped++; }
+            // bits(6) width clamp
+            if (value.Channel > 63) { value.Channel = 63; clamped++; }
+            if (value.Effect != null)
+            {
+                if ((ulong)value.Effect.Type > 2) { value.Effect.Type = (EffectType)0; clamped++; }
+                switch (value.Effect.Type)
+                {
+                    case EffectType.Debuff:
+                    {
+                        DebuffFixedClampBody(value.Effect.Debuff, ref clamped);
+                        break;
+                    }
+                    default: break;
+                }
+            }
+        }
+
+        // Attachment's read-side bounds (§4.6).
+        public static void AttachmentFixedClampBody(Attachment value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Slot < 0) { value.Slot = 0; clamped++; }
+            else if (value.Slot > 7) { value.Slot = 7; clamped++; }
+        }
+
+        // LoadoutConfig's read-side bounds (§4.6).
+        public static void LoadoutConfigFixedClampBody(LoadoutConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if ((ulong)value.Grade > 3) { value.Grade = (Grade)0; clamped++; }
+            if (value.Grades != null)
+            {
+                for (int i = 0; i < value.GradesCount && i < value.Grades.Length; ++i)
+                {
+                    if ((ulong)value.Grades[i] > 3) { value.Grades[i] = (Grade)0; clamped++; }
+                }
+            }
+            if (value.Podium != null)
+            {
+                for (int i = 0; i < 3 && i < value.Podium.Length; ++i)
+                {
+                    if ((ulong)value.Podium[i] > 3) { value.Podium[i] = (Grade)0; clamped++; }
+                }
+            }
+            WeaponConfigFixedClampBody(value.Primary, ref clamped);
+            if (value.Backups != null)
+            {
+                for (int i = 0; i < 2 && i < value.Backups.Length; ++i)
+                {
+                    WeaponConfigFixedClampBody(value.Backups[i], ref clamped);
+                }
+            }
+            if (value.Attachments != null)
+            {
+                for (int i = 0; i < value.AttachmentsCount && i < value.Attachments.Length; ++i)
+                {
+                    AttachmentFixedClampBody(value.Attachments[i], ref clamped);
+                }
+            }
+        }
+
+        // ProfileConfig's read-side bounds (§4.6).
+        public static void ProfileConfigFixedClampBody(ProfileConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            LoadoutConfigFixedClampBody(value.Loadout, ref clamped);
+        }
+
+        // RootConfig's read-side bounds (§4.6).
+        public static void RootConfigFixedClampBody(RootConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Weapons != null)
+            {
+                for (int i = 0; i < value.WeaponsCount && i < value.Weapons.Length; ++i)
+                {
+                    WeaponConfigFixedClampBody(value.Weapons[i], ref clamped);
+                }
+            }
+            if (value.Profiles != null)
+            {
+                for (int i = 0; i < value.ProfilesCount && i < value.Profiles.Length; ++i)
+                {
+                    ProfileConfigFixedClampBody(value.Profiles[i], ref clamped);
+                }
+            }
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void RootConfigFixedClamp(RootConfig value, TableReport report)
+        {
+            int clamped = 0;
+            RootConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- RootConfig, the fixed form ----
 
         public const long RootConfigFixedBodyBytes = 1248;
@@ -2631,16 +2745,23 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new RootConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RootConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, RootConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                RootConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2672,6 +2793,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, RootConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void WeaponConfigFixedClamp(WeaponConfig value, TableReport report)
+        {
+            int clamped = 0;
+            WeaponConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- WeaponConfig, the fixed form ----
@@ -2915,16 +3048,23 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new WeaponConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), WeaponConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, WeaponConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                WeaponConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2956,6 +3096,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, WeaponConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void LoadoutConfigFixedClamp(LoadoutConfig value, TableReport report)
+        {
+            int clamped = 0;
+            LoadoutConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- LoadoutConfig, the fixed form ----
@@ -3375,16 +3527,23 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new LoadoutConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), LoadoutConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, LoadoutConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                LoadoutConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -3416,6 +3575,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, LoadoutConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void ProfileConfigFixedClamp(ProfileConfig value, TableReport report)
+        {
+            int clamped = 0;
+            ProfileConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- ProfileConfig, the fixed form ----
@@ -3908,16 +4079,23 @@ namespace Tabledemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new ProfileConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ProfileConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, ProfileConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                ProfileConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)

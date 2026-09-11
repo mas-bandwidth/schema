@@ -265,6 +265,7 @@ defmodule Bench.WrapFixed do
   defp fixed_table_fixed_records(stated, layout, records, report, opts) do
     copy = Keyword.get(opts, :copy, false)
     cap = Keyword.get(opts, :plan_capacity, R.plan_capacity())
+    bcap = Keyword.get(opts, :batch_capacity, R.batch_capacity())
 
     # A CALLER'S `plan:` IS ACCEPTED AND NOT READ (§5.9 #16): §5.6 retires
     # MECHANISMS and not API, so the argument keeps its place and the plan a
@@ -281,7 +282,7 @@ defmodule Bench.WrapFixed do
         {:error, why, %{report | layout_hash: file_hash}}
 
       {:ok, i} ->
-        fixed_table_fixed_lane(i, records, stated, report, cap, copy)
+        fixed_table_fixed_lane(i, records, stated, report, cap, bcap, copy)
     end
   end
 
@@ -289,7 +290,7 @@ defmodule Bench.WrapFixed do
   # from the lock's own bytes (§5.9 #3). Nothing on this path compiles and
   # nothing on it can fail for want of a plan: an entry whose plan would not
   # build carries its own refusal reason, and this is where it is read.
-  defp fixed_table_fixed_lane(i, records, hash, report, cap, copy) do
+  defp fixed_table_fixed_lane(i, records, hash, report, cap, bcap, copy) do
     case R.lineage_lane(__MODULE__, :fixed_table, i) do
       :identity ->
         fixed_table_fixed_run(
@@ -299,8 +300,8 @@ defmodule Bench.WrapFixed do
           hash,
           report,
           copy,
-          0,
-          0
+          bcap,
+          {0, 0}
         )
 
       {:ok, _plan, _size, made, _u, _k} when made > cap ->
@@ -309,18 +310,28 @@ defmodule Bench.WrapFixed do
         {:error, :plan_too_large, report}
 
       {:ok, plan, size, _made, u, k} ->
-        fixed_table_fixed_run(plan, size, records, hash, report, copy, u, k)
+        fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, {u, k})
 
       {:error, why} ->
         {:error, why, report}
     end
   end
 
-  # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE
-  # a byte is landed. Neither plan clamps a ranged integer: the generated
-  # projection holds the bound after the loop, the same pass for either plan.
-  defp fixed_table_fixed_run(plan, size, records, hash, report, copy, census_u, census_k) do
-    with {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
+  # ONE PREFILL-AND-PROJECT PER RECORD, and §5.3 STEP 10b's HASH PRE-PASS ahead
+  # of it: `_fixed_split` walks the WHOLE tail and holds every record's hash
+  # before this `with` opens, so no record lands until all of them are good and
+  # REFUSE stays total on a file of many records. Neither plan clamps a ranged
+  # integer: the generated projection holds the bound after the loop, the same
+  # pass for either plan.
+  defp fixed_table_fixed_run(plan, size, records, hash, report, copy, bcap, census) do
+    {census_u, census_k} = census
+
+    # §5.3 STEP 10, BEFORE A RECORD IS SPLIT OFF: `n := rest / record_bytes`,
+    # and a batch past the caller's room is a REFUSAL BY NAME. Step 9 runs
+    # first and owns the ragged tail, so a `rest` that is not a whole number
+    # of records passes this and the split reports `malformed`.
+    with :ok <- R.batch_within(byte_size(records), size + 8, bcap),
+         {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
       {values, report} =
         Enum.map_reduce(bodies, report, fn body, report ->
           {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
@@ -350,7 +361,8 @@ defmodule Bench.WrapFixed do
 
       <<_::little-unsigned-64, _::binary-size(^size), _::binary>> ->
         # A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY
-        # NAME, never a guess and never damage.
+        # NAME, never a guess and never damage. This split IS §5.3 step 10b's
+        # PRE-PASS: it runs over every record before the first one is landed.
         {:error, :no_layout}
 
       _ ->

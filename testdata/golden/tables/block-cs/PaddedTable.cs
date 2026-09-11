@@ -496,6 +496,37 @@ namespace Blockdemo
             if (len_blob > 0) { value.Blob.AsSpan(0, len_blob).CopyTo(b.Slice(3217)); }
         }
 
+        // PaddedRow's read-side bounds (§4.6).
+        public static void PaddedRowFixedClampBody(PaddedRow value, ref int clamped)
+        {
+            if (value == null) return;
+        }
+
+        // PaddedFrame's read-side bounds (§4.6).
+        public static void PaddedFrameFixedClampBody(PaddedFrame value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Rows != null)
+            {
+                for (int i = 0; i < value.RowsCount && i < value.Rows.Length; ++i)
+                {
+                    PaddedRowFixedClampBody(value.Rows[i], ref clamped);
+                }
+            }
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void PaddedRowFixedClamp(PaddedRow value, TableReport report)
+        {
+            int clamped = 0;
+            PaddedRowFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- PaddedRow, the fixed form ----
 
         public const long PaddedRowFixedBodyBytes = 50;
@@ -766,16 +797,23 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new PaddedRow(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedRowFixedSlots, values[k]);
                 TableFixedWire.Run(entries, PaddedRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                PaddedRowFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -807,6 +845,18 @@ namespace Blockdemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, PaddedRowFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void PaddedFrameFixedClamp(PaddedFrame value, TableReport report)
+        {
+            int clamped = 0;
+            PaddedFrameFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- PaddedFrame, the fixed form ----
@@ -2681,16 +2731,23 @@ namespace Blockdemo
             byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
+            ReadOnlySpan<byte> scan = at;
             for (int k = 0; k < n; ++k)
             {
-                if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
+                if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                scan = scan.Slice((int)record_bytes);
+            }
+            for (int k = 0; k < n; ++k)
+            {
+                // NO HASH CHECK HERE: the pre-pass above already held every record.
                 if (values[k] == null) { values[k] = new PaddedFrame(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedFrameFixedSlots, values[k]);
                 TableFixedWire.Run(entries, PaddedFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                PaddedFrameFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
