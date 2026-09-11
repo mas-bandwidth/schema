@@ -431,7 +431,7 @@ func cManifest(t *testing.T, corpus string) map[string]cManifestLine {
 			"(make tables-fixedform-corpus writes it)", err)
 	}
 	out := map[string]cManifestLine{}
-	for _, raw := range strings.Split(string(data), "\n") {
+	for raw := range strings.SplitSeq(string(data), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -439,7 +439,7 @@ func cManifest(t *testing.T, corpus string) map[string]cManifestLine {
 		head, values, _ := strings.Cut(line, " values=")
 		var l cManifestLine
 		file := ""
-		for _, kv := range strings.Fields(head) {
+		for kv := range strings.FieldsSeq(head) {
 			k, v, ok := strings.Cut(kv, "=")
 			if !ok {
 				continue
