@@ -446,5 +446,62 @@ tables-elixir-fixed-form-negative-control: build/fixedform-corpus/.stamp
 		  cat $(CONFORMANCE_NEGATIVE_ELIXIR_FIXED)/log; exit 1; }
 	@echo 'elixir fixed form negative control: one byte off the write template reds the reference byte match'
 
+# THE VERSIONING HALF OF THE ELIXIR LEG'S GATE (docs/FIXED-FORM-ALGORITHM.md
+# §5.7 step 6, §5.9 #11: every leg owes TWO gates — the BYTES against the
+# reference's corpus, which is tables-elixir-fixed-form above, and §5.7's ROWS
+# against the versioning corpus, which is this one). The rows live in
+# internal/codegen/elixirtable/fixedversioning_test.go, which plays the lock,
+# generates the reader's Elixir with the older generation's locked entry as its
+# lineage, writes ONE PROBE per row per column beside it and runs it with this
+# leg's own toolchain (§5.9 #18).
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the harness
+# SKIPS itself when build/fixedform-corpus or the Elixir in dist/ is absent,
+# which is right for a bare `go test ./...` and is exactly how a §5 regression
+# would ride into a green. So the target builds the oracle first and sets
+# SCHEMA_REQUIRE_CORPUS=1, under which that skip is a FAILURE.
+#
+# ELIXIR_BIN and ERL_BIN are PLAIN PATHS and not the PATH-prefixed launchers the
+# rest of this file uses, because the harness spawns the binary itself: empty is
+# the default, and the harness then takes the Elixir and the OTP this file pins
+# in dist/, or the ones on PATH when dist/ holds none — which is the CI shape,
+# where setup-beam installs the pinned versions on PATH and the negative
+# controls group passes ELIXIR=elixir and no ELIXIR_BIN at all.
+ELIXIR_BIN ?=
+ERL_BIN    ?=
+
+.PHONY: tables-elixir-versioning
+tables-elixir-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		go test ./internal/codegen/elixirtable/ -count=1 -run 'TestFixedVersioning'
+	@echo 'tables Elixir versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
+# comparing a file with itself). The sabotage replaces the ONE name that carries
+# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
+# the reader — with `layout_malformed`, on a file OUTSIDE the lineage, and the
+# OLD-REFUSES-NEW column must go red naming it.
+.PHONY: tables-elixir-versioning-negative-control
+tables-elixir-versioning-negative-control: tables-fixedform-corpus
+	@rm -rf build/elixir-versioning-nc && mkdir -p build/elixir-versioning-nc
+	@sed 's|{:error, :layout_newer, hash}|{:error, :layout_malformed, hash}|' \
+		internal/codegen/elixirtable/fixedruntime.go > build/elixir-versioning-nc/fixedruntime.go.txt
+	@cmp -s internal/codegen/elixirtable/fixedruntime.go build/elixir-versioning-nc/fixedruntime.go.txt && \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/fixedruntime.go":"%s/build/elixir-versioning-nc/fixedruntime.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/elixir-versioning-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+			go test -overlay build/elixir-versioning-nc/overlay.json \
+			./internal/codegen/elixirtable/ -count=1 -run 'TestFixedVersioningOldRefusesNew' \
+			> build/elixir-versioning-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
+		cat build/elixir-versioning-nc/log; exit 1; \
+	fi
+	@grep -q 'owes layout_newer' build/elixir-versioning-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
+		  cat build/elixir-versioning-nc/log; exit 1; }
+	@echo 'negative control: the wrong name for a hash outside the lineage reds the Elixir versioning gate'
+
 test-elixir: tables-elixir-fixed-form tables-elixir-fixed-form-negative-control tables-elixir-fixed-bench
+test-elixir: tables-elixir-versioning tables-elixir-versioning-negative-control
 test-elixir: tables-elixir-paired-gate
