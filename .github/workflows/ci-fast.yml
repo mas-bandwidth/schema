@@ -410,6 +410,28 @@ jobs:
       # THE TWO GATES. The target names are the tree's own — the same ones
       # `make test` and ci-full.yml run — so a leg that renames a gate renames
       # it in one place and this row follows.
+      #
+      # AND THE OVERRIDES ARE THE ONES ci-full.yml PASSES, NOT THE ONES
+      # test/conformance/<leg>/ci.json PASSES, and the difference cost this
+      # lane its first red (run 34600421804, the rust row on PR #949): the
+      # rust row here was written with `RUSTUP_BIN=/usr/bin`, which is what the
+      # conformance registry hands the CONFORMANCE leg — correct there, where
+      # every target it names is a `cargo build`. But `tables-rust-versioning`
+      # is A GO TEST that shells out to cargo (make/rust.mk:309), and make
+      # prepends $(RUSTUP_BIN) to PATH around the whole recipe. /usr/bin is
+      # where the runner image keeps its OWN go — 1.24.13 — so prepending it
+      # put that Go in front of the 1.26 actions/setup-go had just installed,
+      # and the gate died before asserting anything:
+      #
+      #   go: go.mod requires go >= 1.26 (running go 1.24.13; GOTOOLCHAIN=local)
+      #   make: *** [make/rust.mk:309: tables-rust-versioning] Error 1
+      #
+      # So the rust row passes NO RUSTUP_BIN, exactly as ci-full.yml's rust
+      # versioning step does, and for the reason that step names: the default
+      # is a homebrew keg that does not exist on a runner, prepending a
+      # directory that is not there costs nothing, and cargo resolves out of
+      # the toolchain the `dtolnay/rust-toolchain` step above installed.
+      # internal/ci's TestNoWorkflowShadowsTheGoToolchain keeps it that way.
       - name: the ${{ matrix.leg }} leg's fixed form and versioning rows
         run: |
           set -euo pipefail
@@ -417,7 +439,7 @@ jobs:
             cpp)    make tables-fixedform ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning ;;
-            rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN=/usr/bin ;;
+            rust)   make tables-rust-fixedform tables-rust-versioning ;;
             js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
             cs)     make tables-cs-leg tables-cs-versioning ;;
             java)   make tables-java-fixedform JAVA=java JAVAC=javac ;;
