@@ -33,7 +33,17 @@ const BuildVersionModule = "BuildVersion"
 // module per file that has one, and the block modules. Empty when the unit
 // declares no table: a table-free unit's Elixir output is byte-identical with
 // this backend in the chain or out of it.
-func Generate(u *ir.Unit) (map[string][]byte, error) {
+func Generate(u *ir.Unit) (map[string][]byte, error) { return GenerateLineage(u, nil) }
+
+// GenerateLineage is [Generate] with the LOCK'S LINEAGE handed in: per fixed
+// table, the locked layouts OLDEST FIRST, the current one last, each carrying
+// §5.2's facts (docs/FIXED-FORM-ALGORITHM.md §5.9 #1). THE BACKEND OPENS NO
+// FILE: `lockfile.Open`, `lockfile.Lineage` and `lockfile.Floor` are the
+// CALLER's three calls, so the disk is read in one place and a test can play
+// the lock in one line. A nil lineage is the NO-LOCK case — a unit that was
+// never locked promises nothing, so every table serves its own layout and
+// refuses every other hash by name.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return nil, nil
 	}
@@ -106,7 +116,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
 	// FIRST table WIRE. Form 1 is still deferred to schema#515 and nothing here
 	// reads or writes one.
-	fixed, err := generateFixed(u, ns)
+	fixed, err := generateFixed(u, ns, lineage)
 	if err != nil {
 		return nil, err
 	}
