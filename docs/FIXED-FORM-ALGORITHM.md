@@ -387,7 +387,7 @@ and still read (bill §12.3).
 
 ### 5.2 COMPILE(lock, T): the lineage as static data, at build time
 
-**What the lock must provide, per fixed table `T`** (bill §11.7; the tip's lock holds none of it — §5.8):
+**What the lock must provide, per fixed table `T`** (bill §11.7):
 
 | the lock gives | COMPILE uses it for |
 |---|---|
@@ -399,9 +399,45 @@ and still read (bill §12.3).
 | per entry: a RETIRED mark and its reason (`schema lock --retire T@<hash>`) | the floor, and `layout_unsupported` |
 | the defaults, the deprecation marks, the closure | the prefill image, §5.1, §5.5 |
 
+**WHAT THE LOCK NOW PROVIDES** (#909, merged into `fixed-table-form`). `internal/lockfile/lineage.go` is the
+home bill §11.7 named, and a backend reads exactly three calls: `lockfile.Open(paths)` locates and parses the
+unit's lock — `ok` false for a unit that was never locked is not an error, because a unit that has never been
+locked promises nothing; `lockfile.Lineage(lock, T)` is the slice COMPILE walks, **OLDEST FIRST, the current
+layout last**, and nil for a name the lock carries as a nested `type` rather than a fixed table; and
+`lockfile.Floor(lock, T)` is §5.2's one number — one past the highest `Retired` index, `0` when none is. A
+`LineageEntry` carries the five facts the table above asks for and the two the operator writes: **`Wire`**
+(the eight bytes the header and every record carry — the lineage's key and the only fact a file is matched
+on), **`Layout`** (the bytes verbatim: a u32 entry count and a run of seventeen-byte entries, what LOAD
+memcmps and what PLAN walks), **`Digest`** (§13, empty where a table carries none of those facts),
+**`Record`** (the body size), **`Retired`**, and **`Reason`** (the operator's sentence). Nothing changed about
+the FILE: the digest still never rides the wire.
+
+The text is one line per entry — `lineage wire=0x… record=<n> bytes=<hex> [digest=<hex>] [retired]
+[reason=<sentence>]`, the wire hash first because it is what a file is matched on and the reason last because
+it is the one token that holds a sentence — and **the line is ONE STATEMENT MADE TWICE**: the parse recomputes
+fnv1a64 over `bytes` and then `digest` and refuses a line whose `wire` disagrees, the way `layout=` is held to
+the field lines. **The SET is bound too**: `lineage=0x…` on the `fixed table` line is one hash over every
+entry's wire hash and retired mark, in order (#912), so a hand that DELETES, reorders or re-marks a lineage
+line is caught by name — and the remedy it names is never "write it again", because no command can recover the
+layout bytes of a record nobody declares any more: restore the file from version control. A layout stops being
+served by being RETIRED, `schema lock --retire T@0x<hash> --reason "…"`, which keeps the entry and moves the
+floor. A lock written before the lineage existed is SALVAGED and never deleted (bill §11.8): its single layout
+becomes the first entry, and every field line, default and deprecation mark is carried forward unchanged.
+
+**§5.1 has its implementation too**: `internal/lockfile/monotone.go`, reached from the lock's own diff — one
+comparison per recorded fact, in the order that names the change best, the first difference is the finding,
+and the rule phrase is the clause a person greps for.
+
+**The reference reads none of it yet.** `internal/codegen/cpptable/lineage.go` builds its lineage from SIBLING
+SCHEMA FILES at generate time by filename convention — `VOLD_`/`VNEW_`, the numbered evolution sets, and
+`ir.TableFixedFixtureLineage` for the pairs no convention can name (`Scalars2` lives in a different directory
+from `Scalars`) — and its floor is hard-coded for one test package. **That is the interim, and it is named as
+an interim**: the convention goes away the day COMPILE reads `lockfile.Lineage` and `lockfile.Floor`, and
+until then §5.8 holds it as a divergence. A port implements THIS page against the lock, never the convention.
+
 ```
 COMPILE(lock, T):
-  y := T's own layout ; Hy := HASH(bytes(y), DIGEST(T))
+  y := T's own layout ; Hy := HASH(bytes(y), T)            -- the digest is computed AT the hash, from T
   R.own_hash := Hy
   R.identity, R.split, R.cover := the baked identity plan of §4.2, its split, the type's value bytes
   i := 0
@@ -417,13 +453,19 @@ COMPILE(lock, T):
 answers stay distinct: below the floor is `layout_unsupported` (upgrade the client), outside the lineage is
 `layout_newer` (ship the reader). A retired entry stays in the lineage forever.
 
-**THE HASH.** The eight bytes a file's header and every record carry:
+**THE HASH.** The eight bytes a file's header and every record carry. **The digest is computed AT THE HASH
+SITE, from the schema** — the reference's signature is `ir.TableFixedLayoutHash(layout, st)` and there is no
+digest argument for a leg to omit. That is the point of the shape: a leg that forgot the second argument, or
+passed an empty one, would hash the layout bytes alone and publish a number that collides with every sibling
+the digest exists to separate. A LINEAGE ENTRY is the one caller with no live schema behind it — a historical
+layout has no `*Struct` — so it stores the two runs and hashes the concatenation, which is the same walk
+because FNV is sequential and a nil schema is an empty second run:
 
 ```
-HASH(layout_bytes, digest):
+HASH(layout_bytes, T):
   h := 0xcbf29ce484222325
-  for v in layout_bytes: h ^= v ; h *= 0x100000001b3
-  for v in digest:       h ^= v ; h *= 0x100000001b3
+  for v in layout_bytes:   h ^= v ; h *= 0x100000001b3
+  for v in DIGEST(T):      h ^= v ; h *= 0x100000001b3   -- computed here; never an argument a caller supplies
   return h
 ```
 
@@ -494,6 +536,10 @@ EMIT(te, their_at, me, my_at, guard, arg):
                    `const` of the READER's ordinal (position from 1), guarded by THE WRITER'S TAG OFFSET,
                       at the writer's tag WIDTH, with the writer's ordinal as the guard value
                    EMIT the arm's payload under that same guard and ordinal
+                 a PAYLOAD-FREE arm (kind 32) has a LAYOUT ENTRY and NO BYTES: the tag names it and there is
+                      nothing to land, so it takes the `const` of its ordinal and no payload EMIT at all. It
+                      is an entry rather than nothing because the arm list is what the layout is COMPARED by
+                      — an arm appended AFTER a payload-free one must move the hash
     30 enum:     if te.size < me.size: emit `widen`, unsigned                      -- a grown ordinal width (bill §12.7)
                  else: emit `ordinal` with a remap table — entry j is the reader's position of the writer's
                        variant j, or 0 when the reader has no such name
@@ -507,6 +553,21 @@ for a text entry's length word, and `guard + the guard's width` too. One entry p
 WHOLE — never partly compiled. **The plan also carries the WRITER'S bounds for the hostile pass** (bill
 §12.5): that peer's count bound, variant count, arm count and range, so a value forged past what the WRITER
 could have written clamps and counts, and a value the reader merely widened does not.
+
+**The prefill's image is the reader's OWN FRESH VALUE** — a zeroed destination with the type's `Reset` over
+it — so every default §5.1 let through reaches the bytes the plan does not write: an appended field, an
+element past the writer's count, a keyed slot an appended key opened. A union inside that image is reset
+**arm by arm, at each arm's own overlay storage**, and only then the tag to `None`: an arm is not the member
+it looks like, because a pointer arm is a reference and not its pointee, a counted array or a text arm rides
+beside a companion, and a whole-value assignment over an overlay resets one arm's worth of bytes and calls it
+all of them. An arm whose defaults the image does not carry is a default that silently becomes zero for every
+field the plan leaves alone.
+
+**The test of that is a POISON and not a reset.** Fill the destination with `0x5A` through a byte pointer,
+load, and read the tail: it must be the DECLARED default. A `Reset` before the load only proves the load did
+not clobber what was there, and a zero-fill looks exactly like a zero default, so neither can tell a prefill
+that ran from one that never did. `keyed_array_enum_append`'s element is a fixed table with a nonzero default
+for this reason (§5.7).
 
 Because §5.1 held at every commit, `PLAN` never fails on a monotone lineage; a lineage that is not monotone
 is a bug in the lock, refused by name at build.
@@ -584,6 +645,13 @@ when every value lands.
 A `bool` or a present byte that is not `0` or `1` is normalised to the language's own true and **counts
 nothing** (bill §12.12).
 
+**A clamp that cannot fire is not emitted, and nothing moves.** An ordinal whose extent FILLS its storage
+width — 255 variants in a byte, 65535 in two — has no read-side clamp: the comparison would be `> extent`
+against a value of that very width, which no value satisfies. The elided check never clamped, so the counter
+it would have moved never moved either; a port that emits the tautology instead is still conforming, and a
+port whose warnings-as-errors build refuses a tautology is free to drop it. The same rule already applies to a
+ranged scalar whose declared end sits on its width's limit.
+
 ### 5.5 The closure
 
 `closure(T)` is `T`, every `table` or `type` it reaches by value, every enum, union, flags and constant any
@@ -620,27 +688,75 @@ identity plan, and it READS in both directions — **which is the test that the 
 the version.** The floor owes three: a file AT the floor reads, a file ONE BELOW refuses
 `layout_unsupported`, and the floor raised by one makes yesterday's file refuse today.
 
+**The properties gate carries the pairs too.** `test/tables/fixedform_properties.cpp` runs its save / load /
+compare properties over every fixture — `P1` among them — and then ONE PAIR RUN per lineage pair: `FX1`/`FX2`,
+`P1`/`P3`, `FN1`/`FN2`, `FM1`/`FM2`, `V1`/`V2`, `Scalars`/`Scalars2`. That is §5.7's two columns inside the
+gate rather than only inside the versioning cases. FORWARD: the newer reader compiles the older file through
+its lineage and returns one record. REVERSE: the older reader given the newer file refuses, and the refusal is
+`layout_newer` BY NAME. **The old contract's both-ways compiled read is retired, not bent** — a reader that
+compiled a stranger's layout in either direction was the thing this section replaced. The pairs resolve
+through `ir.TableFixedFixtureLineage`, the map from a newer fixture's basename to its older files, which is
+what lets a pair no filename convention can name (`Scalars2`, in a different directory from `Scalars`) join
+the gate at all.
+
+**The gate's own record check is the READER'S COMPILED HASH CONSTANT**, never a hash of the layout bytes it
+just read. The digest is not on the wire, so `hash_of(layout)` is the wrong identity for any table carrying a
+range, a `bits(N)`, a `fixed(I,F)` or a flags type — a harness that recomputes it is asserting the one number
+§5.2 says cannot be re-derived from a file.
+
+**`keyed_array_enum_append`'s element is a fixed table with a NONZERO default**, `fixed table Qty { n int32 = 7 }`,
+so the slot the appended key opens reads `7` and not `0`. Its NEW-READS-OLD destination, and
+`array_fixed_grow`'s, are POISONED with `0x5A` through a byte pointer before the load: with a zero default and
+a zeroed destination the row passes whether the prefill ran or not, and this is the row whose whole subject is
+that it ran. OLD-REFUSES-NEW reads the same way from the other side — the destination holds `7`, the fresh
+value's own default, because REFUSE wrote nothing.
+
+**The C leg's port list, from the twin.** `tools/fixedtwin` holds the C and C++ fixed-form runtimes to one
+canonical text and fails on ANY difference, so a row C++ has and C does not would break the gate. Those rows
+are recorded as **OWED BY THE C LEG** and stripped, each naming the §5 section the C card implements from
+(`bench/paired/TWIN.md`). They are not divergences from this page — they are this page's port list for C:
+
+| OWED by C | what it is | from |
+|---|---|---|
+| `kTableFixedPresent`: the enumerator, the Apply case (`dst[p.dst] = 1`), and the compile of `T` into `?T` (`me.kind == 35 && te.kind != 35`) | the present op — an UNGUARDED constant `1` into the reader's present byte, then the payload under the same guard and ordinal | §5.2 EMIT, bill §12.8 |
+| `TableFixedWidens` rungs `20..24` and `25..29`, and `TableFixedSignedKind` over `20..24` | the signed and unsigned `fixed(I,F)` ladders, and a signed fixed-point's sign for the widening | §5.1 `fixed(I,F)` |
+| the enum case `te.size < me.size` emitted as `kTableFixedWiden` | a grown ordinal or tag width is a `widen`, unsigned, and counts `widened` | §5.2 EMIT kind 30, §5.4 |
+| `struct TableFixedKnownLayout` | the known-layout table itself: per entry the hash, the layout bytes, the record size | §5.2, §5.3 |
+| `layout_newer`, `layout_unsupported` and the floor, in the per-type codec rather than the shared extract | the version-range gates: refuse a hash the lineage does not hold, and a hash below the floor | §5.3 |
+
+Five rows, and the C leg takes each from THIS PAGE rather than from the C++ text beside it. The twin's own
+note says so: do not port the C from the C++.
+
 ### 5.8 What the green reference owes this section
 
-Every row is a divergence from the bill or from this page, found reading `johnny/cpp-versioning-green`.
-**Implement this page, not the reference.**
+Every row is a divergence that STILL STANDS on `fixed-table-form` with the C++ green phase merged (#910) and
+the lock's lineage merged (#909), re-read against the branch. **Implement this page, not the reference** — for
+each row the bill's ruling is the second column, and **the reference owes this**.
 
-| # | what the reference does | what this page says |
+| # | what the reference does | what this page says — the reference owes this |
 |---|---|---|
-| 1 | `BASELINE` does not exist: no lineage in the lock, no monotone check, no `--retire` | §5.1, and §5.2's lock table |
-| 2 | the lineage is read from SIBLING SCHEMA FILES at generate time, by filename convention | the lineage comes from the lock, with a retired mark and a reason per entry |
-| 3 | the floor is hard-coded to one index for one test package | the floor is `1 +` the highest retired index, from the lock |
-| 4 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes, and cached | `COMPILE` lays every plan down at build time (bill §12.5); nothing compiles at run time |
-| 5 | the `count` op's bound, the ranges, the variant and arm counts are the READER's | the bounds are the WRITER's, per plan (bill §12.5) |
-| 6 | `arg`, the guard's ordinal, is still a BYTE lane; the remap table stops at 255 variants | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
-| 7 | a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH | an arm inside an arm answers to the OUTER tag too (§4.1) |
-| 8 | the `ordinal` op reads through a 32-BIT temporary | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
-| 9 | ill-formed text zeroes the field, restores its default and sets `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
-| 10 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
-| 11 | the digest carries only INTEGER ranges — a float range and a reader-side limit are not in it | every range and every limit (bill §13), or the widening cannot be refused |
-| 12 | the `unknown` census is counted once per ELEMENT of an array of tables | once per field per peer |
-| 13 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `COUNT clamped` on both (§4.6) |
-| 14 | a plan entry past the writer's record refuses `layout_malformed` | `layout_record_too_large` (fix 3) |
+| 1 | the lineage is read from SIBLING SCHEMA FILES at generate time, by filename convention plus a fixture map (`cpptable/lineage.go`, `ir.TableFixedFixtureLineage`) | the lineage comes from the lock — `lockfile.Lineage`, with a retired mark and a reason per entry. The convention is the INTERIM, named as one (§5.2) |
+| 2 | the floor is hard-coded to one index for one test package (`lineageFloor`) | the floor is `1 +` the highest retired index, from `lockfile.Floor` |
+| 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
+| 4 | the `count` op's bound, the ranges, the variant and arm counts are the READER's (`e.size = my_n`) | the bounds are the WRITER's, per plan (bill §12.5) |
+| 5 | `arg`, the guard's ordinal, is still a BYTE lane (`uint8_t`), so a union past 255 arms cannot express its guard value — the tag is READ at its own width and the remap table is `uint16_t`, so only this lane is short | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
+| 6 | a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH | an arm inside an arm answers to the OUTER tag too (§4.1) |
+| 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
+| 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
+| 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
+| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range and a reader-side limit are still not in it | every range and every limit (bill §13), or the widening cannot be refused |
+| 11 | the `unknown` census is counted once per ELEMENT of an array of tables | once per field per peer |
+| 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `COUNT clamped` on both (§4.6) |
+| 13 | an entry reaching past the writer's declared record comes back through the compile's failure path as `layout_malformed`; the name `layout_record_too_large` is wired only to the 65536 bound and to a zero root size | `layout_record_too_large` for the entry too (fix 3) |
+
+**What #910 and #909 settled, and this list no longer carries.** `BASELINE` exists: the monotone law is
+`internal/lockfile/monotone.go`, the lock holds a lineage with a retired mark and a reason per entry, and
+`schema lock --retire T@0x<hash> --reason "…"` is the one non-append edit the file takes — so the row that
+said "no lineage in the lock, no monotone check, no `--retire`" is closed, and what remains of it is rows 1
+and 2 above, which are about the BACKEND not reading what the lock now holds. The digest is no longer a
+second argument a leg can omit — it is computed inside the hash from the schema (§5.2) — and the reference's
+properties gate now reads its cross-schema pairs through the fixture lineage map with the reverse direction
+named `layout_newer` rather than compiled both ways (§5.7).
 
 ## 6. The bounds
 
