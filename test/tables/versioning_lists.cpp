@@ -724,7 +724,7 @@ static void keyed_array_enum_append_case()
 
     {
         vn::Lineage back;
-        std::memset( &back, 0x5A, sizeof( back ) );
+        std::memset( reinterpret_cast<unsigned char *>( &back ), 0x5A, sizeof( back ) );
         vn::TableReport r;
         std::vector<vn::TableFixedEntry> plan( 1024 );
         const int64_t n = vn::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
