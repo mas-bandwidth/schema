@@ -1,0 +1,15 @@
+// WC3.schema — the SECOND rename of the `was =` chain (WC1 `label`).
+// `title | was = "label"` still names the FIRST wire name, not the
+// intermediate `caption`. Aiming `was` at `caption` would hash a name no
+// file ever carried. `more` is appended so WC2 and WC3 also differ. See
+// WC1.schema.
+package tblwc3
+
+table Root
+{
+    keep  uint32 = 1
+    title int32 = 5 | min = 0, max = 1000, was = "label"
+    after uint32 = 3
+    extra int8 = 11
+    more  int8 = 13
+}

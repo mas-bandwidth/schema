@@ -1,0 +1,13 @@
+// KM2.schema — KM1 one generation on (docs/FIXED-FORM-COVERAGE.md RED-8).
+// `angle` is a plain int32, same width, different kind. `extra` is appended
+// so both compiled directions exist. See KM1.schema for why the body stays
+// outside the 17..31-byte run-copy window.
+package tblkm2
+
+table Probe
+{
+    keep  int32 = 1 | min = -1000, max = 1000
+    angle int32 = 0 | min = -180, max = 180
+    tail  int32 = 7 | min = 0, max = 1000
+    extra int8 = 11
+}

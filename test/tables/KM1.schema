@@ -1,0 +1,18 @@
+// KM1.schema — A KIND THAT MOVED, OFF RED-3'S WINDOW
+// (docs/SPEC-TABLES.md §4, docs/FIXED-FORM-COVERAGE.md RED-8).
+//
+// Scalars2 respells `angle` from fixed(16, 16) to int32, and that read is
+// RED-8: kind_mismatch counts and the raw scale is handed back anyway. The
+// honest state of that row is that `angle` sits four bytes into a body whose
+// run copy clobbers 17..31-byte windows (RED-3), so the two cannot be told
+// apart on Scalars. This pair is the same respelling on a 12-byte body: three
+// four-byte fields, no coalesced run inside 17..31. A compiled plan that
+// skips the moved kind is visible here without that branch.
+package tblkm1
+
+table Probe
+{
+    keep  int32 = 1 | min = -1000, max = 1000
+    angle fixed(16, 16) = 0 | min = -180, max = 180
+    tail  int32 = 7 | min = 0, max = 1000
+}

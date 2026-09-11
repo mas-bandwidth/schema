@@ -1,12 +1,13 @@
-// FM1.schema — THE UNION-ARM SIDE of the properties set (docs/SPEC-TABLES.md
-// §3.4). FU1/FU2 on the tip are the text-under-an-arm pair (string(8) in the
-// second arm). This pair is the rest of that hole: every text flavour, a
-// counted array, and a nested TYPE, all under an arm. FX1/FX2 hold the scalar
-// edits and V1/V2 hold the enum and one union arm inserted in the middle.
-// Neither of them puts a TEXT field, a COUNTED ARRAY or a nested TYPE under a
-// union arm, and a plan entry carries the arm's ordinal and a text field's
-// flavour in the SAME LANE, so an arm's text is the one shape whose plan entry
-// a leg can get wrong while every other case stays green.
+// FM1.schema — THE UNION-ARM SIDE of the fixed form's properties set
+// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-COVERAGE.md). FU1/FU2 on the tip
+// are the text-under-an-arm pair (string(8) in the second arm). This pair is
+// the rest of that hole: every text flavour, a counted array, and a nested
+// TYPE, all under an arm. FX1/FX2 hold the scalar edits and V1/V2 hold the
+// enum, the keyed array and one union arm inserted in the middle. Neither of
+// them puts a TEXT field, a COUNTED ARRAY or a nested TYPE under a union arm,
+// and a plan entry carries the arm's ordinal and a text field's flavour in the
+// SAME LANE, so an arm's text is the one shape whose plan entry a leg can get
+// wrong while every other case stays green.
 //
 // The arms are nested TYPES rather than field lines of their own, because a
 // text arm spelled directly makes its holder VARIABLE (§2.2) and this form's

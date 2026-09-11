@@ -1,6 +1,6 @@
 // FN2.schema — FN1 one generation on, so every shape FN1 declares is read
 // through a COMPILED plan as well as through the identity plan
-// (docs/SPEC-TABLES.md §3.4). See FN1.schema for
+// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-COVERAGE.md). See FN1.schema for
 // what the six shapes are for. The edits, and each is chosen so the thing it
 // moves is a thing a positional read would get WRONG:
 //

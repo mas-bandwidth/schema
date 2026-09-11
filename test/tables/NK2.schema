@@ -1,0 +1,15 @@
+// NK2.schema — NK1 one generation on (docs/FIXED-FORM-COVERAGE.md GAP-1).
+// `gone` is dropped and `extra` is appended. See NK1.schema for the kinds.
+package tblnk2
+
+table Narrow
+{
+    i8  int8
+    i16 int16
+    u8  uint8
+    u16 uint16
+    i32 int32
+    u32 uint32
+    extra int8 = 11
+    after int8 = 7
+}

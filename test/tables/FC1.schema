@@ -1,0 +1,24 @@
+// FC1.schema — A COMPRESSED FLOAT ON THE FIXED FORM (docs/SPEC-TABLES.md §3.4,
+// docs/FIXED-FORM-COVERAGE.md GAP-3).
+//
+// §3.4: "it rides as the float, not as a quantized index; this form is not
+// optimized for bandwidth." The packet wire spends a quantized index at the
+// step count; this form spends four IEEE-754 bytes, the same as a plain
+// float32 beside it. A leg that still quantized would write a small integer
+// where the oracle pins 4 float bytes, and would snap an off-grid value on
+// the way back. That is a silent wrong value, and it is the one open gap
+// that met the bar.
+//
+// Two compressed fields: one ON the 0.01 grid and one OFF it, plus a plain
+// float32 so a port that quantized everything would still have a neighbour
+// that is supposed to be IEEE. FC2 appends a field so both compiled
+// directions exist.
+package tblfc1
+
+table Probe
+{
+    plain    float32
+    on_grid  float32 | min = 0, max = 10, resolution = 0.01
+    off_grid float32 | min = 0, max = 10, resolution = 0.01
+    after    int32 = 7 | min = 0, max = 1000
+}

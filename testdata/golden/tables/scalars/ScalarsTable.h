@@ -4960,17 +4960,17 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.tilt != 0 )
     {
         w.put( 4, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.tilt ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551488ull ) ); w.put( uint64_t( raw_v ), 8 ); }
+        w.put( (uint64_t) ( value.tilt ) - 18446744073709551488ull, 8 );
     }
     if ( value.angle != 0 )
     {
         w.put( 5, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.angle ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073697755136ull ) ); w.put( uint64_t( raw_v ), 25 ); }
+        w.put( (uint64_t) ( value.angle ) - 18446744073697755136ull, 25 );
     }
     if ( value.position != 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.position ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744071743471616ull ) ); w.put( uint64_t( raw_v ), 32 ); }
+        w.put( (uint64_t) ( value.position ) - 18446744071743471616ull, 32 );
     }
     if ( value.reach != 0 )
     {
@@ -4980,22 +4980,22 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.ticks != 0 )
     {
         w.put( 8, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.ticks ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 20 ); }
+        w.put( (uint64_t) ( value.ticks ), 20 );
     }
     if ( value.ratio != 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.ratio ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 8 ); }
+        w.put( (uint64_t) ( value.ratio ), 8 );
     }
     if ( value.speed != 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.speed ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 26 ); }
+        w.put( (uint64_t) ( value.speed ), 26 );
     }
     if ( value.span != 0 )
     {
         w.put( 11, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.span ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 64 ); }
+        w.put( (uint64_t) ( value.span ), 64 );
     }
     if ( value.mass != 0 )
     {
@@ -5005,7 +5005,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.frames != 0 )
     {
         w.put( 13, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.frames ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 32 ); }
+        w.put( (uint64_t) ( value.frames ), 32 );
     }
     if ( value.flux != 0 )
     {
@@ -5025,7 +5025,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
     if ( value.scale != 65536 )
     {
         w.put( 17, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.scale ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709027328ull ) ); w.put( uint64_t( raw_v ), 21 ); }
+        w.put( (uint64_t) ( value.scale ) - 18446744073709027328ull, 21 );
     }
     {
         bool rides_samples = false;
@@ -5035,7 +5035,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
             w.put( 18, kTableMessageRefBitsHere );
             for ( int32_t i = 0; i < 3; i++ )
             {
-                { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.samples[i] ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709027328ull ) ); w.put( uint64_t( raw_v_2 ), 21 ); }
+                w.put( (uint64_t) ( value.samples[i] ) - 18446744073709027328ull, 21 );
             }
         }
     }
@@ -5046,7 +5046,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
         w.put( (uint64_t) ( value.weights_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.weights_count; i++ )
         {
-            { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.weights[i] ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v_2 ), 15 ); }
+            w.put( (uint64_t) ( value.weights[i] ), 15 );
         }
     }
     {
@@ -5071,7 +5071,7 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
                 uint64_t key_slot = 0;
                 if ( !TableEnumSlot( (Axis) ( i + 1 ), key_slot ) ) { return false; }
                 w.put( key_slot, kTableMessageRefBitsHere ); // the slot's VARIANT reference, not its position
-                { serialize::uint128_t raw_v_2 = serialize::uint128_t( value.axes.slots[i] ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446743644212822016ull ) ); w.put( uint64_t( raw_v_2 ), 40 ); }
+                w.put( (uint64_t) ( value.axes.slots[i] ) - 18446743644212822016ull, 40 );
             }
         }
     }
@@ -6093,17 +6093,17 @@ inline bool PoseSaveMessageBody( TableBitWriter & w, const Pose & value )
     if ( value.x != 32768ll )
     {
         w.put( 1, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.x ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744071743471616ull ) ); w.put( uint64_t( raw_v ), 32 ); }
+        w.put( (uint64_t) ( value.x ) - 18446744071743471616ull, 32 );
     }
     if ( value.y != 0 )
     {
         w.put( 2, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.y ) - ( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744071743471616ull ) ); w.put( uint64_t( raw_v ), 32 ); }
+        w.put( (uint64_t) ( value.y ) - 18446744071743471616ull, 32 );
     }
     if ( value.heading != 0 )
     {
         w.put( 3, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.heading ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 25 ); }
+        w.put( (uint64_t) ( value.heading ), 25 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
     return !w.overflow;

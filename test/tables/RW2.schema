@@ -1,0 +1,22 @@
+// RW2.schema — examples/Ranges `RangedWidths` one generation on
+// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-COVERAGE.md GAP-2).
+//
+// A `bits(N)`'s storage width is fixed by the declaration and cannot move
+// without moving the kind, so there is no widened-bits rung. What a second
+// generation CAN do is add a bits field and a field behind the family, so
+// a compiled plan has to skip or default them. The first generation is
+// tables/examples/Ranges.schema (`package tabledemo`); this file is a
+// distinct package so both compile into one test binary.
+package tblrw2
+
+table RangedWidths
+{
+    b8  bits(8)
+    b16 bits(16)
+    b32 bits(32)
+    b64 bits(64)
+    b12 bits(12)
+    b48 bits(48)
+    b24 bits(24)
+    tail int32 = 3 | min = 0, max = 1000
+}
