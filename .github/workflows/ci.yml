@@ -230,6 +230,15 @@ jobs:
       - name: the fixed form's versioning suite reads the reference's bytes
         run: make tables-go-versioning
 
+      # THE SAME TWO COLUMNS ON THE C LEG (§5, and §5.9 #11: every leg owes both
+      # gates). The C half generates a probe unit per row per column and compiles
+      # it, because two generations of one table name cannot share a translation
+      # unit — so it cannot ride inside `go test ./...` either, and it is hung
+      # here beside the Go one for the same reason: under SCHEMA_REQUIRE_CORPUS a
+      # missing oracle is a failure, never a quiet skip.
+      - name: the fixed form's versioning suite on the C leg
+        run: make tables-c-versioning
+
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line

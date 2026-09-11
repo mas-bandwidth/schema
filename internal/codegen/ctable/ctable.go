@@ -112,11 +112,15 @@ type tableGen struct {
 	outside          bool // descriptors outside the checked table closure carry no wire ids
 	unit             *ir.Unit
 	file             *ir.File
-	anyVariable      bool // the unit declares at least one variable-length table
-	anySequence      bool
-	anyList          bool
-	anyMap           bool
-	anyKeyed         bool // the unit declares at least one enum-keyed array
+	// lineage is the LOCKED LAYOUTS per fixed table, OLDEST FIRST, handed down
+	// by GenerateLineage (docs/FIXED-FORM-ALGORITHM.md §5.2). Nil is a build
+	// with no lock: a table then carries its own entry and nothing else.
+	lineage     map[string][]FixedLineageEntry
+	anyVariable bool // the unit declares at least one variable-length table
+	anySequence bool
+	anyList     bool
+	anyMap      bool
+	anyKeyed    bool // the unit declares at least one enum-keyed array
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
@@ -546,6 +550,16 @@ static SCHEMA_UNUSED uint64_t table_double_to_bits( double d ) { uint64_t b; mem
 // unit declares tables, and nothing when it does not — a table-free unit's
 // generated tree is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is Generate with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, and §5.9 #1 on why it is a SECOND entry
+// point rather than a file this backend opens itself). A nil map is a build with
+// no lock, and every table then carries the one entry it can always compute:
+// its own.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return generateViewFiles(u, nil, nil, nil, false, false, false), nil
 	}
@@ -587,7 +601,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	probed := tableDefaultProbedStructs(u)
 	hasProbes := len(probed) > 0
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
+		g := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
 			includes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -596,7 +610,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 				members = append(members, st)
 			}
 		}
-		cg := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
+		cg := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
 			includes: map[string]bool{}}
 		g.emitTableShapes(members)
 		if len(members) > 0 {
