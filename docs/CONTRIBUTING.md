@@ -73,7 +73,7 @@ certification installs every toolchain and overrides the pins, which resolve
 and pass the gate. `make toolchain` runs the gate alone, and
 `make toolchain-negative-control` proves it still has its blade, on every pin
 of every leg. That control runs inside `make test` and on every pull request,
-in the `go-test` job of `ci.yml`.
+in the `go-test` job of `ci-full.yml`.
 
 The Makefile's `SERIALIZE*` variables override the sibling paths if you keep
 them elsewhere.
@@ -252,7 +252,7 @@ column on [PORTING.md](PORTING.md), the techniques register, is written by
 hand — every technique carried, cited or stated impossible — and its gate
 reads the columns from the page and holds them to the discovered drivers, so
 the column is the edit and no other file lists the language; a toolchain with
-no step yet in `.github/workflows/ci.yml` (and the `test` job of
+no step yet in `.github/workflows/ci-full.yml` (and the `test` job of
 `certify.yml`) adds one step, keyed on a new `ci.json` field; and the
 per-language prose in [SPEC.md](SPEC.md), [SPEC-TABLES.md](SPEC-TABLES.md)
 and [USAGE.md](USAGE.md) is prose, written by hand where the language's
