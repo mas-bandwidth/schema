@@ -37,7 +37,7 @@ type Packet
     buff   Buff
 }
 
-table Cfg
+fixed table Cfg
 {
     grade  Grade
     effect Effect

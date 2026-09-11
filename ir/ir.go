@@ -227,20 +227,22 @@ func (u *Union) GeneralArm() string {
 type Struct struct {
 	Name    string
 	IsTable bool // declared with `table`: a table-wire root
-	// FixedDeclared is set when the AUTHOR ASKED FOR THE FIXED FORM — the
-	// `fixed table` keyword (docs/SPEC-TABLES.md §3.4, #823). It is the
-	// SELECTION rule for form `3`: a declared fixed table encodes as form 3
-	// ALWAYS and there is no path by which it reaches form 1, so the form's
-	// size bounds are a COMPILE REFUSAL on it rather than a form quietly
-	// dropped.
+	// FixedDeclared is the DECLARED class of a table (docs/SPEC-TABLES.md
+	// §2.2): set by the `fixed table` spelling, and false on a plain `table`,
+	// which is the VARIABLE wire whatever its fields happen to be. Nothing
+	// infers it — the compiler instead REFUSES a fixed table whose by-value
+	// closure holds a construct that makes a body variable size, so a feature
+	// that stops a table being fixed is a compile error at the declaration
+	// rather than a silent change of wire. [VariableTables] is this flag's
+	// complement, and every emitter switches on that.
 	//
-	// #823 IS THE ONE POINTER THIS TREE CARRIES TO THE KEYWORD, which lives
-	// on branch `fixed-table-keyword` and is not merged. Until it lands
-	// nothing sets this, and the compiler selects form 3 by the DERIVED mode
-	// (§2.2) instead — which is why [TableFixedRecordBounds] still has a
-	// branch for a table that was merely derived into the form. When the
-	// keyword lands, the parser sets this, [TableFixedRoots] reads it, and
-	// that branch is deleted.
+	// It is also the SELECTION rule for the fixed record form (§3.4): a
+	// declared fixed table encodes as form `3` ALWAYS and there is no path by
+	// which it reaches form `1`, so the form's size bounds are a COMPILE
+	// REFUSAL on it rather than a form quietly dropped.
+	//
+	// On a GENERATED map-entry table (MapEntryOf) nothing is declared, so the
+	// checker sets this from the entry's own body.
 	FixedDeclared bool
 	// MapEntryOf names the `Table.field` whose `map[K]V` GENERATED this table
 	// (docs/SPEC-TABLES.md §2.8), and is empty on every declared table. A
@@ -370,6 +372,14 @@ type Field struct {
 	// name is the key. It moves no wire byte — keys are the text's business,
 	// ids are the wire's.
 	JsonKey string
+
+	// Deprecated is the `| deprecated` marker (docs/SPEC-TABLES.md §2.10): the
+	// field is RETIRED IN PLACE. Its slot stays exactly where it is — a fixed
+	// table's record is walked by offset, so removing the field would slide
+	// every field after it — nothing new may name it, and a reader ignores
+	// what it finds there. The marker is one-way: the schema lock refuses to
+	// see it turn off.
+	Deprecated bool
 
 	Array      ArrayKind
 	ArrayBound int64

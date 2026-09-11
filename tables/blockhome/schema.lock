@@ -1,0 +1,33 @@
+schema-lock 5
+package blockhome
+
+fixed table PartFrame layout=0x01a3a6535b4f1d64
+    field version id=0xbb62c62c9808ea37 kind=9 width=8 default=0
+    field parts id=0x0c519da7a1f958c5 kind=14 width=11268 default=born:0 held=PartRow@0x769a008d08bceea2 elem=13/352
+
+fixed table PartRow layout=0x769a008d08bceea2
+    field armor id=0xd19988b67e699194 kind=13 width=40 default=zero held=ArmorConfig@0xde232a6687ea65a3
+    field gunner id=0x40dbb648c0cd44aa kind=13 width=304 default=zero held=GunnerSettings@0x679f84faa6f0ae14
+    field part_id id=0x04d6206b33415104 kind=8 width=4 default=0
+    field slot id=0x6a771618f6fe31d1 kind=6 width=1 default=0
+
+type ArmorConfig layout=0xde232a6687ea65a3
+    field front id=0x538b8c566e9e4b38 kind=13 width=16 default=zero held=ArmorPlate@0x79850006eca65f5b
+    field rear id=0x4ce65d1fbfdde703 kind=13 width=16 default=zero held=ArmorPlate@0x79850006eca65f5b
+    field rating id=0x4e79ecbefe5ff4d0 kind=10 width=4 default=0.0
+    field tier id=0x1e6f84ef2eb65989 kind=6 width=1 default=0
+
+type ArmorPlate layout=0x79850006eca65f5b
+    field thickness id=0xdbae65ca25b4f315 kind=11 width=8 default=0.0
+    field material id=0x026f7568983161e0 kind=8 width=4 default=0
+    field layer id=0x84e39fec29768c56 kind=6 width=1 default=0
+
+type FiringGroup layout=0x1a0b7db98e965100
+    field barrel id=0x8ece059ad360b651 kind=8 width=4 default=0
+    field cooldown id=0xdc2cbe6953343d48 kind=10 width=4 default=0.0
+
+type GunnerSettings layout=0x679f84faa6f0ae14
+    field firing_groups id=0x260b8ca6b0c3db7f kind=14 width=260 default=born:0 held=FiringGroup@0x1a0b7db98e965100 elem=13/8
+    field missile_groups id=0x3c99105aa087f6bc kind=14 width=36 default=born:0 held=FiringGroup@0x1a0b7db98e965100 elem=13/8
+    field reload_seconds id=0xad9b64728ea52486 kind=10 width=4 default=0.0
+    field gunner_id id=0xbd9be53180256e02 kind=8 width=4 default=0

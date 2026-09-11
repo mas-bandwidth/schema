@@ -4,18 +4,18 @@
 // Arms ride under their name hash, so both directions load (§5).
 package tblm1
 
-table Open
+fixed table Open
 {
     path string(16)
 }
 
-table Save
+fixed table Save
 {
     path  string(16)
     force bool
 }
 
-table Quit
+fixed table Quit
 {
     code int32 = 0 | min = 0, max = 255
 }
@@ -27,7 +27,7 @@ union Body
     quit Quit
 }
 
-table Msg
+fixed table Msg
 {
     seq  uint32
     body Body

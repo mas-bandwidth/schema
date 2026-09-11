@@ -17,7 +17,7 @@ type Pose
     heading ufixed(16, 16)      | min = 0, max = 360
 }
 
-table SimState
+fixed table SimState
 {
     tilt     fixed(4, 4)    | min = -8, max = 7
     angle    int32          | min = -180, max = 180

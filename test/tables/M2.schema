@@ -3,18 +3,18 @@
 // `line`. Any reader x any data, both directions (docs/SPEC-TABLES.md §4).
 package tblm2
 
-table Open
+fixed table Open
 {
     path string(16)
     line uint32
 }
 
-table Close
+fixed table Close
 {
     path string(16)
 }
 
-table Quit
+fixed table Quit
 {
     code int32 = 0 | min = 0, max = 255
 }
@@ -26,7 +26,7 @@ union Body
     quit  Quit
 }
 
-table Msg
+fixed table Msg
 {
     seq  uint32
     body Body

@@ -11,14 +11,14 @@ enum ShipType { Fighter, Bomber, Scout }
 
 enum Difficulty { Easy, Normal, Hard }
 
-table GunnerSettings
+fixed table GunnerSettings
 {
     reaction float32 = 0.2
     tracking bool
     callsign string(24)
 }
 
-table ShipEntry
+fixed table ShipEntry
 {
     display_name string(32)                                                            | json = "name"
     health       float32 = 100.0
@@ -27,7 +27,7 @@ table ShipEntry
     gunner       ?GunnerSettings // an optional section: present or absent, no pointer
 }
 
-table GlobalSettings
+fixed table GlobalSettings
 {
     tick_rate    uint32 = 60         | min = 1, max = 240
     difficulty   Difficulty = Normal
@@ -35,7 +35,7 @@ table GlobalSettings
     spawn_delays [3]float32
 }
 
-table PackConfig
+fixed table PackConfig
 {
     version    uint32 = 1
     global     GlobalSettings

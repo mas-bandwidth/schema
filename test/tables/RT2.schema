@@ -23,7 +23,7 @@ table Leaf
     next  *Leaf
 }
 
-table Inner
+fixed table Inner
 {
     tag    string(8)
     hits   int32 = 0 | min = 0, max = 100
@@ -49,7 +49,7 @@ union Pick
 
 enum Grade { Bronze, Silver }
 
-table Bolt
+fixed table Bolt
 {
     weight int32 = 0 | min = 0, max = 1000
 }
@@ -60,7 +60,7 @@ union Fitting
     tally int32
 }
 
-table Parcel
+fixed table Parcel
 {
     grade Grade
     fit   Fitting

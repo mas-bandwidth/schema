@@ -23,7 +23,7 @@ import (
 // keep.
 const wasArmUnit = `package wasarm
 
-table Edit
+fixed table Edit
 {
     revision uint32
 }
@@ -34,7 +34,7 @@ union Body
     tally int32 | min = 0, max = 100, was = "count"
 }
 
-table Note
+fixed table Note
 {
     body Body
 }

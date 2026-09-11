@@ -50,7 +50,7 @@ union Mark
     list   MarkList
 }
 
-table MarkRoot
+fixed table MarkRoot
 {
     id    uint32 = 0
     mark  Mark

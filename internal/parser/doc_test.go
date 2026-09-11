@@ -70,7 +70,7 @@ type T
 }
 
 /// a table
-table R
+fixed table R
 {
     /// a table field
     z int32

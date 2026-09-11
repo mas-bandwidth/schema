@@ -29,17 +29,6 @@ func runGeneratedEdited(t *testing.T, schema, testSource string, edit func(map[s
 	return runGeneratedUnit(t, unitFrom(t, schema), testSource, edit, flags...)
 }
 
-// runGeneratedFixed is runGenerated for a DECLARED fixed table — the only
-// kind whose <T>Load refuses form 1 (#823, [ir.Struct.FixedDeclared]). Naming
-// no table declares every table of the unit fixed.
-func runGeneratedFixed(t *testing.T, schema, testSource string, names ...string) {
-	t.Helper()
-	out, err := runGeneratedUnit(t, declareFixed(t, unitFrom(t, schema), names...), testSource, nil)
-	if err != nil {
-		t.Fatalf("generated runtime: %v\n%s", err, out)
-	}
-}
-
 func runGeneratedUnit(t *testing.T, u *ir.Unit, testSource string, edit func(map[string][]byte), flags ...string) ([]byte, error) {
 	t.Helper()
 	files, err := golang.Generate(u)
@@ -81,7 +70,7 @@ enum Grade {
 type Badge {
  title string(8) = "fresh" | was = "label"
 }
-table Root {
+fixed table Root {
  title string(12) = "default"
  tag bytes(4) = "ab"
  caps Caps = { Jump, Fly }
@@ -112,7 +101,7 @@ func TestUnionArmPayloads(t *testing.T) {
 	runGenerated(t, `package probe
 enum Mode { Fast, Slow }
 type Point { x int32 }
-table Child { score int32 = 7 }
+fixed table Child { score int32 = 7 }
 union Inner {
  n int32
  text string(8)
@@ -131,7 +120,7 @@ union Value {
  nested [..2]Inner
  ping | was = "old_ping"
 }
-table Root {
+fixed table Root {
  value Value
  entries [..3]Value
  other Inner
@@ -180,7 +169,7 @@ func TestRepeatedUnionElement(t *testing.T) {
 
 func TestWideValues(t *testing.T) {
 	runGenerated(t, `package probe
- table Root {
+ fixed table Root {
   n int128 = -3 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
   u uint128
   q fixed(4,4) | min = -8, max = 7
