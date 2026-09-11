@@ -934,6 +934,32 @@ tables-c-fixedform: build/schema_test_c_fixedform build/schema_test_c_fixedform_
 	./build/schema_test_c_fixedform
 	./build/schema_test_c_fixedform_asan
 
+# THE VERSIONING HALF OF THE FIXED FORM ON THE C LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/ctable/fixedversioning_test.go reads the C++ reference's byte
+# oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin` and
+# the floor, hash and lineage-merge files — and holds each row's two read
+# columns: NEW-READS-OLD lands every old value with §5.4's counters, and
+# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# alone (§5.3).
+#
+# EACH SIDE IS ITS OWN TRANSLATION UNIT AND ITS OWN BINARY. C has no namespace,
+# so two generations of one table name cannot share a TU (SPEC §6.1, the FX1/FX2
+# precedent above) — so the harness GENERATES a probe unit per row per column,
+# compiles it with $(CC) against the generated header, and runs it.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
+# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
+# a bare `go test ./...` on a tree that never built the oracle — and is exactly
+# how a §5 regression would have ridden into CI green. So the target BUILDS THE
+# ORACLE FIRST (`tables-fixedform-corpus`, the C++ reference's own dump) and then
+# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
+# name a missing corpus can never pass silently.
+.PHONY: tables-c-versioning
+tables-c-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1 -run 'TestFixedVersioning'
+	@echo 'tables C versioning: §5 read both columns of every row against the C++ reference bytes'
+
 .PHONY: test-c
 test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) tables-c-wire-fuzz SEED=1 N=20000
@@ -950,6 +976,7 @@ test-c: build/schema_test_c build/schema_test_c_ludicrous build/schema_test_benc
 	$(MAKE) tables-c-soak-negative-control
 	$(MAKE) tables-c-ref-ordinal-negative-control
 	$(MAKE) tables-c-fixedform
+	$(MAKE) tables-c-versioning
 	# and the whole matrix again under ASan + UBSan: the sanitized run is the
 	# strongest gate this leg has, and a gate that only fires under a target
 	# nobody types is not in the chain.

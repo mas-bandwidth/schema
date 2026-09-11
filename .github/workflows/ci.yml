@@ -109,11 +109,22 @@ jobs:
   # The two C sibling checkouts are not optional decoration: internal/fuzz's
   # compile check SKIPS ITSELF when ../serialize and ../serialize.c are absent,
   # so a job without them would report green over a check that never ran.
+  #
+  # FIFTEEN MINUTES, NOT TEN, and the number is measured rather than padded.
+  # This job is where the fixed form's versioning suites hang — Go, C and Rust,
+  # each one a generator that compiles a probe per row per column — and they
+  # arrived on three separate branches that each fit under ten on their own.
+  # Run 34585071032 put the Go and Rust pair at 9m15s of a 10m cap; the C leg
+  # lands in the same job on this merge, and the sum does not fit. A job that a
+  # green run already sits at 92% of turns the next leg's arrival into a
+  # cancellation with nothing red inside it, which is what happened one door
+  # over in `pins` on 34584793329. Raising the budget keeps every gate and
+  # costs a runner minute; trimming the suites would cost a column of §5.
+  # The Dart and Elixir legs land in this same job on their own branches, each
+  # another generator running a probe per row per column; fifteen is the budget
+  # they share.
   go-test:
     runs-on: ubuntu-latest
-    # 15 and not 10: this job now carries the Rust, Dart AND Elixir versioning
-    # suites beside the Go tests, each generating and running a probe per row
-    # per column.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -232,6 +243,15 @@ jobs:
       # only thing the C++ dump needs.
       - name: the fixed form's versioning suite reads the reference's bytes
         run: make tables-go-versioning
+
+      # THE SAME TWO COLUMNS ON THE C LEG (§5, and §5.9 #11: every leg owes both
+      # gates). The C half generates a probe unit per row per column and compiles
+      # it, because two generations of one table name cannot share a translation
+      # unit — so it cannot ride inside `go test ./...` either, and it is hung
+      # here beside the Go one for the same reason: under SCHEMA_REQUIRE_CORPUS a
+      # missing oracle is a failure, never a quiet skip.
+      - name: the fixed form's versioning suite on the C leg
+        run: make tables-c-versioning
 
       # THE SAME SUITE ON THE RUST LEG, and it is in THIS job rather than a Rust
       # one because the harness is a Go test: internal/codegen/rusttable's
@@ -398,9 +418,21 @@ jobs:
   # reference binaries `update-goldens` builds plus that target's closing
   # `go test ./...`, which is the duplicate of go-test's and the first place
   # to look if this job ever wants the time back.
+  #
+  # AND IT GREW INTO THE CAP, which is why the budget below is 15 and no
+  # longer 10. The duplicate `go test ./...` is now the whole of this job:
+  # 419s of the base's 9m01s total on run 34585071032, and the C leg's own
+  # tests carried it to 478s of 9m50s on 34584793329 — which is past a
+  # 10-minute cap, so the job was cancelled MID-`go test` with nothing red in
+  # it and every other job in the run green. A cap that a passing job sits at
+  # 90% of reports the next leg's tests as a failure of the leg, so it is
+  # raised here rather than paid for by trimming what the pins prove. The
+  # paragraph above still names the real remedy: that closing `go test ./...`
+  # duplicates the go-test job and is the time to reclaim when someone wants
+  # it, which is a change to `update-goldens` and belongs to its own diff.
   pins:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

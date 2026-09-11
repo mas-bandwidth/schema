@@ -113,6 +113,12 @@ typedef struct TableReport
     int32_t retained, retain_lost; /* opt-in unknown-field round trips */
     int refused;           /* unsupported form byte, not framing damage */
     int reason;            /* SCHEMA_TABLE_REFUSAL_REASON */
+    /* THE FILE'S LAYOUT HASH, on the two BACKWARD-READ refusals
+       (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §12.4): layout_newer carries the
+       hash AND NOTHING ELSE, and layout_unsupported carries it too — the
+       operator's other answer, a layout this build served and has retired
+       (§5.9 #7). Zero on every other path, refusal or read. */
+    uint64_t layout_hash;
 } TableReport;
 
 enum SCHEMA_TABLE_REFUSAL_REASON { SCHEMA_TABLE_NO_REFUSAL, SCHEMA_TABLE_NEWER_FORM, SCHEMA_TABLE_MESSAGE_FORM_AS_FILE };
@@ -708,7 +714,8 @@ enum
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
-    kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
+    kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
+    kTableFixedPresent = 7  /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -778,7 +785,19 @@ enum
     SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED = 14,   /* the pre-order child walk does not consume exactly the entries */
     SCHEMA_TABLE_LAYOUT_TOO_DEEP = 15,        /* a nesting depth past what this reader walks: a bound on the WALK, not on the wire */
     SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE = 16, /* a record size past §3.4's 65536-byte bound: a size this build will not decode */
-    SCHEMA_TABLE_PREVIOUS_FORM = 17            /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
+    SCHEMA_TABLE_PREVIOUS_FORM = 17,           /* a FORM BYTE this form is AHEAD of: the variable form handed to a fixed reader (§3) */
+    /* THE BACKWARD-READ REFUSALS (docs/FIXED-FORM-ALGORITHM.md §5.3, bill §4,
+       §6b). A hash this reader's LINEAGE does not hold is layout_newer — ship
+       the reader; a hash the lineage holds BELOW THE FLOOR is
+       layout_unsupported — upgrade the client. They are the operator's two
+       distinct answers and both carry the FILE'S hash (§5.9 #7).
+
+       THE VALUES ARE THIS LEG'S OWN AND THE NAMES ARE THE REFERENCE'S, which is
+       the rule the ten above already state: the C enum numbers a set the C++
+       enum orders, so a leg agrees on the NAME a peer is refused by and never
+       on the integer. These two take 18 and 19 in the order §5.3 names them. */
+    SCHEMA_TABLE_LAYOUT_NEWER = 18,
+    SCHEMA_TABLE_LAYOUT_UNSUPPORTED = 19
 };
 
 /* THE READ LOOP'S BODY IS ALWAYS INLINE. It is written once and used from both
@@ -798,9 +817,11 @@ static SCHEMA_UNUSED int table_fixed_widens( uint8_t from, uint8_t to )
 {
     if ( from >= 6 && from <= 9 && to >= 6 && to <= 9 ) { return to > from; }  /* u8 .. u64 */
     if ( from >= 2 && from <= 5 && to >= 2 && to <= 5 ) { return to > from; }  /* i8 .. i64 */
+    if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; }
+    if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; }
     return from == 10 && to == 11;                                            /* f32 -> f64 */
 }
-static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return kind >= 2 && kind <= 5; }
+static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); }
 
 /* A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
    the reader's own storage. guard is the byte offset of a union tag when the
@@ -844,6 +865,15 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
     e.argw = 1;
     return e;
 }
+
+/* ---- THE LINEAGE AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5.2) -------
+ *
+ * A fixed table reads BACKWARD and never forward. A file is matched on the
+ * eight bytes of its header's hash against the lineage THE BUILD laid down, and
+ * the layout it carries is held to a BYTE COMPARISON against the bytes the lock
+ * recorded — never walked. A hash the lineage does not hold is layout_newer; a
+ * hash it holds below the floor is layout_unsupported. NOTHING PARSES A
+ * STRANGER'S LAYOUT, ON ANY PATH (§5.6). */
 
 /* A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
    and guarded is where the second half starts. Entries are independent —
@@ -1104,6 +1134,14 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
             memcpy( dst + p->dst, &p->aux, p->size );
             break;
         }
+        /* T INTO ?T: the reader wraps what the writer sent plain, so the present
+           byte is a CONSTANT 1 and the payload rides under the same guard and
+           ordinal (§5.2 EMIT, bill §12.8). */
+        case kTableFixedPresent:
+        {
+            dst[p->dst] = 1;
+            break;
+        }
         default: break;
     }
 }
@@ -1165,6 +1203,25 @@ typedef struct TableFixedFill
     uint32_t dst;
     uint32_t size;
 } TableFixedFill;
+
+/* ONE LINEAGE ENTRY'S PLAN, laid down from THE LOCK'S BYTES and off every load
+   path. unknown and kind_mismatch are THE COMPILE CENSUS — a writer field no
+   reader field names is counted ONCE PER PEER and never per record (§5.4) — and
+   a load carries them onto the report once, after the record loop, only on a
+   read that RETURNS. reason is the name a lineage entry that could not be
+   planned refuses under if a file ever selects it (§5.9 #4, #8). */
+typedef struct TableFixedLineagePlan
+{
+    const TableFixedEntry * entries;
+    int32_t count;
+    int32_t guarded;
+    const TableFixedFill * fill;
+    int32_t fill_count;
+    int32_t unknown;
+    int32_t kind_mismatch;
+    int reason;
+} TableFixedLineagePlan;
+
 
 /* THE PREFILL ITSELF: the declared defaults, into the ranges named and nowhere
    else. The default image is the caller's own storage, reset once per read
@@ -1798,6 +1855,15 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
     c->depth++;
     do
     {
+        if ( me.kind == 35 && te.kind != 35 )
+        {
+            TableFixedEntry e = table_fixed_entry_zero();
+            e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg;
+            e.op = kTableFixedPresent;
+            table_fixed_push( c, e );
+            table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+            break;
+        }
         if ( te.kind != me.kind )
         {
             if ( table_fixed_widens( te.kind, me.kind ) )
@@ -1927,6 +1993,14 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
             {
                 if ( ( guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { break; }
+                if ( te.size < me.size )
+                {
+                    TableFixedEntry e = table_fixed_entry_zero();
+                    e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
+                    e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+                    table_fixed_push( c, e );
+                    break;
+                }
                 uint16_t remap[256];
                 const uint32_t n = te.children < 255u ? te.children : 255u;
                 TableFixedEntry e;
@@ -2061,6 +2135,38 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
    hash never consults it. compiles counts successful compiles through this
    cache, which is the pin; made is 1 on a slot after the compile that
    filled it. */
+
+/* ONE LOCKED LAYOUT: the wire hash a file is matched on, the layout bytes
+   verbatim, and the RECORD SIZE taken from THE LOCK and never from the file. */
+typedef struct TableFixedKnownLayout
+{
+    uint64_t hash;
+    const uint8_t * layout;
+    int64_t layout_bytes;
+    int64_t record_bytes;
+} TableFixedKnownLayout;
+
+/* THE HEADER'S HASH SELECTS, and it is the FIRST index that holds it. A hash no
+   entry holds is -1, which LOAD names layout_newer (§5.3 step 5). */
+static SCHEMA_UNUSED int32_t table_fixed_select( const TableFixedKnownLayout * known, int32_t count, uint64_t hash )
+{
+    int32_t i;
+    for ( i = 0; i < count; ++i )
+    {
+        if ( known[i].hash == hash ) { return i; }
+    }
+    return -1;
+}
+
+/* THE TWO REFUSALS THAT REPORT THE FILE'S HASH (§5.3, §5.9 #7). REFUSE IS
+   TOTAL: no counter moves and not one destination byte is written. */
+static SCHEMA_UNUSED int64_t table_fixed_refuse_hash( TableReport * report, int reason, uint64_t hash )
+{
+    report->refused = 1;
+    report->reason = reason;
+    report->layout_hash = hash;
+    return -1;
+}
 
 enum { kTableFixedPlanCacheCapacity = 64 };
 

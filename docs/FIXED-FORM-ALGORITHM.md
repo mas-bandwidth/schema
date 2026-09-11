@@ -269,7 +269,9 @@ compile-time evaluation carries this form. Two shapes are permitted, both the co
 
 - **coalesced runs straight into the reader's storage.** Merge two entries only when both are `copy`,
   `guard`/`arg`/`meta` agree, and `src` and `dst` both advance by `size`. An array of a FLAT element type — one
-  whose storage image is its wire image — is ONE run however many elements it holds.
+  whose storage image is its wire image — is ONE run however many elements it holds. **The fold holds only where
+  the writer's element width and the reader's are EQUAL: across a widening there is no fold, and each element is
+  its own widen entry** (§5.9 #33).
 - **one whole-body copy into a RECORD IMAGE, then a straight-line scatter.** In the image domain the record's
   declared order IS the destination's order, so every run merges and the plan is one entry — the shape a language
   takes when its storage is not the wire's: a `string(N)` stored as `N+1` units, a union that is a real tagged enum.
@@ -543,20 +545,29 @@ bytes and a different hash, and nothing else it does can recover.
 ```
 PLAN(x, y):                                        -- x the WRITER's layout bytes FROM THE LOCK, y the reader's own
   parse x and y under §1.1; either failing is a bug in the lock, not a wire event: REFUSE layout_malformed
+                                                   -- at GENERATE, naming the table and the entry; and the
+                                                   -- emitted entry is a LANE carrying that name, never a
+                                                   -- throw a first load discovers (§5.9 #36)
   record := x.root.size                            -- EVERY entry is bounded by this, and by nothing the file said
   pass 1: MATCH(x, 0, y, 0, guard = NONE) keeping only UNGUARDED entries, counting the census
   split := the entries so far
   pass 2: MATCH(x, 0, y, 0, guard = NONE) keeping only GUARDED entries, COUNTING NOTHING
+                                                   -- the CENSUS LOOP too, not only the entries (§5.9 #43)
   coalesce copies inside each half, never across the split (§4.2's rule, plus `arg` and the guard WIDTH equal)
+                                                   -- the partition is owed even by a leg whose loop tests the
+                                                   -- guard per entry: it is what makes this illegal (§5.9 #42)
   fills := COVER(y) MINUS every byte the entries land               -- §4.3; for IDENTITY this is empty
   if an entry reached past `record`:  REFUSE layout_record_too_large
   if the entries or their tables do not fit the declared capacity: REFUSE plan_too_large
+                                                   -- owed by every leg, including one whose plan object also
+                                                   -- owns the image and the hole list (§5.9 #45)
 
 MATCH(x, ti, y, mi, guard, arg):                   -- two TABLE entries, side by side
   for each child `mc` of y[mi], in declared order:
     find the child `tc` of x[ti] with tc.id == mc.id, summing the writer's child sizes to reach its offset
     if found: EMIT(tc, its offset, mc, its storage offset, guard, arg)
-  for each child `tc` of x[ti] no child of y[mi] names:   COUNT unknown      -- once per peer, never per record
+  for each child `tc` of x[ti] no child of y[mi] names:   COUNT unknown      -- once per peer, never per record,
+                                                                             -- and ONCE, in pass 1 (§5.9 #43)
 ```
 
 `id` is `fnv1a64(wire name)`, so `was =` matches by the OLD name and a reorder after a merge matches by NAME
@@ -666,7 +677,9 @@ enum ordinal's (1115). That is right today, because the only same-kind rows admi
 carrying a `bits(N)` at its declared storage width and kind `30`, all unsigned. But a port that infers "extend
 by the kind's signedness" has written a DIFFERENT RULE that agrees by accident, and it diverges the first day
 a signed kind admits two widths. Take it as stated: **ladder widen, sign by the WRITER's kind; same-kind widen
-and enum widen, ZERO.** Both count `widened`, once per entry per record.
+and enum widen, ZERO.** Both count `widened`, once per entry per record — **per ENTRY, so a folded element run
+counts ONCE and an unfolded one once per element — and because a fold across a widen is forbidden, the number a
+fixture asserts on a widened run is the EXACT `min(their_n, my_n)`** (§5.9 #33).
 
 **THE GUARD'S WIDTH, and the remap table's shape.** Two small structures a port must match exactly.
 
@@ -710,13 +723,17 @@ element past the writer's count, a keyed slot an appended key opened. A union in
 it looks like, because a pointer arm is a reference and not its pointee, a counted array or a text arm rides
 beside a companion, and a whole-value assignment over an overlay resets one arm's worth of bytes and calls it
 all of them. An arm whose defaults the image does not carry is a default that silently becomes zero for every
-field the plan leaves alone.
+field the plan leaves alone. **THAT SENTENCE IS AN INSTRUCTION AND NOT A WARNING** (§5.9 #38): in one flat image
+the arms OVERWRITE each other, in DECLARED ORDER, at their overlay storage, and the tag lands `None` last — four
+lines, conforming, and the only thing the overlay cannot hold is a default under a byte two arms both claim.
 
 **The test of that is a POISON and not a reset.** Fill the destination with `0x5A` through a byte pointer,
 load, and read the tail: it must be the DECLARED default. A `Reset` before the load only proves the load did
 not clobber what was there, and a zero-fill looks exactly like a zero default, so neither can tell a prefill
 that ran from one that never did. `keyed_array_enum_append`'s element is a fixed table with a nonzero default
-for this reason (§5.7).
+for this reason (§5.7). **Where there is no byte pointer the poison has two other conforming targets — the
+PLAN'S RECORD IMAGE, and the unit's own value surface field by field — and a leg says which it laid**
+(§5.9 #35).
 
 Because §5.1 held at every commit, `PLAN` never fails on a monotone lineage; a lineage that is not monotone
 is a bug in the lock, refused by name at build.
@@ -739,7 +756,8 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
   7  k := R.known[i]
      if L != k.layout_length or the L bytes at `layout` differ from k.layout:
                                                         REFUSE layout_malformed
-  8  plan, split, fills := R.plans[i] ; record_bytes := k.record_bytes
+  8  plan, split, fills := R.plans[i] ; record_bytes := k.record_bytes  -- k is TableFixedKnownLayout (§5.9 #19,
+                                                                       -- #34 on its two admitted divergences)
      for the identity entry the fills are EMPTY and record_bytes is 8 + C(root)
   9  rest := len(file) - 20 - L
      if record_bytes <= 8 or rest mod record_bytes != 0: report.malformed := true ; return -1
@@ -768,7 +786,8 @@ compared. **The seven §1.1 malformations under a KNOWN hash all come back as on
 | the hash is in no lineage entry | `layout_newer` | **the file's hash, and nothing else** |
 | the hash is in the lineage, below the floor | `layout_unsupported` | the file's hash |
 | a known hash, different layout length or bytes | `layout_malformed` | the name |
-| the plan does not fit the caller's capacity | `plan_too_large` | the name |
+| a known hash whose LINEAGE ENTRY would not build | `layout_malformed` / `plan_too_large` | the name the entry's own lane carries, never a throw (§5.9 #36) |
+| the plan does not fit the caller's capacity | `plan_too_large` | the name (owed by every leg — §5.9 #45) |
 | an entry past the writer's record size | `layout_record_too_large` | the name |
 | a record size of `8` or less — the per-record hash and no body behind it | — | `malformed`, and `-1` |
 | a ragged tail: `rest mod record_bytes != 0` | — | `malformed`, and `-1` |
@@ -819,7 +838,7 @@ when every value lands.
 |---|---|---|
 | `MATCH`, at COMPILE | `unknown` | once per writer field no reader field names, **once per peer and never per record** |
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
-| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width** |
+| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, and a widened run is never folded, so a fixture asserts that EXACT count (§5.9 #33) |
 | `count`, `text` | `clamped` | once per entry per record, when the length or count was out of range |
 | the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
 | `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
@@ -863,7 +882,11 @@ cases). Each row is ONE definition change, two schemas of one table name in two 
 `trail` bracketing the row so a mislaid size moves a neighbour.
 
 Every row owes two columns. **NEW-READS-OLD**: every old value lands exactly, the reader's tail is its
-declared default, the counters are §5.4's. **OLD-REFUSES-NEW**: `layout_newer` before any record, with the
+declared default, the counters are §5.4's. **THE VALUES ARE THE MANIFEST'S** — `build/fixedform-corpus/manifest.txt`,
+the line the dump wrote for that file — and never a number read out of `fixedform_dump.cpp` or restated in the
+test (§5.9 #32, #37). **The tail's one exception is the `present` companion, which owes `1`** and not its fresh
+value's `false` (§5.9 #40). **And a harness pairs two generations' fields by the WIRE ID, never by name**, so a
+`was =` rename compares (§5.9 #41). **OLD-REFUSES-NEW**: `layout_newer` before any record, with the
 FILE's hash in the report, no counter moved, nothing marked malformed, and the destination still every field
 of a fresh value. A row whose edit moves no layout byte and no digest byte (`rename_without_was`,
 `field_deprecate`, `field_undeprecate`) has no second column: the hashes are equal, both sides take the
@@ -898,7 +921,9 @@ value's own default, because REFUSE wrote nothing. **That column compares VALUES
 (§5.9 #17): a generated struct's padding is not a value a reset covers, so a leg comparing bytes zeroes both
 values before it resets them — which is the same reason the generated load memsets its default image first.
 **Where a leg's generated value derives no equality at all**, the comparison is the byte view the poison is
-already laid through, and that is conforming.
+already laid through, and that is conforming. **Where there is no byte view either**, the poison and the
+comparison are the PLAN'S RECORD IMAGE or the unit's own value surface field by field — the three conforming
+forms, and a leg says which it laid (§5.9 #35).
 
 **Three notes a porter needs before reading the fixtures as an oracle.**
 
@@ -951,12 +976,12 @@ unopened) ran it this way and nothing in it is optional.
 
 | # | the step |
 |---|---|
-| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing |
+| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **WHAT EACH FILE HOLDS IS IN `build/fixedform-corpus/manifest.txt`**, written by the dump from the same values it writes into the bytes, one line per file: `file=<name> row=<row> side=old\|new\|mid\|a\|b\|none root=<Table> records=<n> values=<field>=<value>[,...]` — the root when a schema declares two tables, the record count, and every value the dump set, records as `r<i>.`, nested fields dotted, arrays indexed, text quoted, a float by its digits AND its bits. `values=` is the last field and **runs to the end of the line**, and a quoted value may carry spaces, so split the head on spaces and take the rest whole; `row=` is the per-file name while `root=` is shared by a lineage pair. **ASSERT THE MANIFEST, NEVER READ THE DUMP** (§5.9 #32, #37): the declared default is not the value on the wire — `int_widen`'s `lead` and `trail` are `2863311530` and `3149642683` there while the schema says 1 and 2 — and a field absent from a line carries its schema default |
 | 2 | **LOAD, §5.3's eleven steps IN ORDER.** The framing checks, the header's hash TAKEN AS GIVEN, the lineage select, the floor, the byte comparison, the per-record hash BEFORE the prefill. Every refusal by its own name, nothing decoded, no counter moved. This is the half the negative controls watch |
 | 3 | **The static data**: the lineage from the lock, oldest first, the current layout last (§5.9 #1, #2); the floor as one number; every plan laid down OFF THE LOAD PATH (§5.9 #3, #4). Nothing here reads a file at run time |
 | 4 | **PLAN / MATCH / EMIT**, §5.2, against §1's kind-code table — the ladder rungs `20..24` and `25..29` included, the aux lane's seven rows, the text op's three facts, the widen's two signs, the guard's width, the remap table's length word, the two-pass split before the pool spends |
-| 5 | **The three tests §5.6 RETIRES, by name.** The leg's twins of `TestFixedFormPlanPath`, `TestFixedFormArgLaneTextUnderSecondArm` and `TestFixedFormLayoutRules` asserted the run-time walk of a stranger's layout and a forward read; under this section each file comes back `layout_newer`. **SKIP them by name with the sentence that says where the coverage is owed** — the plan path moves to the lineage harness, §1.1's seven rules move to the LOCK's validation of what it records — and never delete them: a deleted test is a coverage claim nobody can audit. **A leg whose suite has no skip prints one instead** (§5.9 #23): a line at the CALL SITE naming the function, §5.6 and where the coverage is owed, plus a count at the end, and the function stays in the tree |
-| 6 | **The gate**, both halves, hung off that leg's `test-<lang>`: the BYTE gate against the reference's corpus and the VERSIONING gate over §5.7's rows, each with a negative control that moves one byte and proves the gate goes red (§5.9 #11). **The versioning gate's PROBE UNITS live beside the leg's generator** (§5.9 #18), one generated probe per row per COLUMN, built and run with the leg's own toolchain: two generations of one table name have no spelling inside one unit in every language, so the column is the unit |
+| 5 | **The three tests §5.6 RETIRES, by name.** The leg's twins of `TestFixedFormPlanPath`, `TestFixedFormArgLaneTextUnderSecondArm` and `TestFixedFormLayoutRules` asserted the run-time walk of a stranger's layout and a forward read; under this section each file comes back `layout_newer`. **SKIP them by name with the sentence that says where the coverage is owed** — the plan path moves to the lineage harness, §1.1's seven rules move to the LOCK's validation of what it records — and never delete them: a deleted test is a coverage claim nobody can audit. **A leg whose suite has no skip prints one instead** (§5.9 #23): a line at the CALL SITE naming the function, §5.6 and where the coverage is owed, plus a count at the end, and the function stays in the tree. **A NEGATIVE CONTROL PINNED TO A RETIRED CASE MOVES WITH IT**, to wherever the coverage went, and the PR names which of its controls moved (§5.9 #39) |
+| 6 | **The gate**, both halves, hung off that leg's `test-<lang>`: the BYTE gate against the reference's corpus and the VERSIONING gate over §5.7's rows, each with a negative control that moves one byte and proves the gate goes red (§5.9 #11). **The versioning gate's PROBE UNITS live beside the leg's generator** (§5.9 #18), one generated probe per row per COLUMN, built and run with the leg's own toolchain: two generations of one table name have no spelling inside one unit in every language, so the column is the unit — except where a language's own namespacing gives the two generations a spelling, and then one build and one run is conforming and the leg says so. **The versioning gate's control is a sabotage that reds exactly one column**: the wrong refusal name on a file outside the lineage (§5.9 #39) |
 
 **What to SKIP, by name**: nothing that §5.3 gives a name to. §5.8's fourteen rows are the REFERENCE's debts and
 not a port's work list — a leg that reproduces a divergence to match the reference has ported the bug, and the
@@ -968,6 +993,11 @@ a compiled plan (row 12). **A nonzero `unknown` is no longer on this list** — 
 lawful lineage can move it (§5.9 #30). A leg reports these as owed, in its own words, in the PR that lands it.
 **A red nobody wrote down is a red nobody owes** — including a red the leg did not write: a pre-existing
 failure a port has to route around is named and CARDED, never quietly carried (§5.9 #31).
+
+**What to mark UNPORTED rather than RED**: a row whose KIND the leg's language surface cannot hold at all — kind
+`33` in a JavaScript table, refused before §5 is reached — is ⚪ in both columns with the refusal that blocks it
+cited, skipped by name, and never folded into a green (§5.9 #44). A leg's row table carries three marks: green,
+red-and-named, and unported-with-the-reason.
 
 ### 5.8 What the green reference owes this section
 
@@ -1002,7 +1032,7 @@ second argument a leg can omit — it is computed inside the hash from the schem
 properties gate now reads its cross-schema pairs through the fixture lineage map with the reverse direction
 named `layout_newer` rather than compiled both ways (§5.7).
 
-### 5.9 The twelve the pilot port had to guess, answered — and nineteen the C and Rust legs found after them
+### 5.9 The twelve the pilot port had to guess, answered — and thirty-three the legs after it found
 
 The PILOT PORT (#914) wrote the Go leg from this section alone, with `internal/codegen/cpptable` and the C++
 runtime unopened, and went green on every fixture row. It also listed twelve places where this page was SILENT
@@ -1015,7 +1045,8 @@ reference beside this page needs to know which of the two it is looking at.
 §5 alone with `internal/codegen/cpptable` and the C++ runtime unopened, the merged Go pilot their only worked
 example. Two legs asking the same question twice is the page's own bug report, so every one of these is checked
 against the bill, against the merged C++ and against all three ports, and the rule written is the one the three
-now share.
+now share. **#32 to #45 come from the corpus manifest and the FOURTH through SEVENTH legs** — Java, C#,
+JavaScript and Dart — and the block that opens them says so.
 
 **1. THE ENTRY POINT BY WHICH A BACKEND RECEIVES THE LINEAGE.** A backend takes the lineage AS DATA, through a
 SECOND entry point beside the plain one: `Generate(u)` is the NO-LINEAGE case — a unit that was never locked
@@ -1261,6 +1292,196 @@ yours, and card it** — and where a probe has to route around it, say which fla
 byte gate is itself the kind of edit that wants a reader, so it is called out in the PR rather than folded into
 a green. **A red nobody wrote down is a red nobody owes**, and a red written down as somebody else's is still
 written down.
+
+**32. A PORT ASSERTS THE MANIFEST'S VALUES, NEVER READS THE DUMP.** Every leg ported from this section — Go
+(#914), C (#917), Rust (#918) and Dart — opened `test/tables/fixedform_dump.cpp`, the one file §5.7 forbids, for
+the same four facts: what values a row's records actually carry, which table is the ROOT where a schema declares
+two, how many RECORDS a file has, and the names of the rows that are not a pair. A rule four legs in a row had
+to break is not the legs' bug. So the emitter SAYS what it wrote: `make tables-fixedform-corpus` writes
+`build/fixedform-corpus/manifest.txt` beside the bytes, one plain-text line per file, no dependency to parse it
+—
+
+```
+file=<name> row=<row> side=old|new|mid|a|b|none root=<Table> records=<n> values=<field>=<value>[,<field>=<value>...]
+```
+
+— where `row` and `side` come from the FILE NAME, `root` from the record's own TYPE and `records` from the
+vector the dump saved, and every value is stored through one helper that performs the assignment AND records the
+line from the same expression (`MS` / `MSI` / `MSE` / `MSEI` / `MSTR` / `MSTRI` / `MWCPY` — the `I` pair take the
+SUBSCRIPT the call site is looping over, so the path holds the index the bytes hold and never the variable's
+name), so the manifest cannot drift from the corpus: a changed value changes both or neither. `values=` is the
+LAST field and runs to the end of the line: split the head on spaces, then take everything after `values=` whole
+— a quoted value may carry spaces, and the commas inside one are escaped (`\,`). `root=` is NOT unique across
+rows (FU1's and FU2's is `FuRoot`, a lineage pair's two sides share one name by construction); `row=` is the
+per-file name. A record's values are prefixed `r<i>.`, nested fields are
+dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide, `\uXXXX` for
+anything not printable ASCII), a float is given as digits AND bits (`nan|0x7F8ABCDE` — a signalling NaN's
+payload is the value), and a field the dump did not set carries its schema default. **The manifest is the
+card's source and the dump is off limits**; `manifest_case` in `test/tables/fixedform_main.cpp` is what keeps it
+honest — every `.bin` in the corpus has a line, and every `root=` names a table the generator emitted — and
+nothing under `build/` is committed.
+
+**#32 LANDED WITH THE CORPUS MANIFEST** (#924), and it is the ruling the four legs below lean on. **#33 to #45
+come from the FOURTH through SEVENTH legs** — Java (#920), C# (#921), JavaScript (#922) and Dart (#923), each
+written from §5 alone with `internal/codegen/cpptable` and the C++ runtime unopened. Four legs asking a question
+the first three did not is the page's own bug report twice over, so every one of these is checked against the
+bill, against the merged C++, and against all seven ports, and the rule written is the one they now share.
+
+**33. THE FLAT-ELEMENT FOLD AND A WIDENING ARE INCOMPATIBLE.** §4.2's coalescing rule folds an array of a FLAT
+element type — one whose storage image IS its wire image — into ONE run however many elements it holds, and §6's
+leaf cap counts it as one leaf. **That fold holds only where the writer's element width and the reader's are
+EQUAL.** Across a widening the premise is gone — the writer's `int16` run is not the reader's `int32` storage —
+and §5.2's EMIT for kind 14 has no fold in it at all: it emits the element `min(their_n, my_n)` times. A leg that
+folds first and widens never emitted NOTHING for the run, landed the reader's declared defaults over values the
+writer sent, silently, and left `widened` at zero (the C# leg, found by the fixture and named at `157268a6`).
+**The rule: a leg folds a run only when the two element widths are equal; across a widen EACH ELEMENT IS ITS OWN
+WIDEN ENTRY.** A leg that keeps a folded run across the widen owes an entry that widens element by element into
+the span its setter takes — the C# leg's `FlatWiden`, sign `0` zero-extending, `1` sign-extending by the WRITER's
+kind, `2` an f32 into an f64, which is §5.2's two widen signs over a run — and a folded run whose kinds moved off
+every ladder COUNTS `kind_mismatch` rather than vanishing.
+
+**The number every leg asserts is EXACTLY `min(their_n, my_n)`, and on the corpus row that is `4`.** `widened`
+moves once per ENTRY per record (§5.4), and a fold across a widen is what the rule above FORBIDS — so
+`array_elem_widen` has no folded shape on any conforming leg: `[..4]int16` into `[..4]int32`, four elements sent,
+is four widen entries and counts `4` per record, on every leg. **That is the assertion a twin gate and every
+leg's fixture share** (the C# leg's fixture asserts `4`). The C++ reference's `r.widened > 0`
+(`test/tables/versioning_numbers.cpp:345`, "a widened element counts (§5.2)") is the REFERENCE FIXTURE'S LOOSER
+assertion, written before the fold's incompatibility was named, and a leg that copies it cannot tell a run that
+widened element by element from the folded read this ruling exists to catch.
+
+**34. THE STATIC-DATA STRUCT'S NAME IS THE CONTRACT; ITS MEMBER COUNT CAN BE THE LANGUAGE'S.** The name on this
+page is **`TableFixedKnownLayout`** with #19's members in #19's order. Two divergences are now admitted, both
+named rather than silent. **A leg-local SPELLING is allowed where no twin gate binds the leg**: the Go leg's
+`TableFixedKnown` and the Rust leg's `TableFixedKnown` are conforming — `tools/fixedtwin` holds the C and C++
+pair to one text member for member, and that gate is what makes the name load-bearing THERE — but the page's name
+is the contract, and a leg spelling it otherwise says so in its PR. **A MANAGED leg carries THREE members**: where
+the language's byte array carries its own length, `layout_bytes` is a second spelling of `layout.length` and the
+leg drops it, keeping the same ORDER (the C# leg, `fixedruntime.go:141`); Java, JavaScript and Dart kept the
+member explicit and are equally conforming. **What no leg may move is the hash's place or the record size's
+source** — the record size is the LOCK's, never the file's (§5.3 step 8) — and a leg whose language has no
+sixty-four-bit integer carries the hash as two lanes there and says which form the report uses (§5.9 #15).
+
+**35. THE `0x5A` POISON ON A DESTINATION WITH NO BYTE VIEW.** §5.7 poisons "the destination through a byte
+pointer" and #17 rules on the COMPARISON in a language with no byte view. The POISON has the same three
+conforming forms, and this is the third. **(i)** The byte view where the language has one. **(ii)** The PLAN'S
+RECORD IMAGE where the prefill's destination and the caller's value are two different objects — JavaScript's
+`plan.image`, Dart's record image — which is the only instrument that can tell a prefill that ran from one that
+never did, and the image is then the poison's named target. **(iii)** THE UNIT'S OWN VALUE SURFACE, field by
+field, where there is neither — a C# sealed class, a Java object reached by reflection: every field set to the
+poison value its type can hold, and every field compared after. All three are the same test and all three catch
+the row they exist for (`array_fixed_grow`'s and `keyed_array_enum_append`'s element defaults). **A leg says
+which of the three it laid**, and a leg that can reach the image proves the poison BITES by switching the prefill
+off and watching the slots come back `0x5A5A5A5A` (the Dart leg does).
+
+**36. A LINEAGE ENTRY THAT WILL NOT BUILD IS A LANE, NEVER A THROW.** #8's primary answer stands and is
+sharpened: **an entry whose layout does not parse fails the BUILD at GENERATE, naming the table and the entry's
+hash** — it is a lock bug, and the generator is where a lock bug is caught. What #8 did not say is what the
+emitted code may do with an entry whose plan the build could not lay down, and four legs found four ways to turn
+it into a crash: Java's `ExceptionInInitializerError`, C#'s `TypeInitializationException`, Dart's lazy `final`
+re-evaluated at every touch, a JavaScript module-init throw. **Every one of those is a REFUSAL THAT ESCAPED ITS
+LANE**, and in a static-initializer language it takes the whole type down on the first load of ANY file, lawful
+ones included. **The rule: a per-leg static-init failure is unreachable by construction. Every lineage entry
+becomes a lane CARRYING ITS OWN REFUSAL REASON** — `layout_malformed` for a layout that would not parse,
+`plan_too_large` for a plan that would not fit — which LOAD reports by name if and only if a file selects that
+entry (#4's contract, #5's name). Nothing on the load path throws, and an entry nobody selects costs nothing
+but the lane.
+
+**37. THE NEW-READS-OLD VALUE ORACLE IS THE CORPUS MANIFEST.** §5.7 says every old value lands exactly and #9
+says which root to read each file with; neither gives a leg a number. Four legs invented an oracle and four legs
+opened `fixedform_dump.cpp`, the one file §5.7 forbids, because the values are not derivable from the schema — a
+row's `lead` and `trail` are `0xAAAAAAAA` / `0xBBBBBBBB` on the wire while the schema declares `1` and `2`.
+**The oracle is `manifest.txt` (#32) and nothing else.** In particular it is **NOT the leg's own older build**:
+that shape — read `old_<row>.bin` twice, once with the old build's identity plan and once with the new build's
+lineage, and compare — is a CROSS-CHECK and a good one (it covers every field of every row for one extra probe
+run, where a hand-written check covers two), but as an oracle it is the leg agreeing with itself, and a leg whose
+identity read and whose compiled read are wrong the same way goes green. **A leg may run the older build as a
+second column; the values it ASSERTS are the manifest's.** Three consequences the manifest also settles, each a
+thing a leg otherwise guessed: a row's record COUNT, a row's ROOT table where a schema declares two (#9's rule,
+now written down per file), and the names of the rows that are not a pair (#28).
+
+**38. "ARM BY ARM" IS AN INSTRUCTION, NOT A WARNING.** §5.2's prefill sentence — the image's union reset arm by
+arm, at each arm's own overlay storage, and only then the tag to `None` — was read by two legs as a HAZARD
+NOTICE, and both went looking for a per-arm mechanism the page does not have: one left
+`union_arm_payload_widen`'s reader-appended field at `0` where its declaration said `55`, the other spent the row
+on per-arm images before finding the four lines. **Read it as the instruction it is: in ONE FLAT image the arms
+OVERWRITE EACH OTHER, in DECLARED ORDER, at their overlay storage, and the tag lands `None` last.** That is four
+lines and it is conforming — an arm's default survives wherever no later arm covers it, which is every byte that
+matters for a field the plan leaves alone. **What the overlay cannot do is carry two arms' defaults at one byte**:
+a default under a byte two arms both claim is a hazard no flat image can avoid, and it is the one case that wants
+either per-arm images selected by the landed tag or a GUARDED prefill entry in the plan. A leg may take either;
+the flat walk in declared order is the rule, and the shared byte is the exception a leg names.
+
+**39. A NEGATIVE CONTROL MOVES WITH THE CASE IT WATCHES.** §5.7 step 5 rules on the retired test and says nothing
+about the control that watched it. **A control pinned to a case §5.6 retires moves with that case, and the PR
+NAMES IT.** The C# and Java legs each found a `plan_too_large` control that could no longer fire — with plans
+static and a stranger's file refused before any plan is selected, a one-entry plan slice is unreachable — so the
+control travels to the lineage harness with the coverage; controls that survive survive by reaching their case
+some other way (a case reading through `parse`/`compile`/`run` rather than through `load`), and that is luck, not
+conformance, so it is stated too. **And every VERSIONING GATE OWES ITS OWN CONTROL** (#11's second gate): one
+sabotage that reds exactly one column and nothing else. The shape two legs landed: **swap the refusal NAME a file
+OUTSIDE the lineage owes for the one a file BELOW THE FLOOR owes**, through the leg's own overlay mechanism, and
+every OLD-REFUSES-NEW row must go red by that assertion and no other. A `select` returning the first entry
+instead of the matching one is the same control from the other side.
+
+**40. THE PRESENT COMPANION IS THE ONE NEWER-ONLY FIELD THAT IS NOT A DEFAULT.** §5.7's "the reader's tail is its
+declared default" is true of every appended thing but one. On `optional_add` the reader gains a `present`
+companion beside the payload, and **it owes `1`, not the fresh value's `false`** (bill §12.8): the writer sent a
+`T`, so the `?T` the reader declares IS present, and the constant is the plan's (`present`, §5.2's EMIT, under
+the row's own guard and ordinal, #13). The payload beside it lands the writer's value, not a default. A leg that
+prefills the companion and emits no `present` entry reads a value the writer sent as absent — values intact,
+presence lost — and every value check passes.
+
+**41. A `was =` RENAME IS PAIRED BY WIRE ID IN ANY HARNESS, NEVER BY NAME.** §5.2 matches a field by
+`fnv1a64(wire name)`, so `b was = a` matches the OLD name while the VALUE SURFACE is spelled with the NEW one.
+§5.7 calls `rename_without_was` a both-directions row and never says how a harness pairs the two generations'
+fields — and a name-keyed comparison reds a correct read on every renamed field. **The rule: a harness pairs by
+the WIRE ID, translating the newer build's names through the rename map, which is §5.1's own sentence read from
+the test's side.** The manifest (#32) names the field as the wire names it, so a leg asserting the manifest gets
+this for free; a leg running its older build as a second column owes the translation.
+
+**42. THE SPLIT IS A PROPERTY OF THE PLAN'S ORDER, OWED BY EVERY LEG.** §5.2's PLAN partitions the entries —
+every unguarded one first, then every guarded one, and the plan states where the second half starts — and §4.4's
+`READ` takes `split` as an argument. A leg whose run loop tests `guard != NONE` per entry is correct either way
+and asked whether it still owes the partition. **It does.** The partition is not only what makes §4.2's inline
+two-half loop possible (one of three requirements bought with a measurement, fix 6): **it is what makes
+COALESCING ACROSS THE SPLIT ILLEGAL.** Two `copy` entries that merge while one is guarded and the other is not
+produce a run that lands a guarded arm's bytes unconditionally, and the rule "coalesce inside each half, never
+across the split" has no meaning in a plan that is not partitioned. It is also what gates the POOL: a kind that
+allocates before it pushes must test its half first, or the discarded pass spends the pool and a plan that fits
+comes back `plan_too_large`. **A leg carries `split`, partitions the entries, and may still test the guard per
+entry in its loop** — what it may not do is skip the partition.
+
+**43. THE CENSUS COUNTS ONCE, IN MATCH, AND NEVER AGAIN IN THE SECOND PASS.** §5.2 says pass 2 counts NOTHING
+and §5.4 says `unknown` is once per peer — but MATCH's own census loop runs over the SAME pairs in both passes,
+so a leg reading §5.2 literally (one report, both passes) DOUBLES every `unknown` and every `kind_mismatch`.
+**"Pass 2 counts nothing" governs the census loop exactly as it governs the entries.** The conforming shapes: hand
+pass 2 a DEAD report (the JavaScript leg), or run the census in pass 1 only. This is invisible on a lawful lineage
+— the census is structurally zero there (#30) — and it is the whole answer on the unlawful entry that is the only
+thing able to move it, which is why it has to be right in a leg no fixture can red.
+
+**44. A ROW A LEG CANNOT GENERATE AT ALL IS UNPORTED, NOT RED.** #31 covers a red the leg did not write and §5.7
+covers a red left named; neither covers a row whose KIND THE LEG'S LANGUAGE SURFACE CANNOT HOLD. `wstring_grow`
+is not a §5 failure on the JavaScript leg: kind `33` is refused in a JavaScript table (`refuseWideText`, #366), so
+there is no probe to generate and no reader to write. **Such a row is marked UNPORTED and skipped BY NAME, with
+the refusal that blocks it cited** — ⚪ in both columns and not 🔴 — because a red is a debt this section owes and
+an unported row is a debt another section owes. A leg's row table therefore carries three marks, not two: green,
+red-and-named, and unported-with-the-reason. **What a leg may never do is fold it into a green**, and what a
+reviewer may never read a ⚪ as is "this row passed".
+
+**45. `plan_too_large` IS OWED BY EVERY LEG, INCLUDING ONE WHOSE PLAN OBJECT OWNS MORE THAN THE ENTRIES.** #5 says
+the caller's plan slice stops being written through and becomes a capacity declaration; #24 rules on a second
+scratch lane. Two legs found a plan OBJECT that carries the entries AND the record image, the hole list, the remap
+pool and a conversion lane — and "stops being written through" cannot mean all of it, because the read genuinely
+writes the image. **The rule: the ENTRIES are the build's and are never written through; whatever an `ordinal`
+entry's `aux` INDEXES is part of the plan and moves into static data with it** (§5.2 says `aux` is the table's
+byte offset from the plan's base, which assumes the entries and the pool share one allocation — where they do
+not, a lane's entries are meaningless without the pool that travels with them); **the IMAGE and the conversion
+lanes stay the caller's and are written through every record. And the refusal is owed either way**: the selected
+entry's count against the declared capacity, reported `plan_too_large` BY NAME, on the entry. A leg whose API
+carries no capacity argument owes it from its own declared cap (#5); a leg whose compiler has ONE failure code for
+"my own layout did not parse" and "the pool overflowed" owes two, because the first is `layout_malformed` at
+GENERATE (#36, #8) and only the second is `plan_too_large` — the Dart leg reports the wrong name for a
+reader-side bug today and says so.
 
 ## 6. The bounds
 
