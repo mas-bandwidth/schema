@@ -255,10 +255,13 @@ func imageFieldMember(f *ir.Field, at int64, member string) (int64, bool) {
 // THERE IS NO LEAF CAP HERE, which is a bound on the C++ REFERENCE and not on
 // the wire (§3.4's "held by test"): that port builds its identity plan in an
 // array the compiler sizes, and Elixir builds no plan at compile time — the
-// identity plan is a literal this emitter writes and any other plan is compiled
-// at load time, which is the follow-on §3.4 names for the reference's own
-// bound. The RECORD CEILING is the wire's, so it is kept: ir.TableFixedFormRoots
-// applies it and the compiler names every table it costs.
+// identity plan is a literal this emitter writes, and every OTHER plan is built
+// ONCE at MODULE LOAD from the lock's own bytes (§5.9 #3), which is build time
+// for docs/FIXED-FORM-ALGORITHM.md §5.2 and never a load-path compile. NOTHING
+// ON THE LOAD PATH COMPILES: the sentence this comment used to carry — "any
+// other plan is compiled at load time" — described the shape §5.6 retired. The
+// RECORD CEILING is the wire's, so it is kept: ir.TableFixedFormRoots applies it
+// and the compiler names every table it costs.
 func fixedRoots(u *ir.Unit) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range ir.TableFixedFormRoots(u) {
