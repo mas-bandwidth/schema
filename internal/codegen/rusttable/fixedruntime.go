@@ -1174,10 +1174,16 @@ fn compile_entry(
             let their_n = te.size.saturating_sub(head).checked_div(tel.size).unwrap_or(0);
             let my_n = me.size.saturating_sub(head).checked_div(mel.size).unwrap_or(0);
             if head != 0 {
+                // THE COUNT'S BOUND IS THE WRITER'S, carried by the plan (bill
+                // §12.5, §5.2's EMIT at kind 14): a count forged past what THAT
+                // PEER could have written clamps and counts, and a count the
+                // reader merely grew room for does not. The min is not the
+                // rule — it is the floor under a lock that is not monotone,
+                // which is a build bug and never a wire event.
                 c.push(TableFixedEntry {
                     src: their_at,
                     dst: my_at,
-                    size: my_n,
+                    size: their_n.min(my_n),
                     guard,
                     arg,
                     argw,
