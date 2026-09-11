@@ -21,7 +21,7 @@ import (
 func TestBytesNDstRowIsAnArray(t *testing.T) {
 	u := unitFrom(t, `package probe
 
-table Probe
+fixed table Probe
 {
     label string(8)
     blob  bytes(6)
@@ -119,14 +119,7 @@ fixed table ByRoot
 // Pin identity==compiled on a sibling ByRoot `blob bytes(N)`, and the live-count
 // stain: count=1, slack 0xFF, after load object slack is zeros.
 func TestIdentityCompiledBytesN(t *testing.T) {
-	javac, err := exec.LookPath("javac")
-	if err != nil {
-		t.Skip("javac not on PATH")
-	}
-	java, err := exec.LookPath("java")
-	if err != nil {
-		t.Skip("java not on PATH")
-	}
+	javac, java := javaTools(t)
 	files, err := Generate(unitFrom(t, `package probe
 
 fixed table ByRoot
@@ -369,6 +362,87 @@ fixed table LiveRoot
 	}
 }
 
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX. A one-byte compare
+// fires arm 1 on a foreign 0x0101. Flavour stays in Meta. Identity is still
+// one COPY of the body — ArgW on that entry is 1, which is the width a tag
+// had when this field did not exist. Hash chooses the plan and nothing else.
+func TestFixedGuardComparedAtArgW(t *testing.T) {
+	files := generate(t, `package probe
+
+fixed table Root { n int32 }
+`)
+	src := string(files["TableFixed.java"])
+	if src == "" {
+		t.Fatal("no TableFixed.java in the generated unit")
+	}
+	if !strings.Contains(src, "public static long tagAt(") {
+		t.Error("the runtime never names tagAt")
+	}
+	if !strings.Contains(src, "public byte argw = 1;") {
+		t.Error("the plan entry omits ArgW")
+	}
+	if strings.Contains(src, "(src[srcAt + p.guard] & 0xFF) != (p.arg & 0xFF)") {
+		t.Error("the run loop still compares the union guard as one byte")
+	}
+	if !strings.Contains(src, "tagAt(src, srcAt + p.guard, p.argw & 0xFF) != (p.arg & 0xFFL)") {
+		t.Error("the run loop does not compare the guard at ArgW")
+	}
+	if strings.Contains(src, "if (identity)") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+	if !strings.Contains(src, "c.argw = (theirTag >= 1 && theirTag <= 8) ? (byte) theirTag : (byte) 1;") {
+		t.Error("the compiler does not stamp ArgW from the writer's tag width")
+	}
+	load := string(files["RootFixed.java"])
+	if !strings.Contains(load, "p[0].argw = 1;") {
+		t.Error("the identity plan omitted ArgW (1, the width a tag had when this field did not exist)")
+	}
+	if !strings.Contains(src, "e.meta = meta;") {
+		t.Error("flavour left the Meta lane")
+	}
+	if strings.Contains(src, "opFU1") || strings.Contains(src, "opFU2") {
+		t.Error("this leg took FU1/FU2; ArgW only")
+	}
+}
+
+// Control: 0x0101 does not run arm 1; 0x0001 does. Four-byte twin.
+func TestFixedGuardComparedAtArgWRun(t *testing.T) {
+	javac, java := javaTools(t)
+	files := generate(t, `package probe
+
+fixed table Root { n int32 }
+`)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	classes := filepath.Join(dir, "classes")
+	if err := os.MkdirAll(filepath.Join(src, "probe"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "probe", "TableFixed.java"), files["TableFixed.java"], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "probe", "Driver.java"), []byte(argwGuardDriver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(javac, "--release", "17", "-d", classes,
+		filepath.Join(src, "probe", "TableFixed.java"),
+		filepath.Join(src, "probe", "Driver.java"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	run := exec.Command(java, "-ea", "-cp", classes, "probe.Driver")
+	out, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("java: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("driver: %s", out)
+	}
+}
+
 // TestFixedFormFU1FU2 is the TEXT-UNDER-AN-ARM pin (docs/SPEC-TABLES.md §3.4,
 // §15; docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12). FU1 writes a string(8) in
 // the union's SECOND arm; FU2 appends `extra` so a read of those bytes is a
@@ -548,6 +622,71 @@ func javaTools(t *testing.T) (javac, javaBin string) {
 	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
 	return "", ""
 }
+
+const argwGuardDriver = `package probe;
+
+public final class Driver {
+    private Driver() {}
+
+    static void fail(String what) {
+        System.out.println("FAILED: " + what);
+        System.exit(1);
+    }
+
+    static byte run(byte argw, int srcOff, byte[] src) {
+        TableFixed.Entry[] plan = TableFixed.plan(1);
+        plan[0].src = srcOff;
+        plan[0].dst = 0;
+        plan[0].size = 1;
+        plan[0].guard = 0;
+        plan[0].op = TableFixed.opCopy;
+        plan[0].arg = 1;
+        plan[0].argw = argw;
+        byte[] image = new byte[1];
+        TableFixed.Report r = new TableFixed.Report();
+        TableFixed.run(plan, 1, new short[1], src, 0, src.length, image, r);
+        if (r.malformed || r.refused) { fail("run malformed argw=" + argw); }
+        return image[0];
+    }
+
+    public static void main(String[] args) {
+        if (TableFixed.tagAt(new byte[] { 0x01, 0x01 }, 0, 2) != 0x0101L) {
+            fail("tagAt 0x0101");
+        }
+        if (TableFixed.tagAt(new byte[] { 0x01, 0x00 }, 0, 2) != 0x0001L) {
+            fail("tagAt 0x0001");
+        }
+        if (TableFixed.tagAt(new byte[] { 0x01, 0x01, 0x00, 0x00 }, 0, 4) != 0x00000101L) {
+            fail("tagAt four-byte 0x00000101");
+        }
+        if (TableFixed.tagAt(new byte[] { 0x01, 0x00, 0x00, 0x00 }, 0, 4) != 0x00000001L) {
+            fail("tagAt four-byte 0x00000001");
+        }
+        if (TableFixed.tagAt(new byte[] { 0x01, 0x01 }, 0, 0) != 0x01L) {
+            fail("tagAt ArgW 0 means 1");
+        }
+        if (run((byte) 2, 2, new byte[] { 0x01, 0x01, (byte) 0xAA }) != 0) {
+            fail("0x0101 does not run arm 1");
+        }
+        if (run((byte) 2, 2, new byte[] { 0x01, 0x00, (byte) 0xAA }) != (byte) 0xAA) {
+            fail("0x0001 does run arm 1");
+        }
+        if (run((byte) 0, 2, new byte[] { 0x01, 0x01, (byte) 0xAA }) != (byte) 0xAA) {
+            fail("ArgW 0 means 1, so a 0x0101 prefix matches arm 1");
+        }
+        if (run((byte) 4, 4, new byte[] { 0x01, 0x01, 0x00, 0x00, (byte) 0xBB }) != 0) {
+            fail("four-byte 0x00000101 does not run arm 1");
+        }
+        if (run((byte) 4, 4, new byte[] { 0x01, 0x00, 0x00, 0x00, (byte) 0xBB }) != (byte) 0xBB) {
+            fail("four-byte 0x00000001 does run arm 1");
+        }
+        if (TableFixed.tagAt(new byte[] { 1, 0, 0, 0, 0, 0, 0, 2 }, 0, 9) != 0x0200000000000001L) {
+            fail("ArgW >8 clamps to 8");
+        }
+        System.out.println("ok");
+    }
+}
+`
 
 const fu1fu2Driver = `public final class Driver {
     private Driver() {}

@@ -15,7 +15,7 @@
 //	the IDENTITY PLAN when the record's hash is this build's own, and a plan
 //	compiled ONCE from the writer's own layout otherwise. There is no second
 //	reader and no fast/slow cliff — the owner's own ruling, which §3.4 quotes
-//	him on.
+//	him on. A union guard is compared at ArgW bytes, never as a prefix.
 //
 // THIS IS THE PACKET CODEC'S SHAPE AND NOT THE VARIABLE FORM'S. Java's packet
 // wire is a value class of public fields beside static `write`/`read`/`measure`
@@ -1535,6 +1535,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        private static TableFixed.Entry[] build() {\n")
 	g.pf("            TableFixed.Entry[] p = TableFixed.plan(1);\n")
 	g.pf("            p[0].size = bodyBytes;\n")
+	g.pf("            p[0].argw = 1; // the width a tag had when this field did not exist\n")
 	g.pf("            return p;\n")
 	g.pf("        }\n")
 	g.pf("    }\n")
