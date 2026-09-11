@@ -374,24 +374,14 @@ pub fn fixed_table_fixed_load(
     // so the number cannot be re-derived from a file — and it is looked up in
     // the lineage the BUILD laid down. A hash no entry holds is a writer ahead
     // of this reader, and there is nothing to try.
-    let mut found = usize::MAX;
-    let mut probe = 0usize;
-    while probe < FIXED_TABLE_FIXED_LINEAGE.len() {
-        if FIXED_TABLE_FIXED_LINEAGE[probe].hash == hash {
-            found = probe;
-            break;
-        }
-        probe += 1;
-    }
-    if found == usize::MAX {
+    let Some(found) = FIXED_TABLE_FIXED_LINEAGE.iter().position(|k| k.hash == hash) else {
         // THE FILE'S HASH, AND NOTHING ELSE (bill §12.4).
         return report.refuse_layout(TableFixedReason::LayoutNewer, hash);
-    }
-    if found < FIXED_TABLE_FIXED_FLOOR {
-        // RETIRED: the entry stays in the lineage forever, so this answer stays
-        // distinct from `layout_newer`, and it reports the hash too (§5.9 #7).
-        return report.refuse_layout(TableFixedReason::LayoutUnsupported, hash);
-    }
+    };
+    // NOTHING IS RETIRED, so the floor is 0 and the check below it cannot
+    // fire: a comparison no value satisfies is not emitted, for the same
+    // reason §5.4 does not emit a clamp that cannot fire. The moment the
+    // operator retires an entry the floor moves and the test is here.
     let known = &FIXED_TABLE_FIXED_LINEAGE[found];
     // THE LAYOUT IS HELD TO A BYTE COMPARISON and not to §1.1's seven rules:
     // under a KNOWN hash a layout that differs is ONE name, a lie about a
