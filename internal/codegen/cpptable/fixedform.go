@@ -648,6 +648,8 @@ func fixedOpName(op int) string {
 		return "kTableFixedCount"
 	case ir.TableFixedOpText:
 		return "kTableFixedText"
+	case ir.TableFixedOpBool:
+		return "kTableFixedBool"
 	}
 	return "kTableFixedCopy"
 }

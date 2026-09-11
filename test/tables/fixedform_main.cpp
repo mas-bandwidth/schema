@@ -908,7 +908,7 @@ static void bounds_case()
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op > tblfx1::kTableFixedWidenF ) { past_the_set++; }
+            if ( compiled[(size_t) i].op > tblfx1::kTableFixedBool ) { past_the_set++; }
         }
         check( past_the_set == 0, "bounds, compiled-own: the ops are the whole set and none of them clamps" );
 
@@ -1016,7 +1016,7 @@ static void bounds_case()
         int32_t past_the_set = 0;
         for ( int32_t i = 0; i < made; ++i )
         {
-            if ( compiled[(size_t) i].op > tblv1::kTableFixedWidenF ) { past_the_set++; }
+            if ( compiled[(size_t) i].op > tblv1::kTableFixedBool ) { past_the_set++; }
         }
         check( past_the_set == 0, "live-count: a compiled plan carries no clamp op either" );
 

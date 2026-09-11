@@ -2377,10 +2377,12 @@ constexpr uint8_t kTableFixedForm = 3;
 constexpr int64_t kTableFixedHeaderBytes = 16;
 constexpr int64_t kTableFixedHashAt     = 8;
 
-// THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-// the other four are what a plan compiled from another writer's layout adds.
-// NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
-// after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
+// THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
+// bool; the other four are what a plan compiled from another writer's layout
+// adds. NONE OF THEM CLAMPS A RANGE: a bound is held by the generated bounds
+// pass that runs after the loop, the same pass for either plan
+// (docs/SPEC-TABLES.md §3.4). Bool is not a range: it is byte != 0, in this
+// loop, on both plans, so memcpy into bool never lands 0x02 as a bool holding 2.
 enum : uint8_t
 {
     kTableFixedCopy    = 0, // move size bytes
@@ -2390,6 +2392,7 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedBool    = 7, // a bool or present flag: land byte != 0 as 1
 };
 
 // meta on a kTableFixedText entry
@@ -2608,6 +2611,16 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             TableFixedCopyRun( dst + p.dst, src + p.src, p.size );
             break;
         }
+        case kTableFixedBool:
+        {
+            // A BOOL LANDS AS byte != 0. memcpy into bool is the bug: 0x02 is
+            // not a bool a reader stores (docs/FIXED-FORM-ALGORITHM.md §4.5).
+            uint8_t * d = dst + p.dst;
+            const uint8_t * s = src + p.src;
+            for ( uint32_t i = 0; i < p.size; i++ )
+                d[i] = (uint8_t) ( s[i] != 0 );
+            break;
+        }
         case kTableFixedCount:
         {
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
@@ -2775,7 +2788,7 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
-        default: lands[1] = e.dst + e.size; break; // copy, const
+        default: lands[1] = e.dst + e.size; break; // copy, const, bool
     }
 }
 
@@ -3327,7 +3340,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
             TableFixedEntry e;
-            e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedCopy; e.arg = arg;
+            e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedBool; e.arg = arg;
             TableFixedPush( c, e );
             TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
             break;
@@ -3463,7 +3476,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             e.src = their_at; e.dst = at; e.guard = guard; e.arg = arg;
             if ( te.size == me.size )
             {
-                e.size = me.size; e.op = kTableFixedCopy;
+                e.size = me.size;
+                e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
                 TableFixedPush( c, e );
             }
             else if ( te.size < me.size && me.size <= 8 )
@@ -3513,7 +3527,8 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     for ( int32_t i = 0; i < c.count; ++i )
     {
         if ( i == plain ) { split = out; }
-        if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
+        if ( out > split && plan[out-1].op == plan[i].op &&
+             ( plan[i].op == kTableFixedCopy || plan[i].op == kTableFixedBool ) &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
@@ -10369,10 +10384,11 @@ constexpr TableFixedDst GunnerConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry GunnerConfigFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 4u, 4u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
 };
-constexpr int32_t GunnerConfigFixedPlanCount = 1;
-constexpr int32_t GunnerConfigFixedPlanGuarded = 1;
+constexpr int32_t GunnerConfigFixedPlanCount = 2;
+constexpr int32_t GunnerConfigFixedPlanGuarded = 2;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -10588,11 +10604,12 @@ constexpr TableFixedDst TurretConfigFixedDst[] = {
 // guard at all.
 constexpr TableFixedEntry TurretConfigFixedPlan[] = {
     { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 8u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 9u, 8u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 8u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 9u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 13u, 12u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
 };
-constexpr int32_t TurretConfigFixedPlanCount = 3;
-constexpr int32_t TurretConfigFixedPlanGuarded = 3;
+constexpr int32_t TurretConfigFixedPlanCount = 4;
+constexpr int32_t TurretConfigFixedPlanGuarded = 4;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -10826,17 +10843,20 @@ constexpr TableFixedDst HullConfigFixedDst[] = {
 // guard at all.
 constexpr TableFixedEntry HullConfigFixedPlan[] = {
     { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // health
-    { 16u, 24u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 17u, 16u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 16u, 24u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 17u, 16u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 21u, 20u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 22u, 28u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 30u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 31u, 36u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 30u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 31u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 35u, 40u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 36u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 44u, 64u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 45u, 56u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 44u, 64u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 45u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 49u, 60u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
 };
-constexpr int32_t HullConfigFixedPlanCount = 9;
-constexpr int32_t HullConfigFixedPlanGuarded = 9;
+constexpr int32_t HullConfigFixedPlanCount = 12;
+constexpr int32_t HullConfigFixedPlanGuarded = 12;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -11141,36 +11161,45 @@ constexpr TableFixedEntry KeyedConfigFixedPlan[] = {
     { 48u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // spawn_count
     { 52u, 80u, 16u, 60u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // banner
     { 72u, 84u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // health
-    { 88u, 108u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 89u, 100u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 88u, 108u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 89u, 100u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 93u, 104u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 94u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 102u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 103u, 120u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 102u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 103u, 120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 107u, 124u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 108u, 132u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 116u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 117u, 140u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 116u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 117u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 121u, 144u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 122u, 152u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // health
-    { 138u, 176u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 139u, 168u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 138u, 176u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 139u, 168u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 143u, 172u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 144u, 180u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 152u, 196u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 153u, 188u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 152u, 196u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 153u, 188u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 157u, 192u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 158u, 200u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 166u, 216u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 167u, 208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 166u, 216u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 167u, 208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 171u, 212u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 172u, 220u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // health
-    { 188u, 244u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 189u, 236u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 188u, 244u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 189u, 236u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 193u, 240u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 194u, 248u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 202u, 264u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 203u, 256u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 202u, 264u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 203u, 256u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 207u, 260u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 208u, 268u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 216u, 284u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 217u, 276u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 216u, 284u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // gunner present
+    { 217u, 276u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 221u, 280u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1 }, // tracking
     { 222u, 288u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // per_team, whole
 };
-constexpr int32_t KeyedConfigFixedPlanCount = 34;
-constexpr int32_t KeyedConfigFixedPlanGuarded = 34;
+constexpr int32_t KeyedConfigFixedPlanCount = 43;
+constexpr int32_t KeyedConfigFixedPlanGuarded = 43;
 
 // THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
 // a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
