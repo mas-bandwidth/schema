@@ -100,8 +100,18 @@ const (
 //
 // Past it the fixed form is not emitted, and [TableFixedLeafCapRefusals] is
 // what makes that audible: a table that DECLARED itself fixed is a REFUSAL BY
-// NAME and the compile fails, exactly as the record ceiling's own branch does,
-// because a `fixed table` never silently falls back to form 1.
+// NAME and the compile fails, because a `fixed table` never silently falls back
+// to form 1.
+//
+// THE SPLIT IS THIS CAP'S OWN AND NOT THE RECORD CEILING'S. The 65536-byte
+// ceiling has no refusal branch at all — it WARNS for a declared table and for
+// a derived one alike and both keep form 1 ([TableFixedRecordBounds],
+// [TableFixedFormRoots]) — because that bound is the WIRE's and the keyword
+// declares the CLASS. The only record-size bound that fails a compile is the
+// project's own `--fixed-record-limit`, off by default. Here the keyword DOES
+// decide, because a plan that does not fit is not a wire a peer could read
+// either way: it is this build refusing to write the static data it was asked
+// for, and a table that asked for the form by name is owed that answer.
 const TableFixedLeafCap = 4096
 
 const (
@@ -1118,9 +1128,11 @@ func TableFixedRecordBounds(u *Unit, limit int64) (warnings []string, errs []err
 // leaf cap, and it is the leaf cap's half of what [TableFixedRecordBounds] does
 // for the two size bounds: NOTHING HERE IS SILENT.
 //
-// The split is the same one, and for the owner's reason: *"If something they do
-// stops it from being fixed, it is a compile error … we don't want to surprise
-// the user."* A table that DECLARED itself fixed and whose plan does not fit is
+// THE SPLIT IS THIS CAP'S OWN: the two SIZE bounds refuse nothing, whether the
+// keyword is there or not, and only `--fixed-record-limit` fails a compile over
+// a record size. Here the owner's reason reaches: *"If something they do stops
+// it from being fixed, it is a compile error … we don't want to surprise the
+// user."* A table that DECLARED itself fixed and whose plan does not fit is
 // a refusal BY NAME and the compile fails; a table merely DERIVED into the
 // fixed mode (§2.2) asked for nothing, keeps form 1, and the compiler warns.
 func TableFixedLeafCapRefusals(u *Unit) (warnings []string, errs []error) {
