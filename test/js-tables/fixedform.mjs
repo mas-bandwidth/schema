@@ -688,16 +688,9 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
 // (test/tables/fixedform_main.cpp, layout_validation) — each taking a layout
 // this reader ACCEPTS and breaking EXACTLY ONE THING in it.
 //
-// THE ASSERTION IS ON THE NAME AND NOT ON THE VALUE, which is the one place
-// this leg departs from the reference's spelling. `TableFixedRefusal` does not
-// carry §1.1's seven members yet, so `fx1home.TableFixedRefusal.LayoutCountMismatch`
-// is `undefined` and `r.refused === undefined` would go red reading "false" —
-// one opaque failure that says nothing about which rule is missing. So the
-// refusal's VALUE is reverse-mapped through the frozen enum to its MEMBER NAME
-// and the name string is what is compared. That is exactly as strong as the
-// enum comparison — a wrong member fails it, and it passes unchanged the day
-// the runtime registers the seven — and it makes every red say what the
-// document owes and what this leg actually answers.
+// THE ASSERTION IS ON THE NAME. The seven members exist; the fixture still
+// reverse-maps the frozen enum to the MEMBER NAME so a missing rule still
+// says which one, and a wrong member still fails.
 //
 // The file is §3's HEADER (the form byte, seven reserved zero bytes, the layout
 // hash at 8, the body at 16), then `u32 layout length, layout, records` — so
@@ -709,14 +702,12 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
 // that is consistent with itself: the header's hash IS the hash of the layout
 // it carries, and so is every record's. §2 step 5 puts the header hash check
 // LAST of the three for exactly this reason — so a broken layout is never
-// reported as a lying header — and this leg's loader does order it last in its
-// code. But the rules it orders it after are the ones it HAS, and §1.1's seven
-// are not among them: a file left with the good layout's hash in its header
-// would be refused `layout_malformed` for the tampering rather than for the
-// rule, and every red below would read the same whether the rule is checked
-// late, misnamed, or absent. So the layout's fnv1a64 is recomputed over the
-// broken bytes and stamped into the header and into the record behind it. What
-// refuses a sealed file is the RULE or nothing, which is the measurement.
+// reported as a lying header. The seven named rules run first; the seal is
+// still the measurement, because a file left with the good layout's hash in
+// its header would be refused `layout_malformed` for the tampering rather
+// than for the rule. The layout's fnv1a64 is recomputed over the broken bytes
+// and stamped into the header and into the record behind it. What refuses a
+// sealed file is the RULE or nothing.
 //
 // The hash is computed here from §1's own definition, in BigInt, rather than
 // borrowed from the module under test — a driver that hashed with the code it
@@ -965,200 +956,6 @@ function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
       "RULE: fewer bytes than a layout header is layout_malformed");
   }
 }
-
-
-// ---------------------------------------------------------------------------
-// THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4)
-// ---------------------------------------------------------------------------
-//
-// It is the one structure a reader must parse before it knows anything at all,
-// so every rule it is held to refuses under ITS OWN NAME, before a single
-// record byte is touched. A VALIDATION NOBODY WATCHED FAIL IS A VALIDATION
-// NOBODY HAS, so there is one case per named rule, each taking a layout this
-// reader accepts and breaking EXACTLY ONE THING in it. Fixtures match the C++
-// reference (test/tables/fixedform_main.cpp layout_validation). Rowan's
-// hostile-layout fixtures PR, when it posts, is the shared corpus; until then
-// this pins the C++ names.
-
-const ENTRY0 = LAYOUT_AT + 4;
-
-function putU32(b, at, v) {
-  v = v >>> 0;
-  b[at] = v & 0xff;
-  b[at + 1] = (v >>> 8) & 0xff;
-  b[at + 2] = (v >>> 16) & 0xff;
-  b[at + 3] = (v >>> 24) & 0xff;
-}
-
-function getU32(b, at) {
-  return (b[at] | (b[at + 1] << 8) | (b[at + 2] << 16) | (b[at + 3] << 24)) >>> 0;
-}
-
-function entryAt(k) { return ENTRY0 + k * 17; }
-
-function putEntryAt(layout, at, id, kind, size, children) {
-  putU32(layout, at, id);
-  putU32(layout, at + 4, 0);
-  layout[at + 8] = kind;
-  putU32(layout, at + 9, size);
-  putU32(layout, at + 13, children);
-}
-
-function putEntry(layout, id, kind, size, children) {
-  const at = layout.length;
-  const next = new Uint8Array(at + 17);
-  next.set(layout);
-  putEntryAt(next, at, id, kind, size, children);
-  return next;
-}
-
-// a FILE around a hand-built layout: the form byte, the layout's length, the
-// layout, and no records — every rule below refuses before a record is reached
-function fileOf(fx1home, layout) {
-  const f = new Uint8Array(LAYOUT_AT + layout.length);
-  f[0] = 3;
-  const h = fx1home.TableFixedHashOf(layout, 0, layout.length);
-  const lo = h[0] | 0, hi = h[1] | 0;
-  putU32(f, HASH_AT, lo);
-  putU32(f, HASH_AT + 4, hi);
-  putU32(f, LAYOUT_LENGTH_AT, layout.length);
-  f.set(layout, LAYOUT_AT);
-  return f;
-}
-
-function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
-  const nameOf = (r) => fx1home.TableFixedRefusalName(r);
-  const refuses = (broken, want, what) => {
-    const v = [new fx1home.FxRoot()];
-    const r = new fx1home.TableFixedReport();
-    const n = fx1.FxRootFixedLoad(v, 1, broken, broken.length, fx1.FxRootFixedNewPlan(), r);
-    check(n < 0 && r.refused === want,
-      `${what} (got ${nameOf(r.refused)}, want ${nameOf(want)})`);
-    check(r.unknown === 0 && r.kindMismatch === 0 && r.widened === 0 && r.clamped === 0 && !r.malformed,
-      `${what}: a layout refusal sets nothing and counts nothing`);
-  };
-
-  // the layout this reader ACCEPTS, which every case below breaks once
-  const two = new fx2home.FxRoot();
-  const good = new Uint8Array(fx2.FxRootFixedMeasure(1));
-  check(fx2.FxRootFixedSave([two], 1, good) === good.length,
-    "layout validation: the unbroken file saves");
-  {
-    const v = [new fx1home.FxRoot()];
-    const r = new fx1home.TableFixedReport();
-    check(fx1.FxRootFixedLoad(v, 1, good, good.length, fx1.FxRootFixedNewPlan(), r) === 1 && r.refused === 0,
-      "layout validation: the unbroken file reads, so the breaks below are the breaks");
-  }
-  const copy = () => Uint8Array.from(good);
-
-  // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
-  {
-    const f = copy();
-    putU32(f, LAYOUT_AT, getU32(f, LAYOUT_AT) + 1);
-    refuses(f, fx1home.TableFixedRefusal.LayoutCountMismatch,
-      "RULE: the entry count fits the layout length exactly");
-  }
-  {
-    const f = copy();
-    putU32(f, LAYOUT_AT, 0);
-    refuses(f, fx1home.TableFixedRefusal.LayoutCountMismatch,
-      "RULE: an entry count of zero is not a layout");
-  }
-
-  // 2. EVERY KIND IS IN THE CLOSED SET. A fixed form's kind set is CLOSED, so
-  //    a kind outside it means a NEWER FORM BYTE — a different form — and not
-  //    a newer layout of this one. It is refused, never stepped over.
-  {
-    const f = copy();
-    f[entryAt(1) + 8] = 200; // a kind no form byte this build carries defines
-    refuses(f, fx1home.TableFixedRefusal.LayoutKindUnknown,
-      "RULE: a kind outside the closed set is REFUSED, not skipped");
-  }
-
-  // 3. A KIND IS USED AS ITS DEFINITION ALLOWS — here, the ROOT is a table
-  {
-    const f = copy();
-    f[entryAt(0) + 8] = 14; // an array as the root of a record
-    refuses(f, fx1home.TableFixedRefusal.LayoutKindInvalid,
-      "RULE: the root entry is a TABLE");
-  }
-
-  // 4. A CONSTANT SIZE MATCHES ITS KIND
-  {
-    const f = copy();
-    putU32(f, entryAt(1) + 9, 5); // a uint32 leaf in five bytes
-    refuses(f, fx1home.TableFixedRefusal.LayoutSizeMismatch,
-      "RULE: a constant size its kind does not admit");
-  }
-  {
-    const f = copy();
-    putU32(f, entryAt(0) + 9, getU32(f, entryAt(0) + 9) + 4);
-    refuses(f, fx1home.TableFixedRefusal.LayoutSizeMismatch,
-      "RULE: a table's size is the sum of its fields'");
-  }
-
-  // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
-  {
-    const f = copy();
-    putU32(f, entryAt(0) + 13, getU32(f, entryAt(0) + 13) + 1);
-    refuses(f, fx1home.TableFixedRefusal.LayoutTreeUnclosed,
-      "RULE: the tree runs out of layout");
-  }
-  {
-    // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
-    // reaches. It takes a hand-built layout to reach, and that is itself
-    // worth stating: dropping a child of a TABLE is caught one rule sooner,
-    // by the size that no longer sums, so the only subtree whose loss the
-    // size rule cannot see is one that contributes NO size — an enum's
-    // variants, at kind 32 and size 0.
-    let layout = new Uint8Array(4);
-    putU32(layout, 0, 4);
-    layout = putEntry(layout, 1, 13, 4, 1); // a table of one field
-    layout = putEntry(layout, 2, 30, 4, 0); // an enum, its TWO variants unreached
-    layout = putEntry(layout, 3, 32, 0, 0);
-    layout = putEntry(layout, 4, 32, 0, 0);
-    refuses(fileOf(fx1home, layout), fx1home.TableFixedRefusal.LayoutTreeUnclosed,
-      "RULE: the layout outlasts the tree");
-  }
-
-  // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
-  {
-    const f = copy();
-    putU32(f, entryAt(0) + 9, 65537);
-    refuses(f, fx1home.TableFixedRefusal.LayoutRecordTooLarge,
-      "RULE: a record size past 65536");
-  }
-  {
-    const f = copy();
-    putU32(f, entryAt(1) + 9, 0xffffffff);
-    refuses(f, fx1home.TableFixedRefusal.LayoutRecordTooLarge,
-      "RULE: a size that would overflow the sum");
-  }
-
-  // 7. NOTHING NESTED PAST THE READER'S WALK BOUND. A BOUND ON THE WALK AND
-  //    NOT ON THE WIRE: the validation recurses, so a layout of a thousand
-  //    entries each claiming one child would spend a reader's stack before
-  //    any other rule could fire. Nothing in §3.4 fixes the number.
-  {
-    const depth = 4096; // far past any reader's own bound
-    const layout = new Uint8Array(4 + (depth + 1) * 17);
-    putU32(layout, 0, depth + 1);
-    for (let i = 0; i < depth; i++) {
-      putEntryAt(layout, 4 + i * 17, 1, i === 0 ? 13 : 35, depth - i, 1);
-    }
-    putEntryAt(layout, 4 + depth * 17, 2, 1, 1, 0); // a bool at the bottom
-    refuses(fileOf(fx1home, layout), fx1home.TableFixedRefusal.LayoutTooDeep,
-      "RULE: a nesting depth past the walk's own bound");
-  }
-
-  // AND THE RESIDUE: bytes that are not a layout at all, which is the one
-  // case the seven named rules never reach.
-  {
-    refuses(fileOf(fx1home, new Uint8Array(2)), fx1home.TableFixedRefusal.LayoutMalformed,
-      "RULE: fewer bytes than a header is layout_malformed");
-  }
-}
-
 
 // ---------------------------------------------------------------------------
 // 4. THE OPTIONALS — §3.4's kind 35, against the C++ reference's own bytes
