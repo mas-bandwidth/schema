@@ -1483,6 +1483,7 @@ int main()
     run_pair_p1<FN1, FN2>();
     run_pair_p1<FM1, FM2>();
     run_pair_p1<V1, V2>();
+    run_pair_p1<UT1, UT2>();
     run_pair_p1<Scalars, Scalars2>();
 
     probe_clamp_op();

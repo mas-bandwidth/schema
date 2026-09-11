@@ -34,6 +34,7 @@
 package lockfile
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -168,13 +169,7 @@ func plural(n int, one, many string) string {
 // the history forward onto it.
 func renderLineage(u *ir.Unit, st *ir.Struct) []LineageEntry {
 	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
-	// THE DIGEST IS EMPTY IN THE LOCK until a follow-up writes
-	// ir.TableFixedDefinitionsDigest(st) here (bill §13). Backends already
-	// hash layout-then-digest via ir.TableFixedLayoutHash(layout, st); the
-	// lock still records the layout-bytes-only number so a first-lock corpus
-	// does not grow a second lineage entry the day the digest lands. Empty
-	// digest leaves the hash equal to the layout bytes alone.
-	var digest []byte
+	digest := ir.TableFixedDefinitionsDigest(st)
 	return []LineageEntry{{
 		Wire:   lineageWireHash(layout, digest),
 		Layout: layout,
@@ -297,12 +292,11 @@ func Open(paths []string) (*Unit, bool, error) {
 // not carry the table, or carries it as a nested `type` rather than a fixed
 // table.
 //
-// It is the source that replaces the filename convention the C++ backend reads
-// its lineage from today (internal/codegen/cpptable/lineage.go: VOLD_/VNEW_ and
-// the numbered evolution sets, an interim named as an interim). A backend walks
-// this slice in order: entry i's Wire is `R.lineage[i]`, its Layout is
-// `R.known[i].layout`, its Record is `R.known[i].record_bytes`, and the floor
-// is one past the highest Retired index — which is exactly §5.2's COMPILE.
+// It is the source COMPILE reads (internal/codegen/cpptable/lineage.go). A
+// backend walks this slice in order: entry i's Wire is `R.lineage[i]`, its
+// Layout is `R.known[i].layout`, its Record is `R.known[i].record_bytes`, and
+// the floor is one past the highest Retired index — which is exactly §5.2's
+// COMPILE. Fixture units with no lock keep a test-only map.
 func Lineage(lock *Unit, table string) []LineageEntry {
 	if lock == nil {
 		return nil
@@ -376,7 +370,19 @@ func mergeLineage(locked, live *Unit) {
 		}
 		cur := lv.Lineage[0]
 		history := append([]LineageEntry(nil), lk.Lineage...)
-		if history[len(history)-1].Wire == cur.Wire {
+		last := history[len(history)-1]
+		if last.Wire == cur.Wire {
+			lv.Lineage = history
+			continue
+		}
+		// THE DIGEST LANDING: a lock written with an empty digest recorded the
+		// layout-bytes-only hash. Filling the §13 digest moves the wire hash
+		// without moving a layout byte, which is not a new version — rewrite
+		// the last entry in place so the corpus does not grow a second lineage
+		// entry the day the digest fills. A later range change has a nonempty
+		// last.Digest and still appends.
+		if len(last.Digest) == 0 && bytes.Equal(last.Layout, cur.Layout) {
+			history[len(history)-1] = cur
 			lv.Lineage = history
 			continue
 		}

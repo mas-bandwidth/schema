@@ -190,7 +190,7 @@ namespace Bench
 
         public const long FixedTableFixedBodyBytes = 1236;
         public const long FixedTableFixedRecordBytes = 8 + FixedTableFixedBodyBytes;
-        public const ulong FixedTableFixedHash = 0x98d3af4e8ceacd29ul;
+        public const ulong FixedTableFixedHash = 0x6237c1dc195f9ec9ul;
 
         public static readonly byte[] FixedTableFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,

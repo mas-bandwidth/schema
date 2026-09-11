@@ -54,7 +54,7 @@ public final class FixedTableFixed {
 
     /** fnv1a64 over the layout's bytes exactly as written, and the eight
      *  bytes every record carries. A WIRE IDENTITY and not a security claim. */
-    public static final long hash = 0x98d3af4e8ceacd29L;
+    public static final long hash = 0x6237c1dc195f9ec9L;
 
     /** THE LAYOUT (form 1 called this the vocabulary block): 75 entries, a
      *  PRE-ORDER walk of this type's closure in declared order — a u32 entry
