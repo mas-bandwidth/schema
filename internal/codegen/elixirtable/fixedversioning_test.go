@@ -524,35 +524,8 @@ func elixirBinary(t *testing.T) string {
 // first four bytes of the first record's body and the trail the last four.
 func brackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32) {
 	t.Helper()
-	if f, err := os.Open(filepath.Join(corpus, "manifest.txt")); err == nil {
-		defer f.Close()
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			fields := strings.Fields(sc.Text())
-			if len(fields) == 0 || fields[0] != row {
-				continue
-			}
-			var lead, trail uint64
-			for _, kv := range fields[1:] {
-				k, v, ok := strings.Cut(kv, "=")
-				if !ok {
-					continue
-				}
-				n, err := strconv.ParseUint(strings.TrimPrefix(strings.TrimPrefix(v, "0x"), "0X"), 16, 64)
-				if err != nil {
-					continue
-				}
-				switch k {
-				case "lead":
-					lead = n
-				case "trail":
-					trail = n
-				}
-			}
-			if lead != 0 || trail != 0 {
-				return uint32(lead), uint32(trail)
-			}
-		}
+	if lead, trail, ok := manifestBrackets(t, corpus, "old_"+row+".bin"); ok {
+		return lead, trail
 	}
 	data, err := os.ReadFile(filepath.Join(corpus, "old_"+row+".bin"))
 	if err != nil || len(data) < 20 {
@@ -565,6 +538,88 @@ func brackets(t *testing.T, corpus, row string, bodyBytes int64) (uint32, uint32
 	body := data[at : int64(at)+bodyBytes]
 	return binary.LittleEndian.Uint32(body[:4]),
 		binary.LittleEndian.Uint32(body[len(body)-4:])
+}
+
+// manifestBrackets reads ONE FILE'S row out of the corpus manifest, which is
+// the VALUE ORACLE and not the bytes under test (§5.9 #32).
+//
+// A LINE IS `file=<name> row=<row> side=<old|new|none> root=<R> records=<n>
+// values=<k>=<v>,...` — the FILE is the first field and the key, because one
+// row has two sides and they carry different values; the brackets live inside
+// `values=` spelled `r0.lead` and `r0.trail`; and EVERY NUMBER IS DECIMAL.
+// Matching the row against the first field, or reading the brackets as hex,
+// is how this branch was dead: it never fired and every row read its oracle
+// from the very .bin it was asserting.
+//
+// The manifest is not tracked, so `ok` false is "the tree has no manifest" and
+// the caller falls back to the corpus bytes — but a manifest that IS there and
+// does not carry this file is a FAILURE BY NAME, never a silent fallback.
+func manifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) {
+	t.Helper()
+	f, err := os.Open(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		values, ok := manifestRow(line, file)
+		if !ok {
+			continue
+		}
+		lead, haveLead := values["r0.lead"]
+		trail, haveTrail := values["r0.trail"]
+		if !haveLead || !haveTrail {
+			// A ROW WHOSE TABLE DECLARES NO BRACKETS (`enum_append`'s does not)
+			// has nothing here to read, and the caller reads the bytes' own
+			// first and last four instead. That is not the dead branch: the row
+			// WAS found, and a row that is not found still fails by name.
+			return 0, 0, false
+		}
+		return uint32(lead), uint32(trail), true
+	}
+	t.Fatalf("the manifest carries no row for %s — the oracle and the bytes under test have come apart", file)
+	return 0, 0, false
+}
+
+// manifestRow answers one line's `values=` map when its `file=` is the one
+// asked for. The values are `<path>=<number>` pairs separated by commas, and a
+// pair whose value is not a number — a quoted string, a bool — is not a
+// bracket and is skipped.
+func manifestRow(line, file string) (map[string]uint64, bool) {
+	var values string
+	named := false
+	for field := range strings.FieldsSeq(line) {
+		k, v, ok := strings.Cut(field, "=")
+		if !ok {
+			continue
+		}
+		switch k {
+		case "file":
+			named = v == file
+		case "values":
+			values = v
+		}
+	}
+	if !named {
+		return nil, false
+	}
+	out := map[string]uint64{}
+	for pair := range strings.SplitSeq(values, ",") {
+		k, v, ok := strings.Cut(pair, "=")
+		if !ok {
+			continue
+		}
+		if n, err := strconv.ParseUint(v, 10, 64); err == nil {
+			out[k] = n
+		}
+	}
+	return out, true
 }
 
 func elixirString(s string) string { return fmt.Sprintf("%q", s) }
@@ -788,4 +843,46 @@ func indentBody(body string) string {
 		lines[i] = "  " + l
 	}
 	return strings.Join(lines, "\n")
+}
+
+// THE MANIFEST BRANCH IS LIVE, AND IT IS THE ORACLE (§5.9 #32). It was dead:
+// the row was matched against the line's FIRST field where the manifest's first
+// field is `file=<name>`, and the brackets were parsed as HEX where the manifest
+// writes decimal — so every row fell through and read its oracle out of the very
+// `.bin` it was asserting, which is no assertion at all.
+//
+// This holds the two against each other: the manifest must carry every
+// NEW-READS-OLD row, and its brackets must be the bytes'. A disagreement is a
+// dump that moved, which is the thing the brackets exist to catch.
+func TestFixedVersioningReadsTheManifest(t *testing.T) {
+	corpus := fixedCorpus(t)
+	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
+		t.Skip("the tree carries no corpus manifest")
+	}
+	fired := 0
+	for _, r := range versionRows {
+		lead, trail, ok := manifestBrackets(t, corpus, "old_"+r.row+".bin")
+		if !ok {
+			// the row is in the manifest — manifestBrackets fails by name when
+			// it is not — and its table declares no brackets.
+			continue
+		}
+		fired++
+		data, err := os.ReadFile(filepath.Join(corpus, "old_"+r.row+".bin"))
+		if err != nil {
+			t.Fatalf("%s: %v", r.row, err)
+		}
+		body := fixedTypeBytes(versionRoot(t, versionSchema(t, "VOLD_"+r.row)))
+		at := 20 + int64(binary.LittleEndian.Uint32(data[16:20])) + 8
+		wantLead := binary.LittleEndian.Uint32(data[at : at+4])
+		wantTrail := binary.LittleEndian.Uint32(data[at+body-4 : at+body])
+		if lead != wantLead || trail != wantTrail {
+			t.Fatalf("%s: the manifest says lead=0x%08X trail=0x%08X, the bytes say 0x%08X 0x%08X",
+				r.row, lead, trail, wantLead, wantTrail)
+		}
+	}
+	// A BRANCH THAT NEVER FIRED IS THE BUG THIS TEST EXISTS FOR.
+	if fired == 0 {
+		t.Fatal("not one row read its brackets from the manifest: the branch is dead again")
+	}
 }

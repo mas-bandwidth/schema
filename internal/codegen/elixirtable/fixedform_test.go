@@ -1,6 +1,7 @@
 package elixirtable
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -579,4 +580,210 @@ func loadUnit(t *testing.T, paths ...string) *ir.Unit {
 		t.Fatalf("check: %v", errs)
 	}
 	return u
+}
+
+// THE PREFILL RESETS A UNION ARM BY ARM, AT ITS OWN OVERLAY STORAGE, AND THE
+// TAG LAST (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #38). Zeroing the union
+// whole is a different answer and it is silent: every default inside every arm
+// becomes zero for every byte the plan does not write, which is exactly what an
+// appended field inside an arm is. `union_arm_payload_widen` is the fixture row
+// whose whole subject is that byte.
+func TestFixedPrefillResetsEachUnionArm(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+union Shape
+{
+    dot Dot
+    box Box
+}
+
+type Dot { x int32 = 12 }
+type Box
+{
+    w int32 = 34
+    h int32 = 55
+}
+
+fixed table Root
+{
+    s Shape
+}
+`)
+	st := findTable(t, u, "Root")
+	prefill := fixedDefaultsImage(st)
+	// the tag is one byte at offset 0, the arms overlay behind it
+	if prefill[0] != 0 {
+		t.Fatalf("the union tag is %d, None is 0 and it is written LAST", prefill[0])
+	}
+	// THE ARMS OVERWRITE EACH OTHER IN DECLARED ORDER, so `box` — the last arm
+	// — owns the overlay, and `h = 55` stands four bytes into it.
+	if got := int32(binary.LittleEndian.Uint32(prefill[1:])); got != 34 {
+		t.Fatalf("the last arm's first field is %d, `w int32 = 34` belongs there", got)
+	}
+	if got := int32(binary.LittleEndian.Uint32(prefill[5:])); got != 55 {
+		t.Fatalf("the last arm's appended field is %d, `h int32 = 55` belongs there — a union zeroed whole loses it", got)
+	}
+}
+
+// THE GUARD IS TESTED AT ITS FULL WIDTH AND NEVER AT ITS FIRST BYTE (§5.2).
+// `argw` is the WRITER's tag width in bytes, clamped to 1..8 with zero reading
+// as one, and it rides on the entry. A one-byte compare under a two-byte tag
+// fires arm 1 on a forged 0x0101 — an ordinal no arm of this build names — and
+// an arm whose ordinal passes 255 under a wider tag could never fire at all.
+func TestFixedGuardComparesAtItsOwnWidth(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+union Shape
+{
+    dot Dot
+}
+
+type Dot { x int32 }
+
+fixed table Root
+{
+    s Shape
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if !strings.Contains(runtime, "defp step([{:guard, gsrc, tag, argw, inner} | rest]") {
+		t.Fatal("the guard entry carries no width: a plan with no `argw` can only compare one byte")
+	}
+	if !strings.Contains(runtime, "raw::little-unsigned-size(^w)-unit(8)") {
+		t.Fatal("the guard does not load the tag at `argw` bytes")
+	}
+	if strings.Contains(runtime, "<<_::binary-size(^gsrc), ^tag, _::binary>>") {
+		t.Fatal("the guard still matches the tag as a single byte")
+	}
+	// ZERO READS AS ONE and anything past eight clamps to eight.
+	for _, want := range []string{
+		"defp clamp_argw(w) when w < 1, do: 1",
+		"defp clamp_argw(w) when w > 8, do: 8",
+		"argw = clamp_argw(their_tag)",
+	} {
+		if !strings.Contains(runtime, want) {
+			t.Fatalf("the runtime does not clamp the guard's width: %q missing", want)
+		}
+	}
+}
+
+// §5.3 STEP 10: `n := rest / record_bytes`, and `n > capacity` is a REFUSAL BY
+// NAME. Without it a file naming a known layout hands the reader as many
+// records as its bytes allow, which is the one refusal of §5.3 this leg did not
+// have.
+func TestFixedLoadRefusesABatchPastTheCapacity(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+fixed table Root
+{
+    x int32
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if !strings.Contains(runtime, "{:error, :batch_too_large}") {
+		t.Fatal("the runtime has no `batch_too_large` refusal")
+	}
+	if !strings.Contains(runtime, "def batch_within(rest, record_bytes, capacity) do") {
+		t.Fatal("the runtime has no step-10 capacity test")
+	}
+	if !strings.Contains(runtime, "def batch_capacity, do: @batch_capacity") {
+		t.Fatal("the leg declares no batch capacity (§5.9 #5)")
+	}
+	mod := string(out["probe.ex"])
+	if mod == "" {
+		mod = findGenerated(t, out, "_fixed_run(")
+	}
+	if !strings.Contains(mod, "R.batch_within(byte_size(records), size + 8, bcap)") {
+		t.Fatal("the read path does not hold the batch to the caller's capacity before splitting")
+	}
+	if !strings.Contains(mod, "bcap = Keyword.get(opts, :batch_capacity, R.batch_capacity())") {
+		t.Fatal("`:batch_capacity` is not a caller's option")
+	}
+}
+
+// OWED, AND THE REASON IS A CONTRADICTION THIS LEG CANNOT SETTLE ALONE.
+//
+// §5.2 EMIT kind 14 and §5.9 #33 say the element is emitted for i in
+// 0..min(their_n, my_n) WITH NO LIVE GATE — only the reader's elements PAST
+// that take the prefill — so a widened run counts EXACTLY min(their_n, my_n)
+// and a slack element inside the bound carries THE WRITER'S BYTES. The gate
+// this leg has lands the READER's own default over such an element instead,
+// which is wrong bytes.
+//
+// But `docs/SPEC-TABLES.md` §3.4 says slack is unspecified on read and MOVES NO
+// COUNTER, and §3.4 is the law where the algorithm page disagrees with it. The
+// byte gate holds the two plans to that law with an `==` on `clamped`
+// (`test/elixir-fixedform/main.exs`, "a compiled plan counts the `clamped` the
+// identity plan counts"): the identity path is a PROJECTION that walks the live
+// run only, so ungating the element run makes a hostile body count on the
+// compiled side and not on the identity one, and the gate goes red.
+//
+// Landing the bytes and suppressing the counter is a third answer neither page
+// states. THE RULING IS OWED — §5.2's per-entry count against §3.4's silent
+// slack — and until it lands this leg keeps the gate it can defend.
+func TestFixedCountedArrayElementsAreNotLiveGated(t *testing.T) {
+	t.Skip("owed: §5.2 EMIT kind 14 (no live gate, widened == min(their_n, my_n)) against SPEC-TABLES §3.4 (slack moves no counter) — see the note above")
+	out, err := Generate(unitFrom(t, `package probe
+
+fixed table Root
+{
+    vals [1..8] int32
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if strings.Contains(runtime, ":live") {
+		t.Fatal("the plan still carries a `:live` op: an element inside min(their_n, my_n) is gated on the writer's count")
+	}
+	if strings.Contains(runtime, "live_wrap_entry") || strings.Contains(runtime, "live_at(") {
+		t.Fatal("the live gate's machinery is still emitted")
+	}
+}
+
+// findGenerated answers the one generated file whose text carries `needle`, so
+// a test can name a shape rather than a filename.
+func findGenerated(t *testing.T, out map[string][]byte, needle string) string {
+	t.Helper()
+	for name, b := range out {
+		if strings.Contains(string(b), needle) {
+			return string(b)
+		}
+		_ = name
+	}
+	t.Fatalf("no generated file carries %q; files are %v", needle, keysOf(out))
+	return ""
+}
+
+// THE COUNT OP'S BOUND IS THE WRITER'S their_n, NEVER THE READER'S OWN (§5.2
+// EMIT kind 14, bill §12.5). The plan carries THAT PEER's bounds for the hostile
+// pass, so a count forged past what the writer could have written clamps and
+// counts one `clamped`. Held to the READER's bound instead — which on a grown
+// array is the larger number — a count between `their_n` and `my_n` goes through
+// untouched and every slot behind it reads as live.
+func TestFixedCountOpIsBoundedByTheWriter(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+fixed table Root
+{
+    vals [1..8] int32
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if !strings.Contains(runtime, "{:count, their_at, aux_at, their_n}") {
+		t.Fatal("the count op is not bounded by the WRITER's element count")
+	}
+	if strings.Contains(runtime, "{:count, their_at, aux_at, my_n}") {
+		t.Fatal("the count op is still bounded by the READER's own element count")
+	}
 }
