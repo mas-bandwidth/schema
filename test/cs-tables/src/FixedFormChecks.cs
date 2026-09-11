@@ -16,6 +16,10 @@ using UT = Tblut;
 
 static partial class Program
 {
+    // THE SKIP COUNT §5.9 #23 asks a suite with no skip verb to print at the
+    // end, beside the printed line at each retired test's call site.
+    static int skipped;
+
     static void TestFixedForm()
     {
         TestFixedFxCase();
@@ -26,10 +30,24 @@ static partial class Program
         TestFixedArmTextCase();
         TestFixedSlackCase();
         TestFixedNegativeControl();
-        TestFixedLayoutValidation();
+        // SKIPPED BY NAME, NOT DELETED (docs/FIXED-FORM-ALGORITHM.md §5.6, and
+        // §5.9 #23 for a suite whose verb is a printed line): TestFixedLayoutValidation
+        // asserts the RUN-TIME WALK of a stranger's layout, which §5 retires —
+        // a layout arriving on the wire is no longer walked at all, so §1.1's
+        // seven rules cannot fire at read time and a malformation under a KNOWN
+        // hash is ONE name, layout_malformed. THE COVERAGE IS OWED BY THE LOCK'S
+        // VALIDATION of what it records, and by the oracle's validation of the
+        // corpus. The function stays in the tree and stays compiling: a deleted
+        // test is a coverage claim nobody can audit.
+        Console.WriteLine("SKIPPED: TestFixedLayoutValidation — §5.6 retires the run-time walk of a stranger's layout; §1.1's seven rules move to the LOCK's validation of what it records");
+        skipped++;
         TestFixedHostileBoolCase();
         TestFixedGuardComparedAtArgW();
         TestFixedAbsentOptionalCase();
+        if (skipped > 0)
+        {
+            Console.WriteLine("cs fixed form: " + skipped + " test(s) skipped by name, §5.6");
+        }
     }
 
     sealed class ArgWProbe { public byte V; }
