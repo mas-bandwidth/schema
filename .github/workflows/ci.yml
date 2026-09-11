@@ -302,7 +302,7 @@ jobs:
       # launcher. The corpus it reads is the one the Rust step above already
       # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
       # Elixir a failure rather than a silent skip.
-      - uses: erlef/setup-beam@v1
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           otp-version: '27'
           elixir-version: '1.18'
