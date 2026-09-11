@@ -88,6 +88,20 @@ name: CI full
 # The fix is to rebase the branch; the mitigation is below on `cpp-lock`, which
 # no longer skips itself on the workflow_dispatch runs a worker falls back to.
 
+# THE FULL LANE RUNS WHERE A MERGE LANDS, and the ruling that decided it is the
+# owner's, 2026-09-11, verbatim:
+#
+#   "Here is another option to speed up, check in to branches without PRs. Only
+#    run tests when merging into main, local runners elsewhere."
+#
+# So: nothing in this file runs because a pull request exists or because somebody
+# pushed to it. A merge into fixed-table-form runs the whole of it ON OUR OWN
+# HARDWARE (the studio pool), a merge into main runs it on GitHub's hosted Linux
+# — the one hosted run per main merge, on the x86-64 box we do not own, which is
+# what proves the bytes — and the nightly stays hosted for the same reason. The
+# `full-ci` LABEL path remains for an explicit ask and for nothing else: it fires
+# on `labeled` only, so adding the label asks for one run and a later push to
+# that branch does not silently ask again.
 on:
   push:
     # THE MERGE GATE. main, and the fixed-form integration branch while the
@@ -96,13 +110,12 @@ on:
     # every merge into that branch.
     branches: [ main, fixed-table-form ]
   pull_request:
-    # A pull request runs this file only when it carries the `full-ci` label —
-    # every job below is gated on that. The label is how a branch near the hot
-    # paths, or anything that moves the C++ emitters, asks for the whole suite
-    # before merging; `gh workflow run ci-full.yml --ref <branch>` is the other
-    # way, and needs no label.
+    # NOT A PLAIN PULL-REQUEST TRIGGER: `labeled` only. Adding `full-ci` is how a
+    # branch near the hot paths, or anything that moves the C++ emitters, asks
+    # for the whole suite before merging. `gh workflow run ci-full.yml --ref
+    # <branch>` is the other way, needs no label, and lands on the studio pool.
     branches: [ main, fixed-table-form ]
-    types: [ opened, synchronize, reopened, labeled ]
+    types: [ labeled ]
   schedule:
     # nightly, so a tree nobody pushed to is still checked against the
     # toolchains and the vulnerability database, which move on their own
@@ -166,7 +179,7 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: go-test (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     # THREE PACKAGE GROUPS, ONE PER ROW, because this job was 650 s median
     # (2026-09-11) and a matrix row is a job: the emitter packages, everything
@@ -188,7 +201,14 @@ jobs:
 
       - name: Check out the C, C++, C# and Go serialize runtimes (pinned releases)
         run: |
+          set -euo pipefail
           cd ..
+          # A SELF-HOSTED RUNNER'S WORKSPACE PARENT PERSISTS BETWEEN RUNS, so a
+          # previous run's sibling clones are still sitting here and `git clone`
+          # fails by name on them ("destination path already exists"). They are
+          # removed and re-cloned at the pinned tag every time, never reused:
+          # the sibling pins are part of what a green means.
+          rm -rf serialize serialize.c serialize.cs serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
@@ -208,8 +228,18 @@ jobs:
         if: matrix.group == 'versioning'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
+      # HOSTED ONLY, and that gate is the whole of pool defect (2). All six
+      # studio runners share one $HOME, so six concurrent setup-dotnet steps
+      # install the same SDK into the same ~/.dotnet at the same time; run
+      # 34603066277 caught one of them reading a half-written 10.0.401 —
+      #   the library 'libhostpolicy.dylib' required to execute the application
+      #   was not found in '/Users/glenn/.dotnet/sdk/10.0.401/'
+      # — and every cs row went red on a probe that never built. The Studio
+      # already carries an SDK inside the pin's band (10.0.400 and 10.0.401,
+      # .github/dotnet-version says 10.0) on PATH at ~/.local/bin, so the pool
+      # needs no install at all. Same gate ci-fast.yml's cs row already uses.
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -364,10 +394,13 @@ jobs:
       - name: the fixed form's versioning suite on the Rust leg
         if: matrix.group == 'versioning'
         run: |
-          if [ ! -d ../serialize.rs ]; then
-            git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
-              https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
-          fi
+          set -euo pipefail
+          # NOT `if [ ! -d ]`: on a warm self-hosted workspace that arm REUSES a
+          # previous run's clone, which is how a stale sibling would survive a
+          # pin bump. Removed and re-cloned at the pin every time.
+          rm -rf ../serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
+            https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
           make tables-rust-versioning
 
       # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
@@ -421,8 +454,11 @@ jobs:
       # launcher. The corpus it reads is the one the Rust step above already
       # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
       # Elixir a failure rather than a silent skip.
+      # `runner.environment == 'github-hosted'` because erlef/setup-beam does not
+      # support macOS and the studio pool is macOS: there the BEAM comes from
+      # /Users/Shared/schema-dist, already on the runner's PATH.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
@@ -489,7 +525,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -570,14 +606,21 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check out the C++, C# and Go serialize runtimes (pinned releases)
         run: |
+          set -euo pipefail
           cd ..
+          # A SELF-HOSTED RUNNER'S WORKSPACE PARENT PERSISTS BETWEEN RUNS, so a
+          # previous run's sibling clones are still sitting here and `git clone`
+          # fails by name on them ("destination path already exists"). They are
+          # removed and re-cloned at the pinned tag every time, never reused:
+          # the sibling pins are part of what a green means.
+          rm -rf serialize serialize.cs serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
@@ -602,7 +645,7 @@ jobs:
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: rewrite every pin under testdata/ from the reference
-        run: make -j"$(nproc)" conformance-pin update-goldens
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" conformance-pin update-goldens
 
       - name: the pins are current
         run: |
@@ -644,7 +687,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
@@ -683,7 +726,7 @@ jobs:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -702,7 +745,10 @@ jobs:
       - name: Check out the sibling runtime this leg needs (pinned release)
         if: matrix.runtime != ''
         run: |
+          set -euo pipefail
           tag=$(printenv "${{ matrix.runtime_tag }}")
+          # warm self-hosted workspace: the parent persists, so remove first
+          rm -rf "../${{ matrix.runtime }}"
           git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
 
       # bin/schema and the generated table units come out of Go in every leg.
@@ -738,8 +784,10 @@ jobs:
         if: matrix.dotnet != ''
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
+      # hosted only: the studio pool shares one ~/.dotnet across six runners
+      # and already carries an SDK in the pin's band (pool defect 2).
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.dotnet != ''
+        if: matrix.dotnet != '' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -765,8 +813,10 @@ jobs:
       # The BEAM is two versions and one step. No ELIXIRC override is needed:
       # make/elixir.mk's default prefixes the repo-local dist/ onto PATH and
       # falls through to the toolchain this step installed.
+      # hosted only: erlef/setup-beam does not support macOS (the studio pool),
+      # where dist/ already carries the BEAM on PATH.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
@@ -797,7 +847,7 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: C# fuzz (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -813,6 +863,9 @@ jobs:
 
       - name: Check out the serialize.cs runtime (pinned release)
         run: |
+          set -euo pipefail
+          # warm self-hosted workspace: the parent persists, so remove first
+          rm -rf ../serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -837,7 +890,10 @@ jobs:
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
+      # hosted only: the studio pool shares one ~/.dotnet across six runners
+      # and already carries an SDK in the pin's band (pool defect 2).
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -879,6 +935,11 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # STAYS HOSTED ON EVERY EVENT: this row apt-installs the s390x cross gcc and
+    # qemu-user at pinned Ubuntu versions. The studio pool is macOS and has
+    # neither, so big-endian, `windows` and `msvc` are the three rows the pool
+    # cannot take — a merge into fixed-table-form runs those three hosted and
+    # everything else on our own hardware.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -920,7 +981,11 @@ jobs:
       # other job uses: a table unit declaring a 128-bit field takes its
       # storage type (serialize::int128_t / uint128_t) from serialize.h.
       - name: Check out the serialize runtime (pinned release)
-        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+        run: |
+          set -euo pipefail
+          # warm self-hosted workspace: the parent persists, so remove first
+          rm -rf ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
 
       # The battery on the target, then the control that proves it can fail.
       # BE_CXX and BE_CC name the pinned compilers: the exact-version package
@@ -935,7 +1000,7 @@ jobs:
       # bin/schema and the generated tree, which make builds once. The runner
       # has four cores and the leg was spending them one at a time.
       - name: the big-endian leg, and its negative control
-        run: make -j"$(nproc)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
       # The C twin of that control: put16 never reaches table_writer_finish's
       # #else arm, so a C-side byte-order defect there would leave the job green.
@@ -958,7 +1023,10 @@ jobs:
       # package as its table sources, and those import it.
       - name: Check out the Go serialize runtime (pinned release)
         run: |
+          set -euo pipefail
           cd ..
+          # warm self-hosted workspace: the parent persists, so remove first
+          rm -rf serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
       - name: the Go table leg, big-endian
@@ -970,7 +1038,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1058,7 +1126,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1209,7 +1277,11 @@ jobs:
       # reach for it — a table header includes nothing of it.
       - name: Check out the serialize runtime (pinned release)
         shell: bash
-        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+        run: |
+          set -euo pipefail
+          # a persistent workspace parent would fail the clone by name
+          rm -rf ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
 
       # Generation and script emission happen in bash because they are readable
       # there; the cl steps stay short. The corpus list mirrors the Makefile's
@@ -1331,7 +1403,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1374,7 +1446,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1477,7 +1549,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -1521,7 +1593,7 @@ jobs:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: negative controls (${{ matrix.name }})
     needs: negative-controls-matrix
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     # THE RULE, ENFORCING ITSELF. Every row here is cut to 120 s of control
     # time and pays about 25 s of checkout, sibling clones and first build on
     # top, so five minutes is generous and a row that reaches it is a row that
@@ -1540,7 +1612,14 @@ jobs:
       # remove the whole class of "the group forgot a sibling".
       - name: Check out the serialize runtimes (pinned releases)
         run: |
+          set -euo pipefail
           cd ..
+          # A SELF-HOSTED RUNNER'S WORKSPACE PARENT PERSISTS BETWEEN RUNS, so a
+          # previous run's sibling clones are still sitting here and `git clone`
+          # fails by name on them ("destination path already exists"). They are
+          # removed and re-cloned at the pinned tag every time, never reused:
+          # the sibling pins are part of what a green means.
+          rm -rf serialize serialize.c serialize.go serialize.rs serialize.cs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
@@ -1577,8 +1656,10 @@ jobs:
         if: matrix.dotnet != ''
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
+      # hosted only: the studio pool shares one ~/.dotnet across six runners
+      # and already carries an SDK in the pin's band (pool defect 2).
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.dotnet != ''
+        if: matrix.dotnet != '' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -1598,8 +1679,10 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ matrix.java }}
 
+      # hosted only: erlef/setup-beam does not support macOS (the studio pool),
+      # where dist/ already carries the BEAM on PATH.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
@@ -1609,7 +1692,7 @@ jobs:
       # building them here keeps the build cost out of the first control's
       # timing and out of its log.
       - name: build bin/schema and the generated tree once
-        run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" bin/schema build/tables-generated/.stamp
 
       # ONE make invocation for the whole group, with -k so a control that
       # refuses does not hide the ones behind it: every control in the group
