@@ -11713,6 +11713,7 @@ in build version (§20.5).
   FixedDst  FixedPlan  FixedPlanCount  FixedPlanGuarded  FixedCover
   FixedClamp  FixedClampBody
   FixedDecode  FixedPrefill  FixedIdentity  FixedNewPlan  FixedHashLo  FixedHashHi
+  FixedKnown  FixedFloor  FixedLineagePlans
   ```
 
   The last six of the `Fixed` rows are the READING TIER's, and they are the
@@ -11728,6 +11729,15 @@ in build version (§20.5).
   becomes two wherever a per-record compare through a wide integer would be an
   allocation per record. All six are claimed on this list's own rule, like
   every row above them.
+
+  The three after them are §21's, the LINEAGE as static data
+  (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads BACKWARD and never
+  forward, so every root carries the layouts its lock recorded — `FixedKnown`,
+  oldest first with the current one last — the index a retirement cuts at,
+  `FixedFloor`, and one plan per entry laid down at build, `FixedLineagePlans`.
+  They are per-declaration for the same reason the identity plan is: a lineage
+  belongs to ONE table and a unit can declare several, so a name that is free
+  today must not become a collision the day a second root is added.
 
   The `Fixed` rows are §3.4's, and they are claimed on this list's own rule:
   nothing declares the fixed form, every table whose closure §3.4 lays out
