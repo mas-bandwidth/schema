@@ -3168,6 +3168,12 @@ enforced it. **The rule below is that discipline with the footgun taken away:
 the compiler owns a lock file, and the check is the hand nobody has to
 remember to use.** On the mechanism itself: *"OK that sounds cool, go ahead."*
 
+**§21.1 STATES THIS RULE IN FULL AND SUPERSEDES THE PARAGRAPH BELOW WHERE THE
+TWO DIFFER:** everything that inputs into a fixed table may WIDEN — a wider
+integer, a grown bound, a variant appended — because a newer reader holds every
+value an older writer could produce, and the lock judges each definition in that
+direction (§21.1). What never moves is a field's PLACE.
+
 **THE RULE. A fixed table evolves APPEND-ONLY.** A new field goes at the
 BOTTOM and nowhere else. A field that has outlived its use is DEPRECATED IN
 PLACE — it keeps its slot forever. Nothing is reordered, nothing is removed,
@@ -16408,20 +16414,24 @@ defined by the default it fills: a change with no default to fill is not a widen
 | a field's kind | — | changed |
 | a specified default | — | changed (§18: it defines what every old file means) |
 | the `fixed` keyword | — | added or removed (a different form, not a version) |
-| a reader-side limit a table declares | larger | smaller |
+| a reader-side limit a table declares (RESERVED: no table spelling of one exists yet, and a compiler flag is outside the law) | larger | smaller |
 | a deprecated field | stays written, in its place, read on every plan | leaving the layout; undeprecating (one way, bill §12.3) |
 
 ### 21.2 What a newer reader does with an older file
 
-A field the reader added: its declared default. A field the reader deprecated: dropped, counted once under
-`unknown` per plan. A narrower integer or float: widened exactly, `widened` counts. A shorter array or
-string: landed, the reader's slack is template zeros. An older enum: its ordinals are the reader's, the
-list being a prefix. Everything else: copied.
+A field the reader added: its declared default. A field the reader deprecated: read into its slot by every
+plan, identity included, and ignored by the application; no counter moves for it. A narrower integer or
+float: widened exactly, `widened` counts. A shorter `[N]`: the writer's slots land and the reader's new ones
+take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[..N]`: the writer's elements
+and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
+wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
+prefix. Everything else: copied.
 
 ### 21.3 What an older reader does with a newer file
 
 Refuses, by name, at load, before any record: **`layout_newer`**. No counter moves. REFUSE is total. The
-refusal carries what the reader could not hold, as its language can name it.
+refusal carries THE FILE'S LAYOUT HASH AND NOTHING ELSE: a layout the reader has not locked is never parsed,
+so there is no field, bound or variant to name, and the hash is what the writer is looked up by.
 
 ### 21.4 The closure rule
 

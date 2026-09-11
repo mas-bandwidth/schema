@@ -85,6 +85,12 @@ set and a stranger may send them; a pointer inside a fixed table's own closure i
 
 ### 1.1 The seven rules, before a single record byte
 
+**These seven are the LOCK's validation of what it records, and the oracle's of the corpus — they do not fire
+at run time.** A layout arriving on the wire is never walked (§5.3, §5.6): the hash is looked up, the floor is
+checked, the bytes are compared, and under a KNOWN hash every one of the seven malformations comes back as one
+name, `layout_malformed`. "Before a single record byte" is where the lock and the oracle stand, not a gate on
+the load path.
+
 | # | rule | refusal |
 |---|---|---|
 | 1 | `4 + 17*count` equals the layout's stated length, and `count != 0` | `layout_count_mismatch` |
@@ -113,11 +119,13 @@ or a chain of single-child entries is a stack depth the wire chooses.
 | `13` table | `== sum` | — |
 | `14` array | `size % elem == 0`, **or** `size >= 4 and (size-4) % elem == 0` | 1 child, `elem != 0` |
 | `15` union | `size > widest`, and `size - widest` is an ordinal width | at least 1 child |
-| `16` enum-keyed array | `size % elem == 0` and `size / elem >= key.children` | 2 children, first kind `30` |
+| `16` enum-keyed array | `size % elem == 0` and `size / elem == key.children` | 2 children, first kind `30` |
 | `30` enum / `32` variant or empty arm | an ordinal width / `0` | `30`'s children are all kind `32`, or none; `32` has none |
 | `35` optional | `== sum + 1` | exactly 1 child |
 
-`>= key.children` and not `==`: an enum widened by an explicit `max` has more slots than names.
+`== key.children` and not `>=`: a headroom value has no NAME, and the compiler refuses an enum whose
+`| max = K` reserves values above its variants the moment a table reaches it (SPEC-TABLES §5) — so a keyed
+array has exactly one slot per variant, and the old headroom tolerance went with C11 (bill §12.12).
 
 ## 2. The file and the framings
 
@@ -238,7 +246,7 @@ to this build's own records; only to a peer's.
 | op | `src` | `dst` | `size` | `aux` | other |
 |---|---|---|---|---|---|
 | `copy` | source offset | destination offset | bytes | — | — |
-| `count` | the count field | the count's storage | **the reader's own bound, in ELEMENTS** | — | — |
+| `count` | the count field | the count's storage | **the bound THE PLAN CARRIES — the writer's own, in ELEMENTS** (bill §12.5) | — | — |
 | `text` | the length; payload at `src+4` | the length's storage | the payload's BYTE span, `min(mine, theirs)` | **the buffer's offset** | `meta` = flavour |
 | `ordinal` | the source ordinal | the destination | the source ordinal's width | the remap table's offset | `dstsize` |
 | `widen` | source | destination | the source width | — | `dstsize`, `sign` |
@@ -317,7 +325,7 @@ The reader validates on load in **every** build, release included, and a clamp c
 | case | what it does, and what it validates |
 |---|---|
 | `copy` | `COPY(out+dst, record+src, size)`. Nothing to validate |
-| `count` | `v := SLE(4, record+src)`; if `v < 0` then `v := 0, COUNT clamped`, else if `v > size` then `v := size, COUNT clamped`; `PUT(4, out+dst, v)`. The bound is the READER's own `Max`, in ELEMENTS |
+| `count` | `v := SLE(4, record+src)`; if `v < 0` then `v := 0, COUNT clamped`, else if `v > size` then `v := size, COUNT clamped`; `PUT(4, out+dst, v)`. The bound is `size`: the bound THE PLAN CARRIES, which is the WRITER's own for that lineage entry, in ELEMENTS (bill §12.5) — never the reader's, or a forged count would land slots the old writer could not have written |
 | `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)` clamped into `[0, cap]`, `COUNT clamped` if it fired. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : 0`; `PUT(dstsize, out+dst, v)` |
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction, NaN payloads included |
@@ -336,10 +344,16 @@ counted array's LIVE elements and never its slack, an optional's payload only wh
 because the prefill's defaults are in range by construction, and clamping storage nobody wrote would count a
 clamp on every clean read. A type that bounds nothing emits no pass at all.
 
-- **A RANGED SCALAR** clamps to its declared min and max, `COUNT clamped`. **A fixed-point field's bounds are in
-  VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)` clamps to `2^N - 1`.
-- **A UNION TAG past the arm count, or an ENUM ORDINAL past the enum's top value, lands `None`** — the same
-  nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
+**THE BOUNDS THIS PASS HOLDS ARE THE PLAN'S — THE WRITER'S OWN for the lineage entry the plan was compiled
+for** (bill §12.5), and never the reader's: the reader's range is the wider one, so clamping to it would land a
+value the old writer could not have written. The reference carries them per entry for ranges and still owes the
+rest (§5.8 row 4).
+
+- **A RANGED SCALAR** clamps to the min and max the plan carries, `COUNT clamped`. **A fixed-point field's
+  bounds are in VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)`
+  clamps to `2^N - 1`.
+- **A UNION TAG past the plan's arm count, or an ENUM ORDINAL past the plan's top variant, lands `None`** —
+  the same nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
   compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
 
@@ -455,10 +469,11 @@ and the rule phrase is the clause a person greps for.
 
 **The reference reads none of it yet.** `internal/codegen/cpptable/lineage.go` builds its lineage from SIBLING
 SCHEMA FILES at generate time by filename convention — `VOLD_`/`VNEW_`, the numbered evolution sets, and
-`ir.TableFixedFixtureLineage` for the pairs no convention can name (`Scalars2` lives in a different directory
-from `Scalars`) — and its floor is hard-coded for one test package. **That is the interim, and it is named as
-an interim**: the convention goes away the day COMPILE reads `lockfile.Lineage` and `lockfile.Floor`, and
-until then §5.8 holds it as a divergence. A port implements THIS page against the lock, never the convention.
+`fixtureLineage` — `internal/codegen/cpptable/lineage.go`, TEST-ONLY, read only when the unit has NO lock —
+for the pairs no convention can name (`Scalars2` lives in a different directory from `Scalars`) — and its
+floor is hard-coded for one test package. **That is the interim, and it is named as an interim**: the
+convention goes away the day COMPILE reads `lockfile.Lineage` and `lockfile.Floor`, and until then §5.8 holds
+it as a divergence. A port implements THIS page against the lock, never the convention.
 
 ```
 COMPILE(lock, T):
@@ -897,15 +912,16 @@ the version.** The floor owes three: a file AT the floor reads, a file ONE BELOW
 **The properties gate carries the pairs too.** `test/tables/fixedform_properties.cpp` runs its save / load /
 compare properties over every fixture — `P1` among them — and then ONE PAIR RUN per lineage pair: `FX1`/`FX2`,
 `P1`/`P3`, `FN1`/`FN2`, `FM1`/`FM2`, `V1`/`V2`, **`UT1`/`UT2`** (the guard and flavour lanes, which §7 item 6
-already names as a fixture) and `Scalars`/`Scalars2` — **SEVEN pairs**, and `ir.TableFixedFixtureLineage`
-(`ir/fixedform.go:685-693`) is the list, the one place to read it. That is §5.7's two columns inside the
-gate rather than only inside the versioning cases. FORWARD: the newer reader compiles the older file through
-its lineage and returns one record. REVERSE: the older reader given the newer file refuses, and the refusal is
-`layout_newer` BY NAME. **The old contract's both-ways compiled read is retired, not bent** — a reader that
-compiled a stranger's layout in either direction was the thing this section replaced. The pairs resolve
-through `ir.TableFixedFixtureLineage`, the map from a newer fixture's basename to its older files, which is
-what lets a pair no filename convention can name (`Scalars2`, in a different directory from `Scalars`) join
-the gate at all.
+already names as a fixture) and `Scalars`/`Scalars2` — **SEVEN pairs**, and `fixtureLineage`
+(`internal/codegen/cpptable/lineage.go`, TEST-ONLY) is the list, the one place to read it. That is §5.7's two
+columns inside the gate rather than only inside the versioning cases. FORWARD: the newer reader compiles the
+older file through its lineage and returns one record. REVERSE: the older reader given the newer file refuses,
+and the refusal is `layout_newer` BY NAME. **The old contract's both-ways compiled read is retired, not
+bent** — a reader that compiled a stranger's layout in either direction was the thing this section replaced.
+The pairs resolve through `fixtureLineage`, the TEST-ONLY map from a newer fixture's basename to its older
+files — reached only when the unit has no lock, production COMPILE reading `lockfile.Lineage` — which is what
+lets a pair no filename convention can name (`Scalars2`, in a different directory from `Scalars`) join the
+gate at all.
 
 **The gate's own record check is the READER'S COMPILED HASH CONSTANT**, never a hash of the layout bytes it
 just read. The digest is not on the wire, so `hash_of(layout)` is the wrong identity for any table carrying a
@@ -1007,10 +1023,10 @@ each row the bill's ruling is the second column, and **the reference owes this**
 
 | # | what the reference does | what this page says — the reference owes this |
 |---|---|---|
-| 1 | the lineage is read from SIBLING SCHEMA FILES at generate time, by filename convention plus a fixture map (`cpptable/lineage.go`, `ir.TableFixedFixtureLineage`) | the lineage comes from the lock — `lockfile.Lineage`, with a retired mark and a reason per entry. The convention is the INTERIM, named as one (§5.2) |
+| 1 | the lineage is read from SIBLING SCHEMA FILES at generate time, by filename convention plus a fixture map (`cpptable/lineage.go`, `fixtureLineage`, TEST-ONLY and reached only when the unit has no lock) | the lineage comes from the lock — `lockfile.Lineage`, with a retired mark and a reason per entry. The convention is the INTERIM, named as one (§5.2) |
 | 2 | the floor is hard-coded to one index for one test package (`lineageFloor`) | the floor is `1 +` the highest retired index, from `lockfile.Floor` |
 | 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
-| 4 | the `count` op's bound, the ranges, the variant and arm counts are the READER's (`e.size = my_n`) | the bounds are the WRITER's, per plan (bill §12.5) |
+| 4 | the VARIANT and ARM counts are the READER's, and the reader's own clamp runs over every bounded field beside the writer's ranges | the bounds are the WRITER's, per plan (bill §12.5). **The `count` op's bound LANDED** — `e.size = their_n`, the writer's, at `cpptable/fixedruntime.go` — and the writer's RANGES are carried per lineage entry (`TableFixedKnownRange`) and clamped first. What still owes, on the reference and on every port: the variant and arm counts a `None` is decided by |
 | 5 | `arg`, the guard's ordinal, is still a BYTE lane (`uint8_t`), so a union past 255 arms cannot express its guard value — the tag is READ at its own width and the remap table is `uint16_t`, so only this lane is short | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
 | 6 | a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH | an arm inside an arm answers to the OUTER tag too (§4.1) |
 | 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
@@ -1590,4 +1606,8 @@ the CALLER's own storage, sixty-four slots keyed by the file's hash
 `internal/codegen/cpptable/fixedform.go:524-545`), so a second load under the same hash compiles nothing. The
 line that stood here, saying the reference recompiles on every load with a non-matching hash, was FALSE and is
 withdrawn. What remains is not a cache miss but §5.8 row 3: **nothing should compile at run time at all**, and
-then there is no cache to keep. **(c)** The compile-time guard is the tables baseline of §18 — there is no §2.10 on the tip.
+then there is no cache to keep. **(c)** The compile-time guard is the tables baseline of §18 — there is no
+§2.10 on the tip. **(d)** The reference's layout validator still admits `size / elem >= key.children` for a
+keyed array where §1.2 now says `==`; it is a tolerance over layouts the compiler cannot produce, since a
+headroom enum in a table closure is refused, so it costs a read nothing and is recorded rather than fixed
+here.

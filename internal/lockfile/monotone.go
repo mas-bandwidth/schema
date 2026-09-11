@@ -297,20 +297,20 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 
 	if want.Optional != got.Optional {
 		if want.Optional {
-			return false, "", fmt.Errorf("%s, is %s in the lock and %s in the declaration: optional removed — a field already in the lock keeps its `?`: an optional carries a presence bool beside its value INSIDE the record, so a reader that expects one where none is written takes the next field's first byte for the answer (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+			return false, "", fmt.Errorf("%s, is %s in the lock and %s in the declaration: optional removed — a field already in the lock keeps its `?`: an optional carries a presence bool beside its value INSIDE the record, so a reader that expects one where none is written takes the next field's first byte for the answer (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 				where, optionalText(want.Optional), optionalText(got.Optional))
 		}
 		// `T` to `?T` is a widening: every old value lands present (§2)
 		widened = true
 	}
 	if want.Shape != got.Shape {
-		return false, "", fmt.Errorf("%s, is %s in the lock and %s in the declaration: shape changed (%s -> %s) — a field already in the lock keeps its SHAPE: a fixed array is slots alone, a counted one carries its count, and a keyed one is numbered by an enum's variants, so a reader walks three different records (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+		return false, "", fmt.Errorf("%s, is %s in the lock and %s in the declaration: shape changed (%s -> %s) — a field already in the lock keeps its SHAPE: a fixed array is slots alone, a counted one carries its count, and a keyed one is numbered by an enum's variants, so a reader walks three different records (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 			where, shapeWord(want.Shape), shapeWord(got.Shape), shapeWord(want.Shape), shapeWord(got.Shape))
 	}
 	if want.Kind != got.Kind {
 		rule, ok := kindRule(want, got)
 		if !ok {
-			return false, "", fmt.Errorf("%s, is kind %d in the lock and kind %d in the declaration: %s — a field already in the lock keeps its type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+			return false, "", fmt.Errorf("%s, is kind %d in the lock and kind %d in the declaration: %s — a field already in the lock keeps its type: every record already written holds the old one, and nothing on the wire says which (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 				where, want.Kind, got.Kind, rule)
 		}
 		// a wider int, uint, float or fixed storage: the reader lands every
@@ -318,38 +318,38 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 		widened = true
 	}
 	if want.HeldName != got.HeldName {
-		return false, "", fmt.Errorf("%s, held %s in the lock and %s in the declaration: held type changed (%s -> %s) — a field already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+		return false, "", fmt.Errorf("%s, held %s in the lock and %s in the declaration: held type changed (%s -> %s) — a field already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 			where, heldName(want.HeldName), heldName(got.HeldName), heldName(want.HeldName), heldName(got.HeldName))
 	}
 	if want.ElemKind != got.ElemKind || want.ElemWidth != got.ElemWidth {
 		rule, ok := elemRule(want, got)
 		if !ok {
-			return false, "", fmt.Errorf("%s, holds %s elements in the lock and %s elements in the declaration: %s — a field already in the lock keeps its element type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+			return false, "", fmt.Errorf("%s, holds %s elements in the lock and %s elements in the declaration: %s — a field already in the lock keeps its element type: every record already written holds the old one, and nothing on the wire says which (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 				where, elemWord(want.ElemKind, want.ElemWidth), elemWord(got.ElemKind, got.ElemWidth), rule)
 		}
 		widened = true
 	}
 	if want.KeyName != got.KeyName {
-		return false, "", fmt.Errorf("%s, is keyed by %s in the lock and %s in the declaration: key changed (%s -> %s) — a field already in the lock keeps the enum it is keyed by: the key's variants ARE the slots, in declared order, so every record already written put its values in the slots the old list numbered (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+		return false, "", fmt.Errorf("%s, is keyed by %s in the lock and %s in the declaration: key changed (%s -> %s) — a field already in the lock keeps the enum it is keyed by: the key's variants ARE the slots, in declared order, so every record already written put its values in the slots the old list numbered (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 			where, heldName(want.KeyName), heldName(got.KeyName), heldName(want.KeyName), heldName(got.KeyName))
 	}
 	if want.Bound != got.Bound {
 		if got.Bound < want.Bound {
-			return false, "", fmt.Errorf("%s, is bounded at %d elements in the lock and %d in the declaration: bound narrowed (%d -> %d) — a bound only GROWS: a newer reader defaults the slots an older writer never wrote, and a narrower one cannot hold what the older writer did write (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+			return false, "", fmt.Errorf("%s, is bounded at %d elements in the lock and %d in the declaration: bound narrowed (%d -> %d) — a bound only GROWS: a newer reader defaults the slots an older writer never wrote, and a narrower one cannot hold what the older writer did write (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 				where, want.Bound, got.Bound, want.Bound, got.Bound)
 		}
 		widened = true
 	}
 	if want.Cap != got.Cap {
 		if got.Cap < want.Cap {
-			return false, "", fmt.Errorf("%s, holds %d in the lock and %d in the declaration: capacity narrowed (%d -> %d) — Glenn: \"wstring/strings/bytes can be widened only, not narrowed, because a narrowed string/array cannot read the old\" (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+			return false, "", fmt.Errorf("%s, holds %d in the lock and %d in the declaration: capacity narrowed (%d -> %d) — Glenn: \"wstring/strings/bytes can be widened only, not narrowed, because a narrowed string/array cannot read the old\" (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 				where, want.Cap, got.Cap, want.Cap, got.Cap)
 		}
 		widened = true
 	}
 	if want.Bits != got.Bits {
 		if got.Bits < want.Bits {
-			return false, "", fmt.Errorf("%s, is %d bits wide in the lock and %d in the declaration: bits narrowed (%d -> %d) — `bits(N)` only GROWS: N at most the reader's is a read, and a narrower N cannot hold the value the older writer packed (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+			return false, "", fmt.Errorf("%s, is %d bits wide in the lock and %d in the declaration: bits narrowed (%d -> %d) — `bits(N)` only GROWS: N at most the reader's is a read, and a narrower N cannot hold the value the older writer packed (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 				where, want.Bits, got.Bits, want.Bits, got.Bits)
 		}
 		widened = true
@@ -357,13 +357,13 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 	if !got.sameRange(want) {
 		rule, ok := rangeRule(want, got)
 		if !ok {
-			return false, "", fmt.Errorf("%s, is %s in the lock and %s in the declaration: %s — a field already in the lock keeps its range: the bounds and the resolution are the scale a stored value is read back at, so moving them reads every record already written as a different number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+			return false, "", fmt.Errorf("%s, is %s in the lock and %s in the declaration: %s — a field already in the lock keeps its range: the bounds and the resolution are the scale a stored value is read back at, so moving them reads every record already written as a different number (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 				where, want.rangeText(), got.rangeText(), rule)
 		}
 		widened = true
 	}
 	if got.Default != want.Default {
-		return false, "", fmt.Errorf("%s, defaults to %s in the lock and %s in the declaration: default changed (%s -> %s) — a field already in the lock keeps its default: an older writer's missing field is filled from this default, and a deprecated slot holds it, so a record written before the change reads differently after it (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+		return false, "", fmt.Errorf("%s, defaults to %s in the lock and %s in the declaration: default changed (%s -> %s) — a field already in the lock keeps its default: an older writer's missing field is filled from this default, and a deprecated slot holds it, so a record written before the change reads differently after it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 			where, want.Default, got.Default, want.Default, got.Default)
 	}
 	switch {
@@ -374,7 +374,7 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 		// back is not data, and there is nothing to turn back on — a
 		// deprecated field keeps its slot and is read on every plan, identity
 		// included.
-		return false, "", fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: every writer since the slot was deprecated wrote the default into it, so what would come back is not data (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §2.10); leave it `| deprecated` and append a new field",
+		return false, "", fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: every writer since the slot was deprecated wrote the default into it, so what would come back is not data (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §21.1); leave it `| deprecated` and append a new field",
 			where)
 	case !want.Deprecated && got.Deprecated:
 		widened, what = true, "deprecated in the declaration and live in the lock"
@@ -384,7 +384,7 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 	// above explains it, or when the field holds a named type whose own block
 	// in this file is where its change is reported.
 	if want.Width != got.Width && !widened && want.HeldName == "" {
-		return false, "", fmt.Errorf("%s, is %d bytes wide in the lock and %d in the declaration: width changed (%d -> %d) — a field already in the lock keeps its width: a fixed record is walked by offset, so widening one field moves every field after it (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+		return false, "", fmt.Errorf("%s, is %d bytes wide in the lock and %d in the declaration: width changed (%d -> %d) — a field already in the lock keeps its width: a fixed record is walked by offset, so widening one field moves every field after it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §21.1); deprecate this field and append a new one",
 			where, want.Width, got.Width, want.Width, got.Width)
 	}
 	return widened, what, nil
