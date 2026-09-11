@@ -689,7 +689,8 @@ enum
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
-    kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
+    kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
+    kTableFixedPresent = 7  /* T into ?T: the reader's present byte takes an unguarded 1 (§5.2, bill §12.8) */
 };
 
 /* meta on a kTableFixedText entry */
@@ -779,9 +780,11 @@ static SCHEMA_UNUSED int table_fixed_widens( uint8_t from, uint8_t to )
 {
     if ( from >= 6 && from <= 9 && to >= 6 && to <= 9 ) { return to > from; }  /* u8 .. u64 */
     if ( from >= 2 && from <= 5 && to >= 2 && to <= 5 ) { return to > from; }  /* i8 .. i64 */
+    if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; }
+    if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; }
     return from == 10 && to == 11;                                            /* f32 -> f64 */
 }
-static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return kind >= 2 && kind <= 5; }
+static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); }
 
 /* A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
    the reader's own storage. guard is the byte offset of a union tag when the
@@ -1083,6 +1086,14 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void table_fixed_apply( const Tab
         case kTableFixedConst:
         {
             memcpy( dst + p->dst, &p->aux, p->size );
+            break;
+        }
+        /* T INTO ?T: the reader wraps what the writer sent plain, so the present
+           byte is a CONSTANT 1 and the payload rides under the same guard and
+           ordinal (§5.2 EMIT, bill §12.8). */
+        case kTableFixedPresent:
+        {
+            dst[p->dst] = 1;
             break;
         }
         default: break;
@@ -1779,6 +1790,15 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
     c->depth++;
     do
     {
+        if ( me.kind == 35 && te.kind != 35 )
+        {
+            TableFixedEntry e = table_fixed_entry_zero();
+            e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg;
+            e.op = kTableFixedPresent;
+            table_fixed_push( c, e );
+            table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+            break;
+        }
         if ( te.kind != me.kind )
         {
             if ( table_fixed_widens( te.kind, me.kind ) )
@@ -1908,6 +1928,14 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
             {
                 if ( ( guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { break; }
+                if ( te.size < me.size )
+                {
+                    TableFixedEntry e = table_fixed_entry_zero();
+                    e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
+                    e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+                    table_fixed_push( c, e );
+                    break;
+                }
                 uint16_t remap[256];
                 const uint32_t n = te.children < 255u ? te.children : 255u;
                 TableFixedEntry e;

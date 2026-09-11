@@ -100,10 +100,7 @@ var (
 	// OWED by the C leg (docs/FIXED-FORM-ALGORITHM.md §5). C++ first; these
 	// blocks have no C twin yet. Strip them so the gate stays green; TWIN.md
 	// names each row with the §5 section the C card implements from.
-	reOwedPresentCase    = regexp.MustCompile(`(?s)case kTableFixedPresent:\s*\{\s*dst\[p\.dst\] = 1;\s*break;\s*\}`)
-	reOwedPresentCompile = regexp.MustCompile(`(?s)if \( me\.kind == 35 && te\.kind != 35 \)\s*\{.*?return;\s*\}`)
-	reOwedEnumWiden      = regexp.MustCompile(`(?s)if \( te\.size < me\.size \)\s*\{\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.dstsize = \(uint8_t\) me\.size;\s*e\.guard = guard; e\.arg = arg; e\.op = kTableFixedWiden; e\.sign = 0;\s*TableFixedPush\( c, e \);\s*break;\s*\}`)
-	reOwedKnownLayout    = regexp.MustCompile(`(?s)struct TableFixedKnownLayout\s*\{.*?\};`)
+	reOwedKnownLayout = regexp.MustCompile(`(?s)struct TableFixedKnownLayout\s*\{.*?\};`)
 )
 
 func tableFixedIdent(name string) string {
@@ -212,19 +209,13 @@ func stripNamed(s string) string {
 func stripOwedC(s string) string {
 	// OWED by the C leg. Not a named remaining: C has no spelling of these
 	// yet. C++ first; legs from algorithm §5 after. Do not port C here.
-	// §5.2 present op enumerator
-	s = strings.ReplaceAll(s, "kTableFixedPresent = 7;", "")
-	s = strings.ReplaceAll(s, "kTableFixedPresent = 7,", "")
-	// §5.1 fixed(I,F) / ufixed(I,F) ladders in Widens
-	s = strings.ReplaceAll(s, "if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; }", "")
-	s = strings.ReplaceAll(s, "if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; }", "")
-	// §5.1 SignedKind covering signed fixed(I,F)
-	s = strings.ReplaceAll(s, "return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 );", "return kind >= 2 && kind <= 5;")
-	// §5.2 Apply case and compile T into ?T
-	s = reOwedPresentCase.ReplaceAllString(s, "")
-	s = reOwedPresentCompile.ReplaceAllString(s, "")
-	// §5.2 grown ordinal width as widen
-	s = reOwedEnumWiden.ReplaceAllString(s, "")
+	// CLOSED on rowan/c-reads-backward: the present op ENUMERATOR, the
+	// fixed(I,F) and ufixed(I,F) ladder rungs and the signed fixed-point's sign
+	// are in the C runtime now (§5.1, §5.2), spelled the same, so their strips
+	// are gone and the gate holds the two legs to them.
+	// CLOSED too: the present op's Apply case and its compile of `T` into `?T`,
+	// and the grown ordinal width emitted as an unsigned widen — the C leg
+	// spells all three now, so the gate holds the two legs to them.
 	// §5.3 known-layout table LOAD selects by hash
 	s = reOwedKnownLayout.ReplaceAllString(s, "")
 	return s

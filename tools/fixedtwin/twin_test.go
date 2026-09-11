@@ -98,33 +98,14 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c )
 }
 
 func TestOwedCLegStripped(t *testing.T) {
-	// C++-only algorithm §5 rows against empty C. After the map they are
-	// gone; a leftover would mean the OWED stripper missed a row.
+	// The ONE C++-only algorithm §5 row left, against empty C. After the map it
+	// is gone; a leftover would mean the OWED stripper missed a row. The other
+	// four rows of §5.7's C-owed table are CLOSED (rowan/c-reads-backward) and
+	// the gate now holds the two legs to them: a C leg that lost the present op,
+	// the fixed(I,F) ladders or the grown ordinal's widen goes red here.
 	c := `
-    return kind >= 2 && kind <= 5;
 `
 	cpp := `
-    kTableFixedPresent = 7,
-    if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; }
-    if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; }
-    return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 );
-    case kTableFixedPresent: { dst[p.dst] = 1; break; }
-    if ( me.kind == 35 && te.kind != 35 )
-    {
-        TableFixedEntry e;
-        e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg; e.op = kTableFixedPresent;
-        TableFixedPush( c, e );
-        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
-        return;
-    }
-    if ( te.size < me.size )
-    {
-        TableFixedEntry e;
-        e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
-        e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
-        TableFixedPush( c, e );
-        break;
-    }
     struct TableFixedKnownLayout
     {
         uint64_t hash = 0;
