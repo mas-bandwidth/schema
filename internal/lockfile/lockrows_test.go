@@ -663,9 +663,86 @@ func TestLockLineageRecordIsTheEntrysLayout(t *testing.T) {
 		t.Fatal("a record size the entry's layout does not account for is a LOCK BUG and the build fails")
 	} else {
 		got := err.Error()
-		for _, want := range []string{"record=7", "entry 0 accounts for 8"} {
+		// AND THE REFUSAL NAMES THE TABLE AND THE ENTRY'S HASH (§5.9 #26). The
+		// sentence used to carry the two sizes and nothing else, so a lock with
+		// several fixed tables and several entries each said which numbers
+		// disagreed and never WHERE — and the hash is the entry's only name.
+		for _, want := range []string{"record=7", "entry 0 accounts for 8", "fixed table Row", "wire=0x" + wireOf(t, lines)} {
 			if !strings.Contains(got, want) {
-				t.Fatalf("the refusal names BOTH values: want %q in %q", want, got)
+				t.Fatalf("the refusal names the table, the entry's hash and BOTH values: want %q in %q", want, got)
+			}
+		}
+	}
+}
+
+// wireOf pulls the wire hash off the lineage line the test edited, so the
+// assertion above is over the entry's REAL name and not a spelling.
+func wireOf(t *testing.T, lines []string) string {
+	t.Helper()
+	for _, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "lineage wire=") {
+			continue
+		}
+		for _, tok := range strings.Fields(line) {
+			if after, ok := strings.CutPrefix(tok, "wire=0x"); ok {
+				return after
+			}
+		}
+	}
+	t.Fatal("the lock must carry a lineage line with a wire hash")
+	return ""
+}
+
+// TestLockLineageRecordBelowOneByte is §5.9 #26's OTHER half: `record=` is the
+// root entry's CONSTANT BODY LENGTH, so a number below one byte is not a size at
+// all. The parse refused only a NEGATIVE one, so `record=0` rode through the
+// lock and into COMPILE, where a zero-length record reaches §5.3's arithmetic
+// over a file's tail and a LOCK BUG is reported as a wire event. The LAYOUT is
+// cut short in the same edit, because an entry that carries an entry 0 is held
+// by the comparison above and not by the range — a FIELDLESS fixed table's body
+// is honestly zero, and the range is for the entry with nothing to compare to.
+func TestLockLineageRecordBelowOneByte(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    x int32\n    y int32"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatalf("locking: %v", err)
+	}
+	path := filepath.Join(dir, lockfile.FileName)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	edited := false
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "lineage wire=") {
+			continue
+		}
+		edit := line
+		for _, was := range strings.Fields(line) {
+			if strings.HasPrefix(was, "record=") {
+				edit = strings.Replace(edit, was, "record=0", 1)
+				edited = true
+			}
+			if strings.HasPrefix(was, "bytes=") {
+				edit = strings.Replace(edit, was, "bytes=00", 1)
+			}
+		}
+		lines[i] = edit
+		break
+	}
+	if !edited {
+		t.Fatal("the lock must carry a lineage line to edit")
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Open(paths); err == nil {
+		t.Fatal("`record=0` is not a record size and the build fails")
+	} else {
+		got := err.Error()
+		for _, want := range []string{"record=0", "never less than one byte", "fixed table Row", "wire=0x" + wireOf(t, lines)} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("the refusal names the table, the entry's hash and the size: want %q in %q", want, got)
 			}
 		}
 	}

@@ -168,9 +168,13 @@ const fixedRuntimeBody = `  @moduledoc """
   """
   def read_file_header(data)
 
+  # THE SUCCESS CLAUSE SPELLS THE SEVEN RESERVED ZEROS OUT. A wildcard here
+  # matched FIRST and swallowed every nonzero reserved byte, so the refusal
+  # below was unreachable except when the layout's length overran the file: the
+  # clause that says yes must say yes to nothing the clauses below refuse.
   def read_file_header(
-        <<@form, _reserved::binary-size(@file_hash_at - 1), hash::little-unsigned-64,
-          len::little-unsigned-32, rest::binary>>
+        <<@form, 0, 0, 0, 0, 0, 0, 0, hash::little-unsigned-64, len::little-unsigned-32,
+          rest::binary>>
       )
       when byte_size(rest) >= len do
     <<layout::binary-size(^len), records::binary>> = rest
@@ -187,14 +191,17 @@ const fixedRuntimeBody = `  @moduledoc """
   def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
   def read_file_header(<<form, _::binary>>) when form != @form, do: {:error, :newer_form}
 
-  # STEP 2: the twenty-byte minimum, and then THE SEVEN RESERVED BYTES, which
-  # are REFUSED and not ignored so they stay spendable later (§3.4, §5.3).
-  def read_file_header(data) when is_binary(data) and byte_size(data) < @file_header_bytes + 4,
-    do: {:error, :malformed}
-
+  # STEP 2: THE SEVEN RESERVED BYTES, which are REFUSED and not ignored so they
+  # stay spendable later (§3.4, §5.3), and then the twenty-byte minimum. The
+  # reserved clause stands BEFORE the length clause: both answer the same name,
+  # but a clause that can only be reached past the length check is a clause that
+  # never reads a header it was written to refuse.
   def read_file_header(<<@form, reserved::binary-size(@file_hash_at - 1), _::binary>>)
       when reserved != <<0::size((@file_hash_at - 1) * 8)>>,
       do: {:error, :malformed}
+
+  def read_file_header(data) when is_binary(data) and byte_size(data) < @file_header_bytes + 4,
+    do: {:error, :malformed}
 
   def read_file_header(<<@form, _::binary>>), do: {:error, :layout_malformed}
   def read_file_header(_), do: {:error, :layout_malformed}

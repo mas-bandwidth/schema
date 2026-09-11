@@ -478,15 +478,24 @@ COMPILE(lock, T):
   y := T's own layout ; Hy := HASH(bytes(y), T)            -- the digest is computed AT the hash, from T
   R.own_hash := Hy
   R.identity, R.split, R.cover := the baked identity plan of §4.2, its split, the type's value bytes
+  R.floor := 1 + the highest index marked RETIRED in lock.lineage(T), or 0 when none is
+                                                                -- THE FLOOR IS COMPUTED FIRST, because the
+                                                                -- loop below needs it: a plan is built for an
+                                                                -- entry AT OR ABOVE the floor and for NO
+                                                                -- entry below it
   i := 0
   for each entry x in lock.lineage(T), OLDEST FIRST:            -- the current layout is the last of them
     R.lineage[i] := x.hash ; R.known[i] := { x.hash, x.layout_bytes, 8 + x.record_body }
                                                                 -- the lock stores the BODY; the eight hash
                                                                 -- bytes are added HERE, once, and never again
                                                                 -- by a backend
-    R.plans[i]   := (x.hash == Hy) ? IDENTITY : PLAN(x.layout_bytes, bytes(y))
+    if i < R.floor:                                             -- RETIRED. The hash stays KNOWN, so a file
+      R.plans[i] := NONE                                        -- carrying it is named layout_unsupported and
+    else:                                                       -- never layout_newer; its PLAN IS NEVER BUILT,
+      R.plans[i] := (x.hash == Hy)                              -- so it cannot fail the build and retiring is
+                     ? IDENTITY                                 -- the operator's remedy for plan_too_large
+                     : PLAN(x.layout_bytes, bytes(y))
     i := i + 1
-  R.floor := 1 + the highest index marked RETIRED, or 0 when none is
   emit R as static data: the hashes, the layout bytes, the record sizes, the plans, the floor
 ```
 

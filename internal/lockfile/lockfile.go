@@ -1067,7 +1067,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 			if cur.Decl != DeclFixedTable {
 				return nil, fmt.Errorf("%s: a %s carries no lineage — a nested record has no file of its own and no hash a file carries; its changes are the holder's layout", where, cur.Decl)
 			}
-			l, err := parseLineage(line)
+			l, err := parseLineage(line, cur.Name)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)
 			}

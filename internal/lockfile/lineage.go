@@ -198,7 +198,11 @@ func (e LineageEntry) line() string {
 // parseLineage reads one lineage line. The REASON is the rest of the line, so a
 // sentence with spaces in it survives the round trip; every other token is a
 // single field.
-func parseLineage(line string) (LineageEntry, error) {
+//
+// table is the FIXED TABLE the line belongs to, carried in for ONE reason: §5.9
+// #26 says a wrong record size is refused NAMING THE TABLE AND THE ENTRY'S HASH,
+// and the caller is the only place the table's name is in scope.
+func parseLineage(line, table string) (LineageEntry, error) {
 	e := LineageEntry{}
 	body := strings.TrimSpace(line)
 	if at := strings.Index(body, " reason="); at >= 0 {
@@ -224,7 +228,7 @@ func parseLineage(line string) (LineageEntry, error) {
 			e.Wire = h
 		case key == "record":
 			n, err := strconv.ParseInt(val, 10, 64)
-			if err != nil || n < 0 {
+			if err != nil {
 				return LineageEntry{}, fmt.Errorf("%q is not a record size", tok)
 			}
 			e.Record = n
@@ -258,11 +262,28 @@ func parseLineage(line string) (LineageEntry, error) {
 	// BODY — so `record=` is not a free number: a size that is not what this
 	// entry's own layout accounts for is a LOCK BUG and the build fails HERE,
 	// never as §5.3's arithmetic over a file's tail.
+	//
+	// THE OTHER HALF OF #26 IS THE SIZE THAT IS NOT A BODY AT ALL. `record=` is
+	// the ROOT entry's CONSTANT BODY LENGTH, so a number below one byte is not a
+	// size any layout could account for. The parse used to refuse only a NEGATIVE
+	// one, so `record=0` rode in, and a zero-length record reached §5.3's
+	// arithmetic over a file's tail — a LOCK BUG reported as a wire event, with
+	// `malformed` and no name. BOTH halves name THE TABLE AND THE ENTRY'S HASH.
+	//
+	// AND THE TWO HALVES ARE ONE LADDER, STRONGEST RUNG FIRST. Where the entry
+	// carries an entry 0 the layout's own number IS the answer and the range says
+	// nothing the comparison does not say better — a FIELDLESS fixed table's body
+	// is honestly ZERO, and a flat `record < 1` would fail the build over a lock
+	// that is right. The range is for the entry too short to carry an entry 0,
+	// where there is nothing to compare against and `record=0` used to ride in.
 	if len(e.Layout) >= lineageEntry0SizeAt+4 {
 		if root := int64(le32(e.Layout[lineageEntry0SizeAt:])); root != e.Record {
-			return LineageEntry{}, fmt.Errorf("this lineage entry records record=%d over a layout whose entry 0 accounts for %d bytes — the record size IS the root entry's size, so the two halves of this line disagree (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
-				e.Record, root)
+			return LineageEntry{}, fmt.Errorf("fixed table %s, lineage entry wire=0x%016x: this line records record=%d over a layout whose entry 0 accounts for %d bytes — the record size IS the root entry's size, so the two halves of this line disagree (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
+				table, e.Wire, e.Record, root)
 		}
+	} else if e.Record < 1 {
+		return LineageEntry{}, fmt.Errorf("fixed table %s, lineage entry wire=0x%016x: this line records record=%d over a layout too short to carry an entry 0 — the record size IS the root entry's constant BODY length and is never less than one byte, so this entry is a LOCK BUG and the build fails here (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
+			table, e.Wire, e.Record)
 	}
 	if got := lineageWireHash(e.Layout, e.Digest); got != e.Wire {
 		return LineageEntry{}, fmt.Errorf("this lineage entry records wire=0x%016x over bytes that hash to 0x%016x — the wire hash IS the hash of the layout bytes and the definitions digest, so the two halves of this line disagree",
