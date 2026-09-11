@@ -571,6 +571,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
+	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
+	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        %sFixedClamp( values[k], report );\n", st.Name)
 	}
@@ -605,6 +607,33 @@ func (g *tableGen) emitFixedLineage(st *ir.Struct, known []fixedKnown, floor int
 			k.hash, st.Name, i, len(k.layout), k.recordBytes, k.note)
 	}
 	g.pf("};\n\n")
+	for i, k := range known {
+		if len(k.ranges) == 0 {
+			continue
+		}
+		g.pf("constexpr TableFixedKnownRange %sFixedKnown%dRanges[] = {\n", st.Name, i)
+		for _, r := range k.ranges {
+			g.pf("    { %du, %du, %du, %d, %d },\n", r.dst, r.width, r.signed, r.lo, r.hi)
+		}
+		g.pf("};\n")
+	}
+	g.pf("constexpr const TableFixedKnownRange * %sFixedKnownRanges[] = {\n", st.Name)
+	for i, k := range known {
+		if len(k.ranges) == 0 {
+			g.pf("    NULL,\n")
+		} else {
+			g.pf("    %sFixedKnown%dRanges,\n", st.Name, i)
+		}
+	}
+	g.pf("};\n")
+	g.pf("constexpr int32_t %sFixedKnownRangeCounts[] = {", st.Name)
+	for i, k := range known {
+		if i > 0 {
+			g.pf(",")
+		}
+		g.pf(" %d", len(k.ranges))
+	}
+	g.pf(" };\n\n")
 }
 
 func (g *tableGen) emitByteArray(b []byte) {

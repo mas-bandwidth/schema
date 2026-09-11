@@ -344,6 +344,14 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
+            // An unguarded None const with dstsize = the WRITER's arm count:
+            // a tag past that set lands None (already written) and COUNTS.
+            if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
+            {
+                uint64_t raw = 0;
+                memcpy( &raw, src + p.src, p.size );
+                if ( raw > (uint64_t) p.dstsize ) { clamped++; }
+            }
             break;
         }
         case kTableFixedPresent:
@@ -1090,6 +1098,8 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 TableFixedEntry none;
                 none.src = their_at; none.dst = aux_at; none.size = my_tag;
                 none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                // Writer arm count, for a tag past the old set (bill §12.5).
+                if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
                 TableFixedPush( c, none );
                 c.argw = inner_argw;
             }
@@ -1127,7 +1137,12 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 const uint8_t outer_w = saved_argw ? saved_argw : 1u;
                 for ( int32_t i = restamp_from; i < c.count; ++i )
                 {
-                    if ( c.plan[i].guard == their_at )
+                    // The inner tag's own consts stay on the inner tag: restamping
+                    // them onto the outer tag fires every inner arm when the outer
+                    // matches, and the last arm wins. Payload leaves answer to the
+                    // OUTER tag (#876 card 13).
+                    if ( c.plan[i].guard == their_at &&
+                         !( c.plan[i].op == kTableFixedConst && c.plan[i].dst == aux_at ) )
                     {
                         c.plan[i].guard = guard;
                         c.plan[i].arg = arg;
@@ -1289,6 +1304,50 @@ struct TableFixedKnownLayout
     int64_t layout_bytes = 0;
     int64_t record_bytes = 0;
 };
+
+// Writer ranges the hostile pass clamps against (bill §12.5). dst is the
+// READER's storage offset; lo/hi are the WRITER's declared bounds.
+struct TableFixedKnownRange
+{
+    uint32_t dst = 0;
+    uint8_t width = 0;
+    uint8_t sgn = 0;
+    int64_t lo = 0;
+    int64_t hi = 0;
+};
+
+inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int32_t n,
+                                        uint8_t * dst, TableReport * report )
+{
+    if ( ranges == NULL || n <= 0 || dst == NULL ) { return; }
+    int32_t clamped = 0;
+    for ( int32_t i = 0; i < n; ++i )
+    {
+        const TableFixedKnownRange & b = ranges[i];
+        if ( b.width == 0 || b.width > 8 ) { continue; }
+        uint64_t raw = 0;
+        memcpy( &raw, dst + b.dst, b.width );
+        int64_t v = 0;
+        if ( b.sgn != 0 )
+        {
+            const unsigned bits = (unsigned) b.width * 8u;
+            const uint64_t top = 1ull << ( bits - 1 );
+            if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
+            v = (int64_t) raw;
+        }
+        else
+        {
+            v = (int64_t) raw;
+        }
+        int64_t landed = v;
+        if ( landed < b.lo ) { landed = b.lo; clamped++; }
+        else if ( landed > b.hi ) { landed = b.hi; clamped++; }
+        if ( landed == v ) { continue; }
+        uint64_t out = (uint64_t) landed;
+        memcpy( dst + b.dst, &out, b.width );
+    }
+    if ( report != NULL ) { report->clamped += clamped; }
+}
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
 

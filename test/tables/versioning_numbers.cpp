@@ -736,6 +736,36 @@ void range_widen_case()
     OLD_REFUSES_NEW( vold_range_widen, RangeWiden, "range_widen", nb );
 }
 
+// A scalar past the OLD range (0..100), read by the NEW reader whose own range
+// is 0..200. The plan carries the WRITER's range (bill §12.5): clamp to 100,
+// COUNT clamped, never land 150.
+void range_widen_hostile_case()
+{
+    vold_range_widen::RangeWiden old;
+    vold_range_widen::RangeWidenReset( old );
+    old.lead = 1;
+    old.v = 100;
+    old.trail = 2;
+    std::vector<uint8_t> ob = one( old, vold_range_widen::RangeWidenFixedMeasure,
+                                   vold_range_widen::RangeWidenFixedSave, "range_widen_hostile: OLD save" );
+    const size_t rec = (size_t) vold_range_widen::kTableFixedHeaderBytes + 4
+        + (size_t) vold_range_widen::RangeWidenFixedLayoutBytes;
+    vold_range_widen::TableFixedPut32( ob.data() + rec + 8 + 4, 150u );
+    {
+        vnew_range_widen::RangeWiden back;
+        vnew_range_widen::RangeWidenReset( back );
+        vnew_range_widen::TableReport r;
+        std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
+        check( vnew_range_widen::RangeWidenFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                      plan.data(), 4096, NULL, &r ) == 1,
+               "range_widen_hostile: the forged file reads" );
+        check( back.v == 100, "range_widen_hostile: 150 clamps to the WRITER's max 100, not the reader's 200" );
+        check( r.clamped >= 1, "range_widen_hostile: COUNT clamped" );
+        check( back.lead == 1 && back.trail == 2,
+               "range_widen_hostile: lead and trail stand" );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 12. bits_grow — bits(8) -> bits(12)
 
@@ -1161,6 +1191,7 @@ int versioning_numbers_cases()
     uint_widen_case();
     float_widen_case();
     range_widen_case();
+    range_widen_hostile_case();
     bits_grow_case();
     fixed_I_grow_case();
     optional_add_case();

@@ -110,8 +110,12 @@ var (
 	reOwedNestedNoneArgw = regexp.MustCompile(`const uint8_t inner_argw = c\.argw;\s*if \( guard != kTableFixedNoGuard \) \{ c\.argw = saved_argw \? saved_argw : 1u; \}\s*`)
 	reOwedNestedNoneRest = regexp.MustCompile(`TableFixedPush\( c, none \);\s*c\.argw = inner_argw;`)
 	reOwedNestedRestamp  = regexp.MustCompile(`(?s)const int32_t restamp_from = c\.count;\s*`)
-	reOwedNestedRewrite  = regexp.MustCompile(`(?s)if \( guard != kTableFixedNoGuard \)\s*\{\s*const uint8_t outer_w = saved_argw \? saved_argw : 1u;\s*for \( int32_t i = restamp_from; i < c\.count; \+\+i \)\s*\{\s*if \( c\.plan\[i\]\.guard == their_at \)\s*\{\s*c\.plan\[i\]\.guard = guard;\s*c\.plan\[i\]\.arg = arg;\s*c\.plan\[i\]\.argw = outer_w;\s*\}\s*\}\s*\}`)
+	reOwedNestedRewrite  = regexp.MustCompile(`(?s)if \( guard != kTableFixedNoGuard \)\s*\{\s*const uint8_t outer_w = saved_argw \? saved_argw : 1u;\s*for \( int32_t i = restamp_from; i < c\.count; \+\+i \)\s*\{\s*if \( c\.plan\[i\]\.guard == their_at &&\s*!\( c\.plan\[i\]\.op == kTableFixedConst && c\.plan\[i\]\.dst == aux_at \) \)\s*\{\s*c\.plan\[i\]\.guard = guard;\s*c\.plan\[i\]\.arg = arg;\s*c\.plan\[i\]\.argw = outer_w;\s*\}\s*\}\s*\}`)
 	reOwedOrdinalCount   = regexp.MustCompile(`(?s)if \( raw != 0 \)\s*\{\s*if \( raw <= \(uint64_t\) table\[0\] \) \{ v = table\[raw\]; \}\s*if \( v == 0 \) \{ clamped\+\+; \}\s*\}`)
+	reOwedWriterArmCount = regexp.MustCompile(`if \( te\.children > 0 && te\.children <= 255u \) \{ none\.dstsize = \(uint8_t\) te\.children; \}\s*`)
+	reOwedConstClamp     = regexp.MustCompile(`(?s)if \( p\.aux == 0 && p\.dstsize != 0 && p\.guard == kTableFixedNoGuard \)\s*\{\s*uint64_t raw = 0;\s*memcpy\( &raw, src \+ p\.src, p\.size \);\s*if \( raw > \(uint64_t\) p\.dstsize \) \{ clamped\+\+; \}\s*\}\s*`)
+	reOwedKnownRange     = regexp.MustCompile(`(?s)struct TableFixedKnownRange\s*\{.*?\};`)
+	reOwedClampRanges    = regexp.MustCompile(`(?s)inline void TableFixedClampKnownRanges\s*\([^)]*\)\s*\{.*?\}\s*`)
 )
 
 func tableFixedIdent(name string) string {
@@ -255,6 +259,10 @@ func stripOwedC(s string) string {
 	s = reOwedNestedNoneRest.ReplaceAllString(s, "TableFixedPush( c, none );")
 	s = reOwedNestedRestamp.ReplaceAllString(s, "")
 	s = reOwedNestedRewrite.ReplaceAllString(s, "")
+	s = reOwedWriterArmCount.ReplaceAllString(s, "")
+	s = reOwedConstClamp.ReplaceAllString(s, "")
+	s = reOwedKnownRange.ReplaceAllString(s, "")
+	s = reOwedClampRanges.ReplaceAllString(s, "")
 	return s
 }
 

@@ -592,6 +592,39 @@ static void union_append_case()
     }
 }
 
+// A tag past the OLD arm count (alpha, beta), read by the NEW reader whose own
+// union has gamma. The plan carries the WRITER's arm count (bill §12.5): land
+// None, COUNT clamped, never Gamma.
+static void union_append_hostile_case()
+{
+    std::vector<uint8_t> oldf( (size_t) vold_union_append::LineageFixedMeasure( 1 ) );
+    {
+        vold_union_append::Lineage v;
+        vold_union_append::LineageReset( v );
+        v.pick.type = vold_union_append::PickType::Alpha;
+        v.pick.alpha.m = 7;
+        v.seq = 15;
+        check( vold_union_append::LineageFixedSave( &v, 1, oldf.data(), (int64_t) oldf.size() ) ==
+               (int64_t) oldf.size(), "union_append_hostile: the OLD file saves" );
+    }
+    const size_t rec = (size_t) vold_union_append::kTableFixedHeaderBytes + 4
+        + (size_t) vold_union_append::LineageFixedLayoutBytes;
+    oldf[rec + 8] = 3; // Gamma's tag, which the old writer had no arm for
+    {
+        vnew_union_append::Lineage back;
+        vnew_union_append::LineageReset( back );
+        vnew_union_append::TableReport r;
+        std::vector<vnew_union_append::TableFixedEntry> plan( 1024 );
+        const int64_t n = vnew_union_append::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
+                                                              plan.data(), 1024, NULL, &r );
+        check( n == 1, "union_append_hostile: the forged file reads" );
+        check( back.pick.type == vnew_union_append::PickType::None,
+               "union_append_hostile: tag 3 lands None against the WRITER's 2 arms, not Gamma" );
+        check( r.clamped >= 1, "union_append_hostile: COUNT clamped" );
+        check( back.seq == 15, "union_append_hostile: the scalar after the union stands" );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // union_arm_payload_widen: arm alpha {x} -> {x,y}
 // (old_union_arm_payload_widen.bin / new_union_arm_payload_widen.bin)
@@ -924,6 +957,7 @@ int versioning_lists_cases()
     enum_append_hostile_case();
     enum_width_case();
     union_append_case();
+    union_append_hostile_case();
     union_arm_payload_widen_case();
     flags_append_case();
     keyed_array_enum_append_case();

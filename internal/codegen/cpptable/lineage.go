@@ -2,6 +2,7 @@ package cpptable
 
 import (
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,11 +20,19 @@ import (
 // file carries, the layout bytes LOAD memcmps, and the writer's record size.
 // Plans for older entries are compiled from these trusted bytes at first load;
 // the file's own layout is never parsed (bill §12.4, algorithm §5.3).
+type fixedKnownRange struct {
+	dst    uint32
+	width  uint8
+	signed uint8
+	lo, hi int64
+}
+
 type fixedKnown struct {
 	hash        uint64
 	layout      []byte
 	recordBytes int64
 	note        string
+	ranges      []fixedKnownRange
 }
 
 var numberedSchema = regexp.MustCompile(`^([A-Za-z]+)(\d+)$`)
@@ -224,7 +233,7 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 	want := st.WireName()
 	var out []fixedKnown
 	seen := map[uint64]bool{}
-	add := func(hash uint64, layout []byte, recordBytes int64, note string) {
+	add := func(hash uint64, layout []byte, recordBytes int64, note string, ranges []fixedKnownRange) {
 		if seen[hash] {
 			return
 		}
@@ -234,6 +243,7 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 			layout:      layout,
 			recordBytes: recordBytes,
 			note:        note,
+			ranges:      ranges,
 		})
 	}
 	idLayout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
@@ -244,7 +254,7 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 			if e.Wire == idHash {
 				note = "identity"
 			}
-			add(e.Wire, e.Layout, 8+e.Record, note)
+			add(e.Wire, e.Layout, 8+e.Record, note, nil)
 		}
 	}
 	addFromUnit := func(u *ir.Unit, src *ir.Struct, note string) {
@@ -254,13 +264,75 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 		entries := ir.TableFixedWalkRoot(src)
 		layout := ir.TableFixedLayoutBytes(entries)
 		h := ir.TableFixedLayoutHash(layout, src)
-		add(h, layout, 8+ir.TableFixedTypeBytes(src), note)
+		add(h, layout, 8+ir.TableFixedTypeBytes(src), note, collectKnownRanges(g.unit, st, src))
 	}
 	for _, peer := range g.lineagePeers {
 		addFromUnit(peer, peerTable(peer, want), peer.Package)
 	}
 	addFromUnit(g.unit, st, "identity")
 	return out
+}
+
+func collectKnownRanges(readerU *ir.Unit, reader, writer *ir.Struct) []fixedKnownRange {
+	if readerU == nil || reader == nil || writer == nil {
+		return nil
+	}
+	rl := ir.RecordLayout(readerU, reader)
+	if rl == nil {
+		return nil
+	}
+	var out []fixedKnownRange
+	for i := range rl.Fields {
+		fl := &rl.Fields[i]
+		if fl.Field == nil {
+			continue
+		}
+		wf := knownRangeField(writer, fl.Field.Name)
+		if wf == nil || !wf.HasIntRange || !fl.Field.HasIntRange {
+			continue
+		}
+		w := ir.TableFixedStorageBytes(wf.Type)
+		if w <= 0 || w > 8 || ir.TableFixedStorageBytes(fl.Field.Type) != w {
+			continue
+		}
+		if ir.TableScalarKind(wf) != ir.TableScalarKind(fl.Field) {
+			continue
+		}
+		sgn := uint8(0)
+		if ir.TableKindSigned(ir.TableScalarKind(wf)) {
+			sgn = 1
+		}
+		out = append(out, fixedKnownRange{
+			dst:    uint32(fl.Offset),
+			width:  uint8(w),
+			signed: sgn,
+			lo:     bigInt64(wf.IntMin),
+			hi:     bigInt64(wf.IntMax),
+		})
+	}
+	return out
+}
+
+func knownRangeField(st *ir.Struct, name string) *ir.Field {
+	if st == nil {
+		return nil
+	}
+	for _, f := range st.Fields {
+		if f != nil && f.Name == name {
+			return f
+		}
+	}
+	return nil
+}
+
+func bigInt64(n *big.Int) int64 {
+	if n == nil {
+		return 0
+	}
+	if n.IsInt64() {
+		return n.Int64()
+	}
+	return 0
 }
 
 func peerTable(u *ir.Unit, wireName string) *ir.Struct {
