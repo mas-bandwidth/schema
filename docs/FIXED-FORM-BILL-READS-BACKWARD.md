@@ -1,5 +1,8 @@
 # Bill: the fixed form reads backward, never forward
 
+Purpose, in Glenn's words: "this is not perfect and does not do everything, but it does work, and extends
+from a pattern coded by one person that is a footgun, to something that could work on a larger team."
+
 Glenn, 2026-09-10, in Rowan's window, after walking three cases (an old reader sent a new enum variant, an
 old reader sent a longer array, an old reader sent a layout whose definitions moved): "The only correct is
 reject." "Newer versions of the fixed table should be able to read OLD versions." "But old versions CANNOT
@@ -239,3 +242,13 @@ Adding but never removing?" Three.
   one integer) or as text (readable, per language).
 - Whether a writer's *deprecated* field (older writer, still writing it) needs any rule: the reader is newer
   and has the name, so it reads or drops by the reader's own deprecation; it seems to need none.
+
+## 10. The variable table, for a separate decision
+
+Glenn: "I think the reads backwards rule is going to be required for the variable table too." The same law
+holds; the difference is where "newer" is detected. Form 1 has no layout, so today it finds out PER RECORD
+(an unknown field id, an unknown variant, a count past the bound), each tolerated and counted (SPEC §4). To
+refuse forward as form 3 does, form 1's header carries the writer's closure hash, and the decision is one
+comparison at the top of the file, before any record. §4's tolerance was form 1's selling point and it is
+the same footgun under a friendlier name. This is its own bill: it changes every leg's form-1 reader, the
+wire header, and the packet form's model, and must not ride in on the fixed table's ruling.
