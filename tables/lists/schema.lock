@@ -1,31 +1,39 @@
-schema-lock 5
+schema-lock 7
 package listdemo
 
-fixed table Bounded layout=0x38e61d51e4cc8311
-    field items id=0x3e7884bf4f412c6f kind=14 width=36 default=born:0 held=Unit@0x3157106757693e8a elem=13/4
+fixed table Bounded layout=0x3897f8ac09396382
+    field items id=0x3e7884bf4f412c6f kind=14 width=36 default=born:0 held=Unit@0x3157106757693e8a elem=13/4 bound=8 shape=counted
     field tag id=0x56d7ab194448a4f3 kind=4 width=4 default=0
+    lineage wire=0x2b285a2d28d41c82 record=40 bytes=050000002a89f51209c1ca0a0d28000000020000006f2c414fbf84783e0e240000000100000000000000000000000d0400000001000000090602864ceb63af040400000000000000f3a4484419abd756040400000000000000
 
 fixed table Item layout=0xf8efefb09ce745f7
     field count id=0xb1e5e28e4479a274 kind=4 width=4 default=0
+    lineage wire=0xd285587ad8f0ebdc record=4 bytes=0200000006684798d1a1cf520d040000000100000074a279448ee2e5b1040400000000000000
 
 fixed table LogEntry layout=0x8f1087a414b43276
     field tick id=0x1e7683ef2ebc7684 kind=8 width=4 default=0
+    lineage wire=0xea98a82ef5707ea9 record=4 bytes=020000005f8258ac3615785e0d04000000010000008476bc2eef83761e080400000000000000
 
 fixed table Photo layout=0x1f8f993dd8576281
     field width id=0xdbdacd932fd1e9bf kind=8 width=4 default=0
     field height id=0x17720bf67d347222 kind=8 width=4 default=0
+    lineage wire=0x80b2a2152ea36570 record=8 bytes=03000000c3648950d28da7f10d0800000002000000bfe9d12f93cddadb0804000000000000002272347df60b7217080400000000000000
 
 fixed table Placement layout=0x953ca25156f66168
     field x id=0xaf63f54c86021707 kind=10 width=4 default=0.0
     field y id=0xaf63f44c86021554 kind=10 width=4 default=0.0
     field model id=0x9de543933e6e703a kind=8 width=4 default=0
+    lineage wire=0x612211bc49eed17a record=12 bytes=0400000080ea3ab9f121f7410d0c00000003000000071702864cf563af0a0400000000000000541502864cf463af0a04000000000000003a706e3e9343e59d080400000000000000
 
 fixed table Point layout=0x03e9da69f262a7ed
     field x id=0xaf63f54c86021707 kind=4 width=4 default=0
     field y id=0xaf63f44c86021554 kind=4 width=4 default=0
+    lineage wire=0x1e621e0309d27347 record=8 bytes=0300000011edd9ce9692438a0d0800000002000000071702864cf563af040400000000000000541502864cf463af040400000000000000
 
 fixed table Sample layout=0x3157106757693e8a
     field v id=0xaf63eb4c86020609 kind=4 width=4 default=0
+    lineage wire=0x0ee6a9f190922d63 record=4 bytes=02000000a70ac75412d640dc0d0400000001000000090602864ceb63af040400000000000000
 
 fixed table Unit layout=0x3157106757693e8a
     field v id=0xaf63eb4c86020609 kind=4 width=4 default=0
+    lineage wire=0x9e3ff698790d29fe record=4 bytes=020000008727cc86f0e0268f0d0400000001000000090602864ceb63af040400000000000000
