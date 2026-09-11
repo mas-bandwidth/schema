@@ -395,7 +395,6 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
                   (bytes[TableFixedHashAt + 2] << 16) | (bytes[TableFixedHashAt + 3] << 24)) >>> 0);
   const hashHi = ((bytes[TableFixedHashAt + 4] | (bytes[TableFixedHashAt + 5] << 8) |
                   (bytes[TableFixedHashAt + 6] << 16) | (bytes[TableFixedHashAt + 7] << 24)) >>> 0);
-  if (plan === null) { report.refused = TableFixedRefusal.NoLayout; return -1; }
   const pick = TableFixedSelect(FixedTableFixedKnown, hashLo, hashHi);
   if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }
   if (pick < FixedTableFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }
@@ -404,6 +403,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   for (let i = 0; i < layoutBytes; i++) {
     if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
   }
+  if (plan === null) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
   let entries = FixedTableFixedIdentity, entryCount = 1, remap = null;
   let censusUnknown = 0, censusKind = 0;
   const recordBytes = known.recordBytes;
