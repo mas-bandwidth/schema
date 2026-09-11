@@ -1639,6 +1639,16 @@ const (
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
 
+// THE LAYOUT'S OWN BOUNDS (docs/FIXED-FORM-ALGORITHM.md §1.1). The header is
+// the u32 entry count and nothing else. 65536 is the form's record body bound,
+// which a DECLARED fixed table is held to at compile time and an untrusted
+// peer's layout is held to here, so the two sides agree by construction. The
+// depth is a bound on THIS READER'S WALK and not on the wire: the reference
+// states 64 and every leg states the same number.
+const tableFixedLayoutHeaderBytes int32 = 4
+const tableFixedRecordMaxBytes uint32 = 65536
+const tableFixedMaxDepth int32 = 64
+
 // Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
 // it. Meta is a text entry's flavour (tableFixedTextUtf8/Wide/Bytes). They
 // shared one lane until reference-fix 12; compiling a string under a union
@@ -1670,7 +1680,73 @@ func tableFixedWidens(from, to uint8) bool {
 	return from == 10 && to == 11
 }
 func tableFixedSignedKind(kind uint8) bool { return kind >= 2 && kind <= 5 }
-func tableFixedKindKnown(kind uint8) bool  { return kind <= 33 || kind == 35 }
+
+// THE CLOSED KIND SET (docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
+// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
+// adds, the optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing
+// escape and 34 is reserved: none of the three is a kind a declaration spells,
+// so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
+// leaf to step over — the form byte versions the kinds behind it, so a kind
+// this build does not know names a FORM this reader never saw.
+func tableFixedKindKnown(kind uint8) bool {
+	if kind >= 1 && kind <= 30 {
+		return true
+	}
+	return kind == 32 || kind == 33 || kind == 35
+}
+
+// tableFixedOrdinalWidth is the widths an ordinal — an enum's, a union tag's —
+// is stored at.
+func tableFixedOrdinalWidth(n uint32) bool { return n == 1 || n == 2 || n == 4 || n == 8 }
+
+// tableFixedLeafSize answers whether a kind is a LEAF and, if it is, whether
+// the size it states is one its kind admits (§1.2). Kind and size fix each
+// other on this wire with ONE exception, stated here rather than left to be
+// found: a bits(N) field rides at its DECLARED STORAGE WIDTH — four bytes for
+// N <= 32 and eight above — under the unsigned integer kind its BIT COUNT
+// picks, so kinds 6 and 7 admit 4 as well as their own width.
+func tableFixedLeafSize(kind uint8, size uint32) (admitted, leaf bool) {
+	leaf = true
+	switch kind {
+	case 1, 2: // bool, i8
+		return size == 1, leaf
+	case 3: // i16
+		return size == 2, leaf
+	case 4: // i32
+		return size == 4, leaf
+	case 5: // i64
+		return size == 8, leaf
+	case 6: // u8, and bits( 1 .. 8 )
+		return size == 1 || size == 4, leaf
+	case 7: // u16, and bits( 9 .. 16 )
+		return size == 2 || size == 4, leaf
+	case 8: // u32, and bits( 17 .. 32 )
+		return size == 4, leaf
+	case 9: // u64, flags, and bits( 33 .. 64 )
+		return size == 8, leaf
+	case 10: // f32
+		return size == 4, leaf
+	case 11: // f64
+		return size == 8, leaf
+	case 17: // a pointer index, which no fixed table carries
+		return size == 4, leaf
+	case 18, 19: // i128, u128
+		return size == 16, leaf
+	case 20, 25: // fixed8, ufixed8
+		return size == 1, leaf
+	case 21, 26:
+		return size == 2, leaf
+	case 22, 27:
+		return size == 4, leaf
+	case 23, 28:
+		return size == 8, leaf
+	case 24, 29:
+		return size == 16, leaf
+	case 32: // a variant, and an arm that holds nothing
+		return size == 0, leaf
+	}
+	return true, false
+}
 
 // tableFixedRuns is whether an op advances src and dst together one byte at a
 // time, which is the whole of what lets two adjacent entries become one.
@@ -1875,8 +1951,16 @@ type tableFixedLayoutView struct {
 	Count int32
 }
 
+// AN INDEX PAST THE ENTRIES IS ANSWERED, NOT READ. Every index into a layout is
+// arithmetic over child counts a STRANGER wrote, so the one place that can hold
+// the whole walk inside the buffer is the one place that touches it. An
+// out-of-range index answers kind 0xFF, which is a kind no declaration has and
+// nothing matches, so the walk that asked for it finds nothing and moves on.
 func tableFixedEntryAt(b tableFixedLayoutView, i int32) tableFixedLayoutEntry {
-	e := b.Bytes[4+int64(i)*int64(tableFixedEntryBytes):]
+	if b.Bytes == nil || i < 0 || i >= b.Count {
+		return tableFixedLayoutEntry{Kind: 0xFF}
+	}
+	e := b.Bytes[int64(tableFixedLayoutHeaderBytes)+int64(i)*int64(tableFixedEntryBytes):]
 	return tableFixedLayoutEntry{
 		Id:       tableFixedGet64(e),
 		Kind:     e[8],
@@ -1885,20 +1969,29 @@ func tableFixedEntryAt(b tableFixedLayoutView, i int32) tableFixedLayoutEntry {
 	}
 }
 
+// tableFixedSubtree is how many entries the subtree rooted at i occupies, so a
+// walk steps over a child it does not want without knowing what is in it.
+//
+// ITERATIVE ON PURPOSE (docs/FIXED-FORM-ALGORITHM.md §1.1). A layout is a
+// stranger's bytes, so a chain of single-child entries is a stack depth the WIRE
+// gets to choose; this walk gives it none. The pending counter is the pre-order
+// walk's own arithmetic: one entry is owed at the start, each entry owes its
+// children, and the subtree ends when nothing is owed.
 func tableFixedSubtree(b tableFixedLayoutView, i int32) int32 {
 	if i < 0 || i >= b.Count {
 		return 1
 	}
-	e := tableFixedEntryAt(b, i)
-	n := int32(1)
-	at := i + 1
-	for c := uint32(0); c < e.Children; c++ {
-		if at >= b.Count {
+	pending := int64(1)
+	n := int32(0)
+	at := i
+	for pending > 0 && at < b.Count {
+		pending--
+		n++
+		pending += int64(tableFixedEntryAt(b, at).Children)
+		at++
+		if pending > int64(b.Count) {
 			break
 		}
-		sub := tableFixedSubtree(b, at)
-		at += sub
-		n += sub
 	}
 	return n
 }
@@ -1907,7 +2000,7 @@ func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
 	e := tableFixedEntryAt(b, i)
 	var widest uint32
 	at := i + 1
-	for k := uint32(0); k < e.Children; k++ {
+	for k := uint32(0); k < e.Children && at < b.Count; k++ {
 		a := tableFixedEntryAt(b, at)
 		if a.Size > widest {
 			widest = a.Size
@@ -1917,30 +2010,252 @@ func tableFixedUnionArmBytes(b tableFixedLayoutView, i int32) uint32 {
 	return widest
 }
 
+// ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
+//
+// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// must parse before it knows anything at all, so every rule below runs BEFORE a
+// single record byte is touched and each refuses under ITS OWN NAME rather than
+// under one word for all of them (docs/FIXED-FORM-ALGORITHM.md §1.1).
+//
+// NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle: an
+// entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is always
+// higher than its parent's, the layout is finite, and there is no back reference
+// for a cycle to be made of. The tree-closure rule is what bounds the walk, and
+// the depth rule is what bounds the reader's stack.
+type tableFixedCheck struct {
+	layout tableFixedLayoutView
+	why    string
+}
+
+// Keep the FIRST reason and stop: the order of the rules is load-bearing, so the
+// reason a reader reports is the first one the layout broke.
+func (c *tableFixedCheck) fail(why string) {
+	if c.why == "" {
+		c.why = why
+	}
+}
+
+// tableFixedCheckEntry validates the subtree rooted at i and answers how many
+// entries it occupies, which is the same arithmetic tableFixedSubtree does and
+// is why that walk is safe to run afterwards and only afterwards.
+func tableFixedCheckEntry(c *tableFixedCheck, i, depth int32) int32 {
+	if c.why != "" {
+		return 0
+	}
+	if i < 0 || i >= c.layout.Count {
+		c.fail("layout_tree_unclosed")
+		return 0
+	}
+	if depth > tableFixedMaxDepth {
+		c.fail("layout_too_deep")
+		return 0
+	}
+	e := tableFixedEntryAt(c.layout, i)
+	// THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
+	// and is refused whole, never walked and never stepped over.
+	if !tableFixedKindKnown(e.Kind) {
+		c.fail("layout_kind_unknown")
+		return 0
+	}
+	if e.Size > tableFixedRecordMaxBytes {
+		c.fail("layout_record_too_large")
+		return 0
+	}
+
+	// THE CHILDREN FIRST, in the pre-order the layout is written in.
+	at := i + 1
+	var sum uint64
+	var widest, firstSize, secondSize, firstChildren uint32
+	var firstKind uint8
+	kidsAreVariants := true
+	for k := uint32(0); k < e.Children; k++ {
+		child := at
+		used := tableFixedCheckEntry(c, child, depth+1)
+		if c.why != "" {
+			return 0
+		}
+		ce := tableFixedEntryAt(c.layout, child)
+		if k == 0 {
+			firstSize, firstKind, firstChildren = ce.Size, ce.Kind, ce.Children
+		}
+		if k == 1 {
+			secondSize = ce.Size
+		}
+		if ce.Kind != 32 {
+			kidsAreVariants = false
+		}
+		// THE SUM IS 64 BITS precisely so a u32 that overflows is CAUGHT rather
+		// than wrapped into a small number that then agrees with its parent.
+		sum += uint64(ce.Size)
+		if ce.Size > widest {
+			widest = ce.Size
+		}
+		if sum > uint64(tableFixedRecordMaxBytes) {
+			c.fail("layout_record_too_large")
+			return 0
+		}
+		at += used
+	}
+
+	admitted, leaf := tableFixedLeafSize(e.Kind, e.Size)
+	if !admitted {
+		c.fail("layout_size_mismatch")
+		return 0
+	}
+	if leaf {
+		if e.Children != 0 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		return at - i
+	}
+	switch e.Kind {
+	case 13: // a TABLE: its size is the SUM of its fields'
+		if uint64(e.Size) != sum {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 35: // the OPTIONAL WRAPPER: one child, one present byte in front of it
+		if e.Children != 1 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if uint64(e.Size) != sum+1 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 14: // an ARRAY: a whole number of elements, behind a count or not
+		if e.Children != 1 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if firstSize == 0 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+		bare := e.Size%firstSize == 0
+		counted := e.Size >= 4 && (e.Size-4)%firstSize == 0
+		if !bare && !counted {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 16: // an ENUM-KEYED array: the KEY ENUM then the ELEMENT, every slot written
+		if e.Children != 2 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if firstKind != 30 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if secondSize == 0 || e.Size%secondSize != 0 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+		// AT LEAST one slot per variant. Not exactly one: an enum widened by an
+		// explicit max has more slots than it has names, and the layout carries
+		// only the names.
+		if e.Size/secondSize < firstChildren {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 15: // a UNION: the TAG at its own width, then the WIDEST ARM
+		if e.Children == 0 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if e.Size <= widest {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+		if !tableFixedOrdinalWidth(e.Size - widest) {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 30: // an ENUM: the ordinal's storage width, and its children are VARIANTS
+		if !tableFixedOrdinalWidth(e.Size) {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+		if e.Children != 0 && !kidsAreVariants {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+	case 12: // string(N): the length, then N bytes
+		if e.Children != 0 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if e.Size < 4 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
+		if e.Children != 0 {
+			c.fail("layout_kind_invalid")
+			return 0
+		}
+		if e.Size < 4 || (e.Size-4)%2 != 0 {
+			c.fail("layout_size_mismatch")
+			return 0
+		}
+	default:
+		// Every kind of the closed set is either a leaf above or a case here, so
+		// this is unreachable — and it refuses rather than admits, because a
+		// kind that reached it is a kind the two lists disagree about.
+		c.fail("layout_kind_unknown")
+		return 0
+	}
+	return at - i
+}
+
 func tableFixedTagBytes(b tableFixedLayoutView, i int32) uint32 {
 	return tableFixedEntryAt(b, i).Size - tableFixedUnionArmBytes(b, i)
 }
 
-func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, bool) {
+// tableFixedParseLayout is the WHOLE of what a reader trusts a layout on. It
+// answers the view and a REASON BY NAME — empty when the layout passed every
+// rule — and the caller reports that reason. A layout that fails any rule SETS
+// NOTHING: no view, no plan, and no counter moved.
+//
+// THE ORDER IS LOAD-BEARING (docs/FIXED-FORM-ALGORITHM.md §1.1): rule 1; the
+// root's kind and size; then the walk — index in range (5), depth (7), kind
+// known (2), own size (6), the children, then the size and shape rules (3, 4);
+// and last that the walk consumed exactly the entries (5).
+func tableFixedParseLayout(bytes []byte) (tableFixedLayoutView, string) {
 	var out tableFixedLayoutView
-	if len(bytes) < 4 {
-		return out, false
+	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
+	// worth of them — are layout_malformed and not one of the seven.
+	if int32(len(bytes)) < tableFixedLayoutHeaderBytes {
+		return out, "layout_malformed"
 	}
+	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
 	count := tableFixedGet32(bytes)
-	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+4 != int64(len(bytes)) {
-		return out, false
+	if count == 0 || int64(count)*int64(tableFixedEntryBytes)+int64(tableFixedLayoutHeaderBytes) != int64(len(bytes)) {
+		return out, "layout_count_mismatch"
 	}
-	out.Bytes = bytes
-	out.Count = int32(count)
-	if tableFixedSubtree(out, 0) != out.Count {
-		return tableFixedLayoutView{}, false
+	view := tableFixedLayoutView{Bytes: bytes, Count: int32(count)}
+	// 2. THE ROOT IS A TABLE, and its size is the record's body
+	root := tableFixedEntryAt(view, 0)
+	if root.Kind != 13 {
+		return out, "layout_kind_invalid"
 	}
-	for i := int32(0); i < out.Count; i++ {
-		if !tableFixedKindKnown(tableFixedEntryAt(out, i).Kind) {
-			return tableFixedLayoutView{}, false
-		}
+	if root.Size == 0 || root.Size > tableFixedRecordMaxBytes {
+		return out, "layout_record_too_large"
 	}
-	return out, true
+	// 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
+	//    SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND
+	c := tableFixedCheck{layout: view}
+	used := tableFixedCheckEntry(&c, 0, 0)
+	if c.why != "" {
+		return out, c.why
+	}
+	// 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
+	//    the layout has nothing left over
+	if used != view.Count {
+		return out, "layout_tree_unclosed"
+	}
+	return view, ""
 }
 
 type tableFixedCompiler struct {
@@ -2153,9 +2468,11 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if len(plan) == 0 {
 		return -1
 	}
-	mine, ok := tableFixedParseLayout(myLayout)
-	if !ok {
-		return -1
+	// THE READER'S OWN LAYOUT, and a failure to parse it owes its OWN name and
+	// not plan_too_large: -2 is that, -1 is the plan storage (reference fix 3).
+	mine, why := tableFixedParseLayout(myLayout)
+	if why != "" {
+		return -2
 	}
 	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report}
 	tableFixedMatchChildren(&c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0)
@@ -10131,9 +10448,6 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
-		return tableFixedRefuse(report, "layout_malformed")
-	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := TableEntityFixedPlan.Entries
@@ -10141,17 +10455,26 @@ func TableEntityFixedLoad(values []TableEntity, data []byte, plan []TableFixedEn
 	recordBytes := int64(TableEntityFixedRecordBytes)
 	identity := hash == TableEntityFixedHash
 	if !identity {
-		parsed, ok := tableFixedParseLayout(layout)
-		if !ok {
-			return tableFixedRefuse(report, "layout_malformed")
+		// ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+		// THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+		// every rule it fails refuses under ITS OWN NAME (§1.1).
+		parsed, why := tableFixedParseLayout(layout)
+		if why != "" {
+			return tableFixedRefuse(report, why)
 		}
 		made := tableFixedCompile(parsed, TableEntityFixedLayout, TableEntityFixedDst, plan, report)
+		if made == -2 {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
 		if made < 0 {
 			return tableFixedRefuse(report, "plan_too_large")
 		}
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
@@ -10272,9 +10595,6 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
-		return tableFixedRefuse(report, "layout_malformed")
-	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := TableStatFixedPlan.Entries
@@ -10282,17 +10602,26 @@ func TableStatFixedLoad(values []TableStat, data []byte, plan []TableFixedEntry,
 	recordBytes := int64(TableStatFixedRecordBytes)
 	identity := hash == TableStatFixedHash
 	if !identity {
-		parsed, ok := tableFixedParseLayout(layout)
-		if !ok {
-			return tableFixedRefuse(report, "layout_malformed")
+		// ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+		// THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+		// every rule it fails refuses under ITS OWN NAME (§1.1).
+		parsed, why := tableFixedParseLayout(layout)
+		if why != "" {
+			return tableFixedRefuse(report, why)
 		}
 		made := tableFixedCompile(parsed, TableStatFixedLayout, TableStatFixedDst, plan, report)
+		if made == -2 {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
 		if made < 0 {
 			return tableFixedRefuse(report, "plan_too_large")
 		}
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
@@ -10561,9 +10890,6 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
-		return tableFixedRefuse(report, "layout_malformed")
-	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := TableMixedFixedPlan.Entries
@@ -10571,17 +10897,26 @@ func TableMixedFixedLoad(values []TableMixed, data []byte, plan []TableFixedEntr
 	recordBytes := int64(TableMixedFixedRecordBytes)
 	identity := hash == TableMixedFixedHash
 	if !identity {
-		parsed, ok := tableFixedParseLayout(layout)
-		if !ok {
-			return tableFixedRefuse(report, "layout_malformed")
+		// ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+		// THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+		// every rule it fails refuses under ITS OWN NAME (§1.1).
+		parsed, why := tableFixedParseLayout(layout)
+		if why != "" {
+			return tableFixedRefuse(report, why)
 		}
 		made := tableFixedCompile(parsed, TableMixedFixedLayout, TableMixedFixedDst, plan, report)
+		if made == -2 {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
 		if made < 0 {
 			return tableFixedRefuse(report, "plan_too_large")
 		}
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true

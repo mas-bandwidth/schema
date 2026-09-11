@@ -1,6 +1,7 @@
 package cstable
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,7 +9,137 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
+
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX. A one-byte compare
+// fires arm 1 on a foreign 0x0101. compiler/fixedguardwidth_test.go holds the
+// IR stamp; this is the C# run loop and the identity-plan stamp. Flavour
+// stays in Meta. Identity is a PLAN walked by the same loop — hash chooses
+// the plan and nothing else.
+func TestFixedGuardComparedAtArgW(t *testing.T) {
+	if !strings.Contains(tableFixedRuntimeTypes, "public byte ArgW;") {
+		t.Error("TableFixedEntry has no ArgW")
+	}
+	if !strings.Contains(tableFixedRuntimeTypes, "byte argW = 1") {
+		t.Error("ArgW does not default to 1, the width a tag had when this field did not exist")
+	}
+	if !strings.Contains(tableFixedWireSource, "public static ulong TagAt(") {
+		t.Error("the runtime never names TagAt")
+	}
+	if strings.Contains(tableFixedWireSource, "src[(int)p.Guard] != p.Arg") {
+		t.Error("the run loop still compares the union guard as one byte")
+	}
+	if !strings.Contains(tableFixedWireSource, "TagAt(src, p.Guard, p.ArgW) != p.Arg") {
+		t.Error("the run loop does not compare the guard at ArgW")
+	}
+	if strings.Contains(tableFixedWireSource, "if (identity)") || strings.Contains(tableFixedWireSource, "if(identity)") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+	if !strings.Contains(tableFixedWireSource, "c.ArgW = (their_tag >= 1u && their_tag <= 8u) ? (byte)their_tag : (byte)1;") {
+		t.Error("the compiler does not stamp ArgW from the writer's tag width")
+	}
+
+	one := generateCS(t, `package probe
+
+type Cell { n int32 }
+
+union Pick {
+    a Cell
+    b Cell
+}
+
+fixed table Root { pick Pick }
+`)
+	if !strings.Contains(one, "public static ulong TagAt(") {
+		t.Error("generated unit never names TagAt")
+	}
+	if strings.Contains(one, "src[(int)p.Guard] != p.Arg") {
+		t.Error("generated run loop still compares the union guard as one byte")
+	}
+	if strings.Contains(one, "if (identity)") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+	if !guardedPlanHasArgW(one, 1) {
+		t.Error("a two-arm union's identity plan did not stamp ArgW=1 on guarded entries")
+	}
+
+	var b strings.Builder
+	b.WriteString("package probe\n\ntype Cell { n int32 }\n\nunion Wide {\n")
+	for i := range 256 {
+		fmt.Fprintf(&b, "    a%d Cell\n", i)
+	}
+	b.WriteString("}\n\nfixed table Root { pick Wide }\n")
+	wide := generateCS(t, b.String())
+	if !guardedPlanHasArgW(wide, 2) {
+		t.Error("a 256-arm union's identity plan did not stamp ArgW=2 on guarded entries")
+	}
+}
+
+func guardedPlanHasArgW(src string, want int) bool {
+	start := strings.Index(src, "RootFixedPlan = new TableFixedPlan")
+	if start < 0 {
+		return false
+	}
+	src = src[start:]
+	end := strings.Index(src, "});")
+	if end < 0 {
+		return false
+	}
+	src = src[:end]
+	const needle = "new TableFixedEntry("
+	for {
+		i := strings.Index(src, needle)
+		if i < 0 {
+			return false
+		}
+		src = src[i+len(needle):]
+		close := strings.Index(src, "),")
+		if close < 0 {
+			return false
+		}
+		args := src[:close]
+		src = src[close+2:]
+		if strings.Contains(args, "TableFixedWire.NoGuard") {
+			continue
+		}
+		last := strings.TrimSpace(args[strings.LastIndex(args, ",")+1:])
+		return last == fmt.Sprintf("%d", want)
+	}
+}
+
+func generateCS(t *testing.T, src string) string {
+	t.Helper()
+	u := unitFrom(t, src)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var b strings.Builder
+	for _, body := range files {
+		b.Write(body)
+	}
+	out := b.String()
+	if out == "" {
+		t.Fatal("Generate emitted nothing")
+	}
+	return out
+}
+
+func unitFrom(t *testing.T, src string) *ir.Unit {
+	t.Helper()
+	f, perrs := parser.Parse("Probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	return u
+}
 
 func generateSchema(t *testing.T, path string) map[string][]byte {
 	t.Helper()
@@ -116,5 +247,9 @@ func TestFu1Fu2FixedLoadIsOnePath(t *testing.T) {
 	}
 	if !strings.Contains(fu1, "DefaultRaw = unchecked((ulong)(long)-1)") {
 		t.Error("FU1 mark = -1 must emit unchecked DefaultRaw")
+	}
+	zero := generateCS(t, "package probe\n\nfixed table Root { n int32 }\n")
+	if !strings.Contains(zero, "DefaultRaw = unchecked((ulong)(long)0)") {
+		t.Error("DefaultRaw wraps unchecked even when the constant is not negative")
 	}
 }
