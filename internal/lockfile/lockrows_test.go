@@ -23,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // ---- the fixture shapes ----
@@ -619,4 +620,90 @@ func TestLockRenameWithoutWasRefuses(t *testing.T) {
 
 func TestLockRenameWithoutWasAllows(t *testing.T) {
 	rowUnchanged(t, rowTable("    a int32"), rowTable("    b int32 | was = \"a\""))
+}
+
+// ---- the form's DEPTH BOUND, which no entry of the law can see ----
+//
+// A field appended to a nested type is the `nested_append` row and a widening
+// every reader holds — until the type it appends is one that pushes the holder's
+// layout past §5.2's 64. Past the bound a fixed table DOES NOT CARRY THE FIXED
+// FORM (`layout_malformed`), so the crossing is a CHANGE OF FORM and not a
+// version, and the lock is where that is said: every monotone fact widened
+// legally, so without this refusal `schema lock` wrote the crossing down and the
+// readers compiled from the lineage were left holding a layout nothing writes.
+// It is the depth's half of the record ceiling's refusal (#938), the same fact
+// in the same place.
+
+// depthChain is a chain of `levels` nested types under `Row`, N0 the innermost,
+// beside a shallow `Leaf` the chain's innermost type can reach for. `Row`'s
+// layout then nests `levels`+1 deep: the root at 0, the chain below it, the
+// innermost scalar last.
+func depthChain(levels int, innermost string) string {
+	var b strings.Builder
+	b.WriteString("type Leaf\n{\n    w int32\n}\n\n")
+	fmt.Fprintf(&b, "type N0\n{\n%s\n}\n\n", innermost)
+	for i := 1; i < levels; i++ {
+		fmt.Fprintf(&b, "type N%d\n{\n    n N%d\n}\n\n", i, i-1)
+	}
+	return strings.TrimSuffix(b.String(), "\n\n")
+}
+
+func depthRow(levels int, innermost string) string {
+	return rowWith(depthChain(levels, innermost), fmt.Sprintf("    n N%d\n    l Leaf", levels-1))
+}
+
+// TestLockNestedAppendPastDepthBoundRefuses is the row: an append to the
+// innermost type of a chain that sits exactly at the bound, which takes the
+// holder one past it.
+func TestLockNestedAppendPastDepthBoundRefuses(t *testing.T) {
+	at := ir.TableFixedMaxDepth - 1 // the chain plus the scalar under it is the bound
+	// `rowRefusesAmong`, because the append also stands in N0's OWN block as the
+	// ordinary stale lock: the crossing is Row's and the edit is N0's.
+	rowRefusesAmong(t,
+		depthRow(at, "    v int32"),
+		depthRow(at, "    v int32\n    deeper Leaf"),
+		"fixed table Row", "nesting past the form's 64-entry depth bound (64 -> 65)")
+}
+
+// TestLockNestedAppendInsideDepthBoundAllows keeps the refusal off the ordinary
+// append: a chain that grows and stays inside the bound is `nested_append` and
+// nothing else.
+func TestLockNestedAppendInsideDepthBoundAllows(t *testing.T) {
+	rowAllows(t,
+		depthRow(8, "    v int32"),
+		depthRow(8, "    v int32\n    deeper Leaf"),
+		"N0")
+}
+
+// TestLockAlreadyPastDepthBoundAllows is the asymmetry the bound needs: a table
+// that was ALREADY past it never carried the fixed form, so it crosses nothing
+// and the lock says nothing.
+func TestLockAlreadyPastDepthBoundAllows(t *testing.T) {
+	deep := ir.TableFixedMaxDepth + 8
+	rowAllows(t,
+		depthRow(deep, "    v int32"),
+		depthRow(deep, "    v int32\n    deeper Leaf"),
+		"N0")
+}
+
+// TestLockDepthRefusesUnderSchemaLock is the LOCK-REFUSES column's other half:
+// `schema lock` itself must not write the crossing, or the one command that moves
+// the file would be the one that breaks the law.
+func TestLockDepthRefusesUnderSchemaLock(t *testing.T) {
+	at := ir.TableFixedMaxDepth - 1
+	errs := lockThen(t, depthRow(at, "    v int32"), depthRow(at, "    v int32\n    deeper Leaf"))
+	named := false
+	for _, err := range errs {
+		got := err.Error()
+		if !strings.Contains(got, "depth bound") {
+			continue
+		}
+		named = true
+		if strings.Contains(got, "write it with `schema lock`") {
+			t.Fatalf("the depth bound is a refusal, never a stale lock: %v", err)
+		}
+	}
+	if !named {
+		t.Fatalf("one refusal must be the depth bound's: %v", errs)
+	}
 }

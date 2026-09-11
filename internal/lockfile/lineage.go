@@ -456,6 +456,41 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 		fmt.Sprintf("not the lineage's last entry (0x%016x): the declaration has a layout the record does not end with", last.Wire))}
 }
 
+// diffDepth is THE WALK'S DEPTH BOUND AS A MONOTONE FACT (docs/SPEC-TABLES.md
+// §3.4, docs/FIXED-FORM-ALGORITHM.md §5.2, §6), and it is the depth's half of
+// what the ceiling's own check does for the record's size (#938): the same
+// mistake in the same place, a fact that belongs to THE FORM read as if it
+// belonged to the entries.
+//
+// Every monotone fact this file compares can widen legally while the nesting
+// grows past [ir.TableFixedMaxDepth] — a field appended to a nested type is the
+// bill's `nested_append` and nothing else from the entries' point of view. But
+// past the bound NO CONFORMING READER TAKES THE WALK (§5.2 refuses
+// `layout_malformed`), so the table stops carrying the fixed form and keeps form
+// 1. That is the right answer for a table that was ALWAYS that deep, and the
+// wrong answer for a table a fleet already reads: the lock would take the
+// crossing, the lineage would gain an entry for a layout nothing writes, and what
+// reaches the old readers is not `layout_newer` — a refusal that says "ship the
+// reader" — but a form byte their plan never had a branch for.
+//
+// SO THE DEPTH IS CHECKED AGAINST WHAT SHIPPED, like every other bound here, and
+// it is read from the LAYOUT BYTES both sides: the lock's last entry is a layout
+// that shipped and its own depth is recoverable from it, never re-derived from
+// today's declaration. A table already past the bound crosses nothing and says
+// nothing — it never had the form this refusal protects.
+func diffDepth(lk, lv *Table) error {
+	if len(lk.Lineage) == 0 || len(lv.Lineage) != 1 {
+		return nil
+	}
+	last, cur := lk.Lineage[len(lk.Lineage)-1], lv.Lineage[0]
+	was, now := ir.TableFixedLayoutDepth(last.Layout), ir.TableFixedLayoutDepth(cur.Layout)
+	if was > ir.TableFixedMaxDepth || now <= ir.TableFixedMaxDepth {
+		return nil
+	}
+	return fmt.Errorf("fixed table %s: its layout nested %d deep in the lock and nests %d in the declaration: nesting past the form's %d-entry depth bound (%d -> %d) — past the bound a fixed table DOES NOT CARRY THE FIXED FORM (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §5.2's `layout_malformed`): it keeps form 1, so this is not a widening every reader can hold but a CHANGE OF FORM, and the readers compiled from this lineage would meet a form byte no plan of theirs has a branch for (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); flatten the nesting back inside the bound, or start a new table under a new name",
+		lk.Name, was, now, ir.TableFixedMaxDepth, was, now)
+}
+
 // lineageDrift marks the one lineage finding that is a CONSEQUENCE rather than a
 // fault of the record: the declaration's layout is not the lineage's last entry,
 // which is what a moved field or a moved nested type looks like from here. [Diff]
