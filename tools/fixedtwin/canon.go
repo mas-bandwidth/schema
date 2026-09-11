@@ -411,6 +411,9 @@ func normalizeSyntax(s string) string {
 		{"const TableFixedDst * d", "const TableFixedDst REF d"},
 		{"const TableFixedDst & d", "const TableFixedDst REF d"},
 		{"inline inline void", "inline void"},
+		// the C leg spells one force-inline with a RETURN VALUE now
+		// (table_fixed_room), so the collapse is per return type.
+		{"inline inline uint32_t", "inline uint32_t"},
 		{"int want_guarded;", "bool want_guarded;"},
 		{"int overflow;", "bool overflow;"},
 		{"int hostile;", "bool hostile;"},
