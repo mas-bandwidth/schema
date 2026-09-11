@@ -1,5 +1,5 @@
-schema-lock 5
+schema-lock 6
 package base64test
 
-fixed table Blob layout=0x6af9d88a34d3e508
-    field payload id=0xcfb8a9d063b5e9e5 kind=14 width=16388 default=bytes: elem=6/1
+fixed table Blob layout=0xa190549933f677b7
+    field payload id=0xcfb8a9d063b5e9e5 kind=14 width=16388 default=bytes: elem=6/1 cap=16384

@@ -1,4 +1,4 @@
-schema-lock 5
+schema-lock 6
 package armdemo
 
 fixed table Node layout=0x3157106757693e8a

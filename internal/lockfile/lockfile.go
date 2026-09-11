@@ -88,7 +88,16 @@ import (
 // is keyed by (`key=Hull@0x...`) and its element beside it (`elem=4/4`), the
 // two facts every other array already carried. v4 locks are deleted and
 // rewritten, the same sentence v1 took.
-const Version = 5
+// 6 is the MONOTONE LAW's own widening (docs/FIXED-FORM-BILL-READS-BACKWARD.md
+// §2, §6): the DECLARED SIZE FACTS the record's width carries only as a total,
+// and which a refusal has to be able to name — an array's bound and its shape
+// (`bound=4 shape=counted`), a text field's capacity (`cap=8`), a `bits(N)`
+// width (`bits=12`) and a fixed-point field's I (`ibits=12`). Each is a fact a
+// narrowing moves and the width reports vaguely or not at all, so "bound
+// narrowed (4 -> 2)" needs them written down. They ride at the END of the
+// entry line, after `deprecated`, so a line is read left to right the way it
+// grew. v5 locks are deleted and rewritten, the same sentence v1 took.
+const Version = 6
 
 // FileName is the lock's name beside the unit's schema files. Unlike the
 // tables baseline, its presence is not what turns the check on for a unit
@@ -194,6 +203,37 @@ type Entry struct {
 	// on and it may never turn off: the slot stays where it is, nothing new
 	// may name the field, and a reader ignores what it finds there.
 	Deprecated bool
+
+	// Bound is an array's DECLARED ELEMENT COUNT — `[4]T`'s 4, `[..N]T`'s
+	// EVALUATED N, an enum-keyed array's slot count — and 0 on every field
+	// that is not an array. The width carries it only multiplied by the
+	// element and buried under the count companion, and the monotone law has
+	// to be able to say "bound narrowed (4 -> 2)" (§6).
+	Bound int64
+
+	// Shape is an array's FORM: "fixed" for `[N]T`, "counted" for `[..N]T`,
+	// "list" for `[]T`, "keyed" for `[Enum]T`, and "" on every field that is
+	// not an array. The bill refuses a shape change outright (§2): the count
+	// companion, the slot numbering and the key are three different things a
+	// reader walks.
+	Shape string
+
+	// Cap is a text field's DECLARED CAPACITY in its own units — `string(N)`
+	// and `bytes(N)` in bytes, `wstring(N)` in UTF-16 code units — and 0 on
+	// every other field. Glenn: "wstring/strings/bytes can be widened only,
+	// not narrowed, because a narrowed string/array cannot read the old."
+	Cap int64
+
+	// Bits is a `bits(N)` field's DECLARED WIDTH, and 0 on every other field.
+	// Two bits() widths inside one storage kind are the same kind and the same
+	// width in the record, so this is the only fact that tells them apart.
+	Bits int
+
+	// IBits is a fixed-point field's I — its integer bits, the sign bit
+	// counted when signed — and 0 on every other field. The kind carries
+	// I + F rounded up to a storage width, so I alone is not in it, and
+	// "I narrowed (12 -> 4)" needs it.
+	IBits int
 
 	// HeldName and HeldHash are the named type a slot holds — a kind-13
 	// table, a kind-15 union, a kind-7 enum, a kind-9 flags mask, or a
@@ -453,6 +493,23 @@ func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 		}
 		if f.Type.Kind == ir.TFixed {
 			e.Frac = f.Type.FracBits
+			e.IBits = f.Type.IntBits
+		}
+		switch f.Type.Kind {
+		case ir.TString, ir.TWString, ir.TBytes:
+			e.Cap = f.Type.Size
+		case ir.TBits:
+			e.Bits = f.Type.Width
+		}
+		switch {
+		case f.KeyEnum != "":
+			e.Shape, e.Bound = "keyed", f.ArrayBound
+		case f.Array == ir.ArrayFixed:
+			e.Shape, e.Bound = "fixed", f.ArrayBound
+		case f.Array == ir.ArrayCounted:
+			e.Shape, e.Bound = "counted", f.ArrayBound
+		case f.Array == ir.ArrayList:
+			e.Shape = "list"
 		}
 		if fl := layout.FieldByName(f.Name); fl != nil {
 			e.Width = fl.Size
@@ -755,6 +812,25 @@ func (e Entry) line() string {
 	if e.Deprecated {
 		s += " deprecated"
 	}
+	// THE DECLARED SIZE FACTS, AT THE END OF THE LINE (Version 6): a token a
+	// line did not carry before goes last, so an older line read left to right
+	// is this line's prefix and the file grew the way the tables it describes
+	// grow.
+	if e.Bound != 0 {
+		s += " bound=" + strconv.FormatInt(e.Bound, 10)
+	}
+	if e.Shape != "" {
+		s += " shape=" + e.Shape
+	}
+	if e.Cap != 0 {
+		s += " cap=" + strconv.FormatInt(e.Cap, 10)
+	}
+	if e.Bits != 0 {
+		s += " bits=" + strconv.Itoa(e.Bits)
+	}
+	if e.IBits != 0 {
+		s += " ibits=" + strconv.Itoa(e.IBits)
+	}
 	return s
 }
 
@@ -942,7 +1018,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 
 func parseEntry(fields []string) (Entry, error) {
 	if len(fields) < 6 {
-		return Entry{}, fmt.Errorf("a field line is `field <name> id=0x... kind=N width=N default=V [min=V max=V] [res=V] [frac=N] [held=Name@0x...] [elem=K/W] [key=Name@0x...] [optional] [deprecated]`")
+		return Entry{}, fmt.Errorf("a field line is `field <name> id=0x... kind=N width=N default=V [min=V max=V] [res=V] [frac=N] [held=Name@0x...] [elem=K/W] [key=Name@0x...] [optional] [deprecated] [bound=N] [shape=S] [cap=N] [bits=N] [ibits=N]`")
 	}
 	e := Entry{Name: fields[1], Frac: -1}
 	for _, tok := range fields[2:] {
@@ -998,6 +1074,37 @@ func parseEntry(fields []string) (Entry, error) {
 				return Entry{}, err
 			}
 			e.KeyName, e.KeyHash = name, hash
+		case key == "bound":
+			n, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				return Entry{}, fmt.Errorf("bound=%q is not a count of elements", val)
+			}
+			e.Bound = n
+		case key == "shape":
+			switch val {
+			case "fixed", "counted", "list", "keyed":
+				e.Shape = val
+			default:
+				return Entry{}, fmt.Errorf("shape=%q is not fixed, counted, list or keyed", val)
+			}
+		case key == "cap":
+			n, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				return Entry{}, fmt.Errorf("cap=%q is not a capacity", val)
+			}
+			e.Cap = n
+		case key == "bits":
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return Entry{}, fmt.Errorf("bits=%q is not a width", val)
+			}
+			e.Bits = n
+		case key == "ibits":
+			n, err := strconv.Atoi(val)
+			if err != nil {
+				return Entry{}, fmt.Errorf("ibits=%q is not a count of integer bits", val)
+			}
+			e.IBits = n
 		case key == "elem":
 			ks, ws, ok := strings.Cut(val, "/")
 			if !ok {

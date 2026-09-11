@@ -66,7 +66,7 @@ func Diff(locked, live *Unit, policy Policy) []error {
 		}
 		lv := live.Table(lk.Name)
 		if lv == nil || lv.Decl != lk.Decl {
-			errs = append(errs, gone(lk))
+			errs = append(errs, gone(lk, lv))
 			continue
 		}
 		if err := diffTable(lk, lv, policy); err != nil {
@@ -113,9 +113,20 @@ func Diff(locked, live *Unit, policy Policy) []error {
 // table's layout is a promise to every record already written; a `type`, an
 // enum, a flags mask or a union leaving the closure is a field that changed
 // what it holds, which is the same promise broken one level in.
-func gone(lk *Table) error {
+func gone(lk, lv *Table) error {
+	// THE `fixed` KEYWORD IS A FORM AND NOT A VERSION (the bill §2, last row):
+	// a table that was fixed and is now plain, or the reverse, is a different
+	// wire, so the refusal names the keyword rather than a narrowing.
+	if lv != nil && lv.Decl != lk.Decl {
+		rule := "fixed removed"
+		if lk.Decl == DeclType && lv.Decl == DeclFixedTable {
+			rule = "fixed added"
+		}
+		return fmt.Errorf("%s %s is %s %s in the declaration: %s — the `fixed` keyword is a FORM and not a version: the fixed record and the variable table are two wires, and neither reads the other's bytes (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); a change of form is a NEW table under a NEW name",
+			lk.Decl, lk.Name, article(lv.Decl), lv.Decl, rule)
+	}
 	if lk.Decl == DeclFixedTable {
-		return fmt.Errorf("fixed table %s is in the lock and this unit no longer declares it as a fixed table — a fixed table's layout is a promise to every record already written, and a promise is not withdrawn; compaction is a NEW table under a NEW name (docs/SPEC-TABLES.md §2.10)",
+		return fmt.Errorf("fixed table %s is in the lock and this unit no longer declares it as a fixed table: fixed removed — a fixed table's layout is a promise to every record already written, and a promise is not withdrawn; compaction is a NEW table under a NEW name (docs/SPEC-TABLES.md §2.10)",
 			lk.Name)
 	}
 	return fmt.Errorf("type %s is in the lock and this unit's fixed tables no longer nest it by value — a nested record's fields ARE the holder's bytes, so a type leaving the closure is a field that changed what it holds; restore it, or deprecate that field and append a new one (docs/SPEC-TABLES.md §2.10)",
@@ -133,54 +144,22 @@ func diffTable(lk, lv *Table, policy Policy) error {
 	for i, want := range lk.Entries {
 		where := fmt.Sprintf("%s %s: entry %d, field %s (id=0x%016x)", lk.Decl, lk.Name, i+1, want.Name, want.Id)
 		if i >= len(lv.Entries) {
-			return fmt.Errorf("%s, is in the lock and gone from the declaration — a fixed table evolves APPEND-ONLY: a field is deprecated in place, never removed, because the record has no ids in it and every field after a removed one slides (docs/SPEC-TABLES.md §2.10); restore it and mark it `| deprecated`",
+			return fmt.Errorf("%s, is in the lock and gone from the declaration: field removed — a fixed table evolves APPEND-ONLY: a field is deprecated in place, never removed, because the record has no ids in it and every field after a removed one slides (docs/SPEC-TABLES.md §2.10); restore it and mark it `| deprecated`",
 				where)
 		}
 		got := lv.Entries[i]
 		if got.Id != want.Id {
-			return fmt.Errorf("%s, is field %s (id=0x%016x) in the declaration — a fixed table evolves APPEND-ONLY: a field is added at the BOTTOM, never inserted, moved or removed, because the record has no ids in it and a reader at this offset would read one field as the other (docs/SPEC-TABLES.md §2.10)",
-				where, got.Name, got.Id)
+			return fmt.Errorf("%s, is field %s (id=0x%016x) in the declaration: %s — a fixed table evolves APPEND-ONLY: a field is added at the BOTTOM, never inserted, moved or removed, because the record has no ids in it and a reader at this offset would read one field as the other (docs/SPEC-TABLES.md §2.10)",
+				where, got.Name, got.Id, idRule(lk, lv, want, got))
 		}
-		if got.Optional != want.Optional {
-			return fmt.Errorf("%s, is %s in the lock and %s in the declaration — a field already in the lock keeps its `?`: an optional carries a presence bool beside its value INSIDE the record, so a reader that expects one where none is written takes the next field's first byte for the answer (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-				where, optionalText(want.Optional), optionalText(got.Optional))
+		// THE MONOTONE LAW over every other fact: a narrowing is a break and a
+		// widening is a change the record must carry (monotone.go).
+		widened, what, err := monotone(where, want, got)
+		if err != nil {
+			return err
 		}
-		if got.Width != want.Width {
-			return fmt.Errorf("%s, is %d bytes wide in the lock and %d in the declaration — a field already in the lock keeps its width: a fixed record is walked by offset, so widening one field moves every field after it (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-				where, want.Width, got.Width)
-		}
-		if got.Kind != want.Kind {
-			return fmt.Errorf("%s, is kind %d in the lock and kind %d in the declaration — a field already in the lock keeps its type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-				where, want.Kind, got.Kind)
-		}
-		if want.HeldName != got.HeldName {
-			return fmt.Errorf("%s, held %s in the lock and %s in the declaration — a field already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-				where, heldName(want.HeldName), heldName(got.HeldName))
-		}
-		if want.ElemKind != got.ElemKind || want.ElemWidth != got.ElemWidth {
-			return fmt.Errorf("%s, holds %s elements in the lock and %s elements in the declaration — a field already in the lock keeps its element type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-				where, elemWord(want.ElemKind, want.ElemWidth), elemWord(got.ElemKind, got.ElemWidth))
-		}
-		if want.KeyName != got.KeyName {
-			return fmt.Errorf("%s, is keyed by %s in the lock and %s in the declaration — a field already in the lock keeps the enum it is keyed by: the key's variants ARE the slots, in declared order, so every record already written put its values in the slots the old list numbered (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-				where, heldName(want.KeyName), heldName(got.KeyName))
-		}
-		if !got.sameRange(want) {
-			return fmt.Errorf("%s, is %s in the lock and %s in the declaration — a field already in the lock keeps its range: the bounds and the resolution are the scale a stored value is read back at, so moving them reads every record already written as a different number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-				where, want.rangeText(), got.rangeText())
-		}
-		if got.Default != want.Default {
-			return fmt.Errorf("%s, defaults to %s in the lock and %s in the declaration — a field already in the lock keeps its default: an older writer's missing field is filled from this default, and a deprecated slot holds it, so a record written before the change reads differently after it (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-				where, want.Default, got.Default)
-		}
-		if want.Deprecated && !got.Deprecated {
-			return fmt.Errorf("%s, is deprecated in the lock and live in the declaration — deprecation is ONE-WAY: readers were told to ignore this slot and the writers that have run since left it at its default, so what comes back is not data (docs/SPEC-TABLES.md §2.10); append a new field instead",
-				where)
-		}
-		// the marker turned ON: the change the rule allows, and the check
-		// still wants it written down
-		if policy == Current && !want.Deprecated && got.Deprecated {
-			return stale(lv.Decl, lv.Name, entryName(lv, i), "deprecated in the declaration and live in the lock")
+		if widened && policy == Current {
+			return stale(lv.Decl, lv.Name, entryName(lv, i), what)
 		}
 	}
 	if policy == Current && len(lv.Entries) > len(lk.Entries) {
@@ -262,19 +241,19 @@ func diffValues(lk, lv *ValueList, policy Policy) error {
 	for i, want := range lk.Values {
 		where := fmt.Sprintf("%s %s: %s %d, %s", lk.Decl, lk.Name, lk.Child(), i+1, want)
 		if i >= len(lv.Values) {
-			return fmt.Errorf("%s, is in the lock and gone from the declaration — an enum, a flags mask or a union a fixed table reaches evolves APPEND-ONLY: every %s keeps its place forever, because a fixed record stores the PLACE and not the name (docs/SPEC-TABLES.md §2.10); restore it, and add the new one at the END",
-				where, lk.Child())
+			return fmt.Errorf("%s, is in the lock and gone from the declaration: %s removed — an enum, a flags mask or a union a fixed table reaches evolves APPEND-ONLY: every %s keeps its place forever, because a fixed record stores the PLACE and not the name (docs/SPEC-TABLES.md §2.10); restore it, and add the new one at the END",
+				where, lk.ruleChild(), lk.Child())
 		}
 		if lv.Values[i] != want {
-			return fmt.Errorf("%s, is %s in the declaration — an enum, a flags mask or a union a fixed table reaches evolves APPEND-ONLY: a new %s goes at the END, and one already in the lock is never inserted, moved or renamed, because a fixed record stores the PLACE and a reader would read one value as the other (docs/SPEC-TABLES.md §2.10); restore it, and add the new one at the END",
-				where, lv.Values[i], lk.Child())
+			return fmt.Errorf("%s, is %s in the declaration: %s — an enum, a flags mask or a union a fixed table reaches evolves APPEND-ONLY: a new %s goes at the END, and one already in the lock is never inserted, moved or renamed, because a fixed record stores the PLACE and a reader would read one value as the other (docs/SPEC-TABLES.md §2.10); restore it, and add the new one at the END",
+				where, lv.Values[i], valueRule(lk, lv, want, lv.Values[i]), lk.Child())
 		}
 		if lk.Decl == DeclUnion {
 			wantP := payloadTypeName(valuePayload(lk, i))
 			gotP := payloadTypeName(valuePayload(lv, i))
 			if wantP != gotP {
-				return fmt.Errorf("%s, held %s in the lock and %s in the declaration — an arm already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
-					where, heldName(wantP), heldName(gotP))
+				return fmt.Errorf("%s, held %s in the lock and %s in the declaration: arm payload changed (%s -> %s) — an arm already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
+					where, heldName(wantP), heldName(gotP), heldName(wantP), heldName(gotP))
 			}
 		}
 	}
@@ -318,4 +297,12 @@ func stale(decl, name, line, what string) error {
 	}
 	return fmt.Errorf("%s %s — the lock is the committed record of what a fixed table's readers stand on, and this declaration has moved past it: an append, a new block and a deprecation are the changes the rule allows, and a change the rule allows is still a change the record must carry (docs/SPEC-TABLES.md §2.10); write it with `schema lock`",
 		subject, what)
+}
+
+// article is the word in front of a declaration keyword in a sentence.
+func article(decl string) string {
+	if decl == DeclFixedTable {
+		return "a"
+	}
+	return "a"
 }

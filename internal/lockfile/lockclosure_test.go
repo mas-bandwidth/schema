@@ -225,8 +225,8 @@ func TestLockHoldsTheWholeClosure(t *testing.T) {
 	lk := lockfile.Render(load(t, paths))
 	text := lk.Text()
 
-	if lk.Version != 5 {
-		t.Errorf("the widened rendering is version 5, got %d", lk.Version)
+	if lk.Version != 6 {
+		t.Errorf("the widened rendering is version 6, got %d", lk.Version)
 	}
 	for _, want := range []string{
 		"fixed table Config layout=0x",
@@ -302,12 +302,16 @@ var closureBreaks = []struct {
 			"defaults to 0.0 in the lock and 0.5 in the declaration"},
 	},
 	{
-		name:      "a widened integer range",
-		fixedFrom: "    tick_rate int32 = 60 | min = 1, max = 240", fixed: "    tick_rate int32 = 60 | min = 1, max = 480",
-		varFrom: "    rate    int32 = 60 | min = 1, max = 240", varTo: "    rate    int32 = 60 | min = 1, max = 480",
+		// A range moved OUTWARD is a widening the monotone law takes
+		// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, and
+		// TestLockRangeWidenAllows): what is refused is a bound moving IN,
+		// because a value an older writer wrote would now clamp.
+		name:      "a narrowed integer range",
+		fixedFrom: "    tick_rate int32 = 60 | min = 1, max = 240", fixed: "    tick_rate int32 = 60 | min = 1, max = 120",
+		varFrom: "    rate    int32 = 60 | min = 1, max = 240", varTo: "    rate    int32 = 60 | min = 1, max = 120",
 		want: []string{"fixed table Config", "entry 1, field tick_rate",
-			"is [1, 240] in the lock and [1, 480] in the declaration",
-			"keeps its range", "deprecate this field and append a new one"},
+			"is [1, 240] in the lock and [1, 120] in the declaration",
+			"range narrowed", "keeps its range", "deprecate this field and append a new one"},
 	},
 	{
 		name:      "a moved resolution",
@@ -325,15 +329,11 @@ var closureBreaks = []struct {
 			"16 fractional bits in the lock", "8 fractional bits in the declaration",
 			"keeps its range"},
 	},
-	{
-		name:      "an optional turned on",
-		fixedFrom: "    boost     Buff\n", fixed: "    boost     ?Buff\n",
-		varFrom: "    keel    Ballast\n", varTo: "    keel    ?Ballast\n",
-		want: []string{"fixed table Config", "entry 6, field boost",
-			"is plain in the lock and optional in the declaration",
-			"presence bool beside its value INSIDE the record",
-			"deprecate this field and append a new one"},
-	},
+	// The `?` ROW MOVED OUT OF THIS TABLE. `T` to `?T` is a WIDENING under the
+	// monotone law (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2: every old value
+	// lands present), and this table's fixture declares the plain side, so the
+	// narrowing cannot be spelled from it. Both directions live in
+	// TestLockOptionalAddRefuses and TestLockOptionalAddAllows.
 	{
 		name:      "an optional turned off",
 		fixedFrom: "    gunner    ?Buff\n", fixed: "    gunner    Buff\n",
@@ -720,32 +720,29 @@ func TestValueListRoundTrips(t *testing.T) {
 }
 
 // TestNestedRecordAppendSlidesTheHolder is the difference between a fixed
-// table's own bottom and a nested record's, and it is not a nicety: a field
-// appended to a `type` a fixed table holds BY VALUE grows the holder's slot,
-// which slides every field after it. So the change the rule allows at the
-// bottom of a table is a BREAK one level in, and the compiler says both halves
-// — the holder's width first, because that is what a reader stands on, and the
-// nested record's own new entry beside it.
+// table's own bottom and a nested record's: a field appended to a `type` a
+// fixed table holds BY VALUE grows the holder's slot, which slides every field
+// after it. Under the monotone law that is a WIDENING of the holder
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2: the nested table's own law,
+// recursively, fields added at the end), so the finding is the nested record's
+// OWN new entry — the holder's width is the nested append's consequence and the
+// block that changed is where a person fixes or accepts it — and `schema lock`
+// writes it.
 func TestNestedRecordAppendSlidesTheHolder(t *testing.T) {
 	after := edit(t, closureBase,
 		"    multiplier float32 = 1.0\n}", "    multiplier float32 = 1.0\n    stacks     uint8\n}")
 	dir, paths, errs := lockedFrom(t, closureBase, after)
-	if len(errs) != 2 {
-		t.Fatalf("want the holder's width and the nested record's entry, got %d: %v", len(errs), errs)
+	if len(errs) != 1 {
+		t.Fatalf("want the nested record's own entry, got %d: %v", len(errs), errs)
 	}
-	first := errs[0].Error()
-	for _, w := range []string{"fixed table Config", "entry 6, field boost",
-		"4 bytes wide in the lock and 8 in the declaration", "walked by offset"} {
-		if !strings.Contains(first, w) {
-			t.Errorf("the holder's refusal must name %q:\n%s", w, first)
+	for _, w := range []string{"type Buff", "field stacks", "write it with `schema lock`"} {
+		if !strings.Contains(errs[0].Error(), w) {
+			t.Errorf("the nested record's finding must name %q:\n%s", w, errs[0])
 		}
 	}
-	if second := errs[1].Error(); !strings.Contains(second, "type Buff") || !strings.Contains(second, "field stacks") {
-		t.Errorf("the nested record's own finding names it:\n%s", second)
-	}
-	// and `schema lock` will not write it away either
-	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err == nil || rewrote {
-		t.Fatalf("`schema lock` appends, and this is not an append: rewrote=%v err=%v", rewrote, err)
+	// and `schema lock` takes it, because an append one level in is an append
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("`schema lock` writes an append: rewrote=%v err=%v", rewrote, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, lockfile.FileName)); err != nil {
 		t.Fatal(err)
@@ -764,7 +761,7 @@ func TestALockFromAnOlderRenderingSaysWhatToDo(t *testing.T) {
 		t.Fatal(err)
 	}
 	refuses(t, lockfile.Check(load(t, paths), paths),
-		"rendering version 1 and this compiler writes version 5",
+		"rendering version 1 and this compiler writes version 6",
 		"delete it and write it again with `schema lock`")
 	_, rewrote, err := lockfile.Update(load(t, paths), paths)
 	if err == nil || rewrote {
