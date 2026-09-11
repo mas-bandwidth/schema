@@ -388,7 +388,7 @@ update-goldens-cs: build/tables-generated-cs/.stamp
 # from its wire golden, re-saved and byte-compared, and every §16 text read and
 # written beside it. It is the C# twin of tables-js-leg.
 #
-.PHONY: tables-cs-view tables-cs-leg tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
+.PHONY: tables-cs-view tables-cs-leg tables-cs-leg-debug tables-cs-leg-release tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
 tables-cs-view: build/tables-generated-cs/.stamp
 	@mkdir -p build/view-cs
 	@set -e; for entry in $(VIEW_CORPUS); do \
@@ -409,8 +409,16 @@ tables-cs-view: build/tables-generated-cs/.stamp
 	@grep -q "listing is not the compiler's" build/view-cs/negative.log
 	@echo "C# UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
-tables-cs-leg: build/tables-generated-cs/.stamp
+# TWO CONFIGURATIONS, TWO NAMES, AND A COMBINED ONE — because the pair was 74 s
+# and the owner's rule is one to two minutes for anything a child iterates on.
+# Debug alone is about half that, so `make tables-cs-leg-debug` is the loop and
+# `make tables-cs-leg` is still the gate: CI and the release path run both.
+tables-cs-leg: tables-cs-leg-debug tables-cs-leg-release
+
+tables-cs-leg-debug: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
+
+tables-cs-leg-release: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release
 
 # THE FIXED FORM'S VERSIONING SUITE ON THIS LEG (docs/FIXED-FORM-ALGORITHM.md §5,
@@ -430,11 +438,12 @@ tables-cs-leg: build/tables-generated-cs/.stamp
 # own schema's package gives it, and runs the lot once. Fifty-seven `dotnet run`s
 # would cost minutes; this costs one build.
 #
-# ONE ROW IS RED AND IT IS NAMED, NOT FAKED (§5.9 #31): `array_elem_widen`'s
-# NEW-READS-OLD column. The C# leg FOLDS a flat element run into one plan entry,
-# and a fold whose two images differ in WIDTH has no element-wise destination to
-# widen into — so the element widen is dropped and `widened` stays zero. §5.2's
-# EMIT has no fold at all; the finding is in the PR that lands this.
+# EVERY ROW IS GREEN, `array_elem_widen` INCLUDED. It was the one named red here
+# (§5.9 #31): the C# leg FOLDED a flat element run into one plan entry, and a fold
+# whose two images differ in WIDTH has no element-wise destination to widen into,
+# so the element widen was dropped and `widened` stayed zero. 157268a6 stopped
+# folding a widened run — §5.2's EMIT has no fold at all — and the row asserts the
+# reference's EXACT four since (csVersionRow.widened).
 .PHONY: tables-cs-versioning
 tables-cs-versioning: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
