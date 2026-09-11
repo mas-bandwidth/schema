@@ -344,6 +344,27 @@ fn v_%[1]s_old_refuses_new() {
     let want = u64::from_le_bytes(data[8..16].try_into().expect("the header's hash is eight bytes"));
     let fresh = ROWTYPE::default();
     let mut values = vec![ROWTYPE::default(); 8];
+    // THE COMPARAND'S PADDING IS MADE TO MATCH BEFORE THE LOAD. "nothing
+    // written" is checked through a RAW BYTE VIEW, and a Row carries PADDING
+    // wherever a narrow member sits before a wider one -- tier then seq in the
+    // two enum rows: one byte of ordinal, three of pad, four of scalar.
+    // Padding bytes hold whatever the memory held, and a fresh value on the
+    // stack need not agree there with a vector's slot out of the allocator, so
+    // without this copy the assert reads allocator garbage as a write the
+    // reader never made: red on Linux CI, green on a workstation whose heap
+    // happened to come back zeroed. Copying FRESH'S OWN BYTES into every slot
+    // settles the padding on BOTH sides of the compare, so afterwards EVERY
+    // differing byte is a byte the reader itself stored, which is the thing
+    // under test.
+    unsafe {
+        for v in values.iter_mut() {
+            core::ptr::copy_nonoverlapping(
+                (&fresh as *const ROWTYPE) as *const u8,
+                (v as *mut ROWTYPE) as *mut u8,
+                core::mem::size_of::<ROWTYPE>(),
+            );
+        }
+    }
     let mut plan = vec![TableFixedEntry::default(); 4096];
     let mut remap = vec![0u16; 4096];
     let mut report = TableFixedReport::default();
