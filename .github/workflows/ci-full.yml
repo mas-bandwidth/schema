@@ -1,5 +1,31 @@
-name: CI
+name: CI full
 
+# THE FULL LANE. Everything this repository checks per commit is in this file,
+# and NOTHING HAS BEEN DROPPED from it — what changed is WHEN it runs.
+#
+# WHY IT MOVED (measured, 2026-09-11, five completed runs on fixed-table-form
+# pull requests: 34596169063, 34596024573, 34595364248, 34595255044,
+# 34594783777). This file dispatches SEVENTY JOBS per pull request, and the
+# binding constraint turned out not to be any job's run time but the QUEUE:
+# the 47 negative-control rows waited a median of 11m38s for a runner, the
+# conformance legs 6m43s, and the last job of a run started up to 23 minutes
+# after the push. End to end those five runs took 10:53, 15:08, 16:08, 15:45
+# and 24:42 against the owner's one-to-two-minute rule for interactive
+# iteration. A 15-minute job timeout was raised that morning instead of the
+# cause being fixed, which treats a queue as a budget.
+#
+# SO THIS FILE NOW RUNS: on every push to main and to fixed-table-form (the
+# merge gate), nightly at 07:10 UTC, on `gh workflow run ci-full.yml --ref
+# <branch>`, and on any pull request carrying the `full-ci` label. Every job
+# carries the same `if:` for that last case, which is why the expression is
+# repeated rather than named once: GitHub gives a job-level `if:` no access to
+# the `env` context.
+#
+# WHAT RUNS ON EVERY PUSH IS ci-fast.yml, five jobs selected by path, targeting
+# two minutes wall: the cheap lints, the block zero-cost gate, `go test` of the
+# packages the diff touches, and the fixed-form and versioning gates of the
+# legs the diff touches. Its header carries the measurement table in full.
+#
 # THE PULL-REQUEST GATE (issue #368). Every job in this file answers a question
 # about the CODE IN THE DIFF, and every one of them fits the owner's rule for
 # CI that runs on each pull request: one to two minutes.
@@ -64,12 +90,23 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    # main, and the fixed-form integration branch while the nine language legs
-    # land on it (2026-09-09): a leg PR into that branch is a pull request the
-    # gate must run on, or the batch to main is the first time anybody sees red.
+    # THE MERGE GATE. main, and the fixed-form integration branch while the
+    # nine language legs land on it (2026-09-09): the batch to main must never
+    # be the first time anybody sees red, so the whole of this file runs on
+    # every merge into that branch.
     branches: [ main, fixed-table-form ]
+  pull_request:
+    # A pull request runs this file only when it carries the `full-ci` label —
+    # every job below is gated on that. The label is how a branch near the hot
+    # paths, or anything that moves the C++ emitters, asks for the whole suite
+    # before merging; `gh workflow run ci-full.yml --ref <branch>` is the other
+    # way, and needs no label.
+    branches: [ main, fixed-table-form ]
+    types: [ opened, synchronize, reopened, labeled ]
+  schedule:
+    # nightly, so a tree nobody pushed to is still checked against the
+    # toolchains and the vulnerability database, which move on their own
+    - cron: '10 7 * * *'
   workflow_dispatch:
 
 # Superseded pushes to the same pull request cancel each other; a push to main
@@ -77,7 +114,7 @@ on:
 # and a queued dispatch run can never displace each other (a group holds only
 # one pending run).
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.ref }}
+  group: ci-full-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The runtimes the generated code targets, PINNED to each sibling's latest
@@ -124,8 +161,28 @@ jobs:
   # another generator running a probe per row per column; fifteen is the budget
   # they share.
   go-test:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    name: go-test (${{ matrix.group }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # THREE PACKAGE GROUPS, ONE PER ROW, because this job was 650 s median
+    # (2026-09-11) and a matrix row is a job: the emitter packages, everything
+    # else, and the seven fixed-form versioning suites that cannot ride
+    # `go test ./...` at all. Every step below is the step it was; what is new
+    # is which row runs it, and no step runs in none of them.
+    #   unit-codegen — go test ./internal/codegen/...
+    #   unit-rest    — go vet ./..., go test over the complement, the
+    #                  projection's three controls, the toolchain control, and
+    #                  the one Linux cache write
+    #   versioning   — §5 on the Go, C, Rust, JavaScript, Dart, C# and Elixir
+    #                  legs, with the three SDKs only that row needs
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [ unit-codegen, unit-rest, versioning ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -148,9 +205,11 @@ jobs:
       # same .github/dotnet-version every other C# job reads, so a runner image
       # that ships a different SDK cannot change what this gate compiles.
       - name: read the .NET SDK pin
+        if: matrix.group == 'versioning'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.group == 'versioning'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -236,10 +295,20 @@ jobs:
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: go vet
+        if: matrix.group == 'unit-rest'
         run: go vet ./...
 
-      - name: go test
-        run: go test ./...
+      # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
+      # every codegen package generates and compiles something.
+      - name: go test the emitter packages
+        if: matrix.group == 'unit-codegen'
+        run: go test ./internal/codegen/...
+
+      # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
+      # new package lands in one group or the other with no edit to this file.
+      - name: go test everything that is not an emitter package
+        if: matrix.group == 'unit-rest'
+        run: go test $(go list ./... | grep -v '/internal/codegen/')
 
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
       # which the step above does NOT run. Its harness reads the C++
@@ -254,6 +323,7 @@ jobs:
       # minute, and the ../serialize checkout this job already makes is the
       # only thing the C++ dump needs.
       - name: the fixed form's versioning suite reads the reference's bytes
+        if: matrix.group == 'versioning'
         run: make tables-go-versioning
 
       # EVERY ROW, EVERY LEG (compiler/everyrow_test.go). The rows of
@@ -277,6 +347,7 @@ jobs:
       # here beside the Go one for the same reason: under SCHEMA_REQUIRE_CORPUS a
       # missing oracle is a failure, never a quiet skip.
       - name: the fixed form's versioning suite on the C leg
+        if: matrix.group == 'versioning'
         run: make tables-c-versioning
 
       # THE SAME SUITE ON THE RUST LEG, and it is in THIS job rather than a Rust
@@ -295,6 +366,7 @@ jobs:
       # uses. Without it the suite fails by name on the missing sibling rather
       # than skipping, which is the behaviour this whole gate is for.
       - name: the fixed form's versioning suite on the Rust leg
+        if: matrix.group == 'versioning'
         run: |
           if [ ! -d ../serialize.rs ]; then
             git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
@@ -307,6 +379,7 @@ jobs:
       # in this job, so NODE=node uses the runner's own — and the corpus is the
       # one the step above already built.
       - name: the fixed form's versioning suite on the JavaScript leg
+        if: matrix.group == 'versioning'
         run: make tables-js-versioning NODE=node
 
       # THE SAME SUITE ON THE DART LEG (§5.7 step 6: every leg owes BOTH gates,
@@ -316,9 +389,11 @@ jobs:
       # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
       # failure rather than a silent skip.
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.group == 'versioning'
         with:
           sdk: 3.13.2
       - name: the Dart leg reads backward over every versioning row
+        if: matrix.group == 'versioning'
         run: make tables-dart-versioning DART=dart
 
       # THE SAME TWO COLUMNS ON THE C# LEG (§5, and §5.9 #11: every leg owes both
@@ -330,6 +405,7 @@ jobs:
       # other thing the probes need. Under SCHEMA_REQUIRE_CORPUS a missing oracle is
       # a failure here, never a quiet skip.
       - name: the fixed form's versioning suite on the C# leg
+        if: matrix.group == 'versioning'
         run: make tables-cs-versioning
 
       # THE SAME SUITE ON THE ELIXIR LEG (§5.7 step 6). Its probes are generated
@@ -340,10 +416,12 @@ jobs:
       # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
       # Elixir a failure rather than a silent skip.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.group == 'versioning'
         with:
           otp-version: '27'
           elixir-version: '1.18'
       - name: the Elixir leg reads backward over every versioning row
+        if: matrix.group == 'versioning'
         run: |
           make tables-elixir-versioning \
             ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
@@ -355,6 +433,7 @@ jobs:
       # red proves a gate is watching. All three are Go-only and take seconds,
       # so they belong on the diff.
       - name: the projection's gates go red without what they watch
+        if: matrix.group == 'unit-rest'
         run: |
           make projection-variant-order-negative-control
           make projection-wire-law-negative-control
@@ -369,6 +448,7 @@ jobs:
       # refusal, which is the state this runner is already in, and takes about
       # a second.
       - name: the toolchain gate goes red without the toolchains it pins
+        if: matrix.group == 'unit-rest'
         run: make toolchain-negative-control
 
       # THE ONE LINUX WRITER, per the block at the top of this job. It is last
@@ -377,6 +457,7 @@ jobs:
       # `actions/cache/save` cannot redden a job: a key another run reserved
       # first is a logged warning and this step's success.
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.group == 'unit-rest'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -398,6 +479,10 @@ jobs:
   # make/<lang>.mk is covered the moment it rebases, with no edit to this file. Locally the same check is `make
   # generated-current`, which gets there through the whole `make test` chain.
   generated:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -475,6 +560,10 @@ jobs:
   # duplicates the go-test job and is the time to reclaim when someone wants
   # it, which is a change to `update-goldens` and belongs to its own diff.
   pins:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -545,6 +634,10 @@ jobs:
   # its toolchain has no step yet, in which case it adds one step keyed on a
   # new field, which is the one edit this file still takes.
   conformance-matrix:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -578,6 +671,10 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   conformance:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
     runs-on: ubuntu-latest
@@ -689,6 +786,10 @@ jobs:
   # (wire fuzz ~26 s, region fuzz ~39 s) without bloating the conformance (cs)
   # leg over the 2-minute ceiling.
   cs-fuzz:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: C# fuzz (${{ matrix.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -768,6 +869,10 @@ jobs:
   # from the policy the failing install prints. The step after the install
   # records the resolved closure both pins pull in.
   big-endian:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -855,6 +960,10 @@ jobs:
 
   # Self-contained Go lint job; .golangci.yml carries the config.
   lint:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -939,6 +1048,10 @@ jobs:
   # in certify.yml — the same job in both files, deliberately, because neither
   # trigger substitutes for the other.
   vuln:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -973,6 +1086,10 @@ jobs:
   # Windows: vet + build, cheap enough to ride every pull request. What it
   # EMITS is compiled with cl by the `msvc` job below.
   windows:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
@@ -1054,6 +1171,10 @@ jobs:
   # named one. It is also why /MP is absent: parallel TUs are faster and
   # unmeasurable, and here the measurement is worth more than the seconds.
   msvc:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: windows-2025
     timeout-minutes: 10
     steps:
@@ -1200,6 +1321,10 @@ jobs:
   # tooling, one beside each leg for its own — with an exact count that can
   # only shrink.
   shape-gate:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1239,6 +1364,10 @@ jobs:
   # which is the same comparison a dispatch on a branch wants. On a push to
   # main the diff against main is empty and the job is a no-op that says so.
   cpp-lock:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -1338,6 +1467,10 @@ jobs:
   # between them, so it sits in the plan's exclusion list beside the other
   # umbrellas rather than in a job that would run one of those leaves twice.
   negative-controls-matrix:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -1376,6 +1509,10 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   negative-controls:
+    # Runs on a pull request only when it carries the `full-ci` label; on a
+    # merge, the nightly and a dispatch it always runs. The expression is
+    # repeated per job because a job-level `if:` cannot read `env`.
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: negative controls (${{ matrix.name }})
     needs: negative-controls-matrix
     runs-on: ubuntu-latest

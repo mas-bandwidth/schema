@@ -87,8 +87,28 @@ func fixedPrefillElement(out []byte, at int64, f *ir.Field) {
 			fixedPrefillInto(out, at, r)
 			return
 		case *ir.Union:
-			// a union with no arm taken reads as EMPTY: the tag is None, which
-			// is zero, and the arm slack behind it stays zero
+			// "ARM BY ARM" IS AN INSTRUCTION, NOT A WARNING (§5.2's prefill
+			// sentence, §5.9 #38). In ONE FLAT image the arms OVERWRITE EACH
+			// OTHER, in DECLARED ORDER, at their own overlay storage, and the
+			// tag lands None LAST — and None is zero, which this image already
+			// is, so the tag is four lines of nothing.
+			//
+			// An arm's declared default SURVIVES wherever no later arm covers
+			// it, which is every byte that matters for a field the plan leaves
+			// alone: VNEW_union_arm_payload_widen's reader-appended Alpha.y = 55
+			// is exactly that byte, and returning here left it 0 while its
+			// declaration said 55.
+			//
+			// THE ONE CASE THIS FLAT WALK CANNOT CARRY is a default under a byte
+			// TWO arms both claim — the later arm's image wins and the earlier
+			// arm's default is gone. This leg names that exception rather than
+			// pretending otherwise; no corpus row has one, and the day one does
+			// it wants either per-arm images selected by the landed tag or a
+			// GUARDED prefill entry in the plan (§5.9 #38's two choices).
+			tag := fixedUnionTagBytes(r)
+			for _, v := range r.Variants {
+				fixedPrefillElement(out, at+tag, v.F)
+			}
 			return
 		case *ir.Enum:
 			if f.HasDefault && f.DefVariant != "" {
