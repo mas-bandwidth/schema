@@ -841,6 +841,14 @@ type TableFixedLeaf struct {
 	// tag of 0x0101. Zero is read as one. It is stamped with the OUTER tag's
 	// width when an arm nested inside an arm is rewritten onto that tag.
 	ArgW int
+	// Guard2 / Arg2 / ArgW2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO ANSWERS
+	// TO, and they are a CONJUNCTION with Guard/Arg: the entry runs when BOTH
+	// tags hold their ordinal (§4.1, §5.8 row 6). Stamping the outer tag OVER
+	// the inner one fired every inner arm the moment the outer one rode, and the
+	// last arm won. TableFixedNoGuard is "no second condition".
+	Guard2 int64
+	Arg2   int
+	ArgW2  int
 	// Meta is THE OP'S OWN ARGUMENT, on the ops that have one: a text entry's
 	// flavour today. It has its own lane because Arg's is the guard's, and the
 	// two used to share one — which put a text field under a union arm on a
@@ -864,7 +872,7 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, out *[
 	base := src
 	if f.Type.Optional {
 		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_present"),
-			Size: 1, Guard: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + " present"})
+			Size: 1, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + " present"})
 		base += TableFixedPresentBytes
 	}
 	switch {
@@ -874,7 +882,7 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, out *[
 		tableFixedElementLoop(u, st, f, base, dst, f.ArrayBound, out)
 	case f.Array == ArrayCounted:
 		*out = append(*out, TableFixedLeaf{Src: base, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_count"),
-			Size: f.ArrayBound, Guard: TableFixedNoGuard, Op: TableFixedOpCount, Note: f.Name + " count"})
+			Size: f.ArrayBound, Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCount, Note: f.Name + " count"})
 		tableFixedElementLoop(u, st, f, base+TableFixedCountBytes, dst, f.ArrayBound, out)
 	case f.Type.Kind == TString:
 		tableFixedTextLeaf(u, st, f, base, dst, f.Type.Size, 1, out)
@@ -889,7 +897,7 @@ func tableFixedFieldLeaves(u *Unit, st *Struct, f *Field, src, dst int64, out *[
 
 func tableFixedTextLeaf(u *Unit, st *Struct, f *Field, src, dst, units int64, flavour int, out *[]TableFixedLeaf) {
 	*out = append(*out, TableFixedLeaf{Src: src, Dst: dst + TableFixedMemberOffset(u, st, f.Name+"_length"),
-		Size: units, Aux: dst + TableFixedMemberOffset(u, st, f.Name), Guard: TableFixedNoGuard,
+		Size: units, Aux: dst + TableFixedMemberOffset(u, st, f.Name), Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard,
 		Op: TableFixedOpText, Meta: flavour, Note: f.Name})
 }
 
@@ -901,7 +909,7 @@ func tableFixedElementLoop(u *Unit, st *Struct, f *Field, src, dst, count int64,
 		// the elements need no walk at all and the plan carries one entry
 		// however many of them there are.
 		*out = append(*out, TableFixedLeaf{Src: src, Dst: at, Size: count * elem,
-			Guard: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + ", whole"})
+			Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: f.Name + ", whole"})
 		return
 	}
 	stride := TableFixedStrideBytes(u, f)
@@ -921,25 +929,40 @@ func tableFixedElementLeavesAt(u *Unit, f *Field, src, dst int64, note string, o
 			tag := int64(StorageBitsFor(r.Max) / 8)
 			arms := TableFixedUnionArmOffset(u, r)
 			*out = append(*out, TableFixedLeaf{Src: src, Dst: dst, Size: tag,
-				Guard: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note + " tag"})
+				Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note + " tag"})
 			for i, v := range r.Variants {
 				// THE GUARD IS STAMPED ON AFTERWARDS, over everything the arm
-				// wrote, exactly as the reference does: an arm nested inside an
-				// arm answers to the OUTER tag, which is the one that decides
-				// whether any of it is there at all.
+				// wrote: an arm nested inside an arm answers to the OUTER tag,
+				// which is the one that decides whether any of it is there at
+				// all — and its OWN arm selection survives that stamp, because
+				// the two tags are CONJOINED on the second lane rather than the
+				// outer one replacing the inner (§4.1, §5.8 row 6).
 				at := len(*out)
 				tableFixedElementLeavesAt(u, v.F, src+tag, dst+arms, note+"."+v.Name, out)
 				for q := at; q < len(*out); q++ {
-					(*out)[q].Guard = src
-					(*out)[q].Arg = i + 1
-					(*out)[q].ArgW = int(tag)
+					if (*out)[q].Guard == TableFixedNoGuard {
+						(*out)[q].Guard = src
+						(*out)[q].Arg = i + 1
+						(*out)[q].ArgW = int(tag)
+						continue
+					}
+					// A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
+					// cannot carry it (the guard chain is the follow-on, §5.8
+					// row 6); this walk is the build's own type, so it is a
+					// compiler error and not a wire event.
+					if (*out)[q].Guard2 != TableFixedNoGuard {
+						panic("fixed form: three nested union tags on one entry; the guard chain is owed (§5.8 row 6)")
+					}
+					(*out)[q].Guard2 = src
+					(*out)[q].Arg2 = i + 1
+					(*out)[q].ArgW2 = int(tag)
 				}
 			}
 			return
 		}
 	}
 	*out = append(*out, TableFixedLeaf{Src: src, Dst: dst, Size: TableFixedElementBytes(f),
-		Guard: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note})
+		Guard: TableFixedNoGuard, Guard2: TableFixedNoGuard, Op: TableFixedOpCopy, Note: note})
 }
 
 // TableFixedBuildPlan is the leaf walk and the coalescer together: one type's
@@ -963,6 +986,7 @@ func tableFixedCoalesce(raw []TableFixedLeaf) (plan []TableFixedLeaf, guarded in
 				last := &plan[len(plan)-1]
 				if last.Op == TableFixedOpCopy && e.Op == TableFixedOpCopy &&
 					last.Guard == e.Guard && last.Arg == e.Arg && last.ArgW == e.ArgW && last.Meta == e.Meta &&
+					last.Guard2 == e.Guard2 && last.Arg2 == e.Arg2 && last.ArgW2 == e.ArgW2 &&
 					last.Src+last.Size == e.Src && last.Dst+last.Size == e.Dst {
 					last.Size += e.Size
 					continue
