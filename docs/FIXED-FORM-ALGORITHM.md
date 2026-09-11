@@ -678,7 +678,8 @@ carrying a `bits(N)` at its declared storage width and kind `30`, all unsigned. 
 by the kind's signedness" has written a DIFFERENT RULE that agrees by accident, and it diverges the first day
 a signed kind admits two widths. Take it as stated: **ladder widen, sign by the WRITER's kind; same-kind widen
 and enum widen, ZERO.** Both count `widened`, once per entry per record — **per ENTRY, so a folded element run
-counts ONCE and an unfolded one once per element, and the number a fixture asserts is NONZERO** (§5.9 #33).
+counts ONCE and an unfolded one once per element — and because a fold across a widen is forbidden, the number a
+fixture asserts on a widened run is the EXACT `min(their_n, my_n)`** (§5.9 #33).
 
 **THE GUARD'S WIDTH, and the remap table's shape.** Two small structures a port must match exactly.
 
@@ -837,7 +838,7 @@ when every value lands.
 |---|---|---|
 | `MATCH`, at COMPILE | `unknown` | once per writer field no reader field names, **once per peer and never per record** |
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
-| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, so a fixture asserts NONZERO and never a count (§5.9 #33) |
+| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, and a widened run is never folded, so a fixture asserts that EXACT count (§5.9 #33) |
 | `count`, `text` | `clamped` | once per entry per record, when the length or count was out of range |
 | the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
 | `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
@@ -975,7 +976,7 @@ unopened) ran it this way and nothing in it is optional.
 
 | # | the step |
 |---|---|
-| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **`manifest.txt` beside the bytes is the VALUE oracle, the record count and the row's ROOT table** — `file= row= side= root= records= values=`, one line per file — so a port never opens `test/tables/fixedform_dump.cpp` (§5.9 #32, #37) |
+| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **WHAT EACH FILE HOLDS IS IN `build/fixedform-corpus/manifest.txt`**, written by the dump from the same values it writes into the bytes, one line per file: `file=<name> row=<row> side=old\|new\|mid\|a\|b\|none root=<Table> records=<n> values=<field>=<value>[,...]` — the root when a schema declares two tables, the record count, and every value the dump set, records as `r<i>.`, nested fields dotted, arrays indexed, text quoted, a float by its digits AND its bits. `values=` is the last field and **runs to the end of the line**, and a quoted value may carry spaces, so split the head on spaces and take the rest whole; `row=` is the per-file name while `root=` is shared by a lineage pair. **ASSERT THE MANIFEST, NEVER READ THE DUMP** (§5.9 #32, #37): the declared default is not the value on the wire — `int_widen`'s `lead` and `trail` are `2863311530` and `3149642683` there while the schema says 1 and 2 — and a field absent from a line carries its schema default |
 | 2 | **LOAD, §5.3's eleven steps IN ORDER.** The framing checks, the header's hash TAKEN AS GIVEN, the lineage select, the floor, the byte comparison, the per-record hash BEFORE the prefill. Every refusal by its own name, nothing decoded, no counter moved. This is the half the negative controls watch |
 | 3 | **The static data**: the lineage from the lock, oldest first, the current layout last (§5.9 #1, #2); the floor as one number; every plan laid down OFF THE LOAD PATH (§5.9 #3, #4). Nothing here reads a file at run time |
 | 4 | **PLAN / MATCH / EMIT**, §5.2, against §1's kind-code table — the ladder rungs `20..24` and `25..29` included, the aux lane's seven rows, the text op's three facts, the widen's two signs, the guard's width, the remap table's length word, the two-pass split before the pool spends |
@@ -1292,13 +1293,39 @@ byte gate is itself the kind of edit that wants a reader, so it is called out in
 a green. **A red nobody wrote down is a red nobody owes**, and a red written down as somebody else's is still
 written down.
 
-**#32 COMES WITH THE CORPUS MANIFEST** (#924): the dump writes `build/fixedform-corpus/manifest.txt` beside the
-bytes, one line per file — `file= row= side= root= records= values=` — so a port asserts the manifest's values and
-never opens `test/tables/fixedform_dump.cpp`. **#33 to #45 come from the FOURTH through SEVENTH legs** — Java
-(#920), C# (#921), JavaScript (#922) and Dart (#923), each written from §5 alone with `internal/codegen/cpptable`
-and the C++ runtime unopened. Four legs asking a question the first three did not is the page's own bug report
-twice over, so every one of these is checked against the bill, against the merged C++, and against all seven
-ports, and the rule written is the one they now share.
+**32. A PORT ASSERTS THE MANIFEST'S VALUES, NEVER READS THE DUMP.** Every leg ported from this section — Go
+(#914), C (#917), Rust (#918) and Dart — opened `test/tables/fixedform_dump.cpp`, the one file §5.7 forbids, for
+the same four facts: what values a row's records actually carry, which table is the ROOT where a schema declares
+two, how many RECORDS a file has, and the names of the rows that are not a pair. A rule four legs in a row had
+to break is not the legs' bug. So the emitter SAYS what it wrote: `make tables-fixedform-corpus` writes
+`build/fixedform-corpus/manifest.txt` beside the bytes, one plain-text line per file, no dependency to parse it
+—
+
+```
+file=<name> row=<row> side=old|new|mid|a|b|none root=<Table> records=<n> values=<field>=<value>[,<field>=<value>...]
+```
+
+— where `row` and `side` come from the FILE NAME, `root` from the record's own TYPE and `records` from the
+vector the dump saved, and every value is stored through one helper that performs the assignment AND records the
+line from the same expression (`MS` / `MSI` / `MSE` / `MSEI` / `MSTR` / `MSTRI` / `MWCPY` — the `I` pair take the
+SUBSCRIPT the call site is looping over, so the path holds the index the bytes hold and never the variable's
+name), so the manifest cannot drift from the corpus: a changed value changes both or neither. `values=` is the
+LAST field and runs to the end of the line: split the head on spaces, then take everything after `values=` whole
+— a quoted value may carry spaces, and the commas inside one are escaped (`\,`). `root=` is NOT unique across
+rows (FU1's and FU2's is `FuRoot`, a lineage pair's two sides share one name by construction); `row=` is the
+per-file name. A record's values are prefixed `r<i>.`, nested fields are
+dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide, `\uXXXX` for
+anything not printable ASCII), a float is given as digits AND bits (`nan|0x7F8ABCDE` — a signalling NaN's
+payload is the value), and a field the dump did not set carries its schema default. **The manifest is the
+card's source and the dump is off limits**; `manifest_case` in `test/tables/fixedform_main.cpp` is what keeps it
+honest — every `.bin` in the corpus has a line, and every `root=` names a table the generator emitted — and
+nothing under `build/` is committed.
+
+**#32 LANDED WITH THE CORPUS MANIFEST** (#924), and it is the ruling the four legs below lean on. **#33 to #45
+come from the FOURTH through SEVENTH legs** — Java (#920), C# (#921), JavaScript (#922) and Dart (#923), each
+written from §5 alone with `internal/codegen/cpptable` and the C++ runtime unopened. Four legs asking a question
+the first three did not is the page's own bug report twice over, so every one of these is checked against the
+bill, against the merged C++, and against all seven ports, and the rule written is the one they now share.
 
 **33. THE FLAT-ELEMENT FOLD AND A WIDENING ARE INCOMPATIBLE.** §4.2's coalescing rule folds an array of a FLAT
 element type — one whose storage image IS its wire image — into ONE run however many elements it holds, and §6's
@@ -1313,13 +1340,14 @@ the span its setter takes — the C# leg's `FlatWiden`, sign `0` zero-extending,
 kind, `2` an f32 into an f64, which is §5.2's two widen signs over a run — and a folded run whose kinds moved off
 every ladder COUNTS `kind_mismatch` rather than vanishing.
 
-**The number every leg asserts is NONZERO, and that is deliberate.** `widened` moves once per ENTRY per record
-(§5.4), so a folded run is ONE and an unfolded run is `min(their_n, my_n)`: on `array_elem_widen` — `[..4]int16`
-into `[..4]int32`, four elements sent — an unfolded leg counts `4` per record and a folded leg counts `1`, and
-both are right. **The C++ reference asserts `r.widened > 0`** (`test/tables/versioning_numbers.cpp:345`, "a
-widened element counts (§5.2)"), never an exact count, and **nonzero is therefore the assertion a twin gate and
-every leg's fixture share.** A leg asserting the reference's `4` has pinned its own shape and reds the next leg
-that folds.
+**The number every leg asserts is EXACTLY `min(their_n, my_n)`, and on the corpus row that is `4`.** `widened`
+moves once per ENTRY per record (§5.4), and a fold across a widen is what the rule above FORBIDS — so
+`array_elem_widen` has no folded shape on any conforming leg: `[..4]int16` into `[..4]int32`, four elements sent,
+is four widen entries and counts `4` per record, on every leg. **That is the assertion a twin gate and every
+leg's fixture share** (the C# leg's fixture asserts `4`). The C++ reference's `r.widened > 0`
+(`test/tables/versioning_numbers.cpp:345`, "a widened element counts (§5.2)") is the REFERENCE FIXTURE'S LOOSER
+assertion, written before the fold's incompatibility was named, and a leg that copies it cannot tell a run that
+widened element by element from the folded read this ruling exists to catch.
 
 **34. THE STATIC-DATA STRUCT'S NAME IS THE CONTRACT; ITS MEMBER COUNT CAN BE THE LANGUAGE'S.** The name on this
 page is **`TableFixedKnownLayout`** with #19's members in #19's order. Two divergences are now admitted, both
