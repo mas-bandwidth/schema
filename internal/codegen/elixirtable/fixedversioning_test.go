@@ -363,6 +363,99 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 	}
 }
 
+// ---- the capacity refusal ---------------------------------------------------
+//
+// A CONTROL MOVES WITH THE CASE IT WATCHES (§5.9 #39), and `plan_too_large` is
+// owed by every leg (§5.9 #45). On the leg's BYTE gate the case is now
+// unreachable: every unit there is generated apart, so every lineage is of one
+// and every read takes the IDENTITY lane, which has no plan to be too large. Here
+// the lock is played, so the reader holds a COMPILED lane for the older entry —
+// and a caller's capacity of one is smaller than any real plan.
+
+func TestFixedVersioningPlanTooLarge(t *testing.T) {
+	corpus := fixedCorpus(t)
+	elixirBin := elixirBinary(t)
+	body := `  data = File.read!(file())
+  {tag, why, report} = load(data, plan_capacity: 1)
+  check(tag == :error and why == :plan_too_large,
+    "a plan past THIS caller's capacity owes plan_too_large: #{inspect({tag, why})}")
+  check(report.malformed == false, "a refusal by name never sets malformed too")
+  check(report.widened == 0 and report.unknown == 0 and report.clamped == 0,
+    "REFUSE is total: no counter moves: #{why(report)}")
+  # AND THE SAME FILE READS AT THE BUILD'S OWN CAPACITY, so the refusal is the
+  # capacity's and not the file's.
+  {ok_tag, _values, ok_report} = load(data)
+  check(ok_tag == :ok and ok_report.malformed == false,
+    "the same file reads at the declared capacity: #{inspect(ok_tag)} #{why(ok_report)}")`
+	out, err := runVersionProbe(t, elixirBin, "VNEW_field_append", []string{"VOLD_field_append"}, 0,
+		filepath.Join(corpus, "old_field_append.bin"), body)
+	if err != nil {
+		t.Fatalf("plan_too_large: %v\n%s", err, out)
+	}
+}
+
+// ---- text under a union arm -------------------------------------------------
+//
+// MOVED HERE FROM THE LEG'S BYTE GATE BY §5.6 (the JS leg's
+// TestJSFixedVersioningUnionArmText is the precedent, #922). A plan entry for a
+// `string(N)` under a union's arm carries TWO INDEPENDENT FACTS — which arm's tag
+// guards it, and which flavour of text it is — and a port that spends ONE lane on
+// both loses whichever was written second, silently, with no counter and no
+// refusal.
+//
+// UT2 inserts an arm IN THE MIDDLE, so the string moves from arm 2 to arm 3: the
+// entry must be guarded by THEIR ordinal while the tag this reader stores is MY
+// ordinal, and the flavour is neither number. The file is UT1's own save and UT1's
+// ENTRY IS HANDED IN as the lock, which is the only way §5 reads it at all.
+
+func TestFixedVersioningUnionArmText(t *testing.T) {
+	fixedCorpus(t) // the leg's gate promises the oracle; this case needs only Elixir
+	elixirBin := elixirBinary(t)
+	file := filepath.Join(t.TempDir(), "ut1_arm_b.bin")
+
+	// UT1 WRITES ARM `b` AT ORDINAL 2 — its own layout, its own plan.
+	write := fmt.Sprintf(`  data =
+    T.ut_root_fixed_save([
+      %%Tblut1.UtRoot{
+        head: 81,
+        pick: %%Tblut1.Pick{type: 2, b: %%Tblut1.ArmB{label: "back", m: -12}},
+        tail: 88
+      }
+    ])
+
+  File.write!(%s, data)
+  {tag, values, report} = load(data)
+  check(tag == :ok, "UT1 reads its own arm-b record: #{inspect(tag)} #{why(report)}")
+  v = hd(values)
+  check(v.pick.type == 2 and v.pick.b.label == "back" and v.pick.b.m == -12,
+    "UT1's identity read of the arm: #{inspect(v.pick)}")`, elixirString(file))
+	if out, err := runVersionProbe(t, elixirBin, "UT1", nil, 0, file, write); err != nil {
+		t.Fatalf("union_arm_text, UT1's own save: %v\n%s", err, out)
+	}
+
+	// AND UT2 READS IT AT ORDINAL 3, through the plan the build compiled from
+	// UT1's locked entry.
+	read := `  data = File.read!(file())
+  {tag, values, report} = load(data)
+  check(tag == :ok, "UT2 reads UT1's record through the lineage: #{inspect(tag)} #{why(report)}")
+  check(report.malformed == false, "a clean backward read is not malformed: #{why(report)}")
+  v = hd(values)
+  # THE TAG LANDS MY ORDINAL: arm b is arm 3 here and arm 2 there, and the entry
+  # ran under THEIR guard.
+  check(v.pick.type == 3, "the arm's tag did not slide to MY ordinal: #{inspect(v.pick.type)}")
+  check(v.pick.b.label == "back",
+    "the text under the slid arm: #{inspect(v.pick.b.label)} — a shared guard/flavour lane " <>
+      "reads a byte string as a WIDE one and lands \"\"")
+  check(byte_size(v.pick.b.label) == 4, "the text's length: #{byte_size(v.pick.b.label)}")
+  check(v.pick.b.m == -12, "the int32 beside the text: #{inspect(v.pick.b.m)}")
+  check(v.head == 81 and v.tail == 88, "the fields either side of the union: #{inspect({v.head, v.tail})}")
+  check(report.clamped == 0 and report.unknown == 0,
+    "an arm that MOVED is not an event: #{why(report)}")`
+	if out, err := runVersionProbe(t, elixirBin, "UT2", []string{"UT1"}, 0, file, read); err != nil {
+		t.Fatalf("union_arm_text, UT2 over UT1: %v\n%s", err, out)
+	}
+}
+
 // ---- the harness ------------------------------------------------------------
 
 func fixedCorpus(t *testing.T) string {
@@ -561,6 +654,11 @@ defmodule Probe do
   def fresh_value, do: %%%[4]s{}
 
   def load(data), do: T.%[2]s_fixed_load(data)
+
+  # THE OPTIONS ARE PART OF THE CONTRACT (§5.9 #5, #16): plan_capacity: is a
+  # CAPACITY DECLARATION checked against the entry the lineage selected, so the
+  # capacity refusal needs a probe that can pass one.
+  def load(data, opts), do: T.%[2]s_fixed_load(data, opts)
 
   def why(r), do: inspect(r)
 

@@ -30,12 +30,31 @@ import (
 )
 
 // fixedLineageShipTargets are the targets whose table backend takes the
-// lineage as data today: `c`, `go` and `rust` through `GenerateLineage`, and `cpp`
-// through the lock the driver now opens for it. Every other built-in target's
-// table backend has no second entry point yet (cs, dart, elixir, java, js);
+// lineage as data today: `c`, `elixir`, `go` and `rust` through `GenerateLineage`,
+// and `cpp` through the lock the driver now opens for it. Every other built-in
+// target's table backend has no second entry point yet (cs, dart, java, js);
 // their `GenerateLineage` lives on the open port branches, and the day one
 // lands its target joins this list and nothing else changes.
-var fixedLineageShipTargets = []string{"c", "cpp", "go", "rust"}
+var fixedLineageShipTargets = []string{"c", "cpp", "elixir", "go", "rust"}
+
+// fixedLineageHashSpelling is ONE layout hash as the target's emitted source
+// writes it. It is a per-target NEEDLE and not a per-target assertion: the
+// statement being made is the same for every leg — the eight bytes of the older
+// layout are in the module, as static data — and only the spelling of a 64-bit
+// constant differs by language.
+//
+// The ELIXIR leg is why this function exists here. Its generated source is `mix
+// format`'s own shape, emitted that way rather than checked afterwards, and a hex
+// literal there is written in UPPER case — so a lower-case needle found nothing
+// in a module that carried every entry. A leg whose 64-bit constant cannot be
+// spelled at all (the JavaScript leg's low/high u32 pair) joins this function the
+// day it lands, and nothing else changes.
+func fixedLineageHashSpelling(target string, hash uint64) string {
+	if target == "elixir" {
+		return fmt.Sprintf("0x%016X", hash)
+	}
+	return fmt.Sprintf("0x%016x", hash)
+}
 
 // TestFixedLineageEntryPointIsReachedFromTheDriver: the driver must HAVE the
 // second entry point for those targets. Before #921 no caller in the tree did —
@@ -141,9 +160,10 @@ func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: generate: %v", target, err)
 		}
+		olderSpelling := fixedLineageHashSpelling(target, older)
 		var carries []string
 		for name, data := range files {
-			if strings.Contains(string(data), fmt.Sprintf("0x%016x", older)) {
+			if strings.Contains(string(data), olderSpelling) {
 				carries = append(carries, name)
 			}
 		}
@@ -152,7 +172,7 @@ func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
 		}
 		found := false
 		for _, data := range files {
-			if strings.Contains(string(data), fmt.Sprintf("0x%016x", current)) {
+			if strings.Contains(string(data), fixedLineageHashSpelling(target, current)) {
 				found = true
 			}
 		}
@@ -192,7 +212,7 @@ func TestFixedLineageWithoutALockIsOneEntry(t *testing.T) {
 		}
 		found := false
 		for _, data := range files {
-			if strings.Contains(string(data), fmt.Sprintf("0x%016x", own)) {
+			if strings.Contains(string(data), fixedLineageHashSpelling(target, own)) {
 				found = true
 			}
 		}

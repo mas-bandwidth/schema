@@ -45,6 +45,22 @@ type FixedLineage struct {
 	floor   map[string]int
 }
 
+// fixedLineageRecordBytes is the lock's BODY size as a table backend's
+// `FixedLineageEntry.Record` means it: THE WHOLE RECORD, the eight-byte layout
+// hash every record leads with plus the body (§5.3's record = hash + body). The
+// lock writes `ir.TableFixedTypeBytes` — the BODY alone — so the two are eight
+// bytes apart, and the translation belongs here, in the one place that reads the
+// lock, beside the wire-name translation above.
+//
+// THE ELIXIR LEG FOUND IT BY GOING RED. Every backend's own `FixedLineageOf`
+// spells the entry `8 + TableFixedTypeBytes`, but #925's helpers handed the
+// lock's number straight through, so the first unit with a COMMITTED LOCK to
+// reach a newly wired backend — `tables/examples` on the Elixir leg's byte gate —
+// split its records eight bytes short and every read came back `no_layout`.
+// `goTableLineage` and `rustTableLineage` above still hand the short number and
+// say nothing, which is this defect in the two legs that have no such gate.
+func fixedLineageRecordBytes(body int64) int64 { return 8 + body }
+
 // lineageGenerator is the SECOND ENTRY POINT of §5.9 #1, as the driver sees it:
 // a generator that takes the lock's lineage as data. A target implements it when
 // its table backend exports `GenerateLineage`; a target that does not is called
