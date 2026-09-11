@@ -219,6 +219,16 @@ const tableFixedWireSource = `
         public const byte Const = 5;   // constant value: e.g. remapped union tag
         public const byte WidenF = 6;  // float32 into float64
         public const byte Flat = 7;    // folded flat array copy
+        // A FOLDED RUN WHOSE TWO IMAGES DIFFER IN WIDTH (§5.2 EMIT kind 14, and
+        // §6's flat-element fold). The fold's premise is that the element's
+        // STORAGE image IS its WIRE image, and a widening breaks that premise: the
+        // writer's run is narrower than the reader's storage, element for element.
+        // §5.2's EMIT has no fold at all — it emits the element min(their_n, my_n)
+        // times — and a FOLDED destination has no element-wise slot to aim those
+        // entries at, so the widening happens inside ONE entry here. Sign is 0 for
+        // a zero-extend, 1 for a sign-extend and 2 for f32 into f64; Meta is the
+        // WRITER's element width and DstSize the READER's.
+        public const byte FlatWiden = 8;
 
         // Arg on a Text entry
         public const byte TextUtf8 = 1;
@@ -651,7 +661,23 @@ const tableFixedWireSource = `
                         {
                             TableFixedEntry e = new TableFixedEntry(their_base, at, n * mel.Size, 0, guard, Flat, arg, 0);
                             c.Push(e);
+                            break;
                         }
+                        // THE FOLD IS NOT A FOLD ACROSS A WIDENING, and dropping the
+                        // run would land the reader's defaults over values the writer
+                        // sent (§5.2 EMIT kind 14). One entry, widened element by
+                        // element, because the folded destination is one span setter
+                        // and has no element-wise slot.
+                        bool sameFamily = tel.Kind == mel.Kind || Widens(tel.Kind, mel.Kind);
+                        if (sameFamily && tel.Size < mel.Size && mel.Size <= 8)
+                        {
+                            byte sign = (byte)(tel.Kind == 10 && mel.Kind == 11 ? 2 : (SignedKind(tel.Kind) && tel.Kind != mel.Kind ? 1 : 0));
+                            c.Push(new TableFixedEntry(their_base, at, n * tel.Size, 0, guard, FlatWiden,
+                                                       arg, (byte)mel.Size, sign, (byte)tel.Size));
+                            break;
+                        }
+                        // A KIND THAT MOVED IS REPORTED, NEVER REINTERPRETED (§5.2).
+                        if (c.Report != null) { c.Report.KindMismatch++; }
                         break;
                     }
                     for (uint i = 0; i < n; ++i)
@@ -1005,6 +1031,45 @@ const tableFixedWireSource = `
                     case Flat:
                     {
                         slots[(int)p.Dst].SetBytes?.Invoke(dst, src.Slice((int)p.Src, (int)p.Size), (int)p.Size);
+                        break;
+                    }
+                    case FlatWiden:
+                    {
+                        int sw = p.Meta == 0 ? 1 : p.Meta;
+                        int dw = p.DstSize == 0 ? 1 : p.DstSize;
+                        int runs = (int)p.Size / sw;
+                        byte[] wide = new byte[runs * dw];
+                        for (int e = 0; e < runs; ++e)
+                        {
+                            int at = (int)p.Src + e * sw;
+                            if (p.Sign == 2)
+                            {
+                                double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
+                                BinaryPrimitives.WriteDoubleLittleEndian(wide.AsSpan(e * dw), d2);
+                                continue;
+                            }
+                            ulong raw = 0;
+                            if (sw == 1) raw = src[at];
+                            else if (sw == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(at));
+                            else if (sw == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice(at));
+                            else if (sw == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice(at));
+                            if (p.Sign == 1)
+                            {
+                                int bits = sw * 8;
+                                ulong top = 1UL << (bits - 1);
+                                if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
+                            }
+                            System.Span<byte> cell = wide.AsSpan(e * dw, dw);
+                            if (dw == 1) cell[0] = (byte)raw;
+                            else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
+                            else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
+                            else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
+                        }
+                        slots[(int)p.Dst].SetBytes?.Invoke(dst, wide, wide.Length);
+                        // ONCE PER ENTRY PER RECORD (§5.4), and a folded run is one
+                        // entry: a leg that does not fold counts once per element, and
+                        // the two numbers differ by the fold. Named in the PR.
+                        if (report != null) { report.Widened++; }
                         break;
                     }
                     case Count:
