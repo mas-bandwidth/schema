@@ -49,6 +49,12 @@
 
 static int failures = 0;
 
+// ==== BEGIN rowan/cpp-versioning-lists ====
+// the LIST rows' read columns, in their own translation unit; it returns its
+// own failure count and prints its own known-red report
+int versioning_lists_cases();
+// ==== END rowan/cpp-versioning-lists ====
+
 static void check( bool ok, const char * what )
 {
     if ( !ok ) { std::printf( "FAIL: %s\n", what ); failures++; }
@@ -1388,6 +1394,13 @@ int main()
     cache_case();
     layout_validation();
     fuzz_case();
+    // ==== BEGIN rowan/cpp-versioning-lists ====
+    // THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW, in their own
+    // translation unit (test/tables/versioning_lists.cpp) with their own
+    // known-red list: NEW-READS-OLD and OLD-REFUSES-NEW, one lineage pair per
+    // row (docs/FIXED-FORM-VERSIONING-TESTS.md).
+    failures += versioning_lists_cases();
+    // ==== END rowan/cpp-versioning-lists ====
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
     std::printf( "fixed form: versioning conformance green\n" );
     return 0;
