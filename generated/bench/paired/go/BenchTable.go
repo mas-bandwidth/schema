@@ -2551,10 +2551,10 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 // (ship the reader); a hash it holds below the floor is layout_unsupported
 // (upgrade the client). Those are the operator's two distinct answers.
 
-// TableFixedKnown is one locked layout: the wire hash a file is matched on, the
-// layout bytes verbatim, and the RECORD SIZE taken from the lock and never from
-// the file.
-type TableFixedKnown struct {
+// TableFixedKnownLayout is one locked layout: the wire hash a file is matched
+// on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
+// never from the file.
+type TableFixedKnownLayout struct {
 	Hash   uint64
 	Layout []byte
 	Record int64
@@ -2571,7 +2571,7 @@ type tableFixedLineagePlan struct {
 	Why          string
 }
 
-func tableFixedSelect(known []TableFixedKnown, hash uint64) int32 {
+func tableFixedSelect(known []TableFixedKnownLayout, hash uint64) int32 {
 	for i := range known {
 		if known[i].Hash == hash {
 			return int32(i)
@@ -2591,7 +2591,7 @@ func tableFixedRefuseHash(report *TableReport, reason string, hash uint64) int64
 // layout bytes, at package initialization — nothing compiles on the load path,
 // and there is no cache to miss (§5.2, §5.8 row 3). The identity entry keeps a
 // nil plan: the baked one answers it.
-func tableFixedLineagePlans(known []TableFixedKnown, myLayout []byte, dst []TableFixedDst, own uint64) []tableFixedLineagePlan {
+func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst []TableFixedDst, own uint64) []tableFixedLineagePlan {
 	out := make([]tableFixedLineagePlan, len(known))
 	for i := range known {
 		if known[i].Hash == own {
