@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Cheap C# pin for FU1/FU2 (docs/SPEC-TABLES.md §3.4, §15). Compiles only
+       the TEXT-UNDER-AN-ARM pair. The full cs-tables project still includes
+       the same pin inside TestFixedForm. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>schema-cs-fixedform</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="../../build/tables-generated-cs/fu1/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/fu2/*.cs" />
+    <Compile Include="../../../serialize.cs/src/Serialize.cs" />
+    <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
+  </ItemGroup>
+
+</Project>

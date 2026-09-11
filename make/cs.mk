@@ -92,7 +92,7 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 	done
 	@echo "tables C# generic-walk gate: one walker per unit, byte-identical across $$(ls build/json-walk-cs | wc -l | tr -d ' ') units"
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema
 	@mkdir -p build/tables-generated-cs
 	./bin/schema generate --lang cs --out build/tables-generated-cs/examples tables/examples
 	# The pointered unit carries managed wire storage and native cooked readers.
@@ -139,6 +139,13 @@ build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_
 	./bin/schema generate --lang cs --out build/tables-generated-cs/cscollections1 test/tables/CsCollections1.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/cscollections2 test/tables/CsCollections2.schema
 	./bin/schema generate --lang cs --out build/tables-generated-cs/ut test/tables/UT.schema
+	# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
+	# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
+	# extra so a read of FU1's bytes is a compiled plan, and the two reads have
+	# to agree on the text (reference-fix 12). UT is the two-lane / slid-arm
+	# half of the same hole. C++ already generates the pair; this stamp did not.
+	./bin/schema generate --lang cs --out build/tables-generated-cs/fu1 test/tables/FU1.schema
+	./bin/schema generate --lang cs --out build/tables-generated-cs/fu2 test/tables/FU2.schema
 
 	@touch $@
 
@@ -413,6 +420,14 @@ tables-cs-leg: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# THE FIXED FORM'S TEXT-UNDER-AN-ARM PIN (docs/SPEC-TABLES.md §3.4, §15).
+# Dedicated binary: FU1 writes, FU1's FuRootFixedLoad is the identity read,
+# FU2's is the compiled read of the same bytes. One path. Hash chooses the plan.
+.PHONY: tables-cs-fixed-form
+tables-cs-fixed-form: build/tables-generated-cs/.stamp
+	cd test/cs-fixedform && $(DOTNET) run
+	cd test/cs-fixedform && $(DOTNET) run -c Release
+
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
@@ -451,6 +466,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-variable-surface
 	$(MAKE) tables-cs-view
+	$(MAKE) tables-cs-fixed-form
 	$(MAKE) tables-cs-leg
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz

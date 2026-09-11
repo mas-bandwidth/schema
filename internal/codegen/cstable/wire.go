@@ -376,7 +376,13 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	if enumRef(f) != nil {
 		defaultExpr = "global::" + capitalize(g.unit.Package) + "." + defaultExpr
 	}
-	fmt.Fprintf(&b, ", DefaultRaw = %s", csRawGet(defaultExpr, f.Type))
+	defaultRaw := csRawGet(defaultExpr, f.Type)
+	if f.Type.Kind == ir.TInt && f.Type.Signed && strings.HasPrefix(strings.TrimSpace(defaultExpr), "-") {
+		// A negative constant (FU1's mark = -1) is not a ulong without
+		// unchecked; CS0221 otherwise refuses the descriptor.
+		defaultRaw = "unchecked(" + defaultRaw + ")"
+	}
+	fmt.Fprintf(&b, ", DefaultRaw = %s", defaultRaw)
 	kind := tableScalarKind(f)
 	if kind == tkBool || enumRef(f) != nil {
 		return b.String()
