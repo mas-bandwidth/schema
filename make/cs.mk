@@ -413,6 +413,33 @@ tables-cs-leg: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
 	cd test/cs-tables && $(DOTNET) run -c Release
 
+# THE FIXED FORM'S VERSIONING SUITE ON THIS LEG (docs/FIXED-FORM-ALGORITHM.md §5,
+# docs/FIXED-FORM-VERSIONING-TESTS.md): every row of the law, both read columns,
+# against THE C++ REFERENCE'S OWN BYTES.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
+# SKIPS itself when build/fixedform-corpus is absent, which is right for a bare
+# `go test ./...` on a tree that never built the oracle — and is exactly how a §5
+# regression would ride into CI green. So the target BUILDS THE ORACLE FIRST
+# (`tables-fixedform-corpus`, the reference's own dump, about 25 s) and then sets
+# SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this name a
+# missing corpus can never pass silently.
+#
+# ONE ASSEMBLY, ONE BUILD, ONE RUN. The harness generates fifty-seven probes —
+# one per row per COLUMN (§5.9 #18) — into ONE project, each in the namespace its
+# own schema's package gives it, and runs the lot once. Fifty-seven `dotnet run`s
+# would cost minutes; this costs one build.
+#
+# ONE ROW IS RED AND IT IS NAMED, NOT FAKED (§5.9 #31): `array_elem_widen`'s
+# NEW-READS-OLD column. The C# leg FOLDS a flat element run into one plan entry,
+# and a fold whose two images differ in WIDTH has no element-wise destination to
+# widen into — so the element widen is dropped and `widened` stays zero. §5.2's
+# EMIT has no fold at all; the finding is in the PR that lands this.
+.PHONY: tables-cs-versioning
+tables-cs-versioning: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	@echo 'tables C# versioning: §5 read both columns of every row against the C++ reference bytes'
+
 tables-cs-wire-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N)
 
@@ -452,6 +479,7 @@ test-cs: toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs
 	$(MAKE) tables-cs-variable-surface
 	$(MAKE) tables-cs-view
 	$(MAKE) tables-cs-leg
+	$(MAKE) tables-cs-versioning
 	$(MAKE) tables-cs-wire-fuzz
 	$(MAKE) tables-cs-region-fuzz
 	$(MAKE) tables-cs-builder-fuzz

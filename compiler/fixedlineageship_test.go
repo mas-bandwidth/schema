@@ -32,12 +32,12 @@ import (
 )
 
 // fixedLineageShipTargets are the targets whose table backend takes the
-// lineage as data today: `c`, `go`, `java`, `js` and `rust` through
+// lineage as data today: `c`, `cs`, `go`, `java`, `js` and `rust` through
 // `GenerateLineage`, and `cpp` through the lock the driver now opens for it.
 // Every other built-in target's table backend has no second entry point yet
-// (cs, dart, elixir); their `GenerateLineage` lives on the open port branches,
+// (dart, elixir); their `GenerateLineage` lives on the open port branches,
 // and the day one lands its target joins this list and nothing else changes.
-var fixedLineageShipTargets = []string{"c", "cpp", "go", "java", "js", "rust"}
+var fixedLineageShipTargets = []string{"c", "cpp", "cs", "go", "java", "js", "rust"}
 
 // fixedLineageHashSpelling is ONE layout hash as the target's emitted source
 // writes it. It is a per-target needle and not a per-target assertion: the
@@ -223,6 +223,11 @@ var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	// record_bytes — §5.9 #19's four members in order.
 	"cpp": func(h uint64) *regexp.Regexp {
 		return regexp.MustCompile(fmt.Sprintf(`\{ 0x%016xull, \w+, \d+, (\d+) \}`, h))
+	},
+	// internal/codegen/cstable/fixedform.go: one constructor call per entry,
+	// the layout as a named static byte array, the record size last.
+	"cs": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`new TableFixedKnownLayout\(0x%016xul, \w+, (\d+)\)`, h))
 	},
 	// internal/codegen/javatable/fixedform.go: one constructor call per entry,
 	// the layout's length taken from the byte array, the record size last.

@@ -16,20 +16,47 @@ using UT = Tblut;
 
 static partial class Program
 {
+    // THE SKIP COUNT §5.9 #23 asks a suite with no skip verb to print at the
+    // end, beside the printed line at each retired test's call site.
+    static int skipped;
+
     static void TestFixedForm()
     {
         TestFixedFxCase();
-        TestFixedVCase();
-        TestFixedPCase();
+        // SKIPPED BY NAME, NOT DELETED (§5.6, §5.9 #23). Both cases are ENTIRELY
+        // a forward/compiled read across two generations with no lineage between
+        // them — V2 reading a V1 file, P3 reading a P1 file — which §5 retires: the
+        // answer is layout_newer, by name, before a plan exists. THE COVERAGE MOVES
+        // TO THE LINEAGE HARNESS: every row they assert (a variant inserted mid-list,
+        // an arm inserted mid-list, a renamed field, a keyed slot that slid, an
+        // optional added) is a row of §5.7 with its own two columns, read against
+        // the C++ reference's own bytes rather than against a file this test wrote.
+        Console.WriteLine("SKIPPED: TestFixedVCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
+        Console.WriteLine("SKIPPED: TestFixedPCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
+        skipped += 2;
         TestFixedWide128Case();
         TestFixedFoldedArraysCase();
         TestFixedArmTextCase();
         TestFixedSlackCase();
         TestFixedNegativeControl();
-        TestFixedLayoutValidation();
+        // SKIPPED BY NAME, NOT DELETED (docs/FIXED-FORM-ALGORITHM.md §5.6, and
+        // §5.9 #23 for a suite whose verb is a printed line): TestFixedLayoutValidation
+        // asserts the RUN-TIME WALK of a stranger's layout, which §5 retires —
+        // a layout arriving on the wire is no longer walked at all, so §1.1's
+        // seven rules cannot fire at read time and a malformation under a KNOWN
+        // hash is ONE name, layout_malformed. THE COVERAGE IS OWED BY THE LOCK'S
+        // VALIDATION of what it records, and by the oracle's validation of the
+        // corpus. The function stays in the tree and stays compiling: a deleted
+        // test is a coverage claim nobody can audit.
+        Console.WriteLine("SKIPPED: TestFixedLayoutValidation — §5.6 retires the run-time walk of a stranger's layout; §1.1's seven rules move to the LOCK's validation of what it records");
+        skipped++;
         TestFixedHostileBoolCase();
         TestFixedGuardComparedAtArgW();
         TestFixedAbsentOptionalCase();
+        if (skipped > 0)
+        {
+            Console.WriteLine("cs fixed form: " + skipped + " test(s) skipped by name, §5.6");
+        }
     }
 
     sealed class ArgWProbe { public byte V; }
@@ -52,7 +79,8 @@ static partial class Program
                 new FX1.TableFixedEntry(srcOff, 0u, 1u, 0u, 0u, FX1.Schema.TableFixedWire.Copy, 1, 0, 0, 0, argw)
             };
             ArgWProbe dst = new ArgWProbe();
-            FX1.Schema.TableFixedWire.Run(plan, slots, src, dst, null, ReadOnlySpan<byte>.Empty);
+            byte[] widenScratch = Array.Empty<byte>();
+            FX1.Schema.TableFixedWire.Run(plan, slots, src, dst, null, ReadOnlySpan<byte>.Empty, ref widenScratch);
             return dst.V;
         }
 
@@ -110,6 +138,20 @@ static partial class Program
                   "same schema: a clean read moves no counter");
         }
 
+        // SKIPPED BY NAME, NOT DELETED (§5.6, §5.9 #23). The rest of this case is
+        // the PLAN PATH ACROSS TWO GENERATIONS — FX2 reading an FX1 file and FX1
+        // reading an FX2 one — which §5 retires: with no lineage between the two
+        // builds each file is layout_newer, correctly, and the compiled read those
+        // rows assert cannot be reached from a bare pair of generated units at all.
+        // THE COVERAGE MOVES TO THE LINEAGE HARNESS, where the newer unit is handed
+        // the older unit's locked entry and the row owes both of §5.7's columns.
+        Console.WriteLine("SKIPPED: TestFixedFxCrossGeneration — §5.6 retires the run-time walk of a stranger's layout; the coverage moves to the lineage harness");
+        skipped++;
+    }
+
+    // RETIRED BY §5.6 AND KEPT: the skip at its call site says why.
+    static void TestFixedFxCrossGeneration(byte[] w1)
+    {
         // 2, 4, 5. FX2 READS FX1 — a plan compiled from FX1's block
         {
             FX2.FxRoot back = new FX2.FxRoot();
@@ -259,17 +301,12 @@ static partial class Program
         FX1.FxRoot wrong = new FX1.FxRoot();
         FX1.Schema.TableReset(wrong);
         FX1.TableReport r = new FX1.TableReport();
-        FX1.Schema.TableFixedWire.Run(FX1.Schema.FxRootFixedPlan, FX1.Schema.FxRootFixedSlots, body, wrong, r, ReadOnlySpan<byte>.Empty);
+        byte[] wrongScratch = Array.Empty<byte>();
+        FX1.Schema.TableFixedWire.Run(FX1.Schema.FxRootFixedPlan, FX1.Schema.FxRootFixedSlots, body, wrong, r, ReadOnlySpan<byte>.Empty, ref wrongScratch);
         bool intact = wrong.Nested.A == 33 && wrong.Nested.B == 44 && wrong.Renamed == 808;
         Check(!intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record");
 
-        // and the loader never takes that path: the hash is what selects the plan
-        FX1.FxRoot right = new FX1.FxRoot();
-        FX1.TableReport r2 = new FX1.TableReport();
         FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
-        long n = FX1.Schema.FxRootFixedLoad(right, w2, plan, r2);
-        Check(n == 1 && right.Nested.A == 33 && right.Nested.B == 44,
-              "NEGATIVE CONTROL: the loader compiles a plan from the block and gets it right");
 
         // A BLOCK THAT IS NOT A BLOCK IS REFUSED BY NAME, whole, and never damage.
         {
@@ -282,15 +319,6 @@ static partial class Program
             Check(r3.Unknown == 0 && r3.KindMismatch == 0 && !r3.Malformed, "REFUSED BY NAME: a refusal moves no counter");
         }
 
-        {
-            byte[] unknownKind = (byte[])w2.Clone();
-            unknownKind[FX1.Schema.TableFixedWire.HeaderBytes + 4 + 4 + 17 + 8] = 99; // entry 1's kind byte
-            FX1.FxRoot v = new FX1.FxRoot();
-            FX1.TableReport rKind = new FX1.TableReport();
-            long bad = FX1.Schema.FxRootFixedLoad(v, unknownKind, plan, rKind);
-            Check(bad < 0 && rKind.Refused && rKind.Reason == "layout_kind_unknown", "REFUSED BY NAME: unknown wire kind refuses as layout_kind_unknown");
-            Check(rKind.Unknown == 0 && rKind.KindMismatch == 0 && !rKind.Malformed, "REFUSED BY NAME: unknown kind refusal moves no counter");
-        }
 
         // A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE, AND
         // THE NAME SAYS WHICH DIRECTION (docs/SPEC-TABLES.md §3, §3.4).
@@ -313,6 +341,41 @@ static partial class Program
                 Check(r4.Unknown == 0 && r4.KindMismatch == 0 && r4.Widened == 0 && r4.Clamped == 0,
                       "REFUSED BY NAME: a form-byte refusal moves no counter");
             }
+        }
+
+        // SKIPPED BY NAME, NOT DELETED (§5.6, and §5.9 #23 for a suite whose skip
+        // verb is a printed line). Every row of TestFixedNegativeControlForwardRead
+        // asks FX1 to read an FX2 FILE — a FORWARD read, which is the whole of what
+        // §5 retires: FX2's hash is in no lineage entry of this build, so the answer
+        // is layout_newer BEFORE a plan exists and the conditions those rows assert
+        // can no longer be reached from here. THE COVERAGE IS OWED BY THE LINEAGE
+        // HARNESS, where the reader is handed FX1's lineage and each of these is a
+        // row with its own two columns. The function stays in the tree and stays
+        // compiling: a deleted test is a coverage claim nobody can audit.
+        Console.WriteLine("SKIPPED: TestFixedNegativeControlForwardRead — §5.6 retires the forward read; the coverage moves to the lineage harness");
+        skipped++;
+    }
+
+    // RETIRED BY §5.6 AND KEPT: the skip at its call site, above, says why and
+    // where the coverage is owed.
+    static void TestFixedNegativeControlForwardRead(byte[] w2)
+    {
+        // and the loader never takes that path: the hash is what selects the plan
+        FX1.FxRoot right = new FX1.FxRoot();
+        FX1.TableReport r2 = new FX1.TableReport();
+        FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[1024];
+        long n = FX1.Schema.FxRootFixedLoad(right, w2, plan, r2);
+        Check(n == 1 && right.Nested.A == 33 && right.Nested.B == 44,
+              "NEGATIVE CONTROL: the loader compiles a plan from the block and gets it right");
+
+        {
+            byte[] unknownKind = (byte[])w2.Clone();
+            unknownKind[FX1.Schema.TableFixedWire.HeaderBytes + 4 + 4 + 17 + 8] = 99; // entry 1's kind byte
+            FX1.FxRoot v = new FX1.FxRoot();
+            FX1.TableReport rKind = new FX1.TableReport();
+            long bad = FX1.Schema.FxRootFixedLoad(v, unknownKind, plan, rKind);
+            Check(bad < 0 && rKind.Refused && rKind.Reason == "layout_kind_unknown", "REFUSED BY NAME: unknown wire kind refuses as layout_kind_unknown");
+            Check(rKind.Unknown == 0 && rKind.KindMismatch == 0 && !rKind.Malformed, "REFUSED BY NAME: unknown kind refusal moves no counter");
         }
 
         // THE HEADER NAMES THE LAYOUT ONCE (docs/SPEC-TABLES.md §3)
@@ -458,7 +521,8 @@ static partial class Program
                 }
             }
             ReadOnlySpan<byte> recordBody = buf.AsSpan(TD.Schema.TableFixedWire.HeaderBytes + 4 + (int)TD.Schema.RangedSignedFixedLayoutBytes + 8);
-            TD.Schema.TableFixedWire.Run(copyPlan, TD.Schema.RangedSignedFixedSlots, recordBody, backCopy, null, ReadOnlySpan<byte>.Empty);
+            byte[] copyScratch = Array.Empty<byte>();
+            TD.Schema.TableFixedWire.Run(copyPlan, TD.Schema.RangedSignedFixedSlots, recordBody, backCopy, null, ReadOnlySpan<byte>.Empty, ref copyScratch);
             Check(backCopy.EdgesCount == 4 && backCopy.Edges[0] == 11 && backCopy.Edges[1] == 22 &&
                   backCopy.Edges[2] == 33 && backCopy.Edges[3] == 44,
                   "RangedSigned: Copy opcode dispatches to SetBytes for folded array");
@@ -524,7 +588,8 @@ static partial class Program
 
         ReadOnlySpan<byte> planBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(plan);
         ReadOnlySpan<byte> at = wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
-        UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes);
+        byte[] utScratch = Array.Empty<byte>();
+        UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref utScratch);
         return outVal;
     }
 
