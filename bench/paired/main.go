@@ -643,7 +643,11 @@ func generateAndBuild(langs []string) error {
 			}
 		case "c":
 			a := append([]string{cc}, cFlags...)
-			a = append(a, "-ffp-contract=off", "-DBENCH_MATCHED", "-Igenerated/bench/paired/c", "-I"+serC, "bench/tables/c/table_main.c", "-o", binary("table", lang), "-lm")
+			// serialize.c is a translation unit, not a header: the table leg links it
+			// exactly as the packet leg below does. Its form-1 arm calls into the
+			// library (_serialize_uint128_make, the generated save/load bodies), and
+			// the bench measures BOTH forms, so the objects are not optional.
+			a = append(a, "-ffp-contract=off", "-DBENCH_MATCHED", "-Igenerated/bench/paired/c", "-I"+serC, "bench/tables/c/table_main.c", filepath.Join(serC, "serialize.c"), "-o", binary("table", lang), "-lm")
 			if e := run(a...); e != nil {
 				return e
 			}
