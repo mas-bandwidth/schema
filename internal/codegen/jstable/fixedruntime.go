@@ -119,6 +119,12 @@ export const TableFixedRefusal = Object.freeze({
   LayoutTooDeep: 12,
   PlanTooLarge: 13,     // a layout whose compiled plan does not fit the caller's storage
   BatchTooLarge: 14,    // more records than the caller's capacity
+  // §5'S TWO, IN THE ORDER §5.3 NAMES THEM (§5.9 #14: the NAMES are the
+  // contract and the integers are each leg pair's own, but the ORDER is the
+  // contract too). Outside the lineage: ship the reader. Below the floor: a
+  // layout this build served and has retired — upgrade the client.
+  LayoutNewer: 15,
+  LayoutUnsupported: 16,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -139,6 +145,8 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutTooDeep: return "layout_too_deep";
     case TableFixedRefusal.PlanTooLarge: return "plan_too_large";
     case TableFixedRefusal.BatchTooLarge: return "batch_too_large";
+    case TableFixedRefusal.LayoutNewer: return "layout_newer";
+    case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     default: return "???";
   }
 }
@@ -154,8 +162,17 @@ export class TableFixedReport {
     this.clamped = 0;
     this.widened = 0;
     this.duplicate = 0;
-    this.hashLo = 0;
-    this.hashHi = 0;
+    // THE FILE'S HASH, AND IT IS SET BY TWO REFUSALS AND NOTHING ELSE:
+    // layout_newer reports it "AND NOTHING ELSE" (§5.3), and
+    // layout_unsupported reports it too — the operator's other answer (§5.9
+    // #7). LAST ON THE REPORT, and zero on every other path (§5.9 #15).
+    //
+    // IT IS A BigInt, and that is this leg's answer to "how does a u64 ride
+    // here": a BigInt allocates, so the per-record hash comparison stays two
+    // uint32 lanes, but this field is written AT MOST ONCE PER LOAD, on a
+    // refusal, and an operator reading a hash off a report wants the whole
+    // sixty-four bits as one number they can paste into schema lock.
+    this.layoutHash = 0n;
   }
 }
 
@@ -167,8 +184,7 @@ export function TableFixedResetReport(report) {
   report.clamped = 0;
   report.widened = 0;
   report.duplicate = 0;
-  report.hashLo = 0;
-  report.hashHi = 0;
+  report.layoutHash = 0n;
   return report;
 }
 
@@ -199,6 +215,14 @@ export class TableFixedPlan {
     this.overflow = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
+    // THE PLAN IS PARTITIONED (§4.1): every UNGUARDED entry first, then every
+    // guarded one, and split is the index the second half starts at. pass is
+    // which half the compile is keeping (§5.2's two passes).
+    this.split = 0;
+    this.pass = 0;
+    this.unknown = 0;
+    this.kindMismatch = 0;
+    this.why = 0;
   }
 }
 
@@ -768,6 +792,9 @@ const TableFixedDstCounted = 3;
 const TableFixedDstArg = 4;
 
 function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
+  // THE HALF IS TESTED AT THE PUSH: pass 0 keeps the unguarded entries, pass 1
+  // the guarded ones, and the plan states where the second half starts (§4.1).
+  if (!TableFixedKeeping(plan, guard)) { return; }
   if (plan.count >= plan.capacity) { plan.overflow = true; return; }
   const b = plan.count * TableFixedLanes;
   const e = plan.entries;
@@ -793,10 +820,19 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
 function TableFixedWidens(from, to) {
   if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; } // u8 .. u64
   if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; } // i8 .. i64
+  // THE FIXED-POINT RUNGS, signed 20..24 and unsigned 25..29: a fixed(I,F) into
+  // a wider I at equal F is a LADDER widen and not a kind that moved
+  // (docs/FIXED-FORM-ALGORITHM.md §1, §5.1).
+  if (from >= 20 && from <= 24 && to >= 20 && to <= 24) { return to > from; }
+  if (from >= 25 && from <= 29 && to >= 25 && to <= 29) { return to > from; }
   return from === 10 && to === 11;                                        // f32 -> f64
 }
 
-function TableFixedSignedKind(kind) { return kind >= 2 && kind <= 5; }
+// A WIDEN'S SIGN IS THE LADDER'S: the source sign-extends when the WRITER's kind
+// is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 — and zero-extends
+// otherwise. The SAME-KIND widen has no sign at all and the grown enum ordinal
+// none either: both zero-extend (§5.2).
+function TableFixedSignedKind(kind) { return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24); }
 
 function TableFixedLayRemap(plan, values, n) {
   const need = n + 1;
@@ -808,7 +844,16 @@ function TableFixedLayRemap(plan, values, n) {
   return at;
 }
 
-const TableFixedRemapScratch = new Int32Array(256); // an enum's remap, built then laid down
+// AN ENUM'S REMAP, BUILT THEN LAID DOWN. The table is AS LONG AS THE WRITER'S
+// VARIANT COUNT (§5.2) and not capped at 255: the reference's cap is §5.8 row 14
+// and a leg that reproduced it would silently remap a writer's 256th variant to
+// None as though the reader did not name it. The scratch grows at COMPILE time,
+// which on this leg is module load and off every load path (§5.9 #3).
+let TableFixedRemapScratch = new Int32Array(256);
+function TableFixedRemapRoom(n) {
+  if (n > TableFixedRemapScratch.length) { TableFixedRemapScratch = new Int32Array(n); }
+  return TableFixedRemapScratch;
+}
 
 // matchChildren walks a TABLE's children on both sides, by id.
 function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
@@ -842,6 +887,15 @@ function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt,
   }
 }
 
+// THE TWO-PASS SPLIT (§5.2): the walk runs twice, UNGUARDED first, and each pass
+// drops the entries that are not its half. A kind that ALLOCATES from the pool
+// BEFORE it pushes — the enum, whose remap table is laid down — must test the
+// half FIRST, or the discarded pass still spends the pool and a plan that fits
+// comes back plan_too_large.
+function TableFixedKeeping(plan, guard) {
+  return plan.pass === 0 ? guard === TableFixedNoGuard : guard !== TableFixedNoGuard;
+}
+
 function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
   const theirKind = TableFixedKind(theirs, ti);
   const myKind = TableFixedKind(mine, mi);
@@ -850,6 +904,16 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   const row = mi * TableFixedDstLanes;
   const at = myAt + dst[row + TableFixedDstOff];
   const auxAt = myAt + dst[row + TableFixedDstAux];
+  // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
+  // carried bare. The PRESENT byte is a CONSTANT 1 at the wrapper's aux lane,
+  // constant in its VALUE and still carrying the row's own guard/arg (§5.9 #13),
+  // and the payload is compiled against the writer's own entry under the same
+  // guard and ordinal. It is not a kind that moved.
+  if (myKind === 35 && theirKind !== 35) {
+    TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, 1, 1, guard, arg, 0);
+    TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi + 1, dst, myAt, guard, arg, report);
+    return;
+  }
   if (theirKind !== myKind) {
     if (TableFixedWidens(theirKind, myKind)) {
       const op = theirKind === 10 ? TableFixedOpWidenF : TableFixedOpWiden;
@@ -878,7 +942,11 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const theirN = theirElem ? ((theirSize - head) / theirElem) | 0 : 0;
       const myN = myElem ? ((mySize - head) / myElem) | 0 : 0;
       if (dst[row + TableFixedDstCounted]) {
-        TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, myN, 0, guard, arg, 0);
+        // THE BOUND IS THE WRITER'S their_n AND NOT THE READER'S (§5.2 EMIT,
+        // bill §12.5): a count forged past what THAT peer could have written
+        // clamps and counts, and a reader whose own bound merely grew does not
+        // let the forgery through. The reader's storage has room by §5.1.
+        TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
       }
       const theirBase = theirAt + head;
       const n = theirN < myN ? theirN : myN;
@@ -930,9 +998,19 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       break;
     }
     case 30: { // an enum: the ordinal is the layout's position, so it remaps
+      // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts widened (§5.2
+      // EMIT kind 30, §5.4, bill §12.7). Only a SAME-WIDTH ordinal takes the
+      // remap table.
+      if (theirSize < mySize) {
+        TableFixedPush(plan, TableFixedOpWiden, theirAt, at, theirSize, 0, guard, arg, mySize & 0xff);
+        break;
+      }
+      // THE POOL IS TESTED BEFORE IT SPENDS (§5.2, the two-pass split).
+      if (!TableFixedKeeping(plan, guard)) { break; }
       const theirVariants = TableFixedChildren(theirs, ti);
       const myVariants = TableFixedChildren(mine, mi);
-      const n = theirVariants < 255 ? theirVariants : 255;
+      const n = theirVariants;
+      TableFixedRemapRoom(n);
       for (let j = 0; j < n; j++) {
         let landed = 0;
         for (let k = 0; k < myVariants; k++) {
@@ -971,12 +1049,12 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
 // THE COALESCER, and it is the only optimization a plan compiler performs: two
 // neighbouring COPY entries whose source and destination both advance together
 // are one entry. It is performed identically on both sides.
-function TableFixedCoalesce(plan) {
+function TableFixedCoalesce(plan, from) {
   const e = plan.entries;
-  let out = 0;
-  for (let i = 0; i < plan.count; i++) {
+  let out = from | 0;
+  for (let i = out; i < plan.count; i++) {
     const b = i * TableFixedLanes;
-    if (out > 0) {
+    if (out > (from | 0)) {
       const p = (out - 1) * TableFixedLanes;
       if (e[p + TableFixedLaneOp] === TableFixedOpCopy && e[b + TableFixedLaneOp] === TableFixedOpCopy &&
           e[p + TableFixedLaneGuard] === e[b + TableFixedLaneGuard] && e[p + TableFixedLaneArg] === e[b + TableFixedLaneArg] &&
@@ -996,6 +1074,121 @@ function TableFixedCoalesce(plan) {
 
 // TableFixedCompile builds the plan for ANOTHER writer's layout against my own,
 // and answers how many entries it wrote, or -1 when it did not fit.
+// ---- THE LINEAGE, AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5) ---------
+//
+// A fixed table reads BACKWARD and never forward. A file is matched on the eight
+// bytes of its header's hash against the lineage the BUILD laid down, and the
+// layout it carries is held to a BYTE COMPARISON against the bytes the lock
+// recorded — never walked. A hash the lineage does not hold is layout_newer
+// (ship the reader); a hash it holds below the floor is layout_unsupported
+// (upgrade the client). Those are the operator's two distinct answers, and
+// NOTHING PARSES A STRANGER'S LAYOUT ON ANY PATH.
+
+// TableFixedKnownLayout is ONE locked layout, and its members are §5.9 #19's
+// four IN THAT ORDER: the hash a file is matched on, the layout bytes verbatim,
+// the byte length riding BESIDE them, and the RECORD SIZE taken from the lock and
+// never from the file.
+//
+// THE HASH IS TWO UINT32 LANES and not one member, which is this language's only
+// divergence from that row's spelling: JavaScript has no sixty-four-bit integer
+// without a BigInt, and the same hash is compared once per RECORD in the read
+// loop, where an allocation per record is the cost §3.4 already refused.
+export class TableFixedKnownLayout {
+  constructor(hashLo, hashHi, layout, layoutBytes, recordBytes) {
+    this.hashLo = hashLo | 0;
+    this.hashHi = hashHi | 0;
+    this.layout = layout;
+    this.layoutBytes = layoutBytes | 0;
+    this.recordBytes = recordBytes | 0;
+  }
+}
+
+// TableFixedDecodeLayout turns a KNOWN layout's base64 constant into its bytes,
+// ONCE AT MODULE LOAD and off every load path. The bill's §11 cost is the
+// bundle: a lineage grows forever — a retired entry stays in it — and a byte
+// array literal is six source bytes per wire byte where base64 is four per
+// three.
+export function TableFixedDecodeLayout(text) {
+  const raw = atob(text);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) { out[i] = raw.charCodeAt(i); }
+  return out;
+}
+
+// TableFixedSelect is §5.3's step 5: the FIRST index whose wire hash is the
+// file's, or -1. It is the only thing a file is matched on.
+export function TableFixedSelect(known, hashLo, hashHi) {
+  for (let i = 0; i < known.length; i++) {
+    if ((known[i].hashLo >>> 0) === hashLo && (known[i].hashHi >>> 0) === hashHi) { return i; }
+  }
+  return -1;
+}
+
+// TableFixedRefuseHash is the two refusals that report THE FILE'S hash (§5.3,
+// §5.9 #7, #15). REFUSE is total: no counter moves and not one destination byte
+// is written, the prefill included.
+export function TableFixedRefuseHash(report, refusal, hashLo, hashHi) {
+  report.refused = refusal;
+  report.layoutHash = (BigInt(hashHi >>> 0) << 32n) | BigInt(hashLo >>> 0);
+  return -1;
+}
+
+// TableFixedLineagePlans lays ONE PLAN PER LINEAGE ENTRY down from THE LOCK'S
+// OWN BYTES, at MODULE LOAD — which is build time for this page and conforming
+// (§5.9 #3): the bytes came from the lock, the walk happens once per process, off
+// every load path, and a plan that will not build is a build-time answer and
+// never a refusal at the first file that needs it. What §5.8 row 3 forbids is the
+// other thing — compiling a plan FROM A FILE'S bytes when a load asks for it, and
+// keeping it in a cache a load can miss.
+//
+// THE SIZE IS DISCOVERED BY GROWING (§5.9 #4, #21): this language has an
+// allocator, so the build retries at four times the room up to 2^18 entries
+// rather than stating a formula, and an entry whose plan exceeds that records
+// plan_too_large ON THAT ENTRY, by name, for the day a file selects it.
+export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, imageBytes) {
+  const out = [];
+  for (let i = 0; i < known.length; i++) {
+    const k = known[i];
+    if ((k.hashLo >>> 0) === (ownLo >>> 0) && (k.hashHi >>> 0) === (ownHi >>> 0)) {
+      out.push(null); // the IDENTITY entry: the baked plan answers it
+      continue;
+    }
+    const theirs = new TableFixedLayoutView();
+    if (!TableFixedParseLayout(k.layout, 0, k.layoutBytes, theirs)) {
+      // A LINEAGE ENTRY THAT IS NOT A LAYOUT IS A BUG IN THE LOCK and the build
+      // fails (§5.9 #8); the generator holds that. Where the entries arrived at
+      // run time the reader still owes a NAME rather than a throw, so the entry
+      // carries layout_malformed and LOAD refuses by it.
+      const bad = new TableFixedPlan(1, imageBytes, 1);
+      bad.why = TableFixedRefusal.LayoutMalformed;
+      out.push(bad);
+      continue;
+    }
+    let lane = null;
+    for (let room = 256; room <= (1 << 18); room *= 4) {
+      const plan = new TableFixedPlan(room, imageBytes, room * 8);
+      const census = new TableFixedReport();
+      const made = TableFixedCompile(theirs, myLayout, myDst, plan, census);
+      if (made < 0) { continue; }
+      plan.recordBytes = k.recordBytes;
+      // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
+      // the load carries it onto the report ONCE, AFTER the record loop, on a
+      // read that RETURNS (§5.4, §5.9 #6).
+      plan.unknown = census.unknown;
+      plan.kindMismatch = census.kindMismatch;
+      plan.ready = true;
+      lane = plan;
+      break;
+    }
+    if (lane === null) {
+      lane = new TableFixedPlan(1, imageBytes, 1);
+      lane.why = TableFixedRefusal.PlanTooLarge;
+    }
+    out.push(lane);
+  }
+  return out;
+}
+
 export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   const mine = new TableFixedLayoutView();
   if (!TableFixedParseLayout(myLayout, 0, myLayout.length, mine)) { return -1; }
@@ -1003,9 +1196,19 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.remapUsed = 0;
   plan.overflow = false;
   plan.argw = 1;
+  // PASS 1, UNGUARDED, COUNTING THE CENSUS. PASS 2, GUARDED, COUNTING NOTHING
+  // (§5.2 PLAN): the census is once per peer, so a second walk of the same pairs
+  // must not count them twice.
+  plan.pass = 0;
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, report);
+  TableFixedCoalesce(plan, 0);
+  plan.split = plan.count;
+  plan.pass = 1;
+  const quiet = new TableFixedReport();
+  TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, quiet);
+  TableFixedCoalesce(plan, plan.split);
+  plan.pass = 0;
   if (plan.overflow) { return -1; }
-  TableFixedCoalesce(plan);
   return plan.count;
 }
 `

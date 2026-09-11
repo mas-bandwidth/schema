@@ -110,7 +110,19 @@ func init() {
 		Name{Name: "TableFixedLand", What: "mark one dest range the plan writes, so the complement is the holes"},
 		Name{Name: "TableFixedHoles", What: "the complement of the unguarded dest writes — what the prefill copies into"},
 		Name{Name: "TableFixedConv", What: "the sixteen-byte float conversion scratch, the flat packet tier's SC twin"},
-		Name{Name: "TableFixedCompile", What: "the plan compiler, run once per peer and never once per record"},
+		Name{Name: "TableFixedCompile", What: "the plan compiler, run once per peer at MODULE LOAD from the lock's bytes and never on a load path (§5.9 #3)"},
+
+		// §5'S LINEAGE AS STATIC DATA: a fixed table reads BACKWARD and never
+		// forward, so a file is matched on its hash against the layouts the
+		// BUILD laid down and nothing parses a stranger's layout on any path
+		// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.3).
+		Name{Name: "TableFixedKeeping", What: "which half of §5.2's two-pass split the compile is keeping — the pool is tested BEFORE it spends"},
+		Name{Name: "TableFixedRemapRoom", What: "the remap scratch grown to the WRITER'S variant count: the table is never capped at 255 (§5.2, not §5.8 row 14)"},
+		Name{Name: "TableFixedKnownLayout", What: "one known layout of a lineage entry: its hash in two lanes, its bytes, their length and its record size (§5.2, §5.9 #19)"},
+		Name{Name: "TableFixedDecodeLayout", What: "a known layout's base64 constant decoded once at module load — the bill §11 bundle cost of a lineage that grows forever"},
+		Name{Name: "TableFixedSelect", What: "§5.3 step 5: the FIRST lineage index whose wire hash is the file's, or -1 — the only thing a file is matched on"},
+		Name{Name: "TableFixedRefuseHash", What: "the two refusals that report THE FILE'S hash: layout_newer (ship the reader) and layout_unsupported (upgrade the client)"},
+		Name{Name: "TableFixedLineagePlans", What: "one plan per lineage entry, laid down at module load from THE LOCK'S bytes: nothing on a load path compiles (§5.8 row 3)"},
 		Name{Name: "TableFixedCompileEntry", What: "the compiler's per-entry walk, matching one of the writer's entries against one of mine"},
 		Name{Name: "TableFixedMatchChildren", What: "the compiler's walk of a table's children on both sides, by id — and the count of every field of theirs I could not name"},
 		Name{Name: "TableFixedPush", What: "the compiler's one plan-entry append, which refuses rather than grows"},
