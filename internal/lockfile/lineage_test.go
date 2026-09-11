@@ -281,3 +281,131 @@ func TestLockLineageWarnsPastTheAdvisoryBound(t *testing.T) {
 		t.Errorf("every layout stays: %d", n)
 	}
 }
+
+// ---- THE RETIRE VERBS: the one non-append edit this file permits ----
+
+// TestLockRetireEntry is §11.4: "`schema lock --retire Table@<hash>` marks a
+// lineage entry retired (a permitted non-append edit, recorded with a reason);
+// COMPILE emits the retired hashes beside the supported ones so LOAD can say
+// `layout_unsupported` rather than `layout_newer`; a retired entry stays in the
+// lineage forever."
+func TestLockRetireEntry(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    a int32"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, lockfile.FileName)
+	first, _, _ := wireHashOf(t, paths, "Row")
+	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(rowTable("    a int32\n    b int32")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	second, _, _ := wireHashOf(t, paths, "Row")
+
+	reason := "the 0.3 client is gone; nothing live writes this layout"
+	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", first), reason); err != nil || !rewrote {
+		t.Fatalf("--retire takes one lineage entry: rewrote=%v err=%v", rewrote, err)
+	}
+	got := lineageOf(t, path, "Row")
+	if len(got) != 2 {
+		t.Fatalf("a retired entry STAYS in the lineage: %d entries", len(got))
+	}
+	if !got[0].Retired || got[0].Reason != reason || got[0].Wire != first {
+		t.Errorf("the named entry is retired, with its reason: %+v", got[0])
+	}
+	if got[1].Retired || got[1].Wire != second {
+		t.Errorf("no other entry moves: %+v", got[1])
+	}
+	if f := lockfile.Floor(readLock(t, path), "Row"); f != 1 {
+		t.Errorf("the floor is one past the highest retired index: %d", f)
+	}
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Fatalf("a retirement is not a break: %v", errs)
+	}
+	// the current layout cannot be retired: a reader built from this lock reads
+	// its own records
+	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", second), "no"); err == nil {
+		t.Error("retiring the CURRENT layout is refused")
+	}
+	// and a hash nothing in the lineage carries is a refusal that says so
+	if _, _, err := lockfile.Retire(load(t, paths), paths, "Row@0x0000000000000001", "no"); err == nil {
+		t.Error("a hash the lineage does not carry is refused")
+	}
+	// a retirement is a declaration, so it wants a sentence
+	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", first), ""); err == nil {
+		t.Error("--retire wants --reason")
+	}
+}
+
+// TestLockRetireTableThenRemoveTheDeclaration is §11.5: "A table is RETIRED,
+// never removed, until nothing live speaks it. `schema lock --retire Table`
+// marks the whole table retired; its lineage stays; the schema may then drop
+// the declaration, and §5.1's 'fixed removed' refusal applies only to an
+// UNRETIRED table."
+func TestLockRetireTableThenRemoveTheDeclaration(t *testing.T) {
+	const two = "package lockrows\n\nfixed table Row\n{\n    a int32\n}\n\nfixed table Keep\n{\n    k int32\n}\n"
+	dir, paths := fixture(t, two)
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, lockfile.FileName)
+	was, _, _ := wireHashOf(t, paths, "Row")
+
+	// FIRST the refusal, on the UNRETIRED table: dropping the declaration is a
+	// promise withdrawn
+	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte("package lockrows\n\nfixed table Keep\n{\n    k int32\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refuses(t, lockfile.Check(load(t, paths), paths),
+		"fixed table Row", "fixed removed", "--retire Row")
+	if _, _, err := lockfile.Update(load(t, paths), paths); err == nil {
+		t.Error("`schema lock` does not drop an unretired fixed table either")
+	}
+
+	// the declaration back, and the table retired
+	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(two), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reason := "nothing live speaks Row: the last writer shipped 2026-01"
+	if _, rewrote, err := lockfile.Retire(load(t, paths), paths, "Row", reason); err != nil || !rewrote {
+		t.Fatalf("--retire takes a whole table: rewrote=%v err=%v", rewrote, err)
+	}
+	lk := readLock(t, path)
+	if tbl := lk.Table("Row"); tbl == nil || !tbl.Retired || tbl.Reason != reason {
+		t.Fatalf("the table is marked retired, with its reason: %+v", tbl)
+	}
+	if len(lockfile.Lineage(lk, "Row")) != 1 {
+		t.Error("a retired table keeps its lineage")
+	}
+
+	// NOW the declaration may go, and the lock keeps the block and the lineage
+	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte("package lockrows\n\nfixed table Keep\n{\n    k int32\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Fatalf("a retired table's declaration may be dropped (§11.5): %v", errs)
+	}
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	lk = readLock(t, path)
+	tbl := lk.Table("Row")
+	if tbl == nil || !tbl.Retired {
+		t.Fatal("the retired table's block stays in the lock after the declaration goes")
+	}
+	if got := lockfile.Lineage(lk, "Row"); len(got) != 1 || got[0].Wire != was {
+		t.Errorf("its lineage stays, byte for byte: %+v", got)
+	}
+	if lk.Table("Keep") == nil {
+		t.Error("the live table is still locked")
+	}
+	if errs := lockfile.Check(load(t, paths), paths); len(errs) != 0 {
+		t.Errorf("and the lock is current: %v", errs)
+	}
+	// a table nothing locked cannot be retired
+	if _, _, err := lockfile.Retire(load(t, paths), paths, "Nope", "no"); err == nil {
+		t.Error("a table the lock does not carry is refused")
+	}
+}

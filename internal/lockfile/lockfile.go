@@ -163,6 +163,18 @@ type Table struct {
 
 	Entries []Entry
 
+	// Retired marks a fixed table NOTHING LIVE SPEAKS ANY MORE (bill §11.5):
+	// `schema lock --retire T`. Its block and its whole lineage stay in this
+	// file forever; what the mark buys is that the DECLARATION may then be
+	// dropped, and that the "fixed removed" refusal applies only to a table
+	// nobody has retired. A table is retired, never removed.
+	Retired bool
+
+	// Reason is the sentence the operator wrote when retiring the table. A
+	// retirement is the one DECLARATION this file holds — every other write it
+	// takes is an append — so it wants a sentence a person reads years later.
+	Reason string
+
 	// Lineage is every layout this table has had, OLDEST FIRST, the current one
 	// LAST — the record COMPILE reads (lineage.go, bill §6b and §11.7). It is
 	// filled on a FIXED table and empty on a nested `type`: a type has no file
@@ -890,7 +902,7 @@ func (u *Unit) Text() string {
 	fmt.Fprintf(&b, "%s %d\n", magic, u.Version)
 	fmt.Fprintf(&b, "package %s\n", u.Package)
 	for _, t := range u.Tables {
-		fmt.Fprintf(&b, "\n%s %s layout=0x%016x\n", t.Decl, t.Name, t.Layout)
+		fmt.Fprintf(&b, "\n%s %s layout=0x%016x%s\n", t.Decl, t.Name, t.Layout, retiredText(t.Retired, t.Reason))
 		for _, e := range t.Entries {
 			fmt.Fprintf(&b, "    %s\n", e.line())
 		}
@@ -977,14 +989,16 @@ func Parse(path string, data []byte) (*Unit, error) {
 			}
 			u.Package = fields[1]
 		case fields[0] == "fixed" && len(fields) > 1 && fields[1] == "table":
+			head, retired, reason := splitRetired(line)
+			fields = strings.Fields(head)
 			if len(fields) != 4 {
-				return nil, fmt.Errorf("%s: a table line is `fixed table <Name> layout=0x...`", where)
+				return nil, fmt.Errorf("%s: a table line is `fixed table <Name> layout=0x... [retired] [reason=<text>]`", where)
 			}
 			h, err := parseHex(fields[3], "layout")
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)
 			}
-			u.Tables = append(u.Tables, Table{Decl: DeclFixedTable, Name: fields[2], Layout: h})
+			u.Tables = append(u.Tables, Table{Decl: DeclFixedTable, Name: fields[2], Layout: h, Retired: retired, Reason: reason})
 			cur, curList = &u.Tables[len(u.Tables)-1], nil
 		case fields[0] == DeclType:
 			if len(fields) != 3 {

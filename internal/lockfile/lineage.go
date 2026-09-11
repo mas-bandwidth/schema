@@ -359,3 +359,243 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 		fmt.Sprintf("its layout hashes to 0x%016x", cur.Wire),
 		fmt.Sprintf("not the lineage's last entry (0x%016x): the declaration has a layout the record does not end with", last.Wire))
 }
+
+// retiredText is the tail a retired lineage entry or a retired table carries:
+// the mark, then the reason LAST, because the reason is the one token that holds
+// a sentence and the rest of the line is its text.
+func retiredText(retired bool, reason string) string {
+	s := ""
+	if retired {
+		s += " retired"
+	}
+	if reason != "" {
+		s += " reason=" + reason
+	}
+	return s
+}
+
+// splitRetired takes the `retired` mark and the rest-of-line reason off a line,
+// and hands back the head for a field-by-field read.
+func splitRetired(line string) (head string, retired bool, reason string) {
+	head = strings.TrimSpace(line)
+	if at := strings.Index(head, " reason="); at >= 0 {
+		reason = strings.TrimSpace(head[at+len(" reason="):])
+		head = head[:at]
+	}
+	if strings.HasSuffix(head, " retired") {
+		retired = true
+		head = strings.TrimSuffix(head, " retired")
+	}
+	return head, retired, reason
+}
+
+// Retire is the lock's ONE NON-APPEND EDIT, and the bill gives it two forms
+// (§11.4, §11.5):
+//
+//   - `schema lock --retire T@<hash> --reason "..."` marks ONE LINEAGE ENTRY
+//     retired. The entry stays in the lineage forever; COMPILE emits the retired
+//     hashes beside the supported ones so LOAD answers a file carrying that
+//     layout with `layout_unsupported` — "upgrade the client" — rather than
+//     `layout_newer`, which means "ship the reader". The two answers point the
+//     operator in opposite directions, and that is why a retired entry is kept
+//     rather than dropped.
+//   - `schema lock --retire T --reason "..."` marks THE WHOLE TABLE retired. Its
+//     block and its lineage stay; what the mark buys is that the declaration may
+//     then be dropped, and that the "fixed removed" refusal applies only to a
+//     table nobody has retired. A table is retired, never removed, until nothing
+//     live speaks it.
+//
+// BOTH WANT A REASON. Every other write this file takes is an append, which
+// breaks nothing and declares nothing; a retirement declares that a layout no
+// reader will serve again, which is the kind of sentence the tables baseline
+// keeps for the same reason (SPEC §18.4).
+//
+// The lock must be CURRENT first: retiring is a statement about what the record
+// holds, so the record is brought up to date with `schema lock` before a person
+// makes one.
+func Retire(u *ir.Unit, paths []string, target, reason string) (path string, rewrote bool, err error) {
+	if strings.TrimSpace(reason) == "" {
+		return "", false, fmt.Errorf("--retire wants --reason: retiring a layout says no reader will ever serve it again, which is the one DECLARATION this file holds and the one write that is not an append (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4)")
+	}
+	if strings.ContainsAny(reason, "\n\r") {
+		return "", false, fmt.Errorf("--reason is one line: it rides at the end of the line it belongs to")
+	}
+	name, hashText, wantEntry := strings.Cut(target, "@")
+	path, ok, err := Locate(paths)
+	if err != nil {
+		return "", false, err
+	}
+	if !ok {
+		return "", false, fmt.Errorf("this unit has no %s — there is nothing to retire until the table is locked (docs/SPEC-TABLES.md §2.10)", FileName)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false, err
+	}
+	locked, err := Parse(path, data)
+	if err != nil {
+		return "", false, fmt.Errorf("%w — the compiler owns this file; write it with: schema lock (docs/SPEC-TABLES.md §2.10)", err)
+	}
+	live := Render(u)
+	salvageLineage(locked, live)
+	if errs := Diff(locked, live, Current); len(errs) > 0 {
+		return "", false, fmt.Errorf("%s: the lock is not current, so a retirement would be a statement about a record nobody has: run `schema lock` first — %w", path, errs[0])
+	}
+	locked.Version = Version
+
+	t := locked.Table(name)
+	if t == nil || t.Decl != DeclFixedTable {
+		return "", false, fmt.Errorf("%s: this lock carries no fixed table %s — `--retire` names a LOCKED table, with or without one of its layouts (`%s@<hash>`)", path, name, name)
+	}
+	before := string(data)
+	switch {
+	case !wantEntry:
+		t.Retired, t.Reason = true, reason
+	default:
+		h, perr := parseHex("wire="+hashText, "wire")
+		if perr != nil {
+			return "", false, fmt.Errorf("%s: `--retire %s` names one of this table's layout hashes: %w", path, target, perr)
+		}
+		at := -1
+		for i := range t.Lineage {
+			if t.Lineage[i].Wire == h {
+				at = i
+			}
+		}
+		if at < 0 {
+			return "", false, fmt.Errorf("%s: fixed table %s has no layout 0x%016x in its lineage — a hash nothing ever locked cannot be retired, and a file carrying it is `layout_newer` already (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.9)", path, name, h)
+		}
+		if at == len(t.Lineage)-1 {
+			return "", false, fmt.Errorf("%s: 0x%016x is fixed table %s's CURRENT layout — a reader built from this lock reads its own records, so the current entry is never retired; retire the table instead (`--retire %s`) when nothing live speaks it (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4, §11.5)", path, h, name, name)
+		}
+		t.Lineage[at].Retired, t.Lineage[at].Reason = true, reason
+	}
+	text := locked.Text()
+	if text == before {
+		return path, false, nil
+	}
+	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+		return "", false, err
+	}
+	return path, true, nil
+}
+
+// retiredOrphans names every locked block that is in this file ONLY because a
+// retired table's declaration has been dropped (§11.5): the retired tables
+// themselves, and the `type`, enum, flags and union blocks nothing the unit
+// still declares reaches. They are carried forward rather than refused, because
+// a retired table's lineage stays forever and the blocks its entries name are
+// part of what it says.
+func retiredOrphans(locked, live *Unit) map[string]bool {
+	var retired []string
+	for i := range locked.Tables {
+		lk := &locked.Tables[i]
+		if lk.Decl != DeclFixedTable || !lk.Retired {
+			continue
+		}
+		if lv := live.Table(lk.Name); lv == nil || lv.Decl != DeclFixedTable {
+			retired = append(retired, lk.Name)
+		}
+	}
+	if len(retired) == 0 {
+		return nil
+	}
+	// what the LIVE declarations still reach, walked over the locked blocks
+	keep := map[string]bool{}
+	var walk func(name string)
+	walk = func(name string) {
+		if keep[name] {
+			return
+		}
+		keep[name] = true
+		if t := locked.Table(name); t != nil {
+			for _, e := range t.Entries {
+				if e.HeldName != "" {
+					walk(e.HeldName)
+				}
+				if e.KeyName != "" {
+					walk(e.KeyName)
+				}
+			}
+		}
+		if v := locked.List(name); v != nil {
+			for _, p := range v.Payloads {
+				if at := strings.Index(p, "@"); at > 0 {
+					walk(p[:at])
+				}
+			}
+		}
+	}
+	for i := range live.Tables {
+		walk(live.Tables[i].Name)
+	}
+	orphans := map[string]bool{}
+	for i := range locked.Tables {
+		if n := locked.Tables[i].Name; !keep[n] {
+			orphans[n] = true
+		}
+	}
+	for i := range locked.Values {
+		if n := locked.Values[i].Name; !keep[n] {
+			orphans[n] = true
+		}
+	}
+	return orphans
+}
+
+// carryRetired puts the blocks of [retiredOrphans] back onto the rendering that
+// is about to be written, each in the name order its group is written in, so a
+// retired table's record — its entries, its lineage, its reason — survives the
+// day its declaration goes.
+func carryRetired(locked, live *Unit) {
+	orphans := retiredOrphans(locked, live)
+	if len(orphans) == 0 {
+		return
+	}
+	for i := range locked.Tables {
+		lk := locked.Tables[i]
+		if !orphans[lk.Name] || live.Table(lk.Name) != nil {
+			continue
+		}
+		at := len(live.Tables)
+		for j := range live.Tables {
+			if live.Tables[j].Decl == lk.Decl && live.Tables[j].Name > lk.Name {
+				at = j
+				break
+			}
+			if lk.Decl == DeclFixedTable && live.Tables[j].Decl == DeclType {
+				at = j
+				break
+			}
+		}
+		live.Tables = append(live.Tables, Table{})
+		copy(live.Tables[at+1:], live.Tables[at:])
+		live.Tables[at] = lk
+	}
+	for i := range locked.Values {
+		lk := locked.Values[i]
+		if !orphans[lk.Name] || live.List(lk.Name) != nil {
+			continue
+		}
+		rank := func(decl string) int {
+			switch decl {
+			case DeclEnum:
+				return 0
+			case DeclFlags:
+				return 1
+			default:
+				return 2
+			}
+		}
+		at := len(live.Values)
+		for j := range live.Values {
+			if rank(live.Values[j].Decl) > rank(lk.Decl) || (live.Values[j].Decl == lk.Decl && live.Values[j].Name > lk.Name) {
+				at = j
+				break
+			}
+		}
+		live.Values = append(live.Values, ValueList{})
+		copy(live.Values[at+1:], live.Values[at:])
+		live.Values[at] = lk
+	}
+}

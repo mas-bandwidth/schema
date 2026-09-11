@@ -59,6 +59,11 @@ func Diff(locked, live *Unit, policy Policy) []error {
 	// is the case the record itself is wrong in: a lineage a hand truncated, or
 	// a lock from a rendering that had none.
 	var lineage []error
+	// THE RETIRED TABLE'S BLOCKS (bill §11.5): a retired table whose declaration
+	// has been dropped, and the types, enums, flags and unions nothing live
+	// reaches any more because of it, are the record of something that shipped
+	// and are kept rather than refused.
+	orphans := retiredOrphans(locked, live)
 	for i := range locked.Tables {
 		lk := &locked.Tables[i]
 		// THE SELF-CONSISTENCY CHECK, FIRST. The layout hash and the entries
@@ -73,7 +78,9 @@ func Diff(locked, live *Unit, policy Policy) []error {
 		}
 		lv := live.Table(lk.Name)
 		if lv == nil || lv.Decl != lk.Decl {
-			errs = append(errs, gone(lk, lv))
+			if !orphans[lk.Name] {
+				errs = append(errs, gone(lk, lv))
+			}
 			continue
 		}
 		if err := diffTable(lk, lv, policy); err != nil {
@@ -97,6 +104,9 @@ func Diff(locked, live *Unit, policy Policy) []error {
 		}
 		lv := live.List(lk.Name)
 		if lv == nil || lv.Decl != lk.Decl {
+			if orphans[lk.Name] {
+				continue
+			}
 			errs = append(errs, fmt.Errorf("%s %s is in the lock and this unit's fixed tables no longer reach it — the lock holds every type a fixed record is made of, so a type leaving the closure is a field that changed what it holds; restore it, or deprecate that field and append a new one (docs/SPEC-TABLES.md §2.10)",
 				lk.Decl, lk.Name))
 			continue
@@ -144,8 +154,8 @@ func gone(lk, lv *Table) error {
 			lk.Decl, lk.Name, lv.Decl, rule)
 	}
 	if lk.Decl == DeclFixedTable {
-		return fmt.Errorf("fixed table %s is in the lock and this unit no longer declares it as a fixed table: fixed removed — a fixed table's layout is a promise to every record already written, and a promise is not withdrawn; compaction is a NEW table under a NEW name (docs/SPEC-TABLES.md §2.10)",
-			lk.Name)
+		return fmt.Errorf("fixed table %s is in the lock and this unit no longer declares it as a fixed table: fixed removed — a fixed table's layout is a promise to every record already written, and a promise is not withdrawn; compaction is a NEW table under a NEW name, and when NOTHING LIVE SPEAKS THIS ONE retire it first (`schema lock --retire %s --reason \"...\"`), which keeps its lineage and lets the declaration go (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.5, docs/SPEC-TABLES.md §2.10)",
+			lk.Name, lk.Name)
 	}
 	return fmt.Errorf("type %s is in the lock and this unit's fixed tables no longer nest it by value — a nested record's fields ARE the holder's bytes, so a type leaving the closure is a field that changed what it holds; restore it, or deprecate that field and append a new one (docs/SPEC-TABLES.md §2.10)",
 		lk.Name)

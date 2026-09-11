@@ -197,6 +197,8 @@ func main() {
 		// is the command that makes it current.
 		fs := flag.NewFlagSet("lock", flag.ExitOnError)
 		print := fs.Bool("print", false, "print the lock this unit would write, and write nothing")
+		retire := fs.String("retire", "", "retire a locked layout (`Table@0x<hash>`) or a whole locked table (`Table`) — the lock's one non-append edit: nothing is removed, the entry or the block stays with its reason, and a retired table's declaration may then be dropped (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4, §11.5)")
+		reason := fs.String("reason", "", "the sentence that goes in the file beside a `--retire` mark, read years later by whoever asks why")
 		fs.BoolVar(&verbose, "verbose", false, "name the file written")
 		_ = fs.Parse(os.Args[2:]) // ExitOnError: Parse never returns an error
 		paths, err := compiler.GatherPaths(fs.Args())
@@ -210,6 +212,25 @@ func main() {
 		if *print {
 			fmt.Print(compiler.SchemaLockText(u))
 			break
+		}
+		if *retire != "" {
+			// THE ONE NON-APPEND EDIT (bill §11.4, §11.5), and it is a verb of
+			// this command because the file has one writer.
+			path, rewrote, err := compiler.RetireSchemaLock(u, paths, *retire, *reason)
+			if err != nil {
+				fail(err)
+			}
+			if verbose {
+				if rewrote {
+					fmt.Printf("retired %s in %s\n", *retire, path)
+				} else {
+					fmt.Printf("%s is already retired in %s\n", *retire, path)
+				}
+			}
+			break
+		}
+		if *reason != "" {
+			fail(fmt.Errorf("--reason belongs to --retire: every other write this command takes is an append, and an append declares nothing (docs/SPEC-TABLES.md §2.10)"))
 		}
 		path, rewrote, err := compiler.UpdateSchemaLock(u, paths)
 		if err != nil {
