@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedCompile, TableFixedForm, TableFixedHashAt, TableFixedHashOf, TableFixedHeaderBytes, TableFixedHoles, TableFixedLayoutHeaderBytes, TableFixedLayoutView, TableFixedMessageForm, TableFixedParseLayout, TableFixedPlan, TableFixedRefusal, TableFixedResetReport, TableFixedRun, TableFixedSize, TableFixedVariableForm } from "./BenchTable.js";
+import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedDecodeLayout, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -301,6 +301,31 @@ const FixedTableFixedDst = new Int32Array([
 // runs, reaching its best case rather than skipping a step.
 const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
 
+// THE KNOWN LAYOUTS (docs/FIXED-FORM-ALGORITHM.md §5.2): one entry per
+// locked layout, OLDEST FIRST, the current one LAST. A file is matched on
+// the hash and read under THE LOCK'S layout bytes; its own are compared and
+// never parsed. A RETIRED entry stays here forever — the floor cuts it.
+//
+// THE BYTES RIDE AS BASE64, decoded once at module load (bill §11's bundle
+// cost): a lineage grows forever, and a byte-array literal is six source
+// bytes per wire byte where base64 is four per three. The reader's OWN
+// layout is the array above, not a second copy.
+const FixedTableFixedKnown = [
+  new TableFixedKnownLayout(0x195f9ec9, 0x6237c1dc, FixedTableFixedLayout, 1279, 1244),
+];
+
+// THE FLOOR is one number and the lineage is one array, so "retired" is an
+// index cut and the operator's two answers stay distinct: below it a layout
+// this build once served is layout_unsupported (upgrade the client), outside
+// the lineage is layout_newer (ship the reader).
+export const FixedTableFixedFloor = 0;
+
+// ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes at module
+// load: nothing compiles on the load path, nothing on it parses a layout,
+// and the load path cannot fail for want of a plan (§5.9 #3, §5.8 row 3).
+const FixedTableFixedLineagePlans = TableFixedLineagePlans(FixedTableFixedKnown,
+  FixedTableFixedHashLo, FixedTableFixedHashHi, FixedTableFixedLayout, FixedTableFixedDst, FixedTableFixedBodyBytes);
+
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
 // NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is
 // a refusal by name.
@@ -370,28 +395,29 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
                   (bytes[TableFixedHashAt + 2] << 16) | (bytes[TableFixedHashAt + 3] << 24)) >>> 0);
   const hashHi = ((bytes[TableFixedHashAt + 4] | (bytes[TableFixedHashAt + 5] << 8) |
                   (bytes[TableFixedHashAt + 6] << 16) | (bytes[TableFixedHashAt + 7] << 24)) >>> 0);
-  report.hashLo = hashLo | 0; report.hashHi = hashHi | 0; // the header's hash; digest is not on the wire
   if (plan === null) { report.refused = TableFixedRefusal.NoLayout; return -1; }
+  const pick = TableFixedSelect(FixedTableFixedKnown, hashLo, hashHi);
+  if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }
+  if (pick < FixedTableFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }
+  const known = FixedTableFixedKnown[pick];
+  if (layoutBytes !== known.layoutBytes) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+  for (let i = 0; i < layoutBytes; i++) {
+    if (bytes[layoutAt + i] !== known.layout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+  }
   let entries = FixedTableFixedIdentity, entryCount = 1, remap = null;
-  let recordBytes = FixedTableFixedRecordBytes;
-  if (hashLo === (FixedTableFixedHashLo >>> 0) && hashHi === (FixedTableFixedHashHi >>> 0)) {
-    if (layoutBytes !== FixedTableFixedLayout.length) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
-    for (let i = 0; i < layoutBytes; i++) {
-      if (bytes[layoutAt + i] !== FixedTableFixedLayout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
-    }
-  } else {
-    // ANOTHER WRITER: the same loop, over a plan compiled from its layout and
-    // CACHED BY HASH, so the compile is paid once per peer, not per record.
-    if (!plan.ready || (plan.hashLo >>> 0) !== hashLo || (plan.hashHi >>> 0) !== hashHi) {
-      const theirs = new TableFixedLayoutView();
-      if (!TableFixedParseLayout(bytes, layoutAt, layoutBytes, theirs)) { report.refused = theirs.refusal; return -1; }
-      const made = TableFixedCompile(theirs, FixedTableFixedLayout, FixedTableFixedDst, plan, report);
-      if (made < 0) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
-      plan.recordBytes = 8 + TableFixedSize(theirs, 0);
-      plan.hashLo = hashLo | 0; plan.hashHi = hashHi | 0; plan.ready = true;
-    }
-    entries = plan.entries; entryCount = plan.count; remap = plan.remap;
-    recordBytes = plan.recordBytes;
+  let censusUnknown = 0, censusKind = 0;
+  const recordBytes = known.recordBytes;
+  const lane = FixedTableFixedLineagePlans[pick];
+  if (lane !== null) {
+    if (lane.why !== 0) { report.refused = lane.why; return -1; }
+    // THE CALLER'S PLAN STAYS A CAPACITY DECLARATION and is no longer
+    // written through (§5.9 #5, #16, #24): its entry count is checked and
+    // a plan that does not fit refuses BY NAME.
+    if (lane.count > plan.capacity) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
+    entries = lane.entries; entryCount = lane.count; remap = lane.remap;
+    // THE CENSUS IS ONCE PER PEER and never per record (§5.4); it lands
+    // after the loop, on a read that RETURNS — REFUSE moves no counter.
+    censusUnknown = lane.unknown; censusKind = lane.kindMismatch;
   }
   // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
   // against this build's; digest is not on the wire, so the header hash is
@@ -429,6 +455,10 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     FixedTableFixedDecode(values[k], imageView, 0, report);
     at += recordBytes;
   }
+  // THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, on a read that returns
+  // (§5.9 #6). On a LAWFUL lineage it lands zero, always (§5.9 #30).
+  report.unknown += censusUnknown;
+  report.kindMismatch += censusKind;
   return n;
 }
 

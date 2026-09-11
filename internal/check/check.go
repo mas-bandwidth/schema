@@ -3959,6 +3959,13 @@ var tableGeneratedVerbs = []string{
 	// allocation per record, and the pair is claimed beside FixedHash rather
 	// than instead of it, because both spellings are emitted somewhere.
 	"FixedDecode", "FixedPrefill", "FixedIdentity", "FixedNewPlan", "FixedHashLo", "FixedHashHi",
+	// AND §5'S THREE (docs/FIXED-FORM-ALGORITHM.md §5.2): a fixed table reads
+	// BACKWARD and never forward, so every root carries its LINEAGE as static
+	// data — the known layouts oldest first, the floor as one number, and one
+	// plan per entry laid down at module load from the lock's bytes. They are
+	// per-declaration for the same reason the identity plan is: a lineage
+	// belongs to one table and a unit can declare several.
+	"FixedKnown", "FixedFloor", "FixedLineagePlans",
 	// THE C BACKEND's own name-first spellings (internal/codegen/ctable). C++
 	// and C# put these on a class — a builder's Lock, a storage's Create, a
 	// block type's Type — and a member function claims nothing. C has no
