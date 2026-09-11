@@ -79,12 +79,12 @@ func generateFixed(t *testing.T, src string, names ...string) map[string][]byte 
 func TestTagListNamesDoNotCollide(t *testing.T) {
 	out := generate(t, `package probe
 
-table ShipConfig | outer
+fixed table ShipConfig | outer
 {
     scale float32 = 1.0
 }
 
-table Ship
+fixed table Ship
 {
     config ShipConfig | inner
 }

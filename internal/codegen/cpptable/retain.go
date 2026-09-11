@@ -1779,37 +1779,47 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 		g.pf("%sauto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t\n%s{\n", ind, ind)
 		g.pf("%s    const TableRetainPath at = TableRetainPathRoot( node, 0 );\n", ind)
 		g.pf("%s    (void) c; (void) nn; (void) ii; (void) rt; (void) at;\n", ind)
-		g.pf("%s    switch ( type_id )\n%s    {\n", ind, ind)
-		for _, t := range reachable {
-			if g.isVar(t.Name) {
-				g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( c, nn, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
-				continue
+		if nodeDispatchEmpty(reachable, blobs) {
+			g.pf("%s    (void) type_id;\n", ind)
+		} else {
+			g.pf("%s    switch ( type_id )\n%s    {\n", ind, ind)
+			for _, t := range reachable {
+				if g.isVar(t.Name) {
+					g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( c, nn, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+					continue
+				}
+				g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 			}
-			g.pf("%s        case 0x%016xull: return %sMeasureBodyRetain( ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			for _, b := range blobs {
+				g.pf("%s        case %s: return (int64_t) ( (const TableBlob *) node )->length;\n", ind, b.constant)
+			}
+			g.pf("%s        default: break;\n%s    }\n", ind, ind)
 		}
-		for _, b := range blobs {
-			g.pf("%s        case %s: return (int64_t) ( (const TableBlob *) node )->length;\n", ind, b.constant)
-		}
-		g.pf("%s        default: break;\n%s    }\n%s    return -1;\n%s};\n", ind, ind, ind, ind)
+		g.pf("%s    return -1;\n%s};\n", ind, ind)
 	}
 	saveDispatch := func(ind string) {
 		g.pf("%sauto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool\n%s{\n", ind, ind)
 		g.pf("%s    const TableRetainPath at = TableRetainPathRoot( node, 0 );\n", ind)
 		g.pf("%s    (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;\n", ind)
-		g.pf("%s    switch ( type_id )\n%s    {\n", ind, ind)
-		for _, t := range reachable {
-			if g.isVar(t.Name) {
-				g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( c, nn, ww, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
-				continue
+		if nodeDispatchEmpty(reachable, blobs) {
+			g.pf("%s    (void) type_id;\n", ind)
+		} else {
+			g.pf("%s    switch ( type_id )\n%s    {\n", ind, ind)
+			for _, t := range reachable {
+				if g.isVar(t.Name) {
+					g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( c, nn, ww, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+					continue
+				}
+				g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( ww, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
 			}
-			g.pf("%s        case 0x%016xull: return %sSaveBodyRetain( ww, ii, *(const %s *) node, rt, at ); // %s\n", ind, ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name)
+			for _, b := range blobs {
+				g.pf("%s        case %s:\n%s        {\n", ind, b.constant, ind)
+				g.pf("%s            const TableBlob * blob = (const TableBlob *) node;\n", ind)
+				g.pf("%s            ww.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );\n%s            return true;\n%s        }\n", ind, ind, ind)
+			}
+			g.pf("%s        default: break;\n%s    }\n", ind, ind)
 		}
-		for _, b := range blobs {
-			g.pf("%s        case %s:\n%s        {\n", ind, b.constant, ind)
-			g.pf("%s            const TableBlob * blob = (const TableBlob *) node;\n", ind)
-			g.pf("%s            ww.raw( (const void *) ( blob + 1 ), (int64_t) blob->length );\n%s            return true;\n%s        }\n", ind, ind, ind)
-		}
-		g.pf("%s        default: break;\n%s    }\n%s    return false;\n%s};\n", ind, ind, ind, ind)
+		g.pf("%s    return false;\n%s};\n", ind, ind)
 	}
 
 	g.retain = true

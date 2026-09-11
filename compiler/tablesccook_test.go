@@ -16,7 +16,7 @@ import (
 // bytes include compact, differently aligned graph nodes and nested extents.
 func TestCTableCookCanonical(t *testing.T) {
 	u := unitFromSource(t, `package probe
-table Tiny { value uint8 }
+fixed table Tiny { value uint8 }
 table Bucket { numbers []int16 }
 table Root {
  flag uint8
@@ -121,7 +121,7 @@ func TestCTableCookAndBlockRefusals(t *testing.T) {
 	u := unitFromSource(t, `package probe
 enum Key { One, Two }
 type Row { value int32 }
-table Root {
+fixed table Root {
  rows [..2]Row
  keys [Key]int32
 }

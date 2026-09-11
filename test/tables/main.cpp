@@ -384,21 +384,35 @@ static void test_all_default()
 
 // ---- guarded fields stay off the wire when the guard says so ----
 
+// The guard rides on Guarded.schema's `Patrol`, a plain `table`, and not on
+// Tables.schema's ProfileConfig, which is a `fixed table`: a lookback
+// conditional exists to make a body vary in size, and that is "a disqualifying
+// thing for a fixed table. not supported. only variable." (§2.2, §3.4).
+//
+// So Patrol is read and written through the VARIABLE class's surface — a root
+// by pointer, a builder on the way in — which is the surface every guarded
+// table in this corpus now has, and the point of keeping one here.
+
 static void test_guard()
 {
-    tabledemo::ProfileConfig p;
-    p.has_loadout = false;
-    p.loadout.grade = tabledemo::Grade::Gold; // junk behind an untaken guard
+    tabledemo::Patrol p;
+    p.active = false;
+    p.speed = 9.5f;      // junk behind an untaken guard
+    p.has_target = true; // likewise: `has_target` itself rides only under `active`
 
     uint8_t buffer[512];
-    int64_t wrote = tabledemo::ProfileConfigSave( p, buffer, sizeof( buffer ) );
-    CHECK( wrote == empty_wire_bytes ); // guard false + everything else default: all elides
-    CHECK( tabledemo::ProfileConfigMeasure( p ) == wrote );
+    int64_t wrote = tabledemo::PatrolSave( &p, buffer, sizeof( buffer ) );
+    CHECK( wrote == empty_wire_bytes ); // guard false + the taken side default: all elides
+    CHECK( tabledemo::PatrolMeasure( &p ) == wrote );
 
     tabledemo::TableReport report;
-    tabledemo::ProfileConfig out;
-    CHECK( tabledemo::ProfileConfigLoad( out, buffer, wrote, &report ) );
-    CHECK( out.loadout.grade == tabledemo::Grade::Silver ); // untaken side decodes to defaults
+    tabledemo::PatrolBuilder out;
+    CHECK( tabledemo::PatrolLoadBuilder( out, buffer, wrote, &report ) );
+    const tabledemo::Patrol * back = out.GetRoot();
+    CHECK( back != NULL );
+    CHECK( back->speed == 1.0f );    // untaken side decodes to declared defaults
+    CHECK( back->has_target == false );
+    CHECK( back->note_length == 0 ); // the taken side was default, so it elided too
 }
 
 // ---- evolution, both directions (docs/SPEC-TABLES.md: any reader x any data) ----
@@ -1075,9 +1089,21 @@ static void test_reflection()
     CHECK( profiles->array_bound == 4 );
     CHECK( profiles->table == tabledemo::ProfileConfigTableType() );
 
-    // guards surface machine-usable
+    // guards surface machine-usable — and they surface on Guarded.schema's
+    // `Patrol`, a plain `table`, because a guarded branch disqualifies a
+    // `fixed table` (docs/SPEC-TABLES.md §2.2, §3.4) and ProfileConfig is one.
+    // The composition rides in the descriptor exactly as the branch tree spells
+    // it, which is what the text walk evaluates.
+    const tabledemo::TableFieldInfo * patrol_speed = demo_field( tabledemo::PatrolTableType(), "speed" );
+    CHECK( patrol_speed != NULL && strcmp( patrol_speed->guard, "active" ) == 0 );
+    const tabledemo::TableFieldInfo * patrol_target = demo_field( tabledemo::PatrolTableType(), "target_id" );
+    CHECK( patrol_target != NULL && strcmp( patrol_target->guard, "active && has_target" ) == 0 );
+    const tabledemo::TableFieldInfo * patrol_wander = demo_field( tabledemo::PatrolTableType(), "wander" );
+    CHECK( patrol_wander != NULL && strcmp( patrol_wander->guard, "active && !has_target" ) == 0 );
+
+    // and the complement: every field of a FIXED table is unguarded, by class
     const tabledemo::TableFieldInfo * loadout = demo_field( tabledemo::ProfileConfigTableType(), "loadout" );
-    CHECK( loadout != NULL && strcmp( loadout->guard, "has_loadout" ) == 0 );
+    CHECK( loadout != NULL && loadout->guard[0] == 0 );
 
     // every one of the 15 wire kinds rides somewhere in the corpus battery;
     // the scalar kinds pin here by descriptor (containers pinned above and
@@ -4226,47 +4252,50 @@ static void test_json_writer_refusals()
 
 // ---- guards: the wire's elision, carried into the text (docs/SPEC-TABLES.md §16.2)
 
+// Again on `Patrol`: the guarded corpus is the VARIABLE class's, because a
+// guard disqualifies a `fixed table` (§2.2, §3.4).
+
 static void test_json_guards()
 {
-    tabledemo::ProfileConfig off;
-    off.has_loadout = false;
-    off.loadout.grade = tabledemo::Grade::Gold; // stale, and off the wire
-    int64_t size = tabledemo::ProfileConfigToJsonMeasure( off );
+    tabledemo::Patrol off;
+    off.active = false;
+    off.speed = 9.5f; // stale, and off the wire
+    int64_t size = tabledemo::PatrolToJsonMeasure( &off );
     CHECK( size > 0 );
     std::vector<char> text( (size_t) size + 1 );
-    CHECK( tabledemo::ProfileConfigToJson( off, text.data(), size ) == size );
+    CHECK( tabledemo::PatrolToJson( &off, text.data(), size ) == size );
     text[(size_t) size] = 0;
-    CHECK( strstr( text.data(), "\"loadout\"" ) == NULL ); // guarded off, as on the wire
-    CHECK( strstr( text.data(), "\"has_loadout\"" ) != NULL ); // the guard is a plain key
+    CHECK( strstr( text.data(), "\"speed\"" ) == NULL ); // guarded off, as on the wire
+    CHECK( strstr( text.data(), "\"active\"" ) != NULL ); // the guard is a plain key
 
-    tabledemo::ProfileConfig on;
-    on.has_loadout = true;
-    on.loadout.grade = tabledemo::Grade::Gold;
-    size = tabledemo::ProfileConfigToJsonMeasure( on );
+    tabledemo::Patrol on;
+    on.active = true;
+    on.speed = 9.5f;
+    size = tabledemo::PatrolToJsonMeasure( &on );
     std::vector<char> text_on( (size_t) size + 1 );
-    CHECK( tabledemo::ProfileConfigToJson( on, text_on.data(), size ) == size );
+    CHECK( tabledemo::PatrolToJson( &on, text_on.data(), size ) == size );
     text_on[(size_t) size] = 0;
-    CHECK( strstr( text_on.data(), "\"loadout\"" ) != NULL );
+    CHECK( strstr( text_on.data(), "\"speed\"" ) != NULL );
 
     // reading INFERS NOTHING: the guard is an ordinary bool key, and a guarded
     // field's key is placed whether or not the guard came first — key order in
     // an object is nobody's contract
-    tabledemo::ProfileConfig value;
+    tabledemo::PatrolBuilder value;
     tabledemo::TableReport report;
-    const char * after = "{ \"loadout\": { \"grade\": \"Gold\" }, \"has_loadout\": true }";
-    CHECK( tabledemo::ProfileConfigFromJson( value, after, (int64_t) strlen( after ), &report ) );
-    CHECK( value.has_loadout && value.loadout.grade == tabledemo::Grade::Gold );
+    const char * after = "{ \"speed\": 2.5, \"active\": true }";
+    CHECK( tabledemo::PatrolFromJson( value, after, (int64_t) strlen( after ), &report ) );
+    CHECK( value.GetRoot() != NULL && value.GetRoot()->active && value.GetRoot()->speed == 2.5f );
 
     // and a guarded field placed with the guard FALSE is elided on the way
     // out, so the wire never sees it either
-    tabledemo::ProfileConfig ignored;
-    const char * no_guard = "{ \"loadout\": { \"grade\": \"Gold\" } }";
-    CHECK( tabledemo::ProfileConfigFromJson( ignored, no_guard, (int64_t) strlen( no_guard ), &report ) );
-    CHECK( !ignored.has_loadout );
+    tabledemo::PatrolBuilder ignored;
+    const char * no_guard = "{ \"speed\": 2.5 }";
+    CHECK( tabledemo::PatrolFromJson( ignored, no_guard, (int64_t) strlen( no_guard ), &report ) );
+    CHECK( ignored.GetRoot() != NULL && !ignored.GetRoot()->active );
     uint8_t wire[512];
-    int64_t wrote = tabledemo::ProfileConfigSave( ignored, wire, sizeof( wire ) );
-    tabledemo::ProfileConfig fresh;
-    CHECK( wrote == tabledemo::ProfileConfigMeasure( fresh ) ); // the empty body
+    int64_t wrote = tabledemo::PatrolSave( ignored, wire, sizeof( wire ) );
+    tabledemo::Patrol fresh;
+    CHECK( wrote == tabledemo::PatrolMeasure( &fresh ) ); // the empty body
 }
 
 // ---- the json = "key" attribute: the text's vocabulary, not the wire's ----
@@ -4852,10 +4881,10 @@ static void test_json_nested_guards()
         value.wander = 9.5f;
         set_string( value.note, value.note_length, "patrol" );
 
-        int64_t size = tabledemo::PatrolToJsonMeasure( value );
+        int64_t size = tabledemo::PatrolToJsonMeasure( &value );
         CHECK( size > 0 );
         std::vector<char> text( (size_t) size + 1 );
-        CHECK( tabledemo::PatrolToJson( value, text.data(), size ) == size );
+        CHECK( tabledemo::PatrolToJson( &value, text.data(), size ) == size );
         text[(size_t) size] = 0;
 
         // the text carries exactly the fields the WIRE would carry: a guard
@@ -4867,13 +4896,15 @@ static void test_json_nested_guards()
         CHECK( ( strstr( text.data(), "\"note\"" ) != NULL ) == !state.active );
         CHECK( strstr( text.data(), "\"active\"" ) != NULL ); // the guard itself is a plain key
 
-        // and the round trip lands the same wire
-        tabledemo::Patrol back;
+        // and the round trip lands the same wire — the text reads back into a
+        // BUILDER, because Patrol is the variable class (a guard is what makes
+        // it one, docs/SPEC-TABLES.md §2.2, §3.4)
+        tabledemo::PatrolBuilder back;
         tabledemo::TableReport report;
         CHECK( tabledemo::PatrolFromJson( back, text.data(), size, &report ) );
         CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 );
         uint8_t a[512], b[512];
-        int64_t na = tabledemo::PatrolSave( value, a, sizeof( a ) );
+        int64_t na = tabledemo::PatrolSave( &value, a, sizeof( a ) );
         int64_t nb = tabledemo::PatrolSave( back, b, sizeof( b ) );
         if ( na <= 0 || na != nb || memcmp( a, b, (size_t) na ) != 0 )
         {
@@ -4886,13 +4917,14 @@ static void test_json_nested_guards()
     // reading is ORDER-FREE: every key placed before either guard is named,
     // and the instance still matches the one built by hand
     {
-        tabledemo::Patrol value;
+        tabledemo::PatrolBuilder value;
         tabledemo::TableReport report;
         const char * text =
             "{ \"target_id\": 7, \"wander\": 1.5, \"note\": \"x\", \"speed\": 2.5,"
             "  \"has_target\": true, \"active\": true }";
         CHECK( tabledemo::PatrolFromJson( value, text, (int64_t) strlen( text ), &report ) );
-        CHECK( value.active && value.has_target && value.target_id == 7 && value.speed == 2.5f );
+        const tabledemo::Patrol * read = value.GetRoot();
+        CHECK( read != NULL && read->active && read->has_target && read->target_id == 7 && read->speed == 2.5f );
 
         tabledemo::Patrol hand;
         hand.active = true;
@@ -4903,11 +4935,41 @@ static void test_json_nested_guards()
         set_string( hand.note, hand.note_length, "x" );
         uint8_t a[512], b[512];
         int64_t na = tabledemo::PatrolSave( value, a, sizeof( a ) );
-        int64_t nb = tabledemo::PatrolSave( hand, b, sizeof( b ) );
+        int64_t nb = tabledemo::PatrolSave( &hand, b, sizeof( b ) );
         CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
     }
 
-    JSON_ROUND_TRIP( tabledemo, Patrol, ( []() { tabledemo::Patrol p; p.active = true; p.has_target = false; p.speed = 8.0f; p.wander = 2.5f; return p; }() ) );
+    // the round trip JSON_ROUND_TRIP does for a fixed table, written out here:
+    // that macro is typed for the by-value surface, and Patrol has the variable
+    // class's. Measure is the write at EXACT capacity, one byte short refuses,
+    // a roomy write is the same bytes, and the text reads back to the same wire.
+    {
+        tabledemo::Patrol p;
+        p.active = true;
+        p.has_target = false;
+        p.speed = 8.0f;
+        p.wander = 2.5f;
+
+        int64_t size = tabledemo::PatrolToJsonMeasure( &p );
+        CHECK( size > 0 );
+        std::vector<char> text( (size_t) size );
+        CHECK( tabledemo::PatrolToJson( &p, text.data(), size ) == size );
+        std::vector<char> tight( (size_t) size - 1 );
+        CHECK( tabledemo::PatrolToJson( &p, tight.data(), size - 1 ) == -1 );
+        std::vector<char> roomy( (size_t) size + 64 );
+        CHECK( tabledemo::PatrolToJson( &p, roomy.data(), size + 64 ) == size );
+        CHECK( memcmp( roomy.data(), text.data(), (size_t) size ) == 0 );
+
+        tabledemo::PatrolBuilder back;
+        tabledemo::TableReport report;
+        CHECK( tabledemo::PatrolFromJson( back, text.data(), size, &report ) );
+        CHECK( !report.malformed && report.unknown == 0 && report.kind_mismatch == 0 &&
+               report.clamped == 0 && report.duplicate == 0 );
+        uint8_t a[512], b[512];
+        int64_t na = tabledemo::PatrolSave( &p, a, sizeof( a ) );
+        int64_t nb = tabledemo::PatrolSave( back, b, sizeof( b ) );
+        CHECK( na > 0 && na == nb && memcmp( a, b, (size_t) na ) == 0 );
+    }
 }
 
 // ---- the two constructs #265 added, in the text form --------------------

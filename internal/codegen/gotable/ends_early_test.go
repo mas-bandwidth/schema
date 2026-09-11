@@ -6,7 +6,7 @@ import (
 )
 
 const endsEarlySchema = `package probe
-table Root {
+fixed table Root {
  a int32 = 5
  b float32
 }

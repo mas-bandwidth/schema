@@ -11,7 +11,7 @@
 // a fixed one, whose slots share nodes with each other and with the chain.
 package streamdemo
 
-table Header
+fixed table Header
 {
     name string(16)
 }

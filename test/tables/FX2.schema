@@ -3,7 +3,7 @@
 // one is for.
 package tblfx2
 
-table FxNested
+fixed table FxNested
 {
     a int32 = 1 | min = 0, max = 1000
     b int32 = 2 | min = 0, max = 1000
@@ -12,13 +12,13 @@ table FxNested
 // A NESTED TYPE FX1 HAS NO NAME FOR. An FX1 reader steps over the whole of it
 // by the size its block entry states, which is the one skip a positional form
 // has to get right.
-table FxExtra
+fixed table FxExtra
 {
     x int32 = 0 | min = 0, max = 1000
     y int32 = 0 | min = 0, max = 1000
 }
 
-table FxRoot
+fixed table FxRoot
 {
     keep       uint32 = 7
     narrow     uint32 = 3

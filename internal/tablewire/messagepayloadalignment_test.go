@@ -18,7 +18,7 @@ func TestMessageNestedPayloadAlignment(t *testing.T) {
  enum Key { First, Second }
  type Item { text string(12)
  data [..3]uint8 }
- table Root { item Item
+ fixed table Root { item Item
  keyed [Key]Item }
  `)
 	for caseIndex, text := range []string{`{"item":{"text":"abc","data":[7]}}`, `{"keyed":{"First":{"text":"abc","data":[7]},"Second":{"data":[2,3]}}}`, `{"item":{"text":"abc","data":[7]},"keyed":{"First":{"text":"abc","data":[7]},"Second":{"data":[2,3]}}}`} {

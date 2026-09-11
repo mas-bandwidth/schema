@@ -15,7 +15,7 @@ import (
 // Re-masking after the clamp used to truncate this value back to u8/u16/u32.
 func TestUnsignedWideningClampsAtDeclaredWidth(t *testing.T) {
 	const source = `package widen
-    table Root { value uint64 = 1099511627776 | min = 1099511627776, max = 2199023255552
+    fixed table Root { value uint64 = 1099511627776 | min = 1099511627776, max = 2199023255552
     }
     `
 	ast, parseErrs := parser.Parse("Wide.schema", []byte(source))

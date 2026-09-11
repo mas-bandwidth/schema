@@ -5,14 +5,14 @@ package listdemo
 // array whose count the DATA decides, and every instance the harness pins over
 // these crosses the wire, the text and the cook.
 
-table Placement
+fixed table Placement
 {
     x     float32
     y     float32
     model uint32
 }
 
-table LogEntry { tick uint32 }
+fixed table LogEntry { tick uint32 }
 
 table Save
 {
@@ -25,7 +25,7 @@ enum Grade { A, B, C }
 
 flags Perm { Read, Write, Own }
 
-table Point
+fixed table Point
 {
     x int32
     y int32

@@ -293,7 +293,7 @@ func TestTheWideStringsWidth(t *testing.T) {
 func TestTheCountsTheDataDecide(t *testing.T) {
 	unit := tempUnit(t, `package countsdemo
 
-table Row
+fixed table Row
 {
     id uint32 = 0
 }
@@ -593,7 +593,7 @@ union Arm
     inner Inner
 }
 
-table Every
+fixed table Every
 {
     b     bool
     i8    int8 = 0

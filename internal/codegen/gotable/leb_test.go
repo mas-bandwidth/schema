@@ -6,7 +6,7 @@ import (
 )
 
 const lebSchema = `package probe
-table Root {
+fixed table Root {
  payload bytes(20000)
 }
 `

@@ -51,13 +51,13 @@ union Effect
     ward  Ward
 }
 
-table Cell
+fixed table Cell
 {
     power int32 = 0 | min = 0, max = 1000
     label string(8)
 }
 
-table Cfg
+fixed table Cfg
 {
     a      float32 = 5.0
     c      bool = true

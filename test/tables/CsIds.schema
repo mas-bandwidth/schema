@@ -145,7 +145,7 @@ enum Word
     V140,
 }
 
-table WideIds
+fixed table WideIds
 {
     words [140]Word
 }

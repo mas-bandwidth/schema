@@ -9121,10 +9121,7 @@ inline bool TwigBuilder::Lock()
 inline int64_t TwigNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -9135,21 +9132,15 @@ inline int64_t TwigNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
 inline void TwigNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // TwigNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t TwigNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -9159,11 +9150,8 @@ inline int64_t TwigNodeRecordBytes( uint64_t type_id )
 inline uint32_t TwigNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -9187,10 +9175,6 @@ inline void TwigNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -9202,10 +9186,7 @@ inline int64_t TwigNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -9236,14 +9217,9 @@ inline bool TwigNodeMessageBody( uint64_t type_id, TableBitReader & r, const Tab
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -10020,10 +9996,7 @@ inline bool NestBuilder::Lock()
 inline int64_t NestNodeStorage( uint64_t type_id, int64_t length, TableRefuseReason & reason )
 {
     (void) length; // no byte buffer below this root: every node's storage is its type's
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     (void) reason; // no blob and no extent below this root: nothing here refuses
     return -1;
 }
@@ -10034,21 +10007,15 @@ inline int64_t NestNodeStorage( uint64_t type_id, int64_t length, TableRefuseRea
 inline void NestNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) at;
-    switch ( type_id )
-    {
-        default: break;
-    }
 }
 
 // NestNodeRecordBytes: one record's OWN storage, before the extent its maps
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t NestNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -10058,11 +10025,8 @@ inline int64_t NestNodeRecordBytes( uint64_t type_id )
 inline uint32_t NestNodeAlloc( uint64_t type_id, TableWorker & worker, int64_t length )
 {
     (void) length;
+    (void) type_id;
     (void) worker;
-    switch ( type_id )
-    {
-        default: break;
-    }
     return 0;
 }
 
@@ -10086,10 +10050,6 @@ inline void NestNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     }
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -10101,10 +10061,7 @@ inline int64_t NestNodeMessageStorage( uint64_t type_id, int64_t extent, int64_t
 {
     (void) length;
     (void) extent;
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return -1;
 }
 
@@ -10135,14 +10092,9 @@ inline bool NestNodeMessageBody( uint64_t type_id, TableBitReader & r, const Tab
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -11880,10 +11832,6 @@ inline void TwigNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -12050,14 +11998,9 @@ inline bool TwigNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, con
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // TwigLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -12219,10 +12162,7 @@ inline int64_t TwigMeasureWireRetain( const Ctx & ctx, const Twig & root, TableR
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( TwigNumberFrom( ctx, numbering, root ) )
@@ -12249,20 +12189,14 @@ inline int64_t TwigSaveWireRetain( const Ctx & ctx, const Twig & root, TableReta
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !TwigNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -12344,10 +12278,6 @@ inline void NestNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
     nodes.carve = &carve;
     (void) nodes; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    switch ( type_id )
-    {
-        default: break;
-    }
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
@@ -12514,14 +12444,9 @@ inline bool NestNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, con
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // NestLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its
@@ -12683,10 +12608,7 @@ inline int64_t NestMeasureWireRetain( const Ctx & ctx, const Nest & root, TableR
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     if ( NestNumberFrom( ctx, numbering, root ) )
@@ -12713,20 +12635,14 @@ inline int64_t NestSaveWireRetain( const Ctx & ctx, const Nest & root, TableReta
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return -1;
     };
     auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
     {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
         (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
-        switch ( type_id )
-        {
-            default: break;
-        }
+        (void) type_id;
         return false;
     };
     if ( !NestNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
@@ -13013,16 +12929,8 @@ inline bool TwigCookLayout( const Ctx & ctx, const Twig & root, const TableNumbe
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;
@@ -13176,16 +13084,8 @@ inline bool NestCookLayout( const Ctx & ctx, const Nest & root, const TableNumbe
     if ( region.offsets != NULL ) { region.offsets[0] = 0; }
     for ( int64_t k = 0; k < numbering.count; k++ )
     {
-        int64_t size = 0;
-        int64_t node_align = 0;
-        switch ( numbering.entries[k].type_id )
-        {
-            default: return false;
-        }
-        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );
-        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }
-        offset += size;
-        if ( node_align > align ) { align = node_align; }
+        (void) numbering.entries[k].type_id;
+        return false;
     }
     region.bytes = ( offset + align - 1 ) & ~( align - 1 );
     region.align = align;

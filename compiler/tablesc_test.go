@@ -192,7 +192,7 @@ table Census
 `
 
 const cRuntimeSrc = runtimeSrc + `
-table ScalarLeaf { value uint32 }
+fixed table ScalarLeaf { value uint32 }
 table Node
 {
     value int32
@@ -310,7 +310,7 @@ type ZqqPoint
     y float32
 }
 
-table ZqqConfig
+fixed table ZqqConfig
 {
     scale  float32 = 1.0
     label  string(24)
@@ -397,12 +397,12 @@ func TestCGeneratorMacrosAreOwned(t *testing.T) {
 func TestCBlockAccessorsAreSnakeCasePairs(t *testing.T) {
 	const src = `package probe
 
-table RenderShip
+fixed table RenderShip
 {
     object_id uint32
 }
 
-table RenderFrame
+fixed table RenderFrame
 {
     frame         uint64
     ships         [..8]RenderShip

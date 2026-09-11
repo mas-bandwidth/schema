@@ -20,12 +20,12 @@ enum Grade
     Silver
 }
 
-table Entry
+fixed table Entry
 {
     value int32 = 0
 }
 
-table Log
+fixed table Log
 {
     entries ?[..4]Entry
     weights ?[2]float32

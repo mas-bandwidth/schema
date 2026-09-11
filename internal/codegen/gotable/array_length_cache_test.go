@@ -13,7 +13,7 @@ type Leaf { flavor Flavor
 type Child { flavor Flavor
  payload bytes(130)
  nested Leaf }
-table Root {
+fixed table Root {
  children [..128]Child
  pair [2]Child
  large [..129]Child
@@ -33,10 +33,10 @@ func TestArrayLengthCacheScope(t *testing.T) {
 		name, schema string
 		cached       bool
 	}{
-		{"fixed limit", "type Child { n int32 }\ntable Root { children [128]Child }", true},
-		{"counted limit", "type Child { n int32 }\ntable Root { children [..128]Child }", true},
-		{"large", "type Child { n int32 }\ntable Root { children [129]Child }", false},
-		{"keyed", "enum Key { A, B }\ntype Child { n int32 }\ntable Root { children [Key]Child }", false},
+		{"fixed limit", "type Child { n int32 }\nfixed table Root { children [128]Child }", true},
+		{"counted limit", "type Child { n int32 }\nfixed table Root { children [..128]Child }", true},
+		{"large", "type Child { n int32 }\nfixed table Root { children [129]Child }", false},
+		{"keyed", "enum Key { A, B }\ntype Child { n int32 }\nfixed table Root { children [Key]Child }", false},
 		{"pointers", "table Child { n int32 }\ntable Root { children [..2]*Child }", false},
 		{"variable closure", "table Child { n int32 }\ntable Root { children [2]Child\n pointer *Child }", false},
 	} {
@@ -55,7 +55,7 @@ func TestArrayLengthCacheScope(t *testing.T) {
 
 func TestArrayLengthCacheSharedScratch(t *testing.T) {
 	var schema strings.Builder
-	schema.WriteString("package probe\ntype Child { n int32 }\ntable Root {\n")
+	schema.WriteString("package probe\ntype Child { n int32 }\nfixed table Root {\n")
 	for i := range 32 {
 		fmt.Fprintf(&schema, "children%d [128]Child\n", i)
 	}
@@ -74,7 +74,7 @@ type Leaf { n int32 }
 type Child { leaves [..2]Leaf }
 union Choice { small [..3]Child
  large [..5]Child }
-table Root { direct [2]Child
+fixed table Root { direct [2]Child
  choice Choice
  choices [..2]Choice
  after [3]Child }
