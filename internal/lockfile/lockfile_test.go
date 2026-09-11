@@ -435,12 +435,13 @@ func TestInsertInTheMiddleRefused(t *testing.T) {
 	refuses(t, errs, "fixed table ShipConfig", "entry 2", "field speed", "is field hull", "added at the BOTTOM")
 }
 
-// TestUnDeprecateAllowed: the bill took this one back
-// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, the deprecated-field row:
-// "undeprecating is allowed"). The slot never moved and the writers that ran
-// since left the declared default in it, so a reader that starts reading the
-// field again reads the default — a widening, and the record carries it.
-func TestUnDeprecateAllowed(t *testing.T) {
+// TestUnDeprecateRefused: DEPRECATION IS ONE WAY
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, which restores this test's
+// original answer). Every writer that ran while the field was deprecated left
+// the DEFAULT in the slot, so "what would come back is not data" — and
+// `schema lock` will not write the flag off either, because the lock is not a
+// way to make the refusal go away.
+func TestUnDeprecateRefused(t *testing.T) {
 	dir, paths := fixture(t, strings.Replace(base, "    armor   uint8\n", "    armor   uint8 | deprecated\n", 1))
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
 		t.Fatal(err)
@@ -450,9 +451,9 @@ func TestUnDeprecateAllowed(t *testing.T) {
 	}
 	refuses(t, lockfile.Check(load(t, paths), paths),
 		"fixed table ShipConfig", "entry 3", "field armor",
-		"live in the declaration and deprecated in the lock", "write it with `schema lock`")
-	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
-		t.Fatalf("`schema lock` writes the flag off: rewrote=%v err=%v", rewrote, err)
+		"undeprecated", "deprecation is ONE WAY")
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err == nil || rewrote {
+		t.Fatalf("`schema lock` does not write the flag off: rewrote=%v err=%v", rewrote, err)
 	}
 }
 

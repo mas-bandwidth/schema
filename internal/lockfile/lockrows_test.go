@@ -183,11 +183,19 @@ func TestLockFieldDeprecateAllows(t *testing.T) {
 		rowTable("    a int32\n    b int32 | deprecated\n    c int32"), "Row")
 }
 
-// ---- field_undeprecate: the bill §2 allows it ("undeprecating is allowed") ----
-
-func TestLockFieldUndeprecateAllows(t *testing.T) {
-	rowAllows(t, rowTable("    a int32\n    b int32 | deprecated"),
-		rowTable("    a int32\n    b int32"), "Row")
+// ---- field_undeprecate: DEPRECATION IS ONE WAY (bill §12.3) ----
+//
+// The lock's own first answer (`TestUnDeprecateRefused`) was the right one, and
+// §12.3 restores it: "§2.10's reason stands ('what would come back is not
+// data'): undeprecating is refused; §2's row is corrected." Every writer that
+// ran while the field was deprecated left the DEFAULT in the slot, so a reader
+// that starts believing the field again believes a number nobody wrote — and a
+// deprecated field is read on every plan, identity included, so there is
+// nothing to turn back on.
+func TestLockFieldUndeprecateRefuses(t *testing.T) {
+	rowRefuses(t, rowTable("    a int32\n    b int32 | deprecated"),
+		rowTable("    a int32\n    b int32"),
+		"fixed table Row", "field b", "undeprecated")
 }
 
 // ---- field_modify ----

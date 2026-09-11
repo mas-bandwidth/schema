@@ -372,11 +372,14 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 	}
 	switch {
 	case want.Deprecated && !got.Deprecated:
-		// UNDEPRECATING IS ALLOWED (docs/FIXED-FORM-BILL-READS-BACKWARD.md
-		// §2): the slot never moved, the writers that ran since left the
-		// default in it, and a reader that starts reading it again reads the
-		// default. What is refused is the field LEAVING the layout.
-		widened, what = true, "live in the declaration and deprecated in the lock"
+		// DEPRECATION IS ONE WAY (docs/FIXED-FORM-BILL-READS-BACKWARD.md
+		// §12.3, which corrects §2's row): every writer that ran while the
+		// field was deprecated left the DEFAULT in the slot, so what comes
+		// back is not data, and there is nothing to turn back on — a
+		// deprecated field keeps its slot and is read on every plan, identity
+		// included.
+		return false, "", fmt.Errorf("%s, is deprecated in the lock and live in the declaration: undeprecated (deprecated -> live) — deprecation is ONE WAY: every writer since the slot was deprecated wrote the default into it, so what would come back is not data (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §2.10); leave it `| deprecated` and append a new field",
+			where)
 	case !want.Deprecated && got.Deprecated:
 		widened, what = true, "deprecated in the declaration and live in the lock"
 	}
