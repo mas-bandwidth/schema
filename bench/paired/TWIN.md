@@ -3,8 +3,10 @@
 `make tables-fixed-twin` emits both paired Fixed Table headers, normalises
 the fixed-form runtimes through the token map below, and `diff`s what is
 left. Any leftover line that is not one of the three named differences is
-a failure. C++-only rows of docs/FIXED-FORM-ALGORITHM.md §5 are OWED by
-the C leg and stripped by the map; they are not a fourth named remaining.
+a failure. THE STRIPPING HAS CHANGED SIDES: nothing is owed by the C leg
+any more, and what the map now strips is the three rows where the C leg is
+AHEAD of the reference (§5.8 row 3). Neither list is a fourth named
+remaining.
 
 The C runtime is the twin of the C++ runtime: same wire, same ops, same
 partition, same refusals, same counters. Glenn: the two should agree on
@@ -91,21 +93,35 @@ one of them. Anything else reds by line.
    `value->game_event.as.hit`); C++ uses an anonymous union
    (`offsetof(MixedEvent, hit)`, `value.game_event.hit`). Same bytes.
 
-## OWED by the C leg (docs/FIXED-FORM-ALGORITHM.md §5)
+## OWED by the C leg (docs/FIXED-FORM-ALGORITHM.md §5) — CLOSED
 
-C++ first; legs from §5 after. These are not a named remaining difference —
-not a C spelling of a C++ mechanism. The C runtime does not have them yet.
-The map strips the C++-only blocks so this gate stays green; the C port
-card implements each row from the §5 section named here. Do not port C
-in this PR.
+NOTHING IS OWED. All five rows this section used to list are in the C
+runtime, spelled the same, and `stripOwedC` in `tools/fixedtwin/canon.go`
+strips not one of them: the gate holds the two legs to every one.
 
-| C++-only | algorithm §5 | what the C card takes |
+| was owed | algorithm §5 | where it is now |
 |---|---|---|
-| `kTableFixedPresent` enumerator, Apply case, compile `T` into `?T` (`me.kind == 35 && te.kind != 35`) | §5.2 `?T where x has T: present` (an unguarded constant 1 into the present byte) | the present op |
-| `TableFixedWidens` ladders `20..24` / `25..29` (signed/unsigned `fixed(I,F)`); `TableFixedSignedKind` covering `20..24` | §5.1 `fixed(I,F): I(a) <= I(b) and F(a) == F(b)` | the fixed-point widen rungs |
-| enum case `te.size < me.size` as `kTableFixedWiden` | §5.2 "widen when the writer's ordinal width is narrower" | a grown ordinal/tag width |
-| `struct TableFixedKnownLayout` | §5.3 LOAD select by hash, never parse a stranger | the known-layout table |
-| LOAD `layout_newer` / `layout_unsupported` / floor (per-type codec, not this extract) | §5.3 version-range gates | refuse a newer hash and a hash below the floor |
+| `kTableFixedPresent` enumerator, Apply case, compile `T` into `?T` (`me.kind == 35 && te.kind != 35`) | §5.2 `?T where x has T: present` | in the C runtime, compared |
+| `TableFixedWidens` ladders `20..24` / `25..29` (signed/unsigned `fixed(I,F)`); `TableFixedSignedKind` covering `20..24` | §5.1 `fixed(I,F): I(a) <= I(b) and F(a) == F(b)` | in the C runtime, compared |
+| enum case `te.size < me.size` as `kTableFixedWiden` | §5.2 "widen when the writer's ordinal width is narrower" | in the C runtime, compared |
+| `struct TableFixedKnownLayout` | §5.3 LOAD select by hash, never parse a stranger | in the C runtime, compared |
+| LOAD `layout_newer` / `layout_unsupported` / floor | §5.3 version-range gates | in the per-type codec, and `TableFixedRefuseHash` below |
+
+## AHEAD of the reference, and stripped from the OTHER side (§5.8 row 3)
+
+The strips run the other way now. §5.2's plans are STATIC on this leg —
+one per older lineage entry, laid down off the load path — and the C++
+reference still compiles one at first load into a caller-supplied cache.
+So the C runtime spells three blocks the reference has no twin for yet.
+`stripOwedC` removes them exactly as it once removed the owed rows, and
+they are not a fourth named remaining difference: they go the day the
+reference lands §5.8 row 3, and the gate then compares them too.
+
+| C-only | algorithm § | canon.go |
+|---|---|---|
+| `TableFixedSelect` — the lineage lookup by hash, the only fact a file is matched on | §5.3 steps 5 and 6 | `reAheadSelect` |
+| `TableFixedRefuseHash` — the refusal that carries THE FILE'S hash onto the report | §5.3, `layout_newer` / `layout_unsupported` | `reAheadRefuseHash` |
+| `struct TableFixedLineagePlan` — one older peer's plan, its prefill and its COMPILE census | §5.2, §5.4 (the census once per peer), §5.8 row 3 | `reAheadLineage` |
 
 ## Paired rows
 

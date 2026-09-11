@@ -73,7 +73,16 @@ func (c *Compiler) Targets() []string {
 
 // Generate emits target's source for the unit and returns the files, keyed by
 // output file name. It writes nothing — the caller chooses the destination —
-// and it is pure in the unit: generating twice yields the same bytes.
+// and it is deterministic: generating twice yields the same bytes.
+//
+// IT READS ONE FILE: the unit's schema.lock, for the FIXED FORM'S LINEAGE
+// (docs/FIXED-FORM-ALGORITHM.md §5.2). A fixed table reads backward, so a
+// backend that is to emit a reader for the layouts this unit has already shipped
+// must be handed them, and §5.9 #1 puts the three lock calls HERE — in the
+// caller — so the disk is read in one place and no backend opens a file. A unit
+// with no lock hands nothing and every table carries its own layout alone,
+// exactly as before. A lock that will not parse is an error rather than a
+// silently shorter lineage.
 func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string][]byte, error) {
 	g, ok := c.gens[target]
 	if !ok {
@@ -81,6 +90,13 @@ func (c *Compiler) Generate(u *ir.Unit, target string, opts Options) (map[string
 			return nil, fmt.Errorf("target %q is not implemented — no generators are registered", target)
 		}
 		return nil, fmt.Errorf("target %q is not implemented — %s are the live targets", target, englishList(c.Targets()))
+	}
+	if lg, takes := g.(lineageGenerator); takes {
+		lineage, err := openFixedLineage(u)
+		if err != nil {
+			return nil, err
+		}
+		return lg.GenerateLineage(u, opts, lineage)
 	}
 	return g.Generate(u, opts)
 }

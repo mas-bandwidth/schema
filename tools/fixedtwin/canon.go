@@ -23,6 +23,8 @@ var identMap = []token{
 	{"SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED", "layout_tree_unclosed"},
 	{"SCHEMA_TABLE_LAYOUT_TOO_DEEP", "layout_too_deep"},
 	{"SCHEMA_TABLE_LAYOUT_MALFORMED", "layout_malformed"},
+	{"SCHEMA_TABLE_LAYOUT_UNSUPPORTED", "layout_unsupported"},
+	{"SCHEMA_TABLE_LAYOUT_NEWER", "layout_newer"},
 	{"SCHEMA_TABLE_VOCABULARY_TOO_LARGE", "vocabulary_too_large"},
 	{"SCHEMA_TABLE_SECOND_ANNOUNCEMENT", "second_announcement"},
 	{"SCHEMA_TABLE_MESSAGE_FORM_AS_FILE", "message_form_as_file"},
@@ -95,15 +97,26 @@ var (
 	reZeroCallLayout  = regexp.MustCompile(`TableFixedLayoutEntry\s+\w+\s*=\s*TableFixedLayoutEntryZero\s*\(\s*\)\s*;`)
 	reZeroCallView    = regexp.MustCompile(`TableFixedLayoutView\s+\w+\s*=\s*TableFixedLayoutViewZero\s*\(\s*\)\s*;`)
 	reInitCall        = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
-	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?previous_form\s*=\s*17\s*\}\s*;`)
+	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?layout_unsupported\s*=\s*19\s*\}\s*;`)
 	reCMessageGuard   = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
-	// OWED by the C leg (docs/FIXED-FORM-ALGORITHM.md §5). C++ first; these
-	// blocks have no C twin yet. Strip them so the gate stays green; TWIN.md
-	// names each row with the §5 section the C card implements from.
-	reOwedPresentCase    = regexp.MustCompile(`(?s)case kTableFixedPresent:\s*\{\s*dst\[p\.dst\] = 1;\s*break;\s*\}`)
-	reOwedPresentCompile = regexp.MustCompile(`(?s)if \( me\.kind == 35 && te\.kind != 35 \)\s*\{.*?return;\s*\}`)
-	reOwedEnumWiden      = regexp.MustCompile(`(?s)if \( te\.size < me\.size \)\s*\{\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.dstsize = \(uint8_t\) me\.size;\s*e\.guard = guard; e\.arg = arg; e\.op = kTableFixedWiden; e\.sign = 0;\s*TableFixedPush\( c, e \);\s*break;\s*\}`)
-	reOwedKnownLayout    = regexp.MustCompile(`(?s)struct TableFixedKnownLayout\s*\{.*?\};`)
+	// AHEAD OF THE REFERENCE, and the mirror of the owed list: §5.2 lays every
+	// older plan down off the load path, and the reference still compiles one at
+	// first load into a caller-supplied cache (§5.8 row 3). So the C runtime
+	// spells three things the C++ has no twin for yet — the hash select, the
+	// refusal that carries the file's hash, and one lineage entry's plan. They
+	// are stripped the way the owed rows were, from the other side.
+	reAheadSelect     = regexp.MustCompile(`(?s)inline int32_t TableFixedSelect\(.*?\n\}`)
+	reAheadRefuseHash = regexp.MustCompile(`(?s)inline int64_t TableFixedRefuseHash\(.*?\n\}`)
+	reAheadLineage    = regexp.MustCompile(`(?s)(?:typedef )?struct TableFixedLineagePlan\s*\{.*?\}\s*(?:TableFixedLineagePlan\s*)?;`)
+	// NOTHING IS OWED BY THE C LEG ANY MORE. Every row the map once stripped is
+	// in the C runtime, spelled the same, so the gate holds the two legs to all
+	// five (bench/paired/TWIN.md).
+	// STILL OWED by the C leg after the merge with #916: the reference grew
+	// these rows while this branch was closing the first list (the full-width arg
+	// lane, the writer-side count bound, the nested union's outer tag, the 64-bit
+	// ordinal temporary, the compiled remap's clamp count, and the known float
+	// RANGES the definitions digest now covers). C++ first; strip them so the
+	// gate stays green, and close them the way the first list was closed.
 	reOwedArgLaneRemap   = regexp.MustCompile(`(?s)const uint32_t n = te\.children;\s+const uint32_t at_map = TableFixedLayTable\( c, NULL, \(int32_t\) n \);\s+if \( c\.overflow \) \{ break; \}\s+uint16_t \* map = \(uint16_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ at_map \);\s+for \( uint32_t j = 0; j < n; \+\+j \)\s*\{.*?map\[1 \+ j\] = landed;\s*\}\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.guard = guard; e\.op = kTableFixedOrdinal;\s*e\.arg = arg; e\.dstsize = \(uint8_t\) me\.size;\s*e\.aux = at_map;\s*TableFixedPush\( c, e \);`)
 	reOwedByteLaneRemap  = regexp.MustCompile(`(?s)uint16_t remap\[256\];.*?TableFixedLayTable\( c, remap, \(int32_t\) n \);\s*TableFixedPush\( c, e \);`)
 	reOwedLayTableNull   = regexp.MustCompile(`if \( values != NULL \)\s*\{\s*for \( int32_t i = 0; i < n; \+\+i \) \{ dst\[1 \+ i\] = values\[i\]; \}\s*\}`)
@@ -221,23 +234,22 @@ func stripNamed(s string) string {
 }
 
 func stripOwedC(s string) string {
-	// OWED by the C leg. Not a named remaining: C has no spelling of these
-	// yet. C++ first; legs from algorithm §5 after. Do not port C here.
-	// §5.2 present op enumerator
-	s = strings.ReplaceAll(s, "kTableFixedPresent = 7;", "")
-	s = strings.ReplaceAll(s, "kTableFixedPresent = 7,", "")
-	// §5.1 fixed(I,F) / ufixed(I,F) ladders in Widens
-	s = strings.ReplaceAll(s, "if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; }", "")
-	s = strings.ReplaceAll(s, "if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; }", "")
-	// §5.1 SignedKind covering signed fixed(I,F)
-	s = strings.ReplaceAll(s, "return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 );", "return kind >= 2 && kind <= 5;")
-	// §5.2 Apply case and compile T into ?T
-	s = reOwedPresentCase.ReplaceAllString(s, "")
-	s = reOwedPresentCompile.ReplaceAllString(s, "")
-	// §5.2 grown ordinal width as widen
-	s = reOwedEnumWiden.ReplaceAllString(s, "")
-	// §5.3 known-layout table LOAD selects by hash
-	s = reOwedKnownLayout.ReplaceAllString(s, "")
+	// THE OWED LIST IS CLOSED on rowan/c-reads-backward. The present op
+	// ENUMERATOR, its Apply case and its compile of `T` into `?T`; the fixed(I,F)
+	// and ufixed(I,F) ladder rungs and the signed fixed-point's sign; the grown
+	// ordinal width emitted as an unsigned widen; and now `struct
+	// TableFixedKnownLayout` — the known-layout table §5.2 lays down and §5.3
+	// selects on — are all in the C runtime, spelled the same, so the gate holds
+	// the two legs to every one of them and strips nothing.
+	//
+	// WHAT IS STRIPPED NOW IS THE OTHER DIRECTION: the three runtime rows where
+	// this leg is AHEAD of the reference, because §5.2's plans are static here
+	// and compiled at first load there (§5.8 row 3). They go when the reference
+	// lands that row.
+	s = reAheadSelect.ReplaceAllString(s, "")
+	s = reAheadRefuseHash.ReplaceAllString(s, "")
+	s = reAheadLineage.ReplaceAllString(s, "")
+	// STILL OWED after the merge with #916 (see the map above).
 	// owed 6: arg is full width (bill §12.7). C still has a byte lane.
 	s = strings.ReplaceAll(s, "uint64_t arg", "uint8_t arg")
 	// owed 5 / bill §12.5: count op bound is the WRITER's; C still uses the reader's.
