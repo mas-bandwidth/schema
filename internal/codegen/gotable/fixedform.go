@@ -527,7 +527,10 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
 				g.emitFixedElementLeavesAt(v.F, fmt.Sprintf("%s+%d", src, tag),
 					fmt.Sprintf("%s+%s", dst, offGo(f.Type.Name, ir.GoExportName(v.Name))), tabs+1)
-				g.pf("%s\tfor q := guardAt; q < n; q++ {\n%s\t\tout[q].Guard = %s\n%s\t\tout[q].Arg = %d\n%s\t}\n", ind, ind, src, ind, i+1, ind)
+				// THE GUARD'S WIDTH IS THE TAG'S (§5.2): stamped here, the read
+				// loop compares the tag WHOLE and a foreign 0x0101 is not arm 1.
+				g.pf("%s\tfor q := guardAt; q < n; q++ {\n%s\t\tout[q].Guard = %s\n%s\t\tout[q].Arg = %d\n%s\t\tout[q].ArgW = %d\n%s\t}\n",
+					ind, ind, src, ind, i+1, ind, tag, ind)
 				g.pf("%s}\n", ind)
 			}
 			return
@@ -728,6 +731,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 
 	g.pf("func %sFixedLoad(values []%s, data []byte, plan []TableFixedEntry, report *TableReport) int64 {\n", st.Name, st.Name)
 	g.pf("\tif report == nil {\n\t\tvar local TableReport\n\t\treport = &local\n\t}\n")
+	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
+	// must not carry a previous read's counters or a previous refusal's name.
+	g.pf("\t*report = TableReport{}\n")
 	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	// THE FORM REGISTRY IS THREE (docs/SPEC-TABLES.md §3, THE FIRST BYTE): 1
 	// the variable form, 2 the message form, 3 this one. Each assigned byte
@@ -771,12 +777,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tif hash != %sFixedHash {\n", st.Name)
 	g.pf("\t\tlane := &%sFixedLineagePlans[pick]\n", st.Name)
 	g.pf("\t\tif lane.Why != \"\" {\n\t\t\treturn tableFixedRefuse(report, lane.Why)\n\t\t}\n")
-	g.pf("\t\tif int(lane.Count) > len(plan) {\n\t\t\treturn tableFixedRefuse(report, \"plan_too_large\")\n\t\t}\n")
 	g.pf("\t\tentries, entryCount = lane.Entries, lane.Count\n")
 	g.pf("\t\t// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it\n")
 	g.pf("\t\t// lands only on a read that returns: REFUSE moves no counter.\n")
 	g.pf("\t\tcensusUnknown, censusKind = lane.Unknown, lane.KindMismatch\n")
 	g.pf("\t}\n")
+	// THE SELECTED PLAN'S ENTRY COUNT IS CHECKED EITHER WAY (§5.9 #5, #45):
+	// the identity lane is a plan too, and a caller's short plan slice owes the
+	// same name there as it does for a lineage entry.
+	g.pf("\tif int64(entryCount) > int64(len(plan)) {\n\t\treturn tableFixedRefuse(report, \"plan_too_large\")\n\t}\n")
 	// STEP 9 and STEP 10.
 	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
 	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
@@ -803,7 +812,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t\th := holes[i]\n")
 	g.pf("\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")
 	g.pf("\t\t}\n")
-	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:], dst, report)\n")
+	// THE RUN SEES ONE RECORD (§5.2). Handed `at[8:]` it saw every byte to the
+	// END OF THE FILE, so an entry past the writer's record read the NEXT
+	// record's bytes instead of being caught.
+	g.pf("\t\ttableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("\t\t// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
 		g.pf("\t\t// storage it just wrote: the same pass for either plan (§3.4).\n")
