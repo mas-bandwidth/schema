@@ -175,8 +175,11 @@ public final class TableFixed {
     /** form byte 2, the MESSAGE form (§3.3): a batch, not a file. */
     public static final byte messageForm = 2;
 
-    /** what a file's header says: where the layout is, what it hashes to, what
-     *  the header CLAIMS it hashes to, and where the records start. */
+    /** what a file's header says: where the layout is, what it hashes to, and
+     *  where the records start. THE HASH IS ONE FIELD: a second declaredHash
+     *  lane held a copy of it that nothing ever read -- the recompute it was
+     *  named for is retired (5.6), because the digest is not on the wire and the
+     *  byte comparison of 5.3 step 7 holds the header and the layout together. */
     public static final class Header {
         /** where the layout begins. */
         public int layoutAt;
@@ -184,8 +187,6 @@ public final class TableFixed {
         public int layoutLength;
         /** fnv1a64 over those bytes, which is what every record must carry. */
         public long hash;
-        /** the hash the HEADER states, which the loader checks LAST. */
-        public long declaredHash;
         /** where the first record begins. */
         public int recordsAt;
     }
@@ -197,9 +198,10 @@ public final class TableFixed {
      *  for the variable form, which is OLDER, messageFormAsFile for a batch
      *  handed to a file root, and newerForm only for a byte no form defines.
      *
-     *  THE HEADER'S HASH IS NOT CHECKED HERE. It is checked LAST, by the
-     *  caller, after the layout's own rules have each had their say, so a
-     *  broken layout is never reported as a lying header (§3). */
+     *  THE HEADER'S HASH IS TAKEN AS GIVEN (5.3 step 4). Nothing is recomputed
+     *  from the wire -- the definitions digest is the hash's second input and it
+     *  never rides the wire, so the hash cannot be re-derived at all. What holds
+     *  a header to its layout is step 7's byte comparison against the lock. */
     public static boolean readHeader(byte[] data, Header out, Report report) {
         if (data == null || data.length < fileHeaderBytes + 4) { report.malformed = true; return false; }
         if (data[0] != form) {
@@ -213,7 +215,6 @@ public final class TableFixed {
         out.layoutAt = fileHeaderBytes + 4;
         out.layoutLength = (int) length;
         out.hash = get64(data, hashAt); // the header's hash; digest is not on the wire
-        out.declaredHash = out.hash;
         out.recordsAt = out.layoutAt + (int) length;
         return true;
     }
@@ -255,12 +256,25 @@ public final class TableFixed {
         /** which of the ops above. */
         public byte op;
         /** THE ARM ORDINAL A GUARD COMPARES, and nothing else ever. An
-         *  entry inside a union arm is selected by this byte against the
+         *  entry inside a union arm is selected by this value against the
          *  WRITER's own tag, so no op may borrow the lane: a text entry that
          *  wrote its flavour here would drop every text field under an arm
          *  past the first, silently, because the guard would then compare a
-         *  flavour against a tag. Its flavour rides in meta. */
-        public byte arg;
+         *  flavour against a tag. Its flavour rides in meta.
+         *
+         *  IT IS A LONG AND NOT A BYTE because the tag it is compared against
+         *  is read at argw bytes: a byte lane could hold neither an arm past
+         *  127 nor the value a two-byte tag carries, and a narrowed compare is
+         *  the same hole argw closes. */
+        public long arg;
+        /** THE GUARD'S WIDTH IN BYTES, 1..8, and ZERO READS AS ONE
+         *  (docs/FIXED-FORM-ALGORITHM.md 5.2, "THE GUARD'S WIDTH"). The tag is
+         *  tested at its FULL width and never at its first byte: compared at
+         *  one byte, a foreign tag of 0x0101 fires arm 1 and runs that arm's
+         *  entries over a stranger's record, an ordinal no arm of this build
+         *  names. Zero means one because one is the width a tag had when this
+         *  lane did not exist, so a plan laid down before it still reads. */
+        public byte argw;
         /** a widen's destination width. */
         public byte dstsize;
         /** a widen's source is two's complement, so it sign-extends. */
@@ -272,7 +286,7 @@ public final class TableFixed {
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
             src = 0; dst = 0; size = 0; aux = 0; guard = noGuard;
-            op = opCopy; arg = 0; dstsize = 0; sign = 0; meta = 0;
+            op = opCopy; arg = 0; argw = 0; dstsize = 0; sign = 0; meta = 0;
         }
     }
 
@@ -377,6 +391,26 @@ public final class TableFixed {
     // framing damage and is reported rather than thrown: an exception escaping
     // into a caller that asked a question is the one thing this must not do.
 
+    /** THE GUARD'S WIDTH, CLAMPED AT BOTH ENDS: zero reads as one and anything
+     *  past eight reads as eight (5.2). A plan laid down before this lane
+     *  existed carries zero and still reads at the width a tag had then. */
+    public static int guardWidth(byte argw) {
+        final int w = argw & 0xFF;
+        if (w == 0) { return 1; }
+        return w > 8 ? 8 : w;
+    }
+
+    /** THE WRITER'S UNION TAG, little-endian at its OWN width. Compared whole:
+     *  a two-byte tag whose low byte happens to be 1 is not arm 1, it is an
+     *  ordinal this build has no arm for, and reading only the first byte let
+     *  0x0101 run arm 1's entries. The same widths this language's packet codec
+     *  reads a tag at. */
+    public static long tagAt(byte[] src, int at, int w) {
+        long v = 0;
+        for (int i = 0; i < w; i++) { v |= ((long) (src[at + i] & 0xFF)) << (8 * i); }
+        return v;
+    }
+
     /** run one plan over one record body, landing it in this reader's image. */
     public static void run(Entry[] plan, int count, short[] remap,
                            byte[] src, int srcAt, int srcLength,
@@ -384,8 +418,11 @@ public final class TableFixed {
         for (int i = 0; i < count; i++) {
             final Entry p = plan[i];
             if (p.guard != noGuard) {
-                if (p.guard >= srcLength) { report.malformed = true; return; }
-                if ((src[srcAt + p.guard] & 0xFF) != (p.arg & 0xFF)) { continue; }
+                // THE TAG IS COMPARED AT ITS OWN WIDTH, and its own reach is
+                // bounded by the writer's record like every other offset (5.2).
+                final int gw = guardWidth(p.argw);
+                if (p.guard < 0 || p.guard + gw > srcLength) { report.malformed = true; return; }
+                if (tagAt(src, srcAt + p.guard, gw) != p.arg) { continue; }
             }
             switch (p.op) {
                 case opCopy: {
@@ -417,10 +454,19 @@ public final class TableFixed {
                     // writer whose enum gained a variant IN THE MIDDLE is
                     // remapped here and never reinterpreted.
                     if (p.src + p.size > srcLength) { report.malformed = true; return; }
+                    // AN ORDINAL IS UNSIGNED, AT EVERY WIDTH. An eight-byte
+                    // ordinal read as a SIGNED long made 0x8000000000000000
+                    // NEGATIVE, which passes raw <= n, truncates to 0 or to
+                    // some other arm's index under (int) raw, and indexes the
+                    // remap table's own LENGTH WORD or past its end -- an
+                    // ArrayIndexOutOfBoundsException escaping a load that was
+                    // asked a question. Long.compareUnsigned is the whole fix:
+                    // every value past the WRITER's table length, the ones that
+                    // were negative included, lands None.
                     final long raw = getUint(src, srcAt + p.src, p.size);
                     final int n = remap[p.aux] & 0xFFFF;
                     long v = 0;
-                    if (raw != 0 && raw <= n) { v = remap[p.aux + (int) raw] & 0xFFFF; }
+                    if (raw != 0 && Long.compareUnsigned(raw, n) <= 0) { v = remap[p.aux + (int) raw] & 0xFFFF; }
                     // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT LANDS None
                     // AND COUNTS: the writer's layout says how many variants
                     // it has, so a value past them is damage rather than a
@@ -429,7 +475,7 @@ public final class TableFixed {
                     // one is a version difference and counts nothing. Slack
                     // of a counted array is not this op's: scatter walks the
                     // LIVE count, so unused slots never reach a clamp.
-                    if (raw > n) { report.clamped++; }
+                    if (Long.compareUnsigned(raw, n) > 0) { report.clamped++; }
                     putUint(image, p.dst, v, p.dstsize);
                     break;
                 }
@@ -744,19 +790,64 @@ public final class TableFixed {
         int count;
         int remapUsed;
         boolean overflow;
+        /** an entry past the writer's record: the plan is refused WHOLE. */
+        boolean recordTooLarge;
+        /** the WRITER's own declared record body size, which bounds every entry. */
+        int theirBytes;
+        /** THE CURRENT UNION'S TAG WIDTH IN BYTES, 1 outside every union. */
+        byte argw = 1;
         Report report;
 
-        void push(int src, int dst, int size, int aux, int guard, byte op, byte arg, byte dstsize, byte sign) {
+        void push(int src, int dst, int size, int aux, int guard, byte op, long arg, byte dstsize, byte sign) {
             push(src, dst, size, aux, guard, op, arg, dstsize, sign, (byte) 0);
         }
 
-        void push(int src, int dst, int size, int aux, int guard, byte op, byte arg, byte dstsize, byte sign,
+        void push(int src, int dst, int size, int aux, int guard, byte op, long arg, byte dstsize, byte sign,
                   byte meta) {
             if (count >= plan.length) { overflow = true; return; }
+            // EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+            // (5.2's PLAN): src + size, plus four for a text entry's length
+            // word, and the guard's reach too. ONE entry past it refuses the
+            // plan WHOLE, by name, on this lineage entry's own lane -- never a
+            // partly compiled plan landing values and then a per-record
+            // malformed the joint table of 5.3 forbids beside them.
+            //
+            // THE REACH IS THE OP'S, NOT THE size LANE'S. size is a byte run
+            // for copy, ordinal and widen, a TEXT entry's unit count behind a
+            // four-byte length word -- and for count it is not a reach at all
+            // but THIS READER'S OWN BOUND, which a grown array makes larger
+            // than the writer's whole record while the entry still reads only
+            // four bytes. A bound that read size for every op would refuse
+            // every lawful array that grew.
+            final int gw = (guard != noGuard) ? guardWidth(argw) : 0;
+            final int reach = opReach(op, size);
+            if (src < 0 || size < 0 || reach < 0 || src > theirBytes || src + reach > theirBytes
+                    || (guard != noGuard && (guard < 0 || guard + gw > theirBytes))) {
+                recordTooLarge = true;
+                return;
+            }
             final Entry e = plan[count];
             e.src = src; e.dst = dst; e.size = size; e.aux = aux; e.guard = guard;
             e.op = op; e.arg = arg; e.dstsize = dstsize; e.sign = sign; e.meta = meta;
+            // THE CURRENT UNION'S TAG WIDTH, stamped onto every guarded entry
+            // beneath it, a zero read as one (5.2). An unguarded entry compares
+            // nothing, so it carries no width.
+            e.argw = (guard != noGuard) ? (byte) guardWidth(argw) : (byte) 0;
             count++;
+        }
+
+        /** HOW FAR INTO THE WRITER'S RECORD ONE OP REACHES, in bytes from src.
+         *  The run loop's own bound checks are the same arithmetic, record by
+         *  record; this is that arithmetic ONCE, at compile, against the
+         *  writer's own declared record. */
+        static int opReach(byte op, int size) {
+            switch (op) {
+                case opCount: return 4;          // the live count, and the bound is MINE
+                case opText: return 4 + size;    // the length word, then the units
+                case opWidenF: return 4;         // an f32 on the wire
+                case opConst: return 0;          // reads no record byte at all
+                default: return size;            // copy, ordinal, widen: a byte run
+            }
         }
 
         // A REMAP TABLE lives in the caller's own scratch: its first word is
@@ -799,7 +890,7 @@ public final class TableFixed {
 
     // matchChildren walks a TABLE's children on both sides, by NAME.
     private static void matchChildren(Compiler c, Layout theirs, int ti, int theirAt,
-                                      Layout mine, int mi, int myAt, int guard, byte arg) {
+                                      Layout mine, int mi, int myAt, int guard, long arg) {
         final long theirKids = theirs.children(ti);
         final long myKids = mine.children(mi);
         int myChild = mi + 1;
@@ -833,7 +924,7 @@ public final class TableFixed {
     }
 
     private static void compileEntry(Compiler c, Layout theirs, int ti, int theirAt,
-                                     Layout mine, int mi, int myAt, int guard, byte arg) {
+                                     Layout mine, int mi, int myAt, int guard, long arg) {
         final int theirKind = theirs.kind(ti);
         final int myKind = mine.kind(mi);
         final int theirSize = (int) theirs.size(ti);
@@ -920,6 +1011,11 @@ public final class TableFixed {
                 final int myTag = mine.tagBytes(mi);
                 final long theirArms = theirs.children(ti);
                 final long myArms = mine.children(mi);
+                // THE GUARD'S WIDTH IS THIS UNION'S TAG WIDTH, for the tag
+                // entry itself and for every entry under an arm, restored on the
+                // way out so a nested union does not leak its width upward.
+                final byte savedArgw = c.argw;
+                c.argw = (byte) ((theirTag >= 1 && theirTag <= 8) ? theirTag : 1);
                 int myArm = mi + 1;
                 for (long k = 0; k < myArms; k++) {
                     final long myId = mine.id(myArm);
@@ -928,15 +1024,16 @@ public final class TableFixed {
                         if (theirs.id(theirArm) == myId) {
                             // MY tag value, written under THEIR tag's guard
                             c.push(theirAt, auxAt, myTag, (int) (k + 1), theirAt,
-                                    opConst, (byte) (j + 1), (byte) 0, (byte) 0);
+                                    opConst, j + 1, (byte) 0, (byte) 0);
                             compileEntry(c, theirs, theirArm, theirAt + theirTag,
-                                    mine, myArm, at, theirAt, (byte) (j + 1));
+                                    mine, myArm, at, theirAt, j + 1);
                             break;
                         }
                         theirArm += theirs.subtree(theirArm);
                     }
                     myArm += mine.subtree(myArm);
                 }
+                c.argw = savedArgw;
                 break;
             }
             case 30: { // an enum: the ordinal is the layout's POSITION, so it remaps
@@ -951,7 +1048,11 @@ public final class TableFixed {
                 }
                 final long theirVariants = theirs.children(ti);
                 final long myVariants = mine.children(mi);
-                final int n = (int) Math.min(theirVariants, 255L);
+                // THE TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (5.2).
+                // Capped at 255 it silently lost the 256th variant on, each
+                // remapping to None as though this reader did not name it --
+                // a wrong value and not a version difference.
+                final int n = (int) theirVariants;
                 final short[] map = new short[n];
                 for (int j = 0; j < n; j++) {
                     final long vid = theirs.id(ti + 1 + j);
@@ -993,7 +1094,14 @@ public final class TableFixed {
      *  per peer. Answers the entry count, or -1 when the plan does not fit the
      *  storage the caller declared — which is a refusal by name, because this
      *  codec never allocates. dest is MY side of the layout, five lanes per
-     *  entry: dest, stride, aux, counted, arg. A bytes(N) row is an ARRAY's. */
+     *  entry: dest, stride, aux, counted, arg. A bytes(N) row is an ARRAY's.
+     *
+     *  TWO REFUSALS AND NOT ONE (5.3's joint table, 5.9 #45): a plan that does
+     *  not fit the storage is planTooLarge, and ONE ENTRY PAST THE WRITER'S OWN
+     *  RECORD is layoutRecordTooLarge. Both are named on report and both
+     *  refuse the plan WHOLE -- which is what keeps a read from landing values
+     *  and THEN setting a per-record malformed beside n >= 1, two answers
+     *  5.3's table does not let a report carry at once. */
     public static int compile(Layout theirs, Layout mine, int[] dest,
                               Entry[] plan, short[] remap, Report report) {
         if (plan == null || plan.length == 0 || remap == null || dest == null) { return -1; }
@@ -1003,7 +1111,14 @@ public final class TableFixed {
         c.remap = remap;
         c.dest = dest;
         c.report = report;
-        matchChildren(c, theirs, 0, 0, mine, 0, 0, noGuard, (byte) 0);
+        // THE WRITER'S OWN DECLARED RECORD BODY, out of its root entry's size,
+        // and nothing from the file: every entry is bounded against it.
+        c.theirBytes = (int) theirs.size(0);
+        matchChildren(c, theirs, 0, 0, mine, 0, 0, noGuard, 0L);
+        if (c.recordTooLarge) {
+            if (report != null) { report.refuse(Reason.layoutRecordTooLarge); }
+            return -1;
+        }
         if (c.overflow) { return -1; }
         // COALESCE, exactly as the identity plan is coalesced: two neighbouring
         // COPY entries whose source and destination both advance together are
@@ -1020,6 +1135,7 @@ public final class TableFixed {
             if (out > 0) {
                 final Entry prev = plan[out - 1];
                 if (prev.op == opCopy && e.op == opCopy && prev.guard == e.guard && prev.arg == e.arg
+                        && prev.argw == e.argw
                         && prev.src + prev.size == e.src && prev.dst + prev.size == e.dst) {
                     prev.size += e.size;
                     continue;
@@ -1028,7 +1144,8 @@ public final class TableFixed {
             if (out != i) {
                 final Entry dst = plan[out];
                 dst.src = e.src; dst.dst = e.dst; dst.size = e.size; dst.aux = e.aux;
-                dst.guard = e.guard; dst.op = e.op; dst.arg = e.arg; dst.dstsize = e.dstsize; dst.sign = e.sign;
+                dst.guard = e.guard; dst.op = e.op; dst.arg = e.arg; dst.argw = e.argw;
+                dst.dstsize = e.dstsize; dst.sign = e.sign;
                 dst.meta = e.meta;
             }
             out++;
@@ -1039,7 +1156,10 @@ public final class TableFixed {
     // THE PREFILL IS THE BYTES THE PLAN DOES NOT WRITE. Identity's list is
     // empty: its one copy covers the body, so the hole loop is a no-op on
     // that path rather than a skip of the prefill. Guarded entries (union
-    // arms) stay holes and keep the defaults; the tag is unguarded and lands.
+    // arms) stay holes and keep the defaults -- THE TAG ENTRY AMONG THEM: it
+    // is a const guarded on the writer's own tag at that arm's ordinal, so the
+    // tag's storage is a hole too and the prefill's None is what a record
+    // naming no arm this reader knows comes back as.
     private static int landSize(Entry p) {
         switch (p.op) {
             case opCount: return 4;
@@ -1202,9 +1322,17 @@ public final class TableFixed {
             if (made >= 0) {
                 out[i] = new Plan(p, made, table, census.unknown, census.kindMismatch, Reason.none);
             } else {
-                out[i] = new Plan(null, 0, null, 0, 0, Reason.planTooLarge);
+                // THE ENTRY'S OWN LANE CARRIES ITS OWN REASON (5.9 #36): an
+                // entry past the writer's record is layoutRecordTooLarge and a
+                // plan that would not fit is planTooLarge. Nothing throws out
+                // of the initializer and a lane nobody selects costs nothing.
+                final Reason why = (census.refused && census.reason == Reason.layoutRecordTooLarge)
+                        ? Reason.layoutRecordTooLarge
+                        : Reason.planTooLarge;
+                out[i] = new Plan(null, 0, null, 0, 0, why);
             }
         }
         return out;
     }
 }
+

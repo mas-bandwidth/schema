@@ -519,6 +519,13 @@ tables-java-release:
 	$(MAKE) tables-java-compile-all
 	$(MAKE) tables-java-fixedform-negative-control
 	$(MAKE) tables-java-fixedform-arm-negative-control
+	# THE VERSIONING GATE'S OWN CONTROL, beside the byte gate's. It was written
+	# and registered in make/negative-controls.json and then hung off NO recipe,
+	# so nothing but the negative-controls matrix ever ran it and `make` itself
+	# could not. It sits HERE and not in `test-java` because it rebuilds the
+	# compiler over a sabotaged emitter and runs both columns of every §5.7 row
+	# behind it — the expensive half, which is what this target is for (above).
+	$(MAKE) tables-java-versioning-negative-control
 	$(MAKE) conformance-negative-control-java-block
 	$(MAKE) tables-java-fuzz-negative-control
 	$(MAKE) tables-java-cook-extent-negative-control
