@@ -35,7 +35,7 @@ func wireHashOf(t *testing.T, paths []string, table string) (uint64, []byte, int
 	}
 	entries := ir.TableFixedWalkRoot(st)
 	layout := ir.TableFixedLayoutBytes(entries)
-	return ir.TableFixedLayoutHash(layout), layout, ir.TableFixedTypeBytes(st)
+	return ir.TableFixedLayoutHash(layout, st), layout, ir.TableFixedTypeBytes(st)
 }
 
 // lineageOf is the accessor COMPILE uses, read back off the committed file.
@@ -457,7 +457,7 @@ func TestLineageAccessorIsWhatCompileReads(t *testing.T) {
 		}
 		// the bytes are what LOAD compares a file against, and the hash binds
 		// them together with the digest
-		if len(e.Layout) == 0 || ir.TableFixedLayoutHash(e.Layout) != e.Wire || len(e.Digest) != 0 {
+		if len(e.Layout) == 0 || ir.TableFixedLayoutHash(e.Layout, nil) != e.Wire || len(e.Digest) != 0 {
 			t.Errorf("entry %d: bytes=%x digest=%x do not hash to 0x%016x", i, e.Layout, e.Digest, e.Wire)
 		}
 		if e.Record <= 0 {
