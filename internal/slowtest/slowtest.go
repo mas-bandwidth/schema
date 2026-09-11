@@ -28,8 +28,10 @@
 package slowtest
 
 import (
+	"context"
 	"os"
 	"testing"
+	"time"
 )
 
 // Enabled reports whether the slow half runs in this process.
@@ -53,3 +55,25 @@ func Gate(t *testing.T, what string) {
 	}
 	t.Skipf("SCHEMA_SLOW: this test shells out to %s; set SCHEMA_SLOW=1 to run it (ci-full.yml and the make leg gates always do)", what)
 }
+
+// ProbeContext is the context a compiled probe runs under: the TEST'S OWN
+// deadline (go test -timeout, ten minutes by default) less a margin wide enough
+// for the harness to print the failure by name, and no deadline at all when the
+// harness has none. It replaces a fixed 30 s wall bound, which was measured
+// wrong on 2026-09-11 (PR #950's gate): macOS assesses every freshly written
+// executable on its first exec, about 2 s idle and unbounded when twenty-two
+// gates each spawn fresh probes through the one syspolicyd — a probe whose own
+// work is microseconds died at 30.48 s with 0 % CPU. A probe that truly hangs
+// still fails under its test's name, before the harness's own timeout panic;
+// the margin is what keeps the two apart.
+func ProbeContext(t *testing.T) (context.Context, context.CancelFunc) {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		return context.WithCancel(t.Context())
+	}
+	return context.WithDeadline(t.Context(), deadline.Add(-probeMargin))
+}
+
+// probeMargin is the slice of the test's deadline the harness keeps for itself.
+const probeMargin = 5 * time.Second

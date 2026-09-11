@@ -112,7 +112,10 @@ func refuses(t *testing.T, errs []error, want ...string) {
 			t.Errorf("the refusal must name %q:\n%s", w, got)
 		}
 	}
-	if !strings.Contains(got, "docs/SPEC-TABLES.md §2.10") {
+	// THE RULE'S HOME IS §21.1 for the monotone law and §2.10 for the
+	// append-only discipline the lock's own diff names, so a refusal cites
+	// one of the two (bill §12.1: §2.10's "nothing is widened" is superseded).
+	if !strings.Contains(got, "docs/SPEC-TABLES.md §2.10") && !strings.Contains(got, "docs/SPEC-TABLES.md §21.1") {
 		t.Errorf("every refusal cites the spec:\n%s", got)
 	}
 }
@@ -602,7 +605,7 @@ func TestDriverRefusesOnLoad(t *testing.T) {
 	c.SchemaLock = true
 	if _, err := c.Load(paths); err == nil {
 		t.Fatal("the check runs on load")
-	} else if !strings.Contains(err.Error(), "docs/SPEC-TABLES.md §2.10") {
+	} else if !strings.Contains(err.Error(), "docs/SPEC-TABLES.md §21.1") {
 		t.Errorf("the refusal reaches the caller intact: %v", err)
 	}
 	// and with the policy off, the same unit loads

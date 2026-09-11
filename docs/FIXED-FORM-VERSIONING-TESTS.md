@@ -23,43 +23,45 @@ the byte authority for both files.
 Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`; the fixture case is
 `<row>_case()`; the corpus files `old_<row>.bin` / `new_<row>.bin`.
 
-| row | old | new (the widening) | the narrowing LOCK-REFUSES (new = the reverse) | NEW-READS-OLD lands | OLD-REFUSES-NEW names |
+| row | old | new (the widening) | the narrowing LOCK-REFUSES (new = the reverse) | NEW-READS-OLD lands | OLD-REFUSES-NEW carries |
 |---|---|---|---|---|---|
-| `field_append` | `vec {x,y,z}` | `vec {x,y,z,w}` | `{x,y}`: "field removed"; `{x,w,y,z}`: "field inserted not at the end"; `{y,x,z}`: "fields reordered" | x,y,z exact; w = default | the field w |
+| `field_append` | `vec {x,y,z}` | `vec {x,y,z,w}` | `{x,y}`: "field removed"; `{x,w,y,z}`: "field inserted not at the end"; `{y,x,z}`: "fields reordered" | x,y,z exact; w = default | the hash |
 | `field_deprecate` | `{a,b,c}` | `{a,b deprecated,c}` | `{a,c}` (removed instead of deprecated): "field removed" | a,b,c exact; b read on every plan, no counter (bill §12.3) | (a deprecation is not newer: the OLD reader READS the new file) |
 | `field_undeprecate` | `{a,b deprecated}` | — | `{a,b}`: "undeprecated" (one way, bill §12.3) | — | — |
 | `field_modify` | `{a int32}` | — | `{a int64}` is `int_widen`; `{a string(8)}`: "kind changed" | — | — |
-| `enum_append` | `Tier {bronze silver gold}` | `+ platinum` | `{bronze gold silver}`: "variant reordered"; `{bronze silver}`: "variant removed"; `{bronze platinum silver gold}`: "variant inserted mid-list"; `{bronze silver golden}`: "variant renamed without was" | ordinals equal; a gold record reads gold | the variant platinum |
+| `enum_append` | `Tier {bronze silver gold}` | `+ platinum` | `{bronze gold silver}`: "variant reordered"; `{bronze silver}`: "variant removed"; `{bronze platinum silver gold}`: "variant inserted mid-list"; `{bronze silver golden}`: "variant renamed without was" | ordinals equal; a gold record reads gold | the hash |
 | `enum_width` | 255 variants | 256 variants (width 1 → 2) | a width cannot be set by hand: covered by `enum_append` at the boundary | width 1 ordinal WIDENED into width 2, `widened` += 1; a union crossing 255 arms the same, and the guard compares at the tag's width (bill §12.7) | the hash |
-| `union_append` | `Pick {a b}` | `+ c` | reordered / removed / inserted / payload changed: four refusals | an `a` record lands a; the tag width equal | the arm c |
-| `union_arm_payload_widen` | arm `a: {x}` | arm `a: {x,y}` | arm `a: {}`: "field removed" | x exact, y default | the field y under arm a |
-| `flags_append` | `F {a b}` | `F {a b c}` | `{b a}`: "flag moved"; `{a}`: "flag removed" | mask equal | the flag c |
-| `array_bounded_grow` | `[..4]int32` | `[..8]int32` | `[..2]`: "bound narrowed (4 -> 2)" | count and 4 elements exact; slots 4..7 default | the bound 8 |
+| `union_append` | `Pick {a b}` | `+ c` | reordered / removed / inserted / payload changed: four refusals | an `a` record lands a; the tag width equal | the hash |
+| `union_arm_payload_widen` | arm `a: {x}` | arm `a: {x,y}` | arm `a: {}`: "field removed" | x exact, y default | the hash |
+| `flags_append` | `F {a b}` | `F {a b c}` | `{b a}`: "flag moved"; `{a}`: "flag removed" | mask equal | the hash |
+| `array_bounded_grow` | `[..4]int32` | `[..8]int32` | `[..2]`: "bound narrowed (4 -> 2)" | count and 4 elements exact; slots 4..7 default | the hash |
 | `array_fixed_grow` | `[4]Vec` | `[8]Vec` | `[2]`: "bound narrowed" | 4 exact, 4 at the ELEMENT DEFAULT (a nested Vec's own defaults, bill §12.6) | the hash |
 | `array_shape` | `[4]T` | — | `[..4]T`: "shape changed"; `[Enum]T`: "shape changed" | — | — |
-| `array_elem_widen` | `[..4]int16` | `[..4]int32` | `[..4]int8`: "element narrowed" | 4 exact, widened | the element width |
-| `keyed_array_enum_append` | `[Tier]int32`, Tier 3 | Tier 4 | Tier reordered: "variant reordered" (the array follows) | 3 slots exact, slot 4 default | the variant |
-| `constant_grow` | `const N = 4; [..N]` | `N = 8` | `N = 2`: "bound narrowed (4 -> 2)" (the lock records the EVALUATED bound) | as `array_bounded_grow` | the bound |
-| `string_grow` | `string(8)` | `string(16)` | `string(4)`: "capacity narrowed" | length and bytes exact, slack zero | the capacity |
-| `wstring_grow` | `wstring(8)` | `wstring(16)` | `wstring(4)` | as string, in code units | the capacity |
-| `bytes_grow` | `bytes(8)` | `bytes(16)` | `bytes(4)` | as string | the capacity |
+| `array_elem_widen` | `[..4]int16` | `[..4]int32` | `[..4]int8`: "element narrowed" | 4 exact, widened | the hash |
+| `keyed_array_enum_append` | `[Tier]int32`, Tier 3 | Tier 4 | Tier reordered: "variant reordered" (the array follows) | 3 slots exact, slot 4 default | the hash |
+| `constant_grow` | `const N = 4; [..N]` | `N = 8` | `N = 2`: "bound narrowed (4 -> 2)" (the lock records the EVALUATED bound) | as `array_bounded_grow` | the hash |
+| `string_grow` | `string(8)` | `string(16)` | `string(4)`: "capacity narrowed" | length and bytes exact, slack zero | the hash |
+| `wstring_grow` | `wstring(8)` | `wstring(16)` | `wstring(4)` | as string, in code units | the hash |
+| `bytes_grow` | `bytes(8)` | `bytes(16)` | `bytes(4)` | as string | the hash |
 | `text_kind` | `string(8)` | — | `wstring(8)`: "kind changed"; `bytes(8)`: "kind changed" | — | — |
-| `int_widen` | `int16` | `int32`, `int64` | `int8`: "narrowed"; `uint16`: "signedness"; `float32`: "ladder" | sign-extended exact (-1, MIN, MAX), `widened` += 1 | the width |
-| `uint_widen` | `uint16` | `uint32` | `uint8`; `int16` | zero-extended | the width |
-| `float_widen` | `float32` | `float64` | `float32` from `float64`: "narrowed"; `int32`: "ladder" | the bits, NaN payloads included (per the FU ruling on the quiet bit) | the width |
-| `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, `clamped` == 0 | the range |
+| `int_widen` | `int16` | `int32`, `int64` | `int8`: "narrowed"; `uint16`: "signedness"; `float32`: "ladder" | sign-extended exact (-1, MIN, MAX), `widened` += 1 | the hash |
+| `uint_widen` | `uint16` | `uint32` | `uint8`; `int16` | zero-extended | the hash |
+| `float_widen` | `float32` | `float64` | `float32` from `float64`: "narrowed"; `int32`: "ladder" | the bits, NaN payloads included (per the FU ruling on the quiet bit) | the hash |
+| `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, `clamped` == 0 | the hash |
 | `range_added` | `int32` | — | `int32 \| 0..100`: "range added where none was" | — | — |
-| `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the width |
-| `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed (8 -> 4)"; `fixed(12,4)` from `fixed(8,8)`: "F changed" (I + F EQUALS a storage width per SPEC §4.6, so with F held a narrowed I IS a narrowed kind, and the only same-storage move is I against F) | the raw scaled value exact | the width |
-| `fixed_I_grow_element` | `[4]fixed(12,4)` | `[4]fixed(28,4)` | `[4]fixed(12,4)` from `[4]fixed(28,4)`: "element I narrowed (28 -> 12)" | as the scalar row, per slot | the element width |
-| `optional_add` | `T` | `?T` | `T` from `?T`: "optional removed" | present == 1, value exact | the present byte |
-| `nested_append` | `Root { v Vec }`, `Vec {x,y,z}` | `Vec {x,y,z,w}` | `Vec {x,y}`: "field removed" (in the nested type, named as `Root: Vec.z`) | as `field_append`, inside Root | the field Vec.w |
+| `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the hash |
+| `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed (8 -> 4)"; `fixed(12,4)` from `fixed(8,8)`: "F changed" (I + F EQUALS a storage width per SPEC §4.6, so with F held a narrowed I IS a narrowed kind, and the only same-storage move is I against F) | the raw scaled value exact | the hash |
+| `fixed_I_grow_element` | `[4]fixed(12,4)` | `[4]fixed(28,4)` | `[4]fixed(12,4)` from `[4]fixed(28,4)`: "element I narrowed (28 -> 12)" | as the scalar row, per slot | the hash |
+| `optional_add` | `T` | `?T` | `T` from `?T`: "optional removed" | present == 1, value exact | the hash |
+| `nested_append` | `Root { v Vec }`, `Vec {x,y,z}` | `Vec {x,y,z,w}` | `Vec {x,y}`: "field removed" (in the nested type, named as `Root: Vec.z`) | as `field_append`, inside Root | the hash |
 | `default_change` | `a int32 = 1` | — | `a int32 = 2`: "default changed" | — | — |
 | `keyword_change` | `fixed table` | — | `table`: "fixed removed"; the reverse: "fixed added" | — | (a different form, `previous_form` / `newer_form`, not `layout_newer`) |
 | `closure_plain_table` | — | — | a plain `table` reached by value: compile refusal (check_fixed) | — | — |
 | `closure_variable_kind` | — | — | a pointer, a map, an unbounded array in the closure: compile refusal | — | — |
 | `closure_self` | — | — | a fixed table reaching itself by value, in an array, through a type, through a pointer: compile refusal | — | — |
 | `rename_without_was` | `a` | `a was = b` (allowed) | `b` alone: "renamed without was" | reads | reads |
+| `held_type_change` | `v Vec` | — | `v Hull`: "held type changed (Vec -> Hull)" — a field keeps the type it holds, every record already written holds the old one (`internal/lockfile/monotone.go`) | — | — |
+| `plan_cap` | a table one widening short of the cap | the widening | the widening whose PLAN for a supported older lineage entry passes `plan_too_large` or the leaf cap: "plan too large for lineage entry x", naming the entry; the remedy is the floor or a new table (bill §12.10, ALGORITHM §5.1) | — | — |
 
 ## The floor and the hash
 
@@ -83,7 +85,8 @@ only, and OLD-REFUSES-NEW for the other direction).
 
 ## Counting
 
-33 rows × up to 4 columns, the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the floor and hash
+37 rows × up to 4 columns — the rows whose read columns are `—` are LOCK-only, `held_type_change` and
+`plan_cap` among them — the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the floor and hash
 tests, on the reference and nine legs. The reference first,
 red first; then the legs from the corpus, algorithm not reference; the swarm takes the mechanical rows with
 the target and the corpus file named on the card.

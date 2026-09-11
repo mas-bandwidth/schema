@@ -1,7 +1,6 @@
 package ctable
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"os"
@@ -9,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -278,7 +277,7 @@ func runCGenerated(t *testing.T, schema, source string, extraCC ...string) {
 	if output, err := exec.Command(cc, args...).CombinedOutput(); err != nil {
 		t.Fatalf("compile: %v\n%s", err, output)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	if output, err := exec.CommandContext(ctx, filepath.Join(dir, "probe")).CombinedOutput(); err != nil {
 		t.Fatalf("execute: %v\n%s", err, output)

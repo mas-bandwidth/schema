@@ -18,8 +18,14 @@ import (
 
 // fixedKnown is one COMPILE'd lineage entry (algorithm §5.2): the hash the
 // file carries, the layout bytes LOAD memcmps, and the writer's record size.
-// Plans for older entries are compiled from these trusted bytes at first load;
-// the file's own layout is never parsed (bill §12.4, algorithm §5.3).
+//
+// THE LAW IS THAT EVERY PLAN IS LAID DOWN AT BUILD TIME, off the load path
+// (algorithm §5.9 #3, bill §12.5): the supported set is finite and known from
+// the lock, so nothing compiles at run time and there is no cache to miss.
+// This reference still compiles an older entry's plan from these trusted bytes
+// at FIRST LOAD, keyed by hash in a caller-supplied cache — a standing debt,
+// algorithm §5.8 row 3, and not the contract a port implements. Either way the
+// file's own layout is never parsed (bill §12.4, algorithm §5.3).
 type fixedKnownRange struct {
 	dst    uint32
 	width  uint8
