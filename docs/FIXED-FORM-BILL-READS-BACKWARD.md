@@ -42,6 +42,19 @@ The table's own law, additions and deprecation only, extends to every definition
 | a compressed float | any quantization (it rides as the float) | never |
 | the `fixed` keyword | the same | a variable table where the reader has a fixed one, or the reverse: a different form, not a version |
 
+| a range or constraint | absent on the writer where the reader has none, or inside the reader's | ADDED where none was (old values would clamp); a constraint added to a text field |
+| a text kind (`string`, `wstring`, `bytes`) | the same | any change between the three (old bytes stop being valid under the new content rules) |
+| an array's shape (`[N]`, `[..N]`, `[Enum]`) and its key enum | the same shape and key | a shape change or a swapped key; an element type follows the widening ladder, an element narrowed is refused |
+| a reader-side limit a table declares (a record count, a batch size) | at most the reader's | smaller; where the limit is a compiler flag it is outside the law and the doc says so |
+| a deprecated field | still written, still in its place | leaving the layout (that is a removal); undeprecating is allowed |
+| a rename | through `was` | without it (the baseline's identity is by name, the fixed wire's by position) |
+
+**The invariant that makes widening safe** (Glenn: "widening with default values is what saves us here"):
+every widening is defined by the default it fills. A new field takes its default; a grown array's new slots
+take the element default; `T` to `?T` lands every old value present; a widened range, width or list changes
+nothing an old value held. A change with no default to fill is not a widening, and that is the test for any
+case not in this table.
+
 Glenn: "wstring/strings/bytes can be widened only, not narrowed, because a narrowed string/array cannot read
 the old." The principle behind every row: a newer reader must be able to hold every value an older writer
 could produce, exactly. Where widening keeps that true it is allowed; where it cannot, the change is
