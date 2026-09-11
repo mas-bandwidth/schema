@@ -102,6 +102,13 @@ order is load-bearing**: rule 1; the root's kind (`13`, else rule 4) and size (n
 (6), recurse, then the size and shape rules. Keep the FIRST reason and stop. **The subtree walk is iterative**,
 or a chain of single-child entries is a stack depth the wire chooses.
 
+**ONE NAMED REFUSAL IS NOT IN THIS TABLE AND CANNOT BE: `text_ill_formed`** (§4.5, §5.3, fix 11). Every rule
+here is about the LAYOUT and fires before a record byte is touched; ill-formed text is about the RECORD's used
+units and fires in the scatter, so it is the only refusal a reader reaches with destination bytes already
+landed: the read STOPS and the destination is unspecified from there, exactly as a packet read's terminal
+refusal leaves its output object (SPEC.md §5). A layout cannot state that its text is well-formed, so no
+seventh-and-a-half rule could catch it before a record byte.
+
 ### 1.2 What a size and a shape must be
 
 `sum` totals an entry's children's sizes, `widest` is the largest, `elem` is the one child's size, and an ordinal width is one of `1, 2, 4, 8`.
@@ -318,7 +325,7 @@ The reader validates on load in **every** build, release included, and a clamp c
 |---|---|
 | `copy` | `COPY(out+dst, record+src, size)`. Nothing to validate |
 | `count` | `v := SLE(4, record+src)`; if `v < 0` then `v := 0, COUNT clamped`, else if `v > size` then `v := size, COUNT clamped`; `PUT(4, out+dst, v)`. The bound is the READER's own `Max`, in ELEMENTS |
-| `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)` clamped into `[0, cap]`, `COUNT clamped` if it fired. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
+| `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)` clamped into `[0, cap]`, `COUNT clamped` if it fired. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME — `text_ill_formed` — which is the packet reader's verdict** (SPEC.md §4.7, §4.12: not well-formed UTF-8 under Unicode Table 3-7, an unpaired surrogate, a group above `0xFFFF`, an interior null), this form having no `L` to continue past (fix 11). **THE PACKET READER HAS THE VERDICT AND NO ENUMERATOR** — it fails the read in the target's own idiom, `false` or `ErrValidation` — so `text_ill_formed` is the name this page gives it, numbered in §5.3 beside the others, and no leg carries it yet (§5.8 row 8). `bytes(N)` has NO content rule and cannot reach this row |
 | `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : 0`; `PUT(dstsize, out+dst, v)` |
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction, NaN payloads included |
 | `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
@@ -793,10 +800,13 @@ compared. **The seven §1.1 malformations under a KNOWN hash all come back as on
 | a ragged tail: `rest mod record_bytes != 0` | — | `malformed`, and `-1` |
 | more records than the caller's capacity | `batch_too_large` | the name |
 | a record hash that is not the file's | `no_layout` | the name |
-| ill-formed text in the USED units | the name fix 11 owes (§4.5) | nothing decoded past it; the reference sets `malformed` instead — §5.8 |
+| ill-formed text in the USED units — not well-formed UTF-8 in a `string(N)`, an unpaired surrogate or a zero code unit in a `wstring(N)`; `bytes(N)` has no content rule | `text_ill_formed` | the name (fix 11, §4.5). Nothing decoded past it; **no leg carries it today** — C++, C and Rust set `malformed` and Go, JS, Dart and C# do nothing at all (§5.8 row 8) |
 
 **REFUSE is total: no counter moves, nothing is decoded, and not one destination byte is written** — the
-prefill included. `malformed` is the residue and not a bucket a named rule falls into.
+prefill included. `malformed` is the residue and not a bucket a named rule falls into. **The one refusal
+that cannot be total is `text_ill_formed`**, which fires inside the scatter on a record's used units: the
+read stops at the offending field, returns `-1` under that name, and the destination is unspecified from
+there (SPEC.md §5's terminal read). Every other row above is decided before a byte lands.
 
 **THE REPORT IS TWO ANSWERS, AND EVERY FIXTURE ASSERTS THEM JOINTLY** (`test/tables/versioning_lists.cpp:178`,
 the three lines `refuses_newer` shares with every OLD-REFUSES-NEW column). `refused` plus `reason` is one
@@ -816,9 +826,14 @@ returns** (§5.9 #6), which is how REFUSE stays total — and on a LAWFUL lineag
 
 **THE NAMES ARE THE CONTRACT AND THE INTEGERS ARE EACH LEG PAIR'S OWN** (§5.9 #14). A peer is refused by the
 same NAME whichever leg reads it; the value behind that name is the leg's, because one leg spells a reason as a
-string and has no integer to agree with. The C and C++ pair's values are **`18` `layout_newer` and `19`
-`layout_unsupported`**, taken in the order §5.3 names them — the order is the contract too, so a second leg
-pair numbering its own set numbers them in the same order.
+string and has no integer to agree with. The C and C++ pair's values are **`18` `layout_newer`, `19`
+`layout_unsupported` and `20` `text_ill_formed`**, taken in the order §5.3 names them — the order is the
+contract too, so a second leg pair numbering its own set numbers them in the same order. **`text_ill_formed`
+IS APPENDED AFTER `19` AND NOT SLOTTED BESIDE THE OTHER CONTENT ROWS**: the values are append-only, a peer
+refused under a name it does not know being a worse answer than a gap in the order. **It is the one name in
+this list no leg carries yet** (§5.8 row 8, fix 11), and it is the one refusal that does NOT fire before a
+record byte is touched — it fires in the scatter, §4.5, on the USED units, which is why §1.1's seven rules
+do not name it.
 
 **STEP 9 IS ABOUT A FILE, NEVER ABOUT THE LOCK.** A record size of `8` or less comes off the FILE's arithmetic
 — `record_bytes` is the lock's, but `rest`, the tail behind the layout, is the file's. **A LINEAGE ENTRY whose
@@ -1014,7 +1029,7 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 5 | `arg`, the guard's ordinal, is still a BYTE lane (`uint8_t`), so a union past 255 arms cannot express its guard value — the tag is READ at its own width and the remap table is `uint16_t`, so only this lane is short | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
 | 6 | a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH | an arm inside an arm answers to the OUTER tag too (§4.1) |
 | 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
-| 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
+| 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME — **`text_ill_formed`**, `20` in the C/C++ pair (§4.5, §5.3, fix 11). **OPEN ON EVERY LEG — nothing has landed — and the legs do not even fail the same way**, which is what a port needs to know before it starts. **FOUR VALIDATE AND SET `malformed`**: C++ (`cpptable.emitFixedTextContent`), C, Rust and Elixir (`text_ok?`) each zero the field, restore its declared default and count one damage. **FIVE DO NOTHING AT ALL** on the fixed path — Go, JavaScript, Dart, C# and Java carry the text flavour in the plan's `meta` and never check the used units — so ill-formed text lands as bytes, no counter moves, and the read looks clean. A leg reading only "the reference counts `malformed`" would start from the wrong place on five legs out of nine. **The divergence is PINNED by test where it is implemented** — Elixir's generator test asserts the validator's own clauses and the C++ properties gate carries `utf8_bad` as an invariant — so landing the refusal turns those red ON PURPOSE; the pin is the reminder, never the rule (§7, fix 4's precedent). The first leg to land it owes `text_ill_formed` by name, the `bytes(N)` exemption, and the hostile row per text flavour (`FIXED-FORM-VERSIONING-TESTS.md`), and this row stays OPEN until one does |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
 | 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
 | 11 | the `unknown` census is counted once per ELEMENT of an array of tables | once per field per peer |
@@ -1488,9 +1503,9 @@ reader-side bug today and says so.
 | bound | verdict |
 |---|---|
 | **4096 bytes of record body** | a WARNING, always on, naming the table and the size. Nothing about the wire changes there; it is where a fixed table stops being a small thing |
-| **65536 bytes of record body** | a COMPILE REFUSAL for a DECLARED fixed table, by name, naming the table and the size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
-| **`--fixed-record-limit N`** | a project's own policy, off by default, and it only ever LOWERS — it cannot raise the 65536, because a gate a stranger does not honour is not a wire bound |
-| **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP** (fix 4), on the 65536's own split: a DECLARED fixed table past it does not compile, naming the table and its leaf count; one merely DERIVED into the form is warned and keeps form `1`. The cap bounds the identity plan a backend lays down as STATIC DATA — source a consumer's compiler parses on every build. **THE FLAT-ELEMENT FOLD says what spends a leaf**: an array whose element's storage image IS its wire image, a scalar or a struct of them, is ONE leaf however long it is, so `[..8192]int32` costs two — the count and the run. What reaches the cap is a big array of a type this form must walk element by element: one carrying text, a count, a union or an optional. At run time, against the caller's own buffer, the same question is `plan_too_large` |
+| **65536 bytes of record body** | **THE FORM IS NOT EMITTED AND THE TABLE IS NAMED — it is NOT a compile refusal, and the `fixed` KEYWORD DOES NOT MAKE IT ONE.** A warning carries the table and the size, DECLARED and DERIVED alike, and the table keeps form `1`, which it never lost. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction — but the bound is the FORM's and the keyword declares the CLASS, so refusing the unit would refuse the class over one of its wires. `tables/examples`' declared `fixed table WideBlob` is 280012 bytes and GENERATES, with that warning and without the form (`compiler.TestDeclaredFixedTablePastTheCeilingKeepsFormOneAndIsNamed`, `TestTheCorpusMegabyteFixedTablesCompile`). The ONE thing that fails a compile on a record size is the flag below |
+| **`--fixed-record-limit N`** | a project's own policy, off by default (`0`), and **the only record-size bound that FAILS THE COMPILE**: past `N` bytes a fixed table does not compile, naming the table, the size and the flag. It only ever LOWERS — it cannot raise the 65536, because a gate a stranger does not honour is not a wire bound |
+| **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP** (fix 4), on a DECLARED/DERIVED split that is THE CAP'S OWN and not the 65536's — the record ceiling warns either way, and this one does not: a DECLARED fixed table past it DOES NOT COMPILE, naming the table and its leaf count; one merely DERIVED into the form is warned and keeps form `1`. The cap bounds the identity plan a backend lays down as STATIC DATA — source a consumer's compiler parses on every build. **THE FLAT-ELEMENT FOLD says what spends a leaf**: an array whose element's storage image IS its wire image, a scalar or a struct of them, is ONE leaf however long it is, so `[..8192]int32` costs two — the count and the run. What reaches the cap is a big array of a type this form must walk element by element: one carrying text, a count, a union or an optional. At run time, against the caller's own buffer, the same question is `plan_too_large` |
 
 ## 7. What a port takes, and what it must not
 
@@ -1569,14 +1584,14 @@ Where this page and the C++ reference or §3.4 disagree, **this page is the ruli
 | 1 | **Text and array slack** — the writer writes `length` units and `count` elements onto the zeroed template and stops, never the caller's leftovers or an element's default image | LANDED, `860d9f6f` |
 | 2 | **Bool and present flags** land as `byte != 0`; the reference lands both with a plain one-byte copy, so `0x02` becomes a `bool` holding `2` | in flight (Go, Rust) |
 | 3 | **Layout overrun** — an entry reaching past the writer's declared record size owes `layout_record_too_large`, and a failure to parse the reader's OWN layout owes its own name, not `plan_too_large` | validation LANDED, `3e3da58d`; the names pending |
-| 4 | **The leaf cap** refuses BY NAME instead of dropping the form in silence, on the 65536's declared/derived split, and the flat-element fold says what spends a leaf | LANDED, `eeb5563b` |
+| 4 | **The leaf cap** refuses BY NAME instead of dropping the form in silence, on a declared/derived split OF ITS OWN — the 65536 warns either way and refuses nothing (§6) — and the flat-element fold says what spends a leaf | LANDED, `eeb5563b` |
 | 5 | **The ranged clamp** — a ranged integer clamps on load and counts, fixed-point on the raw scale | LANDED, `a17e1b0c` — §4.6 |
 | 6 | **The measurement file** — `test/bench/fixedform_measure.cpp` no longer compiles against the generated plan and is in no test target, so the ratios §3.4 quotes are unverifiable today | pending |
 | 7 | **Wide kinds**, two halves — §15's refusal of the 128-bit and fixed-point families is owed by the ACCELERATORS and not by this wire, which names no kind on its emitted path; and the wide TEXT flavour has NO oracle bytes anywhere, so a leg counting BYTES where it owes UTF-16 CODE UNITS still passes | the first LANDED, `22a161c5`; the oracle in flight (Dart) |
 | 8 | **Name claims** — `internal/tablenames/cpp.go` claims none of the fixed form's module-scope names where the C backend claims twenty-three, so a schema can collide with the runtime; and the layout hash is a wire identity, never a security claim | in flight (JS) |
 | 9 | **The Envelope clamp count** — a union tag past the last arm landed RAW on the identity path, where it was a plain one-byte copy, and counted nothing | LANDED, `a17e1b0c` — §4.6 |
 | 10 | **The `bytes(N)` row swap** — it lands through the ARRAY case, count to `aux` and elements to `dst`, where it had been written under the text convention | LANDED, `79e34542` |
-| 11 | **Text content** — the reference performs NO UTF-8 or surrogate validation here, and a length past the bound clamps where §3.4 says `malformed`. The ruling: the length CLAMPS and counts, the CONTENT refuses by name as the packet reader does | pending |
+| 11 | **Text content** — the reference validates the used units but answers with DAMAGE (zero the field, restore its default, count `malformed`), and a length past the bound clamps where §3.4 says `malformed`. The ruling: the length CLAMPS and counts, the CONTENT refuses by name as the packet reader does, **and the name is `text_ill_formed`** — `20` in the C/C++ pair, appended after `layout_unsupported` (§4.5, §5.3). The packet reader has the VERDICT and no enumerator of its own (it returns `false` / `ErrValidation`, SPEC.md §4.7, §4.12), so the name is this page's | pending on every leg — §5.8 row 8 |
 | 12 | **The arg lane** — `arg` is the guard's ordinal and nothing else; `meta` is the op's own argument | LANDED, `8c15973d` |
 | 13 | **Absent-optional zero** — the writer stored an optional's payload unconditionally, so a caller's untouched storage rode behind a flag that said absent | LANDED, `db52975f` |
 | 14 | **The tag and ordinal rulings** — a tag past the last arm and an ordinal past the last variant land `None` and `COUNT clamped`, on the identity path as well as the compiled one, and by a straight-line pass rather than a plan entry | LANDED, `a17e1b0c` — §4.6 |

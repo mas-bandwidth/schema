@@ -6661,7 +6661,11 @@ three and not one.
   the bound to be a gate has the flag below.
 - **`--fixed-record-limit N` MAKES THE ADVICE A GATE, AND ONLY EVER LOWERS.** It
   is off by default and it is a project's own policy, never a wire fact: set it
-  and a fixed table whose record body exceeds `N` bytes DOES NOT COMPILE. A team
+  and a fixed table whose record body exceeds `N` bytes DOES NOT COMPILE.
+  **IT IS THE ONLY RECORD-SIZE BOUND THAT FAILS A COMPILE AT ALL** — neither
+  4096 nor 65536 does, with or without the `fixed` keyword — so a text that says
+  a declared fixed table past 65536 does not compile is describing this flag and
+  nothing else. A team
   that wants the owner's rule enforced rather than advised sets it to `4096`.
   **IT CANNOT RAISE THE 65536**, and that is not a limitation but the same rule
   read from the other end: 65536 is the number a PEER's reader holds this
@@ -6860,7 +6864,7 @@ the bounds pass that runs after the loop, over storage, for either plan:
   |---|---|
   | `copy` | move `size` bytes from `src` to `dst` |
   | `count` | read the count, clamp it to the reader's own `Max` (`size`), store it; `clamped` counts if it fired |
-  | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply and a violation is `malformed` |
+  | `text` | `count`'s work on the length, then the units, then terminate at the used length; the content rules of §3 apply over the USED units, and a violation **REFUSES BY NAME — `text_ill_formed`** (`FIXED-FORM-ALGORITHM.md` §4.5, §5.3, fix 11), this form having no `L` to read on past as the tolerant wire does. `bytes(N)` has no content rule and cannot reach it. **The `malformed` this line used to say is what the C++ reference and three other legs still DO, and it is a divergence they owe** — no leg carries the refusal yet (algorithm §5.8 row 8) |
   | `union` | read the tag, resolve it to the reader's own arm, run that arm's sub-plan |
   | `widen` | decode a narrower source at its own width into a wider destination, `widened` counts |
   | `ordinal` | resolve a variant ordinal through the plan's own remap table at `aux` |
@@ -7079,10 +7083,14 @@ added moves it without anyone remembering to.
   counter moved. A validation nobody watched fail is a validation nobody has.
 - **THE SIZE BOUNDS, one test each.** A fixed table past 4096 bytes
   of record body WARNS, naming the table and the size and changing no exit code;
-  a DECLARED fixed table past 65536 DOES NOT COMPILE, by name; one merely
-  DERIVED into the form past 65536 does not carry the form at all and says so;
-  and `--fixed-record-limit` turns the advisory into a refusal that fails the
-  compile.
+  a fixed table past 65536 **DOES NOT CARRY THE FORM and STILL COMPILES**,
+  naming the table and the size, **DECLARED AND DERIVED ALIKE** — the keyword
+  does not make this bound a refusal, which is what the declared probe and this
+  specification's own megabyte examples assert; and `--fixed-record-limit`, off
+  by default, is the one record-size bound that turns the advisory into a
+  refusal that FAILS THE COMPILE. The PLAN's leaf cap is the bound the keyword
+  DOES change: a DECLARED fixed table past it does not compile, by name, where
+  one merely DERIVED into the form is warned and keeps form `1`.
 - **THE FORM BYTE'S OWN REFUSALS, one per direction** (§3): a fixed reader given
   `1` answers `previous_form`, given `2` answers `message_form_as_file`, given a
   byte no form defines answers `newer_form`, and each moves no counter and
@@ -7118,9 +7126,13 @@ added moves it without anyone remembering to.
   type whose leaves do not fit one plan does not carry the form. **AN ARRAY OF
   A FLAT TYPE IS ONE LEAF** — a type whose storage image is its wire image,
   which is most of them — so the bound is reached only by a large array of a
-  type carrying text, a count, a union or an optional. Nothing in §3.4 stops
-  such a type, and the follow-on is a plan built at load time instead, through
-  the same loop.
+  type carrying text, a count, a union or an optional. **AND HERE THE KEYWORD
+  DOES DECIDE, unlike the 65536 above**: a DECLARED `fixed table` whose plan
+  does not fit DOES NOT COMPILE, named with its leaf count, because a
+  `fixed table` never silently falls back to form `1`; one merely DERIVED into
+  the form asked for nothing, keeps form `1` and is warned. Nothing in §3.4
+  stops such a type from being DECLARED a plain `table`, and the follow-on is a
+  plan built at load time instead, through the same loop.
 - **THE PLAN'S DESTINATIONS ARE ASSERTED AGAINST THE LANGUAGE'S OWN ABI.** A
   plan the schema compiler laid down carries offsets the schema compiler
   computed, so every backend emits those offsets back as build-time assertions
@@ -8377,6 +8389,7 @@ The builder is designed to go wide, lock-free by ownership:
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
+  | `text_ill_formed` | a FIXED-form record whose USED text units are not the text their kind says they are: a `string(N)` that is not well-formed UTF-8 or carries an interior null, a `wstring(N)` with an unpaired surrogate, a zero code unit or a group above `0xFFFF` (§3, SPEC.md §4.7, §4.12). `bytes(N)` has no content rule and never reaches it. It is the ONE refusal here that is not decided before a record byte lands — it fires in the scatter, on the used units, and the read stops there (`FIXED-FORM-ALGORITHM.md` §4.5, §5.3, fix 11). **The C and C++ pair number it `20`, appended after `layout_unsupported`**, and NO LEG CARRIES IT YET: four validate and report DAMAGE instead, five do not look |
 
   **`data_cycle` IS THE ONE VALUE WITH NO CARRIER TODAY, and the ruling is
   that it gets one rather than that it loses its name**: `LoadMeasure` is the

@@ -93,3 +93,18 @@ writer's bound (a count of 7 where the old writer declared `[..4]`, an ordinal 5
 a tag past the old arm count, a scalar past the old range), read by the NEW reader whose own bound is
 wider: it clamps or lands `None` against the WRITER's bound carried by the plan, and counts, never landing
 a value the old writer could not have written. Named `<row>_hostile_case()`.
+
+**AND ONE HOSTILE ROW PER TEXT FLAVOUR, which is the only one that REFUSES rather than clamps**
+(`FIXED-FORM-ALGORITHM.md` §4.5, §5.3, fix 11). A length past the bound is the clamp above; the CONTENT of the
+used units is a refusal by name, `text_ill_formed`, and the bytes are forged in the OLD file by hand because
+no writer of either schema can produce them:
+
+| row | the forged bytes | what the reader owes |
+|---|---|---|
+| `string_grow_hostile_text` | a LONE CONTINUATION BYTE (`0x80`) inside the used bytes of the `string(8)` — well-formed length, ill-formed UTF-8 under Unicode Table 3-7 | `text_ill_formed` by name, `-1`, `malformed` FALSE and `refused` true (the joint assertion, §5.3); the read stops at that field and the destination is unspecified from there |
+| `wstring_grow_hostile_text` | an UNPAIRED SURROGATE — a high surrogate (`0xD800`) as the last used code unit of the `wstring(8)`, with a well-formed pair beside it so the row proves the pairing rule and not the whole field | `text_ill_formed`, on the USED units and in CODE UNITS, an astral pair counting two |
+| `bytes_grow_hostile_text` | the same `0x80` in the used bytes of the `bytes(8)` | **A CLEAN READ.** `bytes(N)` HAS NO CONTENT RULE, so this row is the negative control for the two above: a leg that refuses here has put the rule on the wrong kind, and the row exists to catch exactly that |
+
+**RED FIRST ON EVERY LEG, and red for a second reason today**: no leg refuses yet — four set `malformed` and
+five do nothing (§5.8 row 8) — so these three rows are the gate the first implementation turns green, and the
+`bytes` row is the one of the three that must be green from the start.
