@@ -55,11 +55,12 @@ func init() {
 		Name{Name: "TableFixedTagBytes", What: "a union entry's tag width: its size less its widest arm"},
 		Name{Name: "TableFixedSameId", What: "whether two entries carry one wire id, compared in two uint32 lanes"},
 		Name{Name: "TableFixedGetU32", What: "the little-endian u32 read the framing itself needs"},
+		Name{Name: "TableFixedTagAt", What: "the little-endian tag load at ArgW bytes, never a prefix — a two-byte 0x0101 is not arm 1"},
 
-		// THE PLAN: eight int32 lanes of one flat Int32Array, and the lane
+		// THE PLAN: nine int32 lanes of one flat Int32Array, and the lane
 		// indices ONE BINDING PER LINE. A lane folded into a comma list beside
 		// another is a lane nobody claimed.
-		Name{Name: "TableFixedLanes", What: "a plan entry is eight int32 lanes, which is what keeps the read loop monomorphic"},
+		Name{Name: "TableFixedLanes", What: "a plan entry is nine int32 lanes, which is what keeps the read loop monomorphic"},
 		Name{Name: "TableFixedLaneOp", What: "the plan lane holding the op"},
 		Name{Name: "TableFixedLaneSrc", What: "the plan lane holding the source offset"},
 		Name{Name: "TableFixedLaneDst", What: "the plan lane holding the destination offset"},
@@ -68,6 +69,7 @@ func init() {
 		Name{Name: "TableFixedLaneGuard", What: "the plan lane holding the union tag an arm's entry runs under"},
 		Name{Name: "TableFixedLaneArg", What: "the plan lane holding the guard's VALUE: the tag an arm's entry answers to"},
 		Name{Name: "TableFixedLaneMeta", What: "the plan lane holding what an op needs beside its size — a widen's width and sign, a text entry's flavour"},
+		Name{Name: "TableFixedLaneArgW", What: "the plan lane holding the guard's WIDTH IN BYTES: a union tag is one, two, four or eight"},
 		Name{Name: "TableFixedNoGuard", What: "the guard a plan entry belonging to no union arm carries"},
 
 		// THE OPS ARE THE WHOLE SET, one binding each, and the flavours a text
