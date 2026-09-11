@@ -28,7 +28,7 @@ union Effect
     ward  Ward
 }
 
-table Cfg
+fixed table Cfg
 {
     a      int32 = 5 | min = 0, max = 1000
     effect Effect
@@ -53,7 +53,7 @@ union Effect
     ward  Ward
 }
 
-table Cfg
+fixed table Cfg
 {
     a      int32 = 5 | min = 0, max = 1000
     effect Effect

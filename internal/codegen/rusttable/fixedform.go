@@ -99,11 +99,12 @@ func fixedCounted(e ir.TableFixedLayoutEntry) bool { return e.Dst.Counted != 0 }
 // THE PREFILL IMAGE: the declared defaults, as record bytes
 //
 // §3.4's answer to an absent field is a PREFILL, and this is what this port
-// prefills WITH. C++ calls the type's own Reset; Rust's table surface has no
-// by-value reset (a `<Name>Row` is `core::mem::zeroed`), so the defaults are
-// laid down HERE, as the record image a fresh value would write. It is a
-// compile-time constant like the block and the template, and it is the one
-// place a declared default reaches this form.
+// prefills WITH. C++ calls the type's own Reset. Named string(N)/bytes(N)
+// defaults also live in constructed `<Name>Row::default()` (matching C++
+// `char label[8 + 1] = "fx"`). The load copies THIS image into the holes the
+// plan does not write (Glenn: prefill the bytes the plan does not write).
+// Identity's hole list is empty because its plan is one Copy of the whole
+// body — empty fill is the skip, not a second path.
 // ---------------------------------------------------------------------------
 
 func fixedDefaultImage(st *ir.Struct) []byte {

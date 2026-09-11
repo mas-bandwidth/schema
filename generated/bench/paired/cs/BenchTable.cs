@@ -7268,6 +7268,149 @@ namespace Bench
         {
             return TableJson.Write(value, BenchMixedTableType(), buffer, false);
         }
+
+        // ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+        //
+        // A record is an eight-byte hash of the writer's vocabulary block and then
+        // the values in declared order, every field at its declared storage width.
+        // The writer is the constant bytes memcpy'd and then stores; the reader is
+        // ONE loop over ONE plan, the identity plan here and a plan compiled from
+        // the writer's own block for anybody else.
+
+        // MixedEntity's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedEntityFixedWriteBody(Span<byte> b, MixedEntity value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.EntityId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.PosX);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.PosY);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), (int)value.PosZ);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(16), (uint)value.Yaw);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(20), (uint)value.Pitch);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(24), (int)value.VelX);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(28), (int)value.VelY);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(32), (int)value.VelZ);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(36), (int)value.Health);
+            b.Slice(40)[0] = (byte)value.Weapon;
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(41), (ulong)value.Damage);
+            b.Slice(49)[0] = (byte)(value.Moving ? 1 : 0);
+            b.Slice(50)[0] = (byte)(value.Firing ? 1 : 0);
+        }
+
+        // MixedStat's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedStatFixedWriteBody(Span<byte> b, MixedStat value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.StatId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Delta);
+        }
+
+        // MixedHitEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedHitEventFixedWriteBody(Span<byte> b, MixedHitEvent value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.TargetId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Damage);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.HitKind);
+            b.Slice(12)[0] = (byte)(value.Crit ? 1 : 0);
+        }
+
+        // MixedChatEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedChatEventFixedWriteBody(Span<byte> b, MixedChatEvent value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Channel);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(4), (uint)value.Speaker);
+        }
+
+        // MixedPickupEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void MixedPickupEventFixedWriteBody(Span<byte> b, MixedPickupEvent value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.ItemId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Amount);
+        }
+
+        // BenchMixed's stores. The template — the hash, then zeros — is memcpy'd first,
+        // which is also what zero-fills every byte of declared slack.
+        public static void BenchMixedFixedWriteBody(Span<byte> b, BenchMixed value)
+        {
+            if (value == null) return;
+            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.Sequence);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.AckSequence);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(8), (uint)value.AckBits);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(12), (long)value.SessionId);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), (int)value.ClientId);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(24), (long)value.Nonce);
+            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), (long)value.WorldTime);
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(40), (ulong)value.FrameTick);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(48), (uint)value.ServerTime);
+            int count_entities = value.EntitiesCount;
+            System.Diagnostics.Debug.Assert(count_entities >= 0 && count_entities <= 8); // the declared count is the bound (§3.4)
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), count_entities);
+            if (value.Entities != null)
+            {
+                for (int i = 0; i < count_entities && i < value.Entities.Length; ++i)
+                {
+                    MixedEntityFixedWriteBody(b.Slice(56 + i * 51), value.Entities[i]);
+                }
+            }
+            int count_stats = value.StatsCount;
+            System.Diagnostics.Debug.Assert(count_stats >= 0 && count_stats <= 80); // the declared count is the bound (§3.4)
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(464), count_stats);
+            if (value.Stats != null)
+            {
+                for (int i = 0; i < count_stats && i < value.Stats.Length; ++i)
+                {
+                    MixedStatFixedWriteBody(b.Slice(468 + i * 8), value.Stats[i]);
+                }
+            }
+            if (value.GameEvent != null)
+            {
+                b.Slice(1108)[0] = (byte)value.GameEvent.Type;
+                switch (value.GameEvent.Type)
+                {
+                    case MixedEventType.Hit:
+                        MixedHitEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Hit);
+                        break;
+                    case MixedEventType.Chat:
+                        MixedChatEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Chat);
+                        break;
+                    case MixedEventType.Pickup:
+                        MixedPickupEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Pickup);
+                        break;
+                    default: break;
+                }
+            }
+            if (value.Loadout != null) { value.Loadout.AsSpan(0, Math.Min(value.Loadout.Length, 4)).CopyTo(b.Slice(1122)); }
+            int len_player_name = value.PlayerName != null ? value.PlayerNameLength : 0;
+            System.Diagnostics.Debug.Assert(len_player_name <= 15);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1126), len_player_name);
+            if (len_player_name > 0) { value.PlayerName.AsSpan(0, len_player_name).CopyTo(b.Slice(1130)); }
+            int len_payload = value.Payload != null ? value.PayloadLength : 0;
+            System.Diagnostics.Debug.Assert(len_payload <= 16);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1145), len_payload);
+            if (len_payload > 0) { value.Payload.AsSpan(0, len_payload).CopyTo(b.Slice(1149)); }
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1165), value.AimX);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1169), value.AimY);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1173), value.AimZ);
+            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1177), value.Recoil);
+            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1181), value.Drift);
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189), (ulong)(unchecked((UInt128)value.WideKey)));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189).Slice(8), (ulong)(unchecked((UInt128)value.WideKey) >> 64));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205), (ulong)(unchecked((UInt128)(Int128)value.Flux)));
+            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205).Slice(8), (ulong)(unchecked((UInt128)(Int128)value.Flux) >> 64));
+            BinaryPrimitives.WriteUInt16LittleEndian(b.Slice(1221), (ushort)value.Ping);
+            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(1223), (uint)value.CrcHint);
+            b.Slice(1227)[0] = (byte)(value.HasExtra ? 1 : 0);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1228), (int)value.Extra);
+            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1232), (int)value.IdleTicks);
+        }
     }
 
 }

@@ -51,14 +51,24 @@ export const TableFixedMessageForm = 2;
 export const TableFixedHeaderBytes = 16;
 export const TableFixedHashAt = 8;
 
-// An entry is SEVENTEEN BYTES and the layout is a count and a run of them. THE
-// FORMAT NEVER MOVES, which is what lets a reader of this major parse a later
-// major's layout and step over a kind it does not know by the size the entry
-// states.
+// An entry is SEVENTEEN BYTES and the layout is a COUNT and a run of them.
+// THERE IS NO VERSION BYTE INSIDE IT (docs/SPEC-TABLES.md §3.4): the FORM BYTE
+// versions everything behind it, the layout's own format included, so a layout
+// format change is a NEW FORM BYTE and never a wider entry.
 export const TableFixedEntryBytes = 17;
 
 // the layout's own framing: the u32 entry count, and nothing else
 export const TableFixedLayoutHeaderBytes = 4;
+
+// §3.4'S RECORD BOUND, and a reader holds an untrusted peer's layout to it for
+// the same reason the compiler holds a declaration to it: a record past it is
+// one this build will not decode.
+export const TableFixedRecordMaxBytes = 65536;
+
+// A BOUND ON THE WALK, not on the wire: the validation below is recursive, so
+// a hostile layout of three thousand entries each claiming one child would
+// otherwise spend a reader's stack before any rule fired. The reference states 64.
+export const TableFixedMaxDepth = 64;
 
 // A PLAN ENTRY is nine int32 lanes of one flat Int32Array. A flat array of a
 // fixed stride is what keeps the read loop monomorphic: every lane is a
@@ -105,9 +115,41 @@ export const TableFixedRefusal = Object.freeze({
   NewerForm: 3,         // a form byte newer than this build
   NoLayout: 4,          // a hash naming no layout this reader holds
   LayoutMalformed: 5,   // bytes handed to this form as a layout that are not one
-  PlanTooLarge: 6,      // a layout whose compiled plan does not fit the caller's storage
-  BatchTooLarge: 7,     // more records than the caller's capacity
+  // THE SEVEN NAMED LAYOUT RULES (docs/FIXED-FORM-ALGORITHM.md §1.1). Each is
+  // its own reason, never collapsed into LayoutMalformed. layout_malformed is
+  // the residue after the seven: fewer bytes than a header, or none at all.
+  LayoutCountMismatch: 6,
+  LayoutKindUnknown: 7,
+  LayoutSizeMismatch: 8,
+  LayoutKindInvalid: 9,
+  LayoutTreeUnclosed: 10,
+  LayoutRecordTooLarge: 11,
+  LayoutTooDeep: 12,
+  PlanTooLarge: 13,     // a layout whose compiled plan does not fit the caller's storage
+  BatchTooLarge: 14,    // more records than the caller's capacity
 });
+
+// THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
+export function TableFixedRefusalName(r) {
+  switch (r) {
+    case TableFixedRefusal.None: return "none";
+    case TableFixedRefusal.PreviousForm: return "previous_form";
+    case TableFixedRefusal.MessageFormAsFile: return "message_form_as_file";
+    case TableFixedRefusal.NewerForm: return "newer_form";
+    case TableFixedRefusal.NoLayout: return "no_layout";
+    case TableFixedRefusal.LayoutMalformed: return "layout_malformed";
+    case TableFixedRefusal.LayoutCountMismatch: return "layout_count_mismatch";
+    case TableFixedRefusal.LayoutKindUnknown: return "layout_kind_unknown";
+    case TableFixedRefusal.LayoutSizeMismatch: return "layout_size_mismatch";
+    case TableFixedRefusal.LayoutKindInvalid: return "layout_kind_invalid";
+    case TableFixedRefusal.LayoutTreeUnclosed: return "layout_tree_unclosed";
+    case TableFixedRefusal.LayoutRecordTooLarge: return "layout_record_too_large";
+    case TableFixedRefusal.LayoutTooDeep: return "layout_too_deep";
+    case TableFixedRefusal.PlanTooLarge: return "plan_too_large";
+    case TableFixedRefusal.BatchTooLarge: return "batch_too_large";
+    default: return "???";
+  }
+}
 
 // A REPORT is §4's six counters and the refusal beside them. The caller owns
 // it and the codec never makes one.
@@ -433,6 +475,10 @@ export class TableFixedLayoutView {
     this.bytes = null;
     this.at = 0;
     this.count = 0;
+    // the rule the last parse failed, by name; TableFixedRefusal.None when it
+    // passed. A field of the view rather than an out-parameter, so a parse
+    // allocates nothing at all.
+    this.refusal = TableFixedRefusal.None;
   }
 }
 
@@ -451,21 +497,20 @@ function TableFixedSameId(a, ai, b, bi) {
 // TableFixedSubtree is how many entries the subtree rooted at i occupies, so a
 // walk steps over a child it does not want without knowing what is in it.
 // THIS IS WHAT MAKES SKIPPING FREE: an unknown field, and an unknown NESTED
-// TYPE, are stepped over by the size their entry states.
+// TYPE, are stepped over by the size their entry states. ITERATIVE ON PURPOSE:
+// a layout is a stranger's bytes, so a chain of single-child entries is a
+// stack depth the wire gets to choose; this walk gives it none. It is only
+// ever called on a layout that has already passed every rule below, so the
+// tree closes.
 export function TableFixedSubtree(b, i) {
   if (i < 0 || i >= b.count) { return 1; }
-  const children = TableFixedChildren(b, i);
-  let n = 1, at = i + 1;
-  for (let c = 0; c < children; c++) {
-    // A CHILD COUNT THAT DOES NOT CLOSE IS layout_malformed (§3.4), so the
-    // overrun is SIGNALLED and not stepped around: an entry claiming a child
-    // the layout does not hold must fail the whole-layout check, or the plan
-    // compiler walks past the last entry it has.
-    if (at >= b.count) { return -1; }
-    const sub = TableFixedSubtree(b, at);
-    if (sub < 0) { return -1; }
-    at += sub;
-    n += sub;
+  let pending = 1, n = 0, at = i;
+  while (pending > 0 && at < b.count) {
+    pending--;
+    n++;
+    pending += TableFixedChildren(b, at);
+    at++;
+    if (pending > b.count) { break; }
   }
   return n;
 }
@@ -483,18 +528,228 @@ function TableFixedUnionArmBytes(b, i) {
 
 function TableFixedTagBytes(b, i) { return TableFixedSize(b, i) - TableFixedUnionArmBytes(b, i); }
 
-// A LAYOUT IS REFUSED WHOLE OR NOT AT ALL: a count that overruns, a tree that
-// does not close. It sets nothing on its way out.
+// ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
+//
+// A LAYOUT ARRIVES FROM AN UNTRUSTED PEER and it is the one structure a reader
+// must parse before it knows anything at all, so every rule below runs BEFORE
+// a single record byte is touched and each refuses under its OWN NAME rather
+// than under one word for all of them (docs/SPEC-TABLES.md §3.4,
+// docs/FIXED-FORM-ALGORITHM.md §1.1).
+//
+// A KIND THIS BUILD DOES NOT KNOW IS A REFUSAL, and that is a ruling rather
+// than an oversight. A FIXED FORM HAS A CLOSED KIND SET: the form byte versions
+// everything behind it, kinds included, so a layout carrying a kind outside the
+// set is not a newer layout of THIS form — it is a layout of a form whose byte
+// this reader never saw, and there is no version of "step over it" that is
+// honest about that. layout_kind_unknown says exactly what happened, and the
+// peer is told to speak this form or a form this reader carries.
+//
+// NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle:
+// an entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is
+// always higher than its parent's, the layout is finite, and there is no back
+// reference for a cycle to be made of. The tree-closure rule is what bounds
+// the walk, and the depth rule is what bounds the reader's stack.
+
+function TableFixedFail(b, why) {
+  if (b.refusal === TableFixedRefusal.None) { b.refusal = why; }
+}
+
+// A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
+// ONE exception, and it is stated here rather than left to be found: a
+// bits(N) field rides at its DECLARED STORAGE WIDTH — four bytes for N <= 32 and
+// eight above (§3.4) — under the unsigned integer kind its BIT COUNT picks
+// (§3), so kinds 6 and 7 admit four as well as their own width.
+// Answers 1 if leaf and size ok, 0 if leaf and size bad, -1 if not a leaf.
+function TableFixedLeafSize(kind, size) {
+  switch (kind) {
+    case 1:  return size === 1 ? 1 : 0;                 // bool
+    case 2:  return size === 1 ? 1 : 0;                 // i8
+    case 3:  return size === 2 ? 1 : 0;                 // i16
+    case 4:  return size === 4 ? 1 : 0;                 // i32
+    case 5:  return size === 8 ? 1 : 0;                 // i64
+    case 6:  return size === 1 || size === 4 ? 1 : 0;   // u8,  and bits( 1 .. 8 )
+    case 7:  return size === 2 || size === 4 ? 1 : 0;   // u16, and bits( 9 .. 16 )
+    case 8:  return size === 4 ? 1 : 0;                 // u32, and bits( 17 .. 32 )
+    case 9:  return size === 8 ? 1 : 0;                 // u64, flags, and bits( 33 .. 64 )
+    case 10: return size === 4 ? 1 : 0;                 // f32
+    case 11: return size === 8 ? 1 : 0;                 // f64
+    case 17: return size === 4 ? 1 : 0;                 // a pointer index, which no fixed table carries
+    case 18: case 19: return size === 16 ? 1 : 0;       // i128, u128
+    case 20: case 25: return size === 1 ? 1 : 0;        // fixed8, ufixed8
+    case 21: case 26: return size === 2 ? 1 : 0;
+    case 22: case 27: return size === 4 ? 1 : 0;
+    case 23: case 28: return size === 8 ? 1 : 0;
+    case 24: case 29: return size === 16 ? 1 : 0;
+    case 32: return size === 0 ? 1 : 0;                 // a variant, and an arm that holds nothing
+  }
+  return -1;
+}
+
+function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n === 8; }
+
+// THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
+// the no-payload variant 32, wstring 33, and the ONE kind this form's layout
+// adds, the optional wrapper 35. 31 is §3's BODY framing escape and 34 is
+// reserved: neither is a kind a declaration spells, so neither is ever an
+// entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over.
+function TableFixedKnownKind(kind) {
+  if (kind >= 1 && kind <= 30) { return true; }
+  return kind === 32 || kind === 33 || kind === 35;
+}
+
+function TableFixedClearView(out) {
+  out.bytes = null;
+  out.at = 0;
+  out.count = 0;
+}
+
+// TableFixedCheckEntry validates the subtree rooted at i and answers how many
+// entries it occupies, which is the same arithmetic TableFixedSubtree does and
+// is why that walk is safe to run afterwards and only afterwards.
+function TableFixedCheckEntry(b, i, depth) {
+  if (b.refusal !== TableFixedRefusal.None) { return 0; }
+  if (i < 0 || i >= b.count) { TableFixedFail(b, TableFixedRefusal.LayoutTreeUnclosed); return 0; }
+  if (depth > TableFixedMaxDepth) { TableFixedFail(b, TableFixedRefusal.LayoutTooDeep); return 0; }
+  const kind = TableFixedKind(b, i);
+  const size = TableFixedSize(b, i);
+  // THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
+  // and is refused whole, never walked and never stepped over.
+  if (!TableFixedKnownKind(kind)) { TableFixedFail(b, TableFixedRefusal.LayoutKindUnknown); return 0; }
+  if (size > TableFixedRecordMaxBytes) { TableFixedFail(b, TableFixedRefusal.LayoutRecordTooLarge); return 0; }
+
+  // THE CHILDREN FIRST, in the pre-order the layout is written in.
+  const kids = TableFixedChildren(b, i);
+  let at = i + 1;
+  let sum = 0;
+  let widest = 0;
+  let firstSize = 0, secondSize = 0, firstKind = 0, firstChildren = 0;
+  let kidsAreVariants = true;
+  for (let k = 0; k < kids; k++) {
+    const child = at;
+    const used = TableFixedCheckEntry(b, child, depth + 1);
+    if (b.refusal !== TableFixedRefusal.None) { return 0; }
+    const childSize = TableFixedSize(b, child);
+    if (k === 0) {
+      firstSize = childSize;
+      firstKind = TableFixedKind(b, child);
+      firstChildren = TableFixedChildren(b, child);
+    }
+    if (k === 1) { secondSize = childSize; }
+    if (TableFixedKind(b, child) !== 32) { kidsAreVariants = false; }
+    sum += childSize;
+    if (childSize > widest) { widest = childSize; }
+    if (sum > TableFixedRecordMaxBytes) { TableFixedFail(b, TableFixedRefusal.LayoutRecordTooLarge); return 0; }
+    at += used;
+  }
+
+  const leaf = TableFixedLeafSize(kind, size);
+  if (leaf === 0) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+  if (leaf === 1) {
+    if (kids !== 0) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+    return at - i;
+  }
+  switch (kind) {
+    case 13: { // a TABLE: its size is the SUM of its fields'
+      if (size !== sum) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      break;
+    }
+    case 35: { // the OPTIONAL WRAPPER: one child, one present byte in front of it
+      if (kids !== 1) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+      if (size !== sum + 1) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      break;
+    }
+    case 14: { // an ARRAY: a whole number of elements, behind a count or not
+      if (kids !== 1) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+      if (firstSize === 0) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      const bare = (size % firstSize) === 0;
+      const counted = size >= 4 && ((size - 4) % firstSize) === 0;
+      if (!bare && !counted) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      break;
+    }
+    case 16: { // an ENUM-KEYED array: the KEY ENUM then the ELEMENT, every slot written
+      if (kids !== 2) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+      if (firstKind !== 30) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+      if (secondSize === 0 || (size % secondSize) !== 0) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      // AT LEAST one slot per variant. Not exactly one: an enum widened
+      // by an explicit max has more slots than it has names, and the
+      // layout carries only the names.
+      if (((size / secondSize) | 0) < firstChildren) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      break;
+    }
+    case 15: { // a UNION: the TAG at its own width, then the WIDEST ARM
+      if (kids === 0) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+      if (size <= widest) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      if (!TableFixedOrdinalWidth(size - widest)) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      break;
+    }
+    case 30: { // an ENUM: the ordinal's storage width, and its children are VARIANTS
+      if (!TableFixedOrdinalWidth(size)) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      if (kids !== 0 && !kidsAreVariants) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+      break;
+    }
+    case 12: { // string(N): the length, then N bytes
+      if (kids !== 0) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+      if (size < 4) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      break;
+    }
+    case 33: { // wstring(N): the length in CODE UNITS, then 2N bytes
+      if (kids !== 0) { TableFixedFail(b, TableFixedRefusal.LayoutKindInvalid); return 0; }
+      if (size < 4 || ((size - 4) % 2) !== 0) { TableFixedFail(b, TableFixedRefusal.LayoutSizeMismatch); return 0; }
+      break;
+    }
+    // Every kind of the closed set is either a leaf above or a case here,
+    // so this is unreachable — and it refuses rather than admits, because
+    // a kind that reached it is a kind the two lists disagree about.
+    default: TableFixedFail(b, TableFixedRefusal.LayoutKindUnknown); return 0;
+  }
+  return at - i;
+}
+
+// TableFixedParseLayout is the WHOLE of what a reader trusts a layout on. It
+// answers false and a REASON BY NAME on the view, and the caller reports that
+// reason. A layout that fails any rule SETS NOTHING: no plan is compiled, no
+// counter moves, and the reader is in the state it was in before the bytes
+// arrived.
 export function TableFixedParseLayout(bytes, at, length, out) {
-  if (bytes === null || length < TableFixedLayoutHeaderBytes) { return false; }
+  TableFixedClearView(out);
+  out.refusal = TableFixedRefusal.None;
+  if (bytes === null || length < TableFixedLayoutHeaderBytes) {
+    out.refusal = TableFixedRefusal.LayoutMalformed;
+    return false;
+  }
+  // 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
   const count = TableFixedGetU32(bytes, at);
-  if (count === 0 || count * TableFixedEntryBytes + TableFixedLayoutHeaderBytes !== length) { return false; }
+  if (count === 0 || count * TableFixedEntryBytes + TableFixedLayoutHeaderBytes !== length) {
+    out.refusal = TableFixedRefusal.LayoutCountMismatch;
+    return false;
+  }
   out.bytes = bytes;
   out.at = at;
   out.count = count;
-  // THE TREE HAS TO CLOSE: the root's subtree is the whole layout
-  if (TableFixedSubtree(out, 0) !== out.count) {
-    out.bytes = null; out.at = 0; out.count = 0;
+  // 2. THE ROOT IS A TABLE, and its size is the record's body
+  if (TableFixedKind(out, 0) !== 13) {
+    out.refusal = TableFixedRefusal.LayoutKindInvalid;
+    TableFixedClearView(out);
+    return false;
+  }
+  const rootSize = TableFixedSize(out, 0);
+  if (rootSize === 0 || rootSize > TableFixedRecordMaxBytes) {
+    out.refusal = TableFixedRefusal.LayoutRecordTooLarge;
+    TableFixedClearView(out);
+    return false;
+  }
+  // 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
+  //    SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND
+  const used = TableFixedCheckEntry(out, 0, 0);
+  if (out.refusal !== TableFixedRefusal.None) {
+    TableFixedClearView(out);
+    return false;
+  }
+  // 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
+  //    the layout has nothing left over
+  if (used !== out.count) {
+    out.refusal = TableFixedRefusal.LayoutTreeUnclosed;
+    TableFixedClearView(out);
     return false;
   }
   return true;
@@ -798,16 +1053,27 @@ export function MixedEntityFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedEntityFixedDecode(value, view, at, report) {
   value.EntityId = view.getUint32(at, true);
+  if (value.EntityId > 4095) { value.EntityId = 4095; report.clamped++; }
   value.PosX = view.getInt32(at + 4, true);
+  if (value.PosX < -16383) { value.PosX = -16383; report.clamped++; } else if (value.PosX > 16383) { value.PosX = 16383; report.clamped++; }
   value.PosY = view.getInt32(at + 8, true);
+  if (value.PosY < -16383) { value.PosY = -16383; report.clamped++; } else if (value.PosY > 16383) { value.PosY = 16383; report.clamped++; }
   value.PosZ = view.getInt32(at + 12, true);
+  if (value.PosZ < -16383) { value.PosZ = -16383; report.clamped++; } else if (value.PosZ > 16383) { value.PosZ = 16383; report.clamped++; }
   value.Yaw = view.getUint32(at + 16, true);
+  if (value.Yaw > 511) { value.Yaw = 511; report.clamped++; }
   value.Pitch = view.getUint32(at + 20, true);
+  if (value.Pitch > 511) { value.Pitch = 511; report.clamped++; }
   value.VelX = view.getInt32(at + 24, true);
+  if (value.VelX < -2048) { value.VelX = -2048; report.clamped++; } else if (value.VelX > 2047) { value.VelX = 2047; report.clamped++; }
   value.VelY = view.getInt32(at + 28, true);
+  if (value.VelY < -2048) { value.VelY = -2048; report.clamped++; } else if (value.VelY > 2047) { value.VelY = 2047; report.clamped++; }
   value.VelZ = view.getInt32(at + 32, true);
+  if (value.VelZ < -2048) { value.VelZ = -2048; report.clamped++; } else if (value.VelZ > 2047) { value.VelZ = 2047; report.clamped++; }
   value.Health = view.getInt32(at + 36, true);
+  if (value.Health < 0) { value.Health = 0; report.clamped++; } else if (value.Health > 1000) { value.Health = 1000; report.clamped++; }
   value.Weapon = view.getUint8(at + 40);
+  if (value.Weapon > 15) { value.Weapon = 0; report.clamped++; }
   value.Damage = view.getBigUint64(at + 41, true);
   value.Moving = view.getUint8(at + 49) !== 0;
   value.Firing = view.getUint8(at + 50) !== 0;
@@ -824,7 +1090,9 @@ export function MixedStatFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedStatFixedDecode(value, view, at, report) {
   value.StatId = view.getUint32(at, true);
+  if (value.StatId > 255) { value.StatId = 255; report.clamped++; }
   value.Delta = view.getInt32(at + 4, true);
+  if (value.Delta < -512) { value.Delta = -512; report.clamped++; } else if (value.Delta > 511) { value.Delta = 511; report.clamped++; }
 }
 
 // MixedHitEvent's stores. Every offset is a constant of the type and nothing is
@@ -840,8 +1108,11 @@ export function MixedHitEventFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedHitEventFixedDecode(value, view, at, report) {
   value.TargetId = view.getUint32(at, true);
+  if (value.TargetId > 4095) { value.TargetId = 4095; report.clamped++; }
   value.Damage = view.getInt32(at + 4, true);
+  if (value.Damage < 0) { value.Damage = 0; report.clamped++; } else if (value.Damage > 4095) { value.Damage = 4095; report.clamped++; }
   value.HitKind = view.getInt32(at + 8, true);
+  if (value.HitKind < 0) { value.HitKind = 0; report.clamped++; } else if (value.HitKind > 7) { value.HitKind = 7; report.clamped++; }
   value.Crit = view.getUint8(at + 12) !== 0;
 }
 
@@ -856,7 +1127,9 @@ export function MixedChatEventFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedChatEventFixedDecode(value, view, at, report) {
   value.Channel = view.getInt32(at, true);
+  if (value.Channel < 0) { value.Channel = 0; report.clamped++; } else if (value.Channel > 3) { value.Channel = 3; report.clamped++; }
   value.Speaker = view.getUint32(at + 4, true);
+  if (value.Speaker > 4095) { value.Speaker = 4095; report.clamped++; }
 }
 
 // MixedPickupEvent's stores. Every offset is a constant of the type and nothing is
@@ -870,7 +1143,9 @@ export function MixedPickupEventFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function MixedPickupEventFixedDecode(value, view, at, report) {
   value.ItemId = view.getUint32(at, true);
+  if (value.ItemId > 1023) { value.ItemId = 1023; report.clamped++; }
   value.Amount = view.getInt32(at + 4, true);
+  if (value.Amount < 0) { value.Amount = 0; report.clamped++; } else if (value.Amount > 255) { value.Amount = 255; report.clamped++; }
 }
 
 // BenchMixed's stores. Every offset is a constant of the type and nothing is
@@ -936,14 +1211,19 @@ export function BenchMixedFixedWriteBody(view, at, value) {
 // caller handed in — filled, never returned, exactly as Read<Name>Flat is.
 export function BenchMixedFixedDecode(value, view, at, report) {
   value.Sequence = view.getUint32(at, true);
+  if (value.Sequence > 65535) { value.Sequence = 65535; report.clamped++; }
   value.AckSequence = view.getInt32(at + 4, true);
+  if (value.AckSequence < 0) { value.AckSequence = 0; report.clamped++; } else if (value.AckSequence > 65535) { value.AckSequence = 65535; report.clamped++; }
   value.AckBits = view.getUint32(at + 8, true);
   value.SessionId = view.getBigUint64(at + 12, true);
   value.ClientId = view.getUint32(at + 20, true);
   value.Nonce = view.getBigUint64(at + 24, true);
   value.WorldTime = view.getBigInt64(at + 32, true);
+  if (value.WorldTime < -1000000000000n) { value.WorldTime = -1000000000000n; report.clamped++; } else if (value.WorldTime > 1000000000000n) { value.WorldTime = 1000000000000n; report.clamped++; }
   value.FrameTick = view.getBigUint64(at + 40, true);
+  if (value.FrameTick > 281474976710655n) { value.FrameTick = 281474976710655n; report.clamped++; }
   value.ServerTime = view.getInt32(at + 48, true);
+  if (value.ServerTime < 0) { value.ServerTime = 0; report.clamped++; } else if (value.ServerTime > 16776960) { value.ServerTime = 16776960; report.clamped++; }
   {
     let n = view.getInt32(at + 52, true);
     if (n < 0) { n = 0; report.clamped++; } else if (n > 8) { n = 8; report.clamped++; }
@@ -1000,11 +1280,16 @@ export function BenchMixedFixedDecode(value, view, at, report) {
   value.WideKey = view.getBigUint64(at + 1189, true) | (view.getBigUint64(at + 1189 + 8, true) << 64n);
   value.Flux = view.getBigUint64(at + 1205, true) | (view.getBigUint64(at + 1205 + 8, true) << 64n);
   value.Flux = BigInt.asIntN(128, value.Flux);
+  if (value.Flux < -1267650600228229401496703205376n) { value.Flux = -1267650600228229401496703205376n; report.clamped++; } else if (value.Flux > 1267650600228229401496703205376n) { value.Flux = 1267650600228229401496703205376n; report.clamped++; }
   value.Ping = view.getUint16(at + 1221, true);
+  if (value.Ping > 64000) { value.Ping = 64000; report.clamped++; }
   value.CrcHint = view.getUint32(at + 1223, true);
+  if (value.CrcHint > 16777215) { value.CrcHint = 16777215; report.clamped++; }
   value.HasExtra = view.getUint8(at + 1227) !== 0;
   value.Extra = view.getInt32(at + 1228, true);
+  if (value.Extra < 0) { value.Extra = 0; report.clamped++; } else if (value.Extra > 255) { value.Extra = 255; report.clamped++; }
   value.IdleTicks = view.getInt32(at + 1232, true);
+  if (value.IdleTicks < 0) { value.IdleTicks = 0; report.clamped++; } else if (value.IdleTicks > 15) { value.IdleTicks = 15; report.clamped++; }
 }
 
 // FixedTable's stores. Every offset is a constant of the type and nothing is

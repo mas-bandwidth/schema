@@ -132,6 +132,87 @@ table LiveRoot
 	}
 }
 
+// THE BOUNDS PASS IS THE DECODE. Identity is one OP_COPY of the whole body,
+// so the plan never holds an enum's set or a ranged integer's min/max; the
+// projection both paths share is where those close. The clamp is against
+// the enum's top wire value (r.Max). No clamp plan op. No identity door.
+func TestDecodeClampsEnumOrdinalAndRangedInt(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+enum Grade
+{
+    Bronze
+    Silver
+    Gold
+}
+
+table Root
+{
+    n     int32 = 0 | min = 0, max = 1000
+    grade Grade
+    marks [..4]int32 | min = 0, max = 10
+    note  ?int32 | min = 0, max = 10
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "function RootFixedDecode(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no RootFixedDecode in the generated unit")
+	}
+	body := jsFn(src, "RootFixedDecode")
+	if body == "" {
+		t.Fatal("RootFixedDecode was not a closed function")
+	}
+	if !strings.Contains(body, "if (value.N < 0)") || !strings.Contains(body, "value.N = 1000; report.clamped++") {
+		t.Fatalf("ranged integer decode must clamp to the reader's min/max:\n%s", body)
+	}
+	if !strings.Contains(body, "if (value.Grade > 3)") || !strings.Contains(body, "value.Grade = 0; report.clamped++") {
+		t.Fatalf("enum ordinal decode must land None past the top value:\n%s", body)
+	}
+	if !strings.Contains(body, "i < value.MarksCount") {
+		t.Fatalf("counted ranged array must still walk the live count:\n%s", body)
+	}
+	if !strings.Contains(body, "if (value.NotePresent)") {
+		t.Fatalf("an absent optional's payload must not be held to a bound:\n%s", body)
+	}
+	if strings.Contains(src, "TableFixedOpClamp") {
+		t.Error("the plan grew a clamp op; the bounds pass is the decode")
+	}
+	sawLoad, sawDecodeCall, sawIdentityDoor := false, false, false
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "function RootFixedLoad(") {
+			sawLoad = true
+			load := jsFn(s, "RootFixedLoad")
+			if strings.Contains(load, "if (identity)") {
+				sawIdentityDoor = true
+			}
+			if strings.Contains(load, "RootFixedDecode(values[k], imageView, 0, report)") {
+				sawDecodeCall = true
+			}
+		}
+	}
+	if !sawLoad {
+		t.Error("no RootFixedLoad in the generated unit")
+	}
+	if sawIdentityDoor {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+	if !sawDecodeCall {
+		t.Error("FixedLoad must project through RootFixedDecode after the run, both paths")
+	}
+}
+
 // `bytes(N)` RIDES AS A COUNTED ARRAY, so its destination row has to be the
 // COUNTED ARRAY's row and not the text row. The two spell the same two numbers
 // in the opposite order — an array entry's `dst` is the ELEMENT BASE and its

@@ -221,3 +221,88 @@ func unitFrom(t *testing.T, src string) *ir.Unit {
 	}
 	return u
 }
+
+// ONE DEFINITION PER UNIT. `Schema` is ONE partial class across a unit's
+// files, so a second `public static void <T>FixedWriteBody(` is CS0111 and the
+// unit does not compile. A fixed table in one file holding a fixed table
+// declared in ANOTHER file used to make both files emit the whole reachable
+// closure's write bodies; the body belongs to the file that DECLARES the type,
+// the same rule the enum identities follow.
+func TestFixedWriteBodyEmittedOnceAcrossUnitFiles(t *testing.T) {
+	leaf := `package probe
+
+fixed table Inner
+{
+    damage float32 = 1.0
+}
+
+fixed table Middle
+{
+    inner Inner
+    count int32 = 1 | min = 0, max = 8
+}
+`
+	outer := `package probe
+
+fixed table Outer
+{
+    middle Middle
+    tag    uint8
+}
+`
+	files := generateCSFiles(t, []check.SourceFile{
+		sourceFile(t, "Leaf", leaf),
+		sourceFile(t, "Outer", outer),
+	})
+	counts := map[string]int{}
+	for _, body := range files {
+		for _, line := range strings.Split(string(body), "\n") {
+			line = strings.TrimSpace(line)
+			const pre = "public static void "
+			i := strings.Index(line, pre)
+			if i < 0 {
+				continue
+			}
+			sig := line[i+len(pre):]
+			j := strings.Index(sig, "FixedWriteBody(")
+			if j < 0 {
+				continue
+			}
+			counts[sig[:j]+"FixedWriteBody"]++
+		}
+	}
+	for _, want := range []string{"InnerFixedWriteBody", "MiddleFixedWriteBody", "OuterFixedWriteBody"} {
+		switch n := counts[want]; {
+		case n == 0:
+			t.Errorf("%s is never defined: the file that declares the type must emit its body", want)
+		case n > 1:
+			t.Errorf("%s is defined %d times; `Schema` is one partial class across the unit's files, so the second is CS0111", want, n)
+		}
+	}
+}
+
+func sourceFile(t *testing.T, base, src string) check.SourceFile {
+	t.Helper()
+	path := base + ".schema"
+	f, perrs := parser.Parse(path, []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse %s: %v", path, perrs[0])
+	}
+	return check.SourceFile{Path: path, Name: path, Base: base, Bytes: []byte(src), AST: f}
+}
+
+func generateCSFiles(t *testing.T, srcs []check.SourceFile) map[string][]byte {
+	t.Helper()
+	u, cerrs := check.Unit(srcs)
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("Generate emitted nothing")
+	}
+	return files
+}

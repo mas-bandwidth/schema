@@ -68,7 +68,7 @@ func TestFixedLayoutMatchesTheCppReference(t *testing.T) {
 func TestBytesNDstRowIsAnArray(t *testing.T) {
 	u := unitFrom(t, `package probe
 
-table Probe
+fixed table Probe
 {
     label string(8)
     blob  bytes(6)
@@ -189,7 +189,7 @@ type Inner
     y float32
 }
 
-table Everything
+fixed table Everything
 {
     a      uint32
     b      bool
@@ -234,7 +234,7 @@ table Everything
 func TestNoPlanClampOp(t *testing.T) {
 	out, err := Generate(unitFrom(t, `package probe
 
-table Cfg
+fixed table Cfg
 {
     a      int32 = 5 | min = 0, max = 1000
     marks  [..4]int32 | min = 0, max = 10
@@ -275,7 +275,7 @@ func TestIdentityDecodeCountsLiveElementsOnly(t *testing.T) {
 
 enum Grade { Bronze, Gold }
 
-table Live
+fixed table Live
 {
     marks  [..4]int32 | min = 0, max = 10
     grades [..4]Grade
@@ -319,7 +319,7 @@ type Inner
     y float32
 }
 
-table Plain
+fixed table Plain
 {
     a uint32
     b bool
@@ -344,7 +344,7 @@ table Plain
 func TestFixedFormSkipsWhatItCannotCarry(t *testing.T) {
 	u := unitFrom(t, `package probe
 
-table Fine
+fixed table Fine
 {
     a int32
 }
@@ -396,13 +396,13 @@ func TestFixedGenerationIsDeterministic(t *testing.T) {
 
 enum Slot { Alpha, Beta }
 
-table Leaf
+fixed table Leaf
 {
     a int32 = 7 | min = 0, max = 1000
     s string(8)
 }
 
-table Root
+fixed table Root
 {
     leaf   Leaf
     slots  [Slot]Leaf
@@ -468,7 +468,7 @@ type Wide
     o int32
 }
 
-table Root
+fixed table Root
 {
     cells [..80]Cell
     wides [..8]Wide
@@ -498,7 +498,7 @@ table Root
 func TestFixedRuntimeUtf8IsOneWalk(t *testing.T) {
 	out, err := Generate(unitFrom(t, `package probe
 
-table Root
+fixed table Root
 {
     label string(15)
 }

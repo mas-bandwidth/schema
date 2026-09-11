@@ -21,7 +21,7 @@ import (
 func TestBytesNDstRowIsAnArray(t *testing.T) {
 	u := unitFrom(t, `package probe
 
-table Probe
+fixed table Probe
 {
     label string(8)
     blob  bytes(6)

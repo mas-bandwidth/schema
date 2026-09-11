@@ -308,7 +308,7 @@ union Note
     tally int32
 }
 
-table Holder
+fixed table Holder
 {
     note Note
 }
@@ -728,5 +728,81 @@ func TestFixedFormWriteIsLiveCountAndLength(t *testing.T) {
 	}
 	if strings.Contains(save, "if identity") || strings.Contains(save, "if !identity") {
 		t.Error("the save still branches on identity; there is one writer for both paths")
+	}
+}
+
+// rustDefaultImpl is the source of one generated `impl Default`, from the
+// impl header to the matching close brace.
+func rustDefaultImpl(body, typeName string) string {
+	sig := "impl Default for " + typeName + " {"
+	i := strings.Index(body, sig)
+	if i < 0 {
+		return ""
+	}
+	n := 0
+	for j := i; j < len(body); j++ {
+		switch body[j] {
+		case '{':
+			n++
+		case '}':
+			n--
+			if n == 0 {
+				return body[i : j+1]
+			}
+		}
+	}
+	return body[i:]
+}
+
+// A NAMED string(N) DEFAULT LIVES IN CONSTRUCTED STORAGE, not only in the
+// prefill and not only as a used length. FX1's `label string(8) = "fx"` is
+// the leftover: C++ writes `char label[8 + 1] = "fx"`, and Rust used to
+// emit `core::mem::zeroed()` — two claimed bytes of NULs. Prefill already
+// carries 0x66, 0x78; this is Default, not dest-row, not identity fill.
+func TestNamedStringDefaultLivesInStorage(t *testing.T) {
+	out := generate(t, `package probe
+
+fixed table Fx1
+{
+    label string(8) = "fx"
+}
+`)
+	records := string(out["probe_records.rs"])
+	def := rustDefaultImpl(records, "Fx1Row")
+	if def == "" {
+		t.Fatal("impl Default for Fx1Row was not emitted")
+	}
+	for _, want := range []string{
+		`copy_from_slice(b"fx")`,
+		"label_length = 2",
+		"core::mem::zeroed()",
+		"let mut value: Self",
+	} {
+		if !strings.Contains(def, want) {
+			t.Errorf("constructed storage is missing %q:\n%s", want, def)
+		}
+	}
+
+	fixed := string(out["probe_fixed.rs"])
+	if !strings.Contains(fixed, "0x66") || !strings.Contains(fixed, "0x78") {
+		t.Error("prefill lost the named default bytes; do not double-write, do not drop")
+	}
+	scatter := rustFn(fixed, "fx1_fixed_scatter")
+	if scatter == "" {
+		t.Fatal("fx1_fixed_scatter was not emitted")
+	}
+	if strings.Contains(scatter, `b"fx"`) {
+		t.Error("dest-row writes the named default; the hole is Default, not scatter")
+	}
+	load := rustFn(fixed, "fx1_fixed_load")
+	if load == "" {
+		t.Fatal("fx1_fixed_load was not emitted")
+	}
+	i := strings.Index(load, "for k in 0..n")
+	if i < 0 {
+		t.Fatal("the load has no record loop")
+	}
+	if strings.Contains(load[i:], "identity") {
+		t.Error("the load loop still branches on identity; an empty hole list is what skips work")
 	}
 }
