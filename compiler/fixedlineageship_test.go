@@ -32,13 +32,12 @@ import (
 )
 
 // fixedLineageShipTargets are the targets whose table backend takes the
-// lineage as data today: `c`, `cs`, `dart`, `go`, `js` and `rust` through
-// `GenerateLineage`, and `cpp` through the lock the driver now opens for it.
-// Every other built-in target's table backend has no second entry point yet
-// (elixir is here, java is not); their `GenerateLineage` lives on the open port
-// branches, and the day one lands its target joins this list and nothing else
-// changes.
-var fixedLineageShipTargets = []string{"c", "cpp", "cs", "dart", "elixir", "go", "js", "rust"}
+// lineage as data today: `c`, `cs`, `dart`, `go`, `java`, `js` and `rust`
+// through `GenerateLineage`, and `cpp` through the lock the driver now opens
+// for it. Every other built-in target's table backend has no second entry point
+// yet (elixir is here); their `GenerateLineage` lives on the open port branches,
+// and the day one lands its target joins this list and nothing else changes.
+var fixedLineageShipTargets = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
 
 // fixedLineageHashSpelling is ONE layout hash as the target's emitted source
 // writes it. It is a per-target NEEDLE and not a per-target assertion: the
@@ -231,7 +230,7 @@ func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
 // for ONE lineage entry, with the record size as its one capture. Each leg
 // spells the static data in its own language and nothing shared can be grepped
 // for, so the shapes are written out here — the `cpp` one is the REFERENCE's,
-// against which the other four are read.
+// against which the others are read.
 var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	// internal/codegen/gotable/fixedform.go: Hash, an optional RETIRED note,
 	// then Record.
@@ -252,6 +251,11 @@ var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	// the layout as a named static byte array, the record size last.
 	"cs": func(h uint64) *regexp.Regexp {
 		return regexp.MustCompile(fmt.Sprintf(`new TableFixedKnownLayout\(0x%016xul, \w+, (\d+)\)`, h))
+	},
+	// internal/codegen/javatable/fixedform.go: one constructor call per entry,
+	// the layout's length taken from the byte array, the record size last.
+	"java": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`new TableFixed\.KnownLayout\(0x%016xL, \w+, \w+\.length, (\d+)\)`, h))
 	},
 	// internal/codegen/rusttable/fixedform.go: a struct literal, one field per
 	// line, record after layout.
