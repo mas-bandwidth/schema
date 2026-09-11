@@ -316,12 +316,17 @@ var closureBreaks = []struct {
 			"range narrowed", "keeps its range", "deprecate this field and append a new one"},
 	},
 	{
-		name:      "a moved resolution",
-		fixedFrom: "    reaction  float32 | min = 0, max = 1, resolution = 0.01", fixed: "    reaction  float32 | min = 0, max = 1, resolution = 0.001",
-		varFrom: "    lag     float32 | min = 0, max = 1, resolution = 0.01", varTo: "    lag     float32 | min = 0, max = 1, resolution = 0.001",
+		// A COARSENED resolution, which is the direction that refuses. A
+		// compressed float rides as the float in the fixed form, so the step
+		// is a DEFINITION: a FINER one is a widening the law takes
+		// (TestLockCfloatResRefineAllows — an old writer's values sit on the
+		// coarser grid and land exactly), and a COARSER one cannot hold them.
+		name:      "a coarsened resolution",
+		fixedFrom: "    reaction  float32 | min = 0, max = 1, resolution = 0.01", fixed: "    reaction  float32 | min = 0, max = 1, resolution = 0.1",
+		varFrom: "    lag     float32 | min = 0, max = 1, resolution = 0.01", varTo: "    lag     float32 | min = 0, max = 1, resolution = 0.1",
 		want: []string{"fixed table Config", "entry 3, field reaction",
-			"resolution 0.01 in the lock", "resolution 0.001 in the declaration",
-			"keeps its range"},
+			"resolution 0.01 in the lock", "resolution 0.1 in the declaration",
+			"resolution coarsened (0.01 -> 0.1)", "keeps its range"},
 	},
 	{
 		name:      "a moved fixed-point scale at the same width",

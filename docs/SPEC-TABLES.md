@@ -16402,6 +16402,7 @@ defined by the default it fills: a change with no default to fill is not a widen
 | an element type | the widening ladder, as a field | narrowed |
 | an integer or float | wider, same ladder, same signedness (`int32` to `int64`, `f32` to `f64`) | narrower, the other ladder, the other signedness |
 | a ranged scalar | a range moved OUTWARD, or REMOVED | moved inward; a range ADDED where none was |
+| a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward; a resolution COARSENED (the old values are off this reader's grid); anything else |
 | `bits(N)` | a larger N | smaller |
 | `fixed(I,F)` | a larger I | F changed |
 | an optional | `T` to `?T` (old values land present) | `?T` to `T` |
