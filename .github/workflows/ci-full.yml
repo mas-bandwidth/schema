@@ -360,6 +360,16 @@ jobs:
           fi
           make tables-rust-versioning
 
+      # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
+      # it is here rather than in a Java job for the reason the Go step above is:
+      # the harness is a GO test that generates, compiles and runs Java probes,
+      # so it rides the job that already has the Go toolchain and the ../serialize
+      # checkout, and `make tables-java-versioning` brings the reference's dump
+      # and the JDK pin with it. SCHEMA_REQUIRE_CORPUS=1 lives inside the recipe,
+      # so a corpus that failed to build cannot pass here quietly.
+      - name: the fixed form's versioning suite reads the reference's bytes, on the Java leg
+        run: make tables-java-versioning
+
       # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
       # gates). The probes are generated modules run with $(NODE) — dist/ is not
       # in this job, so NODE=node uses the runner's own — and the corpus is the
