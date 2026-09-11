@@ -187,7 +187,7 @@ func fixedDefaultElement(out []byte, f *ir.Field) {
 			for _, v := range r.Variants {
 				fixedDefaultElement(out[tagw:], v.F)
 			}
-			for i := int64(0); i < tagw; i++ {
+			for i := range tagw {
 				out[i] = 0 // None, LAST
 			}
 			return

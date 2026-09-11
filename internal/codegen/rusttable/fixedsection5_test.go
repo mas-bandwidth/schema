@@ -32,8 +32,14 @@ func TestFixedTextCapIsTheSpanInUnits(t *testing.T) {
 // `const` of a size past four is LAWFUL and not malformed, and the value is
 // taken apart out of a 64-bit temporary (a u32 shifted by 32 overflows).
 func TestFixedConstIsNotAFourByteLane(t *testing.T) {
-	body := fixedRuntimeBody[strings.Index(fixedRuntimeBody, "TableFixedOp::Const => {"):]
-	body = body[:strings.Index(body, "\n            }")]
+	_, body, found := strings.Cut(fixedRuntimeBody, "TableFixedOp::Const => {")
+	if !found {
+		t.Fatal("the const arm moved; this test names it by its head")
+	}
+	body, _, found = strings.Cut(body, "\n            }")
+	if !found {
+		t.Fatal("the const arm is unterminated; this test names it by its close")
+	}
 	if strings.Contains(body, "n > 4") {
 		t.Error("a lawful eight-byte tag row still reads malformed (§5.8 row 5)")
 	}
@@ -52,8 +58,10 @@ func TestFixedSameKindWidenZeroExtends(t *testing.T) {
 	if at < 0 {
 		t.Fatal("the same-kind widen arm moved; this test names it by its condition")
 	}
-	arm := fixedRuntimeBody[at:]
-	arm = arm[:strings.Index(arm, "..TableFixedEntry::default()")]
+	arm, _, found := strings.Cut(fixedRuntimeBody[at:], "..TableFixedEntry::default()")
+	if !found {
+		t.Fatal("the same-kind widen arm is unterminated; this test names it by its close")
+	}
 	if strings.Contains(arm, "signed_kind(") {
 		t.Error("the same-kind widen still infers its sign from the kind (§5.2)")
 	}
