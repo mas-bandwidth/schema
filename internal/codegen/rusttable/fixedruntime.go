@@ -943,17 +943,34 @@ impl Compiler<'_> {
 
     /// Lays a remap table down and answers where it starts: a count, then that
     /// many landed ordinals.
-    fn lay(&mut self, values: &[u16]) -> u32 {
+    /// RESERVE a remap table of ` + "`n`" + ` entries and write its LENGTH WORD, returning
+    /// the table's byte offset from the pool's base. The table is filled in
+    /// place afterwards, so its length is the WRITER's variant count and not a
+    /// temporary's capacity (§5.2): a cap would remap a writer's variant past
+    /// the cap to None as though this reader did not name it, which is a silent
+    /// wrong value and not a refusal. A count past what the length word can
+    /// hold is the pool's own overflow, plan_too_large by name.
+    fn reserve(&mut self, n: usize) -> Option<u32> {
         let at = self.remap_used;
-        if at + 1 + values.len() > self.remap.len() {
+        if n > u16::MAX as usize || at + 1 + n > self.remap.len() {
             self.overflow = true;
-            return 0;
+            return None;
         }
-        self.remap[at] = values.len() as u16;
-        self.remap[at + 1..at + 1 + values.len()].copy_from_slice(values);
-        self.remap_used = at + 1 + values.len();
-        at as u32
+        self.remap[at] = n as u16;
+        self.remap[at + 1..at + 1 + n].fill(0);
+        self.remap_used = at + 1 + n;
+        Some(at as u32)
     }
+
+    /// Entry ` + "`j`" + ` of the table at ` + "`at`" + `: the reader's position of the writer's
+    /// variant ` + "`j`" + `, or 0 where this reader has no such name.
+    fn place(&mut self, at: u32, j: usize, landed: u16) {
+        let i = at as usize + 1 + j;
+        if i < self.remap.len() {
+            self.remap[i] = landed;
+        }
+    }
+
 }
 
 /// Compiles a plan that reads ` + "`theirs`" + `-shaped records into ` + "`mine`" + `-shaped images.
@@ -1312,9 +1329,19 @@ fn compile_entry(
         }
         30 => {
             // an enum: the ordinal is the block's POSITION, so it remaps by
-            // NAME and a variant inserted in the middle never reinterprets one
-            let mut map = [0u16; 256];
-            let n = (te.children as usize).min(255);
+            // NAME and a variant inserted in the middle never reinterprets one.
+            //
+            // THE TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2), which
+            // is why it is reserved in the pool and filled in place rather than
+            // built in a fixed temporary: a table capped at 255 remaps a
+            // writer's 256th variant and every one after it to None as though
+            // this reader did not name them, and a wrong value nobody is told
+            // about is worse than a refusal. The length word is slot 0, so an
+            // ordinal of 0 is None BY CONSTRUCTION and never an index.
+            let n = te.children as usize;
+            let Some(aux) = c.reserve(n) else {
+                return; // the pool is spent: the plan does not fit, by name
+            };
             for j in 0..n {
                 let vid = theirs.entry(ti + 1 + j).id;
                 let mut landed = 0u16;
@@ -1324,9 +1351,8 @@ fn compile_entry(
                         break;
                     }
                 }
-                map[j] = landed;
+                c.place(aux, j, landed);
             }
-            let aux = c.lay(&map[..n]);
             c.push(TableFixedEntry {
                 src: their_at,
                 dst: my_at,
