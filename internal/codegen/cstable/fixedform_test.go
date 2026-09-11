@@ -47,7 +47,7 @@ union Pick {
     b Cell
 }
 
-table Root { pick Pick }
+fixed table Root { pick Pick }
 `)
 	if !strings.Contains(one, "public static ulong TagAt(") {
 		t.Error("generated unit never names TagAt")
@@ -67,7 +67,7 @@ table Root { pick Pick }
 	for i := range 256 {
 		fmt.Fprintf(&b, "    a%d Cell\n", i)
 	}
-	b.WriteString("}\n\ntable Root { pick Wide }\n")
+	b.WriteString("}\n\nfixed table Root { pick Wide }\n")
 	wide := generateCS(t, b.String())
 	if !guardedPlanHasArgW(wide, 2) {
 		t.Error("a 256-arm union's identity plan did not stamp ArgW=2 on guarded entries")
