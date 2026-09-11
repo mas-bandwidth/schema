@@ -1252,7 +1252,22 @@ abstract final class TableFixedCompiler {
         final theirN = theirElem != 0 ? (theirSize - head) ~/ theirElem : 0;
         final myN = myElem != 0 ? (mySize - head) ~/ myElem : 0;
         if (dst[row + TableFixedLane.dstCounted] != 0) {
-          push(plan, TableFixedOp.count, theirAt, auxAt, myN, 0, guard, arg, 0);
+          // THE COUNT'S BOUND IS THE WRITER'S, CARRIED BY THE PLAN (§5.2's
+          // EMIT, bill §12.5): a count forged past what THIS PEER could have
+          // written clamps and counts, and a count the reader merely has more
+          // room for does not. A monotone lineage only ever grows a bound, so
+          // the writer's is never the looser of the two.
+          push(
+            plan,
+            TableFixedOp.count,
+            theirAt,
+            auxAt,
+            theirN,
+            0,
+            guard,
+            arg,
+            0,
+          );
         }
         final theirBase = theirAt + head;
         final elems = theirN < myN ? theirN : myN;
