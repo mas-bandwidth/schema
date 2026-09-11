@@ -559,3 +559,116 @@ console.log("ok");
 }
 
 var _ = binary.LittleEndian
+
+// TestJSFixedLineageLockBugFailsTheBuild holds §5.9 #8 and #26's FIRST half, the
+// half the emitted runtime's own comment already claimed the generator held.
+//
+// A handed lineage entry whose LAYOUT does not parse, or whose RECORD SIZE is the
+// hash alone or less or not what its own layout accounts for, is a BUG IN THE
+// LOCK: GENERATE fails, naming the table and the entry's hash, and no module is
+// written. It is never a wire event — a reader that routed it into LOAD would
+// report a lock bug as a refusal on the first file that matched that hash, and a
+// reader that routed the record size into §5.3 step 9 would report it as
+// `malformed` arithmetic over a file's tail, with no name at all.
+//
+// The run-time `layout_malformed` lane stays and is NOT this path: a host that
+// hands entries in after the build cannot fail a build that already ran, which
+// is #8's second half and why `TableFixedLineagePlans` still carries the name.
+func TestJSFixedLineageLockBugFailsTheBuild(t *testing.T) {
+	const src = `package probe
+table Row {
+    keep uint32 = 0
+    label string(8) = "fx"
+}
+`
+	u := jsUnitOf(t, src)
+	roots := jsFixedUnitRoots(u)
+	if len(roots) != 1 {
+		t.Fatalf("the probe declares one fixed root, got %d", len(roots))
+	}
+	name := roots[0].Name
+	own, ok := FixedLineageOf(u, name)
+	if !ok {
+		t.Fatalf("no lineage entry for %s", name)
+	}
+
+	// THE CONTROL FIRST: the entry this build computes for itself is lawful, so
+	// a failure below is the edit's and never the fixture's.
+	if _, err := GenerateLineage(u, map[string][]FixedLineageEntry{name: {own}}); err != nil {
+		t.Fatalf("the build's own entry must generate: %v", err)
+	}
+	if got, want := own.Record, fixedHashBytes+fixedTypeBytes(roots[0]); got != want {
+		t.Fatalf("the fixture's record size is %d, want %d", got, want)
+	}
+
+	bend := func(f func(e *FixedLineageEntry)) FixedLineageEntry {
+		e := own
+		e.Layout = append([]byte(nil), own.Layout...)
+		f(&e)
+		return e
+	}
+
+	for _, row := range []struct {
+		what string
+		e    FixedLineageEntry
+	}{
+		// ---- §5.9 #8: the LAYOUT is not a layout
+		{"a layout shorter than the header", bend(func(e *FixedLineageEntry) { e.Layout = e.Layout[:3] })},
+		{"no entries at all", bend(func(e *FixedLineageEntry) { e.Layout = e.Layout[:4] })},
+		{"an entry count that does not fit the length", bend(func(e *FixedLineageEntry) {
+			binary.LittleEndian.PutUint32(e.Layout, binary.LittleEndian.Uint32(e.Layout)+1)
+		})},
+		{"a tail past the walk", bend(func(e *FixedLineageEntry) {
+			e.Layout = append(e.Layout, make([]byte, fixedEntryBytes)...)
+			binary.LittleEndian.PutUint32(e.Layout, binary.LittleEndian.Uint32(e.Layout)+1)
+		})},
+		{"a root that is not a TABLE", bend(func(e *FixedLineageEntry) { e.Layout[4+8] = 4 })},
+		{"a root whose size is not its fields' sum", bend(func(e *FixedLineageEntry) {
+			binary.LittleEndian.PutUint32(e.Layout[4+9:], 7)
+		})},
+		{"a kind outside the closed set", bend(func(e *FixedLineageEntry) { e.Layout[4+fixedEntryBytes+8] = 31 })},
+		{"a leaf at a size its kind does not admit", bend(func(e *FixedLineageEntry) {
+			// `keep` is a u32, kind 8, and four is the only size it takes; the
+			// root's sum moves with it so ONLY the leaf rule can fire.
+			root := int(binary.LittleEndian.Uint32(e.Layout[4+9:]))
+			binary.LittleEndian.PutUint32(e.Layout[4+fixedEntryBytes+9:], 3)
+			binary.LittleEndian.PutUint32(e.Layout[4+9:], uint32(root-1))
+		})},
+		{"a child count no subtree closes", bend(func(e *FixedLineageEntry) {
+			binary.LittleEndian.PutUint32(e.Layout[4+13:], 9)
+		})},
+
+		// ---- §5.9 #26: the RECORD SIZE is a lie about a layout that parses
+		{"a record size of zero", bend(func(e *FixedLineageEntry) { e.Record = 0 })},
+		{"a record size of the hash alone", bend(func(e *FixedLineageEntry) { e.Record = fixedHashBytes })},
+		{"a record size one byte short of its layout", bend(func(e *FixedLineageEntry) { e.Record-- })},
+		{"a record size one byte long", bend(func(e *FixedLineageEntry) { e.Record++ })},
+		{"a negative record size", bend(func(e *FixedLineageEntry) { e.Record = -1 })},
+	} {
+		t.Run(row.what, func(t *testing.T) {
+			files, err := GenerateLineage(u, map[string][]FixedLineageEntry{name: {row.e}})
+			if err == nil {
+				t.Fatalf("GENERATE must FAIL on %s: a lock bug is never a wire event (§5.9 #8, #26)", row.what)
+			}
+			if len(files) != 0 {
+				t.Fatalf("a failed generate writes no module, got %d", len(files))
+			}
+			// THE ERROR NAMES THE TABLE AND THE HASH, which is what the operator
+			// fixes the lock with: `schema lock` addresses an entry by T@0xhash.
+			if msg := err.Error(); !strings.Contains(msg, name) ||
+				!strings.Contains(msg, fmt.Sprintf("0x%016x", row.e.Wire)) {
+				t.Fatalf("the error names the table and the entry's hash, got %q", msg)
+			}
+		})
+	}
+
+	// AND A RETIRED ENTRY IS STILL CHECKED: the floor stops a FILE from selecting
+	// it, it does not make the recorded bytes lawful, and an entry nobody may
+	// read is still a lock an operator has to fix.
+	dead := bend(func(e *FixedLineageEntry) {
+		e.Retired, e.Reason, e.Record = true, "retired by the test's lock", fixedHashBytes
+	})
+	if _, err := GenerateLineage(u, map[string][]FixedLineageEntry{name: {dead, own}}); err == nil {
+		t.Fatal("a RETIRED entry with a bad record size still fails the build (§5.9 #26)")
+	}
+}

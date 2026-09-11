@@ -212,6 +212,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if err := refuseFileCollisions(u); err != nil {
 		return nil, err
 	}
+	// A HANDED ENTRY THAT IS A LOCK BUG FAILS THE BUILD, before a line is
+	// emitted (§5.9 #8, #26): a layout that does not parse, or a record size
+	// that is not what the entry's own layout accounts for, is never a wire
+	// event and never a refusal at the first file that matches its hash.
+	if err := refuseFixedLineage(lineage); err != nil {
+		return nil, err
+	}
 	// THE WIDE KINDS (docs/SPEC-TABLES.md §15) ARE A REFUSAL OF THE
 	// ACCELERATORS, NOT OF THE FIXED FORM. A block row and a cooked node are
 	// laid out in the ID-TABLE's kind vocabulary, which has no fixed-point and
