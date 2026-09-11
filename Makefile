@@ -5740,6 +5740,7 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
@@ -5754,6 +5755,7 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
+	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
 
 # THE RUN COPY'S BOUND, ON ITS OWN (test/tables/fixedform_runcopy.cpp). The

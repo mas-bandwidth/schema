@@ -172,6 +172,45 @@ pub enum TableFixedReason {
     PlanTooLarge,
     /// more records than the caller has room for: nothing is decoded
     BatchTooLarge,
+    /// bytes that are not a layout at all
+    LayoutMalformed,
+    /// 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
+    LayoutCountMismatch,
+    /// 2. EVERY KIND IS IN THE CLOSED SET
+    LayoutKindUnknown,
+    /// 3. A KIND IS USED AS ITS DEFINITION ALLOWS
+    LayoutKindInvalid,
+    /// 4. A CONSTANT SIZE MATCHES ITS KIND
+    LayoutSizeMismatch,
+    /// 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
+    LayoutTreeUnclosed,
+    /// 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
+    LayoutRecordTooLarge,
+    /// 7. NOTHING NESTED PAST THE READER'S WALK BOUND
+    LayoutTooDeep,
+}
+
+impl TableFixedReason {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::NewerForm => "newer_form",
+            Self::PreviousForm => "previous_form",
+            Self::MessageFormAsFile => "message_form_as_file",
+            Self::NoBlock => "no_block",
+            Self::BlockMalformed => "block_malformed",
+            Self::PlanTooLarge => "plan_too_large",
+            Self::BatchTooLarge => "batch_too_large",
+            Self::LayoutMalformed => "layout_malformed",
+            Self::LayoutCountMismatch => "layout_count_mismatch",
+            Self::LayoutKindUnknown => "layout_kind_unknown",
+            Self::LayoutKindInvalid => "layout_kind_invalid",
+            Self::LayoutSizeMismatch => "layout_size_mismatch",
+            Self::LayoutTreeUnclosed => "layout_tree_unclosed",
+            Self::LayoutRecordTooLarge => "layout_record_too_large",
+            Self::LayoutTooDeep => "layout_too_deep",
+        }
+    }
 }
 
 /// The read report — §4's ledger, and this form's refusals beside it. Silence
@@ -192,6 +231,11 @@ impl TableFixedReport {
     /// A refusal BY NAME: nothing is decoded, no counter moves, and
     /// ` + "`malformed`" + ` does not fire.
     pub fn refuse<T>(&mut self, reason: TableFixedReason) -> Option<T> {
+        self.unknown = 0;
+        self.kind_mismatch = 0;
+        self.widened = 0;
+        self.clamped = 0;
+        self.malformed = false;
         self.refused = true;
         self.reason = reason;
         None
@@ -524,7 +568,41 @@ pub fn table_fixed_holes(
 // states.
 
 const ENTRY_BYTES: usize = 17;
-const MAX_DEPTH: u32 = 32;
+const MAX_DEPTH: u32 = 64;
+
+fn ordinal_width(n: u32) -> bool {
+    n == 1 || n == 2 || n == 4 || n == 8
+}
+
+fn known_kind(kind: u8) -> bool {
+    (1..=30).contains(&kind) || kind == 32 || kind == 33 || kind == 35
+}
+
+fn leaf_size(kind: u8, size: u32) -> Option<bool> {
+    let ok = match kind {
+        1 => size == 1,
+        2 => size == 1,
+        3 => size == 2,
+        4 => size == 4,
+        5 => size == 8,
+        6 => size == 1 || size == 4,
+        7 => size == 2 || size == 4,
+        8 => size == 4,
+        9 => size == 8,
+        10 => size == 4,
+        11 => size == 8,
+        17 => size == 4,
+        18 | 19 => size == 16,
+        20 | 25 => size == 1,
+        21 | 26 => size == 2,
+        22 | 27 => size == 4,
+        23 | 28 => size == 8,
+        24 | 29 => size == 16,
+        32 => size == 0,
+        _ => return None,
+    };
+    Some(ok)
+}
 
 /// One block entry, read out of the bytes.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -545,20 +623,31 @@ pub struct TableFixedBlock<'a> {
 }
 
 impl<'a> TableFixedBlock<'a> {
-    pub fn parse(bytes: &'a [u8]) -> Option<TableFixedBlock<'a>> {
+    pub fn parse(bytes: &'a [u8]) -> Result<TableFixedBlock<'a>, TableFixedReason> {
         if bytes.len() < 4 {
-            return None;
+            return Err(TableFixedReason::LayoutMalformed);
         }
         let count = get32(bytes, 0) as usize;
-        if count == 0 || count.checked_mul(ENTRY_BYTES)? + 4 != bytes.len() {
-            return None;
+        let entry_bytes_len = match count.checked_mul(ENTRY_BYTES).and_then(|b| b.checked_add(4)) {
+            Some(len) => len,
+            None => return Err(TableFixedReason::LayoutCountMismatch),
+        };
+        if count == 0 || entry_bytes_len != bytes.len() {
+            return Err(TableFixedReason::LayoutCountMismatch);
         }
         let block = TableFixedBlock { bytes, count };
-        // THE TREE HAS TO CLOSE: the root's subtree is the whole block
-        if block.subtree_at(0, 0)? != count {
-            return None;
+        let root = block.entry(0);
+        if root.kind != 13 {
+            return Err(TableFixedReason::LayoutKindInvalid);
         }
-        Some(block)
+        if root.size == 0 || root.size > 65536 {
+            return Err(TableFixedReason::LayoutRecordTooLarge);
+        }
+        let used = block.check_entry(0, 0)?;
+        if used != count {
+            return Err(TableFixedReason::LayoutTreeUnclosed);
+        }
+        Ok(block)
     }
 
     pub fn count(&self) -> usize {
@@ -600,6 +689,142 @@ impl<'a> TableFixedBlock<'a> {
             n += sub;
         }
         Some(n)
+    }
+
+    fn check_entry(&self, i: usize, depth: u32) -> Result<usize, TableFixedReason> {
+        if i >= self.count {
+            return Err(TableFixedReason::LayoutTreeUnclosed);
+        }
+        if depth > MAX_DEPTH {
+            return Err(TableFixedReason::LayoutTooDeep);
+        }
+        let e = self.entry(i);
+        if !known_kind(e.kind) {
+            return Err(TableFixedReason::LayoutKindUnknown);
+        }
+        if e.size > 65536 {
+            return Err(TableFixedReason::LayoutRecordTooLarge);
+        }
+
+        let mut at = i + 1;
+        let mut sum = 0u64;
+        let mut widest = 0u32;
+        let mut first_size = 0u32;
+        let mut second_size = 0u32;
+        let mut first_kind = 0u8;
+        let mut first_children = 0u32;
+        let mut kids_are_variants = true;
+
+        for k in 0..e.children {
+            let child = at;
+            let used = self.check_entry(child, depth + 1)?;
+            let ce = self.entry(child);
+            if k == 0 {
+                first_size = ce.size;
+                first_kind = ce.kind;
+                first_children = ce.children;
+            }
+            if k == 1 {
+                second_size = ce.size;
+            }
+            if ce.kind != 32 {
+                kids_are_variants = false;
+            }
+            sum = sum.saturating_add(ce.size as u64);
+            if ce.size > widest {
+                widest = ce.size;
+            }
+            if sum > 65536 {
+                return Err(TableFixedReason::LayoutRecordTooLarge);
+            }
+            at += used;
+        }
+
+        if let Some(ok) = leaf_size(e.kind, e.size) {
+            if !ok {
+                return Err(TableFixedReason::LayoutSizeMismatch);
+            }
+            if e.children != 0 {
+                return Err(TableFixedReason::LayoutKindInvalid);
+            }
+            return Ok(at - i);
+        }
+
+        match e.kind {
+            13 => {
+                if e.size as u64 != sum {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            35 => {
+                if e.children != 1 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if e.size as u64 != sum + 1 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            14 => {
+                if e.children != 1 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if first_size == 0 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+                let bare = (e.size % first_size) == 0;
+                let counted = e.size >= 4 && ((e.size - 4) % first_size) == 0;
+                if !bare && !counted {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            16 => {
+                if e.children != 2 || first_kind != 30 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if second_size == 0 || (e.size % second_size) != 0 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+                if (e.size / second_size) < first_children {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            15 => {
+                if e.children == 0 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if e.size <= widest || !ordinal_width(e.size - widest) {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            30 => {
+                if !ordinal_width(e.size) {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+                if e.children != 0 && !kids_are_variants {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+            }
+            12 => {
+                if e.children != 0 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if e.size < 4 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            33 => {
+                if e.children != 0 {
+                    return Err(TableFixedReason::LayoutKindInvalid);
+                }
+                if e.size < 4 || ((e.size - 4) % 2) != 0 {
+                    return Err(TableFixedReason::LayoutSizeMismatch);
+                }
+            }
+            _ => {
+                return Err(TableFixedReason::LayoutKindUnknown);
+            }
+        }
+        Ok(at - i)
     }
 
     /// A union's tag width: what its entry's size has left over the widest arm.
@@ -759,10 +984,10 @@ fn match_children(
                 );
                 break;
             }
-            their_off += tc.size;
+            their_off = their_off.saturating_add(tc.size);
             their_child += theirs.subtree(their_child);
         }
-        my_off += mc.size;
+        my_off = my_off.saturating_add(mc.size);
         my_child += mine.subtree(my_child);
     }
     // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown, and skipping it

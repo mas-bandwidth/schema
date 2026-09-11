@@ -495,6 +495,57 @@ func fixedSubtree(entries []fixedLayoutEntry, i int) int {
 	return n
 }
 
+// TestFixedFormFU1FU2OnePath is the TEXT-UNDER-AN-ARM generate pin
+// (docs/SPEC-TABLES.md §3.4, §15; docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12).
+// FU1 writes a string(8) in the union's SECOND arm; FU2 appends `extra` so a
+// read of those bytes is a COMPILED plan. The generated load is the one-path
+// load: hash chooses the plan, tableFixedRun walks it, empty fill/holes is
+// the skip. No second reader. No `if (identity)` door.
+func TestFixedFormFU1FU2OnePath(t *testing.T) {
+	fu1 := loadUnit(t, "../../../test/tables/FU1.schema")
+	fu2 := loadUnit(t, "../../../test/tables/FU2.schema")
+	files1, err := Generate(fu1)
+	if err != nil {
+		t.Fatalf("FU1 generate: %v", err)
+	}
+	files2, err := Generate(fu2)
+	if err != nil {
+		t.Fatalf("FU2 generate: %v", err)
+	}
+	var all1, all2 string
+	for _, b := range files1 {
+		all1 += string(b)
+	}
+	for _, b := range files2 {
+		all2 += string(b)
+	}
+	if !strings.Contains(all1, "int fuRootFixedLoad(") {
+		t.Fatal("FU1 did not emit fuRootFixedLoad")
+	}
+	if !strings.Contains(all2, "int fuRootFixedLoad(") {
+		t.Fatal("FU2 did not emit fuRootFixedLoad")
+	}
+	if strings.Contains(all1, "if (identity)") || strings.Contains(all1, "if identity") {
+		t.Error("FU1 load still forks on an identity flag")
+	}
+	if !strings.Contains(all1, "tableFixedRun(") {
+		t.Error("FU1 FixedLoad is not the one-path load")
+	}
+	if !strings.Contains(all2, "int extra = 11") {
+		t.Error("FU2 did not emit extra's declared default")
+	}
+	h1 := strings.Index(all1, "const int fuRootFixedHash = ")
+	h2 := strings.Index(all2, "const int fuRootFixedHash = ")
+	if h1 < 0 || h2 < 0 {
+		t.Fatal("missing fuRootFixedHash")
+	}
+	line1 := all1[h1 : h1+80]
+	line2 := all2[h2 : h2+80]
+	if line1 == line2 {
+		t.Fatal("FU2 extra did not change the layout hash; compiled path is not a compile trigger")
+	}
+}
+
 func findTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {
 	t.Helper()
 	for _, f := range u.Files {

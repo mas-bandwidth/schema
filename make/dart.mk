@@ -259,10 +259,17 @@ build/conformance-dart: build/tables-generated-dart/.stamp test/conformance/dart
 # the negative controls, of which the one §3.4 names is a reader given the
 # WRONG PLAN for a record, which must come out wrong, and one corrupted-layout
 # case per NAMED RULE a reader holds an untrusted peer's layout to.
+#
+# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
+# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
+# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
+# to agree on the text (reference-fix 12). C++ already generates the pair;
+# this stamp did not.
 build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema \
 		test/tables/FX1.schema test/tables/FX2.schema \
 		test/tables/V1.schema test/tables/V2.schema \
 		test/tables/P1.schema test/tables/P3.schema test/tables/FXW.schema \
+		test/tables/FU1.schema test/tables/FU2.schema \
 		$(SCHEMAS_TABLES) make/dart.mk
 	@rm -rf build/dart-fixed && mkdir -p build/dart-fixed
 	./bin/schema generate --lang dart --out build/dart-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
@@ -272,6 +279,8 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	./bin/schema generate --lang dart --out build/dart-fixed/v2 test/tables/V2.schema
 	./bin/schema generate --lang dart --out build/dart-fixed/p1 test/tables/P1.schema
 	./bin/schema generate --lang dart --out build/dart-fixed/p3 test/tables/P3.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fu1 test/tables/FU1.schema
+	./bin/schema generate --lang dart --out build/dart-fixed/fu2 test/tables/FU2.schema
 	./bin/schema generate --lang dart --out build/dart-fixed/examples tables/examples
 	# THE WIDE TEXT UNIT (docs/SPEC-TABLES.md §3.4, kind 33): its own file and
 	# its own directory, because every SHARED schema list is pinned to targets
@@ -316,6 +325,8 @@ tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stam
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/v2 test/tables/V2.schema
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p1 test/tables/P1.schema
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/p3 test/tables/P3.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fu1 test/tables/FU1.schema
+	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fu2 test/tables/FU2.schema
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/examples tables/examples
 	./build/dart-fixed-nc/schema generate --lang dart --out build/dart-fixed-nc/gen/fxw test/tables/FXW.schema
 	@sed 's|../../build/dart-fixed/|$(CURDIR)/build/dart-fixed-nc/gen/|g' \

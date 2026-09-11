@@ -337,7 +337,7 @@ pub fn fixed_table_fixed_load(
             .expect("four bytes"),
     ) as usize;
     if block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {
-        return report.refuse(TableFixedReason::BlockMalformed);
+        return report.refuse(TableFixedReason::LayoutMalformed);
     }
     let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + block_bytes];
     let hash = table_fixed_hash(block);
@@ -350,12 +350,12 @@ pub fn fixed_table_fixed_load(
     let identity = hash == FIXED_TABLE_FIXED_HASH;
     if !identity {
         let theirs = match TableFixedBlock::parse(block) {
-            Some(b) => b,
-            None => return report.refuse(TableFixedReason::BlockMalformed),
+            Ok(b) => b,
+            Err(why) => return report.refuse(why),
         };
         let mine = match TableFixedBlock::parse(&FIXED_TABLE_FIXED_BLOCK) {
-            Some(b) => b,
-            None => return report.refuse(TableFixedReason::BlockMalformed),
+            Ok(b) => b,
+            Err(why) => return report.refuse(why),
         };
         compiled = match table_fixed_compile(&theirs, &mine, &FIXED_TABLE_FIXED_COUNTED, plan, remap, report) {
             Some(n) => n,
@@ -372,7 +372,7 @@ pub fn fixed_table_fixed_load(
             .expect("eight bytes"),
     ) != hash
     {
-        return report.refuse(TableFixedReason::BlockMalformed);
+        return report.refuse(TableFixedReason::LayoutMalformed);
     }
     if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
         report.malformed = true;
