@@ -480,22 +480,39 @@ func fixedCorpus(t *testing.T) string {
 
 // elixirBinary is THE LEG'S OWN TOOLCHAIN (§5.9 #18): the Elixir and OTP
 // make/elixir.mk pins in dist/, overridable the way the Makefile overrides it.
+//
+// THREE PLACES, IN THIS ORDER, because the harness SPAWNS the binary and so
+// needs a path and never a shell launcher: $ELIXIR when it names one, the
+// pinned dist/ tree, and THE ELIXIR ON PATH — which is the CI shape, where
+// setup-beam installs the pinned versions on PATH and dist/ is not in the job
+// at all (the negative-controls group overrides ELIXIR=elixir and nothing
+// else). A bench with no Elixir anywhere still skips, and still FAILS under
+// SCHEMA_REQUIRE_CORPUS: the leg's gate is never satisfied by absence.
 func elixirBinary(t *testing.T) string {
 	t.Helper()
 	if env := os.Getenv("ELIXIR"); env != "" {
-		return env
+		if _, err := os.Stat(env); err == nil {
+			return env
+		}
+		if bin, err := exec.LookPath(env); err == nil {
+			return bin
+		}
 	}
 	bin, err := filepath.Abs("../../../dist/elixir-1.20.4/bin/elixir")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(bin); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and Elixir is not at %s: %v", bin, err)
-		}
-		t.Skip("Elixir is not unpacked in dist/: see make/elixir.mk")
+	if _, err := os.Stat(bin); err == nil {
+		return bin
 	}
-	return bin
+	if found, err := exec.LookPath("elixir"); err == nil {
+		return found
+	}
+	if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no Elixir is on this bench: not at %s and not on PATH", bin)
+	}
+	t.Skip("no Elixir: unpack it in dist/ or put it on PATH — see make/elixir.mk")
+	return ""
 }
 
 // brackets is §5.9 #32's value oracle: per row the `lead` and `trail` the corpus
@@ -705,7 +722,10 @@ Probe.run()
 }
 
 // otpBin is the OTP the Makefile pins beside the Elixir it pins: `elixir` is a
-// shell script that needs `erl` on PATH.
+// shell script that needs `erl` on PATH. It resolves like [elixirBinary] —
+// $ERL_BIN, then the pinned dist/ tree, then the `erl` already on PATH, which
+// is where CI's OTP is — and what it returns is PREPENDED to PATH rather than
+// replacing it, so a directory that turns out to hold no `erl` costs nothing.
 func otpBin(t *testing.T) string {
 	t.Helper()
 	if env := os.Getenv("ERL_BIN"); env != "" {
@@ -714,6 +734,12 @@ func otpBin(t *testing.T) string {
 	p, err := filepath.Abs("../../../dist/otp-29.0.5/bin")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(p, "erl")); err == nil {
+		return p
+	}
+	if found, err := exec.LookPath("erl"); err == nil {
+		return filepath.Dir(found)
 	}
 	return p
 }

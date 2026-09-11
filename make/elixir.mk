@@ -464,7 +464,9 @@ tables-elixir-fixed-form-negative-control: build/fixedform-corpus/.stamp
 # ELIXIR_BIN and ERL_BIN are PLAIN PATHS and not the PATH-prefixed launchers the
 # rest of this file uses, because the harness spawns the binary itself: empty is
 # the default, and the harness then takes the Elixir and the OTP this file pins
-# in dist/.
+# in dist/, or the ones on PATH when dist/ holds none — which is the CI shape,
+# where setup-beam installs the pinned versions on PATH and the negative
+# controls group passes ELIXIR=elixir and no ELIXIR_BIN at all.
 ELIXIR_BIN ?=
 ERL_BIN    ?=
 
