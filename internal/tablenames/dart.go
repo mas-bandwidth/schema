@@ -46,6 +46,10 @@ func init() {
 		Name{Name: "TableFixedRun", What: "THE ONE READ LOOP: one plan over one record body"},
 		Name{Name: "TableFixedFillRun", What: "the fixed form: copy the prefill's ranges from the default image"},
 		Name{Name: "TableFixedCompiler", What: "the plan compiler, run once per peer and never once per record"},
+		Name{Name: "TableFixedKnownLayout", What: "ONE LOCKED LAYOUT of a fixed table's lineage: the wire hash, the layout bytes, their length, the record size"},
+		Name{Name: "TableFixedLineagePlan", What: "one lineage entry's plan, laid down from the lock's bytes, with its compile census and its refusal name"},
+		Name{Name: "TableFixedLineagePlans", What: "the fixed form: one plan per lineage entry, built once from the lock's bytes and off every load path"},
+		Name{Name: "TableFixedSelect", What: "the fixed form: the first lineage index whose hash is the file's, or -1 — a file is matched on this and nothing else"},
 		Name{Name: "TableBuildVersion", What: "Dart's spelling of the unit's build version, at library scope in the block runtime home (the cook's, in a unit with no block form)"},
 	)
 }
