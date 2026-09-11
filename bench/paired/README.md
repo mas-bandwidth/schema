@@ -189,6 +189,18 @@ import no runtime at all. Filling the driver's second wire with a fabricated
 packet row would be inventing a measurement, so the driver accepts a table-only
 row instead. `NODE` names the interpreter.
 
+`dart` is the fourth, table-only for the reason js is: `bench/dart/main.dart` is
+the TYPE BOARD's packet runner, with neither `--gate` nor `--iterations`, and it
+reports a median of seven runs of its own choosing where this driver requires one
+measured run per round. The table leg, `bench/tables/dart/table_main.dart`, is
+this driver's own shape. Unlike the js leg it is COMPILED: `dart compile exe`
+builds the generated libraries and the runner into one AOT binary — the form
+`bench/dart/main.dart` measures the packet wire in — so the leg has a build
+product to hash like the C, C++, Go and Rust legs, and its rows carry
+`linkage=aot`. `DART` names the SDK (the repository-local pin under `dist/` when
+it is there, as in make/dart.mk). Dart has no form-1 table wire (schema#514), so
+the leg names its rows `bench_fixed` and emits no tolerant row at all.
+
     go run ./bench/paired -mode build -langs rust   generate, build, gate the leg
     go run ./bench/paired -mode gate  -langs rust   the no-clock gate alone
     go run ./bench/paired -mode fast  -langs rust -fast-rounds 3 -noise-note "..."
@@ -201,8 +213,12 @@ row instead. `NODE` names the interpreter.
     go run ./bench/paired -mode gate  -langs js     the no-clock gate alone
     go run ./bench/paired -mode fast  -langs js -fast-rounds 3 -noise-note "..."
 
+    go run ./bench/paired -mode build -langs dart   generate, compile exe, then gate the leg
+    go run ./bench/paired -mode gate  -langs dart   the no-clock gate alone
+    go run ./bench/paired -mode fast  -langs dart -fast-rounds 3 -noise-note "..."
+
 A request is one shape or the other and never a mixture: `-langs rust` (or
-`-langs java`, or `-langs js`) is asked for alone, `-mode run` refuses it, and
+`-langs java`, `-langs js`, or `-langs dart`) is asked for alone, `-mode run` refuses it, and
 its fast summary prints the table wire's own cost with **NO RATIO** written
 where the percentages would be. Because none of these ports has a form-1 table
 wire — the fixed form is the first for each — each leg measures the FIXED form

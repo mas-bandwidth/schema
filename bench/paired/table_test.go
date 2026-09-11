@@ -244,13 +244,19 @@ func TestTheRowSetIsMainsRoster(t *testing.T) {
 // its wiring does must still be reported absent, because nothing here can
 // generate, build or measure it — and it is named with the reason that is
 // actually true of it.
+//
+// THE LIST IS EMPTY TODAY (main.go's `pendingLanguages` says why: dart was the
+// last name in it and its table leg has landed), so the first half of this
+// claim has nothing to exercise and says so rather than passing vacuously. The
+// second half — the OTHER reason a row is absent — is checked either way,
+// because that is the branch a tree without a runner takes.
 func TestAPendingLanguageIsNeverMeasuredEvenWithARunner(t *testing.T) {
 	previous, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
-	for _, lang := range []string{"cpp", "dart"} {
+	for _, lang := range append([]string{"cpp"}, pendingLanguages...) {
 		if err := os.MkdirAll(filepath.Join(root, "bench", "tables", lang), 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -260,13 +266,18 @@ func TestAPendingLanguageIsNeverMeasuredEvenWithARunner(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(previous) })
 	present, absent := discoverTableLanguages()
-	if contains(present, "dart") {
-		t.Fatal("a pending language reached the measured set:", present)
-	}
-	if !contains(absent, "dart") || !strings.Contains(absentReason("dart"), "no leg in this driver yet") {
-		t.Fatal(absent, absentReason("dart"))
+	for _, lang := range pendingLanguages {
+		if contains(present, lang) {
+			t.Fatal("a pending language reached the measured set:", present)
+		}
+		if !contains(absent, lang) || !strings.Contains(absentReason(lang), "no leg in this driver yet") {
+			t.Fatal(absent, absentReason(lang))
+		}
 	}
 	if !strings.Contains(absentReason("go"), "no runner on this tree") {
 		t.Fatal(absentReason("go"))
+	}
+	if len(pendingLanguages) == 0 {
+		t.Log("no pending language on this roster; the absent-because-no-leg branch has nothing to exercise")
 	}
 }
