@@ -402,8 +402,20 @@ func (g *fixedGen) emitFieldStorage(f *ir.Field, ind string) {
 		g.emitListStorage(f, ind, name, f.ArrayBound)
 		g.pf("%sint %sCount = %d;\n", ind, name, f.ArrayMin)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-		g.pf("%sfinal Uint8List %s = Uint8List(%d);\n", ind, name, f.Type.Size)
-		g.pf("%sint %sLength = %d;\n", ind, name, fixedDefaultTextLength(f))
+		// THE DECLARED DEFAULT IS THE VALUE, NOT JUST ITS LENGTH (SPEC §4.2).
+		// Length-only left a constructed record claiming N used bytes of an
+		// empty buffer: C++ writes `char label[8 + 1] = "fx"` and JS
+		// `.set([102, 120])` at construction. Reset already laid the bytes
+		// back in; construction did not.
+		n := fixedDefaultTextLength(f)
+		if n == 0 {
+			g.pf("%sfinal Uint8List %s = Uint8List(%d);\n", ind, name, f.Type.Size)
+		} else {
+			g.pf("%s// the declared default (SPEC §4.2): %q\n", ind, string(f.DefBytes[:n]))
+			g.pf("%sfinal Uint8List %s = Uint8List(%d)\n", ind, name, f.Type.Size)
+			g.emitTextDefaultCascade(f, ind, n)
+		}
+		g.pf("%sint %sLength = %d;\n", ind, name, n)
 	case f.Type.Kind == ir.TWString:
 		g.pf("%sfinal Uint16List %s = Uint16List(%d);\n", ind, name, f.Type.Size)
 		g.pf("%sint %sLength = 0;\n", ind, name)
@@ -524,6 +536,17 @@ func (g *fixedGen) emitTextDefaultBytes(f *ir.Field, ind, target string) {
 	name := dartName(f.Name)
 	for i := range n {
 		g.pf("%s%s.%s[%d] = 0x%02x;\n", ind, target, name, i, f.DefBytes[i])
+	}
+}
+
+// emitTextDefaultCascade lays the same default into a field initializer.
+func (g *fixedGen) emitTextDefaultCascade(f *ir.Field, ind string, n int64) {
+	for i := range n {
+		end := ""
+		if i == n-1 {
+			end = ";"
+		}
+		g.pf("%s  ..[%d] = 0x%02x%s\n", ind, i, f.DefBytes[i], end)
 	}
 }
 

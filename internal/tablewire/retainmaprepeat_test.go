@@ -52,12 +52,12 @@ func TestRetainedMapReplacementAfterDamage(t *testing.T) {
 // It cannot alias a shortened key or capture unknown fields under that key.
 func TestRetainedMessageMapReplacementAfterDroppedKey(t *testing.T) {
 	sender := listModel(t, `package mapkeep
- table Item { number int32
+ fixed table Item { number int32
  extra int32 }
  table Root { names map[string(8)]Item }
  `)
 	reader := listModel(t, `package mapkeep
- table Item { number int32 }
+ fixed table Item { number int32 }
  table Root { names map[string(2)]Item }
  `)
 	vocabulary := &tablewire.Vocabulary{}
@@ -102,12 +102,12 @@ func TestRetainedMessageMapReplacementAfterDroppedKey(t *testing.T) {
 
 func TestRetainedMessageMapReplacementAfterKeyMismatch(t *testing.T) {
 	sender := listModel(t, `package mapkeep
- table Item { number int32
+ fixed table Item { number int32
  extra int32 }
  table Root { names map[string(8)]Item }
  `)
 	reader := listModel(t, `package mapkeep
- table Item { number int32 }
+ fixed table Item { number int32 }
  table Root { names map[int32]Item }
  `)
 	vocabulary := &tablewire.Vocabulary{}

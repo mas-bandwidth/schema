@@ -6,7 +6,7 @@ import (
 )
 
 const matchedWidthSchema = `package probe
-table Root {
+fixed table Root {
  a uint16
  b int32
 }

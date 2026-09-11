@@ -15,7 +15,7 @@ func tableOpenMixSlot(id uint64) uint32 {
 }
 
 func TestGoTableOpenDistinctnessIsBounded(t *testing.T) {
-	files := generate(t, "package probe\ntable Root { x uint32 }\n")
+	files := generate(t, "package probe\nfixed table Root { x uint32 }\n")
 	body := ""
 	for name, data := range files {
 		if strings.HasSuffix(name, "Table.go") {
@@ -53,7 +53,7 @@ func TestGoTableOpenDistinctnessVerdict(t *testing.T) {
 	}
 	src := strings.ReplaceAll(openDistinctnessVerdictTest, "COLLIDE_A", fmt.Sprint(collideA))
 	src = strings.ReplaceAll(src, "COLLIDE_B", fmt.Sprint(collideB))
-	runGenerated(t, "package probe\ntable Root { x uint32 }\n", src)
+	runGenerated(t, "package probe\nfixed table Root { x uint32 }\n", src)
 }
 
 const openDistinctnessVerdictTest = `package probe

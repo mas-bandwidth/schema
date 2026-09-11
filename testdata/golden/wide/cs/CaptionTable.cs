@@ -608,8 +608,8 @@ namespace Wide
         };
 
         public static readonly TableFixedPlan StampFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
-            new TableFixedEntry(0u, 0u, 8u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2),
-            new TableFixedEntry(12u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0),
+            new TableFixedEntry(0u, 0u, 8u, 1u, TableFixedWire.NoGuard, TableFixedWire.Text, 0, 0, 0, 2, 1),
+            new TableFixedEntry(12u, 2u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
         });
 
         public static long StampFixedMeasure(long count)

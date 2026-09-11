@@ -12,26 +12,26 @@ enum Hull { Interceptor, Gunship, Freighter }
 
 enum Weapon { Cannon, Missile, Mine }
 
-table TeamConfig
+fixed table TeamConfig
 {
     spawn_count int32 = 4  | min = 0, max = 64
     banner      string(16)
 }
 
-table GunnerConfig
+fixed table GunnerConfig
 {
     reaction float32 = 0.2
     tracking bool
 }
 
-table TurretConfig
+fixed table TurretConfig
 {
     damage   float32 = 10.0
     cooldown float32 = 0.5
     gunner   ?GunnerConfig // an optional section: present or absent, no pointer
 }
 
-table HullConfig
+fixed table HullConfig
 {
     health  float32 = 100.0
     mass    float32 = 1.0
@@ -47,7 +47,7 @@ type ScoreBoard
     per_team [Team]int32 | min = 0, max = 100000
 }
 
-table KeyedConfig
+fixed table KeyedConfig
 {
     teams  [Team]TeamConfig
     hulls  [Hull]HullConfig

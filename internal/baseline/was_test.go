@@ -15,7 +15,7 @@ const wasRowsSrc = `package rows
 
 flags Caps { Jump, Crouch, Fly }
 
-table Vessel
+fixed table Vessel
 {
     name string(32) = "untitled"
     tag  bytes(4) = "ab"

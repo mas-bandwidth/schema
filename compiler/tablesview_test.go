@@ -30,7 +30,7 @@ type Reached
     hits int32
 }
 
-table Root
+fixed table Root
 {
     reached Reached
     count   int32

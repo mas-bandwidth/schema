@@ -14,7 +14,7 @@ import (
 
 const listSrc = `package fixture
 
-table Placement
+fixed table Placement
 {
     x float32
 }

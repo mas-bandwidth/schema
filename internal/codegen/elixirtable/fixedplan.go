@@ -24,19 +24,13 @@ import (
 // integers arrived as a plan of a hundred entries and the interpreter ran over
 // every one of them. The check itself was never the cost — the entries were.
 //
-// So on THE IDENTITY PATH the clamp rides the generated decode instead: the
-// count's bound, the text length's bound and the ranged integer's bounds are
-// straight-line code in the one binary pattern match that projects the image,
-// and the `clamped` they count is added to the report beside it (Rowan's ruling
-// for this leg). THE CHECK IS NOT WEAKENED AND NOT MOVED OFF THE READ — the
-// read side always checks — it is moved OFF THE PLAN, which on this path is
-// pure overhead: an op whose source and destination are the same byte.
-//
-// A COMPILED PLAN IS UNTOUCHED. There the interpreter runs anyway, the source
-// and the destination are different layouts, and `clamp` is how a foreign
-// writer's value is held to this reader's bounds — FixedRuntime.compile still
-// emits it, and the decode's own clamp is then a no-op that counts nothing
-// because the value it sees is already in range.
+// NEITHER PLAN CLAMPS a ranged integer (docs/SPEC-TABLES.md §3.4, schema#859).
+// The count's bound, the text length's bound and the ranged integer's bounds
+// ride the generated decode: one binary pattern match that projects the image,
+// and the `clamped` they count is added to the report beside it. THE CHECK IS
+// NOT WEAKENED AND NOT MOVED OFF THE READ — the read side always checks — it
+// is moved OFF THE PLAN. A compiled plan copies a same-size ranged integer
+// the same way, and the same projection holds the bound after the loop.
 //
 // WHAT IS LEFT IS ONE RUN. In the image domain any contiguous region is one
 // identity copy, so the walk below is one entry per FIELD and the coalescer
@@ -97,9 +91,7 @@ func fixedCoalesce(in []fixedPlanEntry) []fixedPlanEntry {
 // fixedRangeOf answers a field's declared clamp bounds, as Elixir literals, or
 // two "nil"s when the field carries no range. THE BOUNDS DO NOT RIDE and a
 // value outside the reader's own range CLAMPS ON LOAD, counting one `clamped` —
-// §3.4's op table, and §3's rule for the same kinds. The bounds are the same
-// numbers whether the clamp rides a compiled plan's entry or the identity
-// path's generated decode, which is why both sides read them from here.
+// the generated projection, the same pass for either plan.
 func fixedRangeOf(f *ir.Field) (string, string) {
 	if !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
 		return "nil", "nil"

@@ -20,8 +20,12 @@ import (
 // C twin of gotable/matched_width_test.go. Regenerated goldens cannot hold
 // has(N)+getN against a later emitter edit on their own.
 
+// `fixed table` is the DECLARATION these tests need (docs/SPEC-TABLES.md
+// §2.2): the matched-width probe drives the fixed reader and writer —
+// root_measure/root_save/root_load over a value — and a plain `table` is the
+// variable wire whatever its fields are.
 const matchedWidthSchema = `package probe
-table Root {
+fixed table Root {
  a uint16
  b int32
 }

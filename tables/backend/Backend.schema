@@ -13,7 +13,7 @@ enum Region { NA, EU, APAC, SA }
 
 enum Currency { USD, EUR, GBP, JPY }
 
-table LoginRequest
+fixed table LoginRequest
 {
     player_id     uint64 = 0
     session_token bytes(32)
@@ -21,20 +21,20 @@ table LoginRequest
     region        Region
 }
 
-table PlayerRow
+fixed table PlayerRow
 {
     player_id uint64 = 0
     score     int32 = 0 | min = 0, max = 100000
     placement uint8 = 1 | min = 1, max = 10
 }
 
-table MatchResult
+fixed table MatchResult
 {
     match_id uint64 = 0
     players  [10]PlayerRow
 }
 
-table StorePurchase
+fixed table StorePurchase
 {
     player_id   uint64 = 0
     sku         string(32)
@@ -55,7 +55,7 @@ union Payload
     purchase StorePurchase
 }
 
-table Envelope
+fixed table Envelope
 {
     payload Payload
 }

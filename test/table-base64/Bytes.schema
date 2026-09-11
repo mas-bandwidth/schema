@@ -1,6 +1,6 @@
 package base64test
 
-table Blob
+fixed table Blob
 {
     payload bytes(16384)
 }

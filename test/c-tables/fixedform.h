@@ -34,6 +34,8 @@ int64_t fixed_ut1_write( uint8_t * buffer, int64_t capacity );
 int64_t fixed_ut1_bytes( void );
 int64_t fixed_ut2_write( uint8_t * buffer, int64_t capacity );
 int64_t fixed_ut2_bytes( void );
+int64_t fixed_fu1_write( uint8_t * buffer, int64_t capacity );
+int64_t fixed_fu1_bytes( void );
 
 /* ...and each reads the other's, through the ONE plan-driven path. */
 void fixed_fx1_read_own( const uint8_t * data, int64_t bytes );
@@ -51,6 +53,12 @@ void fixed_ut1_read_own( const uint8_t * data, int64_t bytes );
 void fixed_ut1_shared_lane_control( const uint8_t * data, int64_t bytes );
 void fixed_ut1_read_ut2( const uint8_t * data, int64_t bytes );
 void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes );
+
+/* TEXT UNDER AN ARM, identity then compiled (docs/SPEC-TABLES.md §3.4, §15).
+   FU2 appends a field so a read of FU1's bytes is a compiled plan; the text
+   in the union's SECOND arm has to land on both paths. */
+void fixed_fu1_read_own( const uint8_t * data, int64_t bytes );
+void fixed_fu2_read_fu1( const uint8_t * data, int64_t bytes );
 
 /* THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4): a ranged
    scalar's declared min and max, and an ORDINAL's set. Straight-line in the

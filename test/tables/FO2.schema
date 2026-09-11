@@ -42,13 +42,13 @@ union Effect
     ward  Ward
 }
 
-table Wrap
+fixed table Wrap
 {
     n    int32 = 3 | min = -1000, max = 1000
     leaf ?Leaf
 }
 
-table OptRoot
+fixed table OptRoot
 {
     name   string(12)
     plain2 int32 = 5 | min = 0, max = 1000, was = "plain"
