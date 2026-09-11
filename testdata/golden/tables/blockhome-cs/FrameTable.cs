@@ -875,6 +875,10 @@ namespace Blockhome
                 if (values[k] == null) { values[k] = new PartRow(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PartRowFixedSlots, values[k]);
                 TableFixedWire.Run(entries, PartRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != PartRowFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, PartRowFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -6704,6 +6708,10 @@ namespace Blockhome
                 if (values[k] == null) { values[k] = new PartFrame(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PartFrameFixedSlots, values[k]);
                 TableFixedWire.Run(entries, PartFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != PartFrameFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, PartFrameFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)

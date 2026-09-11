@@ -807,6 +807,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new PaddedRow(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedRowFixedSlots, values[k]);
                 TableFixedWire.Run(entries, PaddedRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != PaddedRowFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, PaddedRowFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 PaddedRowFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
@@ -2735,6 +2739,10 @@ namespace Blockdemo
                 if (values[k] == null) { values[k] = new PaddedFrame(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedFrameFixedSlots, values[k]);
                 TableFixedWire.Run(entries, PaddedFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                if (hash != PaddedFrameFixedHash)
+                {
+                    TableFixedWire.ClampPlanBounds(entries, PaddedFrameFixedSlots, at.Slice(8), values[k], report, planBytes);
+                }
                 PaddedFrameFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
