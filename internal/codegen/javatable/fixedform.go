@@ -78,45 +78,14 @@ func fixedTypeBytes(st *ir.Struct) int64     { return ir.TableFixedTypeBytes(st)
 func fixedFieldBytes(f *ir.Field) int64      { return ir.TableFixedFieldBytes(f) }
 func fixedElementBytes(f *ir.Field) int64    { return ir.TableFixedElementBytes(f) }
 
-// fixedSupported reports whether a type's whole closure is one this port
-// carries, and it is the C++ REFERENCE's own answer so that the two emit the
-// form for the same roots. A pointer, a map and an unbounded array make their
-// holder VARIABLE and never reach here; what this adds is the two shapes the
-// reference does not lay out — a union arm carrying text or an array, and a
-// guarded branch, which §3.4 refuses outright.
-func fixedSupported(st *ir.Struct, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
-			return false
-		}
-		if f.Type.Kind == ir.TNamed {
-			switch r := f.Type.Ref.(type) {
-			case *ir.Struct:
-				if !fixedSupported(r, depth+1) {
-					return false
-				}
-			case *ir.Union:
-				for _, v := range r.Variants {
-					if v.F == nil {
-						return false // a void arm has no storage this walk can name
-					}
-					a := v.F
-					if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-						a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes || a.Type.Optional {
-						return false
-					}
-					if s, ok := a.Type.Ref.(*ir.Struct); ok && a.Type.Kind == ir.TNamed && !fixedSupported(s, depth+1) {
-						return false
-					}
-				}
-			}
-		}
-	}
-	return true
-}
+// THE CLOSURE TEST IS ir.TableFixedSupported AND THERE IS ONE OF IT. This file
+// used to carry a private copy — the same function byte for byte, with its own
+// `16` where ir holds `ir.TableFixedMaxDepth` — and the private copy is what
+// SELECTED THE EMITTED FORM. The red-team read of 2026-09-11 found what that
+// costs: a fixed table nested 17 to 64 deep rode form 3 out of C++, C, C# and
+// Rust and form 1 out of this leg, the same declaration on two incompatible
+// wires. A bound a port can hold for itself is a bound the ports can disagree
+// about, so the copy is gone and the question is asked where the answer lives.
 
 // ---------------------------------------------------------------------------
 // THE LAYOUT
@@ -421,12 +390,12 @@ func fixedPutBig(out []byte, v *big.Int, width int64) {
 // fixedRoots is every table of the unit the fixed form is emitted for, in
 // declaration order. ir answers the size ceiling — a record past 65536 bytes
 // is one no conforming reader decodes, so the table keeps form 1 and the
-// compiler names it — and fixedSupported answers the shapes the reference does
+// compiler names it, and the depth bound too — and ir.TableFixedSupported answers the shapes the reference does
 // not lay out.
 func fixedRoots(u *ir.Unit) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range ir.TableFixedFormRoots(u) {
-		if !fixedSupported(st, 0) {
+		if !ir.TableFixedSupported(st, 0) {
 			continue
 		}
 		out = append(out, st)

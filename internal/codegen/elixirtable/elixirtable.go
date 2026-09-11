@@ -59,7 +59,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// answer rather than the `false` every leg passed while none of them
 	// carried a form-3 codec. It is not ir.TableFixedAnyEmitted: that is the
 	// answer a port whose coverage is the reference's passes, and this leg
-	// narrows further (fixedSupported), so the answer is the roots this leg
+	// narrows further (ir.TableFixedSupported), so the answer is the roots this leg
 	// actually lays out. A unit whose wide kinds cost it the accelerators and
 	// that has no fixed form to put in their place still has nothing to emit
 	// and is still refused WHOLE and by name.

@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -163,5 +164,137 @@ func TestFixedLayoutDepthReadsTheBytes(t *testing.T) {
 	}
 	if ir.TableFixedLayoutDepth(nil) != 0 {
 		t.Error("no layout is no depth")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// THE NINE LEGS, ON ONE DECLARATION
+// ---------------------------------------------------------------------------
+
+// fixedDepthLegs is every leg that emits the fixed form, and the point of the
+// test below is that the list has no exceptions in it.
+var fixedDepthLegs = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
+
+// fixedDepthTableMark matches a symbol the fixed form names AFTER THE TABLE —
+// `deep_fixed_save`, `DeepFixedPlan`, `deepFixedLoad`, `DEEP_FIXED_HASH`. It is
+// the one marker that means THIS TABLE rides form 3 on THIS leg, and it is
+// deliberately not the runtime's own `table_fixed_*` surface: every leg emits
+// that whether or not any table uses it, which is exactly how five legs dropped
+// the form for years without a test noticing.
+var fixedDepthTableMark = regexp.MustCompile(`(?i)\b(deep_fixed|DeepFixed|deepFixed|DEEP_FIXED)[A-Za-z_]*\b`)
+
+func fixedDepthMarks(t *testing.T, lang string, u *ir.Unit) int {
+	t.Helper()
+	files, err := New().Generate(u, lang, Options{})
+	if err != nil {
+		t.Fatalf("%s: the probe must generate — a depth is a warning, never a refusal: %v", lang, err)
+	}
+	n := 0
+	for _, content := range files {
+		n += len(fixedDepthTableMark.FindAllString(string(content), -1))
+	}
+	return n
+}
+
+// ONE DECLARATION, ONE FORM, ON ALL NINE LEGS — and this is the red-team finding
+// of 2026-09-11 written as a test.
+//
+// THE BOUND WAS RAISED FROM 16 TO THE LAYOUT'S 64 in ir, and ir is not where the
+// form was being chosen. FIVE BACKENDS CARRIED A PRIVATE COPY of the closure
+// test — internal/codegen/{gotable,javatable,elixirtable,jstable,darttable}
+// /fixedform.go, the same function byte for byte with its own `16` written into
+// it — and the private copy is what selected the emitted form. So a fixed table
+// nested 17 to 64 deep rode FORM 3 out of C++, C, C# and Rust and FORM 1 out of
+// the other five: the same declaration on two incompatible wires, silently in
+// Go, Java and Elixir, and in JS and Dart under a refusal line that blamed the
+// CLOSURE for a pointer or a map the schema does not contain.
+//
+// A bound a port can hold for itself is a bound the ports can disagree about,
+// and on a WIRE fact that is not a style difference but two fleets that cannot
+// read each other. So: the private copies are gone, the depth question is
+// [ir.TableFixedWithinDepth] and nothing else asks it, and THIS TEST is what
+// makes a sixth copy impossible to land — it does not know which legs were
+// wrong, only that all nine must answer the same.
+func TestFixedDepthInsideTheBoundEmitsOnAllNineLegs(t *testing.T) {
+	// THE CONTROL IS THE SAME SHAPE, SHALLOW. It calibrates the marker per leg,
+	// so the test never asserts a symbol spelling it guessed: whatever a leg
+	// emits for a 4-deep chain it must emit for a 20-deep one.
+	control, _ := depthUnit(t, deepSchema("fixed table", 4))
+	probe, warns := depthUnit(t, deepSchema("fixed table", 20))
+	if n := ir.TableFixedTypeDepth(probe.Tables["Deep"]); n > ir.TableFixedMaxDepth {
+		t.Fatalf("a 20-type chain must sit inside the bound; its layout nests %d", n)
+	}
+	for _, w := range warns {
+		if strings.Contains(w, "depth bound") {
+			t.Errorf("a nesting inside the bound must say nothing: %s", w)
+		}
+	}
+	for _, lang := range fixedDepthLegs {
+		want := fixedDepthMarks(t, lang, control)
+		if want == 0 {
+			t.Fatalf("%s: the control must emit the fixed form for a 4-deep chain, or this test proves nothing", lang)
+		}
+		if got := fixedDepthMarks(t, lang, probe); got != want {
+			t.Errorf("%s emits %d fixed-form symbols for Deep at 20 deep and %d at 4 deep — 20 is INSIDE the %d-entry bound, so the two must agree; a leg short here is a leg holding its own copy of the bound",
+				lang, got, want, ir.TableFixedMaxDepth)
+		}
+	}
+}
+
+// AND PAST THE BOUND, ALL NINE DROP IT TOGETHER, with the table named once by
+// the compiler. The form is not emitted anywhere — no conforming reader takes a
+// walk that deep (§5.2's `layout_malformed`) — and the sentence that says so is
+// the compiler's, not nine separately-worded ones.
+func TestFixedDepthPastTheBoundEmitsNoFormOnAnyLeg(t *testing.T) {
+	u, warns := depthUnit(t, deepSchema("fixed table", ir.TableFixedMaxDepth+1))
+	st := u.Tables["Deep"]
+	if ir.TableFixedWithinDepth(st) {
+		t.Fatalf("the probe must nest past the bound; its layout nests %d", ir.TableFixedTypeDepth(st))
+	}
+	for _, lang := range fixedDepthLegs {
+		if got := fixedDepthMarks(t, lang, u); got != 0 {
+			t.Errorf("%s emits %d fixed-form symbols for a table nested %d deep — past the %d-entry bound no conforming reader takes the walk, so the writer produces bytes nobody decodes",
+				lang, got, ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
+		}
+	}
+	// AND IT IS NAMED, ONCE, WITH ITS DEPTH — the half of §4.5 fix 4 that the
+	// five legs were failing in silence.
+	named := 0
+	for _, w := range warns {
+		if strings.Contains(w, "Deep") && strings.Contains(w, "depth bound") {
+			named++
+		}
+	}
+	if named != 1 {
+		t.Errorf("the compiler must name the table and its depth exactly once, got %d: %v", named, warns)
+	}
+}
+
+// AND THE DEPTH QUESTION IS ASKED IN ONE PLACE. A leg that spells the bound
+// itself is how the finding happened, so the literal is allowed in ir (where the
+// constant lives, and where a generated runtime's copy is written from) and
+// nowhere else under internal/codegen.
+func TestFixedDepthNoBackendSpellsTheBound(t *testing.T) {
+	bad := regexp.MustCompile(`\bdepth\s*[<>]=?\s*16\b`)
+	err := filepath.Walk("../internal/codegen", func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		b, err := os.ReadFile(path) //nolint:gosec // a path this walk produced
+		if err != nil {
+			return err
+		}
+		for i, ln := range strings.Split(string(b), "\n") {
+			if strings.Contains(ln, "//") {
+				continue
+			}
+			if bad.MatchString(ln) {
+				t.Errorf("%s:%d spells the fixed form's depth bound for itself — it is ir.TableFixedMaxDepth, read through ir.TableFixedWithinDepth: %s", path, i+1, strings.TrimSpace(ln))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

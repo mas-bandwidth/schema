@@ -40,7 +40,18 @@ import (
 // table, which field and why, so a consumer reaching for Save gets a missing
 // name from its own tooling beside a file that says why.
 func fixedRefusal(st *ir.Struct) string {
-	if !fixedSupported(st, 0) {
+	// THE WALK'S DEPTH BOUND GOES FIRST, AND IT IS ITS OWN SENTENCE. This leg
+	// held a private closure test with `16` written into it, so a table nested 17
+	// deep lost the form here while C++ emitted it — and the line this function
+	// wrote blamed the CLOSURE, naming a pointer or a map in a schema that has
+	// neither. The bound is read through ir now, and the reason it gives is the
+	// bound's own: past ir.TableFixedMaxDepth no conforming reader takes the walk
+	// (docs/FIXED-FORM-ALGORITHM.md §5.2's `layout_malformed`).
+	if !ir.TableFixedWithinDepth(st) {
+		return fmt.Sprintf("its layout nests %d deep, past the form's %d-entry depth bound, so no conforming reader takes the walk (`layout_malformed`) — it keeps form 1 (docs/FIXED-FORM-ALGORITHM.md §5.2, docs/SPEC-TABLES.md §3.4)",
+			ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
+	}
+	if !ir.TableFixedSupported(st, 0) {
 		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array or a guarded branch (docs/SPEC-TABLES.md §3.4)"
 	}
 	// AN OPTIONAL IS NOT A REFUSAL. §3.4's kind table CARRIES `?T` — kind 35,

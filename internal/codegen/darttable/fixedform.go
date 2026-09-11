@@ -22,6 +22,8 @@
 package darttable
 
 import (
+	"fmt"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -68,48 +70,14 @@ func fixedUnionTagBytes(u *ir.Union) int64 { return int64(ir.StorageBitsFor(u.Ma
 // WHAT THIS BACKEND LAYS OUT, AND WHAT IT REFUSES BY NAME
 // ---------------------------------------------------------------------------
 
-// fixedSupported reports whether a type's whole closure is one this backend
-// lays out. A pointer, a map and an unbounded array make their holder VARIABLE
-// (§2.2) and never reach here; what this adds is the two shapes the C++
-// reference does not lay out either — a union arm carrying text or an array,
-// and a guarded branch, which §3.4 refuses outright for the owner's own reason.
-//
-// The union-arm restriction is the reference's and this port keeps it, so that
-// the two lay out the same closure or neither does.
-func fixedSupported(st *ir.Struct, depth int) bool {
-	if depth > 16 {
-		return false
-	}
-	for _, f := range st.Fields {
-		if f.Guard != "" || f.Type.Pointer || f.IsMap() || f.IsList() || f.Type.Blob() {
-			return false
-		}
-		if f.Type.Kind != ir.TNamed {
-			continue
-		}
-		switch r := f.Type.Ref.(type) {
-		case *ir.Struct:
-			if !fixedSupported(r, depth+1) {
-				return false
-			}
-		case *ir.Union:
-			for _, v := range r.Variants {
-				if v.F == nil {
-					return false // a void arm has no storage this walk can name
-				}
-				a := v.F
-				if a.Type.Pointer || a.IsMap() || a.IsList() || a.Array != ir.ArrayNone || a.KeyEnum != "" ||
-					a.Type.Kind == ir.TString || a.Type.Kind == ir.TWString || a.Type.Kind == ir.TBytes || a.Type.Optional {
-					return false
-				}
-				if s, ok := a.Type.Ref.(*ir.Struct); ok && a.Type.Kind == ir.TNamed && !fixedSupported(s, depth+1) {
-					return false
-				}
-			}
-		}
-	}
-	return true
-}
+// THE CLOSURE TEST IS ir.TableFixedSupported AND THERE IS ONE OF IT. This file
+// used to carry a private copy — the same function, with its own `16` where ir
+// holds `ir.TableFixedMaxDepth` — and the private copy is what SELECTED THE
+// EMITTED FORM. The red-team read of 2026-09-11 found what that costs: a fixed
+// table nested 17 to 64 deep rode form 3 out of C++, C, C# and Rust and form 1
+// out of this leg, under a refusal line that blamed the closure for a bound it
+// had nothing to do with. A bound a port can hold for itself is a bound the
+// ports can disagree about, so the copy is gone.
 
 // fixedRefusal answers why a table cannot carry the fixed form in Dart, or ""
 // when it can. NAMED, NEVER SILENT is the property: a table this backend will
@@ -117,7 +85,15 @@ func fixedSupported(st *ir.Struct, depth int) bool {
 // table and why, so a consumer reaching for Save gets a missing name from the
 // analyzer beside a file that says the reason.
 func fixedRefusal(st *ir.Struct) string {
-	if !fixedSupported(st, 0) {
+	// THE WALK'S DEPTH BOUND GOES FIRST, AND IT IS ITS OWN SENTENCE: past
+	// ir.TableFixedMaxDepth no conforming reader takes the walk
+	// (docs/FIXED-FORM-ALGORITHM.md §5.2's `layout_malformed`), which is a fact
+	// about the FORM and never about the closure the old line blamed.
+	if !ir.TableFixedWithinDepth(st) {
+		return fmt.Sprintf("its layout nests %d deep, past the form's %d-entry depth bound, so no conforming reader takes the walk (`layout_malformed`) — it keeps form 1 (docs/FIXED-FORM-ALGORITHM.md §5.2, docs/SPEC-TABLES.md §3.4)",
+			ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
+	}
+	if !ir.TableFixedSupported(st, 0) {
 		return "its closure carries a construct the fixed class refuses — a pointer, a map, an unbounded array, a guarded branch, or a union arm holding text, an array or an optional (docs/SPEC-TABLES.md §3.4)"
 	}
 	if n := fixedOptionalInPacketType(st, 0); n != "" {
@@ -140,7 +116,10 @@ func fixedRefusal(st *ir.Struct) string {
 // non-table `type` of the closure, which is the one shape this backend cannot
 // place a present flag in.
 func fixedOptionalInPacketType(st *ir.Struct, depth int) string {
-	if depth > 16 {
+	// THE SAME ONE NUMBER. A search that gave up at 16 while the form carried 64
+	// would walk past an optional it is the only thing looking for, and the
+	// library would be emitted with no present member for it.
+	if depth > ir.TableFixedMaxDepth {
 		return ""
 	}
 	for _, f := range st.Fields {
