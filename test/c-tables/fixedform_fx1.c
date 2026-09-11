@@ -229,7 +229,7 @@ void fixed_fx1_bounds( const uint8_t * data, int64_t bytes )
         fixed_check( made > 0, "C bounds, compiled-own: the plan compiles" );
         for ( i = 0; i < made; ++i )
         {
-            if ( compiled[i].op > (uint8_t) kTableFixedWidenF ) { past_the_set++; }
+            if ( compiled[i].op > (uint8_t) kTableFixedBool ) { past_the_set++; }
         }
         fixed_check( past_the_set == 0, "C bounds, compiled-own: the ops are the whole set and none of them clamps" );
 

@@ -133,7 +133,7 @@ func TestIdentityCoverageIsThePlanAndHolesAreEmpty(t *testing.T) {
 	for _, e := range plan {
 		var ranges []ir.TableFixedRange
 		switch e.Op {
-		case ir.TableFixedOpCopy:
+		case ir.TableFixedOpCopy, ir.TableFixedOpBool:
 			ranges = []ir.TableFixedRange{{Dst: e.Dst, Size: e.Size}}
 		case ir.TableFixedOpCount:
 			ranges = []ir.TableFixedRange{{Dst: e.Dst, Size: ir.TableFixedCountBytes}}
@@ -328,6 +328,111 @@ int main(void)
     CHECK(loaded.marks_count == 4);
     CHECK(loaded.label_length == 8);
     CHECK(loaded.label[0] == 'a' && loaded.label[7] == 'h' && loaded.label[8] == 0);
+    return 0;
+}
+`, identityCCFlags()...)
+}
+
+const identityBoolSchema = `package probe
+table Host {
+    on bool
+    off bool
+    maybe ?bool
+    many [4]bool
+    tail int32 = 7
+}
+`
+
+func TestIdentityPlanBoolDoesNotCoalesceWithCopy(t *testing.T) {
+	u := unitFrom(t, identityBoolSchema)
+	st := u.Tables["Host"]
+	plan, _ := ir.TableFixedBuildPlan(u, st)
+	if len(plan) < 2 {
+		t.Fatalf("want a bool run and a copy of the tail, got %d entries", len(plan))
+	}
+	if plan[0].Op != ir.TableFixedOpBool {
+		t.Fatalf("bools coalesced into a copy: op=%d size=%d", plan[0].Op, plan[0].Size)
+	}
+	var boolBytes, copyBytes int64
+	for _, e := range plan {
+		switch e.Op {
+		case ir.TableFixedOpBool:
+			boolBytes += e.Size
+		case ir.TableFixedOpCopy:
+			copyBytes += e.Size
+		default:
+			t.Fatalf("unexpected op %d on %s", e.Op, e.Note)
+		}
+	}
+	if boolBytes != 8 {
+		t.Fatalf("bool run want 8 bytes (on, off, present, maybe, many[4]), got %d", boolBytes)
+	}
+	if copyBytes != 4 {
+		t.Fatalf("tail copy want 4, got %d", copyBytes)
+	}
+}
+
+func TestIdentityBoolNormalisesHostileByte(t *testing.T) {
+	runCGenerated(t, identityBoolSchema, `#include "ProbeTable.h"
+#include <stdio.h>
+#include <string.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); return 1; } } while (0)
+int main(void)
+{
+    Host value, loaded;
+    TableReport report;
+    TableFixedEntry plan[64];
+    uint8_t file[256];
+    int64_t need, n;
+    uint8_t *body;
+    int32_t guarded = 0;
+    uint32_t fill_at = 0;
+    int32_t fill_count = 0;
+    TableFixedLayoutView parsed;
+    int why = 0;
+    int32_t made;
+    int i;
+    memset(&value, 0, sizeof(value));
+    value.tail = 7;
+    need = host_fixed_measure(1);
+    CHECK(need > 0 && need <= (int64_t)sizeof(file));
+    CHECK(host_fixed_save(&value, 1, file, (int64_t)sizeof(file)) == need);
+    body = file + kTableFixedHeaderBytes + 4 + (size_t) host_fixed_layout_bytes + 8;
+    body[0] = 0x02;
+    body[1] = 0x00;
+    body[2] = 0x03;
+    body[3] = 0xFF;
+    body[4] = 0x02;
+    body[5] = 0x00;
+    body[6] = 0x05;
+    body[7] = 0x00;
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    n = host_fixed_load(&loaded, 1, file, need, plan, 64, NULL, &report);
+    CHECK(n == 1);
+    CHECK(!report.malformed && !report.refused && report.clamped == 0);
+    CHECK(loaded.on == 1);
+    CHECK(loaded.off == 0);
+    CHECK(loaded.maybe_present == 1);
+    CHECK(loaded.maybe == 1);
+    CHECK(loaded.many[0] == 1 && loaded.many[1] == 0 && loaded.many[2] == 1 && loaded.many[3] == 0);
+    CHECK(loaded.tail == 7);
+    memset(&loaded, 0xAA, sizeof(loaded));
+    memset(&report, 0, sizeof(report));
+    CHECK(table_fixed_parse_layout(host_fixed_layout, host_fixed_layout_bytes, &parsed, &why));
+    made = table_fixed_compile(&parsed, host_fixed_layout, (int32_t) host_fixed_layout_bytes, host_fixed_dst,
+                              host_fixed_cover, host_fixed_cover_count, plan, 64, &guarded, &fill_at, &fill_count, &report);
+    CHECK(made > 0);
+    host_reset(&loaded);
+    table_fixed_run(plan, made, guarded, body, (uint8_t *) &loaded, &report);
+    CHECK(loaded.on == 1);
+    CHECK(loaded.off == 0);
+    CHECK(loaded.maybe_present == 1);
+    CHECK(loaded.maybe == 1);
+    CHECK(loaded.many[0] == 1 && loaded.many[1] == 0 && loaded.many[2] == 1 && loaded.many[3] == 0);
+    CHECK(loaded.tail == 7);
+    for (i = 0; i < host_fixed_plan_count; i++)
+        CHECK(host_fixed_plan[i].op != kTableFixedCopy || host_fixed_plan[i].src >= 8u);
     return 0;
 }
 `, identityCCFlags()...)

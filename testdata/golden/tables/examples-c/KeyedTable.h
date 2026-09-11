@@ -686,10 +686,12 @@ enum { kTableFixedForm = 3 };
    was stamped by. */
 enum { kTableFixedHeaderBytes = 16, kTableFixedHashAt = 8 };
 
-/* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first three;
-   the other four are what a plan compiled from another writer's layout adds.
-   NONE OF THEM CLAMPS: a bound is held by the generated bounds pass that runs
-   after the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
+/* THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
+   bool; the other four are what a plan compiled from another writer's layout
+   adds. NONE OF THEM CLAMPS A RANGE: a bound is held by the generated bounds
+   pass that runs after the loop, the same pass for either plan
+   (docs/SPEC-TABLES.md §3.4). Bool is not a range: it is byte != 0, in this
+   loop, on both plans, so a copy into uint8_t bool storage never lands 0x02 as 2.
 
    C HAS NO ENUM BASE TYPE, so where C++ writes enum : uint8_t these are plain
    anonymous enumerators — ints, stored into the uint8_t op and arg columns at
@@ -702,7 +704,8 @@ enum
     kTableFixedOrdinal = 3, /* a variant ordinal, remapped through the plan's own table */
     kTableFixedWiden   = 4, /* a narrower source into a wider destination */
     kTableFixedConst   = 5, /* a constant this reader's own storage takes: a remapped union tag */
-    kTableFixedWidenF  = 6  /* f32 into f64, §4's float rung */
+    kTableFixedWidenF  = 6, /* f32 into f64, §4's float rung */
+    kTableFixedBool    = 7  /* a bool or present flag: land byte != 0 as 1 */
 };
 
 /* meta on a kTableFixedText entry */
@@ -1026,6 +1029,16 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
             table_fixed_copy_run( dst + p->dst, src + p->src, p->size );
             break;
         }
+        case kTableFixedBool:
+        {
+            /* A BOOL LANDS AS byte != 0. memcpy into bool is the bug: 0x02 is
+               not a bool a reader stores (docs/FIXED-FORM-ALGORITHM.md §4.5). */
+            uint8_t * d = dst + p->dst;
+            const uint8_t * s = src + p->src;
+            for ( uint32_t i = 0; i < p->size; i++ )
+                d[i] = (uint8_t) ( s[i] != 0 );
+            break;
+        }
         case kTableFixedCount:
         {
             int32_t v = (int32_t) table_fixed_get32( src + p->src );
@@ -1202,7 +1215,7 @@ static SCHEMA_UNUSED void table_fixed_entry_lands( const TableFixedEntry * e, ui
         case kTableFixedWidenF: lands[1] = e->dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e->dst + e->dstsize; break;
-        default: lands[1] = e->dst + e->size; break; /* copy, const */
+        default: lands[1] = e->dst + e->size; break; /* copy, const, bool */
     }
 }
 
@@ -1813,7 +1826,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
                 TableFixedEntry e = table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedCopy; e.arg = arg;
+                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedBool; e.arg = arg;
                 table_fixed_push( c, e );
                 table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
                 break;
@@ -1958,7 +1971,8 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 e.src = their_at; e.dst = at; e.guard = guard; e.arg = arg;
                 if ( te.size == me.size )
                 {
-                    e.size = me.size; e.op = kTableFixedCopy;
+                    e.size = me.size;
+                    e.op = ( me.kind == 1 ) ? kTableFixedBool : kTableFixedCopy;
                     table_fixed_push( c, e );
                 }
                 else if ( te.size < me.size && me.size <= 8 )
@@ -2018,7 +2032,8 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     for ( i = 0; i < c.count; ++i )
     {
         if ( i == plain ) { split = out; }
-        if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
+        if ( out > split && plan[out-1].op == plan[i].op &&
+             ( plan[i].op == kTableFixedCopy || plan[i].op == kTableFixedBool ) &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
@@ -5710,10 +5725,11 @@ static SCHEMA_UNUSED const TableFixedDst gunner_config_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry gunner_config_fixed_plan[] = {
-    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 0u, 0u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 4u, 4u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
 };
-static SCHEMA_UNUSED const int32_t gunner_config_fixed_plan_count = 1;
-static SCHEMA_UNUSED const int32_t gunner_config_fixed_plan_guarded = 1;
+static SCHEMA_UNUSED const int32_t gunner_config_fixed_plan_count = 2;
+static SCHEMA_UNUSED const int32_t gunner_config_fixed_plan_guarded = 2;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -5945,11 +5961,12 @@ static SCHEMA_UNUSED const TableFixedDst turret_config_fixed_dst[] = {
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry turret_config_fixed_plan[] = {
     { 0u, 0u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 8u, 16u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 9u, 8u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 8u, 16u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 9u, 8u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 13u, 12u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
 };
-static SCHEMA_UNUSED const int32_t turret_config_fixed_plan_count = 3;
-static SCHEMA_UNUSED const int32_t turret_config_fixed_plan_guarded = 3;
+static SCHEMA_UNUSED const int32_t turret_config_fixed_plan_count = 4;
+static SCHEMA_UNUSED const int32_t turret_config_fixed_plan_guarded = 4;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -6199,17 +6216,20 @@ static SCHEMA_UNUSED const TableFixedDst hull_config_fixed_dst[] = {
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry hull_config_fixed_plan[] = {
     { 0u, 0u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 16u, 24u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 17u, 16u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 16u, 24u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 17u, 16u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 21u, 20u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 22u, 28u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 30u, 44u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 31u, 36u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 30u, 44u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 31u, 36u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 35u, 40u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 36u, 48u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 44u, 64u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 45u, 56u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 44u, 64u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 45u, 56u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 49u, 60u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
 };
-static SCHEMA_UNUSED const int32_t hull_config_fixed_plan_count = 9;
-static SCHEMA_UNUSED const int32_t hull_config_fixed_plan_guarded = 9;
+static SCHEMA_UNUSED const int32_t hull_config_fixed_plan_count = 12;
+static SCHEMA_UNUSED const int32_t hull_config_fixed_plan_guarded = 12;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between
@@ -6530,36 +6550,45 @@ static SCHEMA_UNUSED const TableFixedEntry keyed_config_fixed_plan[] = {
     { 48u, 56u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* spawn_count */
     { 52u, 80u, 16u, 60u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* banner */
     { 72u, 84u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 88u, 108u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 89u, 100u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 88u, 108u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 89u, 100u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 93u, 104u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 94u, 112u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 102u, 128u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 103u, 120u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 102u, 128u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 103u, 120u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 107u, 124u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 108u, 132u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 116u, 148u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 117u, 140u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 116u, 148u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 117u, 140u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 121u, 144u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 122u, 152u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 138u, 176u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 139u, 168u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 138u, 176u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 139u, 168u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 143u, 172u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 144u, 180u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 152u, 196u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 153u, 188u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 152u, 196u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 153u, 188u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 157u, 192u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 158u, 200u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 166u, 216u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 167u, 208u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 166u, 216u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 167u, 208u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 171u, 212u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 172u, 220u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 188u, 244u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 189u, 236u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 188u, 244u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 189u, 236u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 193u, 240u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 194u, 248u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 202u, 264u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 203u, 256u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 202u, 264u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 203u, 256u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 207u, 260u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 208u, 268u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* damage */
-    { 216u, 284u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 217u, 276u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 216u, 284u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* gunner present */
+    { 217u, 276u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
+    { 221u, 280u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedBool, 0, 0, 0, 0, 1 }, /* tracking */
     { 222u, 288u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* per_team, whole */
 };
-static SCHEMA_UNUSED const int32_t keyed_config_fixed_plan_count = 34;
-static SCHEMA_UNUSED const int32_t keyed_config_fixed_plan_guarded = 34;
+static SCHEMA_UNUSED const int32_t keyed_config_fixed_plan_count = 43;
+static SCHEMA_UNUSED const int32_t keyed_config_fixed_plan_guarded = 43;
 
 /* THE TYPE'S VALUE BYTES: every byte of this build's own storage that holds
    a DECLARED VALUE, sorted and merged. Padding is not in it — a byte between

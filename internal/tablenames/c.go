@@ -491,6 +491,7 @@ func init() {
 		Name{Name: "TableFixedCheck", What: "the fixed form: the layout validation's state (§3.4)"},
 		Name{Name: "TableFixedLayoutEntry", What: "the fixed form: one entry of a LAYOUT"},
 		Name{Name: "TableFixedLayoutView", What: "the fixed form: a parsed LAYOUT"},
+		Name{Name: "kTableFixedBool", What: "the fixed form's ops"},
 		Name{Name: "kTableFixedConst", What: "the fixed form's ops"},
 		Name{Name: "kTableFixedCopy", What: "the fixed form's ops"},
 		Name{Name: "kTableFixedCount", What: "the fixed form's ops"},

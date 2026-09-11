@@ -55,8 +55,6 @@ struct KnownRed
 static KnownRed known_red[] = {
     { "optional/absent-payload-residue-is-copied",
       "the ?T payload gated on the present byte (§3.4: IGNORED on read)", 0, 0 },
-    { "bool-domain/a-byte-outside-0-and-1-lands-in-the-caller-s-bool",
-      "a ruling on a bool byte outside {0,1}, and a normalise on the read side", 0, 0 },
     { "ordinal-bound/paths-disagree/enum-ordinal-past-the-last-variant",
       "identity and compiled must agree on an ordinal that names no variant", 0, 0 },
     { "ordinal-bound/paths-disagree/union-tag-past-the-last-arm",
@@ -207,6 +205,8 @@ struct TAG##Codec \
     static constexpr const uint8_t * layout = NS::TYPE##FixedLayout; \
     static constexpr int64_t layout_bytes = NS::TYPE##FixedLayoutBytes; \
     static constexpr const Dst * dst = NS::TYPE##FixedDst; \
+    static constexpr const NS::TableFixedFill * cover = NS::TYPE##FixedCover; \
+    static constexpr int32_t cover_count = NS::TYPE##FixedCoverCount; \
     static constexpr int64_t body_bytes = NS::TYPE##FixedBodyBytes; \
     static constexpr int64_t header = NS::kTableFixedHeaderBytes; \
     static constexpr uint64_t hash = NS::TYPE##FixedHash; \
@@ -214,7 +214,8 @@ struct TAG##Codec \
     static constexpr Reason no_layout = NS::no_layout; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, Report * r ) \
-    { return NS::TableFixedCompile( th, layout, (int32_t) layout_bytes, dst, p, cap, g, r ); } \
+    { uint32_t fill_at = 0; int32_t fill_count = 0; \
+      return NS::TableFixedCompile( th, layout, (int32_t) layout_bytes, dst, cover, cover_count, p, cap, g, &fill_at, &fill_count, r ); } \
     static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r ) \
     { NS::TableFixedRun( p, n, g, s, d, r ); } \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
@@ -244,6 +245,8 @@ struct TAG##Codec \
     static constexpr const uint8_t * layout = NS::TYPE##FixedLayout; \
     static constexpr int64_t layout_bytes = NS::TYPE##FixedLayoutBytes; \
     static constexpr const Dst * dst = NS::TYPE##FixedDst; \
+    static constexpr const NS::TableFixedFill * cover = NS::TYPE##FixedCover; \
+    static constexpr int32_t cover_count = NS::TYPE##FixedCoverCount; \
     static constexpr int64_t body_bytes = NS::TYPE##FixedBodyBytes; \
     static constexpr int64_t header = NS::kTableFixedHeaderBytes; \
     static constexpr uint64_t hash = NS::TYPE##FixedHash; \
@@ -251,7 +254,8 @@ struct TAG##Codec \
     static constexpr Reason no_layout = NS::no_layout; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, Report * r ) \
-    { return NS::TableFixedCompile( th, layout, (int32_t) layout_bytes, dst, p, cap, g, r ); } \
+    { uint32_t fill_at = 0; int32_t fill_count = 0; \
+      return NS::TableFixedCompile( th, layout, (int32_t) layout_bytes, dst, cover, cover_count, p, cap, g, &fill_at, &fill_count, r ); } \
     static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r ) \
     { NS::TableFixedRun( p, n, g, s, d, r ); } \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
@@ -336,8 +340,9 @@ static int64_t load_unclamped( typename F::T & v, const uint8_t * file, typename
 }
 
 // Decode without going through generated clamp when a bool byte is outside
-// {0,1}: that load is undefined in C++ and UBSan aborts, which is the
-// bool-domain red — reported by memcpy, never by reading the bool.
+// {0,1}: that load is undefined in C++ and UBSan aborts. The bool op in the
+// plan must already have normalised, so this skip is a safety net and not
+// the fix.
 template<typename F>
 static int64_t decode_identity( typename F::T & v, const uint8_t * file, typename F::Report & r, Issues & iss )
 {
@@ -373,7 +378,7 @@ static void classify_issues( const Issues & iss, const char * what )
     }
     if ( iss.bool_oob )
     {
-        check_red( false, "bool-domain/a-byte-outside-0-and-1-lands-in-the-caller-s-bool", what );
+        check( false, what );
         return;
     }
     if ( iss.enum_oob )
@@ -1242,13 +1247,20 @@ static void probe_bool_domain()
            "probe bool-domain: save" );
     uint8_t * rec = file.data() + tblfn1::kTableFixedHeaderBytes + 4 + tblfn1::FnRootFixedLayoutBytes;
     rec[8 + 0] = 0x02; // flag is the first body byte
-    tblfn1::FnRoot back;
-    tblfn1::TableReport r;
-    const int64_t n = load_unclamped<FN1>( back, file.data(), r );
-    check( n == 1, "probe bool-domain: the record reads" );
-    const uint8_t landed = byte_of( &back.flag );
-    check_red( landed <= 1u, "bool-domain/a-byte-outside-0-and-1-lands-in-the-caller-s-bool",
-               "probe bool-domain: a bool byte outside {0,1} does not land in the caller's bool" );
+    rec[8 + 2] = 0x02; // opt present sits after flag and the one-byte tier
+    tblfn1::FnRoot id{}, co{};
+    tblfn1::TableReport rid{}, rco{};
+    const int64_t ni = load_unclamped<FN1>( id, file.data(), rid );
+    const int64_t nc = load_compiled<FN1>( co, file.data(), (int64_t) file.size(), rco );
+    check( ni == 1 && nc == 1, "probe bool-domain: both plans read" );
+    check( byte_of( &id.flag ) == 1u && id.flag == true,
+           "probe bool-domain: identity 0x02 lands as true (1)" );
+    check( byte_of( &co.flag ) == 1u && co.flag == true,
+           "probe bool-domain: compiled 0x02 lands as true (1)" );
+    check( byte_of( &id.opt_present ) == 1u && id.opt_present == true,
+           "probe bool-domain: identity present 0x02 is byte != 0" );
+    check( byte_of( &co.opt_present ) == 1u && co.opt_present == true,
+           "probe bool-domain: compiled present 0x02 is byte != 0" );
 }
 
 static void probe_ordinal_enum()
