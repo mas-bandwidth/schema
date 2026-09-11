@@ -203,6 +203,11 @@ var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	"cpp": func(h uint64) *regexp.Regexp {
 		return regexp.MustCompile(fmt.Sprintf(`\{ 0x%016xull, \w+, \d+, (\d+) \}`, h))
 	},
+	// internal/codegen/cstable/fixedform.go: one constructor call per entry,
+	// the layout as a named static byte array, the record size last.
+	"cs": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`new TableFixedKnownLayout\(0x%016xul, \w+, (\d+)\)`, h))
+	},
 	// internal/codegen/rusttable/fixedform.go: a struct literal, one field per
 	// line, record after layout.
 	"rust": func(h uint64) *regexp.Regexp {
