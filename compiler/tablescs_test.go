@@ -100,7 +100,7 @@ table Node
 func TestCsKeyedAccessorCoversBothEnds(t *testing.T) {
 	u := unitFromSource(t, `package probe
 enum Slot { Alpha, Beta, Gamma }
-table Root { tokens [Slot]int32 }
+fixed table Root { tokens [Slot]int32 }
 `)
 	files, err := New().Generate(u, "cs", Options{})
 	if err != nil {
@@ -150,8 +150,8 @@ func TestCsCarriesBlobs(t *testing.T) {
 // slots above the new count (#725). C++/C/Go already walk previous..decoded.
 func TestCsCountedArrayTailReset(t *testing.T) {
 	u := unitFromSource(t, `package probe
-table Child { n int32 = 7 }
-table Root { values [..8]Child }
+fixed table Child { n int32 = 7 }
+fixed table Root { values [..8]Child }
 `)
 	files, err := New().Generate(u, "cs", Options{})
 	if err != nil {
@@ -205,7 +205,7 @@ union Choice
     signal
     many [..4]Cell
 }
-table Root { history [..8]Choice }
+fixed table Root { history [..8]Choice }
 `)
 	files, err := New().Generate(u, "cs", Options{})
 	if err != nil {
@@ -233,7 +233,7 @@ func TestCsPacketUnionTableReset(t *testing.T) {
 	u := unitFromSource(t, `package probe
 type Buff { n int32 }
 union Effect { buff Buff }
-table Root { effect Effect }
+fixed table Root { effect Effect }
 `)
 	files, err := New().Generate(u, "cs", Options{})
 	if err != nil {
@@ -331,7 +331,7 @@ enum Build {
     Second
 }
 
-table Subject {
+fixed table Subject {
     keyed [Instance]int32
     active Instance
     state Build = Second
@@ -390,6 +390,14 @@ type Leaf {
     value int32 = 0
 }
 
+// THE TYPED FAST PATH IS THE FIXED CLASS'S (docs/SPEC-TABLES.md §2.2): the
+// guard below makes Subject a plain table, so its whole body walks the
+// dynamic descriptors, and the typed calls are asserted on the fixed twin.
+fixed table Fast {
+    normal [2]Leaf
+    counted [..2]Leaf
+}
+
 table Subject {
     normal [2]Leaf
     counted [..2]Leaf
@@ -436,6 +444,9 @@ table Subject {
 
 	// 3. Guarded and optional arrays must NOT use typed child calls directly;
 	// they must fall back to dynamic descriptor dispatch (BodySizeField / WriteBodyField).
+	// Subject is a plain `table` (its guard disqualifies the fixed class), so
+	// NOTHING in its body takes the typed path — the guarded and optional
+	// arrays included, which is what this block has always asserted.
 	if strings.Contains(text, "LeafBodySizeTyped(v.Guarded") {
 		t.Errorf("guarded array must not use typed child delegation")
 	}
@@ -604,7 +615,7 @@ type Leaf {
     value int32 = 0
 }
 
-table Subject {
+fixed table Subject {
     scalar int32
     child Leaf
     arr [2]Leaf

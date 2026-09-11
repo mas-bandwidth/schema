@@ -19,13 +19,13 @@ import (
 // derived facts below are read off the construct at every depth it admits.
 const mapSrc = `package probe
 
-table ShipConfig
+fixed table ShipConfig
 {
     name   string(64)
     health int32 = 0
 }
 
-table Item
+fixed table Item
 {
     count int32 = 0
 }

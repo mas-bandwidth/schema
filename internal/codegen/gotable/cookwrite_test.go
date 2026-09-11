@@ -18,13 +18,13 @@ func TestCookWriterMatchesIndependentLayout(t *testing.T) {
 	}{
 		{"fixed", `package probe
 enum Mode { First, Second }
-table Child { n int32 = 7 }
-table Rows { items [..3]Child }
+fixed table Child { n int32 = 7 }
+fixed table Rows { items [..3]Child }
 union Value { amount uint128
  words wstring(8)
  rows Rows
  empty }
-table Root { flag bool
+fixed table Root { flag bool
  mode Mode
  text string(9)
  data bytes(7)

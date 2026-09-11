@@ -453,8 +453,8 @@ func TestVariableRootIsOneText(t *testing.T) {
 		if err == nil {
 			t.Fatal("pack accepted a tree of fields under a variable root")
 		}
-		if !strings.Contains(err.Error(), "VARIABLE-LENGTH") || !strings.Contains(err.Error(), "Scene.json") {
-			t.Fatalf("the refusal does not name the class and the one file it packs from: %v", err)
+		if !strings.Contains(err.Error(), "holds a pointer") || !strings.Contains(err.Error(), "Scene.json") {
+			t.Fatalf("the refusal does not name the edge and the one file it packs from: %v", err)
 		}
 	})
 }

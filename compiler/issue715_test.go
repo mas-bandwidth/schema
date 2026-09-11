@@ -12,7 +12,7 @@ import (
 // and accepts mid-string / invalid '=' padding.
 func TestIssue715Base64ReaderDefaults(t *testing.T) {
 	src := `package p
-table Ship
+fixed table Ship
 {
     tag bytes(4) = "ab"
     after int32

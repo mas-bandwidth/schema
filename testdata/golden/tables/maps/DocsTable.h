@@ -9511,10 +9511,7 @@ inline void DocsNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
 // take (docs/SPEC-TABLES.md §2.8) — where a node's extent begins.
 inline int64_t DocsNodeRecordBytes( uint64_t type_id )
 {
-    switch ( type_id )
-    {
-        default: break;
-    }
+    (void) type_id;
     return 0;
 }
 
@@ -9601,14 +9598,9 @@ inline bool DocsNodeMessageBody( uint64_t type_id, TableBitReader & r, const Tab
     TableExtentCarve * const outer = nodes.carve;
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
@@ -11105,14 +11097,9 @@ inline bool DocsNodeMessageBodyRetain( uint64_t type_id, TableBitReader & r, con
     nodes.carve = &carve;
     (void) nodes; (void) index_bits; // every node this root can name is a FIXED table
     (void) retain; (void) node;
-    bool ok = false;
-    switch ( type_id )
-    {
-        // a record this dispatch cannot name never reaches here: pass one left it absent
-        default: report->malformed = true; break;
-    }
+    report->malformed = true;
     nodes.carve = outer;
-    return ok;
+    return false;
 }
 
 // DocsLoadMessageBodyIntoRetain: one body of a batch into the region at `used`. Its

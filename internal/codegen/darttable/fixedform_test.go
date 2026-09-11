@@ -308,6 +308,40 @@ func TestFixedPrefillCarriesDeclaredDefaults(t *testing.T) {
 	}
 }
 
+// A NAMED string(N) DEFAULT LIVES IN CONSTRUCTED STORAGE, not only in the
+// prefill and not only as a used length. FX1's `label string(8) = "fx"` is
+// the leftover: C++ still writes `char label[8 + 1] = "fx"`, and Dart used
+// to emit `Uint8List(8)` plus `labelLength = 2` — two claimed bytes of NULs.
+func TestNamedStringDefaultLivesInStorage(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+table Fx1
+{
+    label string(8) = "fx"
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var all string
+	for _, b := range files {
+		all += string(b)
+	}
+	if !strings.Contains(all, `"fx"`) {
+		t.Fatalf("generated Dart must carry the named default \"fx\":\n%s", all)
+	}
+	if !strings.Contains(all, "labelLength = 2") {
+		t.Fatalf("generated Dart must carry labelLength = 2:\n%s", all)
+	}
+	if strings.Contains(all, "final Uint8List label = Uint8List(8);") {
+		t.Fatalf("construction allocated an empty buffer; \"fx\" is length-only:\n%s", all)
+	}
+	if !strings.Contains(all, "..[0] = 0x66") || !strings.Contains(all, "..[1] = 0x78") {
+		t.Fatalf("construction must lay the bytes of \"fx\" into the buffer:\n%s", all)
+	}
+}
+
 // THE IDENTITY PLAN IS THE REFERENCE'S LEAF WALK COALESCED, and what this pins
 // is the property that makes it correct rather than merely small: EVERY COUNT
 // AND EVERY TEXT LENGTH THE TYPE DECLARES HAS ITS OWN ENTRY. Those two are the

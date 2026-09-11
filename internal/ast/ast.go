@@ -61,8 +61,14 @@ type TypeDecl struct {
 // is the type body's; the qualification carries tags and the `was` rename
 // (docs/SPEC-TABLES.md §5).
 type TableDecl struct {
-	Name  string
-	Pos   Pos
+	Name string
+	Pos  Pos
+	// Fixed is the `fixed table` spelling (docs/SPEC-TABLES.md §2.2): the
+	// declaration DECLARES the fixed class rather than leaving it to be
+	// guessed, and the compiler refuses anything in the table's by-value
+	// closure that would make a body variable size. A plain `table` is the
+	// VARIABLE wire always, whatever its fields happen to be.
+	Fixed bool
 	Attrs []Attr
 	Body  *Block
 	Doc   string // the `///` block above it (SPEC §4.1), "" when none

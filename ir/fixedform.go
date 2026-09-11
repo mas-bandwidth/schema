@@ -902,15 +902,15 @@ func tableFixedRuns(op int) bool {
 // ---------------------------------------------------------------------------
 
 // TableFixedRoots is every table of the unit the fixed form applies to, in
-// declaration order: a table whose mode is FIXED (§2.2), which is every table
-// that is not in [VariableTables] and is not a map's synthesised entry.
+// declaration order: a DECLARED `fixed table` ([Struct.FixedDeclared]), which
+// is every table that is not in [VariableTables] and is not a map's
+// synthesised entry.
 //
-// THIS IS THE SELECTION POINT FOR FORM 3, AND #823'S KEYWORD REPLACES IT. §3.4
-// selects the form BY THE KEYWORD: a `fixed table` encodes as form 3 always, a
-// `table` encodes as form 1, and there is no path between them. The keyword is
-// on branch `fixed-table-keyword` and is not merged, so until it lands the
-// selection is the DERIVED mode below — the only thing in this tree that marks
-// a table fixed. When it lands, this function reads [Struct.FixedDeclared].
+// THIS IS THE SELECTION POINT FOR FORM 3, AND IT READS THE KEYWORD. §3.4
+// selects the form BY THE DECLARATION: a `fixed table` encodes as form 3, a
+// plain `table` encodes as form 1, and nothing is derived in either direction.
+// [VariableTables] is [Struct.FixedDeclared]'s complement, so the keyword is
+// what this function asks, by construction.
 //
 // It is the compiler's own answer and not a backend's: a backend may carry the
 // form for fewer types than this — the C++ reference's compile-time plan bound
@@ -940,18 +940,25 @@ func TableFixedRoots(u *Unit) []*Struct {
 // larger than it is one no conforming reader will decode — which makes emitting
 // a writer for it a way to produce bytes nobody can read.
 //
-// A table that was merely DERIVED into the form (§2.2) and is past the ceiling
-// keeps form 1, which §3.4 guarantees it never lost, and the compiler says so
-// by name rather than dropping the form in silence. A table whose author
-// DECLARED it fixed never reaches here at all: [TableFixedRecordBounds]
-// refuses the compile, because the whole of #823's keyword is that a declared
-// fixed table encodes as form 3 and a silent demotion to form 1 would be the
-// surprise the keyword exists to prevent.
+// A FIXED TABLE PAST THE CEILING KEEPS FORM 1, WHICH §3.4 GUARANTEES IT NEVER
+// LOST, AND [TableFixedRecordBounds] NAMES IT. It is not a refusal, and the
+// reason is the difference between the CLASS and the FORM that §3.4 insists on
+// everywhere else: the keyword declares the CLASS — a by-value storage, a cook,
+// a block form, no arena edge anywhere in the closure — and the record ceiling
+// is the FORM's. A 7.5 MB render frame (§12.1) and §2.8's `WideBlob` are
+// legitimate fixed tables that predate form 3 and were never form-3 tables;
+// refusing to compile them would be refusing the CLASS over a bound that
+// belongs to one of its wires. Nothing here is silent, which is the whole of
+// the owner's *"we don't want to surprise the user"*: the table is named, with
+// its size, at compile time. What the keyword DOES refuse is a construct that
+// makes the body variable size (§2.2) — a feature that stops the table being
+// fixed — and a record of 7.5 MB is not one of those. It is a fixed record
+// that is simply larger than this wire carries.
 func TableFixedFormRoots(u *Unit) []*Struct {
 	var out []*Struct
 	for _, st := range TableFixedRoots(u) {
 		if TableFixedTypeBytes(st) > TableFixedRecordMaxBytes {
-			continue // and if it was DECLARED fixed, TableFixedRecordBounds already refused the compile
+			continue // TableFixedRecordBounds has already named it
 		}
 		out = append(out, st)
 	}
@@ -986,20 +993,19 @@ func TableFixedFormRoots(u *Unit) []*Struct {
 // to (`layout_record_too_large`) and a peer's build has never heard of this
 // project's flag.
 //
-// THE 65536 REFUSES A DECLARED FIXED TABLE AND DEMOTES A DERIVED ONE, and the
-// difference is #823's keyword:
-//
-//   - A DECLARED fixed table ([Struct.FixedDeclared]) encodes as form 3 always.
-//     Past the ceiling it cannot, and there is no form 1 for it to fall back
-//     to without the author being surprised — *"if we add any feature that
-//     stops it from being fixed, it is a compile error … we don't want to
-//     surprise the user"* — so it is a REFUSAL BY NAME and the compile fails.
-//   - A table merely DERIVED into the fixed mode (§2.2) asked for nothing. Past
-//     the ceiling it keeps form 1, which it never lost, and the compiler warns.
-//     §12.1's render frame and §2.8's wide text are exactly this: legitimate
-//     fixed-MODE tables of megabytes that were never form-3 tables. WHEN #823
-//     LANDS THIS BRANCH GOES AWAY — an undeclared `table` will not select form
-//     3 at all — and it is here because the keyword is not merged.
+// THE 65536 IS THE FORM'S BOUND AND NOT THE CLASS'S, so past it the table is
+// NAMED and keeps form 1 rather than failing the compile — even though the
+// keyword declared it. That is the one place the keyword's *"if we add any
+// feature that stops it from being fixed, it is a compile error"* does not
+// reach, and the reason is that a 7.5 MB record does not stop the table being
+// fixed. §12.1's render frame and §2.8's `WideBlob` are DECLARED `fixed table`
+// on this branch — they have to be, because the class is what gives them a
+// by-value storage, a cook and a block form (§19) — and they were never form-3
+// tables at all. Refusing them would be refusing the class over one of its
+// wires. What the keyword refuses is [FixedClosureBreaks]: a construct that
+// makes the body vary in size. The surprise the owner named is a SILENT change
+// of wire, and this one is not silent — the table and its size are in the
+// message, at compile time, always on.
 func TableFixedRecordBounds(u *Unit, limit int64) (warnings []string, errs []error) {
 	for _, st := range TableFixedRoots(u) {
 		n := TableFixedTypeBytes(st)
@@ -1010,13 +1016,9 @@ func TableFixedRecordBounds(u *Unit, limit int64) (warnings []string, errs []err
 			continue
 		}
 		switch {
-		case n > TableFixedRecordMaxBytes && st.FixedDeclared:
-			errs = append(errs, fmt.Errorf(
-				"table %s: a DECLARED fixed table's record body is %d bytes, past the %d-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — no conforming reader decodes a record that size, so this table cannot carry form 3, and a fixed table never silently falls back to form 1; shrink the bounds it declares, or drop the `fixed` keyword and let it be a variable table (§2.2)",
-				st.Name, n, TableFixedRecordMaxBytes))
 		case n > TableFixedRecordMaxBytes:
 			warnings = append(warnings, fmt.Sprintf(
-				"table %s: a fixed table's record body is %d bytes, past the %d-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1",
+				"table %s: a fixed table's record body is %d bytes, past the %d-byte fixed-form ceiling (docs/SPEC-TABLES.md §3.4) — THE FIXED FORM IS NOT EMITTED FOR IT, because no conforming reader decodes a record that size; it keeps form 1, and the `fixed` keyword still buys it the CLASS (a by-value storage, a cook, a block form)",
 				st.Name, n, TableFixedRecordMaxBytes))
 		case n > TableFixedRecordWarnBytes:
 			warnings = append(warnings, fmt.Sprintf(

@@ -8,7 +8,7 @@ import (
 const arithMeasureSchema = `package probe
 flags Caps { Jump, Fly }
 enum Grade { Gold, Silver }
-table Leaf {
+fixed table Leaf {
  n int32
  u uint8
  flag Caps
@@ -19,18 +19,18 @@ table Leaf {
  bitsy bits(8)
  maybe ?int32
 }
-table Child {
+fixed table Child {
  n uint32
 }
-table Root {
+fixed table Root {
  a uint32
  child Child
  note string(8)
 }
-table Arr {
+fixed table Arr {
  xs [..3]int32
 }
-table Fixedish {
+fixed table Fixedish {
  q fixed(4,4) | min = -8, max = 7
 }
 `
@@ -236,10 +236,10 @@ func TestChildMeasureOnParentWalk(t *testing.T) {
 `
 
 const unionArmMeasureSchema = `package probe
-table Hit {
+fixed table Hit {
  n int32
 }
-table Chat {
+fixed table Chat {
  note string(8)
 }
 union Event {
@@ -248,7 +248,7 @@ union Event {
  ping
  note string(8)
 }
-table Root {
+fixed table Root {
  choice Event
 }
 `

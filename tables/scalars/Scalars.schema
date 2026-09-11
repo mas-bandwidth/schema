@@ -19,7 +19,7 @@ type Pose
     heading ufixed(16, 16)      | min = 0, max = 360
 }
 
-table SimState
+fixed table SimState
 {
     // the signed widths: Q4.4, Q16.16, Q48.16, Q112.16, and F = 0 — a
     // fixed with no fraction, which is a ranged integer under a fixed kind

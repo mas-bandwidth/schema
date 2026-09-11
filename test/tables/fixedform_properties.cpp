@@ -190,6 +190,7 @@ struct TAG##Codec \
     using Report = NS::TableReport; \
     using Entry = NS::TableFixedEntry; \
     using Dst = NS::TableFixedDst; \
+    using Fill = NS::TableFixedFill; \
     using View = NS::TableFixedLayoutView; \
     using Reason = NS::TableMessageReason; \
     static constexpr const char * name = #TAG; \
@@ -205,7 +206,7 @@ struct TAG##Codec \
     static constexpr const uint8_t * layout = NS::TYPE##FixedLayout; \
     static constexpr int64_t layout_bytes = NS::TYPE##FixedLayoutBytes; \
     static constexpr const Dst * dst = NS::TYPE##FixedDst; \
-    static constexpr const NS::TableFixedFill * cover = NS::TYPE##FixedCover; \
+    static constexpr const Fill * cover = NS::TYPE##FixedCover; \
     static constexpr int32_t cover_count = NS::TYPE##FixedCoverCount; \
     static constexpr int64_t body_bytes = NS::TYPE##FixedBodyBytes; \
     static constexpr int64_t header = NS::kTableFixedHeaderBytes; \
@@ -213,9 +214,12 @@ struct TAG##Codec \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
-    static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, Report * r ) \
-    { uint32_t fill_at = 0; int32_t fill_count = 0; \
-      return NS::TableFixedCompile( th, layout, (int32_t) layout_bytes, dst, cover, cover_count, p, cap, g, &fill_at, &fill_count, r ); } \
+    static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
+                            uint32_t * fill_at, int32_t * fill_count, Report * r ) \
+    { return NS::TableFixedCompile( th, layout, (int32_t) layout_bytes, dst, cover, cover_count, \
+                                    p, cap, g, fill_at, fill_count, r ); } \
+    static void fill_run( const Fill * f, int32_t n, const uint8_t * defaults, uint8_t * d ) \
+    { NS::TableFixedFillRun( f, n, defaults, d ); } \
     static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r ) \
     { NS::TableFixedRun( p, n, g, s, d, r ); } \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
@@ -230,6 +234,7 @@ struct TAG##Codec \
     using Report = NS::TableReport; \
     using Entry = NS::TableFixedEntry; \
     using Dst = NS::TableFixedDst; \
+    using Fill = NS::TableFixedFill; \
     using View = NS::TableFixedLayoutView; \
     using Reason = NS::TableMessageReason; \
     static constexpr const char * name = #TAG; \
@@ -245,7 +250,7 @@ struct TAG##Codec \
     static constexpr const uint8_t * layout = NS::TYPE##FixedLayout; \
     static constexpr int64_t layout_bytes = NS::TYPE##FixedLayoutBytes; \
     static constexpr const Dst * dst = NS::TYPE##FixedDst; \
-    static constexpr const NS::TableFixedFill * cover = NS::TYPE##FixedCover; \
+    static constexpr const Fill * cover = NS::TYPE##FixedCover; \
     static constexpr int32_t cover_count = NS::TYPE##FixedCoverCount; \
     static constexpr int64_t body_bytes = NS::TYPE##FixedBodyBytes; \
     static constexpr int64_t header = NS::kTableFixedHeaderBytes; \
@@ -253,9 +258,12 @@ struct TAG##Codec \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
-    static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, Report * r ) \
-    { uint32_t fill_at = 0; int32_t fill_count = 0; \
-      return NS::TableFixedCompile( th, layout, (int32_t) layout_bytes, dst, cover, cover_count, p, cap, g, &fill_at, &fill_count, r ); } \
+    static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
+                            uint32_t * fill_at, int32_t * fill_count, Report * r ) \
+    { return NS::TableFixedCompile( th, layout, (int32_t) layout_bytes, dst, cover, cover_count, \
+                                    p, cap, g, fill_at, fill_count, r ); } \
+    static void fill_run( const Fill * f, int32_t n, const uint8_t * defaults, uint8_t * d ) \
+    { NS::TableFixedFillRun( f, n, defaults, d ); } \
     static void run( const Entry * p, int32_t n, int32_t g, const uint8_t * s, uint8_t * d, Report * r ) \
     { NS::TableFixedRun( p, n, g, s, d, r ); } \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
@@ -304,7 +312,9 @@ static int64_t load_compiled( typename F::T & v, const uint8_t * file, int64_t b
     }
     std::vector<typename F::Entry> plan( (size_t) kPlanCap );
     int32_t guarded = 0;
-    const int32_t made = F::compile( view, plan.data(), kPlanCap, &guarded, &r );
+    uint32_t fill_at = 0;
+    int32_t fill_count = 0;
+    const int32_t made = F::compile( view, plan.data(), kPlanCap, &guarded, &fill_at, &fill_count, &r );
     if ( made < 0 )
     {
         r.refused = true;
@@ -318,7 +328,21 @@ static int64_t load_compiled( typename F::T & v, const uint8_t * file, int64_t b
         return -1;
     }
     std::memset( &v, 0, sizeof( v ) );
-    F::reset( v );
+    // THE PREFILL IS THE COMPILE'S ANSWER AND THE READER RUNS IT, which is the
+    // one path the generated load takes: the ranges the plan does not land, out
+    // of a default image reset once per read rather than a whole-value reset per
+    // record. The identity plan's list is empty and the whole of this is a skip,
+    // so the two loads below this gate stay the same load.
+    typename F::T defaults;
+    if ( fill_count > 0 )
+    {
+        std::memset( (void *) &defaults, 0, sizeof( defaults ) );
+        F::reset( defaults );
+    }
+    const typename F::Fill * fill = ( fill_count > 0 )
+        ? (const typename F::Fill *) (const void *) ( (const uint8_t *) plan.data() + fill_at )
+        : NULL;
+    F::fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &v );
     F::run( plan.data(), made, guarded, rec + 8, (uint8_t *) &v, &r );
     return 1;
 }

@@ -213,7 +213,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// source and destination advance together over the whole body and the walk\n")
 	g.pf("// coalesces to exactly ONE run. That is the same coalescer the plan compiler\n")
 	g.pf("// runs, reaching its best case rather than skipping a step.\n")
-	g.pf("const %sFixedIdentity = new Int32Array([0, 0, 0, %d, 0, -1, 0, 0]);\n\n", st.Name, body)
+	g.pf("const %sFixedIdentity = new Int32Array([0, 0, 0, %d, 0, -1, 0, 0, 1]);\n\n", st.Name, body)
 
 	// ---- the caller's plan storage ----
 	g.pf("// THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC\n")

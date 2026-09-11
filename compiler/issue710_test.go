@@ -35,7 +35,7 @@ func TestIssue710DirectoryList(t *testing.T) {
 		t.Fatalf("flat: %+v %v", r, err)
 	}
 	_, _, _, err = c.Pack(u, "Root", expanded)
-	if err == nil || !strings.Contains(err.Error(), "VARIABLE-LENGTH") {
+	if err == nil || !strings.Contains(err.Error(), "holds a pointer") {
 		t.Fatalf("directory list must refuse before reading elements: %v", err)
 	}
 	m := tabletext.NewModel(u)
@@ -108,12 +108,12 @@ func issue710Wire(body []byte, ids ...uint64) []byte {
 
 func TestIssue710TableRecovery(t *testing.T) {
 	src := `package p
- table Text { label string(32) = "untitled"; after int32 }
- table Element { value int32 = 7 }
- table Rows { items [..2]Element; after int32 }
+ fixed table Text { label string(32) = "untitled"; after int32 }
+ fixed table Element { value int32 = 7 }
+ fixed table Rows { items [..2]Element; after int32 }
  table Mapping { items map[uint32]Element; after int32 }
  enum Key { First, Second }
- table Keyed { items [Key]Element; after int32 }
+ fixed table Keyed { items [Key]Element; after int32 }
  `
 	// The grammar terminates fields by newlines rather than semicolons.
 	u := unitFromSource(t, strings.ReplaceAll(src, "; ", "\n"))

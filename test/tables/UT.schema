@@ -41,7 +41,7 @@ union UtPick
     b UtArmB
 }
 
-table UtRoot
+fixed table UtRoot
 {
     pick UtPick
     tail int32 = 3

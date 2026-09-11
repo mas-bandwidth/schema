@@ -8389,6 +8389,379 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_message_extent_(TableMessageRe
  }if(!table_message_skip(r,entry))return 0;
  }
 }
+/* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+
+   A record is an eight-byte hash of the writer's LAYOUT and then
+   the values in declared order, every field at its declared storage width.
+   The writer is the constant bytes memcpy'd and then stores; the reader is
+   ONE loop over ONE plan, the identity plan here and a plan compiled from
+   the writer's own layout for anybody else. There is no second reader. */
+
+/* THE C ABI AGREES WITH THE PLAN. C has no constexpr, so the offsets in the
+   plans below were computed by the schema compiler rather than folded by
+   this one; these are that arithmetic checked against the compiler's own,
+   at build time, one line per fact the plans rest on. */
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_size, sizeof( MixedEntity ) == 64, "MixedEntity: the fixed form's plan is laid out for this size" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_entity_id, offsetof( MixedEntity, entity_id ) == 0, "MixedEntity.entity_id: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_pos_x, offsetof( MixedEntity, pos_x ) == 4, "MixedEntity.pos_x: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_pos_y, offsetof( MixedEntity, pos_y ) == 8, "MixedEntity.pos_y: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_pos_z, offsetof( MixedEntity, pos_z ) == 12, "MixedEntity.pos_z: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_yaw, offsetof( MixedEntity, yaw ) == 16, "MixedEntity.yaw: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_pitch, offsetof( MixedEntity, pitch ) == 20, "MixedEntity.pitch: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_vel_x, offsetof( MixedEntity, vel_x ) == 24, "MixedEntity.vel_x: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_vel_y, offsetof( MixedEntity, vel_y ) == 28, "MixedEntity.vel_y: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_vel_z, offsetof( MixedEntity, vel_z ) == 32, "MixedEntity.vel_z: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_health, offsetof( MixedEntity, health ) == 36, "MixedEntity.health: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_weapon, offsetof( MixedEntity, weapon ) == 40, "MixedEntity.weapon: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_damage, offsetof( MixedEntity, damage ) == 48, "MixedEntity.damage: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_moving, offsetof( MixedEntity, moving ) == 56, "MixedEntity.moving: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_entity_firing, offsetof( MixedEntity, firing ) == 57, "MixedEntity.firing: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_stat_size, sizeof( MixedStat ) == 8, "MixedStat: the fixed form's plan is laid out for this size" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_stat_stat_id, offsetof( MixedStat, stat_id ) == 0, "MixedStat.stat_id: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_stat_delta, offsetof( MixedStat, delta ) == 4, "MixedStat.delta: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_hit_event_size, sizeof( MixedHitEvent ) == 16, "MixedHitEvent: the fixed form's plan is laid out for this size" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_hit_event_target_id, offsetof( MixedHitEvent, target_id ) == 0, "MixedHitEvent.target_id: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_hit_event_damage, offsetof( MixedHitEvent, damage ) == 4, "MixedHitEvent.damage: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_hit_event_hit_kind, offsetof( MixedHitEvent, hit_kind ) == 8, "MixedHitEvent.hit_kind: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_hit_event_crit, offsetof( MixedHitEvent, crit ) == 12, "MixedHitEvent.crit: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_chat_event_size, sizeof( MixedChatEvent ) == 8, "MixedChatEvent: the fixed form's plan is laid out for this size" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_chat_event_channel, offsetof( MixedChatEvent, channel ) == 0, "MixedChatEvent.channel: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_chat_event_speaker, offsetof( MixedChatEvent, speaker ) == 4, "MixedChatEvent.speaker: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_pickup_event_size, sizeof( MixedPickupEvent ) == 8, "MixedPickupEvent: the fixed form's plan is laid out for this size" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_pickup_event_item_id, offsetof( MixedPickupEvent, item_id ) == 0, "MixedPickupEvent.item_id: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_pickup_event_amount, offsetof( MixedPickupEvent, amount ) == 4, "MixedPickupEvent.amount: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_size, sizeof( BenchMixed ) == 1376, "BenchMixed: the fixed form's plan is laid out for this size" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_sequence, offsetof( BenchMixed, sequence ) == 0, "BenchMixed.sequence: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_ack_sequence, offsetof( BenchMixed, ack_sequence ) == 4, "BenchMixed.ack_sequence: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_ack_bits, offsetof( BenchMixed, ack_bits ) == 8, "BenchMixed.ack_bits: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_session_id, offsetof( BenchMixed, session_id ) == 16, "BenchMixed.session_id: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_client_id, offsetof( BenchMixed, client_id ) == 24, "BenchMixed.client_id: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_nonce, offsetof( BenchMixed, nonce ) == 32, "BenchMixed.nonce: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_world_time, offsetof( BenchMixed, world_time ) == 40, "BenchMixed.world_time: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_frame_tick, offsetof( BenchMixed, frame_tick ) == 48, "BenchMixed.frame_tick: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_server_time, offsetof( BenchMixed, server_time ) == 56, "BenchMixed.server_time: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_entities, offsetof( BenchMixed, entities ) == 64, "BenchMixed.entities: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_entities_count, offsetof( BenchMixed, entities_count ) == 576, "BenchMixed.entities_count: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_stats, offsetof( BenchMixed, stats ) == 580, "BenchMixed.stats: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_stats_count, offsetof( BenchMixed, stats_count ) == 1220, "BenchMixed.stats_count: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_game_event, offsetof( BenchMixed, game_event ) == 1224, "BenchMixed.game_event: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_loadout, offsetof( BenchMixed, loadout ) == 1244, "BenchMixed.loadout: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_player_name, offsetof( BenchMixed, player_name ) == 1248, "BenchMixed.player_name: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_player_name_length, offsetof( BenchMixed, player_name_length ) == 1264, "BenchMixed.player_name_length: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_payload, offsetof( BenchMixed, payload ) == 1268, "BenchMixed.payload: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_payload_length, offsetof( BenchMixed, payload_length ) == 1284, "BenchMixed.payload_length: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_aim_x, offsetof( BenchMixed, aim_x ) == 1288, "BenchMixed.aim_x: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_aim_y, offsetof( BenchMixed, aim_y ) == 1292, "BenchMixed.aim_y: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_aim_z, offsetof( BenchMixed, aim_z ) == 1296, "BenchMixed.aim_z: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_recoil, offsetof( BenchMixed, recoil ) == 1300, "BenchMixed.recoil: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_drift, offsetof( BenchMixed, drift ) == 1304, "BenchMixed.drift: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_wide_key, offsetof( BenchMixed, wide_key ) == 1312, "BenchMixed.wide_key: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_flux, offsetof( BenchMixed, flux ) == 1328, "BenchMixed.flux: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_ping, offsetof( BenchMixed, ping ) == 1344, "BenchMixed.ping: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_crc_hint, offsetof( BenchMixed, crc_hint ) == 1348, "BenchMixed.crc_hint: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_has_extra, offsetof( BenchMixed, has_extra ) == 1352, "BenchMixed.has_extra: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_extra, offsetof( BenchMixed, extra ) == 1356, "BenchMixed.extra: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_bench_mixed_idle_ticks, offsetof( BenchMixed, idle_ticks ) == 1360, "BenchMixed.idle_ticks: the fixed form's plan lands here" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_event_size, sizeof( MixedEvent ) == 20, "MixedEvent: the fixed form's plan is laid out for this size" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_event_type, offsetof( MixedEvent, type ) == 0, "MixedEvent: the tag leads the union storage" );
+SCHEMA_TABLE_STATIC_ASSERT( fixed_mixed_event_as, offsetof( MixedEvent, as ) == 4, "MixedEvent: every arm is overlaid here" );
+
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_write_body_( uint8_t * b, const MixedEntity * value );
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_write_body_( uint8_t * b, const MixedStat * value );
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_write_body_( uint8_t * b, const MixedHitEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_write_body_( uint8_t * b, const MixedChatEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_write_body_( uint8_t * b, const MixedPickupEvent * value );
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_write_body_( uint8_t * b, const BenchMixed * value );
+
+/* MixedEntity's stores. The template — the hash, then zeros — is memcpy'd first,
+   which is also what zero-fills every byte of declared slack. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_write_body_( uint8_t * b, const MixedEntity * value )
+{
+    (void) b; (void) value;
+    table_fixed_put32( b + 0, (uint32_t) value->entity_id );
+    table_fixed_put32( b + 4, (uint32_t) value->pos_x );
+    table_fixed_put32( b + 8, (uint32_t) value->pos_y );
+    table_fixed_put32( b + 12, (uint32_t) value->pos_z );
+    table_fixed_put32( b + 16, (uint32_t) value->yaw );
+    table_fixed_put32( b + 20, (uint32_t) value->pitch );
+    table_fixed_put32( b + 24, (uint32_t) value->vel_x );
+    table_fixed_put32( b + 28, (uint32_t) value->vel_y );
+    table_fixed_put32( b + 32, (uint32_t) value->vel_z );
+    table_fixed_put32( b + 36, (uint32_t) value->health );
+    table_fixed_put8( b + 40, (uint8_t) value->weapon );
+    table_fixed_put64( b + 41, (uint64_t) value->damage );
+    table_fixed_put8( b + 49, value->moving ? 1 : 0 );
+    table_fixed_put8( b + 50, value->firing ? 1 : 0 );
+}
+
+/* MixedStat's stores. The template — the hash, then zeros — is memcpy'd first,
+   which is also what zero-fills every byte of declared slack. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_write_body_( uint8_t * b, const MixedStat * value )
+{
+    (void) b; (void) value;
+    table_fixed_put32( b + 0, (uint32_t) value->stat_id );
+    table_fixed_put32( b + 4, (uint32_t) value->delta );
+}
+
+/* MixedHitEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+   which is also what zero-fills every byte of declared slack. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_write_body_( uint8_t * b, const MixedHitEvent * value )
+{
+    (void) b; (void) value;
+    table_fixed_put32( b + 0, (uint32_t) value->target_id );
+    table_fixed_put32( b + 4, (uint32_t) value->damage );
+    table_fixed_put32( b + 8, (uint32_t) value->hit_kind );
+    table_fixed_put8( b + 12, value->crit ? 1 : 0 );
+}
+
+/* MixedChatEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+   which is also what zero-fills every byte of declared slack. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_write_body_( uint8_t * b, const MixedChatEvent * value )
+{
+    (void) b; (void) value;
+    table_fixed_put32( b + 0, (uint32_t) value->channel );
+    table_fixed_put32( b + 4, (uint32_t) value->speaker );
+}
+
+/* MixedPickupEvent's stores. The template — the hash, then zeros — is memcpy'd first,
+   which is also what zero-fills every byte of declared slack. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_write_body_( uint8_t * b, const MixedPickupEvent * value )
+{
+    (void) b; (void) value;
+    table_fixed_put32( b + 0, (uint32_t) value->item_id );
+    table_fixed_put32( b + 4, (uint32_t) value->amount );
+}
+
+/* BenchMixed's stores. The template — the hash, then zeros — is memcpy'd first,
+   which is also what zero-fills every byte of declared slack. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_write_body_( uint8_t * b, const BenchMixed * value )
+{
+    (void) b; (void) value;
+    table_fixed_put32( b + 0, (uint32_t) value->sequence );
+    table_fixed_put32( b + 4, (uint32_t) value->ack_sequence );
+    table_fixed_put32( b + 8, (uint32_t) value->ack_bits );
+    table_fixed_put64( b + 12, (uint64_t) value->session_id );
+    table_fixed_put32( b + 20, (uint32_t) value->client_id );
+    table_fixed_put64( b + 24, (uint64_t) value->nonce );
+    table_fixed_put64( b + 32, (uint64_t) value->world_time );
+    table_fixed_put64( b + 40, (uint64_t) value->frame_tick );
+    table_fixed_put32( b + 48, (uint32_t) value->server_time );
+    schema_assert( value->entities_count >= 0 && value->entities_count <= 8 ); /* the declared count is the bound (§3.4) */
+    table_fixed_put32( b + 52, (uint32_t) value->entities_count );
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->entities_count; ++i )
+        {
+            schema_bench_mixed_entity_fixed_write_body_( b + 56 + i * 51 + 0, &value->entities[i] );
+        }
+    }
+    schema_assert( value->stats_count >= 0 && value->stats_count <= 80 ); /* the declared count is the bound (§3.4) */
+    table_fixed_put32( b + 464, (uint32_t) value->stats_count );
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->stats_count; ++i )
+        {
+            schema_bench_mixed_stat_fixed_write_body_( b + 468 + i * 8 + 0, &value->stats[i] );
+        }
+    }
+    table_fixed_put8( b + 1108, (uint8_t) value->game_event.type );
+    switch ( value->game_event.type )
+    {
+        case MIXED_EVENT_TYPE_HIT:
+        {
+            schema_bench_mixed_hit_event_fixed_write_body_( b + 1109, &value->game_event.as.hit );
+            break;
+        }
+        case MIXED_EVENT_TYPE_CHAT:
+        {
+            schema_bench_mixed_chat_event_fixed_write_body_( b + 1109, &value->game_event.as.chat );
+            break;
+        }
+        case MIXED_EVENT_TYPE_PICKUP:
+        {
+            schema_bench_mixed_pickup_event_fixed_write_body_( b + 1109, &value->game_event.as.pickup );
+            break;
+        }
+        default: break;
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) 4; ++i )
+        {
+            table_fixed_put8( b + 1122 + i * 1 + 0, (uint8_t) value->loadout[i] );
+        }
+    }
+    schema_assert( value->player_name_length >= 0 && value->player_name_length <= 15 ); /* the declared length is the bound (§3.4) */
+    table_fixed_put32( b + 1126, (uint32_t) value->player_name_length );
+    memcpy( b + 1130, value->player_name, (size_t) ( value->player_name_length ) );
+    schema_assert( value->payload_length >= 0 && value->payload_length <= 16 ); /* the declared length is the bound (§3.4) */
+    table_fixed_put32( b + 1145, (uint32_t) value->payload_length );
+    memcpy( b + 1149, value->payload, (size_t) ( value->payload_length ) );
+    table_fixed_putf32( b + 1165, value->aim_x );
+    table_fixed_putf32( b + 1169, value->aim_y );
+    table_fixed_putf32( b + 1173, value->aim_z );
+    table_fixed_putf32( b + 1177, value->recoil );
+    table_fixed_putf64( b + 1181, value->drift );
+    table_fixed_put128_u( b + 1189, value->wide_key );
+    table_fixed_put128_i( b + 1205, value->flux );
+    table_fixed_put16( b + 1221, (uint16_t) value->ping );
+    table_fixed_put32( b + 1223, (uint32_t) value->crc_hint );
+    table_fixed_put8( b + 1227, value->has_extra ? 1 : 0 );
+    table_fixed_put32( b + 1228, (uint32_t) value->extra );
+    table_fixed_put32( b + 1232, (uint32_t) value->idle_ticks );
+}
+
+/* MixedEntity's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_entity_fixed_clamp_body_( MixedEntity * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(12) width clamp */
+    (*clamped) += ( value->entity_id > 4095ull );
+    value->entity_id = ( value->entity_id > 4095ull ) ? 4095ull : value->entity_id;
+    (*clamped) += (int) ( value->pos_x < -16383 ) | (int) ( value->pos_x > 16383 );
+    value->pos_x = ( value->pos_x < -16383 ) ? -16383 : ( ( value->pos_x > 16383 ) ? 16383 : value->pos_x );
+    (*clamped) += (int) ( value->pos_y < -16383 ) | (int) ( value->pos_y > 16383 );
+    value->pos_y = ( value->pos_y < -16383 ) ? -16383 : ( ( value->pos_y > 16383 ) ? 16383 : value->pos_y );
+    (*clamped) += (int) ( value->pos_z < -16383 ) | (int) ( value->pos_z > 16383 );
+    value->pos_z = ( value->pos_z < -16383 ) ? -16383 : ( ( value->pos_z > 16383 ) ? 16383 : value->pos_z );
+    /* bits(9) width clamp */
+    (*clamped) += ( value->yaw > 511ull );
+    value->yaw = ( value->yaw > 511ull ) ? 511ull : value->yaw;
+    /* bits(9) width clamp */
+    (*clamped) += ( value->pitch > 511ull );
+    value->pitch = ( value->pitch > 511ull ) ? 511ull : value->pitch;
+    (*clamped) += (int) ( value->vel_x < -2048 ) | (int) ( value->vel_x > 2047 );
+    value->vel_x = ( value->vel_x < -2048 ) ? -2048 : ( ( value->vel_x > 2047 ) ? 2047 : value->vel_x );
+    (*clamped) += (int) ( value->vel_y < -2048 ) | (int) ( value->vel_y > 2047 );
+    value->vel_y = ( value->vel_y < -2048 ) ? -2048 : ( ( value->vel_y > 2047 ) ? 2047 : value->vel_y );
+    (*clamped) += (int) ( value->vel_z < -2048 ) | (int) ( value->vel_z > 2047 );
+    value->vel_z = ( value->vel_z < -2048 ) ? -2048 : ( ( value->vel_z > 2047 ) ? 2047 : value->vel_z );
+    (*clamped) += (int) ( value->health < 0 ) | (int) ( value->health > 1000 );
+    value->health = ( value->health < 0 ) ? 0 : ( ( value->health > 1000 ) ? 1000 : value->health );
+    if ( (uint64_t) value->weapon > 15u ) { value->weapon = MIXED_WEAPON_NONE; (*clamped)++; }
+}
+
+/* MixedStat's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_stat_fixed_clamp_body_( MixedStat * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(8) width clamp */
+    (*clamped) += ( value->stat_id > 255ull );
+    value->stat_id = ( value->stat_id > 255ull ) ? 255ull : value->stat_id;
+    (*clamped) += (int) ( value->delta < -512 ) | (int) ( value->delta > 511 );
+    value->delta = ( value->delta < -512 ) ? -512 : ( ( value->delta > 511 ) ? 511 : value->delta );
+}
+
+/* MixedHitEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_hit_event_fixed_clamp_body_( MixedHitEvent * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(12) width clamp */
+    (*clamped) += ( value->target_id > 4095ull );
+    value->target_id = ( value->target_id > 4095ull ) ? 4095ull : value->target_id;
+    (*clamped) += (int) ( value->damage < 0 ) | (int) ( value->damage > 4095 );
+    value->damage = ( value->damage < 0 ) ? 0 : ( ( value->damage > 4095 ) ? 4095 : value->damage );
+    (*clamped) += (int) ( value->hit_kind < 0 ) | (int) ( value->hit_kind > 7 );
+    value->hit_kind = ( value->hit_kind < 0 ) ? 0 : ( ( value->hit_kind > 7 ) ? 7 : value->hit_kind );
+}
+
+/* MixedChatEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_chat_event_fixed_clamp_body_( MixedChatEvent * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    (*clamped) += (int) ( value->channel < 0 ) | (int) ( value->channel > 3 );
+    value->channel = ( value->channel < 0 ) ? 0 : ( ( value->channel > 3 ) ? 3 : value->channel );
+    /* bits(12) width clamp */
+    (*clamped) += ( value->speaker > 4095ull );
+    value->speaker = ( value->speaker > 4095ull ) ? 4095ull : value->speaker;
+}
+
+/* MixedPickupEvent's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_mixed_pickup_event_fixed_clamp_body_( MixedPickupEvent * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(10) width clamp */
+    (*clamped) += ( value->item_id > 1023ull );
+    value->item_id = ( value->item_id > 1023ull ) ? 1023ull : value->item_id;
+    (*clamped) += (int) ( value->amount < 0 ) | (int) ( value->amount > 255 );
+    value->amount = ( value->amount < 0 ) ? 0 : ( ( value->amount > 255 ) ? 255 : value->amount );
+}
+
+/* BenchMixed's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fixed_clamp_body_( BenchMixed * value, int32_t * clamped, int32_t * damaged )
+{
+    (void) value; (void) clamped; (void) damaged;
+    /* bits(16) width clamp */
+    (*clamped) += ( value->sequence > 65535ull );
+    value->sequence = ( value->sequence > 65535ull ) ? 65535ull : value->sequence;
+    (*clamped) += (int) ( value->ack_sequence < 0 ) | (int) ( value->ack_sequence > 65535 );
+    value->ack_sequence = ( value->ack_sequence < 0 ) ? 0 : ( ( value->ack_sequence > 65535 ) ? 65535 : value->ack_sequence );
+    (*clamped) += (int) ( value->world_time < -1000000000000ll ) | (int) ( value->world_time > 1000000000000ll );
+    value->world_time = ( value->world_time < -1000000000000ll ) ? -1000000000000ll : ( ( value->world_time > 1000000000000ll ) ? 1000000000000ll : value->world_time );
+    /* bits(48) width clamp */
+    (*clamped) += ( value->frame_tick > 281474976710655ull );
+    value->frame_tick = ( value->frame_tick > 281474976710655ull ) ? 281474976710655ull : value->frame_tick;
+    (*clamped) += (int) ( value->server_time < 0 ) | (int) ( value->server_time > 16776960 );
+    value->server_time = ( value->server_time < 0 ) ? 0 : ( ( value->server_time > 16776960 ) ? 16776960 : value->server_time );
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->entities_count; ++i )
+        {
+            schema_bench_mixed_entity_fixed_clamp_body_( &value->entities[i], clamped, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->stats_count; ++i )
+        {
+            schema_bench_mixed_stat_fixed_clamp_body_( &value->stats[i], clamped, damaged );
+        }
+    }
+    if ( (uint32_t) value->game_event.type > 3u ) { value->game_event.type = MIXED_EVENT_TYPE_NONE; (*clamped)++; }
+    switch ( value->game_event.type )
+    {
+        case MIXED_EVENT_TYPE_HIT:
+        {
+            schema_bench_mixed_hit_event_fixed_clamp_body_( &value->game_event.as.hit, clamped, damaged );
+            break;
+        }
+        case MIXED_EVENT_TYPE_CHAT:
+        {
+            schema_bench_mixed_chat_event_fixed_clamp_body_( &value->game_event.as.chat, clamped, damaged );
+            break;
+        }
+        case MIXED_EVENT_TYPE_PICKUP:
+        {
+            schema_bench_mixed_pickup_event_fixed_clamp_body_( &value->game_event.as.pickup, clamped, damaged );
+            break;
+        }
+        default: break;
+    }
+    if ( !table_wire_utf8( (const uint8_t *) value->player_name, (uint64_t) value->player_name_length ) )
+    {
+        memset( value->player_name, 0, sizeof( value->player_name ) );
+        value->player_name_length = 0;
+        (*damaged)++;
+    }
+    (*clamped) += (int) ( value->aim_x < -1.0f ) | (int) ( value->aim_x > 1.0f );
+    value->aim_x = ( value->aim_x < -1.0f ) ? -1.0f : ( ( value->aim_x > 1.0f ) ? 1.0f : value->aim_x );
+    (*clamped) += (int) ( value->aim_y < -1.0f ) | (int) ( value->aim_y > 1.0f );
+    value->aim_y = ( value->aim_y < -1.0f ) ? -1.0f : ( ( value->aim_y > 1.0f ) ? 1.0f : value->aim_y );
+    (*clamped) += (int) ( value->aim_z < -1.0f ) | (int) ( value->aim_z > 1.0f );
+    value->aim_z = ( value->aim_z < -1.0f ) ? -1.0f : ( ( value->aim_z > 1.0f ) ? 1.0f : value->aim_z );
+    (*clamped) += (int) ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) | (int) ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 );
+    value->flux = ( table_fixed_cmp128_i( value->flux, 18446744004990074880ull, 0ull ) < 0 ) ? serialize_int128_make( 18446744004990074880ull, 0ull ) : ( ( table_fixed_cmp128_i( value->flux, 68719476736ull, 0ull ) > 0 ) ? serialize_int128_make( 68719476736ull, 0ull ) : value->flux );
+    (*clamped) += ( value->ping > 64000 );
+    value->ping = ( value->ping > 64000 ) ? 64000 : value->ping;
+    /* bits(24) width clamp */
+    (*clamped) += ( value->crc_hint > 16777215ull );
+    value->crc_hint = ( value->crc_hint > 16777215ull ) ? 16777215ull : value->crc_hint;
+    (*clamped) += (int) ( value->extra < 0 ) | (int) ( value->extra > 255 );
+    value->extra = ( value->extra < 0 ) ? 0 : ( ( value->extra > 255 ) ? 255 : value->extra );
+    (*clamped) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
+    value->idle_ticks = ( value->idle_ticks < 0 ) ? 0 : ( ( value->idle_ticks > 15 ) ? 15 : value->idle_ticks );
+}
+
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define mixed_entity_load_retain(...) ((void)sizeof(struct { int retention_requires_variable_region_root : -1; }))
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */

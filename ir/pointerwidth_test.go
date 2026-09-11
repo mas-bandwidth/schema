@@ -33,7 +33,7 @@ table Node {
     position Vec
 }
 
-table ByValue {
+fixed table ByValue {
     position Vec
 }
 `

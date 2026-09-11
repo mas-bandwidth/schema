@@ -57,13 +57,13 @@ func saveCacheSchema() string {
 	var b strings.Builder
 	b.WriteString("package savecache\n\n")
 	b.WriteString("// 140 fields, so the id table crosses 127 entries mid-array\n")
-	b.WriteString("table Wide\n{\n")
+	b.WriteString("fixed table Wide\n{\n")
 	for i := range saveCacheWideFields {
 		fmt.Fprintf(&b, "    f%03d int32\n", i)
 	}
 	b.WriteString("}\n\n")
-	b.WriteString("table Inner\n{\n    a    int32\n    leaf Wide\n    z    int32\n}\n\n")
-	b.WriteString("table Outer\n{\n")
+	b.WriteString("fixed table Inner\n{\n    a    int32\n    leaf Wide\n    z    int32\n}\n\n")
+	b.WriteString("fixed table Outer\n{\n")
 	b.WriteString("    many  [..96]Inner\n")
 	b.WriteString("    few   [..8]Inner\n")
 	b.WriteString("    slots [4]Inner\n")

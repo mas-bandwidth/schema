@@ -689,6 +689,13 @@ var valuedKeys = map[string]bool{
 // them a given field may carry is resolveAttrs's business.
 var fieldKeys = map[string]bool{"min": true, "max": true, "resolution": true, "was": true, "json": true}
 
+// deprecatedTag is the one TAG the compiler reads (docs/SPEC-TABLES.md
+// §2.10). The valueless namespace is open by design (SPEC §4.2) and this does
+// not close it: a schema may still spell any tag it likes, and this one
+// spelling additionally sets a flag the schema lock and the new-use refusals
+// read.
+const deprecatedTag = "deprecated"
+
 // qualification reads one line's | section (SPEC §4.2). The VALUELESS entries
 // are the line's TAGS, returned in declared order. The VALUED entries are
 // returned for the caller, whose own switch decides what each means. takes
@@ -1041,7 +1048,11 @@ func (c *checker) resolveBodies() {
 				// tables share the struct shape but live beside the packet
 				// decls, never among them (docs/SPEC-TABLES.md): the packet wire,
 				// the projection and the protocol id do not know they exist
-				st := &ir.Struct{Name: d.Name, IsTable: true, Doc: d.Doc}
+				// THE CLASS IS DECLARED, never inferred (docs/SPEC-TABLES.md
+				// §2.2): `fixed table` is the fixed wire and a plain `table`
+				// is the variable one, and checkFixedTableClosures below
+				// refuses a fixed table whose closure cannot hold the class.
+				st := &ir.Struct{Name: d.Name, IsTable: true, FixedDeclared: d.Fixed, Doc: d.Doc}
 				var tvalued []*ast.Attr
 				st.Tags, tvalued = c.qualification("table "+d.Name, "a table declaration", d.Attrs, map[string]bool{"was": true})
 				for _, a := range tvalued {
@@ -1261,10 +1272,19 @@ func (c *checker) resolveBody(owner string, body *ast.Block, inTable bool) ([]*i
 				items = append(items, &ir.FieldItem{F: f})
 			case *ast.IfItem:
 				cond := c.lookupScope(scopes, item.Cond.Text)
-				if cond == nil {
+				switch {
+				case cond == nil:
 					c.errf(item.Cond.Pos, "if condition %s must be a bool field declared earlier in the same or an enclosing block (the dominance rule, SPEC §4.5)", item.Cond.Text)
-				} else if cond.Type.Kind != ir.TBool || cond.Array != ir.ArrayNone {
+				case cond.Type.Kind != ir.TBool || cond.Array != ir.ArrayNone:
 					c.errf(item.Cond.Pos, "if condition %s must be a bool field (SPEC §4.6)", item.Cond.Text)
+				case cond.Deprecated:
+					// A NEW USE OF A DEPRECATED FIELD (docs/SPEC-TABLES.md
+					// §2.10). A guard is the one construct in the language
+					// that reads another field's VALUE, and a deprecated
+					// field's value is whatever a writer that no longer knows
+					// about it left there — so a branch taken on one decides
+					// the shape of a body by accident.
+					c.errf(item.Cond.Pos, "if condition %s names a field marked `| deprecated` — a deprecated field is retired in place: its slot stays, nothing new may name it, and a guard is a NEW USE (docs/SPEC-TABLES.md §2.10); guard on a live field, or drop the marker", item.Cond.Text)
 				}
 				// the branch condition, spelled the way the reflection
 				// descriptors spell it: at_rest, !at_rest, active &&
@@ -1898,6 +1918,17 @@ func (c *checker) resolveAttrs(f *ast.Field, out *ir.Field) {
 	// unknown or repeated key), so nothing below meets a nil value
 	tags, valued := c.qualification("field "+f.Name, "a field", f.Attrs, fieldKeys)
 	out.Tags = tags
+	// THE `deprecated` MARKER (docs/SPEC-TABLES.md §2.10). It is a TAG, not a
+	// valued key — there is nothing for it to take a value of — so it costs
+	// the grammar nothing and reads the way every other valueless qualifier
+	// reads. It stays in Tags as well as here: a tag rides into the
+	// reflection descriptors' tags column (§8.1), and a retired field is
+	// exactly the kind of thing a tool walking those descriptors wants told.
+	for _, t := range tags {
+		if t == deprecatedTag {
+			out.Deprecated = true
+		}
+	}
 	byKey := map[string]*ast.Attr{}
 	for _, a := range valued {
 		byKey[a.Key] = a
@@ -2508,6 +2539,7 @@ func (c *checker) checkTables() {
 			seen[id] = f
 		}
 	}
+	c.checkFixedTableClosures(names)
 	c.checkReservedWireIds(names)
 	c.checkTableVariantIdentity(names)
 	c.checkOptionalVariableClosures(names)

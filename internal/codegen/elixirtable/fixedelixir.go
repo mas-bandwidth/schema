@@ -1541,11 +1541,9 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
-	g.pf("  # THE READ: a plan, a split, and one prefill-and-project per record. The\n")
-	g.pf("  # plan's own ops hold the writer's values to this reader's bounds and count;\n")
-	g.pf("  # the projection holds them again as it lands them, which costs nothing on a\n")
-	g.pf("  # value already inside the bound and is what lets the IDENTITY plan — which\n")
-	g.pf("  # carries no ops at all, being one copy run — reach the same clamp.\n")
+	g.pf("  # THE READ: a plan, a split, and one prefill-and-project per record. Neither\n")
+	g.pf("  # plan clamps a ranged integer: the generated projection holds the bound after\n")
+	g.pf("  # the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).\n")
 	g.pf("  defp %s_fixed_records(stated, layout, records, report, opts) do\n", snake)
 	g.pf("    hash = R.hash(layout)\n")
 	g.pf("    copy = Keyword.get(opts, :copy, false)\n\n")
@@ -1642,17 +1640,13 @@ func (g *fixedGen) dstLiteral(dst []fixedDst) string {
 	var sb strings.Builder
 	sb.WriteString("{\n")
 	for i, d := range dst {
-		lo, hi := "nil", "nil"
-		if d.lo != "" {
-			lo, hi = d.lo, d.hi
-		}
 		sep := ","
 		if i == len(dst)-1 {
 			sep = ""
 		}
 		row := tupleNode{items: []string{
 			fmt.Sprintf("%d", d.dst), fmt.Sprintf("%d", d.stride), fmt.Sprintf("%d", d.aux),
-			fmt.Sprintf("%d", d.counted), fmt.Sprintf("%d", d.arg), lo, hi,
+			fmt.Sprintf("%d", d.counted), fmt.Sprintf("%d", d.arg),
 		}}
 		fmt.Fprintf(&sb, "    %s%s\n", row.render(4, 4, len(sep)), sep)
 	}

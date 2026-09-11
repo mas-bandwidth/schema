@@ -5695,6 +5695,89 @@ inline bool GunnerSettingsLoadMessages( GunnerSettings * values, int64_t * count
     return TableMessageBatchClose( br );
 }
 
+// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+//
+// A record is an eight-byte hash of the writer's LAYOUT and then
+// the values in declared order, every field at its declared storage width.
+// The writer is the constant bytes memcpy'd and then stores; the reader is
+// ONE loop over ONE plan, the identity plan here and a plan compiled from
+// the writer's own layout for anybody else. There is no second reader.
+
+// THE ABI AGREES WITH THE PLANS. The offsets below were computed by the
+// schema compiler rather than folded by this one, because they are the same
+// offsets every other port needs; these are that arithmetic checked against
+// this compiler's own, at build time, one line per fact the plans rest on.
+static_assert( sizeof( ArmorPlate ) == 16, "ArmorPlate: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( ArmorPlate, thickness ) == 0, "ArmorPlate.thickness: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( ArmorPlate, material ) == 8, "ArmorPlate.material: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( ArmorPlate, layer ) == 12, "ArmorPlate.layer: the fixed form's plan lands here" );
+static_assert( sizeof( ArmorConfig ) == 40, "ArmorConfig: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( ArmorConfig, front ) == 0, "ArmorConfig.front: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( ArmorConfig, rear ) == 16, "ArmorConfig.rear: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( ArmorConfig, rating ) == 32, "ArmorConfig.rating: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( ArmorConfig, tier ) == 36, "ArmorConfig.tier: the fixed form's plan lands here" );
+static_assert( sizeof( FiringGroup ) == 8, "FiringGroup: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( FiringGroup, barrel ) == 0, "FiringGroup.barrel: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( FiringGroup, cooldown ) == 4, "FiringGroup.cooldown: the fixed form's plan lands here" );
+static_assert( sizeof( GunnerSettings ) == 304, "GunnerSettings: the fixed form's plan is laid out for this size" );
+static_assert( (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups ) == 0, "GunnerSettings.firing_groups: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( GunnerSettings, firing_groups_count ) == 256, "GunnerSettings.firing_groups_count: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups ) == 260, "GunnerSettings.missile_groups: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( GunnerSettings, missile_groups_count ) == 292, "GunnerSettings.missile_groups_count: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( GunnerSettings, reload_seconds ) == 296, "GunnerSettings.reload_seconds: the fixed form's plan lands here" );
+static_assert( (uint32_t) __builtin_offsetof( GunnerSettings, gunner_id ) == 300, "GunnerSettings.gunner_id: the fixed form's plan lands here" );
+
+// ArmorPlate's stores. The prefill — the hash, then zeros — is memcpy'd first,
+// which is also what zero-fills every byte of declared slack.
+inline void ArmorPlateFixedWriteBody( uint8_t * b, const ArmorPlate & value )
+{
+    (void) b; (void) value;
+    TableFixedPutF64( b + 0, value.thickness );
+    TableFixedPut32( b + 8, (uint32_t) value.material );
+    TableFixedPut8( b + 12, (uint8_t) value.layer );
+}
+
+// ArmorConfig's stores. The prefill — the hash, then zeros — is memcpy'd first,
+// which is also what zero-fills every byte of declared slack.
+inline void ArmorConfigFixedWriteBody( uint8_t * b, const ArmorConfig & value )
+{
+    (void) b; (void) value;
+    ArmorPlateFixedWriteBody( b + 0, value.front );
+    ArmorPlateFixedWriteBody( b + 13, value.rear );
+    TableFixedPutF32( b + 26, value.rating );
+    TableFixedPut8( b + 30, (uint8_t) value.tier );
+}
+
+// FiringGroup's stores. The prefill — the hash, then zeros — is memcpy'd first,
+// which is also what zero-fills every byte of declared slack.
+inline void FiringGroupFixedWriteBody( uint8_t * b, const FiringGroup & value )
+{
+    (void) b; (void) value;
+    TableFixedPut32( b + 0, (uint32_t) value.barrel );
+    TableFixedPutF32( b + 4, value.cooldown );
+}
+
+// GunnerSettings's stores. The prefill — the hash, then zeros — is memcpy'd first,
+// which is also what zero-fills every byte of declared slack.
+inline void GunnerSettingsFixedWriteBody( uint8_t * b, const GunnerSettings & value )
+{
+    (void) b; (void) value;
+    schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // the declared count is the bound (§3.4)
+    TableFixedPut32( b + 0, (uint32_t) value.firing_groups_count );
+    for ( int64_t i = 0; i < (int64_t) value.firing_groups_count; ++i )
+    {
+        FiringGroupFixedWriteBody( b + 4 + i * 8 + 0, value.firing_groups[i] );
+    }
+    schema_assert( value.missile_groups_count >= 0 && value.missile_groups_count <= 4 ); // the declared count is the bound (§3.4)
+    TableFixedPut32( b + 260, (uint32_t) value.missile_groups_count );
+    for ( int64_t i = 0; i < (int64_t) value.missile_groups_count; ++i )
+    {
+        FiringGroupFixedWriteBody( b + 264 + i * 8 + 0, value.missile_groups[i] );
+    }
+    TableFixedPutF32( b + 296, value.reload_seconds );
+    TableFixedPut32( b + 300, (uint32_t) value.gunner_id );
+}
+
 // ---- retain-unknown on a FIXED-class root: refused by name (§6.6) ----
 //
 // A fixed-class root is a VALUE: no region, no node directory, and so no

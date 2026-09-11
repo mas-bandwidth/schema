@@ -33,14 +33,14 @@ type docExample struct {
 // The declaration blocks the pages print. Each is a complete unit once a
 // package line is supplied; a block that carries its own `package` keeps it.
 var docExamples = []docExample{
-	{"../docs/SPEC.md", "// Wire.schema", 1},                    // §4.9, the complete example
-	{"../docs/SPEC-TABLES.md", "table OpenDocument", 1},         // §2.6, union arms as tables
-	{"../docs/SPEC-TABLES.md", "table Node", 2},                 // §3.1, framing worked
-	{"../docs/SPEC-TABLES.md", "table Item { count int32 }", 1}, // §2.8, maps
-	{"../docs/SPEC-TABLES.md", "package demo", 1},               // §7.3, a cook worked to the byte
-	{"../docs/SPEC-TABLES.md", "name    string(16)", 1},         // §16.7, one declaration, two texts
-	{"../docs/USAGE.md", "table OpenDocument", 1},               // messages: a union whose arms are tables
-	{"../docs/USAGE.md", "table Node", 1},                       // pointers
+	{"../docs/SPEC.md", "// Wire.schema", 1},                          // §4.9, the complete example
+	{"../docs/SPEC-TABLES.md", "table OpenDocument", 1},               // §2.6, union arms as tables
+	{"../docs/SPEC-TABLES.md", "table Node", 2},                       // §3.1, framing worked
+	{"../docs/SPEC-TABLES.md", "fixed table Item { count int32 }", 1}, // §2.8, maps
+	{"../docs/SPEC-TABLES.md", "package demo", 1},                     // §7.3, a cook worked to the byte
+	{"../docs/SPEC-TABLES.md", "name    string(16)", 1},               // §16.7, one declaration, two texts
+	{"../docs/USAGE.md", "table OpenDocument", 1},                     // messages: a union whose arms are tables
+	{"../docs/USAGE.md", "table Node", 1},                             // pointers
 }
 
 func TestDocExamplesParse(t *testing.T) {

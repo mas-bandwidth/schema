@@ -15,7 +15,8 @@
 // second answer waiting to happen, so this port renders rather than recomputes
 // — the same call C and C++ make. What this file spells for itself is Elixir:
 // how a destination is a byte offset into THIS BUILD's own record IMAGE (there
-// is no offsetof here), and the reader's own clamp bounds, which do not ride.
+// is no offsetof here). Destination rows carry destinations and nothing about
+// a range: the generated projection holds the bound after the loop.
 //
 // Nothing here touches form 1. The Elixir backend carries no form-1 table wire
 // at all (schema#515): this is the first table WIRE this backend has, and it
@@ -130,12 +131,6 @@ type fixedDst struct {
 	aux     int64 // a text field's buffer offset, a counted array's count, a present flag
 	counted int   // an array that carries a live count
 	arg     int   // a text field's flavour
-
-	// THE READER'S OWN RANGE, as Elixir literals, and "" when the field
-	// declares none. THE BOUNDS DO NOT RIDE on this form, so a plan's `clamp`
-	// op holds a value to the READER's own and to nothing else (§3.4).
-	lo string
-	hi string
 }
 
 // imageDstRows renders ir's destination spec into this port's image offsets,
@@ -165,8 +160,7 @@ func imageDstRow(u *ir.Unit, e ir.TableFixedLayoutEntry) fixedDst {
 		// the tag leads that storage, so the two offsets are the same byte
 		aux = dst + imageTerms(u, d.Aux)
 	}
-	lo, hi := imageRange(u, e)
-	return fixedDst{dst: dst, stride: stride, aux: aux, counted: d.Counted, arg: d.Meta, lo: lo, hi: hi}
+	return fixedDst{dst: dst, stride: stride, aux: aux, counted: d.Counted, arg: d.Meta}
 }
 
 func imageTerms(u *ir.Unit, terms []ir.TableFixedTerm) int64 {
@@ -253,43 +247,6 @@ func imageFieldMember(f *ir.Field, at int64, member string) (int64, bool) {
 		}
 	}
 	return 0, false
-}
-
-func imageRange(u *ir.Unit, e ir.TableFixedLayoutEntry) (lo, hi string) {
-	if len(e.Dst.Dst) == 0 {
-		return "", ""
-	}
-	t := e.Dst.Dst[0]
-	if st := fixedNamedStruct(u, t.Type); st != nil {
-		if f := fieldNamed(st, t.Member); f != nil {
-			return rangeOf(f)
-		}
-	}
-	if un := fixedNamedUnion(u, t.Type); un != nil {
-		for _, v := range un.Variants {
-			if v.Name == t.Member && v.F != nil {
-				return rangeOf(v.F)
-			}
-		}
-	}
-	return "", ""
-}
-
-func fieldNamed(st *ir.Struct, name string) *ir.Field {
-	for _, f := range st.Fields {
-		if f.Name == name {
-			return f
-		}
-	}
-	return nil
-}
-
-func rangeOf(f *ir.Field) (string, string) {
-	lo, hi := fixedRangeOf(f)
-	if lo == "nil" {
-		return "", ""
-	}
-	return lo, hi
 }
 
 // fixedRoots is every table of the unit the fixed form is emitted for, in

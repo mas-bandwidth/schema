@@ -31,7 +31,7 @@ union Effect
     ward   Ward
 }
 
-table FeRoot
+fixed table FeRoot
 {
     grade  Grade = Silver
     effect Effect
