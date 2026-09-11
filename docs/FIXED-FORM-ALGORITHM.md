@@ -310,8 +310,9 @@ clamp on every clean read. A type that bounds nothing emits no pass at all.
 - **A RANGED SCALAR** clamps to its declared min and max, `COUNT clamped`. **A fixed-point field's bounds are in
   VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)` clamps to `2^N - 1`.
 - **A UNION TAG past the arm count, or an ENUM ORDINAL past the enum's top value, lands `None`** — the same
-  nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). A value inside an `| max = K` headroom
-  is in the set and stands.
+  nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
+  this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
+  compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
 
 ## 5. Evolution
 
