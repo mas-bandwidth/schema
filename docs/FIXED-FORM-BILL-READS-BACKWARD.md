@@ -149,8 +149,9 @@ nobody guarantees old ever reads new.")
 
 ## 7. The deployment rule
 
-Readers first, always. A writer ships only after every reader that will meet its files has. Getting the
-order wrong is a `layout_newer` refusal at the first file, not a truncated array in production.
+Readers first, always. A writer ships only after every reader that will meet its files has, by a margin you
+can roll a reader back across (§8a.2). Getting the order wrong is a `layout_newer` refusal at the first
+file, not a truncated array in production.
 
 ## 8. What changes on the board (#876)
 
@@ -162,6 +163,28 @@ order wrong is a `layout_newer` refusal at the first file, not a truncated array
 - The seven layout refusals, W10, W6, W16, the byte pins against the reference, FU in the oracle: untouched.
 - New items: `layout_newer` asserted by name on every leg for each row of §2; the baseline's monotone law
   with a fixture per row; the deployment rule in the doc's §5.
+
+## 8a. What breaks it, and what the bill does about each
+
+Glenn: "Is there any case you can find that breaks this approach? The widening approach to versioning?
+Adding but never removing?" Three.
+
+1. **Two branches both append.** A hotfix appends field A while main appends field B; each commit passes
+   its own baseline; after the merge one is reordered, and a reader that matches BY POSITION refuses every
+   file the pre-merge hotfix build wrote. Append-only assumes one linear history and git does not give one.
+   **Ruling in this bill:** the baseline enforces append-at-end on each branch (§6, the discipline), but the
+   READER accepts a writer whose definitions are a SUBSET of its own BY NAME, each compatible under §2, in
+   any order (the tolerance). Fields, variants and arms keep the remap by name that exists today, with the
+   forward-reading half removed; when the writer is a true prefix the remap is the identity and costs
+   nothing. §6's "what appending buys" is therefore the common case, not the rule.
+2. **Readers cannot roll back.** Once a newer writer has produced files, the previous reader build refuses
+   them by name. That is the contract working, and it makes a reader rollback a data event. Rule: writers
+   ship after readers by a margin you can roll back across; a build that must go down migrates its files
+   first. Stated in §7.
+3. **Growth has no reset.** Deprecated fields ride forever, every record carries them, the record-size and
+   leaf caps eventually bind, and a default, once chosen, can never change (it defines what every old file
+   means). None of it breaks a read; it is the price. The escape is a NEW TABLE NAME, a fresh lineage the
+   new build reads beside the old, the same move a database makes.
 
 ## 9. Open, for the cold read
 
