@@ -103,6 +103,12 @@ var versionRows = []versionRow{
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+  check(length(values) == 1, "the fixed_I_grow_element file carries one record, not #{length(values)}")
+  v = hd(values)
+  want = [-1, -128, 0, 112]
+  check(v.vals == want, "the RAW SCALED VALUE did not land per slot: #{inspect(v.vals)}")
+  leadtrail(v, want_lead, want_trail)`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true, check: `
