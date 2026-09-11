@@ -84,11 +84,11 @@ var jsVersionRows = []jsVersionRow{
 	{row: "enum_append"},
 	{row: "enum_width", widens: true},
 	{row: "field_append", check: `
-  if (back[0].x !== 11 || back[0].y !== 22 || back[0].z !== 33) {
-    fail("the old writer's values did not land: " + JSON.stringify(back[0]));
+  if (back[0].X !== 11 || back[0].Y !== 22 || back[0].Z !== 33) {
+    fail("the old writer's values did not land: " + show(back[0]));
   }
-  if (back[0].w !== 77) {
-    fail("the appended field is not its declared default: " + JSON.stringify(back[0]));
+  if (back[0].W !== 77) {
+    fail("the appended field is not its declared default: " + show(back[0]));
   }`},
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
@@ -99,9 +99,9 @@ var jsVersionRows = []jsVersionRow{
   if (n !== 3) { fail("the int_widen file carries three records, not " + n); }
   const want = [-1, -32768, 32767];
   for (let k = 0; k < want.length; k++) {
-    if (Number(back[k].v) !== want[k]) { fail("record " + k + " widened wrong: " + JSON.stringify(back[k])); }
-    if (back[k].lead !== 0xAAAAAAAA || back[k].trail !== 0xBBBBBBBB) {
-      fail("record " + k + " moved a neighbour: " + JSON.stringify(back[k]));
+    if (Number(back[k].V) !== want[k]) { fail("record " + k + " widened wrong: " + show(back[k])); }
+    if (back[k].Lead !== 0xAAAAAAAA || back[k].Trail !== 0xBBBBBBBB) {
+      fail("record " + k + " moved a neighbour: " + show(back[k]));
     }
   }`},
 	{row: "keyed_array_enum_append"},
@@ -197,8 +197,8 @@ if (r.widened !== 0 || r.unknown !== 0 || r.kindMismatch !== 0 || r.clamped !== 
 }
 // THE DESTINATION IS STILL EVERY FIELD OF A FRESH VALUE — VALUES, never a
 // struct's slack (§5.9 #17).
-if (JSON.stringify(back[0]) !== JSON.stringify(fresh)) {
-  fail("REFUSE wrote destination bytes: " + JSON.stringify(back[0]));
+if (show(back[0]) !== show(fresh)) {
+  fail("REFUSE wrote destination bytes: " + show(back[0]));
 }`
 			}
 			src := fmt.Sprintf(`
@@ -335,7 +335,7 @@ const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
 if (n < 1 || r.refused !== 0 || r.malformed) { fail("hash_identity: n=" + n + " " + reason(r)); }
-if (back[0].w !== 777) { fail("the identity plan lost a value: " + JSON.stringify(back[0])); }
+if (back[0].W !== 777) { fail("the identity plan lost a value: " + show(back[0])); }
 if (r.layoutHash !== 0n) { fail("layout_hash is zero on every path but the two layout refusals (§5.9 #15)"); }`, fresh)},
 	}
 	for _, c := range cases {
@@ -537,6 +537,10 @@ import { %[1]s, Init%[1]s, TableFixedReport, TableFixedRefusal, TableFixedRefusa
 
 let failures = 0;
 function fail(why) { console.error("FAIL: " + why); failures++; }
+// show is a VALUE comparison and a value printing, never a struct's slack
+// (§5.9 #17). A flags field rides as a BigInt in this language and
+// JSON.stringify refuses one, so the replacer spells it.
+function show(v) { return JSON.stringify(v, (k, x) => typeof x === "bigint" ? x.toString() : x); }
 function reason(r) {
   return "refused=" + TableFixedRefusalName(r.refused) + " malformed=" + r.malformed +
     " unknown=" + r.unknown + " kindMismatch=" + r.kindMismatch + " clamped=" + r.clamped +
