@@ -183,8 +183,10 @@ Adding but never removing?" Three.
    first. Stated in §7.
 3. **Growth has no reset.** Deprecated fields ride forever, every record carries them, the record-size and
    leaf caps eventually bind, and a default, once chosen, can never change (it defines what every old file
-   means). None of it breaks a read; it is the price. The escape is a NEW TABLE NAME, a fresh lineage the
-   new build reads beside the old, the same move a database makes.
+   means). None of it breaks a read; it is the price. The escape, in Glenn's order: "You would just create a
+   new table if it got too large. Then deprecate the old, clean out the cruft, and upgrade the backend first
+   to read the new table and the old. Deploy it, then deploy the client." A new table is a fresh lineage
+   with its own lock entry; the old one stays readable for as long as its files exist.
 
 ## 9. Open, for the cold read
 
