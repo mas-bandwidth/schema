@@ -51,6 +51,47 @@ name: CI fast
 # that need a sibling runtime (the C++ reference's byte oracle) pay a shallow
 # clone on top, and the Dart and Elixir legs pay their own SDK setup. Two
 # minutes is reachable; twenty seconds is not, without a self-hosted warm pool.
+#
+# SO WE BUILT THE WARM POOL, and this lane runs on OUR OWN HARDWARE. Every job
+# here is `runs-on: [self-hosted, studio]`: six runners on the Studio (Apple M3
+# Ultra, 32 cores, 512 GB), which is both the queue fix and the floor fix. The
+# queue is ours — six concurrent jobs with nobody else's branches in front of
+# them, so the nine-row leg matrix is parallel and not serial — and the floor
+# drops because the toolchains are already on the host: /Users/Shared/schema-dist
+# carries jdk 21, elixir 1.20.4 on OTP 29, dart 3.13.2 and node 26.7.0, dotnet
+# 10.0.400 is in ~/.local/bin, and go, clang, make and rustup come from the
+# system. The runner puts all of them on PATH through its own `.path` and
+# `.env`, so the `setup-*` actions below — 8-12 s each, with the Dart and BEAM
+# SDK downloads on top — are SKIPPED on a self-hosted runner and run only on
+# the hosted fallback. The `uses:` lines stay, pinned, for exactly that reason.
+#
+# THE CHECKOUT STAYS CLEAN. A warm runner is a correctness hazard in exactly one
+# way: a stale file in the workspace making a gate pass. So actions/checkout
+# keeps its default clean on every run and nothing here sets `clean: false`.
+# What stays warm is OUTSIDE the workspace and cannot forge a green: the Go
+# build cache in the host's ~/Library/Caches/go-build — content-addressed by the
+# compiler's own inputs, so a stale entry is not reachable — and the read-only
+# dist toolchains. The `actions/cache` restores are skipped on self-hosted for
+# the same reason: what they were restoring is already there.
+#
+# ci-full.yml IS UNCHANGED and still runs on GitHub's hosted Linux runners. The
+# full lane is the one that proves the bytes on an x86-64 box we do not own, and
+# the merge gate is not where we trade breadth for speed.
+#
+# ONLY THE TABLE PUSHES TO THIS REPOSITORY. A self-hosted runner executes a pull
+# request's own code on our hardware, so a pull request from a FORK MUST NEVER
+# reach these machines: every job below carries
+#   if: github.event.pull_request.head.repo.full_name == github.repository
+# and a fork's pull request is covered by ci-full.yml on hosted runners.
+#
+# SPACE IS NOT IN THE POOL, and the reason is worth writing down: the x86-64
+# Linux box has ONE CORE. It is registered as `space-x64` for a future
+# cross-architecture row that can afford to be slow, and no job here names it.
+#
+# TO TAKE THE POOL DOWN for a benchmark window — never measure against a runner
+# doing a build — on the Studio:
+#   for d in ~/actions-runner ~/actions-runner-[2-6]; do (cd "$d" && ./svc.sh stop); done
+# and `./svc.sh start` the same way to bring it back.
 
 on:
   pull_request:
@@ -81,7 +122,8 @@ jobs:
   # It is deliberately the only `needs:` in this file — every gate that can
   # start immediately does.
   plan:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     outputs:
       packages: ${{ steps.pick.outputs.packages }}
@@ -206,11 +248,14 @@ jobs:
   # compiles a tool of its own, which is a minute this lane does not have, and
   # they run in ci-full.yml.
   lint-fast:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the Studio's own go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -218,12 +263,16 @@ jobs:
       # The Go build cache, restore only — ci-full.yml's `go-test` is the one
       # Linux writer. The block on that job carries the reasoning.
       - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
+      # On the Studio the build cache is the host's own and already warm: there
+      # is nothing to restore, and no stale entry can forge a green.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -259,11 +308,14 @@ jobs:
   # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the Studio's own go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
@@ -278,23 +330,29 @@ jobs:
   # below are where they are made to run.
   go-test-touched:
     needs: plan
-    if: needs.plan.outputs.packages != ''
-    runs-on: ubuntu-latest
+    if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [ self-hosted, studio ]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # the Studio's own go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
 
       - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
+      # On the Studio the build cache is the host's own and already warm: there
+      # is nothing to restore, and no stale entry can forge a green.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -333,9 +391,9 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]'
+    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     name: fixed form + versioning (${{ matrix.leg }})
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, studio ]
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -351,6 +409,11 @@ jobs:
         run: |
           set -euo pipefail
           cd ..
+          # A self-hosted runner's workspace PARENT persists between runs, so a
+          # previous run's clones are still sitting here. They are removed and
+          # re-cloned at the pinned tag every time, never reused: the sibling
+          # pins are part of what a green means.
+          rm -rf serialize serialize.go serialize.c serialize.rs serialize.cs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
           case "${{ matrix.leg }}" in
             go)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
@@ -359,18 +422,24 @@ jobs:
             cs)   git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
           esac
 
+      # the Studio's own go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
 
       - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
         shell: bash
         run: |
           echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
           echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
 
+      # On the Studio the build cache is the host's own and already warm: there
+      # is nothing to restore, and no stale entry can forge a green.
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
         with:
           path: ${{ env.GO_BUILD_CACHE }}
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
@@ -382,27 +451,27 @@ jobs:
         if: matrix.leg == 'cs'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.leg == 'cs'
+        if: matrix.leg == 'cs' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: matrix.leg == 'js'
+        if: matrix.leg == 'js' && runner.environment == 'github-hosted'
         with:
           # the version test/conformance/js/ci.json names
           node-version: '26'
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
-        if: matrix.leg == 'rust'
+        if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
-        if: matrix.leg == 'dart'
+        if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
-        if: matrix.leg == 'java'
+        if: matrix.leg == 'java' && runner.environment == 'github-hosted'
         with:
           distribution: temurin
           java-version: '21'
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.leg == 'elixir'
+        if: matrix.leg == 'elixir' && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
@@ -417,7 +486,7 @@ jobs:
             cpp)    make tables-fixedform ;;
             go)     make tables-go-fixed-form tables-go-versioning ;;
             c)      make tables-c-fixedform tables-c-versioning ;;
-            rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN=/usr/bin ;;
+            rust)   make tables-rust-fixedform tables-rust-versioning RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
             js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
             cs)     make tables-cs-leg tables-cs-versioning ;;
             java)   make tables-java-fixedform JAVA=java JAVAC=javac ;;
