@@ -126,6 +126,10 @@ type tableGen struct {
 	// counts. A generated field header carries its ordinal as a literal beside
 	// the id, and the id table answers a repeat from slot[ordinal].
 	idOrdinal map[uint64]int
+	// lineagePeers are older schema units whose matching fixed tables this
+	// generate COMPILEs known hashes and layout bytes from (algorithm §5.2),
+	// because the lock's lineage is not on the tip yet.
+	lineagePeers []*ir.Unit
 	// msgDepth is the message codec's nesting depth while it emits: every
 	// loop variable and local a nested payload declares carries the depth as
 	// a suffix, so an element's decode inside an element's decode shadows
@@ -701,8 +705,24 @@ enum TableMessageReason
     layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
     layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
     layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
+    // reader has never locked is layout_newer; a hash in the lineage below the
+    // floor is layout_unsupported. Both carry the file's hash and nothing else
+    // (bill §12.4).
+    layout_newer,
+    layout_unsupported
 };
+
+#ifndef SCHEMA_HAS_LAYOUT_NEWER
+#define SCHEMA_HAS_LAYOUT_NEWER 1
+#endif
+#ifndef SCHEMA_HAS_LAYOUT_UNSUPPORTED
+#define SCHEMA_HAS_LAYOUT_UNSUPPORTED 1
+#endif
+#ifndef SCHEMA_HAS_FLOOR
+#define SCHEMA_HAS_FLOOR 1
+#endif
 
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
@@ -738,6 +758,9 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
+    // the hash and nothing else. Zero on every other path.
+    uint64_t layout_hash = 0;
 };
 ` + refuseReason + `
 // ---- reflection (tables only, docs/SPEC-TABLES.md) ----
@@ -1480,9 +1503,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// can name, and the index it takes in the ascending set TableIds's
 	// capacity counts.
 	idOrdinal := wireIdOrdinals(u)
+	peers := loadLineagePeers(u)
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal, lineagePeers: peers}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {

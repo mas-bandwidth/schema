@@ -845,7 +845,7 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 func (g *gen) emitFixedRoot(st *ir.Struct) {
 	entries := ir.TableFixedWalkRoot(st)
 	block := ir.TableFixedLayoutBytes(entries)
-	hash := ir.TableFixedLayoutHash(block)
+	hash := ir.TableFixedLayoutHash(block, nil)
 	body := ir.TableFixedTypeBytes(st)
 	defaults := fixedDefaultImage(st)
 	up := ir.RustConstName(st.Name)

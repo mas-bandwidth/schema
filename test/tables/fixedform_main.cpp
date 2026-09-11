@@ -126,7 +126,8 @@ static void fx_case()
         check( r.kind_mismatch == 0 && !r.malformed && !r.refused, "older writer: nothing else fired" );
     }
 
-    // 3. FX1 READS FX2 — an unknown field and an unknown NESTED TYPE
+    // 3. FX1 READS FX2 — OLD-REFUSES-NEW. The file's hash is not in FX1's known
+    // set, so LOAD refuses layout_newer before any record (bill §4, §12.4).
     {
         tblfx2::FxRoot two;
         tblfx2::FxRootReset( two );
@@ -142,21 +143,16 @@ static void fx_case()
         check( tblfx2::FxRootFixedSave( &two, 1, w2.data(), (int64_t) w2.size() ) == (int64_t) w2.size(), "FX2 save" );
 
         tblfx1::FxRoot back;
+        tblfx1::FxRootReset( back );
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
         const int64_t n = tblfx1::FxRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1, "newer writer: one record" );
-        check( back.keep == 5150u, "newer writer: an unmoved field lands past the unknowns" );
-        check( back.renamed == 808, "newer writer: `was =` reads the other way too" );
-        check( back.gone == 9, "newer writer: a field the writer dropped takes its declared default" );
-        check( back.nested.a == 33 && back.nested.b == 44, "newer writer: the nesting lands past the unknown type" );
-        // `added` is an unknown FIELD; `extra` is an unknown nested TYPE, and
-        // stepping over it by its layout size is what puts `nested` in the
-        // right place above
-        check( r.unknown == 2, "newer writer: two names this reader does not have" );
-        check( r.kind_mismatch == 1, "newer writer: uint32 into uint16 is a kind that moved, not a widening" );
-        check( back.narrow == 3, "newer writer: a narrowing leaves the declared default" );
-        check( !r.malformed && !r.refused, "newer writer: no damage and no refusal" );
+        check( n < 0 && r.refused && r.reason == tblfx1::layout_newer,
+               "newer writer: layout_newer before any record" );
+        check( r.layout_hash == tblfx2::FxRootFixedHash,
+               "newer writer: layout_newer carries the file's hash and nothing else" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && !r.malformed,
+               "newer writer: REFUSE is total" );
     }
 }
 
@@ -224,7 +220,8 @@ static void p_case()
     const int64_t n = tblp3::ChainFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r );
     check( n == 1, "P3 reads P1: one record" );
     check( std::strcmp( back.name, "chain" ) == 0, "P3 reads P1: the plain field lands" );
-    check( r.kind_mismatch == 1, "OPTIONAL vs VALUE is a reported kind on this form, never a silent reread" );
+    check( back.link_present && back.link.value == 500 && r.kind_mismatch == 0,
+           "P3 reads P1: T into ?T lands present, payload exact (§12.8)" );
 }
 
 // ---------------------------------------------------------------------------
@@ -261,8 +258,8 @@ static void negative_control()
     tblfx1::TableReport r2;
     std::vector<tblfx1::TableFixedEntry> plan( 1024 );
     const int64_t n = tblfx1::FxRootFixedLoad( &right, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r2 );
-    check( n == 1 && right.nested.a == 33 && right.nested.b == 44,
-           "NEGATIVE CONTROL: the loader compiles a plan from the layout and gets it right" );
+    check( n < 0 && r2.refused && r2.reason == tblfx1::layout_newer,
+           "NEGATIVE CONTROL: the loader refuses a newer hash, it does not compile a stranger's layout" );
 
     // A LAYOUT THAT IS NOT A LAYOUT IS REFUSED BY NAME, whole, and never damage.
     // Every rule has its own case in layout_validation() below; this one is
@@ -276,7 +273,7 @@ static void negative_control()
         tblfx1::FxRoot v;
         tblfx1::TableReport r3;
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, NULL, &r3 );
-        check( bad < 0 && r3.refused && r3.reason == tblfx1::layout_count_mismatch, "REFUSED BY NAME: layout_count_mismatch" );
+        check( bad < 0 && r3.refused && r3.reason == tblfx1::layout_newer, "REFUSED BY NAME: a newer hash is layout_newer, not a walk name" );
         check( r3.unknown == 0 && r3.kind_mismatch == 0 && !r3.malformed, "REFUSED BY NAME: a refusal moves no counter" );
     }
 
@@ -317,8 +314,8 @@ static void negative_control()
         tblfx1::FxRoot v;
         tblfx1::TableReport r6;
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, lying.data(), (int64_t) lying.size(), plan.data(), 1024, NULL, &r6 );
-        check( bad < 0 && r6.refused && r6.reason == tblfx1::layout_malformed,
-               "REFUSED BY NAME: a header hash that is not the layout's" );
+        check( bad < 0 && r6.refused && r6.reason == tblfx1::layout_newer,
+               "REFUSED BY NAME: a header hash this reader has never locked is layout_newer" );
         check( !r6.malformed, "REFUSED BY NAME: never damage" );
     }
 
@@ -329,7 +326,7 @@ static void negative_control()
         tblfx1::TableReport r5;
         tblfx1::TableFixedEntry tiny[1];
         const int64_t bad = tblfx1::FxRootFixedLoad( &v, 1, w2.data(), (int64_t) w2.size(), tiny, 1, NULL, &r5 );
-        check( bad < 0 && r5.refused && r5.reason == tblfx1::plan_too_large, "REFUSED BY NAME: plan_too_large" );
+        check( bad < 0 && r5.refused && r5.reason == tblfx1::layout_newer, "REFUSED BY NAME: a newer hash is refused before a plan is compiled" );
     }
 }
 
@@ -394,14 +391,14 @@ static void refuses( std::vector<uint8_t> & broken, tblfx1::TableMessageReason w
 
 static void layout_validation()
 {
-    // the layout this reader ACCEPTS, which every case below breaks once
-    tblfx2::FxRoot two;
-    tblfx2::FxRootReset( two );
-    std::vector<uint8_t> good( (size_t) tblfx2::FxRootFixedMeasure( 1 ) );
-    check( tblfx2::FxRootFixedSave( &two, 1, good.data(), (int64_t) good.size() ) == (int64_t) good.size(),
+    // A KNOWN HASH whose layout BYTES differ is layout_malformed, one name for
+    // all seven §1.1 breaks (bill §12.4). The unbroken file is this reader's OWN.
+    tblfx1::FxRoot own;
+    tblfx1::FxRootReset( own );
+    std::vector<uint8_t> good( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &own, 1, good.data(), (int64_t) good.size() ) == (int64_t) good.size(),
            "layout validation: the unbroken file saves" );
     {
-        // and it READS, so every refusal below is the ONE break and not the file
         tblfx1::FxRoot v;
         tblfx1::TableReport r;
         std::vector<tblfx1::TableFixedEntry> plan( 1024 );
@@ -414,13 +411,13 @@ static void layout_validation()
         std::vector<uint8_t> f = good;
         const uint32_t count = tblfx1::TableFixedGet32( f.data() + kLayoutAt );
         tblfx1::TableFixedPut32( f.data() + kLayoutAt, count + 1u );
-        refuses( f, tblfx1::layout_count_mismatch, "RULE: the entry count fits the layout length exactly" );
+        refuses( f, tblfx1::layout_malformed, "RULE: the entry count fits the layout length exactly — known hash, layout_malformed" );
     }
     {
         // a count of ZERO is not a layout either: there is no root to walk
         std::vector<uint8_t> f = good;
         tblfx1::TableFixedPut32( f.data() + kLayoutAt, 0u );
-        refuses( f, tblfx1::layout_count_mismatch, "RULE: an entry count of zero is not a layout" );
+        refuses( f, tblfx1::layout_malformed, "RULE: an entry count of zero is not a layout — known hash, layout_malformed" );
     }
 
     // 2. EVERY KIND IS IN THE CLOSED SET. A fixed form's kind set is CLOSED, so
@@ -429,28 +426,28 @@ static void layout_validation()
     {
         std::vector<uint8_t> f = good;
         entry_at( f, 1 )[8] = 200; // a kind no form byte this build carries defines
-        refuses( f, tblfx1::layout_kind_unknown, "RULE: a kind outside the closed set is REFUSED, not skipped" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a kind outside the closed set — known hash, layout_malformed" );
     }
 
     // 3. A KIND IS USED AS ITS DEFINITION ALLOWS — here, the ROOT is a table
     {
         std::vector<uint8_t> f = good;
         entry_at( f, 0 )[8] = 14; // an array as the root of a record
-        refuses( f, tblfx1::layout_kind_invalid, "RULE: the root entry is a TABLE" );
+        refuses( f, tblfx1::layout_malformed, "RULE: the root entry is a TABLE — known hash, layout_malformed" );
     }
 
     // 4. A CONSTANT SIZE MATCHES ITS KIND
     {
         std::vector<uint8_t> f = good;
         tblfx1::TableFixedPut32( entry_at( f, 1 ) + 9, 5u ); // a uint32 leaf in five bytes
-        refuses( f, tblfx1::layout_size_mismatch, "RULE: a constant size its kind does not admit" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a constant size its kind does not admit — known hash, layout_malformed" );
     }
     {
         // and a TABLE's size is the SUM of its children's, not a number of its own
         std::vector<uint8_t> f = good;
         const uint32_t body = tblfx1::TableFixedGet32( entry_at( f, 0 ) + 9 );
         tblfx1::TableFixedPut32( entry_at( f, 0 ) + 9, body + 4u );
-        refuses( f, tblfx1::layout_size_mismatch, "RULE: a table's size is the sum of its fields'" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a table's size is the sum of its fields' — known hash, layout_malformed" );
     }
 
     // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES
@@ -458,7 +455,7 @@ static void layout_validation()
         std::vector<uint8_t> f = good;
         const uint32_t kids = tblfx1::TableFixedGet32( entry_at( f, 0 ) + 13 );
         tblfx1::TableFixedPut32( entry_at( f, 0 ) + 13, kids + 1u );
-        refuses( f, tblfx1::layout_tree_unclosed, "RULE: the tree runs out of layout" );
+        refuses( f, tblfx1::layout_malformed, "RULE: the tree runs out of layout — known hash, layout_malformed" );
     }
     {
         // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
@@ -475,14 +472,15 @@ static void layout_validation()
         put_entry( layout, 3u, 32u, 0u, 0u );
         put_entry( layout, 4u, 32u, 0u, 0u );
         std::vector<uint8_t> f = file_of( layout );
-        refuses( f, tblfx1::layout_tree_unclosed, "RULE: the layout outlasts the tree" );
+        tblfx1::TableFixedPut64( f.data() + tblfx1::kTableFixedHashAt, tblfx1::FxRootFixedHash );
+        refuses( f, tblfx1::layout_malformed, "RULE: the layout outlasts the tree — known hash, layout_malformed" );
     }
 
     // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW
     {
         std::vector<uint8_t> f = good;
         tblfx1::TableFixedPut32( entry_at( f, 0 ) + 9, 65537u );
-        refuses( f, tblfx1::layout_record_too_large, "RULE: a record size past 65536" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a record size past 65536 — known hash, layout_malformed" );
     }
     {
         // A SIZE THAT WOULD WRAP. The children's sizes are summed in 64 bits
@@ -490,7 +488,7 @@ static void layout_validation()
         // a small number that then agrees with a parent.
         std::vector<uint8_t> f = good;
         tblfx1::TableFixedPut32( entry_at( f, 1 ) + 9, 0xFFFFFFFFu );
-        refuses( f, tblfx1::layout_record_too_large, "RULE: a size that would overflow the sum" );
+        refuses( f, tblfx1::layout_malformed, "RULE: a size that would overflow the sum — known hash, layout_malformed" );
     }
 
     // 7. NOTHING NESTED PAST THE READER'S WALK BOUND. A BOUND ON THE WALK AND
@@ -509,13 +507,17 @@ static void layout_validation()
         }
         put_entry( layout, 2u, 1u, 1u, 0u ); // a bool at the bottom
         std::vector<uint8_t> f = file_of( layout );
-        refuses( f, tblfx1::layout_too_deep, "RULE: a nesting depth past the walk's own bound" );
+        tblfx1::TableFixedPut64( f.data() + tblfx1::kTableFixedHashAt, tblfx1::FxRootFixedHash );
+        refuses( f, tblfx1::layout_malformed, "RULE: a nesting depth past the walk's own bound — known hash, layout_malformed" );
     }
 
     // AND THE RESIDUE: bytes that are not a layout at all, which is the one
     // case the seven named rules never reach.
     {
-        std::vector<uint8_t> f = file_of( std::vector<uint8_t>( 2, 0 ) );
+        // 20 + L overruns the file: a length that is not a layout (algorithm §5.3 / §2).
+        std::vector<uint8_t> f( (size_t) tblfx1::kTableFixedHeaderBytes + 4, 0 );
+        f[0] = 3;
+        tblfx1::TableFixedPut32( f.data() + tblfx1::kTableFixedHeaderBytes, 100u );
         refuses( f, tblfx1::layout_malformed, "RULE: fewer bytes than a header is layout_malformed" );
     }
 }
@@ -834,12 +836,10 @@ static void union_text_case()
         tblut1::UtRoot back;
         tblut1::TableReport r;
         std::vector<tblut1::TableFixedEntry> plan( 1024 );
-        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r ) == 1,
-               "two lanes, back: the record reads" );
-        check( back.pick.type == tblut1::PickType::B, "two lanes, back: arm 3 lands as arm 2, by name" );
-        check( back.pick.b.label_length == 5 && std::strcmp( back.pick.b.label, "third" ) == 0,
-               "two lanes, back: the arm's string(8), whole" );
-        check( back.pick.b.m == 555, "two lanes, back: the arm's other field" );
+        check( tblut1::UtRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, NULL, &r ) < 0 &&
+               r.refused && r.reason == tblut1::layout_newer,
+               "two lanes, back: OLD-REFUSES-NEW — layout_newer, the hash and nothing else" );
+        check( r.layout_hash == tblut2::UtRootFixedHash, "two lanes, back: the file's hash" );
     }
 }
 
@@ -1366,10 +1366,10 @@ static void cache_case()
     tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHashAt, hashB );
     tblfx2::TableFixedPut64( wB.data() + tblfx2::kTableFixedHeaderBytes + 4 + layout_bytes, hashB );
     tblfx2::TableReport r3;
-    check( tblfx2::FxRootFixedLoad( &back, 1, wB.data(), (int64_t) wB.size(), plan.data(), 1024, &cache, &r3 ) == 1,
-           "cache: a different hash compiles once more" );
-    check( cache.compiles == 2, "cache: the third load compiled once more" );
-    check( cache.used == 2 && cache.slots[1].made == 1, "cache: the second slot is marked made" );
+    const int64_t nB = tblfx2::FxRootFixedLoad( &back, 1, wB.data(), (int64_t) wB.size(), plan.data(), 1024, &cache, &r3 );
+    check( nB < 0 && r3.refused && r3.reason == tblfx2::layout_newer,
+           "cache: a hash in no lineage is layout_newer, not a second compile" );
+    check( cache.compiles == 1, "cache: a stranger's hash does not compile" );
 
     tblfx2::FxRoot two;
     tblfx2::FxRootReset( two );
@@ -1379,7 +1379,7 @@ static void cache_case()
     tblfx2::TableReport r4;
     check( tblfx2::FxRootFixedLoad( &back, 1, w2.data(), (int64_t) w2.size(), plan.data(), 1024, &cache, &r4 ) == 1,
            "cache: identity load" );
-    check( cache.compiles == 2, "cache: identity never increments the compile counter" );
+    check( cache.compiles == 1, "cache: identity never increments the compile counter" );
 }
 
 int main()

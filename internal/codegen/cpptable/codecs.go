@@ -454,6 +454,23 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 		g.pf("    %sReset( %s );\n", name, expr)
 		return
 	}
+	if un, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed {
+		// Prefill of a field appended UNDER AN ARM reads the arm's fresh image
+		// (bill §12.6). The union constructor only sets the tag to None, so
+		// each arm is Reset to its declared defaults, then the tag is None.
+		for _, v := range un.Variants {
+			if v.F == nil {
+				continue
+			}
+			if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
+				g.pf("    %sReset( %s.%s );\n", s.Name, expr, v.Name)
+			} else {
+				g.pf("    %s.%s = %s{};\n", expr, v.Name, v.Type)
+			}
+		}
+		g.pf("    %s.type = %sType::None;\n", expr, un.Name)
+		return
+	}
 	g.pf("    %s = %s();\n", expr, typ)
 }
 

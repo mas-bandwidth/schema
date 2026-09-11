@@ -1434,7 +1434,7 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
 	entries := ir.TableFixedWalkRoot(st)
 	layout := ir.TableFixedLayoutBytes(entries)
-	hash := ir.TableFixedLayoutHash(layout)
+	hash := ir.TableFixedLayoutHash(layout, nil)
 	body := fixedTypeBytes(st)
 	plan := fixedIdentityPlan(st)
 	dst := imageDstRows(g.unit, entries)

@@ -262,7 +262,7 @@ func TestRustFixedFormLayoutIsIrsByteForByte(t *testing.T) {
 		}
 		key := screamingOf(st.Name)
 		want[key] = strings.Join(hex, " ")
-		wantHash[key] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout))
+		wantHash[key] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout, nil))
 	}
 	if len(want) == 0 {
 		t.Fatal("ir names no fixed root in a unit of fixed tables — the fixture, not the emitter, is what broke")

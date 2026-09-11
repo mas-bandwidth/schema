@@ -43,7 +43,7 @@ func TestFixedLayoutMatchesTheCppReference(t *testing.T) {
 	if len(layout) != refLayoutLen {
 		t.Fatalf("layout bytes = %d, the C++ reference emits %d", len(layout), refLayoutLen)
 	}
-	if got := ir.TableFixedLayoutHash(layout); got != refHash {
+	if got := ir.TableFixedLayoutHash(layout, nil); got != refHash {
 		t.Fatalf("layout hash = 0x%016x, the C++ reference emits 0x%016x — the two walks disagree somewhere in the closure", got, refHash)
 	}
 	if got := fixedTypeBytes(st); got != refBodyBytes {

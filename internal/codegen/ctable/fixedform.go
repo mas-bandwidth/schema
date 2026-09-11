@@ -361,7 +361,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	entries := ir.TableFixedWalkRoot(st)
 	layout := ir.TableFixedLayoutBytes(entries)
-	hash := ir.TableFixedLayoutHash(layout)
+	hash := ir.TableFixedLayoutHash(layout, nil)
 	body := ir.TableFixedTypeBytes(st)
 	n := ir.RustSnake(st.Name)
 
