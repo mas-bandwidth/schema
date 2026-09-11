@@ -581,6 +581,28 @@ static class Program
             Check(output.Offset == 142.0f / maxIntOffset * 10.0f - 5.0f, "offset reconstructs integer 142");
         }
 
+        // ---- CompressedCeiling: the integer-clamp boundary (SPEC §4.3) ----
+        // steps = 8388609, odd and in [2^23, 2^24). Writing exactly max scales
+        // to 8388609.0f and the float32 sum + 0.5f is a TIE that rounds
+        // half-to-even to 8388610 — one past the step count. The normative
+        // integer clamp keeps the index at 8388609, and all nine legs on the
+        // same bytes.
+        {
+            CompressedCeiling input = new CompressedCeiling();
+            input.Ceiling = 8388609.0f;
+
+            WriteStream ws = NewWriteStream();
+            Check(WriteCompressedCeiling(ws, input), "write CompressedCeiling");
+            byte[] wire = Data(ws);
+            GoldenWire("compressed_ceiling", wire);
+
+            CompressedCeiling output = new CompressedCeiling();
+            ReadStream rs = new ReadStream(wire);
+            // an unclamped index is REFUSED here
+            Check(ReadCompressedCeiling(rs, output), "read CompressedCeiling");
+            Check(output.Ceiling == 8388609.0f, "ceiling reads back exactly max");
+        }
+
         // ---- specified defaults: construction carries them; Zero* is the zero form ----
         {
             ProbeSample sample = new ProbeSample();

@@ -269,6 +269,24 @@ defmodule SchemaTestElixir do
       "offset reconstructs integer 142"
     )
 
+    # ---- CompressedCeiling: the integer-clamp boundary (SPEC §4.3) ----
+    # steps = 8388609, odd and in [2^23, 2^24). Writing exactly max scales to
+    # 8388609.0 and the float32 sum + 0.5 is a TIE that rounds half-to-even to
+    # 8388610 — one past the step count. The normative integer clamp keeps the
+    # index at 8388609, and all nine legs on the same bytes.
+    cc = %Example.CompressedCeiling{ceiling: 8_388_609.0}
+
+    out_cc =
+      pin(
+        "compressed_ceiling",
+        cc,
+        &Example.Wire.write_compressed_ceiling/1,
+        &Example.Wire.read_compressed_ceiling/2,
+        &Example.Wire.measure_compressed_ceiling/1
+      )
+
+    check(out_cc.ceiling == 8_388_609.0, "ceiling reads back exactly max")
+
     # ---- {:nonfinite, bits}: the bit-transparent float convention ----
     # BEAM floats cannot hold NaN or the infinities, so non-finite IEEE-754
     # patterns travel as {:nonfinite, bits} — write accepts the form and the

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 # your choice. See the LICENSE exception in the schema compiler; the compiler is
 # AGPL-3.0, its output is not.
-# package example — protocol id 0x8656ae68c06b97a7
+# package example — protocol id 0x2ad00ce4e6bbdc26
 
 # Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15] (SPEC §4.2);
 # an integer-constant namespace — the Elixir translation of the family's
@@ -167,6 +167,12 @@ defmodule Example.CompressedProbe do
   # boundary: compressed float [0.0, 10.0] @ 0.01
   # offset: compressed float [-5.0, 5.0] @ 0.001
   defstruct boundary: 0.0, offset: 0.0
+end
+
+# type CompressedCeiling
+defmodule Example.CompressedCeiling do
+  # ceiling: compressed float [0.0, 8.388609e06] @ 1.0
+  defstruct ceiling: 0.0
 end
 
 # The file-scope surface: constants, flags masks, name helpers and the
@@ -2547,6 +2553,57 @@ defmodule Example.Wire do
   # measure_compressed_probe is the exact wire bits write_compressed_probe would produce for value —
   # trusted like the writer; static runs fold to literals at generation time.
   def measure_compressed_probe(_value), do: 24
+
+  # compressed_ceiling_max_bits is the longest wire path; align pads at worst case (SPEC §6.1).
+  # compressed_ceiling_max_bytes is rounded up to the family 8-byte write-buffer granularity.
+  def compressed_ceiling_max_bits, do: 24
+  def compressed_ceiling_max_bytes, do: 8
+
+  # The §5 zero form: all-zero storage; specified defaults live only in
+  # construction (%Example.CompressedCeiling{}).
+  def zero_compressed_ceiling, do: %Example.CompressedCeiling{ceiling: 0.0}
+
+  # write_compressed_ceiling packs value into a fresh binary — the trusted writer; the O(1)
+  # contract checks raise ArgumentError, always on (the BEAM has no
+  # compile-out assert). Returns the wire bytes.
+  def write_compressed_ceiling(value) do
+    data = <<>>
+    v = cf_quantize(value.ceiling, 0.0, 8.388609e06, 8_388_609, 8.388609e06)
+    scratch = v
+    data = <<data::binary, scratch::little-size(3)-unit(8)>>
+    data
+  end
+
+  # read_compressed_ceiling decodes the first num_bits of data — the family read verdict:
+  # :error rejects the wire (bounds, ranges, wire constants, padding);
+  # hostile bytes never raise. No slack past the payload is required.
+  def read_compressed_ceiling(data, num_bits) when is_binary(data) and is_integer(num_bits) do
+    try do
+      if num_bits > byte_size(data) * 8 do
+        # the payload cannot exceed the buffer behind it
+        throw(:invalid)
+      end
+
+      bits_read = 0
+      if bits_read + 24 > num_bits, do: throw(:invalid)
+      rv = rd(data, bits_read, 24)
+      v = rv
+      bits_read = bits_read + 24
+      # headroom above the quantum count is refused
+      if v > 8_388_609, do: throw(:invalid)
+      v_ceiling = cf_decode(v, 8.388609e06, 8.388609e06, 0.0)
+      # the final position is unobserved — the verdict and value are the surface
+      _ = bits_read
+      value = %Example.CompressedCeiling{ceiling: v_ceiling}
+      {:ok, value}
+    catch
+      :invalid -> :error
+    end
+  end
+
+  # measure_compressed_ceiling is the exact wire bits write_compressed_ceiling would produce for value —
+  # trusted like the writer; static runs fold to literals at generation time.
+  def measure_compressed_ceiling(_value), do: 24
 
   defp w_probe_sample_samples([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
