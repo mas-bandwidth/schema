@@ -761,3 +761,29 @@ func findGenerated(t *testing.T, out map[string][]byte, needle string) string {
 	t.Fatalf("no generated file carries %q; files are %v", needle, keysOf(out))
 	return ""
 }
+
+// THE COUNT OP'S BOUND IS THE WRITER'S their_n, NEVER THE READER'S OWN (§5.2
+// EMIT kind 14, bill §12.5). The plan carries THAT PEER's bounds for the hostile
+// pass, so a count forged past what the writer could have written clamps and
+// counts one `clamped`. Held to the READER's bound instead — which on a grown
+// array is the larger number — a count between `their_n` and `my_n` goes through
+// untouched and every slot behind it reads as live.
+func TestFixedCountOpIsBoundedByTheWriter(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+fixed table Root
+{
+    vals [1..8] int32
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if !strings.Contains(runtime, "{:count, their_at, aux_at, their_n}") {
+		t.Fatal("the count op is not bounded by the WRITER's element count")
+	}
+	if strings.Contains(runtime, "{:count, their_at, aux_at, my_n}") {
+		t.Fatal("the count op is still bounded by the READER's own element count")
+	}
+}

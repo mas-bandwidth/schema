@@ -1147,7 +1147,12 @@ defmodule Bench.FixedRuntime do
 
     acc =
       if elem(row, 3) == 1 do
-        guarded(acc, guard, tag, {:count, their_at, aux_at, my_n})
+        # THE BOUND IS THE WRITER'S their_n AND NOT MY OWN (§5.2 EMIT kind 14,
+        # bill §12.5): the plan carries THAT PEER'S bounds for the hostile pass,
+        # so a count forged past what the writer could have written clamps and
+        # counts. Holding it to MY bound lets a count between their_n and my_n
+        # through untouched, and every slot behind it reads as live.
+        guarded(acc, guard, tag, {:count, their_at, aux_at, their_n})
       else
         acc
       end
