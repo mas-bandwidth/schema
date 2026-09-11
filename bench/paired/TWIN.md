@@ -3,7 +3,8 @@
 `make tables-fixed-twin` emits both paired Fixed Table headers, normalises
 the fixed-form runtimes through the token map below, and `diff`s what is
 left. Any leftover line that is not one of the three named differences is
-a failure.
+a failure. C++-only rows of docs/FIXED-FORM-ALGORITHM.md §5 are OWED by
+the C leg and stripped by the map; they are not a fourth named remaining.
 
 The C runtime is the twin of the C++ runtime: same wire, same ops, same
 partition, same refusals, same counters. Glenn: the two should agree on
@@ -89,6 +90,22 @@ one of them. Anything else reds by line.
    union arm in C storage sits behind `as` (`offsetof(MixedEvent, as)`,
    `value->game_event.as.hit`); C++ uses an anonymous union
    (`offsetof(MixedEvent, hit)`, `value.game_event.hit`). Same bytes.
+
+## OWED by the C leg (docs/FIXED-FORM-ALGORITHM.md §5)
+
+C++ first; legs from §5 after. These are not a named remaining difference —
+not a C spelling of a C++ mechanism. The C runtime does not have them yet.
+The map strips the C++-only blocks so this gate stays green; the C port
+card implements each row from the §5 section named here. Do not port C
+in this PR.
+
+| C++-only | algorithm §5 | what the C card takes |
+|---|---|---|
+| `kTableFixedPresent` enumerator, Apply case, compile `T` into `?T` (`me.kind == 35 && te.kind != 35`) | §5.2 `?T where x has T: present` (an unguarded constant 1 into the present byte) | the present op |
+| `TableFixedWidens` ladders `20..24` / `25..29` (signed/unsigned `fixed(I,F)`); `TableFixedSignedKind` covering `20..24` | §5.1 `fixed(I,F): I(a) <= I(b) and F(a) == F(b)` | the fixed-point widen rungs |
+| enum case `te.size < me.size` as `kTableFixedWiden` | §5.2 "widen when the writer's ordinal width is narrower" | a grown ordinal/tag width |
+| `struct TableFixedKnownLayout` | §5.3 LOAD select by hash, never parse a stranger | the known-layout table |
+| LOAD `layout_newer` / `layout_unsupported` / floor (per-type codec, not this extract) | §5.3 version-range gates | refuse a newer hash and a hash below the floor |
 
 ## Paired rows
 
