@@ -35,8 +35,8 @@ const (
 // fixedNoGuard is the guard an entry that belongs to no union arm carries.
 const fixedNoGuard = -1
 
-// fixedPlanEntry is one plan entry, in the eight lanes the Dart runtime reads
-// it through.
+// fixedPlanEntry is one plan entry, in the nine lanes the Dart runtime reads
+// it through. Flavour stays in meta; ArgW is the guard's width.
 type fixedPlanEntry struct {
 	op    int
 	src   int64
@@ -45,20 +45,40 @@ type fixedPlanEntry struct {
 	aux   int64
 	guard int64
 	arg   int
+	argw  int
 	meta  int
 	note  string
 }
 
 type fixedPlanBuild struct {
 	entries []fixedPlanEntry
+	argw    int // the CURRENT union's tag width, stamped onto every guarded push
 }
 
-func (p *fixedPlanBuild) push(e fixedPlanEntry) { p.entries = append(p.entries, e) }
+// clampArgW is ArgW as C++: 0 means 1, >8 is 8.
+func clampArgW(w int) int {
+	if w <= 0 {
+		return 1
+	}
+	if w > 8 {
+		return 8
+	}
+	return w
+}
+
+func (p *fixedPlanBuild) push(e fixedPlanEntry) {
+	w := e.argw
+	if e.guard != fixedNoGuard {
+		w = p.argw
+	}
+	e.argw = clampArgW(w)
+	p.entries = append(p.entries, e)
+}
 
 // fixedIdentityPlan is this type's leaf walk, coalesced — the same coalescer
 // the plan compiler runs, so the two are one array read by one loop.
 func fixedIdentityPlan(st *ir.Struct) []fixedPlanEntry {
-	p := &fixedPlanBuild{}
+	p := &fixedPlanBuild{argw: 1}
 	var at int64
 	for _, f := range st.Fields {
 		fixedPlanField(p, f, at)
@@ -130,13 +150,23 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 		case *ir.Union:
 			// the tag, then every arm under its own tag value. An arm the tag
 			// does not name is not moved, which is what leaves the slack behind
-			// a narrower arm as the prefill put it.
+			// a narrower arm as the prefill put it. ArgW is THIS union's tag
+			// width, stamped the way C++ stamps e.argw — a two-byte 0x0101 is
+			// not arm 1.
 			tag := fixedUnionTagBytes(r)
 			p.push(fixedPlanEntry{op: fixedOpCopy, src: src, dst: dst, size: tag,
 				guard: guard, arg: arg, note: "the tag"})
+			saved := p.argw
+			p.argw = int(tag)
+			if p.argw < 1 {
+				p.argw = 1
+			} else if p.argw > 8 {
+				p.argw = 8
+			}
 			for i, v := range r.Variants {
 				fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
 			}
+			p.argw = saved
 			return
 		}
 	}
@@ -249,7 +279,7 @@ func fixedCoalesce(in []fixedPlanEntry) []fixedPlanEntry {
 		if n := len(out); n > 0 {
 			p := &out[n-1]
 			if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
-				p.src+p.size == e.src && p.dst+p.size == e.dst {
+				p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
 				p.size += e.size
 				continue
 			}

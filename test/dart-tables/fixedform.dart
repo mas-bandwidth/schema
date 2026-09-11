@@ -1313,6 +1313,64 @@ void absentOptionalCase() {
 // 4. THE NEGATIVE CONTROLS
 // ---------------------------------------------------------------------------
 
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX.
+// compiler/fixedguardwidth_test.go holds the IR stamp; this is the run loop.
+// A two-byte tag 0x0101 whose low byte is 1 is not arm 1. ONE PATH: this is
+// tableFixedRun, the same loop identity and compiled both take.
+void guardComparedAtArgW() {
+  check(
+    fx1home.TableFixedLane.lanes == 9,
+    'ArgW: a plan entry is nine int32 lanes, got ${fx1home.TableFixedLane.lanes}',
+  );
+
+  int run(List<int> lanes, List<int> srcBytes) {
+    final src = Uint8List.fromList(srcBytes);
+    final srcView = ByteData.sublistView(src);
+    final dst = Uint8List(1);
+    final dstView = ByteData.sublistView(dst);
+    final r = fx1home.TableFixedReport();
+    fx1home.tableFixedRun(
+      Int32List.fromList(lanes),
+      1,
+      src,
+      srcView,
+      0,
+      dst,
+      dstView,
+      Int32List(0),
+      ByteData(16),
+      r,
+    );
+    return dst[0];
+  }
+
+  // COPY of the payload at byte 2, guarded at 0, answering to arm 1, width 2
+  const twoByte = <int>[0, 2, 0, 1, 0, 0, 1, 0, 2];
+  check(
+    run(twoByte, <int>[0x01, 0x01, 0xAA]) == 0,
+    'ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1',
+  );
+  check(
+    run(twoByte, <int>[0x01, 0x00, 0xAA]) == 0xAA,
+    'ArgW: a two-byte tag 0x0001 DOES run arm 1',
+  );
+  // ArgW 0 means 1, as C++: only the first byte is the tag
+  const zeroMeansOne = <int>[0, 2, 0, 1, 0, 0, 1, 0, 0];
+  check(
+    run(zeroMeansOne, <int>[0x01, 0x01, 0xAA]) == 0xAA,
+    'ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0',
+  );
+  const fourByte = <int>[0, 4, 0, 1, 0, 0, 1, 0, 4];
+  check(
+    run(fourByte, <int>[0x01, 0x01, 0x00, 0x00, 0xBB]) == 0,
+    'ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1',
+  );
+  check(
+    run(fourByte, <int>[0x01, 0x00, 0x00, 0x00, 0xBB]) == 0xBB,
+    'ArgW: a four-byte tag 0x00000001 DOES run arm 1',
+  );
+}
+
 void negativeControl() {
   final w2 = fx2Record();
 
@@ -1800,6 +1858,7 @@ void main(List<String> args) {
   pCase();
   absentOptionalCase();
   negativeControl();
+  guardComparedAtArgW();
   layoutValidation();
 
   if (failed) {

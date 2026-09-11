@@ -1,6 +1,7 @@
 package darttable
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -410,6 +411,109 @@ func TestFixedIdentityPlanClampsEveryCountAndLength(t *testing.T) {
 	at += widest
 	if at != body {
 		t.Fatalf("the identity plan covers %d bytes, the body is %d", at, body)
+	}
+}
+
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX. A one-byte compare
+// fires arm 1 on a foreign 0x0101. TableFixedTagAt is the C++ twin and the
+// ninth lane carries the width the compiler stamps the way C++ stamps e.argw.
+// Flavour stays in Meta. Identity is a PLAN walked by the same loop — hash
+// chooses the plan and nothing else; no `if (identity)` door.
+func TestFixedGuardComparedAtArgW(t *testing.T) {
+	u := unitFrom(t, `package probe
+table Root { n int32 }
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "void tableFixedRun(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no tableFixedRun in the generated unit")
+	}
+	if !strings.Contains(src, "int tableFixedTagAt(") {
+		t.Error("the runtime never names tableFixedTagAt")
+	}
+	if !strings.Contains(src, "static const int lanes = 9;") {
+		t.Error("a plan entry is nine int32 lanes, not eight")
+	}
+	if !strings.Contains(src, "static const int argw = 8;") {
+		t.Error("the plan omits the ArgW lane")
+	}
+	if strings.Contains(src, "source[at + guard] != plan[b + TableFixedLane.arg]") {
+		t.Error("the run loop still compares the union guard as one byte")
+	}
+	if !strings.Contains(src, "tableFixedTagAt(source, at + guard, plan[b + TableFixedLane.argw])") {
+		t.Error("the run loop does not compare the guard at ArgW")
+	}
+	if strings.Contains(src, "if (identity)") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+	if !strings.Contains(src, "0, 0, 0, 4, 0, -1, 0, 0, 1") {
+		t.Error("the identity plan omitted the ArgW lane (ninth is 1)")
+	}
+	if !strings.Contains(src, "plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;") {
+		t.Error("the compiler does not stamp ArgW from the writer's tag width")
+	}
+}
+
+func TestFixedIdentityPlanStampsArgW(t *testing.T) {
+	one := unitFrom(t, `package probe
+
+type Cell { n int32 }
+
+union Pick {
+    a Cell
+    b Cell
+}
+
+table Root { pick Pick }
+`)
+	onePlan := fixedIdentityPlan(findTable(t, one, "Root"))
+	guarded := 0
+	for _, e := range onePlan {
+		if e.guard == fixedNoGuard {
+			if e.argw != 1 {
+				t.Fatalf("unguarded identity entry ArgW=%d, want 1", e.argw)
+			}
+			continue
+		}
+		guarded++
+		if e.argw != 1 {
+			t.Fatalf("a two-arm union's tag is one byte, ArgW=%d on %s", e.argw, e.note)
+		}
+	}
+	if guarded == 0 {
+		t.Fatal("a union's arms must produce guarded leaves")
+	}
+
+	var b strings.Builder
+	b.WriteString("package probe\n\ntype Cell { n int32 }\n\nunion Wide {\n")
+	for i := range 256 {
+		fmt.Fprintf(&b, "    a%d Cell\n", i)
+	}
+	b.WriteString("}\n\ntable Root { pick Wide }\n")
+	two := unitFrom(t, b.String())
+	twoPlan := fixedIdentityPlan(findTable(t, two, "Root"))
+	guarded = 0
+	for _, e := range twoPlan {
+		if e.guard == fixedNoGuard {
+			continue
+		}
+		guarded++
+		if e.argw != 2 {
+			t.Fatalf("a 256-arm union's tag is two bytes, ArgW=%d on %s", e.argw, e.note)
+		}
+	}
+	if guarded == 0 {
+		t.Fatal("a 256-arm union's arms must produce guarded leaves")
 	}
 }
 
