@@ -79,7 +79,7 @@ void fixed_ut1_shared_lane_control( const uint8_t * data, int64_t bytes )
     ut_root_reset( &wrong );
     memset( &r, 0, sizeof( r ) );
     body = data + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( ut_root_fixed_layout ) + 8;
-    table_fixed_run( shared, ut_root_fixed_plan_count, ut_root_fixed_plan_guarded, body, (uint8_t *) &wrong, &r );
+    table_fixed_run( shared, ut_root_fixed_plan_count, ut_root_fixed_plan_guarded, body, (uint8_t *) &wrong, (uint32_t) sizeof( wrong ), &r );
     fixed_check( wrong.pick.as.b.label_length != 7 || strcmp( wrong.pick.as.b.label, "seven77" ) != 0,
                  "C NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
 }

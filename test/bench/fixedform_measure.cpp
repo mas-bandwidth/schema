@@ -383,7 +383,7 @@ static TableReport g_report;
 static std::vector<TableFixedEntry> g_runtime_plan;
 static inline void f3_read_shipped( const uint8_t * rec, FixedTable & value )
 {
-    TableFixedRun( FixedTableFixedPlan, FixedTableFixedPlanCount, FixedTableFixedPlanGuarded, rec + 8, (uint8_t *) &value, &g_report );
+    TableFixedRun( FixedTableFixedPlan, FixedTableFixedPlanCount, FixedTableFixedPlanGuarded, rec + 8, (uint8_t *) &value, (uint32_t) sizeof( value ), &g_report );
 }
 
 // --- building the identity plan, once, exactly as the generator would bake it
@@ -623,7 +623,7 @@ int main( int argc, char ** argv )
             for ( int r = 0; r < reps; ++r )
                 for ( size_t k = 0; k < count; ++k )
                     TableFixedRun( g_runtime_plan.data(), (int32_t) g_runtime_plan.size(), FixedTableFixedPlanGuarded,
-                                   wire.data() + k * RecordBytes + 8, (uint8_t *) &out[k], &g_report );
+                                   wire.data() + k * RecordBytes + 8, (uint8_t *) &out[k], (uint32_t) sizeof( out[k] ), &g_report );
             auto t1 = clk::now();
             sink += out[0].session_id;
             double ns = std::chrono::duration<double, std::nano>( t1 - t0 ).count() / ( reps * (double) count );

@@ -97,7 +97,7 @@ void fixed_v1_bounds( void )
         cfg_reset( &held );
         memset( &run_r, 0, sizeof( run_r ) );
         body = file2 + kTableFixedHeaderBytes + 4 + (int64_t) sizeof( cfg_fixed_layout ) + 8;
-        table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, &run_r );
+        table_fixed_run( compiled, made, guarded, body, (uint8_t *) &held, (uint32_t) sizeof( held ), &run_r );
         fixed_check( held.a == 5000 && held.items[0] == 300,
                      "C live-count, compiled loop: nothing in the plan held either value" );
         fixed_check( run_r.clamped == 0, "C live-count, compiled loop: and it counted nothing" );
