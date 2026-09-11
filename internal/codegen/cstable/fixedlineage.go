@@ -19,18 +19,35 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// FixedLineageEntry is ONE locked layout of one fixed table: the five facts
-// §5.2's table asks the lock for, and the two the operator writes.
+// FixedLineageEntry is ONE locked layout of one fixed table: the four facts
+// §5.2's table asks the lock for, and the two the operator writes — the SIX
+// FACTS lockfile.LineageEntry carries, under the same names, so the caller that
+// reads the lock hands this backend its rows field for field and a fact cannot
+// go missing in the hand-off.
 //
 // Wire is the eight bytes the header and every record carry — the lineage's key
 // and THE ONLY FACT A FILE IS MATCHED ON. Layout is the bytes verbatim, what
-// LOAD compares and what PLAN walks. Record is the body size, taken from the
-// lock and NEVER from the file. Retired and Reason are the operator's:
+// LOAD compares and what PLAN walks. Digest is §13's DEFINITIONS DIGEST: the
+// facts of §2 that are not wire shape — each range, each flags bit count, each
+// `bits(N)`, each `fixed` I and F, each reader-side limit. It is what the
+// layout bytes cannot carry and the hash must bind, it NEVER RIDES THE WIRE,
+// and it is empty for a table that declares none of them (which leaves Wire
+// equal to a hash of the layout bytes alone). Record is the body size, taken
+// from the lock and NEVER from the file. Retired and Reason are the operator's:
 // `schema lock --retire T@0x<hash> --reason "…"`, which keeps the entry and
 // moves the floor.
+//
+// Digest is carried and not recomputed, for the reason lockfile gives: a
+// HISTORICAL layout has no live *Struct to derive it from, so the two runs that
+// made the hash are the only record of it. Nothing in the generated C# reads it
+// — a file is matched on Wire and held to a byte comparison against Layout —
+// but dropping it here would make this backend the one place in the chain where
+// a locked fact is silently discarded, and a later gate over the lock's rows
+// would have nothing on this side to compare.
 type FixedLineageEntry struct {
 	Wire    uint64
 	Layout  []byte
+	Digest  []byte
 	Record  int64
 	Retired bool
 	Reason  string
@@ -51,6 +68,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 		return FixedLineageEntry{
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
+			Digest: ir.TableFixedDefinitionsDigest(st),
 			Record: 8 + fixedTypeBytes(st),
 		}, true
 	}

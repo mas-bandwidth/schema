@@ -79,7 +79,8 @@ static partial class Program
                 new FX1.TableFixedEntry(srcOff, 0u, 1u, 0u, 0u, FX1.Schema.TableFixedWire.Copy, 1, 0, 0, 0, argw)
             };
             ArgWProbe dst = new ArgWProbe();
-            FX1.Schema.TableFixedWire.Run(plan, slots, src, dst, null, ReadOnlySpan<byte>.Empty);
+            byte[] widenScratch = Array.Empty<byte>();
+            FX1.Schema.TableFixedWire.Run(plan, slots, src, dst, null, ReadOnlySpan<byte>.Empty, ref widenScratch);
             return dst.V;
         }
 
@@ -300,7 +301,8 @@ static partial class Program
         FX1.FxRoot wrong = new FX1.FxRoot();
         FX1.Schema.TableReset(wrong);
         FX1.TableReport r = new FX1.TableReport();
-        FX1.Schema.TableFixedWire.Run(FX1.Schema.FxRootFixedPlan, FX1.Schema.FxRootFixedSlots, body, wrong, r, ReadOnlySpan<byte>.Empty);
+        byte[] wrongScratch = Array.Empty<byte>();
+        FX1.Schema.TableFixedWire.Run(FX1.Schema.FxRootFixedPlan, FX1.Schema.FxRootFixedSlots, body, wrong, r, ReadOnlySpan<byte>.Empty, ref wrongScratch);
         bool intact = wrong.Nested.A == 33 && wrong.Nested.B == 44 && wrong.Renamed == 808;
         Check(!intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record");
 
@@ -519,7 +521,8 @@ static partial class Program
                 }
             }
             ReadOnlySpan<byte> recordBody = buf.AsSpan(TD.Schema.TableFixedWire.HeaderBytes + 4 + (int)TD.Schema.RangedSignedFixedLayoutBytes + 8);
-            TD.Schema.TableFixedWire.Run(copyPlan, TD.Schema.RangedSignedFixedSlots, recordBody, backCopy, null, ReadOnlySpan<byte>.Empty);
+            byte[] copyScratch = Array.Empty<byte>();
+            TD.Schema.TableFixedWire.Run(copyPlan, TD.Schema.RangedSignedFixedSlots, recordBody, backCopy, null, ReadOnlySpan<byte>.Empty, ref copyScratch);
             Check(backCopy.EdgesCount == 4 && backCopy.Edges[0] == 11 && backCopy.Edges[1] == 22 &&
                   backCopy.Edges[2] == 33 && backCopy.Edges[3] == 44,
                   "RangedSigned: Copy opcode dispatches to SetBytes for folded array");
@@ -585,7 +588,8 @@ static partial class Program
 
         ReadOnlySpan<byte> planBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(plan);
         ReadOnlySpan<byte> at = wire.AsSpan(UT.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
-        UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes);
+        byte[] utScratch = Array.Empty<byte>();
+        UT.Schema.TableFixedWire.Run(plan.Slice(0, made), UT.Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref utScratch);
         return outVal;
     }
 

@@ -616,6 +616,15 @@ namespace Blockdemo
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] PaddedRowFixedLineagePlans =
             TableFixedWire.LineagePlans(PaddedRowFixedKnown, PaddedRowFixedLayout, PaddedRowFixedDst, PaddedRowFixedHash);
 
@@ -754,6 +763,7 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -765,7 +775,7 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new PaddedRow(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedRowFixedSlots, values[k]);
-                TableFixedWire.Run(entries, PaddedRowFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, PaddedRowFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -795,7 +805,8 @@ namespace Blockdemo
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, PaddedRowFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, PaddedRowFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
         // ---- PaddedFrame, the fixed form ----
@@ -2520,6 +2531,15 @@ namespace Blockdemo
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] PaddedFrameFixedLineagePlans =
             TableFixedWire.LineagePlans(PaddedFrameFixedKnown, PaddedFrameFixedLayout, PaddedFrameFixedDst, PaddedFrameFixedHash);
 
@@ -2658,6 +2678,7 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -2669,7 +2690,7 @@ namespace Blockdemo
                 }
                 if (values[k] == null) { values[k] = new PaddedFrame(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PaddedFrameFixedSlots, values[k]);
-                TableFixedWire.Run(entries, PaddedFrameFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, PaddedFrameFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2699,7 +2720,8 @@ namespace Blockdemo
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, PaddedFrameFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, PaddedFrameFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
     }
 

@@ -73,13 +73,21 @@ type csVersionRow struct {
 	// widens is a row that grows a WIDTH, so `widened` moves at least once;
 	// every other row is an APPEND and owes every counter at zero (§5.9 #10).
 	widens bool
+	// widened is THE EXACT NUMBER the row owes, where the reference states one
+	// and the fold could hide it. §5.4's "once per entry" is once per ELEMENT
+	// across a widen: the C++ reference's EMIT has no fold there and emits one
+	// entry per element, so array_elem_widen's four widened elements are four.
+	// This leg DOES fold the run into one entry for the copy loop, so `> 0`
+	// would pass whether it reported 1 or 4 and the fold would be free to move
+	// the number. The figure is asserted instead, and it is the reference's.
+	widened int
 	// check is C# source asserting the landed values, over `back`.
 	check string
 }
 
 var csVersionRows = []csVersionRow{
 	{row: "array_bounded_grow"},
-	{row: "array_elem_widen", widens: true},
+	{row: "array_elem_widen", widens: true, widened: 4},
 	{row: "array_fixed_grow"},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
@@ -474,6 +482,12 @@ func csVersionNewReadsOld(r csVersionRow) string {
             {
                 bad += ProbeLog.Fail(@NAME@, "a widening row moved no widened counter");
             }`
+	}
+	if r.widened != 0 {
+		counters = fmt.Sprintf(`            if (r.Widened != %d)
+            {
+                bad += ProbeLog.Fail(@NAME@, "widened " + r.Widened + ", and the reference counts one per ELEMENT widened: %d");
+            }`, r.widened, r.widened)
 	}
 	return csVersionHead + `            if (n < 1)
             {

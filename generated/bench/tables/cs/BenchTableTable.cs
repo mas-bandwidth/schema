@@ -5868,6 +5868,28 @@ namespace Benchtable
                 // The pool grows by construction (§5.9 #4): the buffer is retried at
                 // four times the size until the plan fits or the declared cap is
                 // reached, and the entry that exceeds it carries plan_too_large BY NAME.
+                //
+                // AND THIS FUNCTION MUST NOT THROW, WHICH IS THE COST OF RUNNING IN A
+                // STATIC INITIALIZER AND IS PARTICULAR TO THIS LEG. A static readonly
+                // field initializer runs in the type's static constructor, and an
+                // exception out of a static constructor is not the caller's to catch: the
+                // CLR wraps it in a TypeInitializationException and POISONS THE TYPE —
+                // every later touch of ANY member of the generated table class rethrows
+                // the same wrapped exception for the life of the process, including the
+                // refusal paths, including Select, including a load of a file whose
+                // layout is the reader's own. One bad entry in a lock would take the
+                // whole table down, and it would take it down with a name no operator
+                // can act on.
+                //
+                // So EVERY ENTRY IS A LANE WITH ITS OWN REFUSAL and there is no throw on
+                // this walk to reach. A lane is constructed and stored BEFORE anything
+                // can fail on it; a layout that does not parse sets Why to
+                // layout_malformed and the loop continues; a plan that outgrows the cap
+                // sets plan_too_large and the loop continues; no array is indexed out of
+                // its own length and no input is trusted for a size. The refusal a bad
+                // entry earns is read at LOAD time, by the one peer that selects it
+                // (§5.9 #8) — which is also why a lock bug here costs exactly the
+                // version it broke rather than the type.
                 public static TableFixedLineagePlan[] LineagePlans(
                     TableFixedKnownLayout[] known,
                     byte[] my_layout,
@@ -5989,13 +6011,23 @@ namespace Benchtable
                     }
                 }
 
+                // THE WIDEN SCRATCH IS THE CALLER'S, AND IT IS HOISTED OUT OF THE RECORD
+                // LOOP. Run is called ONCE PER RECORD, so a new byte[runs * dw] taken
+                // inside the FlatWiden case allocated once per widened run per record —
+                // a batch of ten thousand records paid ten thousand arrays for the same
+                // run. The buffer is handed in ref and grown only when a run needs
+                // more than it holds, so a whole batch pays one allocation per run
+                // width. It is written in full before it is read: every byte of
+                // runs * dw is stored by this case, so nothing from the previous
+                // record survives into this one.
                 public static void Run<T>(
                     ReadOnlySpan<TableFixedEntry> plan,
                     ReadOnlySpan<TableFixedSlot<T>> slots,
                     ReadOnlySpan<byte> src,
                     T dst,
                     TableReport report,
-                    ReadOnlySpan<byte> planBytes)
+                    ReadOnlySpan<byte> planBytes,
+                    ref byte[] widenScratch)
                 {
                     for (int i = 0; i < plan.Length; ++i)
                     {
@@ -6061,14 +6093,19 @@ namespace Benchtable
                                 int sw = p.Meta == 0 ? 1 : p.Meta;
                                 int dw = p.DstSize == 0 ? 1 : p.DstSize;
                                 int runs = (int)p.Size / sw;
-                                byte[] wide = new byte[runs * dw];
+                                int need = runs * dw;
+                                if (widenScratch == null || widenScratch.Length < need)
+                                {
+                                    widenScratch = new byte[need];
+                                }
+                                System.Span<byte> wide = widenScratch.AsSpan(0, need);
                                 for (int e = 0; e < runs; ++e)
                                 {
                                     int at = (int)p.Src + e * sw;
                                     if (p.Sign == 2)
                                     {
                                         double d2 = (double)BinaryPrimitives.ReadSingleLittleEndian(src.Slice(at));
-                                        BinaryPrimitives.WriteDoubleLittleEndian(wide.AsSpan(e * dw), d2);
+                                        BinaryPrimitives.WriteDoubleLittleEndian(wide.Slice(e * dw), d2);
                                         continue;
                                     }
                                     ulong raw = 0;
@@ -6082,17 +6119,24 @@ namespace Benchtable
                                         ulong top = 1UL << (bits - 1);
                                         if ((raw & top) != 0) { raw |= ~((top << 1) - 1UL); }
                                     }
-                                    System.Span<byte> cell = wide.AsSpan(e * dw, dw);
+                                    System.Span<byte> cell = wide.Slice(e * dw, dw);
                                     if (dw == 1) cell[0] = (byte)raw;
                                     else if (dw == 2) BinaryPrimitives.WriteUInt16LittleEndian(cell, (ushort)raw);
                                     else if (dw == 4) BinaryPrimitives.WriteUInt32LittleEndian(cell, (uint)raw);
                                     else if (dw == 8) BinaryPrimitives.WriteUInt64LittleEndian(cell, raw);
                                 }
-                                slots[(int)p.Dst].SetBytes?.Invoke(dst, wide, wide.Length);
-                                // ONCE PER ENTRY PER RECORD (§5.4), and a folded run is one
-                                // entry: a leg that does not fold counts once per element, and
-                                // the two numbers differ by the fold. Named in the PR.
-                                if (report != null) { report.Widened++; }
+                                slots[(int)p.Dst].SetBytes?.Invoke(dst, wide, need);
+                                // WIDENED COUNTS ONE PER ELEMENT WIDENED, NOT ONE PER ENTRY.
+                                // The C++ reference's EMIT has NO FOLD ACROSS A WIDEN: it
+                                // emits one entry per element of a widened array, so its
+                                // widened for array_elem_widen is n — 4 on that row's
+                                // corpus. §5.4's "once per entry" is therefore once per
+                                // ELEMENT there, and the ruling is that a fold across a
+                                // widen is not allowed to change the number. This leg DOES
+                                // fold the run into one entry, for the one copy loop, so it
+                                // adds the run's element count and reports the reference's
+                                // figure. A scalar widen is runs == 1 and still counts one.
+                                if (report != null) { report.Widened += runs; }
                                 break;
                             }
                             case Count:
@@ -7893,6 +7937,15 @@ namespace Benchtable
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] TableEntityFixedLineagePlans =
             TableFixedWire.LineagePlans(TableEntityFixedKnown, TableEntityFixedLayout, TableEntityFixedDst, TableEntityFixedHash);
 
@@ -8031,6 +8084,7 @@ namespace Benchtable
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -8042,7 +8096,7 @@ namespace Benchtable
                 }
                 if (values[k] == null) { values[k] = new TableEntity(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableEntityFixedSlots, values[k]);
-                TableFixedWire.Run(entries, TableEntityFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, TableEntityFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -8072,7 +8126,8 @@ namespace Benchtable
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, TableEntityFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, TableEntityFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
         // ---- TableStat, the fixed form ----
@@ -8130,6 +8185,15 @@ namespace Benchtable
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] TableStatFixedLineagePlans =
             TableFixedWire.LineagePlans(TableStatFixedKnown, TableStatFixedLayout, TableStatFixedDst, TableStatFixedHash);
 
@@ -8268,6 +8332,7 @@ namespace Benchtable
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -8279,7 +8344,7 @@ namespace Benchtable
                 }
                 if (values[k] == null) { values[k] = new TableStat(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableStatFixedSlots, values[k]);
-                TableFixedWire.Run(entries, TableStatFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, TableStatFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -8309,7 +8374,8 @@ namespace Benchtable
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, TableStatFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, TableStatFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
         // ---- TableMixed, the fixed form ----
@@ -9194,7 +9260,7 @@ namespace Benchtable
             0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         };
         public static readonly TableFixedKnownLayout[] TableMixedFixedKnown = new TableFixedKnownLayout[] {
-            new TableFixedKnownLayout(0xf973c48271efa906ul, TableMixedFixedLayout0, 1232),
+            new TableFixedKnownLayout(0x66b51fa9ec65d701ul, TableMixedFixedLayout0, 1232),
         };
 
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
@@ -9205,6 +9271,15 @@ namespace Benchtable
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] TableMixedFixedLineagePlans =
             TableFixedWire.LineagePlans(TableMixedFixedKnown, TableMixedFixedLayout, TableMixedFixedDst, TableMixedFixedHash);
 
@@ -9343,6 +9418,7 @@ namespace Benchtable
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -9354,7 +9430,7 @@ namespace Benchtable
                 }
                 if (values[k] == null) { values[k] = new TableMixed(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableMixedFixedSlots, values[k]);
-                TableFixedWire.Run(entries, TableMixedFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, TableMixedFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -9384,7 +9460,8 @@ namespace Benchtable
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, TableMixedFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, TableMixedFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
     }
 

@@ -973,6 +973,15 @@ namespace Tabledemo
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] GunnerSettingsFixedLineagePlans =
             TableFixedWire.LineagePlans(GunnerSettingsFixedKnown, GunnerSettingsFixedLayout, GunnerSettingsFixedDst, GunnerSettingsFixedHash);
 
@@ -1111,6 +1120,7 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -1122,7 +1132,7 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new GunnerSettings(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GunnerSettingsFixedSlots, values[k]);
-                TableFixedWire.Run(entries, GunnerSettingsFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, GunnerSettingsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1152,7 +1162,8 @@ namespace Tabledemo
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, GunnerSettingsFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, GunnerSettingsFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
         // ---- ShipEntry, the fixed form ----
@@ -1250,6 +1261,15 @@ namespace Tabledemo
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] ShipEntryFixedLineagePlans =
             TableFixedWire.LineagePlans(ShipEntryFixedKnown, ShipEntryFixedLayout, ShipEntryFixedDst, ShipEntryFixedHash);
 
@@ -1388,6 +1408,7 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -1399,7 +1420,7 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new ShipEntry(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ShipEntryFixedSlots, values[k]);
-                TableFixedWire.Run(entries, ShipEntryFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, ShipEntryFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1429,7 +1450,8 @@ namespace Tabledemo
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, ShipEntryFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, ShipEntryFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
         // ---- GlobalSettings, the fixed form ----
@@ -1510,6 +1532,15 @@ namespace Tabledemo
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] GlobalSettingsFixedLineagePlans =
             TableFixedWire.LineagePlans(GlobalSettingsFixedKnown, GlobalSettingsFixedLayout, GlobalSettingsFixedDst, GlobalSettingsFixedHash);
 
@@ -1648,6 +1679,7 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -1659,7 +1691,7 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new GlobalSettings(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GlobalSettingsFixedSlots, values[k]);
-                TableFixedWire.Run(entries, GlobalSettingsFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, GlobalSettingsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1689,7 +1721,8 @@ namespace Tabledemo
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, GlobalSettingsFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, GlobalSettingsFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
         // ---- PackConfig, the fixed form ----
@@ -2014,6 +2047,15 @@ namespace Tabledemo
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
         // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        //
+        // A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the
+        // static constructor, and an exception out of a static constructor is
+        // wrapped in a TypeInitializationException that every later touch of ANY
+        // member of this class rethrows for the life of the process — the refusal
+        // paths included, and a read of a file carrying this build's own layout
+        // included. TableFixedWire.LineagePlans therefore does not throw: EVERY
+        // ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on
+        // it, and a lock bug costs the one version it broke rather than the table.
         public static readonly TableFixedLineagePlan[] PackConfigFixedLineagePlans =
             TableFixedWire.LineagePlans(PackConfigFixedKnown, PackConfigFixedLayout, PackConfigFixedDst, PackConfigFixedHash);
 
@@ -2152,6 +2194,7 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            byte[] widenScratch = Array.Empty<byte>();
             // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
@@ -2163,7 +2206,7 @@ namespace Tabledemo
                 }
                 if (values[k] == null) { values[k] = new PackConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PackConfigFixedSlots, values[k]);
-                TableFixedWire.Run(entries, PackConfigFixedSlots, at.Slice(8), values[k], report, planBytes);
+                TableFixedWire.Run(entries, PackConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2193,7 +2236,8 @@ namespace Tabledemo
             TableReport report = null,
             ReadOnlySpan<byte> planBytes = default)
         {
-            TableFixedWire.Run(plan, PackConfigFixedSlots, src, dst, report, planBytes);
+            byte[] widenScratch = Array.Empty<byte>();
+            TableFixedWire.Run(plan, PackConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
     }
 

@@ -1632,7 +1632,9 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// build's data and never the wire's: a file is matched on its hash against
 	// these entries, and the layout it carries is COMPARED with the bytes the
 	// lock recorded, never walked. The floor is 1 + the highest retired index.
-	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: block, Record: 8 + body})
+	entries, floor := g.fixedLineage(st, FixedLineageEntry{
+		Wire: hash, Layout: block, Digest: ir.TableFixedDefinitionsDigest(st), Record: 8 + body,
+	})
 	for i, e := range entries {
 		if e.Retired {
 			g.pf("// RETIRED: %s\n", e.Reason)
@@ -1653,6 +1655,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("// ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this\n")
 	g.pf("// type's static initializer: nothing compiles on the load path, and there\n")
 	g.pf("// is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).\n")
+	g.pf("//\n")
+	g.pf("// A THROW HERE WOULD POISON THIS TYPE. This field initializer runs in the\n")
+	g.pf("// static constructor, and an exception out of a static constructor is\n")
+	g.pf("// wrapped in a TypeInitializationException that every later touch of ANY\n")
+	g.pf("// member of this class rethrows for the life of the process — the refusal\n")
+	g.pf("// paths included, and a read of a file carrying this build's own layout\n")
+	g.pf("// included. TableFixedWire.LineagePlans therefore does not throw: EVERY\n")
+	g.pf("// ENTRY IS A LANE WITH ITS OWN REFUSAL, stored before anything can fail on\n")
+	g.pf("// it, and a lock bug costs the one version it broke rather than the table.\n")
 	g.pf("public static readonly TableFixedLineagePlan[] %sFixedLineagePlans =\n", name)
 	g.pf("    TableFixedWire.LineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash);\n\n",
 		name, name, name, name)
@@ -1770,6 +1781,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if (n > values.Length)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
+	// THE WIDEN SCRATCH IS HOISTED OUT OF THE RECORD LOOP. A widened run needs
+	// a buffer wider than the bytes it reads, and taking that buffer inside the
+	// loop charged one allocation per widened run PER RECORD. One buffer serves
+	// the whole batch: TableFixedWire.Run grows it only when a run needs more
+	// than it holds, and writes every byte it hands on.
+	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
 	g.pf("    // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the\n")
 	g.pf("    // skip: identity's fill is empty, so this read writes no slot twice.\n")
 	g.pf("    for (int k = 0; k < n; ++k)\n    {\n")
@@ -1780,7 +1797,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            return -1;\n        }\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
-	g.pf("        TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes);\n", name)
+	g.pf("        TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);\n", name)
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
 	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
 	// returns n (§5.9 #6). Not inside the loop — §5.4 says once per peer — and
@@ -1804,7 +1821,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    %s dst,\n", name)
 	g.pf("    TableReport report = null,\n")
 	g.pf("    ReadOnlySpan<byte> planBytes = default)\n{\n")
-	g.pf("    TableFixedWire.Run(plan, %sFixedSlots, src, dst, report, planBytes);\n}\n\n", name)
+	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
+	g.pf("    TableFixedWire.Run(plan, %sFixedSlots, src, dst, report, planBytes, ref widenScratch);\n}\n\n", name)
 }
 
 func (g *tableGen) emitCsByteArray(b []byte) {
