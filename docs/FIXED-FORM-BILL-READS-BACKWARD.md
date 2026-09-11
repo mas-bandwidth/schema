@@ -50,6 +50,15 @@ incompatible and the baseline (§6) refuses it at commit.
 Widening an int or a float, or an enum's ordinal width, is a read: the reader lands it exactly. That is the
 one asymmetry the bill keeps, and it is Glenn's: "you can take an enum and widen it, but you cannot narrow."
 
+## 2a. The closure rule
+
+Glenn: "fixed tables must only allow other fixed tables to be included in them, and not recursively include
+themselves." A fixed table's closure is a TREE of fixed things: every table or type it reaches by value is
+itself declared `fixed` and carries its own locked layout under §6; a pointer, a map, or an unbounded array
+makes a table variable and is refused in a fixed closure, so a fixed table cannot reach itself by any path.
+The compiler holds both halves today (a plain nested table is a closure break; `check_fixed.go` refuses the
+variable kinds); the bill makes them the law and the lock records the closure.
+
 ## 3. What the reader does with an older file
 
 - a field the reader added since: the reader's declared default;
