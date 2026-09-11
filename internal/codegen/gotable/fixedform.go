@@ -734,7 +734,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// A LOAD'S REPORT IS ITS OWN (§5.3's joint table): a report a caller reuses
 	// must not carry a previous read's counters or a previous refusal's name.
 	g.pf("\t*report = TableReport{}\n")
-	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	// STEP 1: only whether there IS a first byte. THE FORM BYTE IS READ BEFORE
+	// THE FILE'S LENGTH — a committed form-1 file is TEN bytes and a form-2
+	// batch THREE, so a reader that measured first would answer `malformed` for
+	// every real file of the two forms it is supposed to name (§5.3).
+	g.pf("\tif len(data) < 1 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	// THE FORM REGISTRY IS THREE (docs/SPEC-TABLES.md §3, THE FIRST BYTE): 1
 	// the variable form, 2 the message form, 3 this one. Each assigned byte
 	// gets its OWN name, and `newer_form` — "a form byte this reader does not
@@ -749,6 +753,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tcase 2: // the MESSAGE form: a form this build carries, through another surface\n\t\t\treturn tableFixedRefuse(report, \"message_form_as_file\")\n")
 	g.pf("\t\t}\n")
 	g.pf("\t\treturn tableFixedRefuse(report, \"newer_form\")\n\t}\n")
+	// STEP 2: the twenty-byte minimum, and then the SEVEN RESERVED BYTES, which
+	// are REFUSED and not ignored so they stay spendable later (§3.4, §5.3).
+	g.pf("\tif len(data) < TableFixedHeaderBytes+4 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
+	g.pf("\tfor _, reserved := range data[1:TableFixedHashAt] {\n\t\tif reserved != 0 {\n\t\t\treport.Malformed = true\n\t\t\treturn -1\n\t\t}\n\t}\n")
 	// STEP 3: the layout's length, and the bytes behind it.
 	g.pf("\tlayoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])\n")
 	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
