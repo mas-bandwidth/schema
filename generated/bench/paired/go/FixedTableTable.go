@@ -1273,7 +1273,7 @@ var FixedTableFixedDst = []TableFixedDst{
 
 var FixedTableFixedPlan = tableFixedBuildPlan(FixedTableFixedLeaves, 310)
 
-var FixedTableFixedKnown = []TableFixedKnown{
+var FixedTableFixedKnown = []TableFixedKnownLayout{
 	{
 		Hash:   0x6237c1dc195f9ec9,
 		Record: 1244,
