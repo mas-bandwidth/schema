@@ -50,12 +50,14 @@ const (
 	TableFixedEntryBytes        = 17
 )
 
-// THE PINNED FILE HEADER, ONE RULE FOR ALL FIVE FORMS (docs/SPEC-TABLES.md §3,
-// "THE FIRST BYTE"): the FORM BYTE at offset 0, seven RESERVED ZERO bytes, the
-// form's own EIGHT-BYTE HASH at offset 8, and the body at 16 — the alignment a
-// memory-mapped body needs. The fixed form does not need that alignment today;
-// it pads anyway, so the bytes do not move again the day the cook and the block
-// form join the registry under the same header.
+// THE PINNED FILE HEADER (docs/SPEC-TABLES.md §3, "THE FIRST BYTE"): the FORM
+// BYTE at offset 0, seven RESERVED ZERO bytes, the form's own EIGHT-BYTE HASH at
+// offset 8, and the body at 16 — the alignment a memory-mapped body needs. The
+// fixed form does not need that alignment and pads anyway, and the padding is
+// kept for WIRE STABILITY and nothing else: the bytes are written and read by
+// shipped legs. It is NOT kept against the cook or the block form adopting this
+// header — neither ever will, each being an independent flattening with a magic
+// of its own at offset 0 (§3.4, THE THREE PROJECTIONS).
 //
 // The hash in the header is the LAYOUT's. Each record still carries its own
 // eight-byte hash, which §3.4 has always said and which the header does not

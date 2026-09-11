@@ -3600,18 +3600,22 @@ business.
   and **OVER THE BUILD** for the cook and the block form, both planned (§7,
   §19). Sixteen bytes is the alignment a MEMORY-MAPPED body needs, and the
   header pays it whether or not the form maps its body today: **the fixed form
-  does not need the alignment and pads anyway**, so that the bytes do not move a
-  second time the day the cook and the block form join the registry under this
-  same header. **THE SEVEN RESERVED BYTES ARE WRITTEN ZERO AND READ BY NOBODY.**
+  does not need the alignment and pads anyway, and the padding is kept for WIRE
+  STABILITY and for nothing else** — the bytes are written and read by shipped
+  legs, so moving them would move every form-3 file on every disk. **It is NOT
+  kept against the cook or the block form joining this header: neither ever
+  will** (§3.4, THE THREE PROJECTIONS). **THE SEVEN RESERVED BYTES ARE WRITTEN ZERO AND READ BY NOBODY.**
   They exist to put the hash at `8` and the body at `16`; a later form that
   wants to say more takes a NEW FORM BYTE and never one of these, which is the
   same rule that keeps a version byte out of the layout (§3.4).
 
   **TODAY THE FIXED FORM IS THE ONE ARM THAT WRITES THIS HEADER.** The message
   form's framing is still its own two parts, the form byte and a body count
-  (§3.3), and it takes this header when it is rebuilt on form `3`; the cook and
-  the block form each carry a header of their own (§7.1, §19.2) and take this
-  one the day they carry a form byte. The header is written down here in full
+  (§3.3), and it takes this header when it is rebuilt on form `3`; **the cook
+  and the block form carry a header of their own and KEEP IT** (§7.1, §19.1) —
+  each is an independent flattening and neither adopts these sixteen bytes
+  (§3.4, THE THREE PROJECTIONS); what the registry reserves for them is a
+  NUMBER and nothing else. The header is written down here in full
   anyway, because a rule three forms will adopt one at a time is a rule that has
   to be decided once.
 - **THE VARIABLE FORM IS THE ONE ARM WHOSE HEADER IS THE FORM BYTE ALONE.** It
@@ -3623,12 +3627,21 @@ business.
   A packet's fields are named by the declaration, so a field declared a FIXED
   TABLE needs nothing on the wire to say what it is: *"if we KNOW they're all
   in message form, we can just drop the byte for type when we put them in
-  packets"* — the project owner. **A FIXED TABLE IN A PACKET IS THE MESSAGE
-  FORM BY RULE**, framed by the packet around it, with no form byte, no header
-  and no layout of its own. This is a standing rule and not a shipped byte: a
-  `table` has no packet wire today (SPEC.md, "A union with a `table` arm is
-  excluded WHOLE"), so nothing writes such bytes yet, and when it does this is
-  what it writes.
+  packets"* — the project owner. **A FIXED RECORD IN A PACKET IS THE RECORD
+  EXACTLY AS IT SITS IN A FILE, hash + body**, framed by the packet around it:
+  **NO FORM BYTE, NO FILE HEADER, AND NO LAYOUT BYTES** — the eight-byte layout
+  hash rides, as it does in every carrier, because a record is never
+  self-describing and never carries less than its hash either. The layout comes
+  from the reader's own lineage and not from the packet, and **the packet's
+  reader VALIDATES the record exactly as §5.3 validates a file's** — select by
+  hash, the floor, the byte comparison, the pre-pass over the one record, and
+  the landing through the identity lane or the plan — refusing by the same
+  names. §3.4's framing table carries this as its fourth carrier row. This is a
+  standing rule and not a shipped byte: a `table` has no packet wire today
+  (SPEC.md, "A union with a `table` arm is excluded WHOLE"), no packet emitter
+  has a fixed-record field kind to emit and `internal/check` refuses such a
+  field one rule earlier ("is a table, not a wire type"), so nothing writes
+  these bytes yet, and when something does this is what it writes.
 
 ---
 
@@ -6943,18 +6956,20 @@ no second walk.
 
 ---
 
-#### THE FRAMING: WHERE THE FORM BYTE AND THE LAYOUT GO, IN ALL THREE CARRIERS
+#### THE FRAMING: WHERE THE FORM BYTE AND THE LAYOUT GO, IN EVERY CARRIER
 
 **THE RULE IN ONE LINE: THE FORM BYTE AND THE LAYOUT EACH APPEAR ONCE PER
 CARRIER, AND A RECORD CARRIES ONLY THE HASH.** A record is never self-describing
-and never was; what changes between the three carriers is only where the
-once-per-carrier part rides.
+and never was; what changes between the carriers is only where the
+once-per-carrier part rides — and the fourth row is the carrier where NEITHER
+rides.
 
   | carrier | the form byte | the layout | a record |
   |---|---|---|---|
   | **a FILE** | ONCE, in the HEADER (§3, THE FIRST BYTE) | ONCE, at the head of the body, behind a `u32 LE` length | hash + body, back to back to the end of the file |
   | **a STREAM** (§3.3) | not in the record — **the stream framed it** | ON THE ANNOUNCEMENT, once per hash, before the first record carrying that hash | hash + body |
   | **the MESSAGE form** (§3.3) | ONCE PER BATCH, in front of the batch | on the batch's announcement, once | hash + body, one per body of the batch |
+  | **INSIDE A PACKET** (§3, THE FIRST BYTE) | NOT WRITTEN AT ALL — the packet's field names the record | NOT ON THE WIRE — the reader's own lineage holds it, named by the record's hash | hash + body, the record exactly as it sits in a file |
 
 **A FILE ALWAYS CARRIES THE LAYOUT.** A file is read by somebody who was not
 there when it was written, so the alternative is a file that cannot be read.
@@ -6979,9 +6994,9 @@ offset  16       layout length (u32 LE), then the layout
   `layout_malformed`, and it is checked LAST of the three so that a broken
   layout is never reported as a lying header.
 - **THE FIXED FORM DOES NOT NEED THE PADDING AND PAYS IT ANYWAY** (§3). Nothing
-  in this form memory-maps a body today; the sixteen bytes are paid so that the
-  bytes do not move again when the cook and the block form join the registry
-  under the same header. **The padding aligns the BODY and not the RECORDS**:
+  in this form memory-maps a body today, and nothing else is coming that would:
+  the sixteen bytes stay for WIRE STABILITY and for nothing else, the bytes
+  being written and read by shipped legs. **The padding aligns the BODY and not the RECORDS**:
   the layout is variable-length, so where the records begin is the layout's
   length and not a constant, and a form that wants MAPPED RECORDS will pad the
   layout too — which is a byte this form does not spend until something reads it.
@@ -7015,6 +7030,40 @@ is a hash and a record body, exactly as everywhere else, and the layout rode the
 batch's announcement. **A record never carries a form byte of its own in any
 carrier** — that byte belongs to the thing that framed the record, and there is
 exactly one framing per carrier.
+
+---
+
+#### THE THREE PROJECTIONS ARE INDEPENDENT FLATTENINGS
+
+**THE WIRE FORM, THE COOK AND THE BLOCK FORM ARE THREE PROJECTIONS OF ONE TABLE
+CLOSURE, AND THEY SHARE NO HEADER.** Each flattens the same declared types, each
+is reached from the same records, and each is *complete on its own terms* — which
+is the whole of what they have in common.
+
+| projection | its first bytes | what the header names | where |
+|---|---|---|---|
+| **the WIRE, form `3`** | the FORM BYTE at `0`, seven reserved, the LAYOUT HASH at `8`, the layout's length at `16` | the LAYOUT — evolution is a layout question, and the lineage answers it (§5.3 of docs/FIXED-FORM-ALGORITHM.md) | this section |
+| **the COOK** | `magic` at `0` (`SCHMCOOK`, read BYTEWISE before anything else), `build_version` at `8`, `byte_order` at `16` — 64 bytes | the BUILD, and the region's own geometry: lengths, alignment, the attribution part | §7.1 |
+| **the BLOCK form** | `magic` at `0` (`SCHMABLK`), `build_version` at `8`, `byte_order` at `16` — a generated PROLOGUE at the projection's own offset `0`, 64-byte aligned | the BUILD, in the projection itself; there is no file around it to hold a header | §19.1 |
+
+- **A FIXED COOK IS NOT A FORM-3 RECORD, and a form-3 record is not a cook.**
+  They answer different questions: the wire form's hash selects a LAYOUT out of
+  a lineage and reads a stranger's bytes backward (§5); the cook's and the
+  block's magic refuse a FOREIGN BYTE ORDER and their build version refuses a
+  foreign BUILD outright, there being no evolution to perform on an accelerator
+  that is only ever opened by the build that wrote it. A header serving both
+  would have to carry both, and neither wants the other's field.
+- **NEITHER ACCELERATOR WILL EVER ADOPT THE SIXTEEN-BYTE HEADER** (§3, THE FIRST
+  BYTE). The cook's magic must be readable BYTEWISE at offset `0` — that is how
+  it refuses the other byte order — and a form byte at `0` would take the byte
+  the magic needs. What the registry reserves `4` and `5` for is a NUMBER, held
+  against the day an accelerator rides in something that frames forms, and the
+  reservation was never a promise about either one's bytes.
+- **SO THE SIXTEEN PAD BYTES HAVE NO SECOND REASON, and they stay anyway**
+  (above): they are written and read by nine shipped legs, and wire stability is
+  reason enough on its own. The records do not begin at a multiple of sixteen in
+  any case — the layout between them and the header is variable-length — so
+  there is no alignment the padding buys today.
 
 ---
 
