@@ -30,12 +30,12 @@ import (
 )
 
 // fixedLineageShipTargets are the targets whose table backend takes the
-// lineage as data today: `go` and `rust` through `GenerateLineage`, and `cpp`
+// lineage as data today: `c`, `go` and `rust` through `GenerateLineage`, and `cpp`
 // through the lock the driver now opens for it. Every other built-in target's
-// table backend has no second entry point yet (c, cs, dart, elixir, java, js);
+// table backend has no second entry point yet (cs, dart, elixir, java, js);
 // their `GenerateLineage` lives on the open port branches, and the day one
 // lands its target joins this list and nothing else changes.
-var fixedLineageShipTargets = []string{"cpp", "go", "rust"}
+var fixedLineageShipTargets = []string{"c", "cpp", "go", "rust"}
 
 // TestFixedLineageEntryPointIsReachedFromTheDriver: the driver must HAVE the
 // second entry point for those targets. Before #921 no caller in the tree did —
