@@ -175,7 +175,7 @@ func TestLockV6SalvagesIntoV7WithOneEntry(t *testing.T) {
 	// the v6 file this lock would have been one rendering version ago: the
 	// same lines, without the lineage the version added
 	var v6 []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
 			continue
 		}
@@ -288,7 +288,7 @@ func TestLockLineageWarnsPastTheAdvisoryBound(t *testing.T) {
 // lineage entry retired (a permitted non-append edit, recorded with a reason);
 // COMPILE emits the retired hashes beside the supported ones so LOAD can say
 // `layout_unsupported` rather than `layout_newer`; a retired entry stays in the
-// lineage forever."
+// lineage forever".
 func TestLockRetireEntry(t *testing.T) {
 	dir, paths := fixture(t, rowTable("    a int32"))
 	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
@@ -343,7 +343,7 @@ func TestLockRetireEntry(t *testing.T) {
 // never removed, until nothing live speaks it. `schema lock --retire Table`
 // marks the whole table retired; its lineage stays; the schema may then drop
 // the declaration, and §5.1's 'fixed removed' refusal applies only to an
-// UNRETIRED table."
+// UNRETIRED table".
 func TestLockRetireTableThenRemoveTheDeclaration(t *testing.T) {
 	const two = "package lockrows\n\nfixed table Row\n{\n    a int32\n}\n\nfixed table Keep\n{\n    k int32\n}\n"
 	dir, paths := fixture(t, two)
@@ -421,7 +421,7 @@ func TestLineageAccessorIsWhatCompileReads(t *testing.T) {
 	dir, paths := fixture(t, rowTable("    a int32"))
 	var hashes []uint64
 	fields := "    a int32"
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
 			t.Fatal(err)
 		}
@@ -518,7 +518,7 @@ func TestLineageSetIsBoundByTheRollup(t *testing.T) {
 	}
 	var kept []string
 	dropped := false
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if !dropped && strings.HasPrefix(strings.TrimSpace(line), "lineage ") {
 			dropped = true
 			continue

@@ -35,6 +35,7 @@ package lockfile
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -380,7 +381,8 @@ func mergeLineage(locked, live *Unit) {
 			lv.Lineage = history
 			continue
 		}
-		lv.Lineage = append(history, cur)
+		history = append(history, cur)
+		lv.Lineage = history
 	}
 }
 
@@ -458,8 +460,8 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 type lineageDrift struct{ error }
 
 func isLineageDrift(err error) bool {
-	_, ok := err.(lineageDrift)
-	return ok
+	var drift lineageDrift
+	return errors.As(err, &drift)
 }
 
 // retiredText is the tail a retired lineage entry or a retired table carries:
