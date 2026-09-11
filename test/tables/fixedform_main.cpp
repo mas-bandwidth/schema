@@ -1550,10 +1550,12 @@ static void cache_case()
 // cannot see: whether THE FILE every leg diffs against says what this test
 // claims. `make tables-fixedform-corpus` writes build/fixedform-corpus/fu1.bin
 // and fu2.bin from the reference's writer; this case reads those files, on the
-// IDENTITY path and through FU2's COMPILED plan, and states the values beside
-// the bytes. A leg now has bytes to match AND a list of values to match them
-// against; before this, a leg-vs-reference divergence on the nested-union shape
-// was invisible on every leg at once.
+// IDENTITY path and through FU2's COMPILED plan (NEW-READS-OLD, the lineage
+// COMPILE laid down), and states the values beside the bytes. FU1 given fu2.bin
+// is OLD-REFUSES-NEW: a hash this reader has never locked is layout_newer
+// before any record (algorithm §5.3). A leg now has bytes to match AND a list
+// of values to match them against; before this, a leg-vs-reference divergence
+// on the nested-union shape was invisible on every leg at once.
 //
 // AND IT IS WHERE THE TWO WIDENING RUNGS ARE ASSERTED AFTER THE COMPILED READ:
 //
@@ -1731,32 +1733,27 @@ static void fu_oracle_case( const char * dir )
         check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "oracle fu2: identity, a clean read moves no counter" );
 
-        // 4. THE OTHER DIRECTION — FU1 reads FU2's file. `extra` is a field this
-        // reader cannot name, and the two rungs run BACKWARDS, which §4 does not
-        // call a rung at all: a KIND THAT MOVED is not decoded, the declared
-        // default stands, and `kind_mismatch` says so.
+        // 4. THE OTHER DIRECTION — FU1 given FU2's file. COMPILE from the lock
+        // (algorithm §5.3): hash selects, a stranger's layout is never parsed.
+        // FU1's lineage is itself alone, so FU2's hash is layout_newer BEFORE
+        // ANY RECORD — not a compiled backwards read, not kind_mismatch on the
+        // two rungs. The rungs run FORWARD only (fu1 into FU2, above).
         tblfu1::FuRoot narrow[2];
+        tblfu1::FuRootReset( narrow[0] );
+        tblfu1::FuRootReset( narrow[1] );
         tblfu1::TableReport r1;
         std::vector<tblfu1::TableFixedEntry> plan1( 1024 );
-        check( tblfu1::FuRootFixedLoad( narrow, 2, fu2.data(), (int64_t) fu2.size(), plan1.data(), 1024, NULL, &r1 ) == 2,
-               "oracle fu2: the NEWER writer's file reads under FU1" );
-        check( narrow[0].pick.type == tblfu1::PickType::Labelled &&
-               narrow[0].pick.labelled.label_length == 4 && std::strcmp( narrow[0].pick.labelled.label, "wide" ) == 0 &&
-               narrow[0].pick.labelled.lead == 111 && narrow[0].pick.labelled.trail == 222 && narrow[0].tail == 21,
-               "oracle fu2: the older reader still lands the arm's text" );
-        check( narrow[0].mark == -1 && narrow[1].mark == -1,
-               "BACKWARDS IS NOT A RUNG: int32 into int16 is not decoded and `mark` holds its declared -1" );
-        check( narrow[0].heat == 0.0f && narrow[1].heat == 0.0f,
-               "BACKWARDS IS NOT A RUNG: f64 into f32 is not decoded and `heat` holds its declared 0" );
-        // THE COUNTERS ARE NOT ALL ON THE SAME FOOTING, and the oracle is where
-        // that is written down: `unknown` and `kind_mismatch` are the PLAN's —
-        // counted once when the writer's layout is compiled against this
-        // reader's, whatever the record count — while `widened` above is the
-        // RECORD's, two fields times three records, counted six. A port that
-        // counts either one the other way reads this file and says so.
-        check( r1.unknown == 1, "oracle fu2: `extra` is the one field FU1 cannot name, counted once for the PLAN" );
-        check( r1.kind_mismatch == 2, "oracle fu2: two moved kinds, counted once each for the PLAN" );
-        check( r1.widened == 0 && !r1.malformed && !r1.refused, "oracle fu2: nothing widened going backwards" );
+        const int64_t got = tblfu1::FuRootFixedLoad( narrow, 2, fu2.data(), (int64_t) fu2.size(), plan1.data(), 1024, NULL, &r1 );
+        check( got < 0 && r1.refused && r1.reason == tblfu1::layout_newer,
+               "OLD-REFUSES-NEW: FU1 reading fu2.bin is layout_newer, nothing parsed" );
+        check( r1.layout_hash == tblfu2::FuRootFixedHash,
+               "OLD-REFUSES-NEW: the refusal carries the file's hash and nothing else (bill §12.4)" );
+        check( r1.unknown == 0 && r1.kind_mismatch == 0 && r1.widened == 0 && r1.clamped == 0 && !r1.malformed,
+               "OLD-REFUSES-NEW: REFUSE is total — no counter moved" );
+        check( narrow[0].tail == 3 && narrow[1].tail == 3 &&
+               narrow[0].mark == -1 && narrow[1].mark == -1 &&
+               narrow[0].heat == 0.0f && narrow[1].heat == 0.0f,
+               "OLD-REFUSES-NEW: nothing decoded — every field is still its declared default" );
     }
 }
 

@@ -415,10 +415,11 @@ static bool fu1_file( const char * dir )
     return emit( dir, "fu1.bin", v, tblfu1::FuRootFixedMeasure, tblfu1::FuRootFixedSave );
 }
 
-// FU2's own bytes, for the OTHER direction: read under FU1's declaration
-// `extra` is a field that reader cannot name and the two rungs run BACKWARDS,
-// which is a KIND THAT MOVED and not a rung at all (§4: not decoded, the
-// declared default stands, `kind_mismatch`).
+// FU2's own bytes, for the OTHER direction: identity under FU2, and
+// OLD-REFUSES-NEW under FU1. COMPILE from the lock (algorithm §5.3): FU1's
+// lineage is itself alone, so fu2.bin is layout_newer before any record.
+// The two rungs run FORWARD only — fu1.bin into FU2, asserted after the
+// compiled read. `extra` is a field the older reader never locked.
 static bool fu2_file( const char * dir )
 {
     std::vector<tblfu2::FuRoot> v( 2 );
