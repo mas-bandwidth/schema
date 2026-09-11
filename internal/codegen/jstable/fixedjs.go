@@ -23,6 +23,7 @@ package jstable
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -369,25 +370,48 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 
-// storeTag stores an ordinal at a width the block fixed, which is always one,
-// two or four bytes and always unsigned.
+// storeTag stores an ordinal at a width the block fixed: one, two, four — or
+// EIGHT, which this language carries as TWO u32 LANES and says so (§5.9 #34).
+// A single `setUint32` above width 2 wrote four bytes where the layout declares
+// eight and left the high four holding whatever the template put there; a
+// `<< (8*k)` loop would have been worse, because JavaScript shifts MOD 32 and
+// byte 4 would land back on byte 0.
 func (g *fixedGen) storeTag(ind, at string, width int64, expr string) {
 	switch width {
 	case 1:
 		g.pf("%sview.setUint8(%s, %s);\n", ind, at, expr)
 	case 2:
 		g.pf("%sview.setUint16(%s, %s, true);\n", ind, at, expr)
+	case 8:
+		g.pf("%s{\n", ind)
+		g.pf("%s  const t = Number(%s);\n", ind, expr)
+		g.pf("%s  view.setUint32(%s, t >>> 0, true);\n", ind, at)
+		g.pf("%s  view.setUint32((%s) + 4, Math.floor(t / 4294967296) >>> 0, true);\n", ind, at)
+		g.pf("%s}\n", ind)
 	default:
 		g.pf("%sview.setUint32(%s, %s, true);\n", ind, at, expr)
 	}
 }
 
+// loadTag reads an ordinal back out of the image. AT WIDTH 8 IT IS TWO LANES:
+// a remap table is never longer than 65535 entries and an enum's or a union's
+// declared extent never reaches 2^32, so a NONZERO HIGH LANE is an ordinal no
+// declaration can hold. It lands as 2^32 — above every extent the clamps below
+// compare against — so the ordinal is forced through §4.6's clamp, comes back
+// None and counts one `clamped`, which is the one answer a forged eight-byte
+// tag is owed (§5.4).
 func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
 	switch width {
 	case 1:
 		g.pf("%s%s = view.getUint8(%s);\n", ind, lhs, at)
 	case 2:
 		g.pf("%s%s = view.getUint16(%s, true);\n", ind, lhs, at)
+	case 8:
+		g.pf("%s{\n", ind)
+		g.pf("%s  const lo = view.getUint32(%s, true);\n", ind, at)
+		g.pf("%s  const hi = view.getUint32((%s) + 4, true);\n", ind, at)
+		g.pf("%s  %s = hi !== 0 ? 4294967296 : lo;\n", ind, lhs)
+		g.pf("%s}\n", ind)
 	default:
 		g.pf("%s%s = view.getUint32(%s, true);\n", ind, lhs, at)
 	}
@@ -515,14 +539,25 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			g.loadTag(ind, expr+".Type", off(base, at), tag)
 			// A TAG BEYOND THE ARM COUNT LANDS AS None (0) AND COUNTS ONE
 			// clamped. It is the twin of the count and length clamps two
-			// functions down and it is here for the same reason: on the
-			// IDENTITY path the whole body is ONE OP_COPY, so no per-field op
-			// runs and a forged tag would reach the consumer as a number
-			// naming an arm that does not exist. On the COMPILED path the
-			// image already reads None — an arm entry runs only under its own
-			// tag's guard, and a tag matching no guard leaves the prefill's
-			// zero standing — so this fires on the identity path alone, which
-			// is exactly the path that had no check.
+			// functions down: on the IDENTITY path the whole body is ONE
+			// OP_COPY, so no per-field op runs and a forged tag would reach the
+			// consumer as a number naming an arm that does not exist.
+			//
+			// §5.4 OWES THIS COUNT ON BOTH PLANS, and the two ordinals reach it
+			// differently. AN ENUM ORDINAL does: the compiled plan's OP_ORDINAL
+			// remaps it and counts the forgery itself (fixedruntime.go's ordinal
+			// op), so `clamped` is 1 on the compiled plan and 1 on the identity
+			// plan, never 2 — the op counts where this projection cannot see,
+			// and this projection counts where no op ran.
+			//
+			// A UNION TAG ON THE COMPILED PLAN IS THIS LEG'S ONE OWED COUNT. The
+			// arms are const entries under their own tag's guard, so a forged tag
+			// matches no guard, leaves the prefill's None standing, and arrives
+			// here already 0 with nothing to compare — the VALUE is right and the
+			// counter is short. Paying it means emitting the tag as an OP_ORDINAL
+			// over the writer's arm ordinals beside the guarded consts, which is
+			// a plan-shape change and not a projection one; it is named here
+			// rather than left silent (§5.8's habit, §5.4's rule).
 			g.pf("%sif (%s.Type > %d) { %s.Type = 0; report.clamped++; }\n",
 				ind, expr, len(r.Variants), expr)
 			g.pf("%sswitch (%s.Type) {\n", ind, expr)
@@ -592,8 +627,13 @@ func fixedEnumClampMax(r *ir.Enum) (int64, bool) {
 		loaded = 255
 	case r.StorageBits <= 16:
 		loaded = 65535
-	default:
+	case r.StorageBits <= 32:
 		loaded = 4294967295
+	default:
+		// AN EIGHT-BYTE ORDINAL ARRIVES THROUGH TWO u32 LANES (loadTag): a set
+		// high lane lands as 2^32, which no declared Max reaches, so the clamp
+		// is never vacuous at this width and is never elided.
+		loaded = math.MaxInt64
 	}
 	if r.Max >= loaded {
 		return 0, false
