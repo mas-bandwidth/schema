@@ -1241,9 +1241,15 @@ func TestCheckRefusesAForeignBaseline(t *testing.T) {
 // them, so a case can move one range and leave the rest still. Every default
 // sits well inside its bounds, so an edit here moves the range and nothing
 // else.
+// It is a PLAIN `table`, the variable wire, on purpose: the warn class is the
+// variable wire's answer, where the reader still clamps a stored value to its
+// own bounds and counts it (§4). A FIXED table has no cross-version clamp left
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §5), so the same edit there is a
+// REFUSAL under the monotone law and is held by its own gate
+// (monotone_numbers_test.go).
 const rangeSrc = `package ranged
 
-fixed table Ship
+table Ship
 {
     hull  int32 = 50          | min = 0, max = 1000
     angle fixed(16, 16) = 0   | min = -180, max = 180
