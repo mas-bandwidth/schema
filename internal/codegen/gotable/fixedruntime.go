@@ -78,9 +78,24 @@ func tableFixedWidens(from, to uint8) bool {
 	if from >= 2 && from <= 5 && to >= 2 && to <= 5 {
 		return to > from
 	}
+	// THE FIXED-POINT RUNGS, signed 20..24 and unsigned 25..29: a fixed(I,F)
+	// into a wider I at equal F is a LADDER widen and not a kind that moved
+	// (docs/FIXED-FORM-ALGORITHM.md §1, §5.1).
+	if from >= 20 && from <= 24 && to >= 20 && to <= 24 {
+		return to > from
+	}
+	if from >= 25 && from <= 29 && to >= 25 && to <= 29 {
+		return to > from
+	}
 	return from == 10 && to == 11
 }
-func tableFixedSignedKind(kind uint8) bool { return kind >= 2 && kind <= 5 }
+
+// A WIDEN'S SIGN IS THE LADDER'S: the source sign-extends when the WRITER's
+// kind is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 — and zero-extends
+// otherwise (§5.2).
+func tableFixedSignedKind(kind uint8) bool {
+	return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24)
+}
 
 // THE CLOSED KIND SET (docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
 // the no-payload variant 32, wstring 33, and the ONE kind this form's layout
@@ -735,7 +750,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	d := dst[mi]
 	at := myAt + d.Dst
 	auxAt := myAt + d.Aux
-	if te.Kind != me.Kind {
+	if te.Kind != me.Kind && !(me.Kind == 35) {
 		if tableFixedWidens(te.Kind, me.Kind) {
 			e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, DstSize: uint8(me.Size), Guard: guard, Arg: arg}
 			if te.Kind == 10 {
@@ -752,6 +767,15 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		if c.report != nil {
 			c.report.KindMismatch++
 		}
+		return
+	}
+	// T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
+	// carried bare. The PRESENT byte is an UNGUARDED constant 1 at the
+	// wrapper's aux lane, and the payload is compiled against the writer's own
+	// entry under the same guard and ordinal. It is not a kind that moved.
+	if me.Kind == 35 && te.Kind != 35 {
+		tableFixedPush(c, TableFixedEntry{Dst: auxAt, Size: 1, Aux: 1, Guard: guard, Op: tableFixedConst, Arg: arg})
+		tableFixedCompileEntry(c, theirs, ti, theirAt, mine, mi+1, dst, myAt, guard, arg)
 		return
 	}
 	switch me.Kind {
@@ -820,6 +844,14 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			myArm += tableFixedSubtree(mine, myArm)
 		}
 	case 30:
+		// A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts widened
+		// (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH ordinal takes the remap
+		// table.
+		if te.Size < me.Size {
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
+				Op: tableFixedWiden, Arg: arg, DstSize: uint8(me.Size)})
+			return
+		}
 		var m [256]uint16
 		n := te.Children
 		if n > 255 {
@@ -968,6 +1000,95 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 		i = j
 	}
 	return holes
+}
+
+// ---- THE LINEAGE, AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5) ----------
+//
+// A fixed table reads BACKWARD and never forward. A file is matched on the
+// eight bytes of its header's hash against the lineage the BUILD laid down, and
+// the layout it carries is held to a BYTE COMPARISON against the bytes the lock
+// recorded — never walked. A hash the lineage does not hold is layout_newer
+// (ship the reader); a hash it holds below the floor is layout_unsupported
+// (upgrade the client). Those are the operator's two distinct answers.
+
+// TableFixedKnown is one locked layout: the wire hash a file is matched on, the
+// layout bytes verbatim, and the RECORD SIZE taken from the lock and never from
+// the file.
+type TableFixedKnown struct {
+	Hash   uint64
+	Layout []byte
+	Record int64
+}
+
+// tableFixedLineagePlan is one older entry's plan, laid down once from the
+// LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
+// no reader field names is counted ONCE PER PEER and never per record (§5.4).
+type tableFixedLineagePlan struct {
+	Entries      []TableFixedEntry
+	Count        int32
+	Unknown      int32
+	KindMismatch int32
+	Why          string
+}
+
+func tableFixedSelect(known []TableFixedKnown, hash uint64) int32 {
+	for i := range known {
+		if known[i].Hash == hash {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+// tableFixedRefuseHash is the two refusals that report the FILE'S hash and
+// nothing else (§5.3).
+func tableFixedRefuseHash(report *TableReport, reason string, hash uint64) int64 {
+	report.LayoutHash = hash
+	return tableFixedRefuse(report, reason)
+}
+
+// tableFixedLineagePlans compiles one plan per lineage entry from THE LOCK'S
+// layout bytes, at package initialization — nothing compiles on the load path,
+// and there is no cache to miss (§5.2, §5.8 row 3). The identity entry keeps a
+// nil plan: the baked one answers it.
+func tableFixedLineagePlans(known []TableFixedKnown, myLayout []byte, dst []TableFixedDst, own uint64) []tableFixedLineagePlan {
+	out := make([]tableFixedLineagePlan, len(known))
+	for i := range known {
+		if known[i].Hash == own {
+			continue
+		}
+		parsed, why := tableFixedParseLayout(known[i].Layout)
+		if why != "" {
+			// A lineage entry that is not a layout is a bug in the LOCK, not a
+			// wire event; the reader still owes a name rather than a panic.
+			out[i].Why = "layout_malformed"
+			continue
+		}
+		for room := 256; ; room *= 4 {
+			plan := make([]TableFixedEntry, room)
+			var census TableReport
+			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
+			if made == -2 {
+				out[i].Why = "layout_malformed"
+				break
+			}
+			if made < 0 {
+				if room >= 1<<18 {
+					out[i].Why = "plan_too_large"
+					break
+				}
+				continue
+			}
+			out[i] = tableFixedLineagePlan{
+				Entries:      plan[:made],
+				Count:        made,
+				Unknown:      census.Unknown,
+				KindMismatch: census.KindMismatch,
+			}
+			break
+		}
+	}
+	return out
 }
 
 func tableFixedRefuse(report *TableReport, reason string) int64 {
