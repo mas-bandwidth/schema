@@ -29,7 +29,8 @@ compiler does.
     [Unbounded arrays](#unbounded-arrays-placements-placement) ·
     [Pointers](#pointers-next-node) · [The block form](#the-block-form-rows-another-language-points-at) ·
     [The cooked form](#the-cooked-form-point-at-a-file-instead-of-parsing-it) ·
-    [The text form](#the-text-form-json-in-and-out-of-one-table)
+    [The text form](#the-text-form-json-in-and-out-of-one-table) ·
+    [The fixed table, version to version](#the-fixed-table-version-to-version)
 - [Embedding the compiler](#embedding-the-compiler)
 - [Per-language notes](#per-language-notes)
 
@@ -3136,6 +3137,374 @@ evolution is unguarded (SPEC-TABLES.md §18); commit one with: schema tables-bas
 
 That is a notice, not a failure: the exit code is untouched, and committing a
 baseline silences it.
+
+### The fixed table, version to version
+
+A `fixed table` is the one table class with a **version**, and the rule is one
+sentence: **a file is read by a build at least as new as the one that wrote it,
+and by no other.** A newer reader reads every older file. An older reader handed
+a newer file refuses it by name, before any record, and reads nothing — there is
+no partial read of a fixed table. Everything below is that rule as a walk you can
+follow start to finish on one directory.
+
+**1. Declare one, generate, write a file.** The `fixed` keyword in front of
+`table` is the whole declaration; the body grammar is the table body's:
+
+```
+package shipdemo
+
+enum Grade { Bronze, Silver, Gold }
+
+type Ward
+{
+    strength float32 = 1.0
+}
+
+type Flame
+{
+    heat float32 = 0.0
+}
+
+union Effect
+{
+    ward Ward
+    burn Flame
+}
+
+fixed table ShipConfig
+{
+    health float32 = 100.0
+    armor  int32 = 1 | min = 0, max = 10
+    grade  Grade
+    name   string(32)
+    tags   [..4]uint16
+    effect Effect
+    legacy int32
+}
+```
+
+Generate as usual — `schema generate --lang go --out gen1 ships/` — and the
+fixed surface lands beside the tolerant one: `ShipConfigFixedMeasure(count)`,
+`ShipConfigFixedSave(values, buffer)` and
+`ShipConfigFixedLoad(values, data, plan, &report)`, over a flat batch of
+records. Write two of them and you have a file:
+
+```
+wrote ships-v1.fixed — 444 bytes, 2 records, layout 0xfe46a6bc3b05d845
+```
+
+`schema check` handed that file answers its form byte rather than parsing a
+schema, which is the quickest way to know what you are holding:
+
+```
+$ schema check ships-v1.fixed
+ships-v1.fixed: FORM 3 the fixed form (docs/SPEC-TABLES.md §3.4)
+```
+
+**2. Commit the lock.** `schema lock` writes `schema.lock` beside your schema
+files, and from then on `schema check` — and so `schema generate` — holds every
+edit to it. Commit it the way you commit the schema:
+
+```
+$ schema lock --verbose ships/
+wrote ships/schema.lock
+$ schema lock --verbose ships/
+ships/schema.lock is already current
+```
+
+What it records, for each `fixed table`, is a **lineage**: one entry per layout
+that table has ever had, oldest first, the current one last. Each entry carries
+four facts — the **layout bytes** verbatim, which are the record's shape; the
+**definitions digest**, which is every fact of the declaration that is not wire
+shape (each declared range, each `bits(N)`, each `fixed` I and F, each
+reader-side limit) and which never rides the wire; the **record body size**,
+taken from the lock and never from a file; and the **wire hash** over the first
+two, which **is the version** — the same eight bytes the file header and every
+record carry, and the only thing a file is ever matched on. Nothing on the wire
+carries a version number; the hash is the number. Above the lineage sit the
+field lines, one fact per line, which are the law a widening is held to:
+
+```
+schema-lock 7
+package shipdemo
+
+fixed table ShipConfig layout=0x4542f7877de0432a lineage=0x7973b6f2ddaf7636
+    field health id=0x7f69d4b5288ba9cf kind=10 width=4 default=100.0
+    field armor id=0xd19988b67e699194 kind=4 width=4 default=1 min=0 max=10
+    field grade id=0x32a89b2977c48ad4 kind=7 width=1 default=variant:None held=Grade@0xc56ae3781a1039bd
+    field name id=0xc4bcadba8e631b86 kind=12 width=39 default=bytes: cap=32
+    field tags id=0xd91c3bef076f8580 kind=14 width=12 default=born:0 elem=7/2 bound=4 shape=counted
+    field effect id=0x36c1c83b51f24394 kind=15 width=8 default=zero held=Effect@0x3fbec53a66bcdc72
+    field legacy id=0xdec3c48c96f77cde kind=4 width=4 default=0
+    lineage wire=0xfe46a6bc3b05d845 record=66 bytes=0800000…  digest=5200000…
+```
+
+Two of those numbers are there to catch a hand editing the file rather than the
+tool: `layout=` is the hash of the field lines under it, and `lineage=` is one
+hash over the lineage lines in order with their retired marks, so a line deleted,
+reordered or re-marked by hand is refused with the file and the remedy named.
+`wire=0xfe46a6bc3b05d845` is the number that appears in the file above, and it
+is the one you will be reading out of a support ticket.
+
+**3. Widen lawfully.** A fixed table evolves by **widening only**, and widening
+is defined by the default a change can be filled from: a change with nothing to
+fill it is not a widening. Here are six, all in one edit — a field appended at
+the bottom with a default (`crew int32 = 4`), an enum variant appended
+(`Platinum`), an array bound grown (`[..4]` to `[..8]`), a string grown
+(`string(32)` to `string(48)`), a union arm appended (`freeze Chill`), and a
+field deprecated in place (`legacy int32 | deprecated`). Run `schema lock` and
+read the diff it leaves:
+
+```
+-fixed table ShipConfig layout=0x4542f7877de0432a lineage=0x7973b6f2ddaf7636
++fixed table ShipConfig layout=0x2bcfa76478dc8577 lineage=0x0f5d51b45e28ddfd
+     field health id=0x7f69d4b5288ba9cf kind=10 width=4 default=100.0
+     field armor id=0xd19988b67e699194 kind=4 width=4 default=1 min=0 max=10
+-    field grade id=0x32a89b2977c48ad4 … held=Grade@0xc56ae3781a1039bd
+-    field name  id=0xc4bcadba8e631b86 kind=12 width=39 default=bytes: cap=32
+-    field tags  id=0xd91c3bef076f8580 kind=14 width=12 … bound=4 shape=counted
+-    field effect id=0x36c1c83b51f24394 kind=15 width=8 … held=Effect@0x3fbec53a66bcdc72
+-    field legacy id=0xdec3c48c96f77cde kind=4 width=4 default=0
++    field grade id=0x32a89b2977c48ad4 … held=Grade@0xca8b4d8e1da86634
++    field name  id=0xc4bcadba8e631b86 kind=12 width=55 default=bytes: cap=48
++    field tags  id=0xd91c3bef076f8580 kind=14 width=20 … bound=8 shape=counted
++    field effect id=0x36c1c83b51f24394 kind=15 width=8 … held=Effect@0xd8d2f3a52e006246
++    field legacy id=0xdec3c48c96f77cde kind=4 width=4 default=0 deprecated
++    field crew  id=0x125464908c9015b8 kind=4 width=4 default=4
+     lineage wire=0xfe46a6bc3b05d845 record=66 …
++    lineage wire=0x4b7d4eba3bd97a67 record=94 …
+```
+
+Read it line by line and the lock has said something about every one of the six.
+The appended field is a **new field line at the bottom**, carrying the default it
+will be filled from; the deprecation is the word `deprecated` on the line that
+was already there, and **the slot does not move** — the record is walked by
+offset, so retiring a field is a statement about meaning and never about layout.
+The grown string and the grown bound move `width=` and `cap=` / `bound=` on their
+own lines. The appended enum variant and union arm do not touch the table's
+field lines at all: they move the `values=` hash of the `enum Grade` and
+`union Effect` blocks further down the file, and the field lines that hold those
+types follow with a new `held=`. And the whole edit — all six changes — adds
+**one** lineage entry, `wire=0x4b7d4eba3bd97a67`. A version is a commit of the
+lock, not a change to a field, and the record grew from 66 bytes to 94.
+
+Two edits that look like versions are not. A rename under `was = "old"` keeps the
+wire name, so the layout bytes do not move and the two generations share one
+hash. A deprecation is not a version either — the slot is still written and still
+read.
+
+**And six it refuses, each by name.** `schema lock` writes nothing it cannot
+append, so the refusal arrives from the command you would have reached for to
+silence it — and `schema check` and `schema generate` print the same sentence
+without the last clause. Verbatim, for a reorder, a removal, a narrowing, a kind
+change, a default change and an undeprecation:
+
+```
+$ schema lock ships/
+schema: ships/schema.lock: fixed table ShipConfig: entry 1, field health
+(id=0x7f69d4b5288ba9cf), is field armor (id=0xd19988b67e699194) in the
+declaration: fields reordered — a fixed table evolves APPEND-ONLY: a field is
+added at the BOTTOM, never inserted, moved or removed, because the record has no
+ids in it and a reader at this offset would read one field as the other
+(docs/SPEC-TABLES.md §2.10) — `schema lock` appends, and this is not an append;
+the lock is not a way to make the refusal go away (docs/SPEC-TABLES.md §2.10)
+
+schema: ships/schema.lock: fixed table ShipConfig: entry 2, field armor
+(id=0xd19988b67e699194), is field grade (id=0x32a89b2977c48ad4) in the
+declaration: field removed — a fixed table evolves APPEND-ONLY: a field is added
+at the BOTTOM, never inserted, moved or removed, because the record has no ids in
+it and a reader at this offset would read one field as the other
+(docs/SPEC-TABLES.md §2.10) — `schema lock` appends, and this is not an append;
+the lock is not a way to make the refusal go away (docs/SPEC-TABLES.md §2.10)
+
+schema: ships/schema.lock: fixed table ShipConfig: entry 8, field crew
+(id=0x125464908c9015b8), is kind 4 in the lock and kind 3 in the declaration:
+narrowed (int32 -> int16) — a field already in the lock keeps its type: every
+record already written holds the old one, and nothing on the wire says which
+(docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one —
+`schema lock` appends, and this is not an append; the lock is not a way to make
+the refusal go away (docs/SPEC-TABLES.md §2.10)
+
+schema: ships/schema.lock: fixed table ShipConfig: entry 1, field health
+(id=0x7f69d4b5288ba9cf), is kind 10 in the lock and kind 12 in the declaration:
+kind changed (float32 -> string) — a field already in the lock keeps its type:
+every record already written holds the old one, and nothing on the wire says
+which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one —
+`schema lock` appends, and this is not an append; the lock is not a way to make
+the refusal go away (docs/SPEC-TABLES.md §2.10)
+
+schema: ships/schema.lock: fixed table ShipConfig: entry 1, field health
+(id=0x7f69d4b5288ba9cf), defaults to 100.0 in the lock and 125.0 in the
+declaration: default changed (100.0 -> 125.0) — a field already in the lock keeps
+its default: an older writer's missing field is filled from this default, and a
+deprecated slot holds it, so a record written before the change reads differently
+after it (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one —
+`schema lock` appends, and this is not an append; the lock is not a way to make
+the refusal go away (docs/SPEC-TABLES.md §2.10)
+
+schema: ships/schema.lock: fixed table ShipConfig: entry 7, field legacy
+(id=0xdec3c48c96f77cde), is deprecated in the lock and live in the declaration:
+undeprecated (deprecated -> live) — deprecation is ONE WAY: every writer since
+the slot was deprecated wrote the default into it, so what would come back is not
+data (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, docs/SPEC-TABLES.md §2.10);
+leave it `| deprecated` and append a new field — `schema lock` appends, and this
+is not an append; the lock is not a way to make the refusal go away
+(docs/SPEC-TABLES.md §2.10)
+```
+
+Every one of them names the table, the entry number, the field and its id, both
+values, and the remedy, which for four of the six is the same remedy:
+**deprecate the field and append a new one.** Narrowing a `string`, a
+`wstring`, a `bytes` or an array bound refuses under its own word,
+`capacity narrowed (48 -> 32)`, with the same advice; a true change of kind says
+`kind changed`, a move down the same ladder says `narrowed`, and a move to
+another ladder says `ladder changed`.
+
+**4. Ship it: the reader goes out before the writer.** Regenerate against the new
+lock and the generated code carries one decode plan per lineage entry, laid down
+as static data at build time — so a load selects a plan by the file's hash and
+**never parses a layout it has not seen**. That is what makes the deployment rule
+cheap: **ship the reader first**, by a margin you could roll back across, and the
+writer after. The margin between your oldest live client and your backend is the
+part of the lineage you have to keep supported.
+
+A new reader on an old file is the ordinary case, and it is quiet:
+
+```
+read ships-v1.fixed: n=2 widened=0 clamped=0 unknown=0 kind_mismatch=0
+  [0] health=250 armor=3 grade=3 name="Rowan" tags=[7 9] crew=4 legacy=77
+  [1] health=100 armor=1 grade=1 name="Stella" tags=[] crew=4 legacy=0
+```
+
+`n` is the record count, and it is the answer: `-1` means the read was refused or
+the framing was damaged, and nothing landed. `crew=4` is the appended field at
+its declared default, which is the whole of what "widening with default values"
+buys. The grown `string` and the grown bound landed what the file held and left
+the reader's slack at template zeros. `legacy=77` is the deprecated slot read
+like any other — its value means whatever the last writer that cared left there,
+which is why the marker is documentation with teeth and not an eraser.
+
+Four counters tell you the file was not this reader's own generation.
+`widened` counts a value that arrived narrower and was carried exactly — a
+grown integer, `float32` into `float64`, a grown `fixed(I,F)`, a grown enum
+ordinal width — once per entry per record; the v1.2 reader on a v1.1 file that
+grew `crew` from `int32` to `int64` prints `widened=1`. `clamped` counts a value
+the file carried outside the range the reader declares, landed at the declared
+bound. `unknown` counts a field the writer carried that this reader's layout
+names nowhere — **once per peer and never per record**. `kind_mismatch` counts a
+pair whose kinds moved off every ladder. All four can be nonzero on a read that
+succeeded and whose values are all usable.
+
+**And a refusal is not one of those events.** Nothing is decoded, no counter
+moves, no partial value lands, and the report's verdict — not its counters — is
+what tells a refusal from a clean read. REFUSE is total.
+
+**5. An OLD reader meets a NEW file.** This is the case the whole design is
+pointed at. The v1.1 reader, handed the file a v1.2 writer wrote:
+
+```
+read ships-v2.fixed: n=-1 reason="layout_newer" widened=0 clamped=0 unknown=0
+layout=0x4b7d4eba3bd97a67
+```
+
+`layout_newer` means: **this build has never locked that layout.** It carries the
+file's hash and nothing else — by design, because the hash is the one thing this
+build can say something true about. What an operator does with it is look it up
+in the lineage, in the `schema.lock` of the generation they suspect wrote the
+file: the hash is on a `lineage wire=` line, the entries below it are newer, and
+a reader built from that lock reads the file. So `layout_newer` always means the
+same thing operationally — **ship the reader.** The writer got out in front of it.
+
+**6. Retire a layout when nothing writes it any more.** A lineage costs something
+to support: one compiled plan per entry, shipped as static data in every reader.
+When no live writer produces a layout any more, retire it. That is the lock's one
+non-append edit, and a reason is required because the mark declares that no reader
+will ever serve that layout again:
+
+```
+$ schema lock --retire 'ShipConfig@0xfe46a6bc3b05d845' --reason "no live client writes the 1.0 record; the 1.2 reader has shipped everywhere" --verbose ships/
+retired ShipConfig@0xfe46a6bc3b05d845 in ships/schema.lock
+```
+
+**Nothing is removed.** The entry stays in the file forever, with its reason
+beside it, and the next reader you generate has its **floor** above it:
+
+```
+    lineage wire=0xfe46a6bc3b05d845 record=66 … retired reason=no live client writes the 1.0 record; the 1.2 reader has shipped everywhere
+    lineage wire=0x4b7d4eba3bd97a67 record=94 …
+    lineage wire=0x28927ed8084f9c12 record=98 …
+```
+
+The entry stays because of what it buys: a file carrying a retired hash is
+refused as **`layout_unsupported`** rather than `layout_newer`, and the two
+answers point an operator in opposite directions.
+
+```
+read ships-v1.fixed: n=-1 reason="layout_unsupported" layout=0xfe46a6bc3b05d845
+```
+
+To a client, `layout_unsupported` means: **the file is older than anything this
+build still serves, and no reader is coming.** There is no reader to ship and no
+rollback to do — the data has to be rewritten by something that can still read
+it, or let go. Which is why the deploy order on a retirement is the mirror of the
+one on a widening: **stop the old writers first, let the fleet drain, then ship
+the reader whose floor has moved.** Retire a layout some live writer still
+produces and you have turned a working read into a dead one.
+
+`--reason` is not optional, and `--retire` wants a hash the lineage holds:
+
+```
+$ schema lock --retire 'ShipConfig@0x4b7d4eba3bd97a67' ships/
+schema: --retire wants --reason: retiring a layout says no reader will ever serve
+it again, which is the one DECLARATION this file holds and the one write that is
+not an append (docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.4)
+
+$ schema lock --retire 'ShipConfig@0xdeadbeefdeadbeef' --reason "x" ships/
+schema: ships/schema.lock: fixed table ShipConfig has no layout
+0xdeadbeefdeadbeef in its lineage — a hash nothing ever locked cannot be retired,
+and a file carrying it is `layout_newer` already
+(docs/FIXED-FORM-BILL-READS-BACKWARD.md §11.9)
+```
+
+One entry per command, oldest first; the floor sits above the newest retired
+entry, so retiring the oldest two means two commands. `schema lock --retire
+<Table> --reason "..."` without a hash retires the whole table, which is what
+lets you drop its declaration — the block stays in the lock either way.
+
+**7. The refusal names, and what to do about each.** A fixed-form read either
+lands `n` records or refuses by one of these names. Nothing is decoded on any of
+them.
+
+| name | what happened | what to do |
+|---|---|---|
+| `previous_form` | the file's form byte is `1`, the variable table's — an older form than this one, not a newer one | read it with the tolerant surface (`Load`), not the fixed one; the name says the direction so you do not go looking for a build that does not exist |
+| `message_form_as_file` | the bytes are form `2`, the message form, handed to a file reader: its vocabulary lives on the connection rather than in the bytes | read it through the message surface with its announcement; nothing is wrong with the bytes |
+| `newer_form` | a form byte this build does not carry at all | ship a newer build; a new form byte is a new wire, not a new version of this one |
+| `layout_newer` | the file's layout hash is in no lineage this build locked | **ship the reader.** The writer got ahead of it. Look the hash up on a `lineage wire=` line in the lock of the generation you suspect wrote the file |
+| `layout_unsupported` | the hash is in the lineage, below the floor — a layout this build once served and has retired | no reader is coming. Rewrite the data with something that still reads it, or let it go |
+| `layout_malformed` | the bytes behind the header are not the layout the lock recorded for that hash: a different length, or a byte that differs | the file is corrupt or forged. A reader never parses a stranger's layout, so this is a byte comparison failing, never a disagreement about shape |
+| `no_layout` | a record inside the file carries a hash that is not the file's own | the file is corrupt or forged — every record in a fixed file repeats the header's hash |
+| `batch_too_large` | the file holds more records than the array you passed has room for | pass a larger array, or read in batches; the codec allocates nothing, so the size is always yours to choose |
+| `plan_too_large` | the decode plan for that layout does not fit the plan storage you declared | pass a larger plan slice. The count is a property of the layout pair, so it is known at build time and a gate catches it before it ships |
+| `layout_record_too_large` | a locked layout's record size overflows, or is past the 65536-byte bound no conforming reader decodes | a fixed table is for small things; the record has to shrink, which means a new table |
+
+`malformed` is the one answer on that path that is **not** a refusal: it is a
+flag on the report, set when the framing is damaged — the bytes do not divide
+into whole records — and it means the file is truncated or corrupt rather than
+the wrong version. Check the verdict before the counters, and the counters before
+you trust a zero: a refusal and a clean read both print five zeroes.
+
+**8. The two rules that keep it safe.** Everything above is these two sentences,
+and if you keep them you will not need the rest:
+
+> **Newer reads older, never forward.** "Newer versions of the fixed table
+> should be able to read OLD versions. But old versions CANNOT read new
+> versions, and complain loudly and refuse. Nothing else makes sense." (Glenn,
+> 2026-09-10)
+
+> **Widening with default values is what saves us.** A change a default can
+> fill is a version; a change nothing can fill is a new field, a new table, or
+> a break.
 
 ### Going wide
 
