@@ -363,3 +363,25 @@ A second Fable reader read as the implementer who is blamed for a wrong read; a 
 The implementer's verdict was "not ready to build from"; with §11 and §12 applied it is the bill a stranger
 can implement, and the tests in `FIXED-FORM-VERSIONING-TESTS.md` are corrected to match (the refusal
 carries the hash; `[N]` lands defaults; deprecated fields read).
+
+## 13. The hash covers the definitions, not only the layout (2026-09-11 03:20Z)
+
+The numbers fixtures (#907) found that a ranged scalar's bounds are not in the layout: `int32 | 0..100` and
+`| 0..200` hash identically, so an old reader cannot refuse the widening and a new writer's 150 is silently
+clamped; the same holds for a `flags` bit count (#906), `bits(N)`, `fixed(I,F)`'s split, and any reader-side
+limit. §6a's sentence "any change to a definition changes the hash by itself" was false for those rows.
+
+**Ruling (default).** The layout hash a file carries is the hash of the LAYOUT BYTES together with a
+DEFINITIONS DIGEST: every fact of §2 that is not wire shape (each range, each flags bit count, each `bits(N)`,
+each `fixed` I and F, each reader-side limit, in closure order). The digest is computed by the compiler from
+the schema, recorded in the lock's lineage entry beside the layout bytes, and never rides the wire: the
+hash binds it. A stranger with a known hash and different layout bytes is caught by the byte comparison; a
+stranger with a known hash and the same layout bytes reads under the plan the reader compiled for that
+hash, whose bounds are the ones the lock recorded, so no forged range can widen a plan. The layout format
+does not change; `TableFixedLayoutHash` gains the digest as a second input; every lineage entry records
+both.
+
+Consequences for the green phase: `range_widen`, `flags_append`, `bits_grow` and `fixed_I_grow` refuse
+`layout_newer` by hash once the digest is in; the floor API the fixtures assumed (`T##FixedLineage[]`
+oldest first, `T##FixedFloor`, a test-only setter under a define) is accepted as the shape; the seven §1.1
+malformations against a known hash return one name, `layout_malformed` (§12.4).
