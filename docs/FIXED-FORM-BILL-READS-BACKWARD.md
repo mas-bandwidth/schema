@@ -303,6 +303,8 @@ ruling below is a default, recorded on #898, and his to reverse.
    text rather than the wire's `TableFixedLayoutHash`. Step 2 of #898 gives the lock a lineage section per
    fixed table: one entry per layout with the WIRE hash and the layout bytes, a retired mark and a reason;
    the wire hash keys `R.known`. Defaults, deprecation marks and the closure stay where they are.
+   **The entry's recorded record size is the BODY**, and the COMPILER adds the record's own eight hash bytes
+   once before any backend sees it, because §5.2's `record_bytes` is the whole record (algorithm §5.9 #46).
 8. **A rendering-version bump salvages, never deletes.** The lock's "delete it and write it again" remedy
    would wipe the lineage fleet-wide. Once the lock holds history it adopts the baseline's salvage model
    (SPEC §18.4): the new renderer reads the old lineage and rewrites it, entry for entry, bytes unchanged.

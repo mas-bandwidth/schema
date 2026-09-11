@@ -1249,7 +1249,11 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     c.want_guarded = true;
     c.report = NULL; // the unknown census is the first pass's; counting it twice would lie
     TableFixedMatchChildren( c, theirs, 0, 0, mine, 0, dst, 0, kTableFixedNoGuard, 0 );
-    if ( c.overflow || c.hostile ) { return c.hostile ? -2 : -1; }
+    if ( c.overflow || c.hostile )
+    {
+        if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }
+        return c.hostile ? -2 : -1;
+    }
     // COALESCE inside each half, never across the split
     int32_t out = 0;
     int32_t split = 0;
