@@ -167,31 +167,6 @@ defmodule Bench.WrapFixed do
     {:copy, 0, 0, 1236}
   ]
 
-  # THE LINEAGE: every layout of FixedTable this build serves, OLDEST FIRST and
-  # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
-  # against these and on NOTHING ELSE; the layout it carries is COMPARED with
-  # the bytes the lock recorded and never parsed. A hash no entry holds is
-  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in
-  # its order, with the byte length riding BESIDE the bytes.
-  @fixed_table_known {
-    %{
-      hash: 0x6237C1DC195F9EC9,
-      layout:
-        "\x4B\x00\x00\x00\xB3\x46\xA7\xDC\x9C\x36\xDF\x85\x0D\xD4\x04\x00\x00\x01\x00\x00\x00\xEA\x0C\xE8\x30\x94\xFD\xE4\x7C\x0D\xD4\x04\x00\x00\x1B\x00\x00\x00\xA8\x28\xF5\x81\xA4\xAC\x38\xAA\x07\x04\x00\x00\x00\x00\x00\x00\x00\x3E\x7C\x69\x56\x5C\x00\xBE\x0D\x04\x04\x00\x00\x00\x00\x00\x00\x00\x03\xEE\x29\xB8\xA8\x0D\xAE\x9B\x08\x04\x00\x00\x00\x00\x00\x00\x00\x05\x0B\x59\x0A\x65\xB5\xD7\xB7\x09\x08\x00\x00\x00\x00\x00\x00\x00\x7E\x96\x95\xD0\xE2\x98\x7B\x6D\x08\x04\x00\x00\x00\x00\x00\x00\x00\xD8\xC0\x0D\xD6\x71\x4C\xA9\x73\x09\x08\x00\x00\x00\x00\x00\x00\x00\x85\xFC\x54\xBE\x51\x6B\xEE\x3E\x05\x08\x00\x00\x00\x00\x00\x00\x00\x12\x01\x6D\x7B\x5F\x03\xBC\x7B\x09\x08\x00\x00\x00\x00\x00\x00\x00\xC6\x69\xBE\xF9\x75\x04\x46\x3C\x16\x04\x00\x00\x00\x00\x00\x00\x00\x2A\x82\xB3\x7B\xB0\x0F\x5D\x93\x0E\x9C\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0D\x33\x00\x00\x00\x0E\x00\x00\x00\x12\x67\xE3\x78\x66\xFD\xFC\x23\x07\x04\x00\x00\x00\x00\x00\x00\x00\x0E\x31\x67\x76\x35\x37\x4B\xCB\x04\x04\x00\x00\x00\x00\x00\x00\x00\xC1\x32\x67\x76\x35\x38\x4B\xCB\x04\x04\x00\x00\x00\x00\x00\x00\x00\xA8\x2D\x67\x76\x35\x35\x4B\xCB\x04\x04\x00\x00\x00\x00\x00\x00\x00\xE8\x16\x8E\x79\x19\x8E\x4D\xB5\x07\x04\x00\x00\x00\x00\x00\x00\x00\xB1\xC1\x0C\xA9\x65\xF6\xA9\x53\x07\x04\x00\x00\x00\x00\x00\x00\x00\x67\xEE\x60\xEB\xB6\xE6\xED\x6C\x04\x04\x00\x00\x00\x00\x00\x00\x00\xB4\xEC\x60\xEB\xB6\xE5\xED\x6C\x04\x04\x00\x00\x00\x00\x00\x00\x00\xCD\xF1\x60\xEB\xB6\xE8\xED\x6C\x04\x04\x00\x00\x00\x00\x00\x00\x00\xCF\xA9\x8B\x28\xB5\xD4\x69\x7F\x04\x04\x00\x00\x00\x00\x00\x00\x00\x01\x6E\x2C\x5F\x20\x10\xB6\xA0\x1E\x01\x00\x00\x00\x0F\x00\x00\x00\x0C\xCF\x66\x27\xE1\xEE\x90\xA7\x20\x00\x00\x00\x00\x00\x00\x00\x00\x76\x84\xDA\x35\xA8\xEF\xBF\x9F\x20\x00\x00\x00\x00\x00\x00\x00\x00\x95\x8A\x92\x83\x17\xBB\x8B\x18\x20\x00\x00\x00\x00\x00\x00\x00\x00\xF1\x72\xF2\xC2\xB9\x67\x36\x2C\x20\x00\x00\x00\x00\x00\x00\x00\x00\xF6\x55\xD7\x00\x1B\xB4\xA8\x0C\x20\x00\x00\x00\x00\x00\x00\x00\x00\x4E\x1A\xB2\xFA\x19\xC8\x5F\x98\x20\x00\x00\x00\x00\x00\x00\x00\x00\x55\x6A\x08\xC3\x47\x04\x9D\x22\x20\x00\x00\x00\x00\x00\x00\x00\x00\x9D\x8F\x22\xA7\x49\x7B\x1C\x01\x20\x00\x00\x00\x00\x00\x00\x00\x00\x5F\xE1\x23\x11\x6E\x56\xF7\x89\x20\x00\x00\x00\x00\x00\x00\x00\x00\x69\x44\x3B\x8B\x31\x25\x7F\x8D\x20\x00\x00\x00\x00\x00\x00\x00\x00\x16\x78\x5B\x28\xCC\x0D\xCD\xD9\x20\x00\x00\x00\x00\x00\x00\x00\x00\x76\x52\xFF\xA8\xAE\x16\xDC\x04\x20\x00\x00\x00\x00\x00\x00\x00\x00\x17\x92\x12\x41\xC3\x3B\xE5\x35\x20\x00\x00\x00\x00\x00\x00\x00\x00\x31\x88\xDE\xB0\x2F\x28\xC8\x2C\x20\x00\x00\x00\x00\x00\x00\x00\x00\x34\xB3\x8C\xBC\x21\xDA\xBA\x20\x20\x00\x00\x00\x00\x00\x00\x00\x00\xC0\x7F\xB3\x8A\xBE\x08\x63\x7F\x09\x08\x00\x00\x00\x00\x00\x00\x00\xA7\x3D\x24\xD1\xC1\x4F\xA4\x11\x01\x01\x00\x00\x00\x00\x00\x00\x00\xCA\x31\x90\x9B\xD1\xCF\x74\x76\x01\x01\x00\x00\x00\x00\x00\x00\x00\x4C\x99\xB1\x45\xAD\x9C\x63\xEE\x0E\x84\x02\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x0D\x08\x00\x00\x00\x02\x00\x00\x00\x65\xBF\x6D\x86\xF0\x75\xAB\x80\x06\x04\x00\x00\x00\x00\x00\x00\x00\xC1\xA0\x13\xEC\x75\x66\x07\x52\x04\x04\x00\x00\x00\x00\x00\x00\x00\x90\x57\xAA\x21\x53\xDC\x35\x2E\x0F\x0E\x00\x00\x00\x03\x00\x00\x00\xAA\x80\x06\x30\x19\x28\x73\x33\x0D\x0D\x00\x00\x00\x04\x00\x00\x00\x50\x50\xA2\x15\xC0\x9A\xBC\xB7\x07\x04\x00\x00\x00\x00\x00\x00\x00\xC0\x7F\xB3\x8A\xBE\x08\x63\x7F\x04\x04\x00\x00\x00\x00\x00\x00\x00\x25\xB9\x59\xB0\x65\xC3\xFB\x01\x04\x04\x00\x00\x00\x00\x00\x00\x00\x2D\xA5\x9A\x8C\x90\x67\x61\x12\x01\x01\x00\x00\x00\x00\x00\x00\x00\x8B\x34\x5B\x0B\x91\x8D\xA3\xF2\x0D\x08\x00\x00\x00\x02\x00\x00\x00\xA4\xED\xCA\xD5\x9A\x3E\x01\xA5\x04\x04\x00\x00\x00\x00\x00\x00\x00\x22\xD0\xEB\x96\x4D\xAC\xF1\xFB\x07\x04\x00\x00\x00\x00\x00\x00\x00\x65\xB7\xEC\x86\x1C\xA4\xA3\x9F\x0D\x08\x00\x00\x00\x02\x00\x00\x00\x56\xBD\x4F\x86\x6D\xD0\x7F\x9E\x07\x04\x00\x00\x00\x00\x00\x00\x00\x69\x69\xB1\xA2\x7E\xFE\x13\x81\x04\x04\x00\x00\x00\x00\x00\x00\x00\xA3\xB5\xBB\x86\x75\xCE\x59\x57\x0E\x04\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06\x01\x00\x00\x00\x00\x00\x00\x00\x6E\xE8\xF8\x2C\x54\x2F\xA6\x13\x0C\x13\x00\x00\x00\x00\x00\x00\x00\xE5\xE9\xB5\x63\xD0\xA9\xB8\xCF\x0E\x14\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06\x01\x00\x00\x00\x00\x00\x00\x00\xC9\x96\x42\xE2\xE5\x7B\xAF\xDB\x0A\x04\x00\x00\x00\x00\x00\x00\x00\x16\x95\x42\xE2\xE5\x7A\xAF\xDB\x0A\x04\x00\x00\x00\x00\x00\x00\x00\x63\x93\x42\xE2\xE5\x79\xAF\xDB\x0A\x04\x00\x00\x00\x00\x00\x00\x00\x57\xE4\xE2\xF7\xFF\x31\xEF\x9C\x0A\x04\x00\x00\x00\x00\x00\x00\x00\x04\x6C\x1F\x34\xC9\xF9\xB3\x5A\x0B\x08\x00\x00\x00\x00\x00\x00\x00\x16\xAF\x1F\x46\x80\x85\x34\xA3\x13\x10\x00\x00\x00\x00\x00\x00\x00\x42\x26\xAF\x08\x79\xDD\x1B\xD6\x12\x10\x00\x00\x00\x00\x00\x00\x00\xA9\x07\x33\xC5\x0D\xE0\x30\xBF\x1A\x02\x00\x00\x00\x00\x00\x00\x00\x5F\x51\xD8\xCC\x27\x65\x0D\x56\x08\x04\x00\x00\x00\x00\x00\x00\x00\x72\x86\xFD\x6C\x17\x92\x82\xC0\x01\x01\x00\x00\x00\x00\x00\x00\x00\x69\xCB\x79\xA9\x12\xEE\x29\xFD\x04\x04\x00\x00\x00\x00\x00\x00\x00\xFE\xBC\x8C\xAA\xC0\x1A\x10\x78\x04\x04\x00\x00\x00\x00\x00\x00\x00",
-      layout_bytes: 1279,
-      record_bytes: 1244
-    }
-  }
-
-  # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
-  # a layout this build once served is retired and the answer is
-  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.
-  @fixed_table_floor 0
-
-  # THE RETIRED HASHES and the operator's own sentence for each, which is what
-  # `:layout_unsupported` means in words.
-  @fixed_table_retired []
-
   def fixed_table_fixed_body_bytes, do: @fixed_table_body_bytes
   def fixed_table_fixed_record_bytes, do: @fixed_table_record_bytes
   def fixed_table_fixed_hash, do: @fixed_table_hash
@@ -199,9 +174,6 @@ defmodule Bench.WrapFixed do
   def fixed_table_fixed_plan, do: @fixed_table_plan
   def fixed_table_fixed_prefill, do: @fixed_table_prefill
   def fixed_table_fixed_dst, do: @fixed_table_dst
-  def fixed_table_fixed_known, do: @fixed_table_known
-  def fixed_table_fixed_floor, do: @fixed_table_floor
-  def fixed_table_fixed_retired, do: @fixed_table_retired
 
   # A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
   # — the form byte, seven reserved zero bytes, the LAYOUT HASH at 8 — then the
@@ -247,80 +219,21 @@ defmodule Bench.WrapFixed do
       {:ok, stated, layout, records} ->
         fixed_table_fixed_records(stated, layout, records, report, opts)
 
-      {:error, :malformed} ->
-        # STEP 1: a file shorter than a header is the RESIDUE and not a bucket
-        # a named rule falls into — `malformed`, and no reason (§5.3).
-        {:error, :malformed, %{report | malformed: true}}
-
       {:error, why} ->
         {:error, why, report}
     end
   end
 
-  # THE READ: §5.3's ELEVEN STEPS, IN ORDER. The header's hash is TAKEN AS
-  # GIVEN — the definitions digest is not on the wire, so the hash cannot be
-  # re-derived from the layout behind it — then the LINEAGE SELECT, then the
-  # floor, then the BYTE COMPARISON against the bytes the lock recorded.
-  # NOTHING PARSES A STRANGER'S LAYOUT, ON ANY PATH.
+  # THE READ: a plan, a split, and one prefill-and-project per record. Neither
+  # plan clamps a ranged integer: the generated projection holds the bound after
+  # the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).
   defp fixed_table_fixed_records(stated, layout, records, report, opts) do
+    hash = stated # the header's hash; digest is not on the wire
     copy = Keyword.get(opts, :copy, false)
-    cap = Keyword.get(opts, :plan_capacity, R.plan_capacity())
 
-    # A CALLER'S `plan:` IS ACCEPTED AND NOT READ (§5.9 #16): §5.6 retires
-    # MECHANISMS and not API, so the argument keeps its place and the plan a
-    # load runs is THE BUILD'S. `plan_capacity:` stays what §5.9 #5 says it is
-    # — a CAPACITY DECLARATION, checked and never written through.
-    _ = Keyword.get(opts, :plan)
-
-    case R.select(@fixed_table_known, @fixed_table_floor, stated, layout) do
-      {:error, why, file_hash} ->
-        # BOTH LAYOUT REFUSALS REPORT THE FILE'S HASH (§5.9 #7), on
-        # `layout_hash`, LAST on the report and zero on every other path
-        # (§5.9 #15). REFUSE IS TOTAL: no counter moves, nothing is decoded and
-        # not one destination byte is written — the prefill included.
-        {:error, why, %{report | layout_hash: file_hash}}
-
-      {:ok, i} ->
-        fixed_table_fixed_lane(i, records, stated, report, cap, copy)
-    end
-  end
-
-  # THE PLAN IS THE BUILD'S, one per lineage entry, laid down at MODULE LOAD
-  # from the lock's own bytes (§5.9 #3). Nothing on this path compiles and
-  # nothing on it can fail for want of a plan: an entry whose plan would not
-  # build carries its own refusal reason, and this is where it is read.
-  defp fixed_table_fixed_lane(i, records, hash, report, cap, copy) do
-    case R.lineage_lane(__MODULE__, :fixed_table, i) do
-      :identity ->
-        fixed_table_fixed_run(
-          @fixed_table_plan,
-          @fixed_table_body_bytes,
-          records,
-          hash,
-          report,
-          copy,
-          0,
-          0
-        )
-
-      {:ok, _plan, _size, made, _u, _k} when made > cap ->
-        # THE DECLARED CAPACITY A BUILD HOLDS AN ENTRY TO IS REAL (§5.9 #4) and
-        # the NAME is the contract (§5.9 #5).
-        {:error, :plan_too_large, report}
-
-      {:ok, plan, size, _made, u, k} ->
-        fixed_table_fixed_run(plan, size, records, hash, report, copy, u, k)
-
-      {:error, why} ->
-        {:error, why, report}
-    end
-  end
-
-  # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE
-  # a byte is landed. Neither plan clamps a ranged integer: the generated
-  # projection holds the bound after the loop, the same pass for either plan.
-  defp fixed_table_fixed_run(plan, size, records, hash, report, copy, census_u, census_k) do
-    with {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
+    with {:ok, plan, size, report} <- fixed_table_fixed_plan_for(hash, layout, report, opts),
+         :ok <- fixed_table_fixed_header_names_it(stated, layout),
+         {:ok, bodies} <- fixed_table_fixed_split(records, hash, size, []) do
       {values, report} =
         Enum.map_reduce(bodies, report, fn body, report ->
           {image, report} = R.run(plan, R.detach(body, copy), @fixed_table_prefill, report)
@@ -328,15 +241,62 @@ defmodule Bench.WrapFixed do
           {value, R.damaged(R.clamped(report, c), m)}
         end)
 
-      # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that
-      # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a
-      # refusal that came after would have moved a counter.
-      {:ok, values, R.census(report, census_u, census_k)}
+      {:ok, values, report}
     else
-      {:error, :malformed} -> {:error, :malformed, %{report | malformed: true}}
+      {:error, why, report} -> {:error, why, report}
       {:error, why} -> {:error, why, report}
     end
   end
+
+  # THE PLAN: the identity plan for this build's own hash, and for any other
+  # hash the one compiled ONCE from the writer's layout and cached by hash.
+  # A caller may own the plan instead and hand it in through `plan:`. THIS IS
+  # THE WHOLE OF THE VERSION QUESTION: two heads selecting `{plan, size}` and
+  # nothing else, and one loop behind them.
+  defp fixed_table_fixed_plan_for(hash, _layout, report, _opts) when hash == @fixed_table_hash do
+    {:ok, @fixed_table_plan, @fixed_table_body_bytes, report}
+  end
+
+  defp fixed_table_fixed_plan_for(hash, layout, report, opts) do
+    cap = Keyword.get(opts, :plan_capacity, R.plan_capacity())
+
+    case Keyword.get(opts, :plan) || R.cached(__MODULE__, hash) do
+      {_plan, _size, made} when made > cap ->
+        # THE PLAN'S CAPACITY IS THE CALLER'S BOUND AND NOT THE CACHE'S, so a
+        # plan already held for this peer is refused by the same name — and by
+        # the SAME NUMBER the compiler measured, which is what keeps a caller
+        # with a small capacity from inheriting a plan minted under a large one.
+        {:error, :plan_too_large, report}
+
+      {plan, size, _made} ->
+        {:ok, plan, size, report}
+
+      nil ->
+        # THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+        # every rule it fails refuses under ITS OWN NAME.
+        with {:ok, theirs} <- R.parse_layout(layout) do
+          mine = R.my_layout(__MODULE__, @fixed_table_layout)
+
+          case R.compile(theirs, mine, @fixed_table_dst, cap, report) do
+            {:ok, plan, made, report} ->
+              size = R.size_at(theirs, 0)
+              R.cache(__MODULE__, hash, {plan, size, made})
+              {:ok, plan, size, report}
+
+            {:error, why, report} ->
+              {:error, why, report}
+          end
+        end
+    end
+  end
+
+  # THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+  # against this build's; digest is not on the wire, so the header hash is
+  # not a hash of the layout bytes alone (docs/SPEC-TABLES.md §3, bill §13).
+  defp fixed_table_fixed_header_names_it(stated, layout) when stated == @fixed_table_hash do
+    if layout == @fixed_table_layout, do: :ok, else: {:error, :layout_malformed}
+  end
+  defp fixed_table_fixed_header_names_it(_stated, _layout), do: :ok
 
   # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows
   # the record size from the layout, so the count is arithmetic. BYTES LEFT
@@ -356,27 +316,5 @@ defmodule Bench.WrapFixed do
       _ ->
         {:error, :malformed}
     end
-  end
-
-  # ONE PLAN PER LINEAGE ENTRY, BUILT AT MODULE LOAD from the lock's own bytes
-  # and held in `:persistent_term` (§5.9 #3, #20). The BEAM runs `@on_load`
-  # before any caller can reach this module, so the build is OFF EVERY LOAD
-  # PATH and a load can never fail for want of a plan. IT CANNOT THROW: every
-  # entry is a LANE WITH ITS OWN REFUSAL REASON, so the hook always answers
-  # `:ok` and the module always loads.
-  @on_load :__fixed_lineage__
-
-  @doc false
-  def __fixed_lineage__ do
-    R.lineage_init(
-      __MODULE__,
-      :fixed_table,
-      @fixed_table_known,
-      @fixed_table_layout,
-      @fixed_table_dst,
-      R.plan_capacity()
-    )
-
-    :ok
   end
 end
