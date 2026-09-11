@@ -8283,7 +8283,7 @@ static SCHEMA_UNUSED const TableFixedFill keyed_config_fixed_cover[] = {
 };
 static SCHEMA_UNUSED const int32_t keyed_config_fixed_cover_count = 22;
 
-/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim */
+/* lineage entry 0: the layout bytes THE LOCK recorded, verbatim — RETIRED: the 0.x client that wrote this layout is gone; proved end to end on rowan/retire-real, docs/SPEC-TABLES.md §21.7 */
 static SCHEMA_UNUSED const uint8_t keyed_config_fixed_known_0[] = {
     0x24, 0x00, 0x00, 0x00, 0xcf, 0xee, 0x4d, 0xe9, 0xe4, 0x3a, 0x63, 0xd6, 0x0d, 0xea, 0x00, 0x00,
     0x00, 0x03, 0x00, 0x00, 0x00, 0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba, 0x10, 0x48, 0x00,
@@ -8338,7 +8338,7 @@ static SCHEMA_UNUSED const int32_t keyed_config_fixed_known_count = 2;
    index cut and the operator's two answers stay distinct: below the floor is
    layout_unsupported (upgrade the client), outside the lineage is
    layout_newer (ship the reader). A retired entry stays forever (§5.2). */
-static SCHEMA_UNUSED const int32_t keyed_config_fixed_floor = 0;
+static SCHEMA_UNUSED const int32_t keyed_config_fixed_floor = 1;
 
 /* ONE PLAN PER OLDER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES and
    never from a file's (§5.9 #3). The storage is STATIC — this codec

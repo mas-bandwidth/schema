@@ -11614,7 +11614,7 @@ constexpr uint64_t KeyedConfigFixedLineage[] = {
     0xa357cf9e47e391b6ull, // identity
 };
 constexpr int32_t KeyedConfigFixedLineageCount = 2;
-constexpr int32_t KeyedConfigFixedFloor = 0;
+constexpr int32_t KeyedConfigFixedFloor = 1;
 #ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
 inline int32_t KeyedConfigFixedFloorLive = KeyedConfigFixedFloor;
 inline void KeyedConfigFixedSetFloorForTest( int32_t index ) { KeyedConfigFixedFloorLive = index; }

@@ -2496,6 +2496,7 @@ namespace Tabledemo
             new TableFixedEntry(234u, 63u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
         });
 
+        // RETIRED: the 0.x client that wrote this layout is gone; proved end to end on rowan/retire-real, docs/SPEC-TABLES.md §21.7
         private static readonly byte[] KeyedConfigFixedLayout0 = new byte[] {
             0x24, 0x00, 0x00, 0x00, 0xcf, 0xee, 0x4d, 0xe9, 0xe4, 0x3a, 0x63, 0xd6, 0x0d, 0xea, 0x00, 0x00,
             0x00, 0x03, 0x00, 0x00, 0x00, 0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba, 0x10, 0x48, 0x00,
@@ -2587,7 +2588,7 @@ namespace Tabledemo
         // THE FLOOR: below it a layout this build once served is RETIRED, and the
         // answer is layout_unsupported — upgrade the client — rather than
         // layout_newer, which is ship the reader (§5.2).
-        public const int KeyedConfigFixedFloor = 0;
+        public const int KeyedConfigFixedFloor = 1;
 
         // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
         // type's static initializer: nothing compiles on the load path, and there
