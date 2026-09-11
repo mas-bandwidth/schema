@@ -73,28 +73,6 @@ static void check( bool ok, const char * what )
     if ( !ok ) { std::printf( "FAIL: %s\n", what ); failures++; }
 }
 
-// A KNOWN-RED CASE, HELD FROM BOTH ENDS, the way the properties gate holds its
-// four (test/tables/fixedform_properties.cpp:45). The case is written as the
-// CONTRACT states it — docs/FIXED-FORM-ALGORITHM.md is the ruling and the
-// reference is the bug — so it fails today and the gate stays green; and the day
-// the named fix lands it starts passing, which this gate reports as a FAILURE so
-// the entry is deleted rather than left to rot. A red nobody is made to delete
-// is a red nobody reads.
-static int known_red_hits = 0;
-
-static void known_red( bool ok, const char * fix, const char * what )
-{
-    if ( ok )
-    {
-        std::printf( "FAIL: KNOWN-RED [%s] PASSES now — delete the known_red() call as part of landing %s: %s\n",
-                     fix, fix, what );
-        failures++;
-        return;
-    }
-    known_red_hits++;
-    std::printf( "KNOWN-RED [%s]: %s\n", fix, what );
-}
-
 // ---------------------------------------------------------------------------
 
 static void fx_case()
@@ -1628,6 +1606,8 @@ static void record_bound_case()
                                                        tblfx1::FxRootFixedDst, tblfx1::FxRootFixedCover, tblfx1::FxRootFixedCoverCount,
                                                        cplan.data(), 1024, &guarded, &fill_at, &fill_count, &cr );
         check( made == -2, "W10: COMPILE answers -2 (hostile) for an entry past the writer's record size" );
+        check( cr.reason == tblfx1::layout_record_too_large,
+               "W10: COMPILE names layout_record_too_large for an entry past the writer's record size" );
         std::vector<uint8_t> f = file_of( layout );
         tblfx1::FxRoot v;
         tblfx1::FxRootReset( v );
@@ -1638,15 +1618,6 @@ static void record_bound_case()
         check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed,
                "W10: the refusal sets nothing and counts nothing" );
         check( v.keep == 7u && v.blob_length == 0, "W10: NOT PARTLY COMPILED — no entry of the plan ran" );
-        // THE NAME. fix 3's validation landed and its NAME did not: COMPILE
-        // answers -2 and the generated Load maps that to `layout_malformed`
-        // (algorithm §5.8 row 13), where §4.2 and fix 3 both name
-        // `layout_record_too_large`. A stranger never reaches that mapping
-        // (layout_newer first); the name is still the mapping, and this
-        // known-red stays until Load reports layout_record_too_large for -2.
-        known_red( r.reason == tblfx1::layout_record_too_large, "fix 3",
-                   "W10: an entry past the writer's record size owes layout_record_too_large, and the reference says layout_malformed "
-                   "(internal/codegen/cpptable/fixedform.go:534 / generated Load maps COMPILE -2)" );
     }
 
     // 2. THE BOUNDARY ITSELF STANDS. The same shape one byte short of the
@@ -2457,10 +2428,6 @@ int main( int argc, char ** argv )
     failures += versioning_lists_cases();
     // ==== END rowan/cpp-versioning-lists ====
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
-    if ( known_red_hits != 0 )
-    {
-        std::printf( "KNOWN-RED, %d case(s), each printed above and each waiting on a named fix\n", known_red_hits );
-    }
     std::printf( "fixed form: versioning conformance green\n" );
     return 0;
 }
