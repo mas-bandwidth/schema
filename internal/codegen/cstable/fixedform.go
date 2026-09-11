@@ -1628,6 +1628,35 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 	g.pf("});\n\n")
 
+	// THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2). It is the
+	// build's data and never the wire's: a file is matched on its hash against
+	// these entries, and the layout it carries is COMPARED with the bytes the
+	// lock recorded, never walked. The floor is 1 + the highest retired index.
+	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: block, Record: 8 + body})
+	for i, e := range entries {
+		if e.Retired {
+			g.pf("// RETIRED: %s\n", e.Reason)
+		}
+		g.pf("private static readonly byte[] %sFixedLayout%d = new byte[] {\n", name, i)
+		g.emitCsByteArray(e.Layout)
+		g.pf("};\n")
+	}
+	g.pf("public static readonly TableFixedKnownLayout[] %sFixedKnown = new TableFixedKnownLayout[] {\n", name)
+	for i, e := range entries {
+		g.pf("    new TableFixedKnownLayout(0x%016xul, %sFixedLayout%d, %d),\n", e.Wire, name, i, e.Record)
+	}
+	g.pf("};\n\n")
+	g.pf("// THE FLOOR: below it a layout this build once served is RETIRED, and the\n")
+	g.pf("// answer is layout_unsupported — upgrade the client — rather than\n")
+	g.pf("// layout_newer, which is ship the reader (§5.2).\n")
+	g.pf("public const int %sFixedFloor = %d;\n\n", name, floor)
+	g.pf("// ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this\n")
+	g.pf("// type's static initializer: nothing compiles on the load path, and there\n")
+	g.pf("// is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).\n")
+	g.pf("public static readonly TableFixedLineagePlan[] %sFixedLineagePlans =\n", name)
+	g.pf("    TableFixedWire.LineagePlans(%sFixedKnown, %sFixedLayout, %sFixedDst, %sFixedHash);\n\n",
+		name, name, name, name)
+
 	g.pf("public static long %sFixedMeasure(long count)\n{\n", name)
 	g.pf("    return TableFixedWire.HeaderBytes + 4 + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", name, name)
 
@@ -1674,31 +1703,66 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);\n")
-	g.pf("    ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire\n")
+	// STEP 4: THE HEADER'S HASH, TAKEN AS GIVEN. Nothing is recomputed from the
+	// wire: the definitions digest is not on the wire, so the hash cannot be
+	// re-derived from a file at all (§5.3).
+	g.pf("    ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));\n")
+	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
+	// layout_newer — ship the reader; below the floor is layout_unsupported —
+	// upgrade the client. BOTH report THE FILE'S hash (§5.9 #7), and what
+	// belongs to layout_newer alone is "and nothing else".
+	g.pf("    int pick = TableFixedWire.Select(%sFixedKnown, hash);\n", name)
+	g.pf("    if (pick < 0)\n    {\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_newer\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        return -1;\n    }\n")
+	g.pf("    if (pick < %sFixedFloor)\n    {\n", name)
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_unsupported\"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        return -1;\n    }\n")
+	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference
+	// is ONE name — a lie about a known version — and §1.1's seven rules do not
+	// run at read time at all: no stranger's layout is ever walked.
+	g.pf("    TableFixedKnownLayout known = %sFixedKnown[pick];\n", name)
+	g.pf("    if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))\n    {\n")
+	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("        return -1;\n    }\n")
+	// STEP 8: the plan this peer resolves to, and the record size FROM THE LOCK.
 	g.pf("    ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);\n")
 	g.pf("    int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;\n")
 	g.pf("    ReadOnlySpan<TableFixedEntry> entries = %sFixedPlan;\n", name)
-	g.pf("    long record_bytes = %sFixedRecordBytes;\n", name)
+	g.pf("    long record_bytes = known.Record;\n")
 	g.pf("    ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;\n")
 	g.pf("    TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();\n")
 	g.pf("    int fillCount = 0;\n")
-	g.pf("    if (hash == %sFixedHash)\n    {\n", name)
-	g.pf("        if (layout_bytes != (uint)%sFixedLayout.Length || !layout.SequenceEqual(%sFixedLayout))\n", name, name)
-	g.pf("        {\n            if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
-	g.pf("    }\n")
-	g.pf("    else\n    {\n")
-	g.pf("        if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))\n        {\n            if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
-	g.pf("        int made = TableFixedWire.Compile(parsed, %sFixedLayout, %sFixedDst, plan, report);\n", name, name)
-	g.pf("        if (made < 0)\n        {\n            if (report != null) { report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
-	g.pf("        entries = plan.Slice(0, made);\n")
-	g.pf("        record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;\n")
-	g.pf("        planBytes = MemoryMarshal.AsBytes(plan);\n")
+	g.pf("    int census_unknown = 0;\n")
+	g.pf("    int census_kind = 0;\n")
+	g.pf("    if (hash != %sFixedHash)\n    {\n", name)
+	g.pf("        TableFixedLineagePlan lane = %sFixedLineagePlans[pick];\n", name)
+	g.pf("        if (lane.Why != null)\n        {\n")
+	g.pf("            if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            return -1;\n        }\n")
+	// §5.9 #5: the caller's plan slice stays a CAPACITY DECLARATION and is no
+	// longer written through. The selected plan's entry count is checked
+	// against it and refuses plan_too_large BY NAME.
+	g.pf("        if (lane.Count > plan.Length)\n        {\n")
+	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
+	g.pf("            return -1;\n        }\n")
+	g.pf("        entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);\n")
+	g.pf("        planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);\n")
+	g.pf("        // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from\n")
+	g.pf("        // the plan this peer selected. It reads no layout and compiles\n")
+	g.pf("        // nothing, so it is not what §5.8 row 3 retires from the load\n")
+	g.pf("        // path; the PLAN is, and the plan is the build's.\n")
 	g.pf("        int slotN = %sFixedSlots.Length;\n", name)
 	g.pf("        if (slotN > 0)\n        {\n")
 	g.pf("            byte[] landed = new byte[slotN];\n")
 	g.pf("            fillBuf = new TableFixedFill[slotN];\n")
 	g.pf("            fillCount = TableFixedWire.Fills(entries, %sFixedCover, landed, fillBuf);\n", name)
-	g.pf("        }\n    }\n")
+	g.pf("        }\n")
+	g.pf("        // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and\n")
+	g.pf("        // it lands only on a read that RETURNS: REFUSE moves no counter.\n")
+	g.pf("        census_unknown = lane.Unknown;\n")
+	g.pf("        census_kind = lane.KindMismatch;\n")
+	g.pf("    }\n")
 	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
 	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
@@ -1709,14 +1773,23 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the\n")
 	g.pf("    // skip: identity's fill is empty, so this read writes no slot twice.\n")
 	g.pf("    for (int k = 0; k < n; ++k)\n    {\n")
-	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
-	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
+	// THE PER-RECORD HASH CHECK IS FIRST — before the prefill, so a refusal has
+	// written not one destination byte (§5.3, §5.8 row 9).
 	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
+	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
+	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
 	g.pf("        TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes);\n", name)
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
-	g.pf("    if (report != null) { report.Verdict = TableWire.Verdict.Ok; }\n    return n;\n}\n\n")
+	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
+	// returns n (§5.9 #6). Not inside the loop — §5.4 says once per peer — and
+	// not before it, because a refusal that came after would have moved a
+	// counter and REFUSE IS TOTAL.
+	g.pf("    if (report != null)\n    {\n")
+	g.pf("        report.Unknown += census_unknown;\n")
+	g.pf("        report.KindMismatch += census_kind;\n")
+	g.pf("        report.Verdict = TableWire.Verdict.Ok;\n    }\n    return n;\n}\n\n")
 
 	g.pf("public static long %sFixedLoad(%s[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)\n{\n", name, name)
 	g.pf("    return %sFixedLoad((Span<%s>)values, data, plan, report);\n}\n\n", name, name)

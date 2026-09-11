@@ -42,6 +42,12 @@ namespace Bench
         public string Reason;
         public Schema.TableWire.Verdict Verdict;
         public bool Malformed;     // framing damage; decode stopped, partial result kept
+        // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
+        // a member at the end rather than a field inserted among the counters,
+        // because the report is a type callers already hold. layout_newer reports
+        // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
+        // #7), the operator's other answer. Zero on every other path.
+        public ulong LayoutHash;
     }
 
     // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
@@ -392,6 +398,55 @@ namespace Bench
             Dst = dst;
             Size = size;
         }
+    }
+
+    // ---- THE LINEAGE, AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5) ---------
+    //
+    // A fixed table reads BACKWARD and never forward. A file is matched on the eight
+    // bytes of its header's hash against the lineage the BUILD laid down, and the
+    // layout it carries is held to a BYTE COMPARISON against the bytes the lock
+    // recorded — never walked. A hash the lineage does not hold is layout_newer
+    // (ship the reader); a hash it holds below the floor is layout_unsupported
+    // (upgrade the client). Those are the operator's two distinct answers.
+
+    // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
+    // on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
+    // never from the file.
+    //
+    // §5.9 #19 names four members — hash, layout, layout_bytes, record_bytes —
+    // because tools/fixedtwin holds the C and C++ pair to one text and the byte
+    // length there rides BESIDE the pointer. A C# array carries its own length, so
+    // the fourth member would be a second spelling of Layout.Length; there is no
+    // twin gate on this leg to hold it to the pair's text. Three members, the same
+    // ORDER, and the divergence is named rather than silent.
+    public readonly struct TableFixedKnownLayout
+    {
+        public readonly ulong Hash;
+        public readonly byte[] Layout;
+        public readonly long Record;
+
+        public TableFixedKnownLayout(ulong hash, byte[] layout, long record)
+        {
+            Hash = hash;
+            Layout = layout;
+            Record = record;
+        }
+    }
+
+    // TableFixedLineagePlan is ONE older entry's plan, laid down once from THE
+    // LOCK'S bytes. Unknown and KindMismatch are the COMPILE CENSUS: a writer field
+    // no reader field names is counted ONCE PER PEER and never per record (§5.4),
+    // and LOAD carries them onto the report after the record loop, on a read that
+    // returns (§5.9 #6). Why is the name a load refuses by when the entry itself
+    // could not be compiled — a bug in the lock, which at BUILD time fails the
+    // build and at run time owes a name rather than a crash (§5.9 #8).
+    public sealed class TableFixedLineagePlan
+    {
+        public TableFixedEntry[] Entries = Array.Empty<TableFixedEntry>();
+        public int Count;
+        public int Unknown;
+        public int KindMismatch;
+        public string Why;
     }
 
     public readonly struct TableFixedSlot<T>
@@ -5121,12 +5176,22 @@ namespace Bench
                 {
                     if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; }
                     if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; }
+                    // THE FIXED-POINT RUNGS, signed 20..24 and unsigned 25..29: a
+                    // fixed(I,F) into a wider I at equal F is a LADDER widen and not a
+                    // kind that moved (docs/FIXED-FORM-ALGORITHM.md §1, §5.1).
+                    if (from >= 20 && from <= 24 && to >= 20 && to <= 24) { return to > from; }
+                    if (from >= 25 && from <= 29 && to >= 25 && to <= 29) { return to > from; }
                     return from == 10 && to == 11;
                 }
 
+                // A WIDEN'S SIGN IS THE LADDER'S: the source sign-extends when the
+                // WRITER's kind is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 —
+                // and zero-extends otherwise (§5.2). The SAME-KIND widen has no sign at
+                // all and the grown enum ordinal none either: taken as stated, not
+                // inferred from the kind's signedness.
                 public static bool SignedKind(byte kind)
                 {
-                    return kind >= 2 && kind <= 5;
+                    return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
                 }
 
                 public static ulong HashOf(ReadOnlySpan<byte> layout)
@@ -5462,7 +5527,7 @@ namespace Bench
                     TableFixedDst d = dst[mi];
                     uint at = my_at + d.Dst;
                     uint aux_at = my_at + d.Aux;
-                    if (te.Kind != me.Kind)
+                    if (te.Kind != me.Kind && me.Kind != 35)
                     {
                         if (Widens(te.Kind, me.Kind))
                         {
@@ -5474,6 +5539,19 @@ namespace Bench
                             return;
                         }
                         if (c.Report != null) { c.Report.KindMismatch++; }
+                        return;
+                    }
+                    // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the
+                    // writer carried bare. The PRESENT byte is a CONSTANT 1 at the
+                    // wrapper's AUX lane, constant in its VALUE and still carrying the
+                    // row's own guard and ordinal (§5.9 #13) — guarded under a union
+                    // arm, unguarded at top level, which is one rule and not two — and
+                    // the payload is compiled against the writer's own entry under that
+                    // same guard. It is not a kind that moved.
+                    if (me.Kind == 35 && te.Kind != 35)
+                    {
+                        c.Push(new TableFixedEntry(0, aux_at, 1, 1, guard, Const, arg, 0));
+                        CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg);
                         return;
                     }
                     switch (me.Kind)
@@ -5580,6 +5658,14 @@ namespace Bench
                         }
                         case 30: // Enum
                         {
+                            // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts
+                            // widened (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH
+                            // ordinal takes the remap table.
+                            if (te.Size < me.Size)
+                            {
+                                c.Push(new TableFixedEntry(their_at, at, te.Size, 0, guard, Widen, arg, (byte)me.Size));
+                                break;
+                            }
                             uint n = Math.Min(te.Children, 255u);
                             ushort[] map = new ushort[n];
                             for (uint j = 0; j < n; ++j)
@@ -5654,6 +5740,70 @@ namespace Bench
                 // arm, and an arm's storage is the arm's. Identity's list is empty —
                 // its destinations ARE the cover — and that is the rule's limit case,
                 // not an exception: the record loop runs the list it was handed.
+                // THE HEADER'S HASH SELECTS A KNOWN LAYOUT, and nothing else does
+                // (§5.3 step 5). The FIRST index whose hash matches; -1 for a hash the
+                // lineage does not hold, which is layout_newer.
+                public static int Select(ReadOnlySpan<TableFixedKnownLayout> known, ulong hash)
+                {
+                    for (int i = 0; i < known.Length; ++i)
+                    {
+                        if (known[i].Hash == hash) { return i; }
+                    }
+                    return -1;
+                }
+
+                // ONE PLAN PER LINEAGE ENTRY, compiled from THE LOCK'S layout bytes in
+                // the static initializer of the generated type — C#'s own build-time
+                // lane, and §5.9 #3's first conforming shape: the bytes came from the
+                // lock, the walk happens once per type load, OFF EVERY LOAD PATH, and a
+                // plan that will not build is recorded as a refusal NAME on that entry
+                // rather than discovered at the first file that needs it. Nothing on
+                // the load path compiles, nothing on the load path parses a layout, and
+                // the load path cannot fail for want of a plan.
+                //
+                // The pool grows by construction (§5.9 #4): the buffer is retried at
+                // four times the size until the plan fits or the declared cap is
+                // reached, and the entry that exceeds it carries plan_too_large BY NAME.
+                public static TableFixedLineagePlan[] LineagePlans(
+                    TableFixedKnownLayout[] known,
+                    byte[] my_layout,
+                    TableFixedDst[] dst,
+                    ulong own)
+                {
+                    TableFixedLineagePlan[] out_ = new TableFixedLineagePlan[known.Length];
+                    for (int i = 0; i < known.Length; ++i)
+                    {
+                        TableFixedLineagePlan lane = new TableFixedLineagePlan();
+                        out_[i] = lane;
+                        if (known[i].Hash == own) { continue; }
+                        if (!ParseLayout(known[i].Layout, out TableFixedLayoutView parsed, out string why))
+                        {
+                            // A LINEAGE ENTRY THAT IS NOT A LAYOUT is a bug in the lock
+                            // and not a wire event (§5.9 #8): the reader still owes a
+                            // name rather than a crash.
+                            lane.Why = "layout_malformed";
+                            continue;
+                        }
+                        for (int room = 256; ; room *= 4)
+                        {
+                            TableFixedEntry[] buffer = new TableFixedEntry[room];
+                            TableReport census = new TableReport();
+                            int made = Compile(parsed, my_layout, dst, buffer, census);
+                            if (made < 0)
+                            {
+                                if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
+                                continue;
+                            }
+                            lane.Entries = buffer;
+                            lane.Count = made;
+                            lane.Unknown = census.Unknown;
+                            lane.KindMismatch = census.KindMismatch;
+                            break;
+                        }
+                    }
+                    return out_;
+                }
+
                 public static int Fills(
                     ReadOnlySpan<TableFixedEntry> plan,
                     ReadOnlySpan<TableFixedFill> cover,

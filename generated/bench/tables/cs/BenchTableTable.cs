@@ -42,6 +42,12 @@ namespace Benchtable
         public string Reason;
         public Schema.TableWire.Verdict Verdict;
         public bool Malformed;     // framing damage; decode stopped, partial result kept
+        // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
+        // a member at the end rather than a field inserted among the counters,
+        // because the report is a type callers already hold. layout_newer reports
+        // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
+        // #7), the operator's other answer. Zero on every other path.
+        public ulong LayoutHash;
     }
 
     // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
@@ -392,6 +398,55 @@ namespace Benchtable
             Dst = dst;
             Size = size;
         }
+    }
+
+    // ---- THE LINEAGE, AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5) ---------
+    //
+    // A fixed table reads BACKWARD and never forward. A file is matched on the eight
+    // bytes of its header's hash against the lineage the BUILD laid down, and the
+    // layout it carries is held to a BYTE COMPARISON against the bytes the lock
+    // recorded — never walked. A hash the lineage does not hold is layout_newer
+    // (ship the reader); a hash it holds below the floor is layout_unsupported
+    // (upgrade the client). Those are the operator's two distinct answers.
+
+    // TableFixedKnownLayout is one locked layout: the wire hash a file is matched
+    // on, the layout bytes verbatim, and the RECORD SIZE taken from the lock and
+    // never from the file.
+    //
+    // §5.9 #19 names four members — hash, layout, layout_bytes, record_bytes —
+    // because tools/fixedtwin holds the C and C++ pair to one text and the byte
+    // length there rides BESIDE the pointer. A C# array carries its own length, so
+    // the fourth member would be a second spelling of Layout.Length; there is no
+    // twin gate on this leg to hold it to the pair's text. Three members, the same
+    // ORDER, and the divergence is named rather than silent.
+    public readonly struct TableFixedKnownLayout
+    {
+        public readonly ulong Hash;
+        public readonly byte[] Layout;
+        public readonly long Record;
+
+        public TableFixedKnownLayout(ulong hash, byte[] layout, long record)
+        {
+            Hash = hash;
+            Layout = layout;
+            Record = record;
+        }
+    }
+
+    // TableFixedLineagePlan is ONE older entry's plan, laid down once from THE
+    // LOCK'S bytes. Unknown and KindMismatch are the COMPILE CENSUS: a writer field
+    // no reader field names is counted ONCE PER PEER and never per record (§5.4),
+    // and LOAD carries them onto the report after the record loop, on a read that
+    // returns (§5.9 #6). Why is the name a load refuses by when the entry itself
+    // could not be compiled — a bug in the lock, which at BUILD time fails the
+    // build and at run time owes a name rather than a crash (§5.9 #8).
+    public sealed class TableFixedLineagePlan
+    {
+        public TableFixedEntry[] Entries = Array.Empty<TableFixedEntry>();
+        public int Count;
+        public int Unknown;
+        public int KindMismatch;
+        public string Why;
     }
 
     public readonly struct TableFixedSlot<T>
@@ -5199,12 +5254,22 @@ namespace Benchtable
                 {
                     if (from >= 6 && from <= 9 && to >= 6 && to <= 9) { return to > from; }
                     if (from >= 2 && from <= 5 && to >= 2 && to <= 5) { return to > from; }
+                    // THE FIXED-POINT RUNGS, signed 20..24 and unsigned 25..29: a
+                    // fixed(I,F) into a wider I at equal F is a LADDER widen and not a
+                    // kind that moved (docs/FIXED-FORM-ALGORITHM.md §1, §5.1).
+                    if (from >= 20 && from <= 24 && to >= 20 && to <= 24) { return to > from; }
+                    if (from >= 25 && from <= 29 && to >= 25 && to <= 29) { return to > from; }
                     return from == 10 && to == 11;
                 }
 
+                // A WIDEN'S SIGN IS THE LADDER'S: the source sign-extends when the
+                // WRITER's kind is signed — i8..i64 and a SIGNED fixed(I,F), 20..24 —
+                // and zero-extends otherwise (§5.2). The SAME-KIND widen has no sign at
+                // all and the grown enum ordinal none either: taken as stated, not
+                // inferred from the kind's signedness.
                 public static bool SignedKind(byte kind)
                 {
-                    return kind >= 2 && kind <= 5;
+                    return (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
                 }
 
                 public static ulong HashOf(ReadOnlySpan<byte> layout)
@@ -5540,7 +5605,7 @@ namespace Benchtable
                     TableFixedDst d = dst[mi];
                     uint at = my_at + d.Dst;
                     uint aux_at = my_at + d.Aux;
-                    if (te.Kind != me.Kind)
+                    if (te.Kind != me.Kind && me.Kind != 35)
                     {
                         if (Widens(te.Kind, me.Kind))
                         {
@@ -5552,6 +5617,19 @@ namespace Benchtable
                             return;
                         }
                         if (c.Report != null) { c.Report.KindMismatch++; }
+                        return;
+                    }
+                    // T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the
+                    // writer carried bare. The PRESENT byte is a CONSTANT 1 at the
+                    // wrapper's AUX lane, constant in its VALUE and still carrying the
+                    // row's own guard and ordinal (§5.9 #13) — guarded under a union
+                    // arm, unguarded at top level, which is one rule and not two — and
+                    // the payload is compiled against the writer's own entry under that
+                    // same guard. It is not a kind that moved.
+                    if (me.Kind == 35 && te.Kind != 35)
+                    {
+                        c.Push(new TableFixedEntry(0, aux_at, 1, 1, guard, Const, arg, 0));
+                        CompileEntry(ref c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg);
                         return;
                     }
                     switch (me.Kind)
@@ -5658,6 +5736,14 @@ namespace Benchtable
                         }
                         case 30: // Enum
                         {
+                            // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts
+                            // widened (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH
+                            // ordinal takes the remap table.
+                            if (te.Size < me.Size)
+                            {
+                                c.Push(new TableFixedEntry(their_at, at, te.Size, 0, guard, Widen, arg, (byte)me.Size));
+                                break;
+                            }
                             uint n = Math.Min(te.Children, 255u);
                             ushort[] map = new ushort[n];
                             for (uint j = 0; j < n; ++j)
@@ -5732,6 +5818,70 @@ namespace Benchtable
                 // arm, and an arm's storage is the arm's. Identity's list is empty —
                 // its destinations ARE the cover — and that is the rule's limit case,
                 // not an exception: the record loop runs the list it was handed.
+                // THE HEADER'S HASH SELECTS A KNOWN LAYOUT, and nothing else does
+                // (§5.3 step 5). The FIRST index whose hash matches; -1 for a hash the
+                // lineage does not hold, which is layout_newer.
+                public static int Select(ReadOnlySpan<TableFixedKnownLayout> known, ulong hash)
+                {
+                    for (int i = 0; i < known.Length; ++i)
+                    {
+                        if (known[i].Hash == hash) { return i; }
+                    }
+                    return -1;
+                }
+
+                // ONE PLAN PER LINEAGE ENTRY, compiled from THE LOCK'S layout bytes in
+                // the static initializer of the generated type — C#'s own build-time
+                // lane, and §5.9 #3's first conforming shape: the bytes came from the
+                // lock, the walk happens once per type load, OFF EVERY LOAD PATH, and a
+                // plan that will not build is recorded as a refusal NAME on that entry
+                // rather than discovered at the first file that needs it. Nothing on
+                // the load path compiles, nothing on the load path parses a layout, and
+                // the load path cannot fail for want of a plan.
+                //
+                // The pool grows by construction (§5.9 #4): the buffer is retried at
+                // four times the size until the plan fits or the declared cap is
+                // reached, and the entry that exceeds it carries plan_too_large BY NAME.
+                public static TableFixedLineagePlan[] LineagePlans(
+                    TableFixedKnownLayout[] known,
+                    byte[] my_layout,
+                    TableFixedDst[] dst,
+                    ulong own)
+                {
+                    TableFixedLineagePlan[] out_ = new TableFixedLineagePlan[known.Length];
+                    for (int i = 0; i < known.Length; ++i)
+                    {
+                        TableFixedLineagePlan lane = new TableFixedLineagePlan();
+                        out_[i] = lane;
+                        if (known[i].Hash == own) { continue; }
+                        if (!ParseLayout(known[i].Layout, out TableFixedLayoutView parsed, out string why))
+                        {
+                            // A LINEAGE ENTRY THAT IS NOT A LAYOUT is a bug in the lock
+                            // and not a wire event (§5.9 #8): the reader still owes a
+                            // name rather than a crash.
+                            lane.Why = "layout_malformed";
+                            continue;
+                        }
+                        for (int room = 256; ; room *= 4)
+                        {
+                            TableFixedEntry[] buffer = new TableFixedEntry[room];
+                            TableReport census = new TableReport();
+                            int made = Compile(parsed, my_layout, dst, buffer, census);
+                            if (made < 0)
+                            {
+                                if (room >= (1 << 18)) { lane.Why = "plan_too_large"; break; }
+                                continue;
+                            }
+                            lane.Entries = buffer;
+                            lane.Count = made;
+                            lane.Unknown = census.Unknown;
+                            lane.KindMismatch = census.KindMismatch;
+                            break;
+                        }
+                    }
+                    return out_;
+                }
+
                 public static int Fills(
                     ReadOnlySpan<TableFixedEntry> plan,
                     ReadOnlySpan<TableFixedFill> cover,
@@ -7631,6 +7781,56 @@ namespace Benchtable
             new TableFixedEntry(50u, 13u, 1u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
         });
 
+        private static readonly byte[] TableEntityFixedLayout0 = new byte[] {
+            0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
+            0x00, 0x0e, 0x00, 0x00, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb,
+            0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d,
+            0xb5, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6,
+            0xa9, 0x53, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6,
+            0xe6, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb,
+            0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60,
+            0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9,
+            0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+            0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00,
+            0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f,
+            0x8d, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d,
+            0xcd, 0xd9, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae,
+            0x16, 0xdc, 0x04, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41,
+            0xc3, 0x3b, 0xe5, 0x35, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde,
+            0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3,
+            0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0,
+            0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        };
+        public static readonly TableFixedKnownLayout[] TableEntityFixedKnown = new TableFixedKnownLayout[] {
+            new TableFixedKnownLayout(0x45d64db53ce7ac1ful, TableEntityFixedLayout0, 59),
+        };
+
+        // THE FLOOR: below it a layout this build once served is RETIRED, and the
+        // answer is layout_unsupported — upgrade the client — rather than
+        // layout_newer, which is ship the reader (§5.2).
+        public const int TableEntityFixedFloor = 0;
+
+        // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
+        // type's static initializer: nothing compiles on the load path, and there
+        // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        public static readonly TableFixedLineagePlan[] TableEntityFixedLineagePlans =
+            TableFixedWire.LineagePlans(TableEntityFixedKnown, TableEntityFixedLayout, TableEntityFixedDst, TableEntityFixedHash);
+
         public static long TableEntityFixedMeasure(long count)
         {
             return TableFixedWire.HeaderBytes + 4 + TableEntityFixedLayoutBytes + count * TableEntityFixedRecordBytes;
@@ -7697,38 +7897,52 @@ namespace Benchtable
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
+            int pick = TableFixedWire.Select(TableEntityFixedKnown, hash);
+            if (pick < 0)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (pick < TableEntityFixedFloor)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            TableFixedKnownLayout known = TableEntityFixedKnown[pick];
+            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableEntityFixedPlan;
-            long record_bytes = TableEntityFixedRecordBytes;
+            long record_bytes = known.Record;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash == TableEntityFixedHash)
+            int census_unknown = 0;
+            int census_kind = 0;
+            if (hash != TableEntityFixedHash)
             {
-                if (layout_bytes != (uint)TableEntityFixedLayout.Length || !layout.SequenceEqual(TableEntityFixedLayout))
+                TableFixedLineagePlan lane = TableEntityFixedLineagePlans[pick];
+                if (lane.Why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-            }
-            else
-            {
-                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
-                {
-                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
-                    return -1;
-                }
-                int made = TableFixedWire.Compile(parsed, TableEntityFixedLayout, TableEntityFixedDst, plan, report);
-                if (made < 0)
+                if (lane.Count > plan.Length)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                entries = plan.Slice(0, made);
-                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
-                planBytes = MemoryMarshal.AsBytes(plan);
+                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
+                // the plan this peer selected. It reads no layout and compiles
+                // nothing, so it is not what §5.8 row 3 retires from the load
+                // path; the PLAN is, and the plan is the build's.
                 int slotN = TableEntityFixedSlots.Length;
                 if (slotN > 0)
                 {
@@ -7736,6 +7950,10 @@ namespace Benchtable
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, TableEntityFixedCover, landed, fillBuf);
                 }
+                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // it lands only on a read that RETURNS: REFUSE moves no counter.
+                census_unknown = lane.Unknown;
+                census_kind = lane.KindMismatch;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -7752,17 +7970,22 @@ namespace Benchtable
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
-                if (values[k] == null) { values[k] = new TableEntity(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableEntityFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (values[k] == null) { values[k] = new TableEntity(); }
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableEntityFixedSlots, values[k]);
                 TableFixedWire.Run(entries, TableEntityFixedSlots, at.Slice(8), values[k], report, planBytes);
                 at = at.Slice((int)record_bytes);
             }
-            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            if (report != null)
+            {
+                report.Unknown += census_unknown;
+                report.KindMismatch += census_kind;
+                report.Verdict = TableWire.Verdict.Ok;
+            }
             return n;
         }
 
@@ -7823,6 +8046,27 @@ namespace Benchtable
             new TableFixedEntry(0u, 0u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
             new TableFixedEntry(4u, 1u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
         });
+
+        private static readonly byte[] TableStatFixedLayout0 = new byte[] {
+            0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
+            0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public static readonly TableFixedKnownLayout[] TableStatFixedKnown = new TableFixedKnownLayout[] {
+            new TableFixedKnownLayout(0x1cdc2a66a7601422ul, TableStatFixedLayout0, 16),
+        };
+
+        // THE FLOOR: below it a layout this build once served is RETIRED, and the
+        // answer is layout_unsupported — upgrade the client — rather than
+        // layout_newer, which is ship the reader (§5.2).
+        public const int TableStatFixedFloor = 0;
+
+        // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
+        // type's static initializer: nothing compiles on the load path, and there
+        // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        public static readonly TableFixedLineagePlan[] TableStatFixedLineagePlans =
+            TableFixedWire.LineagePlans(TableStatFixedKnown, TableStatFixedLayout, TableStatFixedDst, TableStatFixedHash);
 
         public static long TableStatFixedMeasure(long count)
         {
@@ -7890,38 +8134,52 @@ namespace Benchtable
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
+            int pick = TableFixedWire.Select(TableStatFixedKnown, hash);
+            if (pick < 0)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (pick < TableStatFixedFloor)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            TableFixedKnownLayout known = TableStatFixedKnown[pick];
+            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableStatFixedPlan;
-            long record_bytes = TableStatFixedRecordBytes;
+            long record_bytes = known.Record;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash == TableStatFixedHash)
+            int census_unknown = 0;
+            int census_kind = 0;
+            if (hash != TableStatFixedHash)
             {
-                if (layout_bytes != (uint)TableStatFixedLayout.Length || !layout.SequenceEqual(TableStatFixedLayout))
+                TableFixedLineagePlan lane = TableStatFixedLineagePlans[pick];
+                if (lane.Why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-            }
-            else
-            {
-                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
-                {
-                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
-                    return -1;
-                }
-                int made = TableFixedWire.Compile(parsed, TableStatFixedLayout, TableStatFixedDst, plan, report);
-                if (made < 0)
+                if (lane.Count > plan.Length)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                entries = plan.Slice(0, made);
-                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
-                planBytes = MemoryMarshal.AsBytes(plan);
+                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
+                // the plan this peer selected. It reads no layout and compiles
+                // nothing, so it is not what §5.8 row 3 retires from the load
+                // path; the PLAN is, and the plan is the build's.
                 int slotN = TableStatFixedSlots.Length;
                 if (slotN > 0)
                 {
@@ -7929,6 +8187,10 @@ namespace Benchtable
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, TableStatFixedCover, landed, fillBuf);
                 }
+                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // it lands only on a read that RETURNS: REFUSE moves no counter.
+                census_unknown = lane.Unknown;
+                census_kind = lane.KindMismatch;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -7945,17 +8207,22 @@ namespace Benchtable
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
-                if (values[k] == null) { values[k] = new TableStat(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableStatFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (values[k] == null) { values[k] = new TableStat(); }
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableStatFixedSlots, values[k]);
                 TableFixedWire.Run(entries, TableStatFixedSlots, at.Slice(8), values[k], report, planBytes);
                 at = at.Slice((int)record_bytes);
             }
-            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            if (report != null)
+            {
+                report.Unknown += census_unknown;
+                report.KindMismatch += census_kind;
+                report.Verdict = TableWire.Verdict.Ok;
+            }
             return n;
         }
 
@@ -8779,6 +9046,103 @@ namespace Benchtable
             new TableFixedEntry(1220u, 309u, 4u, 0u, TableFixedWire.NoGuard, TableFixedWire.Copy, 0, 0, 0, 0, 1),
         });
 
+        private static readonly byte[] TableMixedFixedLayout0 = new byte[] {
+            0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
+            0x00, 0x1c, 0x00, 0x00, 0x00, 0xfd, 0x15, 0xa1, 0x1a, 0xd9, 0x70, 0x5a, 0x6a, 0x07, 0x02, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b,
+            0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7,
+            0xb7, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98,
+            0x7b, 0x6d, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71,
+            0x4c, 0xa9, 0x73, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x85, 0xfc, 0x54, 0xbe,
+            0x51, 0x6b, 0xee, 0x3e, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x01, 0x6d,
+            0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0x69,
+            0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a,
+            0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x9c, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x33, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00,
+            0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04,
+            0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c,
+            0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed,
+            0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4,
+            0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20,
+            0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x0c, 0xcf, 0x66, 0x27,
+            0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x84, 0xda,
+            0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x95, 0x8a,
+            0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf1,
+            0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x20, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x20, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x20, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x20,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35,
+            0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8,
+            0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda,
+            0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe,
+            0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa7, 0x3d, 0x24, 0xd1,
+            0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xca, 0x31, 0x90,
+            0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x99,
+            0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x84, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+            0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0x0e, 0x00, 0x00, 0x00, 0x03,
+            0x00, 0x00, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x0d, 0x00, 0x00, 0x00,
+            0x04, 0x00, 0x00, 0x00, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01,
+            0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2,
+            0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01,
+            0xa5, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
+            0xf1, 0xfb, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x65, 0xb7, 0xec, 0x86, 0x1c,
+            0xa4, 0xa3, 0x9f, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x56, 0xbd, 0x4f, 0x86,
+            0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+            0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0xb5,
+            0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x14, 0x00, 0x00, 0x00, 0x01, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x04, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x04,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b,
+            0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3,
+            0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b,
+            0xd6, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0,
+            0x30, 0xbf, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0x51, 0xd8, 0xcc, 0x27,
+            0x65, 0x0d, 0x56, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x86, 0xfd, 0x6c,
+            0x17, 0x92, 0x82, 0xc0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xcb, 0x79,
+            0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
+            0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        };
+        public static readonly TableFixedKnownLayout[] TableMixedFixedKnown = new TableFixedKnownLayout[] {
+            new TableFixedKnownLayout(0xf973c48271efa906ul, TableMixedFixedLayout0, 1232),
+        };
+
+        // THE FLOOR: below it a layout this build once served is RETIRED, and the
+        // answer is layout_unsupported — upgrade the client — rather than
+        // layout_newer, which is ship the reader (§5.2).
+        public const int TableMixedFixedFloor = 0;
+
+        // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes in this
+        // type's static initializer: nothing compiles on the load path, and there
+        // is no cache to miss (§5.2, §5.8 row 3, §5.9 #3).
+        public static readonly TableFixedLineagePlan[] TableMixedFixedLineagePlans =
+            TableFixedWire.LineagePlans(TableMixedFixedKnown, TableMixedFixedLayout, TableMixedFixedDst, TableMixedFixedHash);
+
         public static long TableMixedFixedMeasure(long count)
         {
             return TableFixedWire.HeaderBytes + 4 + TableMixedFixedLayoutBytes + count * TableMixedFixedRecordBytes;
@@ -8845,38 +9209,52 @@ namespace Benchtable
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt));
+            int pick = TableFixedWire.Select(TableMixedFixedKnown, hash);
+            if (pick < 0)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_newer"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            if (pick < TableMixedFixedFloor)
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_unsupported"; report.LayoutHash = hash; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
+            TableFixedKnownLayout known = TableMixedFixedKnown[pick];
+            if (layout_bytes != (uint)known.Layout.Length || !layout.SequenceEqual(known.Layout))
+            {
+                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                return -1;
+            }
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = TableMixedFixedPlan;
-            long record_bytes = TableMixedFixedRecordBytes;
+            long record_bytes = known.Record;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash == TableMixedFixedHash)
+            int census_unknown = 0;
+            int census_kind = 0;
+            if (hash != TableMixedFixedHash)
             {
-                if (layout_bytes != (uint)TableMixedFixedLayout.Length || !layout.SequenceEqual(TableMixedFixedLayout))
+                TableFixedLineagePlan lane = TableMixedFixedLineagePlans[pick];
+                if (lane.Why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Refused = true; report.Reason = lane.Why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-            }
-            else
-            {
-                if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
-                {
-                    if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }
-                    return -1;
-                }
-                int made = TableFixedWire.Compile(parsed, TableMixedFixedLayout, TableMixedFixedDst, plan, report);
-                if (made < 0)
+                if (lane.Count > plan.Length)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "plan_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
-                entries = plan.Slice(0, made);
-                record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
-                planBytes = MemoryMarshal.AsBytes(plan);
+                entries = new ReadOnlySpan<TableFixedEntry>(lane.Entries, 0, lane.Count);
+                planBytes = MemoryMarshal.AsBytes<TableFixedEntry>(lane.Entries);
+                // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND, derived from
+                // the plan this peer selected. It reads no layout and compiles
+                // nothing, so it is not what §5.8 row 3 retires from the load
+                // path; the PLAN is, and the plan is the build's.
                 int slotN = TableMixedFixedSlots.Length;
                 if (slotN > 0)
                 {
@@ -8884,6 +9262,10 @@ namespace Benchtable
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, TableMixedFixedCover, landed, fillBuf);
                 }
+                // THE CENSUS IS ONCE PER PEER and never per record (§5.4), and
+                // it lands only on a read that RETURNS: REFUSE moves no counter.
+                census_unknown = lane.Unknown;
+                census_kind = lane.KindMismatch;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -8900,17 +9282,22 @@ namespace Benchtable
             // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
-                if (values[k] == null) { values[k] = new TableMixed(); }
-                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableMixedFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
+                if (values[k] == null) { values[k] = new TableMixed(); }
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableMixedFixedSlots, values[k]);
                 TableFixedWire.Run(entries, TableMixedFixedSlots, at.Slice(8), values[k], report, planBytes);
                 at = at.Slice((int)record_bytes);
             }
-            if (report != null) { report.Verdict = TableWire.Verdict.Ok; }
+            if (report != null)
+            {
+                report.Unknown += census_unknown;
+                report.KindMismatch += census_kind;
+                report.Verdict = TableWire.Verdict.Ok;
+            }
             return n;
         }
 
