@@ -163,8 +163,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	body := fixedTypeBytes(st)
 	prefill := fixedPrefillBytes(st)
 
-	g.needHome("TableFixedForm", "TableFixedRun", "TableFixedCompile", "TableFixedHashOf",
-		"TableFixedParseLayout", "TableFixedLayoutView", "TableFixedPlan", "TableFixedSize",
+	// THE PLAN COMPILER AND THE LAYOUT PARSER ARE NO LONGER IMPORTED HERE.
+	// Nothing on a load path compiles or parses (§5.3, §5.8 row 3): both are the
+	// runtime home's own, reached once per table at module load by
+	// TableFixedLineagePlans, and a root module that still named them would be
+	// importing the two symbols §5.6 retired from this file.
+	g.needHome("TableFixedForm", "TableFixedRun", "TableFixedPlan",
 		"TableFixedRefusal", "TableFixedResetReport", "TableFixedHoles",
 		"TableFixedHeaderBytes", "TableFixedHashAt", "TableFixedLayoutHeaderBytes",
 		"TableFixedVariableForm", "TableFixedMessageForm",

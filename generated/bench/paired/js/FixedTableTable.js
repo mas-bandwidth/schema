@@ -24,7 +24,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedCompile, TableFixedDecodeLayout, TableFixedForm, TableFixedHashAt, TableFixedHashOf, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLayoutView, TableFixedLineagePlans, TableFixedMessageForm, TableFixedParseLayout, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedSize, TableFixedVariableForm } from "./BenchTable.js";
+import { FixedTable, FixedTableFixedDecode, FixedTableFixedWriteBody, InitFixedTable, TableFixedDecodeLayout, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
