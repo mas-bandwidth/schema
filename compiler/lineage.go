@@ -41,9 +41,24 @@ type FixedLineage struct {
 	// entries and floor are keyed by the table's DECLARED name, which is what a
 	// backend's emitter holds; the LOCK is keyed by the wire name, and the
 	// translation happens here once.
+	//
+	// AN ENTRY'S `Record` IS §5.2's `record_bytes`: THE WHOLE RECORD, `8 +
+	// C(root)` — the record's own eight hash bytes and then the body — which is
+	// NOT the number the lock carries. The lock records the BODY
+	// (internal/lockfile/lineage.go's `LineageEntry.Record`,
+	// `ir.TableFixedTypeBytes`) and [openFixedLineage] adds the eight once, so
+	// the value every backend is handed is already the one its static data
+	// needs. A backend adds nothing.
 	entries map[string][]lockfile.LineageEntry
 	floor   map[string]int
 }
+
+// fixedRecordHashBytes is the eight bytes of a record's OWN layout hash, the
+// ones that stand in front of every record's body (docs/FIXED-FORM-ALGORITHM.md
+// §5.2: "record_bytes is 8 + C(root)", and §5.3 step 9 divides the tail behind
+// the layout by that whole number). Every table backend spells its own entry as
+// `8 + body`; this is the same eight, for the entries that come off the lock.
+const fixedRecordHashBytes = int64(8)
 
 // lineageGenerator is the SECOND ENTRY POINT of §5.9 #1, as the driver sees it:
 // a generator that takes the lock's lineage as data. A target implements it when
@@ -113,7 +128,27 @@ func openFixedLineage(u *ir.Unit) (*FixedLineage, error) {
 		if derived != floor {
 			return nil, fmt.Errorf("%s: the lock's floor for %s is %d and its retired marks say %d (docs/FIXED-FORM-ALGORITHM.md §5.2)", SchemaLockFileName, st.Name, floor, derived)
 		}
-		l.entries[st.Name] = entries
+		// §5.2's `record_bytes` IS THE WHOLE RECORD and the lock records the
+		// BODY, so the eight hash bytes are added HERE, ONCE, for every backend
+		// the driver hands entries to. The Java wiring (#920) found the other
+		// way round: each leg's entry for its OWN layout is `8 + body` already
+		// (gotable, ctable, rusttable all spell it that way), so passing the
+		// lock's number through shipped a LOCKED unit's OLDER entries eight
+		// bytes short — and step 9 divides the file's tail by that number, so
+		// every record an older peer wrote is misread or refused as ragged. It
+		// was invisible only because no harness fixture carries a lock and the
+		// leg's own entry wins for the current layout.
+		//
+		// THE SLICE IS COPIED BEFORE THE NUMBER MOVES: `lockfile.Lineage` hands
+		// back the parsed file's own entries, and the C++ reference reads that
+		// same parsed lock through [FixedLineage.Lock] — where the conversion
+		// is its own (`internal/codegen/cpptable/lineage.go`, `8+e.Record`).
+		whole := make([]lockfile.LineageEntry, len(entries))
+		copy(whole, entries)
+		for i := range whole {
+			whole[i].Record += fixedRecordHashBytes
+		}
+		l.entries[st.Name] = whole
 		l.floor[st.Name] = floor
 	}
 	return l, nil
@@ -122,6 +157,10 @@ func openFixedLineage(u *ir.Unit) (*FixedLineage, error) {
 // Entries is the lineage of one fixed table, by DECLARED name: the lock's
 // entries OLDEST FIRST, the current layout last. Nil for a table the lock does
 // not carry, and for a unit with no lock.
+//
+// Each entry's `Record` is §5.2's `record_bytes` — THE WHOLE RECORD, eight hash
+// bytes plus the body — and not the body size the lock's line carries. A
+// backend writes it into its static data as it stands and adds nothing to it.
 func (l *FixedLineage) Entries(table string) []lockfile.LineageEntry {
 	if l == nil {
 		return nil
