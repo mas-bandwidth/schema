@@ -34,6 +34,7 @@ package darttable
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +42,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -91,7 +93,7 @@ var versionRows = []versionRow{
   for (var k = 0; k < 3; k++) {
     check(values[k].v == want[k], 'record $k widened wrong: ${values[k].v}');
     check(
-      values[k].lead == 1 && values[k].trail == 2,
+      values[k].lead == 0xAAAAAAAA && values[k].trail == 0xBBBBBBBB,
       'record $k moved a neighbour: ${values[k].lead} ${values[k].trail}',
     );
   }`},
@@ -113,7 +115,7 @@ var versionRows = []versionRow{
 
 func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
-	dart := dartBinary(t)
+	dartBin := dartBinary(t)
 	for _, r := range versionRows {
 		r := r
 		t.Run(r.row, func(t *testing.T) {
@@ -138,7 +140,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
   );
   %s
 %s`, poison, counters, r.check)
-			out, err := runVersionProbe(t, dart, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
+			out, err := runVersionProbe(t, dartBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
 				filepath.Join(corpus, "old_"+r.row+".bin"), body)
 			if err != nil {
 				t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
@@ -151,7 +153,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 
 func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	corpus := fixedCorpus(t)
-	dart := dartBinary(t)
+	dartBin := dartBinary(t)
 	for _, r := range versionRows {
 		r := r
 		t.Run(r.row, func(t *testing.T) {
@@ -192,7 +194,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
     'REFUSE wrote destination values',
   );`
 			}
-			out, err := runVersionProbe(t, dart, "VOLD_"+r.row, nil, 0,
+			out, err := runVersionProbe(t, dartBin, "VOLD_"+r.row, nil, 0,
 				filepath.Join(corpus, "new_"+r.row+".bin"), body)
 			if err != nil {
 				t.Fatalf("OLD-REFUSES-NEW %s: %v\n%s", r.row, err, out)
@@ -210,13 +212,13 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 
 func TestFixedVersioningFloor(t *testing.T) {
 	corpus := fixedCorpus(t)
-	dart := dartBinary(t)
+	dartBin := dartBinary(t)
 	oldFile := filepath.Join(corpus, "old_floor.bin")
 	midFile := filepath.Join(corpus, "mid_floor.bin")
 
 	run := func(t *testing.T, retire int, body string) {
 		t.Helper()
-		out, err := runVersionProbe(t, dart, "VNEW_floor", []string{"VOLD_floor", "VMID_floor"}, retire,
+		out, err := runVersionProbe(t, dartBin, "VNEW_floor", []string{"VOLD_floor", "VMID_floor"}, retire,
 			oldFile, body)
 		if err != nil {
 			t.Fatalf("floor: %v\n%s", err, out)
@@ -262,13 +264,13 @@ func TestFixedVersioningFloor(t *testing.T) {
 
 func TestFixedVersioningHash(t *testing.T) {
 	corpus := fixedCorpus(t)
-	dart := dartBinary(t)
+	dartBin := dartBinary(t)
 	old := filepath.Join(corpus, "old_field_append.bin")
 	fresh := filepath.Join(corpus, "new_field_append.bin")
 
 	probe := func(t *testing.T, body string) {
 		t.Helper()
-		out, err := runVersionProbe(t, dart, "VNEW_field_append", []string{"VOLD_field_append"}, 0, old, body)
+		out, err := runVersionProbe(t, dartBin, "VNEW_field_append", []string{"VOLD_field_append"}, 0, old, body)
 		if err != nil {
 			t.Fatalf("hash case: %v\n%s", err, out)
 		}
@@ -319,14 +321,14 @@ func TestFixedVersioningHash(t *testing.T) {
 
 func TestFixedVersioningLineageMerge(t *testing.T) {
 	corpus := fixedCorpus(t)
-	dart := dartBinary(t)
+	dartBin := dartBinary(t)
 	body := fmt.Sprintf(`  for (final path in <String>[%q, %q]) {
     final data = File(path).readAsBytesSync();
     final n = LOAD(values, values.length, data, data.length, plan, report);
     check(n >= 1 && report.refused == 0 && !report.malformed,
         '$path: both pre-merge files read on the merged build: n=$n ${why(report)}');
   }`, filepath.Join(corpus, "a_lineage_merge.bin"), filepath.Join(corpus, "b_lineage_merge.bin"))
-	out, err := runVersionProbe(t, dart, "VNEW_lineage_merge",
+	out, err := runVersionProbe(t, dartBin, "VNEW_lineage_merge",
 		[]string{"VOLD_lineage_merge", "VBRA_lineage_merge", "VBRB_lineage_merge"}, 0,
 		filepath.Join(corpus, "old_lineage_merge.bin"), body)
 	if err != nil {
@@ -424,7 +426,7 @@ func versionRoot(t *testing.T, u *ir.Unit) *ir.Struct {
 // floor), writes ONE GENERATED PROBE beside it, and runs it with the leg's own
 // toolchain. A probe is generated, never hand-written, so a row and its
 // negative control cost the same (§5.9 #18).
-func runVersionProbe(t *testing.T, dart, reader string, older []string, retire int, file, body string) (string, error) {
+func runVersionProbe(t *testing.T, dartBin, reader string, older []string, retire int, file, body string) (string, error) {
 	t.Helper()
 	u := versionSchema(t, reader)
 	lineage := map[string][]FixedLineageEntry{}
@@ -442,10 +444,17 @@ func runVersionProbe(t *testing.T, dart, reader string, older []string, retire i
 			lineage[st.Name] = append(lineage[st.Name], e)
 		}
 	}
-	files, err := GenerateLineage(u, lineage)
+	// THE PACKET LIBRARY TOO: a row's unions, enums and flags are declared
+	// there, and the fixed library imports them the way a consumer does.
+	files, err := dart.Generate(u)
+	if err != nil {
+		t.Fatalf("generate packet: %v", err)
+	}
+	tables, err := GenerateLineage(u, lineage)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	for name, data := range files {
 		if strings.Contains(name, "/") {
@@ -518,7 +527,7 @@ void main() {
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dart, "--enable-asserts", "probe.dart")
+	cmd := exec.Command(dartBin, "--enable-asserts", "probe.dart")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err

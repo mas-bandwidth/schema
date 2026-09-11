@@ -60,6 +60,7 @@ abstract final class TableFixedOp {
   static const int widen = 4; // a narrower source into a wider destination
   static const int constant = 5; // a constant this reader's storage takes
   static const int widenFloat = 6; // f32 into f64, §4's float rung
+  static const int present = 7; // a constant 1 into the reader's present byte
 
   // the flavours a text entry lands its units under
   static const int textUtf8 = 1;
@@ -161,6 +162,15 @@ abstract final class TableFixedRefusal {
   // more records than the caller's capacity
   static const int batchTooLarge = 14;
 
+  /// THE TWO LAYOUT REFUSALS OF §5, and the operator's two distinct answers:
+  /// a hash NO lineage entry of this build holds is 'layout_newer' — ship the
+  /// reader — and a hash the lineage holds BELOW THE FLOOR is
+  /// 'layout_unsupported' — upgrade the client. Both report the FILE'S hash.
+  /// The NAMES are the contract and the integers are this leg's own, taken in
+  /// the order §5.3 names them (§5.9 #14).
+  static const int layoutNewer = 15;
+  static const int layoutUnsupported = 16;
+
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
     switch (refusal) {
@@ -194,6 +204,10 @@ abstract final class TableFixedRefusal {
         return 'plan_too_large';
       case batchTooLarge:
         return 'batch_too_large';
+      case layoutNewer:
+        return 'layout_newer';
+      case layoutUnsupported:
+        return 'layout_unsupported';
       default:
         return '???';
     }
@@ -215,6 +229,12 @@ final class TableFixedReport {
   /// the layout a 'no_layout' refusal names
   int hash = 0;
 
+  /// THE FILE'S HASH, and the LAST member of the report: it is set by the two
+  /// LAYOUT refusals — 'layout_newer' and 'layout_unsupported' — and is zero on
+  /// every other path (§5.9 #15). An operator deciding between "ship the
+  /// reader" and "upgrade the client" needs the number in both answers.
+  int layoutHash = 0;
+
   void reset() {
     malformed = false;
     refused = TableFixedRefusal.none;
@@ -224,6 +244,7 @@ final class TableFixedReport {
     widened = 0;
     duplicate = 0;
     hash = 0;
+    layoutHash = 0;
   }
 }
 
@@ -690,6 +711,165 @@ final class TableFixedPlanCache {
   }
 }
 
+/// ONE LOCKED LAYOUT (docs/FIXED-FORM-ALGORITHM.md §5.2's static data, the four
+/// members of §5.9 #19 in that order): the WIRE HASH a file is matched on, the
+/// layout BYTES verbatim, that run's BYTE LENGTH riding beside them, and the
+/// RECORD SIZE taken from the lock and never from the file.
+final class TableFixedKnownLayout {
+  const TableFixedKnownLayout(
+    this.hash,
+    this.layout,
+    this.layoutBytes,
+    this.recordBytes,
+  );
+
+  final int hash;
+  final Uint8List layout;
+  final int layoutBytes;
+  final int recordBytes;
+}
+
+/// THE FIRST lineage index whose hash is the file's, or -1 for a hash no entry
+/// holds. A file is matched on THIS and on nothing else (§5.3 step 5).
+int tableFixedSelect(List<TableFixedKnownLayout> known, int hash) {
+  for (var i = 0; i < known.length; i++) {
+    if (known[i].hash == hash) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/// ONE OLDER ENTRY'S PLAN, laid down from THE LOCK'S BYTES and never from a
+/// file's. 'unknown' and 'kindMismatch' are the COMPILE CENSUS — the plan's own
+/// numbers, carried onto a report ONCE after the record loop and only on a read
+/// that returns (§5.4, §5.9 #6). 'why' is the name an entry the lock got wrong
+/// refuses by, so a bad entry still answers by name rather than by a throw
+/// (§5.9 #8).
+final class TableFixedLineagePlan {
+  TableFixedLineagePlan(
+    this.entries,
+    this.count,
+    this.fill,
+    this.fillCount,
+    this.remap,
+    this.unknown,
+    this.kindMismatch,
+    this.why,
+  );
+
+  final Int32List entries;
+  final int count;
+  final Int32List fill;
+  final int fillCount;
+  final Int32List remap;
+  final int unknown;
+  final int kindMismatch;
+  final int why;
+}
+
+/// ONE PLAN PER LINEAGE ENTRY, BUILT FROM THE LOCK'S OWN BYTES. A Dart
+/// top-level 'final' is initialised LAZILY, ONCE PER ISOLATE, which is §5.9 #3's
+/// build time for a language with no 'constexpr': the bytes came from the lock,
+/// the walk happens once per process, a plan that will not build is a build
+/// fault rather than a refusal at the first file that needs it, and THE LOAD
+/// PATH COMPILES NOTHING AND PARSES NO LAYOUT A FILE CARRIED. There is no cache
+/// a load can miss. The identity entry keeps an empty lane: the baked plan
+/// answers it.
+List<TableFixedLineagePlan> tableFixedLineagePlans(
+  List<TableFixedKnownLayout> known,
+  Uint8List myLayout,
+  Int32List myDst,
+  Int32List cover,
+  int coverCount,
+  int imageBytes,
+  int ownHash,
+) {
+  final empty = Int32List(0);
+  final out = <TableFixedLineagePlan>[];
+  for (final k in known) {
+    if (k.hash == ownHash) {
+      out.add(
+        TableFixedLineagePlan(
+          empty,
+          0,
+          empty,
+          0,
+          empty,
+          0,
+          0,
+          TableFixedRefusal.none,
+        ),
+      );
+      continue;
+    }
+    // THE SIZE IS DISCOVERED BY CONSTRUCTION (§5.9 #4): the build grows its
+    // own scratch until the plan fits and stops at a declared cap, and an
+    // entry past that cap records 'plan_too_large' ON THAT ENTRY (§5.9 #5).
+    var lane = TableFixedLineagePlan(
+      empty,
+      0,
+      empty,
+      0,
+      empty,
+      0,
+      0,
+      TableFixedRefusal.planTooLarge,
+    );
+    for (var room = 256; room <= 1 << 18; room *= 4) {
+      final plan = TableFixedPlan(room, imageBytes, 1024 + 32 * room);
+      if (!plan.theirs.parse(
+        ByteData.sublistView(k.layout),
+        0,
+        k.layoutBytes,
+      )) {
+        // A LINEAGE ENTRY THAT IS NOT A LAYOUT IS A BUG IN THE LOCK and never
+        // a wire event; where it arrives at run time the entry still owes a
+        // name rather than a throw (§5.9 #8, #26).
+        lane = TableFixedLineagePlan(
+          empty,
+          0,
+          empty,
+          0,
+          empty,
+          0,
+          0,
+          TableFixedRefusal.layoutMalformed,
+        );
+        break;
+      }
+      final census = TableFixedReport();
+      final made = TableFixedCompiler.compile(
+        plan,
+        myLayout,
+        ByteData.sublistView(myLayout),
+        myDst,
+        cover,
+        coverCount,
+        census,
+      );
+      if (made < 0) {
+        continue;
+      }
+      lane = TableFixedLineagePlan(
+        Int32List.fromList(
+          plan.entries.sublist(0, made * TableFixedLane.lanes),
+        ),
+        made,
+        Int32List.fromList(plan.fill.sublist(0, plan.fillCount * 2)),
+        plan.fillCount,
+        Int32List.fromList(plan.remap.sublist(0, plan.remapUsed)),
+        census.unknown,
+        census.kindMismatch,
+        TableFixedRefusal.none,
+      );
+      break;
+    }
+    out.add(lane);
+  }
+  return out;
+}
+
 /// THE ONE READ LOOP. A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE.
 /// Which plan it is handed is the only thing that differs between reading this
 /// build's own record and reading anybody else's — the owner's ruling, which
@@ -812,6 +992,11 @@ void tableFixedRun(
           image[d + k] = (value >>> (8 * k)) & 0xff;
         }
         break;
+      case TableFixedOp.present:
+        // T INTO ?T: the reader's PRESENT byte, a constant 1. It moves no
+        // counter — the op lands its value and nothing happened (§5.4).
+        image[d] = 1;
+        break;
       default:
         break;
     }
@@ -851,6 +1036,10 @@ abstract final class TableFixedCompiler {
   /// lands exactly, counting one widened. Coming back DOWN the ladder, or
   /// across two of them, is a kind that MOVED and is reported rather than
   /// reinterpreted.
+  /// THE WIDENING LADDER RUNS INSIDE A FAMILY AND UPWARD ONLY (§1): 2..5,
+  /// 6..9, 20..24 the SIGNED fixed(I,F) run, 25..29 the UNSIGNED one, and
+  /// 10 -> 11. So u8 into i32 is a kind that MOVED and is reported, never a
+  /// widen.
   static bool widens(int from, int to) {
     if (from >= 6 && from <= 9 && to >= 6 && to <= 9) {
       return to > from; // u8 .. u64
@@ -858,10 +1047,20 @@ abstract final class TableFixedCompiler {
     if (from >= 2 && from <= 5 && to >= 2 && to <= 5) {
       return to > from; // i8 .. i64
     }
+    if (from >= 20 && from <= 24 && to >= 20 && to <= 24) {
+      return to > from; // fixed(I,F) SIGNED, at 8/16/32/64/128 storage bits
+    }
+    if (from >= 25 && from <= 29 && to >= 25 && to <= 29) {
+      return to > from; // ufixed(I,F) UNSIGNED, the same five widths
+    }
     return from == 10 && to == 11; // f32 -> f64
   }
 
-  static bool signedKind(int kind) => kind >= 2 && kind <= 5;
+  /// A LADDER WIDEN'S SIGN IS THE WRITER'S KIND'S: the signed integers and a
+  /// SIGNED fixed-point sign-extend, everything else zero-extends. The
+  /// SAME-KIND widen has no sign at all and zero-extends (§5.2).
+  static bool signedKind(int kind) =>
+      (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
 
   static void push(
     TableFixedPlan plan,
@@ -985,6 +1184,16 @@ abstract final class TableFixedCompiler {
     final row = mi * TableFixedLane.dstLanes;
     final at = myAt + dst[row + TableFixedLane.dstOffset];
     final auxAt = myAt + dst[row + TableFixedLane.dstAux];
+    // T INTO ?T (§5.2's EMIT, bill §12.8): the reader wraps what the writer
+    // sent plain. The PRESENT byte is a constant 1 — constant in its VALUE and
+    // still carrying the row's own guard and ordinal (§5.9 #13), so an optional
+    // under a union arm never reports present for an arm the tag did not name —
+    // and then the payload lands under that same guard.
+    if (myKind == 35 && theirKind != 35) {
+      push(plan, TableFixedOp.present, theirAt, auxAt, 1, 0, guard, arg, 0);
+      compileEntry(plan, ti, theirAt, mi + 1, dst, myAt, guard, arg, report);
+      return;
+    }
     if (theirKind != myKind) {
       if (widens(theirKind, myKind)) {
         final op = theirKind == 10
@@ -1117,6 +1326,22 @@ abstract final class TableFixedCompiler {
         }
         break;
       case 30: // an enum: the ordinal is the layout's position, so it remaps
+        // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts 'widened'
+        // (§5.2's EMIT, bill §12.7): the names did not move, the width did.
+        if (theirSize < mySize) {
+          push(
+            plan,
+            TableFixedOp.widen,
+            theirAt,
+            at,
+            theirSize,
+            0,
+            guard,
+            arg,
+            mySize & 0xff,
+          );
+          break;
+        }
         final theirVariants = theirs.children(ti);
         final myVariants = mine.children(mi);
         final variants = theirVariants < 255 ? theirVariants : 255;
