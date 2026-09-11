@@ -1286,9 +1286,6 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
-		return tableFixedRefuse(report, "layout_malformed")
-	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := FixedTableFixedPlan.Entries
@@ -1296,17 +1293,26 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	recordBytes := int64(FixedTableFixedRecordBytes)
 	identity := hash == FixedTableFixedHash
 	if !identity {
-		parsed, ok := tableFixedParseLayout(layout)
-		if !ok {
-			return tableFixedRefuse(report, "layout_malformed")
+		// ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+		// THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+		// every rule it fails refuses under ITS OWN NAME (§1.1).
+		parsed, why := tableFixedParseLayout(layout)
+		if why != "" {
+			return tableFixedRefuse(report, why)
 		}
 		made := tableFixedCompile(parsed, FixedTableFixedLayout, FixedTableFixedDst, plan, report)
+		if made == -2 {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
 		if made < 0 {
 			return tableFixedRefuse(report, "plan_too_large")
 		}
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true
