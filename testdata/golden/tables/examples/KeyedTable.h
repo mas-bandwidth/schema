@@ -2489,6 +2489,16 @@ struct TableFixedEntry
     // sits last so a ten-value aggregate still names op, arg, meta, dstsize
     // and sign in that order.
     uint8_t argw = 1;
+    // guard2 / arg2 / argw2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
+    // ANSWERS TO, and they are a CONJUNCTION with guard/arg: an entry runs
+    // when BOTH tags hold their ordinal (§4.1, §5.8 row 6). Stamping the
+    // outer tag OVER the inner one fired every inner arm the moment the
+    // outer one rode and the last arm won; testing only the inner one landed
+    // an inner arm's bytes under an outer arm that never rode. kTableFixedNoGuard
+    // is "no second condition", which is every entry that is not nested.
+    uint32_t guard2 = kTableFixedNoGuard;
+    uint64_t arg2 = 0;
+    uint8_t argw2 = 1;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2708,7 +2718,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p.dst, &p.aux, p.size );
+            // THROUGH A 64-BIT TEMPORARY: a tag is one, two, four or EIGHT
+            // bytes, and a memcpy of p.size out of the four-byte aux lane
+            // reads the member beside it (§4.5, §5.8 row 7).
+            const uint64_t lands = p.aux;
+            memcpy( dst + p.dst, &lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
@@ -2748,6 +2762,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     {
         const TableFixedEntry & p = plan[i];
         if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -3234,8 +3249,11 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     {
         if ( e.guard != kTableFixedNoGuard ) { e.argw = c.argw ? c.argw : 1u; }
         const uint8_t gw = e.argw == 0 ? 1u : e.argw;
-        const bool guard_out = e.guard != kTableFixedNoGuard &&
-            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record );
+        const uint8_t gw2 = e.argw2 == 0 ? 1u : e.argw2;
+        const bool guard_out = ( e.guard != kTableFixedNoGuard &&
+            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
+            ( e.guard2 != kTableFixedNoGuard &&
+            ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
@@ -3492,27 +3510,23 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 }
                 my_arm += TableFixedSubtree( mine, my_arm );
             }
-            // Nested: an arm inside an arm answers to the OUTER tag, which is
-            // the one that decides whether any of it is there at all. Identity
-            // rewrites inner-guarded leaves onto that tag; the compiled path
-            // does the same so a foreign outer arm is not read as this inner
-            // union (#876 card 13).
+            // Nested: an arm inside an arm answers to the OUTER tag TOO — the
+            // one that decides whether any of those bytes are there at all —
+            // and its OWN arm selection must survive that (§4.1). So the two
+            // tags are CONJOINED on the second guard lane rather than the
+            // outer one replacing the inner (§5.8 row 6).
             if ( guard != kTableFixedNoGuard )
             {
                 const uint8_t outer_w = saved_argw ? saved_argw : 1u;
-                for ( int32_t i = restamp_from; i < c.count; ++i )
+                for ( int32_t q = restamp_from; q < c.count; ++q )
                 {
-                    // The inner tag's own consts stay on the inner tag: restamping
-                    // them onto the outer tag fires every inner arm when the outer
-                    // matches, and the last arm wins. Payload leaves answer to the
-                    // OUTER tag (#876 card 13).
-                    if ( c.plan[i].guard == their_at &&
-                         !( c.plan[i].op == kTableFixedConst && c.plan[i].dst == aux_at ) )
-                    {
-                        c.plan[i].guard = guard;
-                        c.plan[i].arg = arg;
-                        c.plan[i].argw = outer_w;
-                    }
+                    // A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
+                    // cannot carry it: the plan REFUSES BY NAME rather than
+                    // drop one (the guard chain is the follow-on, §5.8 row 6).
+                    if ( c.plan[q].guard2 != kTableFixedNoGuard ) { c.hostile = true; break; }
+                    c.plan[q].guard2 = guard;
+                    c.plan[q].arg2 = arg;
+                    c.plan[q].argw2 = outer_w;
                 }
             }
             c.argw = saved_argw;
@@ -3628,6 +3642,8 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
+             plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
+             plan[out-1].argw2 == plan[i].argw2 &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -10321,8 +10337,8 @@ constexpr TableFixedDst TeamConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry TeamConfigFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // spawn_count
-    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // banner
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // spawn_count
+    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // banner
 };
 constexpr int32_t TeamConfigFixedPlanCount = 2;
 constexpr int32_t TeamConfigFixedPlanGuarded = 2;
@@ -10567,7 +10583,7 @@ constexpr TableFixedDst GunnerConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry GunnerConfigFixedPlan[] = {
-    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 0u, 0u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
 };
 constexpr int32_t GunnerConfigFixedPlanCount = 1;
 constexpr int32_t GunnerConfigFixedPlanGuarded = 1;
@@ -10818,9 +10834,9 @@ constexpr TableFixedDst TurretConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry TurretConfigFixedPlan[] = {
-    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 8u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 9u, 8u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 0u, 0u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 8u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 9u, 8u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
 };
 constexpr int32_t TurretConfigFixedPlanCount = 3;
 constexpr int32_t TurretConfigFixedPlanGuarded = 3;
@@ -11093,15 +11109,15 @@ constexpr TableFixedDst HullConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry HullConfigFixedPlan[] = {
-    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // health
-    { 16u, 24u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 17u, 16u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 22u, 28u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 30u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 31u, 36u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 36u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 44u, 64u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 45u, 56u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
+    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
+    { 16u, 24u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 17u, 16u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 22u, 28u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 30u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 31u, 36u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 36u, 48u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 44u, 64u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 45u, 56u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
 };
 constexpr int32_t HullConfigFixedPlanCount = 9;
 constexpr int32_t HullConfigFixedPlanGuarded = 9;
@@ -11448,40 +11464,40 @@ constexpr TableFixedDst KeyedConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry KeyedConfigFixedPlan[] = {
-    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // spawn_count
-    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // banner
-    { 24u, 28u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // spawn_count
-    { 28u, 52u, 16u, 32u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // banner
-    { 48u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // spawn_count
-    { 52u, 80u, 16u, 60u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // banner
-    { 72u, 84u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // health
-    { 88u, 108u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 89u, 100u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 94u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 102u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 103u, 120u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 108u, 132u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 116u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 117u, 140u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 122u, 152u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // health
-    { 138u, 176u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 139u, 168u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 144u, 180u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 152u, 196u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 153u, 188u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 158u, 200u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 166u, 216u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 167u, 208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 172u, 220u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // health
-    { 188u, 244u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 189u, 236u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 194u, 248u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 202u, 264u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 203u, 256u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 208u, 268u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 216u, 284u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // gunner present
-    { 217u, 276u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // reaction
-    { 222u, 288u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // per_team, whole
+    { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // spawn_count
+    { 4u, 24u, 16u, 4u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // banner
+    { 24u, 28u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // spawn_count
+    { 28u, 52u, 16u, 32u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // banner
+    { 48u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // spawn_count
+    { 52u, 80u, 16u, 60u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // banner
+    { 72u, 84u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
+    { 88u, 108u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 89u, 100u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 94u, 112u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 102u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 103u, 120u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 108u, 132u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 116u, 148u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 117u, 140u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 122u, 152u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
+    { 138u, 176u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 139u, 168u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 144u, 180u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 152u, 196u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 153u, 188u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 158u, 200u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 166u, 216u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 167u, 208u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 172u, 220u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // health
+    { 188u, 244u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 189u, 236u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 194u, 248u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 202u, 264u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 203u, 256u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 208u, 268u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 216u, 284u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // gunner present
+    { 217u, 276u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // reaction
+    { 222u, 288u, 12u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // per_team, whole
 };
 constexpr int32_t KeyedConfigFixedPlanCount = 34;
 constexpr int32_t KeyedConfigFixedPlanGuarded = 34;

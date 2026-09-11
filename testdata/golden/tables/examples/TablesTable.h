@@ -2489,6 +2489,16 @@ struct TableFixedEntry
     // sits last so a ten-value aggregate still names op, arg, meta, dstsize
     // and sign in that order.
     uint8_t argw = 1;
+    // guard2 / arg2 / argw2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
+    // ANSWERS TO, and they are a CONJUNCTION with guard/arg: an entry runs
+    // when BOTH tags hold their ordinal (§4.1, §5.8 row 6). Stamping the
+    // outer tag OVER the inner one fired every inner arm the moment the
+    // outer one rode and the last arm won; testing only the inner one landed
+    // an inner arm's bytes under an outer arm that never rode. kTableFixedNoGuard
+    // is "no second condition", which is every entry that is not nested.
+    uint32_t guard2 = kTableFixedNoGuard;
+    uint64_t arg2 = 0;
+    uint8_t argw2 = 1;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2708,7 +2718,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p.dst, &p.aux, p.size );
+            // THROUGH A 64-BIT TEMPORARY: a tag is one, two, four or EIGHT
+            // bytes, and a memcpy of p.size out of the four-byte aux lane
+            // reads the member beside it (§4.5, §5.8 row 7).
+            const uint64_t lands = p.aux;
+            memcpy( dst + p.dst, &lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
@@ -2748,6 +2762,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     {
         const TableFixedEntry & p = plan[i];
         if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -3234,8 +3249,11 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     {
         if ( e.guard != kTableFixedNoGuard ) { e.argw = c.argw ? c.argw : 1u; }
         const uint8_t gw = e.argw == 0 ? 1u : e.argw;
-        const bool guard_out = e.guard != kTableFixedNoGuard &&
-            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record );
+        const uint8_t gw2 = e.argw2 == 0 ? 1u : e.argw2;
+        const bool guard_out = ( e.guard != kTableFixedNoGuard &&
+            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
+            ( e.guard2 != kTableFixedNoGuard &&
+            ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
@@ -3492,27 +3510,23 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 }
                 my_arm += TableFixedSubtree( mine, my_arm );
             }
-            // Nested: an arm inside an arm answers to the OUTER tag, which is
-            // the one that decides whether any of it is there at all. Identity
-            // rewrites inner-guarded leaves onto that tag; the compiled path
-            // does the same so a foreign outer arm is not read as this inner
-            // union (#876 card 13).
+            // Nested: an arm inside an arm answers to the OUTER tag TOO — the
+            // one that decides whether any of those bytes are there at all —
+            // and its OWN arm selection must survive that (§4.1). So the two
+            // tags are CONJOINED on the second guard lane rather than the
+            // outer one replacing the inner (§5.8 row 6).
             if ( guard != kTableFixedNoGuard )
             {
                 const uint8_t outer_w = saved_argw ? saved_argw : 1u;
-                for ( int32_t i = restamp_from; i < c.count; ++i )
+                for ( int32_t q = restamp_from; q < c.count; ++q )
                 {
-                    // The inner tag's own consts stay on the inner tag: restamping
-                    // them onto the outer tag fires every inner arm when the outer
-                    // matches, and the last arm wins. Payload leaves answer to the
-                    // OUTER tag (#876 card 13).
-                    if ( c.plan[i].guard == their_at &&
-                         !( c.plan[i].op == kTableFixedConst && c.plan[i].dst == aux_at ) )
-                    {
-                        c.plan[i].guard = guard;
-                        c.plan[i].arg = arg;
-                        c.plan[i].argw = outer_w;
-                    }
+                    // A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
+                    // cannot carry it: the plan REFUSES BY NAME rather than
+                    // drop one (the guard chain is the follow-on, §5.8 row 6).
+                    if ( c.plan[q].guard2 != kTableFixedNoGuard ) { c.hostile = true; break; }
+                    c.plan[q].guard2 = guard;
+                    c.plan[q].arg2 = arg;
+                    c.plan[q].argw2 = outer_w;
                 }
             }
             c.argw = saved_argw;
@@ -3628,6 +3642,8 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
+             plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
+             plan[out-1].argw2 == plan[i].argw2 &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -12294,10 +12310,10 @@ constexpr TableFixedDst WeaponConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry WeaponConfigFixedPlan[] = {
-    { 0u, 0u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 17u, 20u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
+    { 0u, 0u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 17u, 20u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
 };
 constexpr int32_t WeaponConfigFixedPlanCount = 4;
 constexpr int32_t WeaponConfigFixedPlanGuarded = 2;
@@ -12651,24 +12667,24 @@ constexpr TableFixedDst LoadoutConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry LoadoutConfigFixedPlan[] = {
-    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grade
-    { 1u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // grades count
-    { 5u, 1u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grades, whole
-    { 9u, 12u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // podium, whole
-    { 12u, 16u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // perks
-    { 37u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 42u, 52u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 59u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 64u, 80u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 81u, 100u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 86u, 172u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // attachments count
-    { 90u, 108u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // attachments, whole
-    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
+    { 0u, 0u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grade
+    { 1u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades count
+    { 5u, 1u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades, whole
+    { 9u, 12u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // podium, whole
+    { 12u, 16u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // perks
+    { 37u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 42u, 52u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 59u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 64u, 80u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 81u, 100u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 86u, 172u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments count
+    { 90u, 108u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments, whole
+    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 38u, 48u, 4u, 0u, 37u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 60u, 76u, 4u, 0u, 59u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 82u, 104u, 4u, 0u, 81u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
 };
 constexpr int32_t LoadoutConfigFixedPlanCount = 18;
 constexpr int32_t LoadoutConfigFixedPlanGuarded = 12;
@@ -13093,31 +13109,31 @@ constexpr TableFixedDst ProfileConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry ProfileConfigFixedPlan[] = {
-    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // name
-    { 36u, 56u, 16u, 40u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1 }, // icon
-    { 56u, 60u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // experience
-    { 61u, 66u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // heading
-    { 63u, 72u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // timestamp
-    { 72u, 82u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // port
-    { 74u, 88u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // epoch
-    { 107u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grade
-    { 108u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // grades count
-    { 112u, 129u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grades, whole
-    { 116u, 140u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // podium, whole
-    { 119u, 144u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // perks
-    { 144u, 172u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 149u, 180u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 166u, 200u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 171u, 208u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 188u, 228u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 193u, 300u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // attachments count
-    { 197u, 236u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // attachments, whole
-    { 145u, 176u, 4u, 0u, 144u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 145u, 176u, 4u, 0u, 144u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 167u, 204u, 4u, 0u, 166u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 167u, 204u, 4u, 0u, 166u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 189u, 232u, 4u, 0u, 188u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 189u, 232u, 4u, 0u, 188u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
+    { 0u, 36u, 32u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // name
+    { 36u, 56u, 16u, 40u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // icon
+    { 56u, 60u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // experience
+    { 61u, 66u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // heading
+    { 63u, 72u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // timestamp
+    { 72u, 82u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // port
+    { 74u, 88u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // epoch
+    { 107u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grade
+    { 108u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades count
+    { 112u, 129u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades, whole
+    { 116u, 140u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // podium, whole
+    { 119u, 144u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // perks
+    { 144u, 172u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 149u, 180u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 166u, 200u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 171u, 208u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 188u, 228u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 193u, 300u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments count
+    { 197u, 236u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments, whole
+    { 145u, 176u, 4u, 0u, 144u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 145u, 176u, 4u, 0u, 144u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 167u, 204u, 4u, 0u, 166u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 167u, 204u, 4u, 0u, 166u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 189u, 232u, 4u, 0u, 188u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 189u, 232u, 4u, 0u, 188u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
 };
 constexpr int32_t ProfileConfigFixedPlanCount = 25;
 constexpr int32_t ProfileConfigFixedPlanGuarded = 19;
@@ -13595,141 +13611,141 @@ constexpr TableFixedDst RootConfigFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RootConfigFixedPlan[] = {
-    { 0u, 20u, 16u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // version_note
-    { 20u, 248u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // weapons count
-    { 24u, 24u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 41u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 46u, 52u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 63u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 68u, 80u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 85u, 100u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 90u, 108u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 107u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 112u, 136u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 129u, 156u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 134u, 164u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 151u, 184u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 156u, 192u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 173u, 212u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 178u, 220u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 195u, 240u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 200u, 1472u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // profiles count
-    { 204u, 292u, 32u, 256u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // name
-    { 240u, 312u, 16u, 296u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1 }, // icon
-    { 260u, 316u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // experience
-    { 265u, 322u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // heading
-    { 267u, 328u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // timestamp
-    { 276u, 338u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // port
-    { 278u, 344u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // epoch
-    { 311u, 384u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grade
-    { 312u, 392u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // grades count
-    { 316u, 385u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grades, whole
-    { 320u, 396u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // podium, whole
-    { 323u, 400u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // perks
-    { 348u, 428u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 353u, 436u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 370u, 456u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 375u, 464u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 392u, 484u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 397u, 556u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // attachments count
-    { 401u, 492u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // attachments, whole
-    { 465u, 596u, 32u, 560u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // name
-    { 501u, 616u, 16u, 600u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1 }, // icon
-    { 521u, 620u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // experience
-    { 526u, 626u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // heading
-    { 528u, 632u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // timestamp
-    { 537u, 642u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // port
-    { 539u, 648u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // epoch
-    { 572u, 688u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grade
-    { 573u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // grades count
-    { 577u, 689u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grades, whole
-    { 581u, 700u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // podium, whole
-    { 584u, 704u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // perks
-    { 609u, 732u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 614u, 740u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 631u, 760u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 636u, 768u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 653u, 788u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 658u, 860u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // attachments count
-    { 662u, 796u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // attachments, whole
-    { 726u, 900u, 32u, 864u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // name
-    { 762u, 920u, 16u, 904u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1 }, // icon
-    { 782u, 924u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // experience
-    { 787u, 930u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // heading
-    { 789u, 936u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // timestamp
-    { 798u, 946u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // port
-    { 800u, 952u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // epoch
-    { 833u, 992u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grade
-    { 834u, 1000u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // grades count
-    { 838u, 993u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grades, whole
-    { 842u, 1004u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // podium, whole
-    { 845u, 1008u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // perks
-    { 870u, 1036u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 875u, 1044u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 892u, 1064u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 897u, 1072u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 914u, 1092u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 919u, 1164u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // attachments count
-    { 923u, 1100u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // attachments, whole
-    { 987u, 1204u, 32u, 1168u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // name
-    { 1023u, 1224u, 16u, 1208u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1 }, // icon
-    { 1043u, 1228u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // experience
-    { 1048u, 1234u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // heading
-    { 1050u, 1240u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // timestamp
-    { 1059u, 1250u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // port
-    { 1061u, 1256u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // epoch
-    { 1094u, 1296u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grade
-    { 1095u, 1304u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // grades count
-    { 1099u, 1297u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // grades, whole
-    { 1103u, 1308u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // podium, whole
-    { 1106u, 1312u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // perks
-    { 1131u, 1340u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 1136u, 1348u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 1153u, 1368u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 1158u, 1376u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // damage
-    { 1175u, 1396u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // effect tag
-    { 1180u, 1468u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1 }, // attachments count
-    { 1184u, 1404u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // attachments, whole
-    { 42u, 48u, 4u, 0u, 41u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 42u, 48u, 4u, 0u, 41u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 64u, 76u, 4u, 0u, 63u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 64u, 76u, 4u, 0u, 63u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 86u, 104u, 4u, 0u, 85u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 86u, 104u, 4u, 0u, 85u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 108u, 132u, 4u, 0u, 107u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 108u, 132u, 4u, 0u, 107u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 130u, 160u, 4u, 0u, 129u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 130u, 160u, 4u, 0u, 129u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 152u, 188u, 4u, 0u, 151u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 152u, 188u, 4u, 0u, 151u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 174u, 216u, 4u, 0u, 173u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 174u, 216u, 4u, 0u, 173u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 196u, 244u, 4u, 0u, 195u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 196u, 244u, 4u, 0u, 195u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 349u, 432u, 4u, 0u, 348u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 349u, 432u, 4u, 0u, 348u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 371u, 460u, 4u, 0u, 370u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 371u, 460u, 4u, 0u, 370u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 393u, 488u, 4u, 0u, 392u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 393u, 488u, 4u, 0u, 392u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 610u, 736u, 4u, 0u, 609u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 610u, 736u, 4u, 0u, 609u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 632u, 764u, 4u, 0u, 631u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 632u, 764u, 4u, 0u, 631u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 654u, 792u, 4u, 0u, 653u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 654u, 792u, 4u, 0u, 653u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 871u, 1040u, 4u, 0u, 870u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 871u, 1040u, 4u, 0u, 870u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 893u, 1068u, 4u, 0u, 892u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 893u, 1068u, 4u, 0u, 892u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 915u, 1096u, 4u, 0u, 914u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 915u, 1096u, 4u, 0u, 914u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 1132u, 1344u, 4u, 0u, 1131u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 1132u, 1344u, 4u, 0u, 1131u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 1154u, 1372u, 4u, 0u, 1153u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 1154u, 1372u, 4u, 0u, 1153u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
-    { 1176u, 1400u, 4u, 0u, 1175u, kTableFixedCopy, 1, 0, 0, 0, 1 }, // multiplier
-    { 1176u, 1400u, 4u, 0u, 1175u, kTableFixedCopy, 2, 0, 0, 0, 1 }, // amount
+    { 0u, 20u, 16u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // version_note
+    { 20u, 248u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // weapons count
+    { 24u, 24u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 41u, 44u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 46u, 52u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 63u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 68u, 80u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 85u, 100u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 90u, 108u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 107u, 128u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 112u, 136u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 129u, 156u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 134u, 164u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 151u, 184u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 156u, 192u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 173u, 212u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 178u, 220u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 195u, 240u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 200u, 1472u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // profiles count
+    { 204u, 292u, 32u, 256u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // name
+    { 240u, 312u, 16u, 296u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // icon
+    { 260u, 316u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // experience
+    { 265u, 322u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // heading
+    { 267u, 328u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // timestamp
+    { 276u, 338u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // port
+    { 278u, 344u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // epoch
+    { 311u, 384u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grade
+    { 312u, 392u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades count
+    { 316u, 385u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades, whole
+    { 320u, 396u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // podium, whole
+    { 323u, 400u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // perks
+    { 348u, 428u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 353u, 436u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 370u, 456u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 375u, 464u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 392u, 484u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 397u, 556u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments count
+    { 401u, 492u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments, whole
+    { 465u, 596u, 32u, 560u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // name
+    { 501u, 616u, 16u, 600u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // icon
+    { 521u, 620u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // experience
+    { 526u, 626u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // heading
+    { 528u, 632u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // timestamp
+    { 537u, 642u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // port
+    { 539u, 648u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // epoch
+    { 572u, 688u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grade
+    { 573u, 696u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades count
+    { 577u, 689u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades, whole
+    { 581u, 700u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // podium, whole
+    { 584u, 704u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // perks
+    { 609u, 732u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 614u, 740u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 631u, 760u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 636u, 768u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 653u, 788u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 658u, 860u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments count
+    { 662u, 796u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments, whole
+    { 726u, 900u, 32u, 864u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // name
+    { 762u, 920u, 16u, 904u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // icon
+    { 782u, 924u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // experience
+    { 787u, 930u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // heading
+    { 789u, 936u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // timestamp
+    { 798u, 946u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // port
+    { 800u, 952u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // epoch
+    { 833u, 992u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grade
+    { 834u, 1000u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades count
+    { 838u, 993u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades, whole
+    { 842u, 1004u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // podium, whole
+    { 845u, 1008u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // perks
+    { 870u, 1036u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 875u, 1044u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 892u, 1064u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 897u, 1072u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 914u, 1092u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 919u, 1164u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments count
+    { 923u, 1100u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments, whole
+    { 987u, 1204u, 32u, 1168u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // name
+    { 1023u, 1224u, 16u, 1208u, kTableFixedNoGuard, kTableFixedText, 0, 3, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // icon
+    { 1043u, 1228u, 5u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // experience
+    { 1048u, 1234u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // heading
+    { 1050u, 1240u, 9u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // timestamp
+    { 1059u, 1250u, 2u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // port
+    { 1061u, 1256u, 33u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // epoch
+    { 1094u, 1296u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grade
+    { 1095u, 1304u, 4u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades count
+    { 1099u, 1297u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // grades, whole
+    { 1103u, 1308u, 3u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // podium, whole
+    { 1106u, 1312u, 25u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // perks
+    { 1131u, 1340u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 1136u, 1348u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 1153u, 1368u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 1158u, 1376u, 17u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // damage
+    { 1175u, 1396u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // effect tag
+    { 1180u, 1468u, 8u, 0u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments count
+    { 1184u, 1404u, 64u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // attachments, whole
+    { 42u, 48u, 4u, 0u, 41u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 42u, 48u, 4u, 0u, 41u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 64u, 76u, 4u, 0u, 63u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 64u, 76u, 4u, 0u, 63u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 86u, 104u, 4u, 0u, 85u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 86u, 104u, 4u, 0u, 85u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 108u, 132u, 4u, 0u, 107u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 108u, 132u, 4u, 0u, 107u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 130u, 160u, 4u, 0u, 129u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 130u, 160u, 4u, 0u, 129u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 152u, 188u, 4u, 0u, 151u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 152u, 188u, 4u, 0u, 151u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 174u, 216u, 4u, 0u, 173u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 174u, 216u, 4u, 0u, 173u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 196u, 244u, 4u, 0u, 195u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 196u, 244u, 4u, 0u, 195u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 349u, 432u, 4u, 0u, 348u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 349u, 432u, 4u, 0u, 348u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 371u, 460u, 4u, 0u, 370u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 371u, 460u, 4u, 0u, 370u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 393u, 488u, 4u, 0u, 392u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 393u, 488u, 4u, 0u, 392u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 610u, 736u, 4u, 0u, 609u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 610u, 736u, 4u, 0u, 609u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 632u, 764u, 4u, 0u, 631u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 632u, 764u, 4u, 0u, 631u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 654u, 792u, 4u, 0u, 653u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 654u, 792u, 4u, 0u, 653u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 871u, 1040u, 4u, 0u, 870u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 871u, 1040u, 4u, 0u, 870u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 893u, 1068u, 4u, 0u, 892u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 893u, 1068u, 4u, 0u, 892u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 915u, 1096u, 4u, 0u, 914u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 915u, 1096u, 4u, 0u, 914u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 1132u, 1344u, 4u, 0u, 1131u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 1132u, 1344u, 4u, 0u, 1131u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 1154u, 1372u, 4u, 0u, 1153u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 1154u, 1372u, 4u, 0u, 1153u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
+    { 1176u, 1400u, 4u, 0u, 1175u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // multiplier
+    { 1176u, 1400u, 4u, 0u, 1175u, kTableFixedCopy, 2, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // amount
 };
 constexpr int32_t RootConfigFixedPlanCount = 135;
 constexpr int32_t RootConfigFixedPlanGuarded = 95;
