@@ -795,6 +795,18 @@ func (g *tableGen) emitFixedTextContent(f *ir.Field, val, ind string) {
 	g.pf("%s    damaged++;\n%s}\n", ind, ind)
 }
 
+// ordinalFillsStorage reports whether an ordinal's extent is the LARGEST value
+// its storage width holds — 255 in a byte, 65535 in two. The read-side clamp
+// for such an ordinal is `> extent`, a comparison the tag's own type can never
+// satisfy, so the emitter drops it: the same "this check cannot fire" test
+// tableClampEnds applies to a ranged scalar's end sitting on its width's limit.
+func ordinalFillsStorage(max int64, storageBits int) bool {
+	if storageBits <= 0 || storageBits >= 64 {
+		return false
+	}
+	return uint64(max) >= uint64(1)<<uint(storageBits)-1
+}
+
 func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	ind := strings.Repeat(" ", indent)
 	if f.Type.Kind == ir.TNamed {
@@ -810,8 +822,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// is a raw copy out of a stranger's bytes, and this is what holds
 			// it. It lands None — the same nothing an unset union holds — and
 			// counts.
-			g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
-				ind, expr, r.Max, expr, f.Type.Name)
+			if !ordinalFillsStorage(r.Max, ir.StorageBitsFor(r.Max)) {
+				g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
+					ind, expr, r.Max, expr, f.Type.Name)
+			}
 			if !ir.TableFixedClampNeededUnionArm(r) {
 				return
 			}
@@ -832,6 +846,16 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// all. It lands None and counts. A value INSIDE an `| max = K`
 			// widening is the other case and is left alone: that is a name a
 			// later generation has, not a bound this one broke.
+			//
+			// An enum whose extent FILLS its storage (255 variants in a byte)
+			// is the "this check cannot fire" case tableClampEnds already
+			// applies to a ranged scalar: the tag's own type holds no value
+			// above the extent, so the comparison is always false and the
+			// emitter drops it rather than hand a warning-as-error build a
+			// tautology. No semantics move — the elided check never clamped.
+			if ordinalFillsStorage(int64(r.Max), r.StorageBits) {
+				return
+			}
 			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s::None; clamped++; }\n",
 				ind, expr, r.Max, expr, f.Type.Name)
 			return
