@@ -88,7 +88,7 @@ pub struct TableFixedEntry {
     pub op: TableFixedOp,
     /// THE GUARD'S TAG and nothing else: the ordinal the tag at `guard` must
     /// hold for this entry to run. It is meaningless on an unguarded entry.
-    pub arg: u32,
+    pub arg: u64,
     /// THE GUARD'S WIDTH IN BYTES, and it is load-bearing: a union tag is one,
     /// two, four or eight bytes wide, and comparing only the FIRST of them
     /// fires arm 1 on a foreign tag of 0x0101 — an ordinal no arm of this
@@ -153,7 +153,20 @@ pub enum TableFixedReason {
     PlanTooLarge,
     /// more records than the caller has room for: nothing is decoded
     BatchTooLarge,
-    /// bytes that are not a layout at all
+    /// A HASH THE LINEAGE DOES NOT HOLD (§5.3 step 5). The file was written by
+    /// a build AHEAD OF THIS ONE: a fixed table reads BACKWARD and never
+    /// forward, so there is nothing to try and no layout to walk. The report
+    /// carries THE FILE'S HASH AND NOTHING ELSE (bill §12.4) — ship the reader.
+    LayoutNewer,
+    /// A HASH THE LINEAGE HOLDS, BELOW THE FLOOR (§5.3 step 6). The operator
+    /// RETIRED that layout, with the lock's own --retire edit, and the entry
+    /// stays in the lineage forever so this answer can stay distinct from
+    /// LayoutNewer: the hash is reported here too (§5.9 #7) — upgrade the
+    /// client.
+    LayoutUnsupported,
+    /// bytes that are not a layout at all, and — under a KNOWN hash — a LIE
+    /// about a known version: the seven §1.1 malformations all come back as
+    /// this ONE name when the hash resolves (§5.3, bill §12.4)
     LayoutMalformed,
     /// 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY
     LayoutCountMismatch,
@@ -182,6 +195,8 @@ impl TableFixedReason {
             Self::BlockMalformed => "block_malformed",
             Self::PlanTooLarge => "plan_too_large",
             Self::BatchTooLarge => "batch_too_large",
+            Self::LayoutNewer => "layout_newer",
+            Self::LayoutUnsupported => "layout_unsupported",
             Self::LayoutMalformed => "layout_malformed",
             Self::LayoutCountMismatch => "layout_count_mismatch",
             Self::LayoutKindUnknown => "layout_kind_unknown",
@@ -206,6 +221,12 @@ pub struct TableFixedReport {
     pub malformed: bool,
     pub refused: bool,
     pub reason: TableFixedReason,
+    /// THE FILE'S OWN HASH, on the two layout refusals that report it
+    /// (§5.3's condition table, §5.9 #7): `layout_newer` carries it and
+    /// nothing else, and `layout_unsupported` carries it too, because the
+    /// operator choosing between "ship the reader" and "upgrade the client"
+    /// needs the number in both answers.
+    pub layout_hash: u64,
 }
 
 impl TableFixedReport {
@@ -219,8 +240,32 @@ impl TableFixedReport {
         self.malformed = false;
         self.refused = true;
         self.reason = reason;
+        self.layout_hash = 0;
         None
     }
+
+    /// A LAYOUT REFUSAL, which reports THE FILE'S HASH beside the name: the
+    /// hash is the only thing `layout_newer` carries (bill §12.4) and
+    /// `layout_unsupported` carries it too (§5.9 #7).
+    pub fn refuse_layout<T>(&mut self, reason: TableFixedReason, hash: u64) -> Option<T> {
+        let out = self.refuse(reason);
+        self.layout_hash = hash;
+        out
+    }
+}
+
+/// ONE LOCKED LAYOUT OF ONE FIXED TABLE, as static data the BUILD laid down
+/// (docs/FIXED-FORM-ALGORITHM.md §5.2's `R.known[i]`). A file is matched on
+/// `hash` and on nothing else; `layout` is the bytes the LOCK recorded, which
+/// LOAD compares the file's against and never walks; `record` is the record size
+/// FROM THE LOCK and never from the file; `retired` is the operator's mark, and
+/// the floor is where it cuts.
+#[derive(Clone, Copy, Debug)]
+pub struct TableFixedKnown {
+    pub hash: u64,
+    pub layout: &'static [u8],
+    pub record: usize,
+    pub retired: bool,
 }
 
 /// THE HASH is fnv1a64 over the block's bytes exactly as written (§3.4). It is
@@ -318,11 +363,24 @@ fn widens(from: u8, to: u8) -> bool {
     if (2..=5).contains(&from) && (2..=5).contains(&to) {
         return to > from; // i8 .. i64
     }
+    // THE FIXED-POINT LADDERS, one rung per storage width and INSIDE a family:
+    // 20..24 is a SIGNED fixed(I,F) at 8/16/32/64/128 bits and 25..29 is the
+    // unsigned run (§1's kind codes). A grown I at an equal F is a widen; F
+    // moving is not a version at all and the lock refuses it.
+    if (20..=24).contains(&from) && (20..=24).contains(&to) {
+        return to > from;
+    }
+    if (25..=29).contains(&from) && (25..=29).contains(&to) {
+        return to > from;
+    }
     from == 10 && to == 11 // f32 -> f64
 }
 
 fn signed_kind(kind: u8) -> bool {
-    (2..=5).contains(&kind)
+    // A LADDER WIDEN'S SIGN IS THE WRITER'S KIND: i8..i64 and a SIGNED
+    // fixed-point (20..24) sign-extend, and everything else — the unsigned
+    // integers, the unsigned fixed-point run — extends with zero (§5.2).
+    (2..=5).contains(&kind) || (20..=24).contains(&kind)
 }
 
 // ---- THE ONE READ LOOP ------------------------------------------------------
@@ -354,7 +412,7 @@ pub fn table_fixed_run(
             let g = p.guard as usize;
             let w = p.argw as usize;
             match src.get(g..g + w) {
-                Some(tag) if table_fixed_tag(tag) == p.arg as u64 => {}
+                Some(tag) if table_fixed_tag(tag) == p.arg => {}
                 Some(_) => continue,
                 None => {
                     report.malformed = true;
@@ -939,7 +997,7 @@ fn match_children(
     my_at: u32,
     counted: &[u8],
     guard: u32,
-    arg: u32,
+    arg: u64,
     argw: u8,
     depth: u32,
     report: &mut TableFixedReport,
@@ -1003,7 +1061,7 @@ fn compile_entry(
     my_at: u32,
     counted: &[u8],
     guard: u32,
-    arg: u32,
+    arg: u64,
     argw: u8,
     depth: u32,
     report: &mut TableFixedReport,
@@ -1014,6 +1072,32 @@ fn compile_entry(
     }
     let te = theirs.entry(ti);
     let me = mine.entry(mi);
+    // T INTO ?T (§5.2's EMIT, bill §12.8): this reader WRAPPED a value the
+    // writer sent bare. The present byte is not on the wire at all, so it is a
+    // CONSTANT 1 this reader's own image takes — carried under the same guard
+    // and ordinal as the payload, so a present byte under an arm the tag did
+    // not name is not set — and then the payload lands against the wrapper's
+    // own child. (§5.2's EMIT says "under guard/arg" where §5.7's C-leg row
+    // calls the same constant UNGUARDED; the guarded reading is the one that
+    // cannot set a present byte for an arm nobody selected.)
+    if me.kind == 35 && te.kind != 35 {
+        c.push(TableFixedEntry {
+            src: their_at,
+            dst: my_at,
+            size: 1,
+            aux: 1,
+            guard,
+            arg,
+            argw,
+            op: TableFixedOp::Const,
+            ..TableFixedEntry::default()
+        });
+        compile_entry(
+            c, theirs, ti, their_at, mine, mi + 1, my_at + 1, counted, guard, arg, argw, depth + 1,
+            report,
+        );
+        return;
+    }
     if te.kind != me.kind {
         if widens(te.kind, me.kind) {
             c.push(TableFixedEntry {
@@ -1155,7 +1239,7 @@ fn compile_entry(
                             size: my_tag,
                             aux: k as u32 + 1,
                             guard: their_at,
-                            arg: j as u32 + 1,
+                            arg: j as u64 + 1,
                             argw: their_tag as u8,
                             op: TableFixedOp::Const,
                             ..TableFixedEntry::default()
@@ -1170,7 +1254,7 @@ fn compile_entry(
                             my_at + my_tag,
                             counted,
                             their_at,
-                            j as u32 + 1,
+                            j as u64 + 1,
                             their_tag as u8,
                             depth + 1,
                             report,
@@ -1181,6 +1265,25 @@ fn compile_entry(
                 }
                 my_arm += mine.subtree(my_arm);
             }
+        }
+        30 if te.size < me.size => {
+            // A GROWN ORDINAL WIDTH IS A WIDEN, and it is UNSIGNED (§5.2's EMIT
+            // at kind 30, bill §12.7): the writer's variant NAMES did not move,
+            // only the width the ordinal rides at, so there is nothing to remap
+            // and the counter this moves is widened (§5.4) and not clamped.
+            // The same-kind widen extends with ZERO — the entry's sign is left
+            // at zero and never inferred from the kind's signedness.
+            c.push(TableFixedEntry {
+                src: their_at,
+                dst: my_at,
+                size: te.size,
+                guard,
+                arg,
+                argw,
+                op: TableFixedOp::Widen,
+                dstsize: me.size as u8,
+                ..TableFixedEntry::default()
+            });
         }
         30 => {
             // an enum: the ordinal is the block's POSITION, so it remaps by
