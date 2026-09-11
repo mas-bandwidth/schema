@@ -18,6 +18,7 @@ package jstable
 import (
 	"encoding/base64"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -230,7 +231,7 @@ func (v fixedLayoutWalk) check(i, depth int) (int, bool) {
 	at, sum, widest := i+1, 0, 0
 	firstSize, secondSize, firstKind, firstKids := 0, 0, 0, 0
 	kidsAreVariants := true
-	for k := 0; k < kids; k++ {
+	for k := range kids {
 		child := at
 		used, ok := v.check(child, depth+1)
 		if !ok {
@@ -326,10 +327,8 @@ func fixedLayoutOrdinalWidth(n int) bool { return n == 1 || n == 2 || n == 4 || 
 // when it is a leaf at a size it does not, and -1 when it is not a leaf.
 func fixedLayoutLeafSize(kind, size int) int {
 	ok := func(sizes ...int) int {
-		for _, s := range sizes {
-			if size == s {
-				return 1
-			}
+		if slices.Contains(sizes, size) {
+			return 1
 		}
 		return 0
 	}
