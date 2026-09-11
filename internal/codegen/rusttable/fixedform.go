@@ -171,7 +171,26 @@ func fixedDefaultElement(out []byte, f *ir.Field) {
 			}
 			return
 		case *ir.Union:
-			return // a fresh union is None, tag 0, which is the zero image
+			// ARM BY ARM, AND THE TAG LAST. §5.2's prefill sentence is an
+			// INSTRUCTION and not a hazard notice (§5.9 #38): in ONE FLAT image
+			// the arms OVERWRITE EACH OTHER, in DECLARED ORDER, at their own
+			// overlay storage, and only then the tag lands None. Zeroing the
+			// union instead leaves every arm's declared default at zero, and a
+			// reader that appended a field to an arm's payload reads 0 where
+			// the declaration said otherwise — values lost, silently, because
+			// a zero default looks exactly like a zero fill.
+			//
+			// The one thing a flat image cannot carry is two arms' defaults
+			// under one byte; the overlay is what a later arm takes from an
+			// earlier one, and that is the exception §5.9 #38 names.
+			tagw := ir.TableFixedUnionTagBytes(r)
+			for _, v := range r.Variants {
+				fixedDefaultElement(out[tagw:], v.F)
+			}
+			for i := range tagw {
+				out[i] = 0 // None, LAST
+			}
+			return
 		}
 	}
 	if !f.HasDefault {
@@ -1119,18 +1138,29 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    let record_bytes = known.record;\n")
 	if len(lineage) > 1 {
 		g.pf("    let identity = found == %s_FIXED_OWN;\n", up)
-		g.pf("    let plans = &*%s_FIXED_PLANS;\n", up)
-		g.pf("    if !identity && plans.reason[found] != TableFixedReason::None {\n")
-		g.pf("        // The entry's own recorded refusal: a plan past the capacity this\n")
-		g.pf("        // build declared (§5.9 #4), or a lineage entry the lock recorded as\n")
-		g.pf("        // something that is not a layout (§5.9 #8).\n")
-		g.pf("        return report.refuse(plans.reason[found]);\n    }\n")
-		g.pf("    let (entries, table): (&[TableFixedEntry], &[u16]) = if identity {\n")
-		g.pf("        (&%s_FIXED_PLAN, &[])\n", up)
+		g.pf("    // THE PLAN COMPILER IS NOT RUN BY AN IDENTITY READ (§5.9 #20): the one\n")
+		g.pf("    // per-process build happens at THE FIRST LOAD THAT SELECTS A NON-IDENTITY\n")
+		g.pf("    // ENTRY, so the lazy is forced INSIDE this branch and never beside it. A\n")
+		g.pf("    // deref above the identity test compiles every older plan the first time\n")
+		g.pf("    // anybody reads its OWN layout, which is the common read.\n")
+		g.pf("    let entries: &[TableFixedEntry];\n")
+		g.pf("    let table: &[u16];\n")
+		g.pf("    let census: (u32, u32);\n")
+		g.pf("    if identity {\n")
+		g.pf("        entries = &%s_FIXED_PLAN;\n", up)
+		g.pf("        table = &[];\n")
+		g.pf("        census = (0u32, 0u32);\n")
 		g.pf("    } else {\n")
-		g.pf("        (&plans.entries[found][..plans.count[found]], &plans.remap[found])\n    };\n")
-		g.pf("    let census = if identity {\n        (0u32, 0u32)\n    } else {\n")
-		g.pf("        (plans.unknown[found], plans.kind_mismatch[found])\n    };\n")
+		g.pf("        let plans = &*%s_FIXED_PLANS;\n", up)
+		g.pf("        if plans.reason[found] != TableFixedReason::None {\n")
+		g.pf("            // The entry's own recorded refusal: a plan past the capacity this\n")
+		g.pf("            // build declared (§5.9 #4), or a lineage entry the lock recorded as\n")
+		g.pf("            // something that is not a layout (§5.9 #8).\n")
+		g.pf("            return report.refuse(plans.reason[found]);\n        }\n")
+		g.pf("        entries = &plans.entries[found][..plans.count[found]];\n")
+		g.pf("        table = &plans.remap[found];\n")
+		g.pf("        census = (plans.unknown[found], plans.kind_mismatch[found]);\n")
+		g.pf("    }\n")
 	} else {
 		g.pf("    // A UNIT WITH NO LOCK has a lineage of ONE — its own layout — so the\n")
 		g.pf("    // identity plan is the only plan there is, and every other hash was\n")

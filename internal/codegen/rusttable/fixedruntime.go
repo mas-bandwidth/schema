@@ -551,13 +551,20 @@ pub fn table_fixed_run(
                 report.widened += 1;
             }
             TableFixedOp::Const => {
+                // NO BYTE LANE, AND NO FOUR-BYTE ONE EITHER (§5.8 row 5): a
+                // union tag is one, two, four or EIGHT bytes wide, and the
+                // ordinal this op lands is full width on both sides. Refusing
+                // a size past four called a lawful eight-byte tag row malformed,
+                // and a u32 shifted by 32 would overflow besides — so the
+                // value widens before it is taken apart.
                 let n = p.size as usize;
-                if image.len() < d + n || n > 4 {
+                if image.len() < d + n || n > 8 {
                     report.malformed = true;
                     return;
                 }
+                let v = u64::from(p.aux);
                 for i in 0..n {
-                    image[d + i] = (p.aux >> (8 * i)) as u8;
+                    image[d + i] = (v >> (8 * i)) as u8;
                 }
             }
         }
@@ -1373,11 +1380,18 @@ fn compile_entry(
             // text: the length, clamped to MY bound in units, then the content
             let unit = if me.kind == 33 { 2u32 } else { 1u32 };
             let bytes = me.size.saturating_sub(4).min(te.size.saturating_sub(4));
+            // THE CAP IS THE SPAN'S, IN UNITS, AND THE SPAN IS THE SHORTER OF
+            // THE TWO (§5.2 TEXT: span := min(me.size, te.size) - 4, cap :=
+            // span / unit). The READER's own bound is the wrong number here: a
+            // reader whose bound GREW copies only the writer's span, so a
+            // length between the writer's bound and the reader's reads bytes
+            // this entry never landed, and the clamp that should have fired and
+            // counted does not.
             c.push(TableFixedEntry {
                 src: their_at,
                 dst: my_at,
                 size: bytes,
-                aux: me.size.saturating_sub(4).checked_div(unit).unwrap_or(0),
+                aux: bytes.checked_div(unit).unwrap_or(0),
                 guard,
                 arg,
                 argw,
@@ -1407,7 +1421,14 @@ fn compile_entry(
                     arg,
                     argw,
                     op: TableFixedOp::Widen,
-                    sign: u8::from(signed_kind(te.kind)),
+                    // A SAME-KIND WIDEN ZERO-EXTENDS (§5.2: ladder widen, sign
+                    // by the WRITER's kind; same-kind widen and enum widen,
+                    // ZERO). Inferring the sign from the kind agrees by
+                    // accident today — the only same-kind rows admitting two
+                    // widths are 6 and 7 at a bits(N) storage width and kind
+                    // 30, all unsigned — and it is a DIFFERENT RULE that
+                    // diverges the first day a signed kind admits two widths.
+                    sign: 0,
                     ..TableFixedEntry::default()
                 });
             } else {
