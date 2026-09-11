@@ -912,6 +912,80 @@ namespace Tabledemo
             }
         }
 
+        // GunnerSettings's read-side bounds (§4.6).
+        public static void GunnerSettingsFixedClampBody(GunnerSettings value, ref int clamped)
+        {
+            if (value == null) return;
+        }
+
+        // ShipEntry's read-side bounds (§4.6).
+        public static void ShipEntryFixedClampBody(ShipEntry value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Hardpoints != null)
+            {
+                for (int i = 0; i < value.HardpointsCount && i < value.Hardpoints.Length; ++i)
+                {
+                    if (value.Hardpoints[i] < 0) { value.Hardpoints[i] = 0; clamped++; }
+                    else if (value.Hardpoints[i] > 8) { value.Hardpoints[i] = 8; clamped++; }
+                }
+            }
+            if (value.GunnerPresent)
+            {
+                GunnerSettingsFixedClampBody(value.Gunner, ref clamped);
+            }
+        }
+
+        // GlobalSettings's read-side bounds (§4.6).
+        public static void GlobalSettingsFixedClampBody(GlobalSettings value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.TickRate < 1) { value.TickRate = 1; clamped++; }
+            else if (value.TickRate > 240) { value.TickRate = 240; clamped++; }
+            if ((ulong)value.Difficulty > 3) { value.Difficulty = (Difficulty)0; clamped++; }
+        }
+
+        // PackConfig's read-side bounds (§4.6).
+        public static void PackConfigFixedClampBody(PackConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            GlobalSettingsFixedClampBody(value.Global, ref clamped);
+            if (value.Ships.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Ships.Slots.Length; ++i)
+                {
+                    ShipEntryFixedClampBody(value.Ships.Slots[i], ref clamped);
+                }
+            }
+            if (value.Thresholds.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Thresholds.Slots.Length; ++i)
+                {
+                    if (value.Thresholds.Slots[i] < 0) { value.Thresholds.Slots[i] = 0; clamped++; }
+                    else if (value.Thresholds.Slots[i] > 1000) { value.Thresholds.Slots[i] = 1000; clamped++; }
+                }
+            }
+            if (value.Reserves != null)
+            {
+                for (int i = 0; i < value.ReservesCount && i < value.Reserves.Length; ++i)
+                {
+                    ShipEntryFixedClampBody(value.Reserves[i], ref clamped);
+                }
+            }
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void GunnerSettingsFixedClamp(GunnerSettings value, TableReport report)
+        {
+            int clamped = 0;
+            GunnerSettingsFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- GunnerSettings, the fixed form ----
 
         public const long GunnerSettingsFixedBodyBytes = 33;
@@ -1133,6 +1207,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new GunnerSettings(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GunnerSettingsFixedSlots, values[k]);
                 TableFixedWire.Run(entries, GunnerSettingsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                GunnerSettingsFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1164,6 +1239,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, GunnerSettingsFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void ShipEntryFixedClamp(ShipEntry value, TableReport report)
+        {
+            int clamped = 0;
+            ShipEntryFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- ShipEntry, the fixed form ----
@@ -1421,6 +1508,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new ShipEntry(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ShipEntryFixedSlots, values[k]);
                 TableFixedWire.Run(entries, ShipEntryFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                ShipEntryFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1452,6 +1540,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, ShipEntryFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void GlobalSettingsFixedClamp(GlobalSettings value, TableReport report)
+        {
+            int clamped = 0;
+            GlobalSettingsFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- GlobalSettings, the fixed form ----
@@ -1692,6 +1792,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new GlobalSettings(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), GlobalSettingsFixedSlots, values[k]);
                 TableFixedWire.Run(entries, GlobalSettingsFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                GlobalSettingsFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -1723,6 +1824,18 @@ namespace Tabledemo
         {
             byte[] widenScratch = Array.Empty<byte>();
             TableFixedWire.Run(plan, GlobalSettingsFixedSlots, src, dst, report, planBytes, ref widenScratch);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void PackConfigFixedClamp(PackConfig value, TableReport report)
+        {
+            int clamped = 0;
+            PackConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
         }
 
         // ---- PackConfig, the fixed form ----
@@ -2207,6 +2320,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new PackConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), PackConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, PackConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                PackConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)

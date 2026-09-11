@@ -300,14 +300,24 @@ jobs:
 
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
+      # SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT ON THIS LANE. internal/slowtest
+      # gates the tests that shell out to cc, c++, dotnet, javac, cargo, dart,
+      # node, elixir or the Go toolchain, so a child's default `go test` is
+      # seconds instead of minutes (the owner's rule, twice today: "Remember the
+      # 1-2 minute iteration rule on unit tests."). THIS LANE SETS IT, so the
+      # merge and nightly runs check exactly what they checked before.
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
+        env:
+          SCHEMA_SLOW: '1'
         run: go test ./internal/codegen/...
 
       # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
       # new package lands in one group or the other with no edit to this file.
       - name: go test everything that is not an emitter package
         if: matrix.group == 'unit-rest'
+        env:
+          SCHEMA_SLOW: '1'
         run: go test $(go list ./... | grep -v '/internal/codegen/')
 
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
@@ -373,6 +383,16 @@ jobs:
               https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
           fi
           make tables-rust-versioning
+
+      # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
+      # it is here rather than in a Java job for the reason the Go step above is:
+      # the harness is a GO test that generates, compiles and runs Java probes,
+      # so it rides the job that already has the Go toolchain and the ../serialize
+      # checkout, and `make tables-java-versioning` brings the reference's dump
+      # and the JDK pin with it. SCHEMA_REQUIRE_CORPUS=1 lives inside the recipe,
+      # so a corpus that failed to build cannot pass here quietly.
+      - name: the fixed form's versioning suite reads the reference's bytes, on the Java leg
+        run: make tables-java-versioning
 
       # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
       # gates). The probes are generated modules run with $(NODE) — dist/ is not
