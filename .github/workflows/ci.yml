@@ -139,6 +139,18 @@ jobs:
           go-version: '1.26'
           cache: false
 
+      # THE .NET SDK, for the C# leg's versioning suite at the end of this job.
+      # The harness is a Go test that generates one C# assembly and runs it, so
+      # the SDK is this job's toolchain like Go is — and it is PINNED from the
+      # same .github/dotnet-version every other C# job reads, so a runner image
+      # that ships a different SDK cannot change what this gate compiles.
+      - name: read the .NET SDK pin
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+
       # THE GO BUILD CACHE (the two-minute rule, issue #368). Every job in this
       # file that touches Go begins by compiling the same compiler from the
       # same sources on a runner that has never seen them. `go build
@@ -291,6 +303,17 @@ jobs:
           sdk: 3.13.2
       - name: the Dart leg reads backward over every versioning row
         run: make tables-dart-versioning DART=dart
+
+      # THE SAME TWO COLUMNS ON THE C# LEG (§5, and §5.9 #11: every leg owes both
+      # gates). The harness is a GO test — internal/codegen/cstable generates one
+      # probe per row per column into a single C# assembly and runs it once — so it
+      # belongs in this job rather than a C# one: what must be installed is Go, the
+      # .NET SDK this job already sets up, and the corpus the step above knows how
+      # to build. The ../serialize.cs checkout this job already makes is the only
+      # other thing the probes need. Under SCHEMA_REQUIRE_CORPUS a missing oracle is
+      # a failure here, never a quiet skip.
+      - name: the fixed form's versioning suite on the C# leg
+        run: make tables-cs-versioning
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
