@@ -430,11 +430,12 @@ tables-cs-leg: build/tables-generated-cs/.stamp
 # own schema's package gives it, and runs the lot once. Fifty-seven `dotnet run`s
 # would cost minutes; this costs one build.
 #
-# ONE ROW IS RED AND IT IS NAMED, NOT FAKED (§5.9 #31): `array_elem_widen`'s
-# NEW-READS-OLD column. The C# leg FOLDS a flat element run into one plan entry,
-# and a fold whose two images differ in WIDTH has no element-wise destination to
-# widen into — so the element widen is dropped and `widened` stays zero. §5.2's
-# EMIT has no fold at all; the finding is in the PR that lands this.
+# EVERY ROW IS GREEN, `array_elem_widen` INCLUDED. It was the one named red here
+# (§5.9 #31): the C# leg FOLDED a flat element run into one plan entry, and a fold
+# whose two images differ in WIDTH has no element-wise destination to widen into,
+# so the element widen was dropped and `widened` stayed zero. 157268a6 stopped
+# folding a widened run — §5.2's EMIT has no fold at all — and the row asserts the
+# reference's EXACT four since (csVersionRow.widened).
 .PHONY: tables-cs-versioning
 tables-cs-versioning: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
