@@ -13,6 +13,10 @@ type token struct{ from, to string }
 
 var identMap = []token{
 	{"SCHEMA_TABLE_FIXED_NO_GUARD", "kTableFixedNoGuard"},
+	{"TableFixedGuardArg( &chain[g] )", "TableFixedGuardArg( chain[g] )"},
+	{"const TableFixedGuard * g )", "const TableFixedGuard & g )"},
+	{"g->arg_hi", "g.arg_hi"},
+	{"g->arg_lo", "g.arg_lo"},
 	{"SCHEMA_TABLE_RESTRICT", "TABLE_RESTRICT"},
 	{"SCHEMA_BENCH_TABLE_INLINE", "TABLE_FIXED_INLINE"},
 	{"SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE", "layout_record_too_large"},
@@ -52,7 +56,8 @@ var tableFixedSpecial = map[string]string{
 	"ordinal_width": "OrdinalWidth", "known_kind": "KnownKind",
 	"check_entry": "CheckEntry", "parse_layout": "ParseLayout",
 	"match_children": "MatchChildren", "compile_entry": "CompileEntry",
-	"lay_table": "LayTable",
+	"lay_table": "LayTable", "lay_guards": "LayGuards",
+	"guard_arg": "GuardArg",
 	"put128_u":  "Put128U", "put128_i": "Put128I",
 	"cmp128_u": "Cmp128U", "cmp128_i": "Cmp128I",
 }
@@ -111,22 +116,19 @@ var (
 	// NOTHING IS OWED BY THE C LEG ANY MORE. Every row the map once stripped is
 	// in the C runtime, spelled the same, so the gate holds the two legs to all
 	// five (bench/paired/TWIN.md).
-	// STILL OWED by the C leg after the merge with #916: the reference grew
-	// these rows while this branch was closing the first list (the full-width arg
-	// lane, the writer-side count bound, the nested union's outer tag, the 64-bit
-	// ordinal temporary, the compiled remap's clamp count, and the known float
-	// RANGES the definitions digest now covers). C++ first; strip them so the
+	// STILL OWED by the C leg: the writer-side count bound, the compiled remap's
+	// clamp count, the writer's arm count on the None const, and the known float
+	// RANGES the definitions digest now covers. C++ first; strip them so the
 	// gate stays green, and close them the way the first list was closed.
-	reOwedArgLaneRemap   = regexp.MustCompile(`(?s)const uint32_t n = te\.children;\s+const uint32_t at_map = TableFixedLayTable\( c, NULL, \(int32_t\) n \);\s+if \( c\.overflow \) \{ break; \}\s+uint16_t \* map = \(uint16_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ at_map \);\s+for \( uint32_t j = 0; j < n; \+\+j \)\s*\{.*?map\[1 \+ j\] = landed;\s*\}\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.guard = guard; e\.op = kTableFixedOrdinal;\s*e\.arg = arg; e\.dstsize = \(uint8_t\) me\.size;\s*e\.aux = at_map;\s*TableFixedPush\( c, e \);`)
-	reOwedByteLaneRemap  = regexp.MustCompile(`(?s)uint16_t remap\[256\];.*?TableFixedLayTable\( c, remap, \(int32_t\) n \);\s*TableFixedPush\( c, e \);`)
-	reOwedLayTableNull   = regexp.MustCompile(`if \( values != NULL \)\s*\{\s*for \( int32_t i = 0; i < n; \+\+i \) \{ dst\[1 \+ i\] = values\[i\]; \}\s*\}`)
-	reOwedNestedNoneArgw = regexp.MustCompile(`const uint8_t inner_argw = c\.argw;\s*if \( guard != kTableFixedNoGuard \) \{ c\.argw = saved_argw \? saved_argw : 1u; \}\s*`)
-	reOwedNestedNoneRest = regexp.MustCompile(`TableFixedPush\( c, none \);\s*c\.argw = inner_argw;`)
-	reOwedNestedRestamp  = regexp.MustCompile(`(?s)const int32_t restamp_from = c\.count;\s*`)
-	reOwedNestedRewrite  = regexp.MustCompile(`(?s)if \( guard != kTableFixedNoGuard \)\s*\{\s*const uint8_t outer_w = saved_argw \? saved_argw : 1u;\s*for \( int32_t i = restamp_from; i < c\.count; \+\+i \)\s*\{\s*if \( c\.plan\[i\]\.guard == their_at &&\s*!\( c\.plan\[i\]\.op == kTableFixedConst && c\.plan\[i\]\.dst == aux_at \) \)\s*\{\s*c\.plan\[i\]\.guard = guard;\s*c\.plan\[i\]\.arg = arg;\s*c\.plan\[i\]\.argw = outer_w;\s*\}\s*\}\s*\}`)
+	//
+	// CLOSED BY rowan/twin-full-width-lanes (§5.8 rows 5, 6, 7, 14): the
+	// full-width arg lane, the second guard lane an arm inside an arm answers
+	// to, the ordinal's 64-bit temporary and the writer-length remap are in BOTH
+	// runtimes, spelled the same, so the gate holds the two legs to all four and
+	// strips nothing.
 	reOwedOrdinalCount   = regexp.MustCompile(`(?s)if \( raw != 0 \)\s*\{\s*if \( raw <= \(uint64_t\) table\[0\] \) \{ v = table\[raw\]; \}\s*if \( v == 0 \) \{ clamped\+\+; \}\s*\}`)
 	reOwedWriterArmCount = regexp.MustCompile(`if \( te\.children > 0 && te\.children <= 255u \) \{ none\.dstsize = \(uint8_t\) te\.children; \}\s*`)
-	reOwedConstClamp     = regexp.MustCompile(`(?s)if \( p\.aux == 0 && p\.dstsize != 0 && p\.guard == kTableFixedNoGuard \)\s*\{\s*uint64_t raw = 0;\s*memcpy\( &raw, src \+ p\.src, p\.size \);\s*if \( raw > \(uint64_t\) p\.dstsize \) \{ clamped\+\+; \}\s*\}\s*`)
+	reOwedConstClamp     = regexp.MustCompile(`(?s)if \( p\.aux == 0 && p\.dstsize != 0 && p\.gcount == 0 \)\s*\{\s*uint64_t raw = 0;\s*memcpy\( &raw, src \+ p\.src, p\.size \);\s*if \( raw > \(uint64_t\) p\.dstsize \) \{ clamped\+\+; \}\s*\}\s*`)
 	reOwedKnownRange     = regexp.MustCompile(`(?s)struct TableFixedKnownRange\s*\{.*?\};`)
 )
 
@@ -249,27 +251,13 @@ func stripOwedC(s string) string {
 	s = reAheadSelect.ReplaceAllString(s, "")
 	s = reAheadRefuseHash.ReplaceAllString(s, "")
 	s = reAheadLineage.ReplaceAllString(s, "")
-	// STILL OWED after the merge with #916 (see the map above).
-	// owed 6: arg is full width (bill §12.7). C still has a byte lane.
-	s = strings.ReplaceAll(s, "uint64_t arg", "uint8_t arg")
+	// STILL OWED (see the map above). Rows 5, 6, 7 and 14 are CLOSED: the C leg
+	// spells the full-width arg lane, the second guard lane, the 64-bit ordinal
+	// temporary and the writer-length remap the way the reference does.
 	// owed 5 / bill §12.5: count op bound is the WRITER's; C still uses the reader's.
 	s = strings.ReplaceAll(s, "e.size = their_n;", "e.size = my_n;")
-	s = strings.ReplaceAll(s, "TableFixedTagAt( src, p.guard, p.argw ) != p.arg", "TableFixedTagAt( src, p.guard, p.argw ) != (uint64_t) p.arg")
 	// owed 13: compiled remap COUNT clamped on a forged ordinal; C counts nothing.
 	s = reOwedOrdinalCount.ReplaceAllString(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }")
-	// owed 8: ordinal reads through a 64-bit temporary; C still uses 32.
-	s = strings.ReplaceAll(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }", "if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }")
-	s = strings.ReplaceAll(s, "tag.arg = (uint64_t) j + 1u;", "tag.arg = (uint8_t) ( j + 1 );")
-	s = strings.ReplaceAll(s, "mine, my_arm, dst, at, their_at, (uint64_t) j + 1u", "mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 )")
-	s = strings.ReplaceAll(s, "if ( n < 0 || n > 65535 ) { c.overflow = true; return 0; }", "")
-	s = reOwedLayTableNull.ReplaceAllString(s, "for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }")
-	s = reOwedArgLaneRemap.ReplaceAllString(s, "OWED_REMAP;")
-	s = reOwedByteLaneRemap.ReplaceAllString(s, "OWED_REMAP;")
-	// owed 7: nested union answers to the outer tag; C still loses it.
-	s = reOwedNestedNoneArgw.ReplaceAllString(s, "")
-	s = reOwedNestedNoneRest.ReplaceAllString(s, "TableFixedPush( c, none );")
-	s = reOwedNestedRestamp.ReplaceAllString(s, "")
-	s = reOwedNestedRewrite.ReplaceAllString(s, "")
 	s = reOwedWriterArmCount.ReplaceAllString(s, "")
 	s = reOwedConstClamp.ReplaceAllString(s, "")
 	s = reOwedKnownRange.ReplaceAllString(s, "")
@@ -414,6 +402,16 @@ func normalizeSyntax(s string) string {
 		{"int want_guarded;", "bool want_guarded;"},
 		{"int overflow;", "bool overflow;"},
 		{"int hostile;", "bool hostile;"},
+		{"int chain_dirty;", "bool chain_dirty;"},
+		{"int rides;", "bool rides;"},
+		{"rides = 1", "rides = true"},
+		{"rides = 0", "rides = false"},
+		{"int guard_out;", "bool guard_out;"},
+		{"guard_out = 1", "guard_out = true"},
+		{"guard_out = 0", "guard_out = false"},
+		{"chain_dirty = 1", "chain_dirty = true"},
+		{"chain_dirty = 0", "chain_dirty = false"},
+		{"const int saved_dirty", "const bool saved_dirty"},
 		{"int skip_clamp;", "bool skip_clamp;"},
 		{"int named;", "bool named;"},
 		{"int kids_are_variants;", "bool kids_are_variants;"},

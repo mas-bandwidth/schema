@@ -29,15 +29,17 @@ table Root { pick Pick }
 	if st == nil {
 		t.Fatal("the probe declares Root")
 	}
-	plan, _ := ir.TableFixedBuildPlan(u, st)
+	plan, _, _ := ir.TableFixedBuildPlan(u, st)
 	guarded := 0
 	for _, e := range plan {
-		if e.Guard == ir.TableFixedNoGuard {
+		if len(e.Guards) == 0 {
 			continue
 		}
 		guarded++
-		if e.ArgW != 1 {
-			t.Fatalf("a two-arm union's tag is one byte, ArgW=%d on %s", e.ArgW, e.Note)
+		for _, l := range e.Guards {
+			if l.ArgW != 1 {
+				t.Fatalf("a two-arm union's tag is one byte, ArgW=%d on %s", l.ArgW, e.Note)
+			}
 		}
 	}
 	if guarded == 0 {
@@ -67,15 +69,17 @@ func TestFixedGuardWidthTwoByteTag(t *testing.T) {
 	if bits := ir.StorageBitsFor(un.Max); bits != 16 {
 		t.Fatalf("256 arms: StorageBitsFor(%d)=%d, want 16", un.Max, bits)
 	}
-	plan, _ := ir.TableFixedBuildPlan(u, st)
+	plan, _, _ := ir.TableFixedBuildPlan(u, st)
 	guarded := 0
 	for _, e := range plan {
-		if e.Guard == ir.TableFixedNoGuard {
+		if len(e.Guards) == 0 {
 			continue
 		}
 		guarded++
-		if e.ArgW != 2 {
-			t.Fatalf("a 256-arm union's tag is two bytes, ArgW=%d on %s", e.ArgW, e.Note)
+		for _, l := range e.Guards {
+			if l.ArgW != 2 {
+				t.Fatalf("a 256-arm union's tag is two bytes, ArgW=%d on %s", l.ArgW, e.Note)
+			}
 		}
 	}
 	if guarded == 0 {

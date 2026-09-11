@@ -726,15 +726,6 @@ enum
     kTableFixedTextBytes = 3
 };
 
-/* kTableFixedNoGuard IS THE ONE CONSTANT THAT CANNOT BE AN ENUMERATOR, and the
-   reason is arithmetic rather than taste: an enumerator in C is an int, and
-   0xFFFFFFFF does not fit one. So the value the C++ reference spells as an
-   inline constexpr uint32_t is a MACRO here, guarded because a translation unit
-   that includes two generated headers of this family meets it twice. */
-#ifndef SCHEMA_TABLE_FIXED_NO_GUARD
-#define SCHEMA_TABLE_FIXED_NO_GUARD 0xFFFFFFFFu
-#endif
-
 /* THE PLAN'S SOURCE AND DESTINATION NEVER ALIAS: one is a record in a read
    buffer and the other is the caller's own storage. Saying so is worth real
    time in the read loop, and the spelling is the compiler's — except in C,
@@ -823,46 +814,69 @@ static SCHEMA_UNUSED int table_fixed_widens( uint8_t from, uint8_t to )
 }
 static SCHEMA_UNUSED int table_fixed_signed_kind( uint8_t kind ) { return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); }
 
+/* ONE LINK OF A GUARD CHAIN: a union tag's byte offset in the record's body,
+   the ordinal that tag must hold, and the width to compare at. A CHAIN of these
+   — one link per union an entry is nested inside, OUTERMOST FIRST — is the whole
+   of an entry's condition, and a chain has no length bound: three nested unions
+   are three links and forty are forty (§5.9).
+
+   THE ORDINAL IS FULL WIDTH (bill §12.7) AND IT IS KEPT IN TWO HALVES. The
+   chain lives in the plan's own pool, which on the compiled path is the
+   caller's entry array, and an entry's widest lane is 32 bits: a link that
+   wanted eight-byte alignment would need that array to have it, which no caller
+   promises. Four 32-bit lanes ask for nothing an entry does not already ask for. */
+typedef struct TableFixedGuard
+{
+    uint32_t guard;  /* the tag's byte offset in the record's body */
+    uint32_t arg_lo; /* the ordinal the tag must hold, low half */
+    uint32_t arg_hi; /* ... and its high half: a tag is up to eight bytes */
+    uint32_t argw;   /* compare at THIS width, in bytes; zero reads as one */
+} TableFixedGuard;
+
+static SCHEMA_UNUSED uint64_t table_fixed_guard_arg( const TableFixedGuard * g )
+{
+    return ( ( (uint64_t) g->arg_hi ) << 32 ) | (uint64_t) g->arg_lo;
+}
+
 /* A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
-   the reader's own storage. guard is the byte offset of a union tag when the
-   entry belongs to an arm, and SCHEMA_TABLE_FIXED_NO_GUARD when it does not. */
+   the reader's own storage. guards is the byte offset of this entry's chain in
+   the plan's guard pool and gcount is its length; gcount 0 is an entry that
+   belongs to no union arm and runs unconditionally. */
 typedef struct TableFixedEntry
 {
     uint32_t src;
     uint32_t dst;
     uint32_t size;
     uint32_t aux;
-    uint32_t guard;
+    /* guards / gcount ARE THE ENTRY'S WHOLE CONDITION. They replaced a pair of
+       (guard, arg, argw) LANES, which is a shape that can only carry as many
+       nested unions as it has lanes: with two, a third nesting had to be
+       refused by name. An entry inside three unions answers to three tags —
+       its own, and the two that decide whether its bytes are there at all —
+       and a chain in the pool is that conjunction at any depth, for four bytes
+       and a count on the entry instead of a lane per level. */
+    uint32_t guards;
+    uint8_t gcount;
     uint8_t op;
-    /* arg IS THE GUARD'S TAG AND NOTHING ELSE: the ordinal the tag at guard
-       must hold for this entry to run. meta IS THE OP'S OWN ARGUMENT — a text
-       entry's flavour. THEY ARE TWO LANES BECAUSE THEY ARE TWO FACTS: they
-       shared one, and a string(N) under a union's arm then had to be either
-       guarded correctly or read with the right flavour and could not be both. */
-    uint8_t arg;
+    /* meta IS THE OP'S OWN ARGUMENT — a text entry's flavour. It is not the
+       guard's: the guard's ordinal lives in the chain, and the two shared one
+       lane once, which put a string(N) under a union's arm on a collision
+       course — guarded correctly or read with the right flavour, never both. */
     uint8_t meta;
     uint8_t dstsize;
     uint8_t sign; /* a WIDEN's source is two's complement, so it sign-extends */
-    /* argw IS THE GUARD'S WIDTH IN BYTES. A union tag is one, two, four or
-       eight, and comparing only the FIRST of them fires arm 1 on a foreign
-       tag of 0x0101 — an ordinal no arm of this build names. Zero is read as
-       one, which is the width a tag had when this field did not exist. It
-       sits last so a ten-value aggregate still names op, arg, meta, dstsize
-       and sign in that order. */
-    uint8_t argw;
 } TableFixedEntry;
 
 /* C HAS NO DEFAULT MEMBER INITIALIZERS, so the C++ struct's own defaults — zero
-   everywhere and NO GUARD on guard — are this function instead, and every place
-   the compiler below declares an entry starts from it. The guard column is the
-   reason it cannot be a plain {0}: an entry whose guard reads 0 is an entry
-   guarded by the byte at offset 0, which is a different plan. */
+   everywhere — are this function instead, and every place the compiler below
+   declares an entry starts from it. It is a plain zeroing now that the chain
+   answers for the guard: an entry with no chain is an entry with gcount 0,
+   which is the one shape a zeroed struct could never spell when the guard was
+   an OFFSET and offset 0 was a byte of the record. */
 static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
 {
     TableFixedEntry e;
     memset( &e, 0, sizeof( e ) );
-    e.guard = SCHEMA_TABLE_FIXED_NO_GUARD;
-    e.argw = 1;
     return e;
 }
 
@@ -1096,11 +1110,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
                enum gained a variant IN THE MIDDLE is remapped here and never
                reinterpreted. The table is the plan's own, laid down by the
                compiler above the entries. */
-            uint32_t raw = 0;
+            uint64_t raw = 0;
             memcpy( &raw, src + p->src, p->size );
-            const uint16_t * remap = (const uint16_t *) (const void *) ( base + p->aux );
-            uint32_t v = 0;
-            if ( raw != 0 && raw <= (uint32_t) remap[0] ) { v = remap[raw]; }
+            const uint16_t * table = (const uint16_t *) (const void *) ( base + p->aux );
+            uint64_t v = 0;
+            if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
             memcpy( dst + p->dst, &v, p->dstsize );
             break;
         }
@@ -1131,7 +1145,11 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p->dst, &p->aux, p->size );
+            /* THROUGH A 64-BIT TEMPORARY: a tag is one, two, four or EIGHT
+               bytes, and a memcpy of p->size out of the four-byte aux lane
+               reads the member beside it (§4.5, §5.8 row 7). */
+            const uint64_t lands = p->aux;
+            memcpy( dst + p->dst, &lands, p->size );
             break;
         }
         /* T INTO ?T: the reader wraps what the writer sent plain, so the present
@@ -1150,6 +1168,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void table_fixed_apply( const
    is the only thing that differs between reading this build's own record and
    reading anybody else's. */
 static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+                                           const uint8_t * guards,
                                            const uint8_t * SCHEMA_TABLE_RESTRICT src,
                                            uint8_t * SCHEMA_TABLE_RESTRICT dst,
                                            TableReport * report )
@@ -1172,7 +1191,18 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     for ( i = guarded; i < count; ++i )
     {
         const TableFixedEntry * p = &plan[i];
-        if ( table_fixed_tag_at( src, p->guard, p->argw ) != (uint64_t) p->arg ) { continue; }
+        /* THE CHAIN IS TESTED IN ORDER AND THE ENTRY IS SKIPPED ON THE FIRST
+           MISMATCH, which is the outermost tag that did not ride: a forged
+           inner tag under an unselected outer arm lands nothing, at any depth. */
+        const TableFixedGuard * chain = (const TableFixedGuard *) (const void *) ( guards + p->guards );
+        int rides;
+        uint8_t g;
+        rides = 1;
+        for ( g = 0; g < p->gcount; ++g )
+        {
+            if ( table_fixed_tag_at( src, chain[g].guard, (uint8_t) chain[g].argw ) != table_fixed_guard_arg( &chain[g] ) ) { rides = 0; break; }
+        }
+        if ( !rides ) { continue; }
         table_fixed_apply( p, (const uint8_t *) plan, src, dst, &clamped, &widened );
     }
     report->clamped += clamped;
@@ -1332,6 +1362,10 @@ enum { kTableFixedLayoutHeaderBytes = 4 }; /* the u32 entry count, and nothing e
    recursive, so a hostile layout of three thousand entries each claiming one
    child would otherwise spend a reader's stack before any rule fired. */
 enum { kTableFixedRecordMaxBytes = 65536 };
+/* IT IS ALSO THE ONLY BOUND ON NESTING THIS FORM HAS (ir.TableFixedMaxDepth),
+   and it is NOT a bound on how many unions may nest: a guard chain is as long
+   as the walk is deep, so the chain array below is sized by this and by nothing
+   about unions (§5.9). */
 enum { kTableFixedMaxDepth = 64 };
 
 typedef struct TableFixedLayoutEntry
@@ -1703,9 +1737,21 @@ typedef struct TableFixedCompiler
     int want_guarded;  /* THE WALK RUNS TWICE, unguarded first (§3.4) */
     int overflow;
     int hostile;
-    uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
+    /* THE LIVE GUARD CHAIN: one link per union this walk is inside, outermost
+       first. It GROWS BY ONE on the way into an arm and shrinks on the way out,
+       so its only bound is the walk's own depth cap — never a union count. */
+    TableFixedGuard chain[kTableFixedMaxDepth];
+    int32_t chain_len;
+    uint32_t chain_at;  /* where the live chain was laid in the pool */
+    int chain_dirty;    /* ... and whether it has been laid since it changed */
     TableReport * report;
 } TableFixedCompiler;
+
+/* table_fixed_lay_guards lays the live chain in the plan's pool and answers its
+   byte offset from the plan's base. A chain that does not fit is c->overflow,
+   which the caller turns into plan_too_large BY NAME (§5.9): this codec
+   allocates nothing, here as everywhere, and never drops a condition instead. */
+static SCHEMA_UNUSED uint32_t table_fixed_lay_guards( TableFixedCompiler * c );
 
 /* The C++ struct's defaults once more, and here they are a whole-struct zero
    plus the two pointers named, for the reason table_fixed_layout_view_zero gives. */
@@ -1714,34 +1760,75 @@ static SCHEMA_UNUSED void table_fixed_compiler_init( TableFixedCompiler * c )
     memset( c, 0, sizeof( *c ) );
     c->plan = NULL;
     c->report = NULL;
-    c->argw = 1;
+    c->chain_len = 0;
+    c->chain_dirty = 1;
 }
 
 static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEntry e )
 {
     /* THE WALK RUNS TWICE and each pass keeps its own half, which is how the
        plan comes out partitioned without a second array to partition it in. */
-    if ( ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { return; }
+    if ( ( c->chain_len > 0 ) != c->want_guarded ) { return; }
     /* EVERY ENTRY IS BOUNDED BY THE WRITER'S OWN RECORD, and this is the read
        side's whole defence: the plan's source offsets are arithmetic over sizes
        a STRANGER wrote, so a layout whose child sizes do not sum to its parent's
        could otherwise name a byte past the record. A layout that does is refused
        WHOLE and never partly compiled (docs/SPEC-TABLES.md §3.4). */
     {
-        if ( e.guard != SCHEMA_TABLE_FIXED_NO_GUARD ) { e.argw = c->argw ? c->argw : (uint8_t) 1; }
-        const uint8_t gw = e.argw == 0 ? (uint8_t) 1 : e.argw;
-        const int guard_out = e.guard != SCHEMA_TABLE_FIXED_NO_GUARD &&
-            ( e.guard >= c->record || (uint64_t) e.guard + gw > (uint64_t) c->record );
+        int guard_out;
+        int32_t g;
+        guard_out = 0;
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
+        for ( g = 0; g < c->chain_len; ++g )
+        {
+            const uint8_t gw = c->chain[g].argw == 0 ? (uint8_t) 1 : (uint8_t) c->chain[g].argw;
+            if ( c->chain[g].guard >= c->record || (uint64_t) c->chain[g].guard + gw > (uint64_t) c->record )
+            {
+                guard_out = 1;
+                break;
+            }
+        }
         if ( reach > (uint64_t) c->record || guard_out )
         {
             c->hostile = 1;
             return;
         }
     }
-    const int32_t room = c->capacity - ( c->pool + (int32_t) sizeof( TableFixedEntry ) - 1 ) / (int32_t) sizeof( TableFixedEntry );
-    if ( c->count >= room ) { c->overflow = 1; return; }
+    /* THE CHAIN IS LAID ONCE PER ARM, not once per entry: every entry under one
+       arm carries the same conditions, so they are the same bytes of the pool. */
+    e.gcount = (uint8_t) c->chain_len;
+    e.guards = 0;
+    if ( c->chain_len > 0 )
+    {
+        if ( c->chain_dirty )
+        {
+            c->chain_at = table_fixed_lay_guards( c );
+            if ( c->overflow ) { return; }
+            c->chain_dirty = 0;
+        }
+        e.guards = c->chain_at;
+    }
+    {
+        const int32_t room = c->capacity - ( c->pool + (int32_t) sizeof( TableFixedEntry ) - 1 ) / (int32_t) sizeof( TableFixedEntry );
+        if ( c->count >= room ) { c->overflow = 1; return; }
+    }
     c->plan[c->count++] = e;
+}
+
+static SCHEMA_UNUSED uint32_t table_fixed_lay_guards( TableFixedCompiler * c )
+{
+    const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c->capacity;
+    int32_t g;
+    uint32_t at;
+    TableFixedGuard * out;
+    /* ROUNDED SO THE LINKS ARE ALIGNED: a remap table is laid in units of two
+       bytes and a link's lanes are four wide. */
+    c->pool = ( c->pool + c->chain_len * (int32_t) sizeof( TableFixedGuard ) + 3 ) & ~3;
+    if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
+    at = (uint32_t) ( total - c->pool );
+    out = (TableFixedGuard *) (void *) ( (uint8_t *) c->plan + at );
+    for ( g = 0; g < c->chain_len; ++g ) { out[g] = c->chain[g]; }
+    return at;
 }
 
 /* table_fixed_lay_table lays a remap table above the entries and answers its
@@ -1749,15 +1836,19 @@ static SCHEMA_UNUSED void table_fixed_push( TableFixedCompiler * c, TableFixedEn
    coalescing pass, which only moves entries down, never moves one. */
 static SCHEMA_UNUSED uint32_t table_fixed_lay_table( TableFixedCompiler * c, const uint16_t * values, int32_t n )
 {
+    if ( n < 0 || n > 65535 ) { c->overflow = 1; return 0; }
     const int32_t bytes = ( n + 1 ) * (int32_t) sizeof( uint16_t );
     const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c->capacity;
     c->pool += bytes;
     if ( total - c->pool < c->count * (int32_t) sizeof( TableFixedEntry ) ) { c->overflow = 1; return 0; }
     const uint32_t at = (uint32_t) ( total - c->pool );
-    uint16_t * slots = (uint16_t *) (void *) ( (uint8_t *) c->plan + at );
+    uint16_t * dst = (uint16_t *) (void *) ( (uint8_t *) c->plan + at );
     int32_t i;
-    slots[0] = (uint16_t) n;
-    for ( i = 0; i < n; ++i ) { slots[1 + i] = values[i]; }
+    dst[0] = (uint16_t) n;
+    if ( values != NULL )
+    {
+        for ( i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }
+    }
     return at;
 }
 
@@ -1779,14 +1870,12 @@ static SCHEMA_UNUSED uint32_t table_fixed_lay_fills( TableFixedCompiler * c, int
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                                                      const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
-                                                     const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                                     uint32_t guard, uint8_t arg );
+                                                     const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at );
 
 /* table_fixed_match_children walks a TABLE's children on both sides. */
 static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
                                                       const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
-                                                      const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                                      uint32_t guard, uint8_t arg )
+                                                      const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at )
 {
     const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
     const TableFixedLayoutEntry me = table_fixed_entry_at( mine, mi );
@@ -1806,7 +1895,7 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
             const TableFixedLayoutEntry tc = table_fixed_entry_at( theirs, their_child );
             if ( tc.id == mc.id )
             {
-                table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
+                table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at );
                 break;
             }
             their_off += tc.size;
@@ -1833,8 +1922,7 @@ static SCHEMA_UNUSED void table_fixed_match_children( TableFixedCompiler * c,
 
 static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                                                      const TableFixedLayoutView * theirs, int32_t ti, uint32_t their_at,
-                                                     const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                                     uint32_t guard, uint8_t arg )
+                                                     const TableFixedLayoutView * mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at )
 {
     const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
     const TableFixedLayoutEntry me = table_fixed_entry_at( mine, mi );
@@ -1858,10 +1946,10 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
         if ( me.kind == 35 && te.kind != 35 )
         {
             TableFixedEntry e = table_fixed_entry_zero();
-            e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg;
+            e.dst = aux_at; e.size = 1;
             e.op = kTableFixedPresent;
             table_fixed_push( c, e );
-            table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+            table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at );
             break;
         }
         if ( te.kind != me.kind )
@@ -1870,7 +1958,6 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             {
                 TableFixedEntry e = table_fixed_entry_zero();
                 e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
-                e.guard = guard; e.arg = arg;
                 e.op = ( te.kind == 10 ) ? (uint8_t) kTableFixedWidenF : (uint8_t) kTableFixedWiden;
                 e.sign = table_fixed_signed_kind( te.kind ) ? (uint8_t) 1 : (uint8_t) 0;
                 table_fixed_push( c, e );
@@ -1885,14 +1972,14 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             case 35: /* the OPTIONAL wrapper: the present byte, then the payload whole */
             {
                 TableFixedEntry e = table_fixed_entry_zero();
-                e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedCopy; e.arg = arg;
+                e.src = their_at; e.dst = aux_at; e.size = 1; e.op = kTableFixedCopy;
                 table_fixed_push( c, e );
-                table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
+                table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at );
                 break;
             }
             case 13: /* a nested table: match its fields */
             {
-                table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
+                table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at );
                 break;
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
@@ -1908,14 +1995,14 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                 if ( d->counted )
                 {
                     TableFixedEntry e = table_fixed_entry_zero();
-                    e.src = their_at; e.dst = aux_at; e.size = my_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
+                    e.src = their_at; e.dst = aux_at; e.size = my_n; e.op = kTableFixedCount;
                     table_fixed_push( c, e );
                 }
                 n = their_n < my_n ? their_n : my_n;
                 for ( i = 0; i < n; ++i )
                 {
                     table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
-                                               mine, mi + 1, dst, at + i * d->stride, guard, arg );
+                                               mine, mi + 1, dst, at + i * d->stride );
                 }
                 break;
             }
@@ -1935,7 +2022,7 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     {
                         if ( table_fixed_entry_at( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                         table_fixed_compile_entry( c, theirs, tel, their_at + j * tee.size,
-                                                   mine, mel, dst, at + k * d->stride, guard, arg );
+                                                   mine, mel, dst, at + k * d->stride );
                         break;
                     }
                 }
@@ -1945,24 +2032,31 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             {
                 const uint32_t their_tag = table_fixed_tag_bytes( theirs, ti );
                 const uint32_t my_tag = table_fixed_tag_bytes( mine, mi );
-                const uint8_t saved_argw = c->argw;
-                c->argw = ( their_tag >= 1u && their_tag <= 8u ) ? (uint8_t) their_tag : (uint8_t) 1;
                 int32_t my_arm = mi + 1;
                 uint32_t k;
-                /* THE TAG'S "NONE" GOES DOWN FIRST AND UNGUARDED. Every tag
-                   value below is written under THEIR tag's guard, so a record
-                   naming an arm this build does not have would land no tag at
-                   all — and the prefill cannot answer for it, because those
-                   bytes are named by the guarded entries. The plan is
-                   partitioned unguarded-first, so this is overwritten by the arm
-                   that matches and stands when none does. It is the ONE byte
-                   this form writes twice, and it is the compiled path's alone. */
+                /* THE TAG'S "NONE" GOES DOWN UNDER THE ENCLOSING CHAIN AND
+                   NOTHING MORE. Every tag value below is written under THIS
+                   union's own tag as well, so a record naming an arm this build
+                   does not have would land no tag at all — and the prefill
+                   cannot answer for it, because those bytes are named by the
+                   guarded entries. The plan is partitioned unguarded-first, so
+                   this is overwritten by the arm that matches and stands when
+                   none does. It is the ONE byte this form writes twice, and it
+                   is the compiled path's alone.
+
+                   NESTED: None answers to the OUTER tags — all of them, each at
+                   its OWN width — which is exactly the chain as it stands before
+                   this union pushes its link. At depth three that is three
+                   conditions, and the chain carries them without a lane to
+                   spare (§5.9). */
                 {
                     TableFixedEntry none = table_fixed_entry_zero();
                     none.src = their_at; none.dst = aux_at; none.size = my_tag;
-                    none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                    none.aux = 0; none.op = kTableFixedConst;
+                    if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
                     table_fixed_push( c, none );
                 }
+                if ( c->chain_len >= kTableFixedMaxDepth ) { c->hostile = 1; break; }
                 for ( k = 0; k < me.children && my_arm < mine->count; ++k )
                 {
                     const TableFixedLayoutEntry ma = table_fixed_entry_at( mine, my_arm );
@@ -1973,38 +2067,58 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                         const TableFixedLayoutEntry ta = table_fixed_entry_at( theirs, their_arm );
                         if ( ta.id == ma.id )
                         {
-                            /* MY tag value, written under THEIR tag's guard */
+                            /* THE CHAIN GROWS BY ONE LINK HERE and shrinks on
+                               the way out: an arm inside an arm answers to its
+                               own tag AND to every tag outside it — the ones
+                               that decide whether any of its bytes are there at
+                               all — and that is a conjunction of as many
+                               conditions as there are unions, not of two
+                               (§4.1, §5.9). */
+                            const uint32_t saved_at = c->chain_at;
+                            const int saved_dirty = c->chain_dirty;
+                            TableFixedGuard link;
                             TableFixedEntry tag = table_fixed_entry_zero();
+                            link.guard = their_at;
+                            link.arg_lo = (uint32_t) ( j + 1u );
+                            link.arg_hi = 0;
+                            link.argw = ( their_tag >= 1u && their_tag <= 8u ) ? their_tag : 1u;
+                            c->chain[c->chain_len++] = link;
+                            c->chain_dirty = 1;
+                            /* MY tag value, written under THEIR tag's chain */
                             tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
-                            tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint8_t) ( j + 1 );
-                            tag.argw = c->argw;
+                            tag.aux = k + 1; tag.op = kTableFixedConst;
                             table_fixed_push( c, tag );
                             table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
-                                                       mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 ) );
+                                                       mine, my_arm, dst, at );
+                            c->chain_len--;
+                            c->chain_at = saved_at;
+                            c->chain_dirty = saved_dirty;
                             break;
                         }
                         their_arm += table_fixed_subtree( theirs, their_arm );
                     }
                     my_arm += table_fixed_subtree( mine, my_arm );
                 }
-                c->argw = saved_argw;
                 break;
             }
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
             {
-                if ( ( guard != SCHEMA_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { break; }
+                if ( ( c->chain_len > 0 ) != c->want_guarded ) { break; }
                 if ( te.size < me.size )
                 {
                     TableFixedEntry e = table_fixed_entry_zero();
-                    e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
-                    e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+                    e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden; e.sign = 0;
                     table_fixed_push( c, e );
                     break;
                 }
-                uint16_t remap[256];
-                const uint32_t n = te.children < 255u ? te.children : 255u;
-                TableFixedEntry e;
+                /* FULL WIDTH (bill §12.7): the remap is one slot per writer
+                   variant, not a 255-deep stack array. n past 65535 is a plan
+                   that does not fit the uint16 length word; overflow refuses it. */
+                const uint32_t n = te.children;
+                const uint32_t at_map = table_fixed_lay_table( c, NULL, (int32_t) n );
                 uint32_t j;
+                if ( c->overflow ) { break; }
+                uint16_t * map = (uint16_t *) (void *) ( (uint8_t *) c->plan + at_map );
                 for ( j = 0; j < n; ++j )
                 {
                     const uint64_t vid = table_fixed_entry_at( theirs, ti + 1 + (int32_t) j ).id;
@@ -2014,12 +2128,11 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                     {
                         if ( table_fixed_entry_at( mine, mi + 1 + (int32_t) k ).id == vid ) { landed = (uint16_t) ( k + 1 ); break; }
                     }
-                    remap[j] = landed;
+                    map[1 + j] = landed;
                 }
-                e = table_fixed_entry_zero();
-                e.src = their_at; e.dst = at; e.size = te.size; e.guard = guard; e.op = kTableFixedOrdinal;
-                e.arg = arg; e.dstsize = (uint8_t) me.size;
-                e.aux = table_fixed_lay_table( c, remap, (int32_t) n );
+                TableFixedEntry e = table_fixed_entry_zero();
+                e.src = their_at; e.dst = at; e.size = te.size; e.op = kTableFixedOrdinal; e.dstsize = (uint8_t) me.size;
+                e.aux = at_map;
                 table_fixed_push( c, e );
                 break;
             }
@@ -2027,15 +2140,15 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
             {
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 TableFixedEntry e = table_fixed_entry_zero();
-                e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-                e.op = kTableFixedText; e.arg = arg; e.meta = d->meta;
+                e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at;
+                e.op = kTableFixedText; e.meta = d->meta;
                 table_fixed_push( c, e );
                 break;
             }
             default:
             {
                 TableFixedEntry e = table_fixed_entry_zero();
-                e.src = their_at; e.dst = at; e.guard = guard; e.arg = arg;
+                e.src = their_at; e.dst = at;
                 if ( te.size == me.size )
                 {
                     e.size = me.size; e.op = kTableFixedCopy;
@@ -2083,11 +2196,11 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     c.report = report;
     c.record = table_fixed_entry_at( theirs, 0 ).size;
     c.want_guarded = 0;
-    table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLE_FIXED_NO_GUARD, 0 );
+    table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0 );
     plain = c.count;
     c.want_guarded = 1;
     c.report = NULL; /* the unknown census is the first pass's; counting it twice would lie */
-    table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLE_FIXED_NO_GUARD, 0 );
+    table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0 );
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE; }
@@ -2103,8 +2216,7 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
     {
         if ( i == plain ) { split = out; }
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
-             plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
-             plan[out-1].argw == plan[i].argw &&
+             plan[out-1].guards == plan[i].guards && plan[out-1].gcount == plan[i].gcount &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -7143,6 +7255,16 @@ static SCHEMA_UNUSED const TableFixedDst gunner_settings_fixed_dst[] = {
     { 32, 0, 5, 0, 1 }, /* callsign */
 };
 
+/* THE GUARD POOL: every chain the plan's entries name, laid once and
+   SHARED — an arm's chain and the chains of the arms nested inside it are
+   the same outer links. An entry's condition is a RUN of these, outermost
+   union first, and it is as long as the nesting is deep: there is no bound
+   on how many unions may nest (§5.9). */
+static SCHEMA_UNUSED const TableFixedGuard gunner_settings_fixed_guards[] = {
+    { 0u, 0u, 0u, 1u } /* no union in this type: the pool names no condition */
+};
+static SCHEMA_UNUSED const int32_t gunner_settings_fixed_guard_count = 0;
+
 /* THE IDENTITY PLAN, coalesced out of 3 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
@@ -7150,8 +7272,8 @@ static SCHEMA_UNUSED const TableFixedDst gunner_settings_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry gunner_settings_fixed_plan[] = {
-    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
-    { 5u, 32u, 24u, 5u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
+    { 0u, 0u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 5u, 32u, 24u, 5u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* callsign */
 };
 static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_count = 2;
 static SCHEMA_UNUSED const int32_t gunner_settings_fixed_plan_guarded = 2;
@@ -7247,6 +7369,7 @@ static SCHEMA_UNUSED int64_t gunner_settings_fixed_load( GunnerSettings * values
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = gunner_settings_fixed_plan;
+    const uint8_t * guard_pool = (const uint8_t *) gunner_settings_fixed_guards;
     int32_t entry_count = gunner_settings_fixed_plan_count;
     int32_t entry_guarded = gunner_settings_fixed_plan_guarded;
     const TableFixedFill * fill = NULL;
@@ -7308,7 +7431,7 @@ static SCHEMA_UNUSED int64_t gunner_settings_fixed_load( GunnerSettings * values
     {
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, guard_pool, at + 8, (uint8_t *) ( values + k ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). */
         schema_tabledemo_gunner_settings_fixed_clamp_( values + k, report );
@@ -7382,6 +7505,16 @@ static SCHEMA_UNUSED const TableFixedDst ship_entry_fixed_dst[] = {
     { 32, 0, 5, 0, 1 }, /* callsign */
 };
 
+/* THE GUARD POOL: every chain the plan's entries name, laid once and
+   SHARED — an arm's chain and the chains of the arms nested inside it are
+   the same outer links. An entry's condition is a RUN of these, outermost
+   union first, and it is as long as the nesting is deep: there is no bound
+   on how many unions may nest (§5.9). */
+static SCHEMA_UNUSED const TableFixedGuard ship_entry_fixed_guards[] = {
+    { 0u, 0u, 0u, 1u } /* no union in this type: the pool names no condition */
+};
+static SCHEMA_UNUSED const int32_t ship_entry_fixed_guard_count = 0;
+
 /* THE IDENTITY PLAN, coalesced out of 9 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
@@ -7389,13 +7522,13 @@ static SCHEMA_UNUSED const TableFixedDst ship_entry_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry ship_entry_fixed_plan[] = {
-    { 0u, 36u, 32u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
-    { 36u, 40u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 44u, 64u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
-    { 48u, 48u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
-    { 64u, 104u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 65u, 68u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
-    { 70u, 100u, 24u, 73u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
+    { 0u, 36u, 32u, 0u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* display_name */
+    { 36u, 40u, 8u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* health */
+    { 44u, 64u, 4u, 0u, 0u, 0, kTableFixedCount, 0, 0, 0 }, /* hardpoints count */
+    { 48u, 48u, 16u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* hardpoints, whole */
+    { 64u, 104u, 1u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
+    { 65u, 68u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 70u, 100u, 24u, 73u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* callsign */
 };
 static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_count = 7;
 static SCHEMA_UNUSED const int32_t ship_entry_fixed_plan_guarded = 7;
@@ -7492,6 +7625,7 @@ static SCHEMA_UNUSED int64_t ship_entry_fixed_load( ShipEntry * values, int64_t 
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = ship_entry_fixed_plan;
+    const uint8_t * guard_pool = (const uint8_t *) ship_entry_fixed_guards;
     int32_t entry_count = ship_entry_fixed_plan_count;
     int32_t entry_guarded = ship_entry_fixed_plan_guarded;
     const TableFixedFill * fill = NULL;
@@ -7553,7 +7687,7 @@ static SCHEMA_UNUSED int64_t ship_entry_fixed_load( ShipEntry * values, int64_t 
     {
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, guard_pool, at + 8, (uint8_t *) ( values + k ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). */
         schema_tabledemo_ship_entry_fixed_clamp_( values + k, report );
@@ -7623,6 +7757,16 @@ static SCHEMA_UNUSED const TableFixedDst global_settings_fixed_dst[] = {
     { 0, 0, 0, 0, 0 }, /* element */
 };
 
+/* THE GUARD POOL: every chain the plan's entries name, laid once and
+   SHARED — an arm's chain and the chains of the arms nested inside it are
+   the same outer links. An entry's condition is a RUN of these, outermost
+   union first, and it is as long as the nesting is deep: there is no bound
+   on how many unions may nest (§5.9). */
+static SCHEMA_UNUSED const TableFixedGuard global_settings_fixed_guards[] = {
+    { 0u, 0u, 0u, 1u } /* no union in this type: the pool names no condition */
+};
+static SCHEMA_UNUSED const int32_t global_settings_fixed_guard_count = 0;
+
 /* THE IDENTITY PLAN, coalesced out of 4 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
@@ -7630,9 +7774,9 @@ static SCHEMA_UNUSED const TableFixedDst global_settings_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry global_settings_fixed_plan[] = {
-    { 0u, 0u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* tick_rate */
-    { 5u, 56u, 48u, 5u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* build_note */
-    { 57u, 60u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* spawn_delays, whole */
+    { 0u, 0u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* tick_rate */
+    { 5u, 56u, 48u, 5u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* build_note */
+    { 57u, 60u, 12u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* spawn_delays, whole */
 };
 static SCHEMA_UNUSED const int32_t global_settings_fixed_plan_count = 3;
 static SCHEMA_UNUSED const int32_t global_settings_fixed_plan_guarded = 3;
@@ -7728,6 +7872,7 @@ static SCHEMA_UNUSED int64_t global_settings_fixed_load( GlobalSettings * values
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = global_settings_fixed_plan;
+    const uint8_t * guard_pool = (const uint8_t *) global_settings_fixed_guards;
     int32_t entry_count = global_settings_fixed_plan_count;
     int32_t entry_guarded = global_settings_fixed_plan_guarded;
     const TableFixedFill * fill = NULL;
@@ -7789,7 +7934,7 @@ static SCHEMA_UNUSED int64_t global_settings_fixed_load( GlobalSettings * values
     {
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, guard_pool, at + 8, (uint8_t *) ( values + k ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). */
         schema_tabledemo_global_settings_fixed_clamp_( values + k, report );
@@ -7934,6 +8079,16 @@ static SCHEMA_UNUSED const TableFixedDst pack_config_fixed_dst[] = {
     { 32, 0, 5, 0, 1 }, /* callsign */
 };
 
+/* THE GUARD POOL: every chain the plan's entries name, laid once and
+   SHARED — an arm's chain and the chains of the arms nested inside it are
+   the same outer links. An entry's condition is a RUN of these, outermost
+   union first, and it is as long as the nesting is deep: there is no bound
+   on how many unions may nest (§5.9). */
+static SCHEMA_UNUSED const TableFixedGuard pack_config_fixed_guards[] = {
+    { 0u, 0u, 0u, 1u } /* no union in this type: the pool names no condition */
+};
+static SCHEMA_UNUSED const int32_t pack_config_fixed_guard_count = 0;
+
 /* THE IDENTITY PLAN, coalesced out of 61 leaves by the schema compiler —
    the one walk every backend lays down (ir/fixedform.go), so no two ports
    can disagree about what the coalescer did; the asserts above tie every
@@ -7941,53 +8096,53 @@ static SCHEMA_UNUSED const TableFixedDst pack_config_fixed_dst[] = {
    then the arms: the entries that are nearly all of a plan never test a
    guard at all. */
 static SCHEMA_UNUSED const TableFixedEntry pack_config_fixed_plan[] = {
-    { 0u, 0u, 9u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* version */
-    { 9u, 60u, 48u, 9u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* build_note */
-    { 61u, 64u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* spawn_delays, whole */
-    { 73u, 112u, 32u, 76u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
-    { 109u, 116u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 117u, 140u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
-    { 121u, 124u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
-    { 137u, 180u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 138u, 144u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
-    { 143u, 176u, 24u, 149u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
-    { 171u, 220u, 32u, 184u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
-    { 207u, 224u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 215u, 248u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
-    { 219u, 232u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
-    { 235u, 288u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 236u, 252u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
-    { 241u, 284u, 24u, 257u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
-    { 269u, 328u, 32u, 292u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
-    { 305u, 332u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 313u, 356u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
-    { 317u, 340u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
-    { 333u, 396u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 334u, 360u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
-    { 339u, 392u, 24u, 365u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
-    { 367u, 400u, 12u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* thresholds, whole */
-    { 379u, 736u, 3u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* reserves count */
-    { 383u, 448u, 32u, 412u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
-    { 419u, 452u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 427u, 476u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
-    { 431u, 460u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
-    { 447u, 516u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 448u, 480u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
-    { 453u, 512u, 24u, 485u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
-    { 481u, 556u, 32u, 520u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
-    { 517u, 560u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 525u, 584u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
-    { 529u, 568u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
-    { 545u, 624u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 546u, 588u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
-    { 551u, 620u, 24u, 593u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
-    { 579u, 664u, 32u, 628u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* display_name */
-    { 615u, 668u, 8u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* health */
-    { 623u, 692u, 4u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCount, 0, 0, 0, 0, 1 }, /* hardpoints count */
-    { 627u, 676u, 16u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* hardpoints, whole */
-    { 643u, 732u, 1u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* gunner present */
-    { 644u, 696u, 5u, 0u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedCopy, 0, 0, 0, 0, 1 }, /* reaction */
-    { 649u, 728u, 24u, 701u, SCHEMA_TABLE_FIXED_NO_GUARD, kTableFixedText, 0, 1, 0, 0, 1 }, /* callsign */
+    { 0u, 0u, 9u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* version */
+    { 9u, 60u, 48u, 9u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* build_note */
+    { 61u, 64u, 12u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* spawn_delays, whole */
+    { 73u, 112u, 32u, 76u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* display_name */
+    { 109u, 116u, 8u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* health */
+    { 117u, 140u, 4u, 0u, 0u, 0, kTableFixedCount, 0, 0, 0 }, /* hardpoints count */
+    { 121u, 124u, 16u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* hardpoints, whole */
+    { 137u, 180u, 1u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
+    { 138u, 144u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 143u, 176u, 24u, 149u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* callsign */
+    { 171u, 220u, 32u, 184u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* display_name */
+    { 207u, 224u, 8u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* health */
+    { 215u, 248u, 4u, 0u, 0u, 0, kTableFixedCount, 0, 0, 0 }, /* hardpoints count */
+    { 219u, 232u, 16u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* hardpoints, whole */
+    { 235u, 288u, 1u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
+    { 236u, 252u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 241u, 284u, 24u, 257u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* callsign */
+    { 269u, 328u, 32u, 292u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* display_name */
+    { 305u, 332u, 8u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* health */
+    { 313u, 356u, 4u, 0u, 0u, 0, kTableFixedCount, 0, 0, 0 }, /* hardpoints count */
+    { 317u, 340u, 16u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* hardpoints, whole */
+    { 333u, 396u, 1u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
+    { 334u, 360u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 339u, 392u, 24u, 365u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* callsign */
+    { 367u, 400u, 12u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* thresholds, whole */
+    { 379u, 736u, 3u, 0u, 0u, 0, kTableFixedCount, 0, 0, 0 }, /* reserves count */
+    { 383u, 448u, 32u, 412u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* display_name */
+    { 419u, 452u, 8u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* health */
+    { 427u, 476u, 4u, 0u, 0u, 0, kTableFixedCount, 0, 0, 0 }, /* hardpoints count */
+    { 431u, 460u, 16u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* hardpoints, whole */
+    { 447u, 516u, 1u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
+    { 448u, 480u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 453u, 512u, 24u, 485u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* callsign */
+    { 481u, 556u, 32u, 520u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* display_name */
+    { 517u, 560u, 8u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* health */
+    { 525u, 584u, 4u, 0u, 0u, 0, kTableFixedCount, 0, 0, 0 }, /* hardpoints count */
+    { 529u, 568u, 16u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* hardpoints, whole */
+    { 545u, 624u, 1u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
+    { 546u, 588u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 551u, 620u, 24u, 593u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* callsign */
+    { 579u, 664u, 32u, 628u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* display_name */
+    { 615u, 668u, 8u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* health */
+    { 623u, 692u, 4u, 0u, 0u, 0, kTableFixedCount, 0, 0, 0 }, /* hardpoints count */
+    { 627u, 676u, 16u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* hardpoints, whole */
+    { 643u, 732u, 1u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* gunner present */
+    { 644u, 696u, 5u, 0u, 0u, 0, kTableFixedCopy, 0, 0, 0 }, /* reaction */
+    { 649u, 728u, 24u, 701u, 0u, 0, kTableFixedText, 1, 0, 0 }, /* callsign */
 };
 static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_count = 47;
 static SCHEMA_UNUSED const int32_t pack_config_fixed_plan_guarded = 47;
@@ -8101,6 +8256,7 @@ static SCHEMA_UNUSED int64_t pack_config_fixed_load( PackConfig * values, int64_
     int32_t census_unknown = 0;
     int32_t census_kind = 0;
     const TableFixedEntry * entries = pack_config_fixed_plan;
+    const uint8_t * guard_pool = (const uint8_t *) pack_config_fixed_guards;
     int32_t entry_count = pack_config_fixed_plan_count;
     int32_t entry_guarded = pack_config_fixed_plan_guarded;
     const TableFixedFill * fill = NULL;
@@ -8162,7 +8318,7 @@ static SCHEMA_UNUSED int64_t pack_config_fixed_load( PackConfig * values, int64_
     {
         if ( table_fixed_get64( at ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_NO_LAYOUT; return -1; }
         table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ) );
-        table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report );
+        table_fixed_run( entries, entry_count, entry_guarded, guard_pool, at + 8, (uint8_t *) ( values + k ), report );
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). */
         schema_tabledemo_pack_config_fixed_clamp_( values + k, report );
