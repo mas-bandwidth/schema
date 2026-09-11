@@ -457,10 +457,24 @@ func fixedRootName(t *testing.T, src string) string {
 	t.Helper()
 	u := unitOf(t, src)
 	roots := ir.TableFixedRoots(u)
-	if len(roots) != 1 {
-		t.Fatalf("a versioning row declares exactly one fixed root, not %d", len(roots))
+	if len(roots) == 0 {
+		t.Fatal("a versioning row declares a fixed root")
 	}
-	return roots[0].Name
+	// A row whose change is NESTED declares two fixed tables — the nested type
+	// and the root that reaches it. The file's root is the one no other fixed
+	// table names by value.
+	named := map[string]bool{}
+	for _, st := range roots {
+		for _, f := range st.Fields {
+			named[f.Type.Name] = true
+		}
+	}
+	for _, st := range roots {
+		if !named[st.Name] {
+			return st.Name
+		}
+	}
+	return roots[len(roots)-1].Name
 }
 
 func runVersionProbe(t *testing.T, reader string, older []string, testSource string) ([]byte, error) {
@@ -505,7 +519,8 @@ func runVersionProbeRetired(t *testing.T, reader string, older []string, retire 
 		t.Fatal(err)
 	}
 	files["go.mod"] = []byte(fmt.Sprintf("module probe\n\ngo 1.26\n\nrequire github.com/mas-bandwidth/serialize.go v0.0.0\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime))
-	files["version_test.go"] = []byte(testSource)
+	// The probe lives IN the generated package, whose name is the schema's own.
+	files["version_test.go"] = []byte(strings.Replace(testSource, "package probe", "package "+u.Package, 1))
 	for name, data := range files {
 		if strings.Contains(name, "/") {
 			continue
