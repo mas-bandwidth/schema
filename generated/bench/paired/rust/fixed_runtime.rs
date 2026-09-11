@@ -1096,7 +1096,10 @@ fn compile_entry(
     // not name is not set — and then the payload lands against the wrapper's
     // own child. (§5.2's EMIT says "under guard/arg" where §5.7's C-leg row
     // calls the same constant UNGUARDED; the guarded reading is the one that
-    // cannot set a present byte for an arm nobody selected.)
+    // cannot set a present byte for an arm nobody selected. AT TOP LEVEL THE
+    // TWO READINGS COINCIDE: the guard a root field inherits is the empty one,
+    // which is the unguarded case the bill names, so the readings part only
+    // under a union arm — where the guarded one is right.)
     if me.kind == 35 && te.kind != 35 {
         c.push(TableFixedEntry {
             src: their_at,
