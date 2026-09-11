@@ -13,7 +13,7 @@ import (
 
 func TestFixedFormEmitsSurface(t *testing.T) {
 	files := generate(t, `package probe
-table Point {
+fixed table Point {
     x int32
     y int32
 }
@@ -48,17 +48,15 @@ table Point {
 	if strings.Contains(body, "block_malformed") {
 		t.Error("the layout is still named a block")
 	}
-	// DERIVED into the fixed mode, not declared fixed: the form-3 surface
-	// above is emitted, and the form-1 Load it never lost still reads.
 	load := funcSource(body, "func PointLoad(")
 	if load == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
-	if !strings.Contains(load, "PointLoadBody") {
-		t.Error("PointLoad of a table nobody declared fixed must still walk form 1")
+	if !strings.Contains(load, "previous_form") || !strings.Contains(load, "tableFixedRefuse") {
+		t.Error("PointLoad of a DECLARED fixed table is not a named form-1 refusal")
 	}
-	if strings.Contains(load, "previous_form") {
-		t.Error("PointLoad refuses form 1 on a table nobody declared fixed")
+	if strings.Contains(load, "PointLoadBody") {
+		t.Error("PointLoad still walks a form-1 file of a declared fixed table")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoad(")
 	if fixedLoad == "" {
@@ -115,7 +113,7 @@ table Point {
 
 func TestFixedFormRoundTrip(t *testing.T) {
 	runGenerated(t, `package probe
-table Point {
+fixed table Point {
     x int32 = 1
     y int32 = 2
 }
@@ -394,6 +392,171 @@ func TestPlanPath(t *testing.T) {
 	}
 }
 
+// TestFixedFormFU1FU2 is the TEXT-UNDER-AN-ARM pin (docs/SPEC-TABLES.md §3.4,
+// §15; docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12). FU1 writes a string(8) in
+// the union's SECOND arm; FU2 appends `extra` so a read of those bytes is a
+// COMPILED plan. Both reads go through FuRootFixedLoad — the same one-path
+// load the rest of this form uses. The compiled read has to see "hello".
+func TestFixedFormFU1FU2(t *testing.T) {
+	fu1, err := os.ReadFile("../../../test/tables/FU1.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fu2, err := os.ReadFile("../../../test/tables/FU2.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	runtime, err := filepath.Abs("../../../../serialize.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeUnit(t, filepath.Join(dir, "fu1"), "tblfu1", string(fu1), runtime)
+	writeUnit(t, filepath.Join(dir, "fu2"), "tblfu2", string(fu2), runtime)
+	matches, err := filepath.Glob(filepath.Join(dir, "fu1", "*Table.go"))
+	if err != nil || len(matches) == 0 {
+		t.Fatalf("FU1 emitted no Table.go: %v %v", err, matches)
+	}
+	load, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(load)
+	if !strings.Contains(body, "func FuRootFixedLoad(") {
+		t.Fatal("FU1 did not emit FuRootFixedLoad")
+	}
+	if strings.Contains(body, "if identity {") {
+		t.Error("identity flag still forks the record loop")
+	}
+	if !strings.Contains(body, "tableFixedHoles") || !strings.Contains(body, "tableFixedRun(") {
+		t.Error("FU1 FixedLoad is not the one-path load")
+	}
+	testDir := filepath.Join(dir, "test")
+	if err := os.MkdirAll(testDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mod := fmt.Sprintf("module fu1fu2test\n\ngo 1.26\n\nrequire (\n\ttblfu1 v0.0.0\n\ttblfu2 v0.0.0\n\tgithub.com/mas-bandwidth/serialize.go v0.0.0\n)\nreplace tblfu1 => ../fu1\nreplace tblfu2 => ../fu2\nreplace github.com/mas-bandwidth/serialize.go => %q\n", runtime)
+	if err := os.WriteFile(filepath.Join(testDir, "go.mod"), []byte(mod), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := `package fu1fu2test
+
+import (
+	"testing"
+
+	"tblfu1"
+	"tblfu2"
+)
+
+func TestTextUnderAnArm(t *testing.T) {
+	if tblfu1.FuRootFixedHash == tblfu2.FuRootFixedHash {
+		t.Fatal("FU2 extra did not change the layout hash; compiled path is not a compile trigger")
+	}
+
+	labelled := tblfu1.FuRoot{}
+	tblfu1.FuRootReset(&labelled)
+	labelled.Flag = true
+	labelled.Note = 44
+	labelled.NotePresent = true
+	labelled.Pick.Type = tblfu1.PickTypeLabelled
+	labelled.Pick.Labelled.Lead = 101
+	copy(labelled.Pick.Labelled.Label[:], "hello")
+	labelled.Pick.Labelled.LabelLength = 5
+	labelled.Pick.Labelled.Trail = 202
+	labelled.Tail = 11
+
+	plain := tblfu1.FuRoot{}
+	tblfu1.FuRootReset(&plain)
+	plain.Pick.Type = tblfu1.PickTypePlain
+	plain.Pick.Plain.N = 303
+	plain.Tail = 12
+
+	w := make([]byte, tblfu1.FuRootFixedMeasure(2))
+	if n := tblfu1.FuRootFixedSave([]tblfu1.FuRoot{labelled, plain}, w); n != int64(len(w)) {
+		t.Fatalf("FU1 save %d", n)
+	}
+
+	{
+		back := make([]tblfu1.FuRoot, 2)
+		var r tblfu1.TableReport
+		plan := make([]tblfu1.TableFixedEntry, 1024)
+		n := tblfu1.FuRootFixedLoad(back, w, plan, &r)
+		if n != 2 {
+			t.Fatalf("identity n=%d r=%+v", n, r)
+		}
+		if back[0].Pick.Type != tblfu1.PickTypeLabelled {
+			t.Fatalf("identity arm %d", back[0].Pick.Type)
+		}
+		if back[0].Pick.Labelled.Lead != 101 {
+			t.Fatalf("identity lead %d", back[0].Pick.Labelled.Lead)
+		}
+		got := string(back[0].Pick.Labelled.Label[:back[0].Pick.Labelled.LabelLength])
+		if back[0].Pick.Labelled.LabelLength != 5 || got != "hello" {
+			t.Fatalf("identity text %q len=%d", got, back[0].Pick.Labelled.LabelLength)
+		}
+		if back[0].Pick.Labelled.Trail != 202 {
+			t.Fatalf("identity trail %d", back[0].Pick.Labelled.Trail)
+		}
+		if !back[0].Flag || !back[0].NotePresent || back[0].Note != 44 || back[0].Tail != 11 {
+			t.Fatalf("identity labelled rest %+v", back[0])
+		}
+		if back[1].Pick.Type != tblfu1.PickTypePlain || back[1].Pick.Plain.N != 303 || back[1].Tail != 12 {
+			t.Fatalf("identity plain %+v", back[1])
+		}
+		if r != (tblfu1.TableReport{}) {
+			t.Fatalf("identity report %+v", r)
+		}
+	}
+
+	{
+		back := make([]tblfu2.FuRoot, 2)
+		var r tblfu2.TableReport
+		plan := make([]tblfu2.TableFixedEntry, 2048)
+		n := tblfu2.FuRootFixedLoad(back, w, plan, &r)
+		if n != 2 {
+			t.Fatalf("compiled n=%d r=%+v", n, r)
+		}
+		if back[0].Pick.Type != tblfu2.PickTypeLabelled {
+			t.Fatalf("compiled arm %d", back[0].Pick.Type)
+		}
+		if back[0].Pick.Labelled.Lead != 101 {
+			t.Fatalf("compiled lead %d", back[0].Pick.Labelled.Lead)
+		}
+		got := string(back[0].Pick.Labelled.Label[:back[0].Pick.Labelled.LabelLength])
+		if back[0].Pick.Labelled.LabelLength != 5 || got != "hello" {
+			t.Fatalf("ARG LANE BITES: compiled read of string under union arm 2 landed %q (len %d); identity had hello; report %+v", got, back[0].Pick.Labelled.LabelLength, r)
+		}
+		if back[0].Pick.Labelled.Trail != 202 {
+			t.Fatalf("compiled trail %d", back[0].Pick.Labelled.Trail)
+		}
+		if !back[0].Flag || !back[0].NotePresent || back[0].Note != 44 || back[0].Tail != 11 {
+			t.Fatalf("compiled labelled rest %+v", back[0])
+		}
+		if back[0].Extra != 11 {
+			t.Fatalf("compiled extra default %d", back[0].Extra)
+		}
+		if back[1].Pick.Type != tblfu2.PickTypePlain || back[1].Pick.Plain.N != 303 || back[1].Tail != 12 {
+			t.Fatalf("compiled plain %+v", back[1])
+		}
+		if back[1].Extra != 11 {
+			t.Fatalf("compiled extra default on plain %d", back[1].Extra)
+		}
+		if r.Clamped != 0 || r.Malformed || r.Reason != "" {
+			t.Fatalf("compiled report %+v", r)
+		}
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(testDir, "fu_test.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test", "-count=1", ".")
+	cmd.Dir = testDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("FU1/FU2: %v\n%s", err, out)
+	}
+}
+
 func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 	t.Helper()
 	u := unitFrom(t, schema)
@@ -525,7 +688,7 @@ func TestForm1VariableLoad(t *testing.T) {
 // build's.
 func TestFixedFormHostileBoolByte(t *testing.T) {
 	runGenerated(t, `package probe
-table Host {
+fixed table Host {
     on bool
     off bool
     maybe ?bool
@@ -682,7 +845,7 @@ union Pick
     hit  Hit
     chat Chat
 }
-table Host {
+fixed table Host {
     pick Pick
     tail int32 = 9
 }
@@ -764,7 +927,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     pick Pick
 }
 `
@@ -776,7 +939,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     pick Pick
     tail int32 = 7
 }
@@ -860,10 +1023,10 @@ union Pick
     a ArmA
     b ArmB
 }
-table Writer {
+fixed table Writer {
     pick Pick
 }
-table Reader {
+fixed table Reader {
     pick Pick
     tail int32 = 7
 }
@@ -956,7 +1119,7 @@ union Effect
     boost Boost
     ward Ward
 }
-table Cfg {
+fixed table Cfg {
     a int32 = 5 | min = 0, max = 1000
     effect Effect
     marks [..4]int32 | min = 0, max = 10
@@ -999,7 +1162,7 @@ union Effect
     boost Boost
     ward Ward
 }
-table Cfg {
+fixed table Cfg {
     a int32 = 5 | min = 0, max = 1000
     effect Effect
 }
@@ -1024,7 +1187,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     n     int32 = 0 | min = 0, max = 10
     marks [..4]int32 | min = 0, max = 10
     note  ?int32 | min = 0, max = 10
