@@ -57,6 +57,19 @@ func fixedRefusal(st *ir.Struct) string {
 	// `table`. So the only class that can ever hold a present flag is the one
 	// THIS FILE emits (emitTableClass), and there was never another emitter's
 	// storage to invent.
+	//
+	// §3.4's 65536-BYTE CEILING IS A REFUSAL OF THE FORM, and it belongs here
+	// rather than in the roots loop, because the refusal IS the filter
+	// (fixedRoots): a ceiling the filter knew and this function did not would be
+	// a module that carries a 280020-byte record and says nothing about it. The
+	// compiler already warns, naming the table and the size — *"THE FIXED FORM
+	// IS NOT EMITTED FOR IT, because no conforming reader decodes a record that
+	// size"* (ir.TableFixedRecordBounds) — and the class is untouched: the table
+	// keeps form 1, its by-value storage, its cook and its block form. So this
+	// is not a refusal of the TABLE and never of the unit.
+	if fixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
+		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode a record that size — it keeps form 1 (docs/SPEC-TABLES.md §3.4)"
+	}
 	return ""
 }
 
