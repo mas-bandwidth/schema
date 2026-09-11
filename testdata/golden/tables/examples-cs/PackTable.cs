@@ -865,7 +865,10 @@ namespace Tabledemo
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(44), count_hardpoints);
             if (value.Hardpoints != null) { MemoryMarshal.AsBytes(value.Hardpoints.AsSpan(0, Math.Min(value.Hardpoints.Length, count_hardpoints))).CopyTo(b.Slice(48)); }
             b[64] = (byte)(value.GunnerPresent ? 1 : 0);
-            GunnerSettingsFixedWriteBody(b.Slice(65), value.Gunner);
+            if (value.GunnerPresent)
+            {
+                GunnerSettingsFixedWriteBody(b.Slice(65), value.Gunner);
+            }
         }
 
         // GlobalSettings's stores. The template — the hash, then zeros — is memcpy'd first,

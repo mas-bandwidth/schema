@@ -10,7 +10,7 @@ The bill is `FIXED-FORM-BILL-READS-BACKWARD.md`; the law is its §2 and §6; the
 | **LOCK-REFUSES** | the narrowing does not compile against the lock; the refusal names the table, the definition, the rule, the old and the new value | `internal/lockfile` (Go), one test per row | yes |
 | **LOCK-ALLOWS** | the widening compiles and the lock's lineage gains one entry | `internal/lockfile` | no (a positive) |
 | **NEW-READS-OLD** | the widened reader reads the older writer's file: every old value lands exactly, the reader's tail is the default, the counters are what §5.2 says | the C++ reference first (`test/tables/fixedform_main.cpp`, a lineage pair per row written by the dump), then every leg | yes, per leg |
-| **OLD-REFUSES-NEW** | the older reader given the widened writer's file refuses `layout_newer` before any record, no counter moves, nothing decoded; the refusal names the row's definition where the language has text | the C++ reference first, then every leg | yes, per leg |
+| **OLD-REFUSES-NEW** | the older reader given the widened writer's file refuses `layout_newer` before any record, no counter moves, nothing decoded; the refusal carries the file's hash and nothing else (bill §12.4) | the C++ reference first, then every leg | yes, per leg |
 
 The two read columns share one corpus: for each row, `fixedform_dump.cpp` writes the OLD file (`vN_<row>.bin`)
 and the NEW file (`vN1_<row>.bin`) from two schemas that differ by exactly that row. Each leg then has two
@@ -26,16 +26,16 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | row | old | new (the widening) | the narrowing LOCK-REFUSES (new = the reverse) | NEW-READS-OLD lands | OLD-REFUSES-NEW names |
 |---|---|---|---|---|---|
 | `field_append` | `vec {x,y,z}` | `vec {x,y,z,w}` | `{x,y}`: "field removed"; `{x,w,y,z}`: "field inserted not at the end"; `{y,x,z}`: "fields reordered" | x,y,z exact; w = default | the field w |
-| `field_deprecate` | `{a,b,c}` | `{a,b deprecated,c}` | `{a,c}` (removed instead of deprecated): "field removed" | a,c exact; b dropped, `unknown` += 1 per plan | (a deprecation is not newer: the OLD reader READS the new file, b landing as written) |
-| `field_undeprecate` | `{a,b deprecated}` | `{a,b}` | — (allowed both ways; a test that both compile) | a,b exact | reads |
+| `field_deprecate` | `{a,b,c}` | `{a,b deprecated,c}` | `{a,c}` (removed instead of deprecated): "field removed" | a,b,c exact; b read on every plan, no counter (bill §12.3) | (a deprecation is not newer: the OLD reader READS the new file) |
+| `field_undeprecate` | `{a,b deprecated}` | — | `{a,b}`: "undeprecated" (one way, bill §12.3) | — | — |
 | `field_modify` | `{a int32}` | — | `{a int64}` is `int_widen`; `{a string(8)}`: "kind changed" | — | — |
 | `enum_append` | `Tier {bronze silver gold}` | `+ platinum` | `{bronze gold silver}`: "variant reordered"; `{bronze silver}`: "variant removed"; `{bronze platinum silver gold}`: "variant inserted mid-list"; `{bronze silver golden}`: "variant renamed without was" | ordinals equal; a gold record reads gold | the variant platinum |
-| `enum_width` | 255 variants | 256 variants (width 1 → 2)... per the ordinal width rule | a width cannot be set by hand: covered by `enum_append` at the boundary | width 1 ordinal widened into width 2, `widened` += 1 | the layout's enum width |
+| `enum_width` | 255 variants | 256 variants (width 1 → 2) | a width cannot be set by hand: covered by `enum_append` at the boundary | width 1 ordinal WIDENED into width 2, `widened` += 1; a union crossing 255 arms the same, and the guard compares at the tag's width (bill §12.7) | the hash |
 | `union_append` | `Pick {a b}` | `+ c` | reordered / removed / inserted / payload changed: four refusals | an `a` record lands a; the tag width equal | the arm c |
 | `union_arm_payload_widen` | arm `a: {x}` | arm `a: {x,y}` | arm `a: {}`: "field removed" | x exact, y default | the field y under arm a |
 | `flags_append` | `F {a b}` | `F {a b c}` | `{b a}`: "flag moved"; `{a}`: "flag removed" | mask equal | the flag c |
 | `array_bounded_grow` | `[..4]int32` | `[..8]int32` | `[..2]`: "bound narrowed (4 -> 2)" | count and 4 elements exact; slots 4..7 default | the bound 8 |
-| `array_fixed_grow` | `[4]int32` | `[8]int32` | `[2]`: "bound narrowed" | 4 exact, 4 default | the bound |
+| `array_fixed_grow` | `[4]Vec` | `[8]Vec` | `[2]`: "bound narrowed" | 4 exact, 4 at the ELEMENT DEFAULT (a nested Vec's own defaults, bill §12.6) | the hash |
 | `array_shape` | `[4]T` | — | `[..4]T`: "shape changed"; `[Enum]T`: "shape changed" | — | — |
 | `array_elem_widen` | `[..4]int16` | `[..4]int32` | `[..4]int8`: "element narrowed" | 4 exact, widened | the element width |
 | `keyed_array_enum_append` | `[Tier]int32`, Tier 3 | Tier 4 | Tier reordered: "variant reordered" (the array follows) | 3 slots exact, slot 4 default | the variant |
@@ -85,3 +85,11 @@ only, and OLD-REFUSES-NEW for the other direction).
 33 rows × up to 4 columns, the floor and hash tests, on the reference and nine legs. The reference first,
 red first; then the legs from the corpus, algorithm not reference; the swarm takes the mechanical rows with
 the target and the corpus file named on the card.
+
+## Hostile rows, per plan (bill §12.5)
+
+For every bounded row above, one more test on the reference: a forged value in the OLD file past the OLD
+writer's bound (a count of 7 where the old writer declared `[..4]`, an ordinal 5 where the old enum had 3,
+a tag past the old arm count, a scalar past the old range), read by the NEW reader whose own bound is
+wider: it clamps or lands `None` against the WRITER's bound carried by the plan, and counts, never landing
+a value the old writer could not have written. Named `<row>_hostile_case()`.

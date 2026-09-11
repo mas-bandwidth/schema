@@ -1,0 +1,20 @@
+// VNEW_rename_without_was.schema — the NEW side of the `rename_without_was` row of the fixed form's
+// versioning law (docs/FIXED-FORM-VERSIONING-TESTS.md, the LISTS rows; the bill
+// is docs/FIXED-FORM-BILL-READS-BACKWARD.md §2 and the procedures are
+// docs/FIXED-FORM-ALGORITHM.md §5).
+//
+// The pair differs by EXACTLY ONE definition change — one field renamed THROUGH `was`, which is wire identity preserved and no version at all — and
+// nothing else, so a read that goes wrong can only have gone wrong there. The
+// table name is the same on both sides, because the two layouts are ONE
+// LINEAGE; only the package differs, so both generations compile into one test
+// binary (the FX1/FX2 precedent).
+package vnew_rename_without_was
+
+fixed table Lineage
+{
+    // RENAMED THROUGH `was`. Wire identity is the hash of the name, and `was`
+    // keeps the OLD name's hash, so this edit moves no layout byte: the two
+    // layouts are BYTE-IDENTICAL and the pair reads in both directions.
+    b   int32 = 0 | was = "a"
+    seq int32 = 0
+}

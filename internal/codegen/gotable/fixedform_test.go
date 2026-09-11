@@ -626,9 +626,9 @@ func TestHostileBoolOnTheIdentityPath(t *testing.T) {
 
 func TestHostileBoolOnThePlanPath(t *testing.T) {
 	buf := hostileRecord(t)
-	parsed, ok := tableFixedParseLayout(HostFixedLayout)
-	if !ok {
-		t.Fatal("my own layout does not parse")
+	parsed, why := tableFixedParseLayout(HostFixedLayout)
+	if why != "" {
+		t.Fatalf("my own layout does not parse: %s", why)
 	}
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport
@@ -905,9 +905,9 @@ func TestOldArgLaneControl(t *testing.T) {
 
 	layoutBytes := tableFixedGet32(buf[TableFixedHeaderBytes:])
 	layout := buf[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
-	parsed, ok := tableFixedParseLayout(layout)
-	if !ok {
-		t.Fatal("writer layout does not parse")
+	parsed, why := tableFixedParseLayout(layout)
+	if why != "" {
+		t.Fatalf("writer layout does not parse: %s", why)
 	}
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport
