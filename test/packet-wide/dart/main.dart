@@ -4,6 +4,14 @@ import 'dart:typed_data';
 import '../../../build/packet-wide/dart/WideText.dart' as d;
 import '../../../build/packet-wide/dart/shapes/Shapes.dart' as p;
 
+// assertsEnabled is true only under --enable-asserts: the write-side contracts
+// are assert, so what this file may probe depends on the build (SPEC §5).
+bool assertsEnabled() {
+  var enabled = false;
+  assert(enabled = true);
+  return enabled;
+}
+
 void check(bool ok, String message) {
   if (!ok) throw StateError(message);
 }
@@ -44,16 +52,37 @@ void replay<T>(
 void contracts() {
   final wire = ByteData(1024);
   final v = d.WideSeven();
+  // SPEC §4.12's two WRITE-side rules — the used length in [0, N] and no zero
+  // code unit among the used units — are the CALLER's contract, and write-side
+  // checks are DEBUG ONLY (SPEC §5): in Dart that idiom is assert, gone from a
+  // build without --enable-asserts. They used to be `throw ArgumentError`,
+  // alive in every build. So: under asserts the write refuses, and WITHOUT
+  // asserts it must not unwind at all — the release path clamps the used
+  // length into [0, N] and writes that, deterministic bytes and never a trap.
+  final asserts = assertsEnabled();
   for (final n in [-1, 8, 1]) {
     v.textLength = n;
     var refused = false;
     try {
       d.writeWideSeven(v, wire);
-    } on ArgumentError {
+    } on AssertionError {
       refused = true;
     }
-    check(refused, 'writer bounds/null');
+    check(refused == asserts, 'writer bounds/null');
   }
+  // the clamped release write is the write of the clamped length, bit for bit
+  v.textLength = 8;
+  v.text.fillRange(0, 7, 0x41);
+  final over = Uint8List(64);
+  final overBits = asserts ? 0 : d.writeWideSeven(v, ByteData.sublistView(over));
+  v.textLength = 7;
+  final clamped = Uint8List(64);
+  final clampedBits = d.writeWideSeven(v, ByteData.sublistView(clamped));
+  if (!asserts) {
+    check(overBits == clampedBits && hex(over) == hex(clamped), 'clamped write');
+  }
+  v.textLength = 1;
+  v.text.fillRange(0, 7, 0);
   v.text[0] = 0xd800;
   d.writeWideSeven(v, wire);
   check(!d.readWideSeven(v, wire, 35), 'unpaired high');

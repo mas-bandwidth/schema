@@ -769,16 +769,23 @@ pub fn write_strs(stream: &mut WriteStream<'_>, value: &Strs) -> Result {
     }
     debug_assert!(value.s_length >= 0 && value.s_length <= 8, "s_length out of range [0, 8]");
     {
-        let mut offset_value = value.s_length as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        let clamped_length = value.s_length.clamp(0, 8); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        debug_assert!(!value.s[..clamped_length as usize].contains(&0), "s_bytes carries an interior null");
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.s[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.s[..value.s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     debug_assert!(value.b_length >= 0 && value.b_length <= 8, "b_length out of range [0, 8]");
     {
-        let mut offset_value = value.b_length as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        let clamped_length = value.b_length.clamp(0, 8); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.b[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.b[..value.b_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     debug_assert!(value.tail < 1 << 3, "tail above the bits(3) wire width");
     {
         let mut raw_value = value.tail;

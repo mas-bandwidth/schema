@@ -221,15 +221,19 @@ namespace Wide
         {
             Debug.Assert(value.TextLength >= 0 && value.TextLength <= 15, "value.TextLength out of range [0, 15]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.TextLength);
-                if (!stream.SerializeBits(ref offsetValue, 4))
+                int clampedLength = Math.Clamp(value.TextLength, 0, 15); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                Debug.Assert(value.Text.AsSpan(0, clampedLength).IndexOf((byte)0) < 0, "value.Text carries an interior null");
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 4))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.Text.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.Text.AsSpan(0, value.TextLength)))
-            {
-                return false;
             }
             return true;
         }

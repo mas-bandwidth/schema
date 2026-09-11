@@ -738,15 +738,19 @@ namespace Example
             {
                 Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
                 {
-                    uint offsetValue = (uint)(value.SLength);
-                    if (!stream.SerializeBits(ref offsetValue, 3))
+                    int clampedLength = Math.Clamp(value.SLength, 0, 4); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                    Debug.Assert(value.S.AsSpan(0, clampedLength).IndexOf((byte)0) < 0, "value.S carries an interior null");
+                    {
+                        uint offsetValue = (uint)(clampedLength);
+                        if (!stream.SerializeBits(ref offsetValue, 3))
+                        {
+                            return false;
+                        }
+                    }
+                    if (!stream.SerializeBytes(value.S.AsSpan(0, clampedLength)))
                     {
                         return false;
                     }
-                }
-                if (!stream.SerializeBytes(value.S.AsSpan(0, value.SLength)))
-                {
-                    return false;
                 }
             }
             else
@@ -1426,15 +1430,19 @@ namespace Example
             }
             Debug.Assert(value.SLength >= 0 && value.SLength <= 4, "value.SLength out of range [0, 4]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
             {
-                uint offsetValue = (uint)(value.SLength);
-                if (!stream.SerializeBits(ref offsetValue, 3))
+                int clampedLength = Math.Clamp(value.SLength, 0, 4); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+                Debug.Assert(value.S.AsSpan(0, clampedLength).IndexOf((byte)0) < 0, "value.S carries an interior null");
+                {
+                    uint offsetValue = (uint)(clampedLength);
+                    if (!stream.SerializeBits(ref offsetValue, 3))
+                    {
+                        return false;
+                    }
+                }
+                if (!stream.SerializeBytes(value.S.AsSpan(0, clampedLength)))
                 {
                     return false;
                 }
-            }
-            if (!stream.SerializeBytes(value.S.AsSpan(0, value.SLength)))
-            {
-                return false;
             }
             {
                 // flat run: 84 bits in 2 chunk(s) — the field placement is folded

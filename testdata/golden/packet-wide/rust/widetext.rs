@@ -177,10 +177,14 @@ pub const NARROW_FIFTEEN_MAX_BYTES: usize = 24;
 pub fn write_narrow_fifteen(stream: &mut WriteStream<'_>, value: &NarrowFifteen) -> Result {
     debug_assert!(value.text_length >= 0 && value.text_length <= 15, "text_length out of range [0, 15]");
     {
-        let mut offset_value = value.text_length as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        let clamped_length = value.text_length.clamp(0, 15); // release: an out-of-contract length writes the clamped length — never a trap (§5)
+        debug_assert!(!value.text[..clamped_length as usize].contains(&0), "text_bytes carries an interior null");
+        {
+            let mut offset_value = clamped_length as u32;
+            stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        }
+        stream.write_bytes(&value.text[..clamped_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     }
-    stream.write_bytes(&value.text[..value.text_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 

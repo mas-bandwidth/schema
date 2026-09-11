@@ -101,10 +101,10 @@ int writeWideSeven(WideSeven value, ByteData view) {
   var v = 0;
   {
     final wideLength = value.textLength;
-    if (wideLength < 0 || wideLength > 7) {
-      throw ArgumentError('wstring length');
-    }
-    v = ((wideLength) & 0x7);
+    assert(wideLength >= 0);
+    assert(wideLength <= 7);
+    final wideUsed = wideLength.clamp(0, 7);
+    v = ((wideUsed) & 0x7);
     scratch |= v << scratchBits;
     scratchBits += 3;
     if (scratchBits >= 64) {
@@ -113,11 +113,9 @@ int writeWideSeven(WideSeven value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (3 - scratchBits);
     }
-    for (var wideIndex = 0; wideIndex < wideLength; wideIndex++) {
+    for (var wideIndex = 0; wideIndex < wideUsed; wideIndex++) {
       v = value.text[wideIndex];
-      if (v == 0) {
-        throw ArgumentError('wstring null unit');
-      }
+      assert(v != 0);
       scratch |= v << scratchBits;
       scratchBits += 32;
       if (scratchBits >= 64) {
@@ -247,10 +245,10 @@ int writeWideFour(WideFour value, ByteData view) {
   var v = 0;
   {
     final wideLength = value.textLength;
-    if (wideLength < 0 || wideLength > 4) {
-      throw ArgumentError('wstring length');
-    }
-    v = ((wideLength) & 0x7);
+    assert(wideLength >= 0);
+    assert(wideLength <= 4);
+    final wideUsed = wideLength.clamp(0, 4);
+    v = ((wideUsed) & 0x7);
     scratch |= v << scratchBits;
     scratchBits += 3;
     if (scratchBits >= 64) {
@@ -259,11 +257,9 @@ int writeWideFour(WideFour value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (3 - scratchBits);
     }
-    for (var wideIndex = 0; wideIndex < wideLength; wideIndex++) {
+    for (var wideIndex = 0; wideIndex < wideUsed; wideIndex++) {
       v = value.text[wideIndex];
-      if (v == 0) {
-        throw ArgumentError('wstring null unit');
-      }
+      assert(v != 0);
       scratch |= v << scratchBits;
       scratchBits += 32;
       if (scratchBits >= 64) {
@@ -562,10 +558,10 @@ int writeWideInterop(WideInterop value, ByteData view) {
   var v = 0;
   {
     final wideLength = value.captionLength;
-    if (wideLength < 0 || wideLength > 7) {
-      throw ArgumentError('wstring length');
-    }
-    v = ((wideLength) & 0x7);
+    assert(wideLength >= 0);
+    assert(wideLength <= 7);
+    final wideUsed = wideLength.clamp(0, 7);
+    v = ((wideUsed) & 0x7);
     scratch |= v << scratchBits;
     scratchBits += 3;
     if (scratchBits >= 64) {
@@ -574,11 +570,9 @@ int writeWideInterop(WideInterop value, ByteData view) {
       scratchBits -= 64;
       scratch = v >>> (3 - scratchBits);
     }
-    for (var wideIndex = 0; wideIndex < wideLength; wideIndex++) {
+    for (var wideIndex = 0; wideIndex < wideUsed; wideIndex++) {
       v = value.caption[wideIndex];
-      if (v == 0) {
-        throw ArgumentError('wstring null unit');
-      }
+      assert(v != 0);
       scratch |= v << scratchBits;
       scratchBits += 32;
       if (scratchBits >= 64) {

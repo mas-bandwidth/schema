@@ -2206,6 +2206,22 @@ language and how it is used in best practice." (2026-09-07). **No target
 panics and none throws**: Elixir's raise is the only unwinding path in the
 nine, and it is the BEAM's own.
 
+**A debug-only check obliges the release path to be total.** Where a length
+guards a slice — `string(N)`, `bytes(N)`, `wstring(N)` (§4.7, §4.12) — the
+contract is an assert, so the release build reaches the slice with whatever
+length the caller set, and the host's own bounds check is an unwinding write:
+Rust panics on `&buf[..n]`, C# throws `ArgumentOutOfRangeException` from
+`AsSpan(0, n)`, Java throws `ArrayIndexOutOfBoundsException`, Dart throws
+`RangeError`. The generated writers therefore **clamp the used length into
+`[0, N]` once** and write THAT length: the wire carries the clamped length and
+the clamped payload, so in a release build an out-of-contract length produces
+deterministic bytes — the bytes of the clamped write, byte for byte — and never
+a trap. The debug assert on the declared contract is unchanged and still fires
+first, so a misusing writer is caught where it can be fixed; release is total
+by construction, not by hoping the caller is right. This is the same reason the
+rule above says no target panics and none throws: the tier split is only
+credible if compiling the checks out cannot turn misuse into an exception.
+
 **There is no exception to the tier split.** Settled 2026-09-07: "No runtime
 should ever promise to keep checks in writing packets (asserts) in release
 build. Removing them is the whole point. ... checks are *DEBUG ONLY*". A
