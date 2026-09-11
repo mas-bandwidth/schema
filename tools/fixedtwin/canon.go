@@ -237,6 +237,8 @@ func stripOwedC(s string) string {
 	// owed 6: arg is full width (bill §12.7). C still has a byte lane.
 	s = strings.ReplaceAll(s, "uint64_t arg", "uint8_t arg")
 	s = strings.ReplaceAll(s, "TableFixedTagAt( src, p.guard, p.argw ) != p.arg", "TableFixedTagAt( src, p.guard, p.argw ) != (uint64_t) p.arg")
+	// owed 8: ordinal reads through a 64-bit temporary; C still uses 32.
+	s = strings.ReplaceAll(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }", "if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }")
 	s = strings.ReplaceAll(s, "tag.arg = (uint64_t) j + 1u;", "tag.arg = (uint8_t) ( j + 1 );")
 	s = strings.ReplaceAll(s, "mine, my_arm, dst, at, their_at, (uint64_t) j + 1u", "mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 )")
 	s = strings.ReplaceAll(s, "if ( n < 0 || n > 65535 ) { c.overflow = true; return 0; }", "")

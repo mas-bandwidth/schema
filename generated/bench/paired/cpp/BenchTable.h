@@ -2454,11 +2454,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // enum gained a variant IN THE MIDDLE is remapped here and never
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
-            uint32_t raw = 0;
+            uint64_t raw = 0;
             memcpy( &raw, src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
-            uint32_t v = 0;
-            if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }
+            uint64_t v = 0;
+            if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
             memcpy( dst + p.dst, &v, p.dstsize );
             break;
         }
@@ -10315,7 +10315,7 @@ inline void BenchMixedFixedClampBody( BenchMixed & value, int32_t & clamped, int
     {
         MixedStatFixedClampBody( value.stats[i], clamped, damaged );
     }
-    if ( (uint32_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; clamped++; }
+    if ( (uint64_t) value.game_event.type > 3u ) { value.game_event.type = MixedEventType::None; clamped++; }
     switch ( value.game_event.type )
     {
         case MixedEventType::Hit:

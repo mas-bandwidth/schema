@@ -853,7 +853,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			// it. It lands None — the same nothing an unset union holds — and
 			// counts.
 			if !ordinalFillsStorage(r.Max, ir.StorageBitsFor(r.Max)) {
-				g.pf("%sif ( (uint32_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
+				g.pf("%sif ( (uint64_t) %s.type > %du ) { %s.type = %sType::None; clamped++; }\n",
 					ind, expr, r.Max, expr, f.Type.Name)
 			}
 			if !ir.TableFixedClampNeededUnionArm(r) {
