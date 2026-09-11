@@ -16,10 +16,17 @@ final Uint32List _u32 = _f32.buffer.asUint32List();
 final Float64List _f64 = _f32.buffer.asFloat64List();
 final Uint64List _u64 = _f32.buffer.asUint64List();
 
-// The 32 bits of the IEEE-754 single representation of value. Non-NaN goes
-// through the hardware conversion; a NaN narrows in software — sign kept,
-// top 23 mantissa bits kept, the quiet bit forced only for the all-low-
-// payload case — so every pattern the read half produces round trips.
+// The 32 bits of the IEEE-754 single representation of value. SPEC §4.3's
+// rule is that a wider cell CARRIES the pattern and never moves it through
+// a float conversion — so the hardware narrowing is used on the non-NaN
+// half only, where it IS that carry: every float32 value is a double
+// exactly (f32 ⊂ f64), so the double->float32 step reproduces the original
+// 32 bits — sign, exponent and all 23 mantissa bits — for every finite
+// value and for the infinities, negative zero included. A NaN narrows in
+// SOFTWARE, because the hardware step would set the quiet bit on a
+// signalling NaN and drop the payload past 23 bits: sign kept, top 23
+// mantissa bits kept, the quiet bit forced only for the all-low-payload
+// case — so every pattern the read half produces round trips.
 @pragma('vm:prefer-inline')
 int _float32BitsFromDouble(double value) {
   if (!value.isNaN) {
