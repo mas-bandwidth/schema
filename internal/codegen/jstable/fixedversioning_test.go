@@ -536,11 +536,11 @@ if (!(got.Head === 81 && got.Tail === 88)) {
 func jsManifestChecks(t *testing.T, corpus, file string, readerSchema string) string {
 	t.Helper()
 	records, values := jsManifestRow(t, corpus, file)
-	keyed, renamed := jsReaderFieldFacts(t, readerSchema)
+	renamed := jsReaderFieldFacts(t, readerSchema)
 	var b strings.Builder
 	fmt.Fprintf(&b, "if (n !== %d) { fail(\"the manifest says this file carries %d record(s), not \" + n); }\n", records, records)
 	for _, kv := range values {
-		path, ok := jsManifestPath(kv.key, keyed, renamed)
+		path, ok := jsManifestPath(kv.key, renamed)
 		if !ok {
 			continue
 		}
@@ -595,27 +595,23 @@ func jsManifestRow(t *testing.T, corpus, file string) (int, []jsManifestKV) {
 	return 0, nil
 }
 
-// jsReaderFieldFacts is the two things the reader's own declarations say about
-// the manifest's spelling:
+// jsReaderFieldFacts is the one thing the reader's own declarations say about
+// the manifest's spelling: RENAMED is `was = "a"` read from the test's side
+// (§5.9 #41). The manifest names a field AS THE WIRE NAMES IT, which after a
+// rename is the OLD name, while the value surface is spelled with the NEW one.
+// A name-keyed comparison reds a correct read on every renamed field, so the
+// harness pairs by the WIRE NAME and translates.
 //
-//   - KEYED is every field that is an ENUM-KEYED array. The manifest indexes
-//     those slots by the enum's ORDINAL, from 1; this leg's surface indexes its
-//     storage from 0.
-//   - RENAMED is `was = "a"` read from the test's side (§5.9 #41): the manifest
-//     names a field AS THE WIRE NAMES IT, which after a rename is the OLD name,
-//     while the value surface is spelled with the NEW one. A name-keyed
-//     comparison reds a correct read on every renamed field, so the harness
-//     pairs by the WIRE NAME and translates.
-func jsReaderFieldFacts(t *testing.T, schema string) (map[string]bool, map[string]string) {
+// A KEYED ARRAY'S INDEX NEEDS NO TRANSLATION: the manifest indexes a keyed slot
+// by the BYTE SLOT, 0-based, the same as this leg's storage (§5.9 #32, the
+// dump's KSLOT). An earlier manifest spelled it by the enum's ordinal from 1 and
+// this harness took one off; that spelling is gone and so is the decrement.
+func jsReaderFieldFacts(t *testing.T, schema string) map[string]string {
 	t.Helper()
-	out := map[string]bool{}
 	renamed := map[string]string{}
 	u := jsUnitOf(t, schema)
 	note := func(st *ir.Struct) {
 		for _, fl := range st.Fields {
-			if fl.KeyEnum != "" {
-				out[fl.Name] = true
-			}
 			if wire := ir.TableFieldWireName(fl); wire != fl.Name {
 				renamed[wire] = fl.Name
 			}
@@ -631,11 +627,11 @@ func jsReaderFieldFacts(t *testing.T, schema string) (map[string]bool, map[strin
 			}
 		}
 	}
-	return out, renamed
+	return renamed
 }
 
 // jsManifestPath turns `r0.vals[0].x` into `back[0].Vals[0].X`.
-func jsManifestPath(key string, keyed map[string]bool, renamed map[string]string) (string, bool) {
+func jsManifestPath(key string, renamed map[string]string) (string, bool) {
 	rec, rest, ok := strings.Cut(key, ".")
 	if !ok || !strings.HasPrefix(rec, "r") {
 		return "", false
@@ -658,9 +654,6 @@ func jsManifestPath(key string, keyed map[string]bool, renamed map[string]string
 		i, err := strconv.Atoi(strings.TrimSuffix(idx, "]"))
 		if err != nil {
 			return "", false
-		}
-		if keyed[name] {
-			i-- // the manifest names a keyed slot by its enum ORDINAL, from 1
 		}
 		path += fmt.Sprintf("[%d]", i)
 	}
