@@ -47,7 +47,10 @@ type fixedGen struct {
 	unit *ir.Unit
 	ns   string
 	file *ir.File
-	body strings.Builder
+	// lineage is the lock's entries per fixed table, OLDEST FIRST, the current
+	// layout last (§5.2); nil for a unit that was never locked.
+	lineage map[string][]FixedLineageEntry
+	body    strings.Builder
 	// owner is the snake name of the declaration whose body is being emitted:
 	// what a ranged leaf's bounds attribute is named after.
 	owner string
@@ -83,7 +86,7 @@ const FixedModuleSuffix = "Fixed"
 // generateFixed emits the unit's fixed-form surface: the shared runtime, and
 // one <Base>Fixed module per file that declares a fixed root or a type one
 // reaches.
-func generateFixed(u *ir.Unit, ns string) (map[string][]byte, error) {
+func generateFixed(u *ir.Unit, ns string, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	roots := fixedRoots(u)
 	if len(roots) == 0 {
 		return nil, nil
@@ -92,7 +95,7 @@ func generateFixed(u *ir.Unit, ns string) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	out[FixedRuntimeModule+".ex"] = fixedRuntimeModule(u, ns)
 	for _, f := range u.Files {
-		g := &fixedGen{unit: u, ns: ns, file: f}
+		g := &fixedGen{unit: u, ns: ns, file: f, lineage: lineage}
 		if body := g.module(roots, closure); body != nil {
 			out[f.Base+FixedModuleSuffix+".ex"] = body
 		}
@@ -180,6 +183,7 @@ func (g *fixedGen) module(roots, closure []*ir.Struct) []byte {
 	for _, st := range myRoots {
 		g.rootSurface(st)
 	}
+	g.emitLineageInit(myRoots)
 	b.WriteString(strings.TrimRight(g.body.String(), "\n") + "\n")
 	b.WriteString("end\n")
 	return []byte(b.String())
@@ -1471,13 +1475,69 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  # SHAPE and not about whose build wrote the record (FixedRuntime.assemble/2).\n")
 	g.pf("  @%s_plan %s\n\n", snake, g.planLiteral(plan))
 
+	// ---- THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2) ----
+	//
+	// It is THE BUILD's data and never the wire's: a file is matched on its
+	// header's hash against these entries, and the layout it carries is held to
+	// a BYTE COMPARISON against the bytes the lock recorded, never walked.
+	lineage, floor := g.fixedLineage(st, FixedLineageEntry{
+		Wire: hash, Layout: layout, Record: fixedHashBytes + body,
+	})
+	g.pf("  # THE LINEAGE: every layout of %s this build serves, OLDEST FIRST and\n", st.Name)
+	g.pf("  # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash\n")
+	g.pf("  # against these and on NOTHING ELSE; the layout it carries is COMPARED with\n")
+	g.pf("  # the bytes the lock recorded and never parsed. A hash no entry holds is\n")
+	g.pf("  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in\n")
+	g.pf("  # its order, with the byte length riding BESIDE the bytes.\n")
+	g.pf("  @%s_known {\n", snake)
+	for i, e := range lineage {
+		sep := ","
+		if i == len(lineage)-1 {
+			sep = ""
+		}
+		if e.Retired {
+			g.pf("    # RETIRED: %s\n", e.Reason)
+		}
+		g.pf("    %%{\n")
+		g.pf("      hash: 0x%016X,\n", e.Wire)
+		// `mix format` WRAPS A LONG VALUE ONTO THE NEXT LINE, two columns in, and
+		// the leg's gate compares against what it writes: the flat form while the
+		// pair fits the width, the wrapped one once it does not.
+		lit := fixedBinaryLiteral(e.Layout, len("      layout: "))
+		if len("      layout: ")+len(lit)+1 <= formatWidth {
+			g.pf("      layout: %s,\n", lit)
+		} else {
+			g.pf("      layout:\n        %s,\n", fixedBinaryLiteral(e.Layout, len("        ")))
+		}
+		g.pf("      layout_bytes: %d,\n", len(e.Layout))
+		g.pf("      record_bytes: %d\n", e.Record)
+		g.pf("    }%s\n", sep)
+	}
+	g.pf("  }\n\n")
+	g.pf("  # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it\n")
+	g.pf("  # a layout this build once served is retired and the answer is\n")
+	g.pf("  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.\n")
+	g.pf("  @%s_floor %d\n\n", snake, floor)
+	retired := []string{}
+	for _, e := range lineage {
+		if e.Retired {
+			retired = append(retired, fmt.Sprintf("{0x%016X, %q}", e.Wire, e.Reason))
+		}
+	}
+	g.pf("  # THE RETIRED HASHES and the operator's own sentence for each, which is what\n")
+	g.pf("  # `:layout_unsupported` means in words.\n")
+	g.pf("  @%s_retired [%s]\n\n", snake, strings.Join(retired, ", "))
+
 	g.pf("  def %s_fixed_body_bytes, do: @%s_body_bytes\n", snake, snake)
 	g.pf("  def %s_fixed_record_bytes, do: @%s_record_bytes\n", snake, snake)
 	g.pf("  def %s_fixed_hash, do: @%s_hash\n", snake, snake)
 	g.pf("  def %s_fixed_layout, do: @%s_layout\n", snake, snake)
 	g.pf("  def %s_fixed_plan, do: @%s_plan\n", snake, snake)
 	g.pf("  def %s_fixed_prefill, do: @%s_prefill\n", snake, snake)
-	g.pf("  def %s_fixed_dst, do: @%s_dst\n\n", snake, snake)
+	g.pf("  def %s_fixed_dst, do: @%s_dst\n", snake, snake)
+	g.pf("  def %s_fixed_known, do: @%s_known\n", snake, snake)
+	g.pf("  def %s_fixed_floor, do: @%s_floor\n", snake, snake)
+	g.pf("  def %s_fixed_retired, do: @%s_retired\n\n", snake, snake)
 
 	g.pf("  # A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)\n")
 	g.pf("  # — the form byte, seven reserved zero bytes, the LAYOUT HASH at 8 — then the\n")
@@ -1536,76 +1596,82 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("    case R.read_file_header(data) do\n")
 	g.pf("      {:ok, stated, layout, records} ->\n")
 	g.pf("        %s_fixed_records(stated, layout, records, report, opts)\n\n", snake)
+	g.pf("      {:error, :malformed} ->\n")
+	g.pf("        # STEP 1: a file shorter than a header is the RESIDUE and not a bucket\n")
+	g.pf("        # a named rule falls into — `malformed`, and no reason (§5.3).\n")
+	g.pf("        {:error, :malformed, %%{report | malformed: true}}\n\n")
 	g.pf("      {:error, why} ->\n")
 	g.pf("        {:error, why, report}\n")
 	g.pf("    end\n")
 	g.pf("  end\n\n")
 
-	g.pf("  # THE READ: a plan, a split, and one prefill-and-project per record. Neither\n")
-	g.pf("  # plan clamps a ranged integer: the generated projection holds the bound after\n")
-	g.pf("  # the loop, the same pass for either plan (docs/SPEC-TABLES.md §3.4).\n")
+	g.pf("  # THE READ: §5.3's ELEVEN STEPS, IN ORDER. The header's hash is TAKEN AS\n")
+	g.pf("  # GIVEN — the definitions digest is not on the wire, so the hash cannot be\n")
+	g.pf("  # re-derived from the layout behind it — then the LINEAGE SELECT, then the\n")
+	g.pf("  # floor, then the BYTE COMPARISON against the bytes the lock recorded.\n")
+	g.pf("  # NOTHING PARSES A STRANGER'S LAYOUT, ON ANY PATH.\n")
 	g.pf("  defp %s_fixed_records(stated, layout, records, report, opts) do\n", snake)
-	g.pf("    hash = stated # the header's hash; digest is not on the wire\n")
-	g.pf("    copy = Keyword.get(opts, :copy, false)\n\n")
-	g.pf("    with {:ok, plan, size, report} <- %s_fixed_plan_for(hash, layout, report, opts),\n", snake)
-	g.pf("         :ok <- %s_fixed_header_names_it(stated, layout),\n", snake)
-	g.pf("         {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
+	g.pf("    copy = Keyword.get(opts, :copy, false)\n")
+	g.pf("    cap = Keyword.get(opts, :plan_capacity, R.plan_capacity())\n\n")
+	g.pf("    # A CALLER'S `plan:` IS ACCEPTED AND NOT READ (§5.9 #16): §5.6 retires\n")
+	g.pf("    # MECHANISMS and not API, so the argument keeps its place and the plan a\n")
+	g.pf("    # load runs is THE BUILD'S. `plan_capacity:` stays what §5.9 #5 says it is\n")
+	g.pf("    # — a CAPACITY DECLARATION, checked and never written through.\n")
+	g.pf("    _ = Keyword.get(opts, :plan)\n\n")
+	g.pf("    case R.select(@%s_known, @%s_floor, stated, layout) do\n", snake, snake)
+	g.pf("      {:error, why, file_hash} ->\n")
+	g.pf("        # BOTH LAYOUT REFUSALS REPORT THE FILE'S HASH (§5.9 #7), on\n")
+	g.pf("        # `layout_hash`, LAST on the report and zero on every other path\n")
+	g.pf("        # (§5.9 #15). REFUSE IS TOTAL: no counter moves, nothing is decoded and\n")
+	g.pf("        # not one destination byte is written — the prefill included.\n")
+	g.pf("        {:error, why, %%{report | layout_hash: file_hash}}\n\n")
+	g.pf("      {:ok, i} ->\n")
+	g.pf("        %s_fixed_lane(i, records, stated, report, cap, copy)\n", snake)
+	g.pf("    end\n")
+	g.pf("  end\n\n")
+
+	g.pf("  # THE PLAN IS THE BUILD'S, one per lineage entry, laid down at MODULE LOAD\n")
+	g.pf("  # from the lock's own bytes (§5.9 #3). Nothing on this path compiles and\n")
+	g.pf("  # nothing on it can fail for want of a plan: an entry whose plan would not\n")
+	g.pf("  # build carries its own refusal reason, and this is where it is read.\n")
+	g.pf("  defp %s_fixed_lane(i, records, hash, report, cap, copy) do\n", snake)
+	g.pf("    case R.lineage_lane(__MODULE__, :%s, i) do\n", snake)
+	g.pf("      :identity ->\n")
+	g.pf("        %s\n", call(snake+"_fixed_run",
+		rawf("@%s_plan", snake), rawf("@%s_body_bytes", snake), raw("records"), raw("hash"),
+		raw("report"), raw("copy"), raw("0"), raw("0")).render(8, 8, 0))
+	g.pf("\n")
+	g.pf("      {:ok, _plan, _size, made, _u, _k} when made > cap ->\n")
+	g.pf("        # THE DECLARED CAPACITY A BUILD HOLDS AN ENTRY TO IS REAL (§5.9 #4) and\n")
+	g.pf("        # the NAME is the contract (§5.9 #5).\n")
+	g.pf("        {:error, :plan_too_large, report}\n\n")
+	g.pf("      {:ok, plan, size, _made, u, k} ->\n")
+	g.pf("        %s_fixed_run(plan, size, records, hash, report, copy, u, k)\n\n", snake)
+	g.pf("      {:error, why} ->\n")
+	g.pf("        {:error, why, report}\n")
+	g.pf("    end\n")
+	g.pf("  end\n\n")
+
+	g.pf("  # ONE PREFILL-AND-PROJECT PER RECORD, and the per-record hash checked BEFORE\n")
+	g.pf("  # a byte is landed. Neither plan clamps a ranged integer: the generated\n")
+	g.pf("  # projection holds the bound after the loop, the same pass for either plan.\n")
+	g.pf("  defp %s_fixed_run(plan, size, records, hash, report, copy, census_u, census_k) do\n", snake)
+	g.pf("    with {:ok, bodies} <- %s_fixed_split(records, hash, size, []) do\n", snake)
 	g.pf("      {values, report} =\n")
 	g.pf("        Enum.map_reduce(bodies, report, fn body, report ->\n")
 	g.pf("          {image, report} = R.run(plan, R.detach(body, copy), @%s_prefill, report)\n", snake)
 	g.pf("          {value, c, m} = %s_fixed_decode(image, 0, false)\n", snake)
 	g.pf("          {value, R.damaged(R.clamped(report, c), m)}\n")
 	g.pf("        end)\n\n")
-	g.pf("      {:ok, values, report}\n")
+	g.pf("      # THE COMPILE CENSUS LANDS ONCE, AFTER THE LOOP, and only on a read that\n")
+	g.pf("      # RETURNS (§5.9 #6): §5.4 says once per peer and never per record, and a\n")
+	g.pf("      # refusal that came after would have moved a counter.\n")
+	g.pf("      {:ok, values, R.census(report, census_u, census_k)}\n")
 	g.pf("    else\n")
-	g.pf("      {:error, why, report} -> {:error, why, report}\n")
+	g.pf("      {:error, :malformed} -> {:error, :malformed, %%{report | malformed: true}}\n")
 	g.pf("      {:error, why} -> {:error, why, report}\n")
 	g.pf("    end\n")
 	g.pf("  end\n\n")
-
-	g.pf("  # THE PLAN: the identity plan for this build's own hash, and for any other\n")
-	g.pf("  # hash the one compiled ONCE from the writer's layout and cached by hash.\n")
-	g.pf("  # A caller may own the plan instead and hand it in through `plan:`. THIS IS\n")
-	g.pf("  # THE WHOLE OF THE VERSION QUESTION: two heads selecting `{plan, size}` and\n")
-	g.pf("  # nothing else, and one loop behind them.\n")
-	g.emitPlanForHead(snake)
-	g.pf("    {:ok, @%s_plan, @%s_body_bytes, report}\n", snake, snake)
-	g.pf("  end\n\n")
-	g.pf("  defp %s_fixed_plan_for(hash, layout, report, opts) do\n", snake)
-	g.pf("    cap = Keyword.get(opts, :plan_capacity, R.plan_capacity())\n\n")
-	g.pf("    case Keyword.get(opts, :plan) || R.cached(__MODULE__, hash) do\n")
-	g.pf("      {_plan, _size, made} when made > cap ->\n")
-	g.pf("        # THE PLAN'S CAPACITY IS THE CALLER'S BOUND AND NOT THE CACHE'S, so a\n")
-	g.pf("        # plan already held for this peer is refused by the same name — and by\n")
-	g.pf("        # the SAME NUMBER the compiler measured, which is what keeps a caller\n")
-	g.pf("        # with a small capacity from inheriting a plan minted under a large one.\n")
-	g.pf("        {:error, :plan_too_large, report}\n\n")
-	g.pf("      {plan, size, _made} ->\n")
-	g.pf("        {:ok, plan, size, report}\n\n")
-	g.pf("      nil ->\n")
-	g.pf("        # THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and\n")
-	g.pf("        # every rule it fails refuses under ITS OWN NAME.\n")
-	g.pf("        with {:ok, theirs} <- R.parse_layout(layout) do\n")
-	g.pf("          mine = R.my_layout(__MODULE__, @%s_layout)\n\n", snake)
-	g.pf("          case R.compile(theirs, mine, @%s_dst, cap, report) do\n", snake)
-	g.pf("            {:ok, plan, made, report} ->\n")
-	g.pf("              size = R.size_at(theirs, 0)\n")
-	g.pf("              R.cache(__MODULE__, hash, {plan, size, made})\n")
-	g.pf("              {:ok, plan, size, report}\n\n")
-	g.pf("            {:error, why, report} ->\n")
-	g.pf("              {:error, why, report}\n")
-	g.pf("          end\n")
-	g.pf("        end\n")
-	g.pf("    end\n")
-	g.pf("  end\n\n")
-
-	g.pf("  # THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout\n")
-	g.pf("  # against this build's; digest is not on the wire, so the header hash is\n")
-	g.pf("  # not a hash of the layout bytes alone (docs/SPEC-TABLES.md §3, bill §13).\n")
-	g.pf("  defp %s_fixed_header_names_it(stated, layout) when stated == @%s_hash do\n", snake, snake)
-	g.pf("    if layout == @%s_layout, do: :ok, else: {:error, :layout_malformed}\n", snake)
-	g.pf("  end\n")
-	g.pf("  defp %s_fixed_header_names_it(_stated, _layout), do: :ok\n\n", snake)
 
 	g.pf("  # THE RECORDS FILL THE REST OF THE FILE and there is no count: a reader knows\n")
 	g.pf("  # the record size from the layout, so the count is arithmetic. BYTES LEFT\n")
@@ -1625,16 +1691,42 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  end\n\n")
 }
 
-// emitPlanForHead prints the identity clause's head, breaking the guard onto
-// its own line where the one-line form outgrows the formatter's width.
-func (g *fixedGen) emitPlanForHead(snake string) {
-	head := fmt.Sprintf("  defp %s_fixed_plan_for(hash, _layout, report, _opts)", snake)
-	guard := fmt.Sprintf(" when hash == @%s_hash do", snake)
-	if fits(0, 0, head+guard) {
-		g.pf("%s%s\n", head, guard)
+// emitLineageInit prints the module's @on_load: ONE PLAN PER LINEAGE ENTRY,
+// built at MODULE LOAD from the lock's own bytes and held in :persistent_term
+// (docs/FIXED-FORM-ALGORITHM.md §5.9 #3, #20). THE BEAM RUNS IT BEFORE ANY
+// CALLER CAN REACH THE MODULE, so it is off every load path; and IT CANNOT
+// THROW, because every entry is a lane carrying its own refusal reason — so the
+// hook always answers `:ok` and the module always loads.
+func (g *fixedGen) emitLineageInit(roots []*ir.Struct) {
+	if len(roots) == 0 {
 		return
 	}
-	g.pf("%s\n       %s\n", head, strings.TrimSpace(guard))
+	g.pf("  # ONE PLAN PER LINEAGE ENTRY, BUILT AT MODULE LOAD from the lock's own bytes\n")
+	g.pf("  # and held in `:persistent_term` (§5.9 #3, #20). The BEAM runs `@on_load`\n")
+	g.pf("  # before any caller can reach this module, so the build is OFF EVERY LOAD\n")
+	g.pf("  # PATH and a load can never fail for want of a plan. IT CANNOT THROW: every\n")
+	g.pf("  # entry is a LANE WITH ITS OWN REFUSAL REASON, so the hook always answers\n")
+	g.pf("  # `:ok` and the module always loads.\n")
+	g.pf("  @on_load :__fixed_lineage__\n\n")
+	g.pf("  @doc false\n")
+	g.pf("  def __fixed_lineage__ do\n")
+	for _, st := range roots {
+		snake := ir.RustSnake(st.Name)
+		g.pf("    R.lineage_init(\n")
+		g.pf("      __MODULE__,\n")
+		g.pf("      :%s,\n", snake)
+		g.pf("      @%s_known,\n", snake)
+		// THE READER'S OWN WIRE HASH, beside the lineage it is a key of (§5.3 step
+		// 8). It cannot be computed from the layout bytes in the runtime — the
+		// definitions digest is not in them — so the compiler hands it in.
+		g.pf("      @%s_hash,\n", snake)
+		g.pf("      @%s_layout,\n", snake)
+		g.pf("      @%s_dst,\n", snake)
+		g.pf("      R.plan_capacity()\n")
+		g.pf("    )\n\n")
+	}
+	g.pf("    :ok\n")
+	g.pf("  end\n\n")
 }
 
 // dstLiteral spells MY SIDE of the layout: one row per entry.

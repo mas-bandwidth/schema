@@ -120,6 +120,9 @@ jobs:
   # cancellation with nothing red inside it, which is what happened one door
   # over in `pins` on 34584793329. Raising the budget keeps every gate and
   # costs a runner minute; trimming the suites would cost a column of §5.
+  # The Dart and Elixir legs land in this same job on their own branches, each
+  # another generator running a probe per row per column; fifteen is the budget
+  # they share.
   go-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -324,6 +327,22 @@ jobs:
       # a failure here, never a quiet skip.
       - name: the fixed form's versioning suite on the C# leg
         run: make tables-cs-versioning
+
+      # THE SAME SUITE ON THE ELIXIR LEG (§5.7 step 6). Its probes are generated
+      # Elixir, one per row per column, run with the leg's own toolchain: the
+      # runner's Elixir and OTP are handed in as PLAIN PATHS, because the
+      # harness spawns the binary itself rather than going through a shell
+      # launcher. The corpus it reads is the one the Rust step above already
+      # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
+      # Elixir a failure rather than a silent skip.
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+      - name: the Elixir leg reads backward over every versioning row
+        run: |
+          make tables-elixir-versioning \
+            ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
 
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would

@@ -37,13 +37,13 @@ import (
 // Every other built-in target's table backend has no second entry point yet
 // (dart, elixir); their `GenerateLineage` lives on the open port branches,
 // and the day one lands its target joins this list and nothing else changes.
-var fixedLineageShipTargets = []string{"c", "cpp", "cs", "go", "java", "js", "rust"}
+var fixedLineageShipTargets = []string{"c", "cpp", "cs", "elixir", "go", "java", "js", "rust"}
 
 // fixedLineageHashSpelling is ONE layout hash as the target's emitted source
-// writes it. It is a per-target needle and not a per-target assertion: the
-// statement being made is the same for every leg — the eight bytes of the
-// older layout are in the module, as static data — and only the spelling of a
-// 64-bit constant differs by language.
+// writes it. It is a per-target NEEDLE and not a per-target assertion: the
+// statement being made is the same for every leg — the eight bytes of the older
+// layout are in the module, as static data — and only the spelling of a 64-bit
+// constant differs by language.
 //
 // The JavaScript leg is why this function exists. A JS number holds no 64-bit
 // integer, so its known-layout entry carries the hash as the LOW and HIGH u32
@@ -52,9 +52,17 @@ var fixedLineageShipTargets = []string{"c", "cpp", "cs", "go", "java", "js", "ru
 // as base64 — so the hash pair is the ONLY part of an older entry a grep of the
 // module can read, and it is exactly the part that matters, because the hash is
 // the only fact a file is matched on (§5.2).
+//
+// The ELIXIR leg is the second case. Its generated source is `mix format`'s own
+// shape, emitted that way rather than checked afterwards, and a hex literal
+// there is written in UPPER case — so a lower-case needle found nothing in a
+// module that carried every entry.
 func fixedLineageHashSpelling(target string, hash uint64) string {
-	if target == "js" {
+	switch target {
+	case "js":
 		return fmt.Sprintf("0x%08x, 0x%08x", uint32(hash), uint32(hash>>32))
+	case "elixir":
+		return fmt.Sprintf("0x%016X", hash)
 	}
 	return fmt.Sprintf("0x%016x", hash)
 }
@@ -246,6 +254,13 @@ var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	// inside the call — then the layout's byte length and the record size last.
 	"js": func(h uint64) *regexp.Regexp {
 		return regexp.MustCompile(fmt.Sprintf(`new TableFixedKnownLayout\(0x%08x, 0x%08x, (?:\w+FixedLayout|TableFixedDecodeLayout\(\s*"[^"]*"\)), \d+, (\d+)\)`, uint32(h), uint32(h>>32)))
+	},
+	// internal/codegen/elixirtable/fixedelixir.go: one map per entry, §5.9 #19's
+	// four members on their own lines and in its order — the hash in UPPER-case
+	// hex, the layout as an escaped binary literal that `mix format` may WRAP
+	// onto the next line, the layout's byte length, the record size last.
+	"elixir": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`hash: 0x%016X,\n\s*layout:[^\n]*\n(?:\s*"[^\n]*\n)?\s*layout_bytes: \d+,\n\s*record_bytes: (\d+)`, h))
 	},
 }
 
