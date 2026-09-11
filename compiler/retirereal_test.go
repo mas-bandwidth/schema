@@ -16,6 +16,7 @@
 package compiler
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -87,6 +88,34 @@ func TestRealRetirementIsInTheCommittedLock(t *testing.T) {
 	// reader" — which points the operator the wrong way.
 	if lockfile.Lineage(lock, retiredRealTable)[0].Wire != retiredRealRetiredHash {
 		t.Error("a retired entry STAYS in the lineage forever (bill §11.4)")
+	}
+}
+
+// TestRealRetirementFileIsUnderTheRetiredEntry binds the COMMITTED FILE to the
+// committed lock. The file is the corpus dump's `keyed.bin` as it stood before
+// the widening, and nothing writes that layout again — so if it ever stops
+// carrying the retired hash, the proof has quietly become a proof about some
+// other layout. The header's eight bytes at offset 8 are the whole statement
+// (§5.2: the hash is the only fact a file is matched on).
+func TestRealRetirementFileIsUnderTheRetiredEntry(t *testing.T) {
+	const path = "../testdata/fixedform-retired/retired_keyed.bin"
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the retired-layout file is committed, because the dump cannot write it again: %v", err)
+	}
+	if len(data) < 16 {
+		t.Fatalf("%s is %d bytes — a form-3 file is a record count and a layout hash before anything else", path, len(data))
+	}
+	if got := binary.LittleEndian.Uint64(data[8:16]); got != retiredRealRetiredHash {
+		t.Errorf("%s carries layout 0x%016x, and the entry this test retires is 0x%016x — the file and the lock have come apart (docs/SPEC-TABLES.md §21.7 step 1)", path, got, retiredRealRetiredHash)
+	}
+	// and the manifest line beside it names the same file
+	man, err := os.ReadFile("../testdata/fixedform-retired/manifest.txt")
+	if err != nil {
+		t.Fatalf("a corpus file with no manifest line is a corpus file a port has to read the emitter to use (§5.9 #32): %v", err)
+	}
+	if !strings.Contains(string(man), "file=retired_keyed.bin") || !strings.Contains(string(man), "side=retired") {
+		t.Errorf("the manifest line names the file and the side: %.120s", man)
 	}
 }
 
