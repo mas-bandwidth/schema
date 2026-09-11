@@ -78,6 +78,66 @@ public final class Main {
         check(Arrays.equals(back, golden), "fx1.bin: the bytes are the C++ reference's, exactly");
     }
 
+    static void countClampCase() {
+        final tblfx1.FxRootFixed.Value[] v = new tblfx1.FxRootFixed.Value[1];
+        for (int i = 0; i < v.length; i++) { v[i] = new tblfx1.FxRootFixed.Value(); }
+        v[0].marks[0] = 7; v[0].marks[1] = 8;
+        v[0].marksCount = 2;
+        final byte[] file = new byte[tblfx1.FxRootFixed.measure(1)];
+        check(tblfx1.FxRootFixed.save(v, 1, file) == file.length, "count clamp: the record saves");
+        
+        // THE COUNT'S OFFSET IS FOUND BY THE PLAN'S OWN ROW, by shape and not by a
+        // number in this file: a `count` op whose bound is FOUR elements is `marks`
+        // and nothing else, where `blob`'s is six. In the dest table, marks (index 9)
+        // has aux=34 (the src for its count op) and the count's bound is its size=4.
+        final int[] dest = tblfx1.FxRootFixed.dest;
+        final int marksIdx = 9;
+        final int countAt = dest[marksIdx * 5 + 2];  // aux field holds the count src
+        final int bound = 4;
+        check(countAt == 34, "count clamp: the identity plan carries `marks`' count op at src 34");
+        
+        // C1: A COUNT BELOW ZERO. Not a large number — zero, and one clamp.
+        {
+            tblfx1.TableFixed.put32(file, tblfx1.FxRootFixed.headerBytes + 8 + countAt, 0xFFFFFFFF);
+            final tblfx1.FxRootFixed.Value[] back = new tblfx1.FxRootFixed.Value[1];
+            for (int i = 0; i < back.length; i++) { back[i] = new tblfx1.FxRootFixed.Value(); }
+            final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
+            check(tblfx1.FxRootFixed.load(back, 1, file,
+                    tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r) == 1,
+                    "C1: a forged count of -1 still READS — a clamp is not a refusal");
+            check(back[0].marksCount == 0, "C1: a count below zero clamps to ZERO");
+            check(r.clamped == 1, "C1: and counts exactly one clamp");
+            check(!r.malformed && !r.refused, "C1: a clamp is neither malformed nor a refusal");
+        }
+
+        // C2: A COUNT PAST THE READER'S OWN BOUND, IN ELEMENTS.
+        {
+            tblfx1.TableFixed.put32(file, tblfx1.FxRootFixed.headerBytes + 8 + countAt, bound + 1);
+            final tblfx1.FxRootFixed.Value[] back = new tblfx1.FxRootFixed.Value[1];
+            for (int i = 0; i < back.length; i++) { back[i] = new tblfx1.FxRootFixed.Value(); }
+            final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
+            check(tblfx1.FxRootFixed.load(back, 1, file,
+                    tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r) == 1,
+                    "C2: a forged count of Max+1 still READS");
+            check(back[0].marksCount == bound, "C2: a count past Max clamps to MAX, in elements");
+            check(r.clamped == 1, "C2: and counts exactly one clamp");
+            check(back[0].marks[0] == 7 && back[0].marks[1] == 8, "C2: the live elements are still the record's");
+        }
+
+        // AND THE CONTROL: the bound itself is not a clamp. A count EQUAL to Max is
+        // in range, and a clamp counted there would be a clamp on a clean read.
+        {
+            tblfx1.TableFixed.put32(file, tblfx1.FxRootFixed.headerBytes + 8 + countAt, bound);
+            final tblfx1.FxRootFixed.Value[] back = new tblfx1.FxRootFixed.Value[1];
+            for (int i = 0; i < back.length; i++) { back[i] = new tblfx1.FxRootFixed.Value(); }
+            final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
+            check(tblfx1.FxRootFixed.load(back, 1, file,
+                    tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r) == 1,
+                    "count clamp: a count of exactly Max reads");
+            check(back[0].marksCount == bound && r.clamped == 0, "CONTROL: a count of exactly Max is in range and counts NOTHING");
+        }
+    }
+
     static void fx2Write(String dir) {
         final byte[] golden = slurp(dir, "fx2.bin");
         final tblfx2.FxRootFixed.Value[] v = new tblfx2.FxRootFixed.Value[8];
@@ -819,6 +879,7 @@ public final class Main {
         }
         final String dir = args[0];
         fx1Write(dir);
+        countClampCase();
         fx2Write(dir);
         p1Write(dir);
         p3Write(dir);
