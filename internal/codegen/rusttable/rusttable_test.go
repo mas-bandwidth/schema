@@ -308,7 +308,7 @@ union Note
     tally int32
 }
 
-table Holder
+fixed table Holder
 {
     note Note
 }

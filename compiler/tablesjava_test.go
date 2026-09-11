@@ -431,13 +431,13 @@ union Effect
     ward  Ward
 }
 
-table Leaf
+fixed table Leaf
 {
     a int32 = 7 | min = 0, max = 1000
     b uint16 = 3
 }
 
-table FixedProbe
+fixed table FixedProbe
 {
     small    uint8 = 5
     wide     uint64 = 9

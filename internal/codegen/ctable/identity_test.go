@@ -23,21 +23,21 @@ import (
 // says gcc, and requiring that word dropped the flags on CI.
 
 const identityFlatSchema = `package probe
-table Flat {
+fixed table Flat {
     a uint32
     b uint32
 }
 `
 
 const identityHeldSchema = `package probe
-table Held {
+fixed table Held {
     marks [..4]int32
     label string(8)
 }
 `
 
 const identityPadSchema = `package probe
-table Pad {
+fixed table Pad {
     a uint8
     b uint32
 }
