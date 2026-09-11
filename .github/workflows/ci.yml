@@ -283,6 +283,13 @@ jobs:
       - name: the fixed form's versioning suite reads the reference's bytes, on the Java leg
         run: make tables-java-versioning
 
+      # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
+      # gates). The probes are generated modules run with $(NODE) — dist/ is not
+      # in this job, so NODE=node uses the runner's own — and the corpus is the
+      # one the step above already built.
+      - name: the fixed form's versioning suite on the JavaScript leg
+        run: make tables-js-versioning NODE=node
+
       # THE SAME SUITE ON THE DART LEG (§5.7 step 6: every leg owes BOTH gates,
       # the bytes and the versioning rows). Its probes are generated Dart, one
       # per row per column, so the job needs the SDK and nothing else — the

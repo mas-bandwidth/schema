@@ -32,12 +32,32 @@ import (
 )
 
 // fixedLineageShipTargets are the targets whose table backend takes the
-// lineage as data today: `c`, `go`, `java` and `rust` through `GenerateLineage`,
-// and `cpp` through the lock the driver now opens for it. Every other built-in
-// target's table backend has no second entry point yet (cs, dart, elixir, js);
-// their `GenerateLineage` lives on the open port branches, and the day one
-// lands its target joins this list and nothing else changes.
-var fixedLineageShipTargets = []string{"c", "cpp", "go", "java", "rust"}
+// lineage as data today: `c`, `go`, `java`, `js` and `rust` through
+// `GenerateLineage`, and `cpp` through the lock the driver now opens for it.
+// Every other built-in target's table backend has no second entry point yet
+// (cs, dart, elixir); their `GenerateLineage` lives on the open port branches,
+// and the day one lands its target joins this list and nothing else changes.
+var fixedLineageShipTargets = []string{"c", "cpp", "go", "java", "js", "rust"}
+
+// fixedLineageHashSpelling is ONE layout hash as the target's emitted source
+// writes it. It is a per-target needle and not a per-target assertion: the
+// statement being made is the same for every leg — the eight bytes of the
+// older layout are in the module, as static data — and only the spelling of a
+// 64-bit constant differs by language.
+//
+// The JavaScript leg is why this function exists. A JS number holds no 64-bit
+// integer, so its known-layout entry carries the hash as the LOW and HIGH u32
+// halves it compares against the file's two 32-bit reads
+// (`new TableFixedKnownLayout(0x<lo>, 0x<hi>, …)`), and its layout bytes ride
+// as base64 — so the hash pair is the ONLY part of an older entry a grep of the
+// module can read, and it is exactly the part that matters, because the hash is
+// the only fact a file is matched on (§5.2).
+func fixedLineageHashSpelling(target string, hash uint64) string {
+	if target == "js" {
+		return fmt.Sprintf("0x%08x, 0x%08x", uint32(hash), uint32(hash>>32))
+	}
+	return fmt.Sprintf("0x%016x", hash)
+}
 
 // TestFixedLineageEntryPointIsReachedFromTheDriver: the driver must HAVE the
 // second entry point for those targets. Before #921 no caller in the tree did —
@@ -161,9 +181,10 @@ func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: generate: %v", target, err)
 		}
+		olderSpelling := fixedLineageHashSpelling(target, older)
 		var carries []string
 		for name, data := range files {
-			if strings.Contains(string(data), fmt.Sprintf("0x%016x", older)) {
+			if strings.Contains(string(data), olderSpelling) {
 				carries = append(carries, name)
 			}
 		}
@@ -172,7 +193,7 @@ func TestFixedLineageIsShippedByEveryTargetThatTakesIt(t *testing.T) {
 		}
 		found := false
 		for _, data := range files {
-			if strings.Contains(string(data), fmt.Sprintf("0x%016x", current)) {
+			if strings.Contains(string(data), fixedLineageHashSpelling(target, current)) {
 				found = true
 			}
 		}
@@ -212,6 +233,14 @@ var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	// line, record after layout.
 	"rust": func(h uint64) *regexp.Regexp {
 		return regexp.MustCompile(fmt.Sprintf(`hash: 0x%016x,\n\s*layout: [^\n]*\n\s*record: (\d+),`, h))
+	},
+	// internal/codegen/jstable/fixedmodule.go: one constructor call per entry,
+	// the hash as the LOW and HIGH u32 lanes this language compares against the
+	// file's two 32-bit reads, then the layout — the current one by name, an
+	// OLDER one as base64 through `TableFixedDecodeLayout`, which puts a newline
+	// inside the call — then the layout's byte length and the record size last.
+	"js": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`new TableFixedKnownLayout\(0x%08x, 0x%08x, (?:\w+FixedLayout|TableFixedDecodeLayout\(\s*"[^"]*"\)), \d+, (\d+)\)`, uint32(h), uint32(h>>32)))
 	},
 }
 
@@ -295,7 +324,7 @@ func TestFixedLineageWithoutALockIsOneEntry(t *testing.T) {
 		}
 		found := false
 		for _, data := range files {
-			if strings.Contains(string(data), fmt.Sprintf("0x%016x", own)) {
+			if strings.Contains(string(data), fixedLineageHashSpelling(target, own)) {
 				found = true
 			}
 		}
