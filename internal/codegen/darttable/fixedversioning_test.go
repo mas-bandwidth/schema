@@ -544,3 +544,53 @@ void main() {
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
+
+// ---- A TAG NO ARM LANDS (§5.2 EMIT kind 15, §5.9 #42) -----------------------
+
+// TestFixedCompiledPlanTagPastArmSet is the two-record probe the unguarded None
+// entry exists for. THE IMAGE IS REUSED RECORD TO RECORD, and on a COMPILED plan
+// every union tag value used to be written by a GUARDED const — one per arm pair
+// the two layouts share. So a record whose tag named no arm landed NO TAG AT ALL
+// and the decode read the PREVIOUS record's, reporting a live arm for a record
+// that has none; the prefill could not answer for it either, because those bytes
+// are named by the guarded entries and are therefore not in its ranges.
+//
+// The file is the corpus's own `old_union_append.bin` — one record, tag 1, the
+// alpha arm live — with a SECOND record appended that is the first with its tag
+// forged to 9, past the writer's two arms. The newer reader holds three arms, so
+// this is the COMPILED plan and not the identity one.
+func TestFixedCompiledPlanTagPastArmSet(t *testing.T) {
+	corpus := fixedCorpus(t)
+	dartBin := dartBinary(t)
+	body := `  final data = File(FILE).readAsBytesSync();
+  final head = ByteData.sublistView(data);
+  final layoutBytes = head.getUint32(t.TableFixedLimits.headerBytes, Endian.little);
+  final at0 = t.TableFixedLimits.layoutAt + layoutBytes;
+  final recordBytes = data.length - at0;
+  check(recordBytes > 8, 'the row file carries exactly one record: $recordBytes');
+  // RECORD TWO IS RECORD ONE WITH ITS TAG FORGED PAST THE WRITER'S ARM SET. The
+  // tag is the body's first value byte, which is the record's ninth: the eight
+  // before it are the layout hash.
+  final forged = Uint8List(at0 + 2 * recordBytes);
+  forged.setRange(0, data.length, data);
+  forged.setRange(at0 + recordBytes, forged.length, data, at0);
+  forged[at0 + recordBytes + 8] = 9;
+  final n = LOAD(values, values.length, forged, forged.length, plan, report);
+  check(n == 2, 'the two-record file did not read: n=$n ${why(report)}');
+  check(report.refused == 0 && !report.malformed,
+      'a forged TAG is not a refusal and not malformed: ${why(report)}');
+  check(values[0].pick.type == 1 && values[0].pick.alpha.m == 7,
+      'record 0 lost the arm the writer named: ${values[0].pick.type} '
+      '${values[0].pick.alpha.m}');
+  check(values[1].pick.type == 0,
+      'a tag past the arm set reported an arm — the PREVIOUS record\'s: '
+      '${values[1].pick.type}');
+  check(report.clamped == 1,
+      'a tag past the writer\'s arm set is counted exactly once: ${why(report)}');
+`
+	out, err := runVersionProbe(t, dartBin, "VNEW_union_append", []string{"VOLD_union_append"}, 0,
+		filepath.Join(corpus, "old_union_append.bin"), body)
+	if err != nil {
+		t.Fatalf("a tag past the arm set: %v\n%s", err, out)
+	}
+}
