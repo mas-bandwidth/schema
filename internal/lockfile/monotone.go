@@ -164,24 +164,74 @@ func elemRule(want, got Entry) (rule string, widened bool) {
 
 // rangeRule classifies a move of a field's declared bounds or its scale. A
 // range OUTWARD is a widening: every value an older writer could hold is still
-// inside. A range INWARD, a range added where none was, and a moved scale are
-// refusals — the first two because an old value now clamps, the third because
-// the same stored number means something else (§2).
+// inside. A range INWARD, a range added where none was, and a moved
+// fixed-point scale are refusals — the first two because an old value now
+// clamps, the third because the same stored number means something else (§2).
+//
+// A COMPRESSED FLOAT'S RESOLUTION IS THE ONE SCALE THAT MOVES ONE WAY. In the
+// fixed form a compressed float rides as the float32 itself (SPEC-TABLES
+// §3.4's row: "it rides as the float, not as a quantized index"), so its min,
+// max and resolution are DEFINITIONS and never wire. The bounds therefore
+// follow the ranged-scalar rule above — they are this entry's Min and Max, so
+// the same two clauses judge them — and the RESOLUTION may only get FINER: a
+// writer quantizes to its own step before storing, so an old file's values sit
+// on a COARSER grid a finer reader lands exactly, while a coarser reader would
+// have to requantize them. A coarsened resolution is refused by name, with
+// both steps in the sentence.
 func rangeRule(want, got Entry) (rule string, widened bool) {
 	switch {
 	case want.Frac != got.Frac:
 		return fmt.Sprintf("F changed (%d -> %d)", want.Frac, got.Frac), false
-	case want.Res != got.Res:
-		return fmt.Sprintf("resolution changed (%s -> %s)", want.rangeText(), got.rangeText()), false
 	case !want.ranged() && got.ranged():
 		return fmt.Sprintf("range added where none was (%s -> %s)", want.rangeText(), got.rangeText()), false
 	case want.ranged() && !got.ranged():
+		// the range, the resolution with it, is GONE: every old value is
+		// inside an unbounded field and lands exactly (§2's "or REMOVED")
 		return "", true
+	}
+	if rule, ok := resolutionRule(want, got); !ok {
+		return rule, false
+	}
+	switch {
 	case boundOutward(want.Min, got.Min, true) && boundOutward(want.Max, got.Max, false):
 		return "", true
 	default:
 		return fmt.Sprintf("range narrowed (%s -> %s)", want.rangeText(), got.rangeText()), false
 	}
+}
+
+// resolutionRule judges a compressed float's RESOLUTION between two ranged
+// entries: the same step or a FINER one is no refusal, a COARSER one is
+// refused with both steps, and a step that appears or disappears while a range
+// stands either side is a compressed float traded for a plain ranged scalar,
+// which is the scale moving too.
+func resolutionRule(want, got Entry) (rule string, ok bool) {
+	if want.Res == got.Res {
+		return "", true
+	}
+	if want.Res == "" || got.Res == "" {
+		return fmt.Sprintf("resolution changed (%s -> %s)", resText(want.Res), resText(got.Res)), false
+	}
+	was, err1 := strconv.ParseFloat(want.Res, 64)
+	now, err2 := strconv.ParseFloat(got.Res, 64)
+	if err1 != nil || err2 != nil {
+		return fmt.Sprintf("resolution changed (%s -> %s)", want.Res, got.Res), false
+	}
+	if now > was {
+		return fmt.Sprintf("resolution coarsened (%s -> %s)", want.Res, got.Res), false
+	}
+	// FINER: the old writer's values sit on the old, coarser grid, and every
+	// one of them is a value this reader can hold exactly (§2).
+	return "", true
+}
+
+// resText is a resolution as a refusal names it, and "none" where the field
+// declares a range with no step at all.
+func resText(res string) string {
+	if res == "" {
+		return "none"
+	}
+	return res
 }
 
 // ranged reports whether an entry declares any bound at all.

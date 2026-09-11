@@ -39,8 +39,8 @@ export const FixedTableFixedRecordBytes = 1244; // the hash and the body
 
 // fnv1a64 over the layout's bytes, carried as two uint32 lanes: a hash is
 // compared ONCE PER RECORD, and a BigInt there is one allocation per record.
-export const FixedTableFixedHashLo = 0x195f9ec9;
-export const FixedTableFixedHashHi = 0x6237c1dc;
+export const FixedTableFixedHashLo = 0x7e9ad910;
+export const FixedTableFixedHashHi = 0x5f132092;
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the
@@ -311,7 +311,7 @@ const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
 // bytes per wire byte where base64 is four per three. The reader's OWN
 // layout is the array above, not a second copy.
 const FixedTableFixedKnown = [
-  new TableFixedKnownLayout(0x195f9ec9, 0x6237c1dc, FixedTableFixedLayout, 1279, 1244),
+  new TableFixedKnownLayout(0x7e9ad910, 0x5f132092, FixedTableFixedLayout, 1279, 1244),
 ];
 
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
