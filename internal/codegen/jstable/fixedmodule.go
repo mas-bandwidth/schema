@@ -290,7 +290,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    // CACHED BY HASH, so the compile is paid once per peer, not per record.\n")
 	g.pf("    if (!plan.ready || (plan.hashLo >>> 0) !== hashLo || (plan.hashHi >>> 0) !== hashHi) {\n")
 	g.pf("      const theirs = new TableFixedLayoutView();\n")
-	g.pf("      if (!TableFixedParseLayout(bytes, layoutAt, layoutBytes, theirs)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }\n")
+	g.pf("      if (!TableFixedParseLayout(bytes, layoutAt, layoutBytes, theirs)) { report.refused = theirs.refusal; return -1; }\n")
 	g.pf("      const made = TableFixedCompile(theirs, %sFixedLayout, %sFixedDst, plan, report);\n", st.Name, st.Name)
 	g.pf("      if (made < 0) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }\n")
 	g.pf("      plan.recordBytes = 8 + TableFixedSize(theirs, 0);\n")
