@@ -607,6 +607,9 @@ reader field the writer does not carry gets no entry either, and the prefill ans
 ```
 EMIT(te, their_at, me, my_at, guard, arg):
   if depth > 64:                                         REFUSE layout_malformed      -- the wire picks no recursion
+                                                                                      -- AND THE COMPILE BOUND IS THIS ONE (§6):
+                                                                                      -- ir.TableFixedMaxDepth, the same 64 every
+                                                                                      -- runtime holds (kTableFixedMaxDepth)
   if me.kind == 35 and te.kind != 35:                    -- T into ?T (bill §12.8)
       emit `present`  at the reader's present byte, under `guard`/`arg`
       EMIT(te, their_at, the wrapper's payload, my_at, guard, arg) ; return
@@ -1587,6 +1590,7 @@ of its own LINEAGE and its own files, and a table with no form is a root of neit
 | **4096 bytes of record body** | a WARNING, always on, naming the table and the size. Nothing about the wire changes there; it is where a fixed table stops being a small thing |
 | **65536 bytes of record body** | a COMPILE REFUSAL for a DECLARED fixed table, by name, naming the table and the size. A wire fact: a reader holds an untrusted peer's layout to the same 65536 (`layout_record_too_large`), so the two sides agree by construction. A table merely DERIVED into the form is warned and keeps form `1` |
 | **`--fixed-record-limit N`** | a project's own policy, off by default, and it only ever LOWERS — it cannot raise the 65536, because a gate a stranger does not honour is not a wire bound |
+| **64 nested LAYOUT ENTRIES** | a WARNING, always on, naming the table and its depth, and past it the table DOES NOT CARRY THE FIXED FORM — it keeps form `1`, and the `fixed` keyword still buys it the CLASS. A DECLARED fixed table is named the more loudly (the keyword is a request, and a request this form cannot serve is said out loud), but NEITHER IS EVER A SILENT DROP (fix 4). **THERE IS ONE NUMBER**: the layout's own 64 (§5.2's `layout_malformed`, docs/SPEC-TABLES.md §3.4's *"the walk's nesting cap is a SMALL STATED CONSTANT: 64 nested bodies"*), which is what every runtime holds the wire to (`kTableFixedMaxDepth`), so the compiler cannot drop a form the wire would have carried. The root is depth 0. A nesting GROWN across it is refused at the lock, like the ceiling: the entries all widen legally while the form changes underneath |
 | **the LEAF CAP** | **A REFUSAL BY NAME, NEVER A SILENT DROP** (fix 4), on the 65536's own split: a DECLARED fixed table past it does not compile, naming the table and its leaf count; one merely DERIVED into the form is warned and keeps form `1`. The cap bounds the identity plan a backend lays down as STATIC DATA — source a consumer's compiler parses on every build. **THE FLAT-ELEMENT FOLD says what spends a leaf**: an array whose element's storage image IS its wire image, a scalar or a struct of them, is ONE leaf however long it is, so `[..8192]int32` costs two — the count and the run. What reaches the cap is a big array of a type this form must walk element by element: one carrying text, a count, a union or an optional. At run time, against the caller's own buffer, the same question is `plan_too_large` |
 
 ## 7. What a port takes, and what it must not

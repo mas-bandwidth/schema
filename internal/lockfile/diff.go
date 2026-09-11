@@ -105,6 +105,17 @@ func Diff(locked, live *Unit, policy Policy) []error {
 			}
 			continue
 		}
+		// THE FORM'S DEPTH BOUND, BEFORE THE LAW (lineage.go). It goes first for
+		// the reason the ceiling's check goes first (#938): a layout nested past
+		// the bound is a table whose WIRE has changed, which no refusal below it
+		// would name — every monotone fact widened legally, so [Current] would
+		// report it as an ordinary stale lock and `schema lock` would write it.
+		if lk.Decl == DeclFixedTable {
+			if err := diffDepth(lk, lv); err != nil {
+				errs = append(errs, err)
+				continue
+			}
+		}
 		if err := diffTable(lk, lv, policy); err != nil {
 			errs = append(errs, err)
 			continue
