@@ -340,19 +340,18 @@ fixed table Outer
 	})
 	counts := map[string]int{}
 	for _, body := range files {
-		for _, line := range strings.Split(string(body), "\n") {
+		for line := range strings.SplitSeq(string(body), "\n") {
 			line = strings.TrimSpace(line)
 			const pre = "public static void "
-			i := strings.Index(line, pre)
-			if i < 0 {
+			_, sig, ok := strings.Cut(line, pre)
+			if !ok {
 				continue
 			}
-			sig := line[i+len(pre):]
-			j := strings.Index(sig, "FixedWriteBody(")
-			if j < 0 {
+			name, _, ok := strings.Cut(sig, "FixedWriteBody(")
+			if !ok {
 				continue
 			}
-			counts[sig[:j]+"FixedWriteBody"]++
+			counts[name+"FixedWriteBody"]++
 		}
 	}
 	for _, want := range []string{"InnerFixedWriteBody", "MiddleFixedWriteBody", "OuterFixedWriteBody"} {
