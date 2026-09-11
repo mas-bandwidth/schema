@@ -201,11 +201,16 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// §15's WIDE-KIND REFUSAL IS THE FORM-1 ACCELERATORS' AND NOT THE WIRE'S
 	// (ir.WideTableKinds). The rule lives in ir because a rule five ports each
 	// spell for themselves is five rules — and the day this backend gained
-	// §3.4's fixed form is the day its answer became `true`: the block form and
-	// the cooked form stand down alone, and the unit is NOT refused whole,
-	// because there is a wire left to emit. The refusal still names every wide
-	// field, and it is stated by name in every module this unit gets.
-	scope := ir.WideTableKinds(u, "JavaScript", true)
+	// §3.4's fixed form is the day the block form and the cooked form stood down
+	// alone, with the unit NOT refused whole because there is a wire left to
+	// emit. The refusal still names every wide field, and it is stated by name in
+	// every module this unit gets.
+	//
+	// THE ANSWER IS THIS LEG'S OWN ROOTS, the way java and elixir answer it
+	// (len(jsFixedUnitRoots) > 0), and not a hard-coded `true`: a unit this leg lays no
+	// fixed table out for has no wire left to put in the accelerators' place, and
+	// `true` would have told ir otherwise and let the unit through unrefused.
+	scope := ir.WideTableKinds(u, "JavaScript", len(jsFixedUnitRoots(u)) > 0)
 	if scope.Unit {
 		return nil, scope.Refusal
 	}
