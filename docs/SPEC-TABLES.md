@@ -16399,7 +16399,7 @@ defined by the default it fills: a change with no default to fill is not a widen
 | a specified default | — | changed (§18: it defines what every old file means) |
 | the `fixed` keyword | — | added or removed (a different form, not a version) |
 | a reader-side limit a table declares | larger | smaller |
-| a deprecated field | stays written, in its place; may be undeprecated | leaving the layout |
+| a deprecated field | stays written, in its place, read on every plan | leaving the layout; undeprecating (one way, bill §12.3) |
 
 ### 21.2 What a newer reader does with an older file
 

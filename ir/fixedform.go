@@ -510,6 +510,16 @@ func tableFixedWalkElement(w *tableFixedWalk, f *Field, id uint64, note string, 
 				TableFixedDstSpec{Dst: dst, Aux: tableFixedTerm1(f.Type.Name, "type"), AuxExtendsDst: true})
 			for _, v := range r.Variants {
 				armID := TableWireId(v.WireName())
+				if v.F == nil {
+					// A PAYLOAD-FREE ARM HAS AN ENTRY AND NO BYTES (kind 32,
+					// §3): the tag names it and there is nothing to land, the
+					// same shape an enum's variants take in this walk. It is an
+					// entry rather than nothing because the layout is what the
+					// arm list is COMPARED by — an arm appended after a
+					// payload-free one must move the hash.
+					w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindNoPayload, Size: 0, Children: 0, Note: v.Name}, TableFixedDstSpec{})
+					continue
+				}
 				tableFixedWalkElement(w, v.F, armID, v.Name, tableFixedTerm1(f.Type.Name, v.Name))
 			}
 			return
