@@ -153,3 +153,54 @@ func TestFixedOrdinalOpIsSixtyFourBit(t *testing.T) {
 		t.Error("the forged ordinal's counter moved, or its debt stopped being named (§5.9 #27)")
 	}
 }
+
+// A SIGNED fixed(I,F) FIELD'S LOW END IS PART OF THE PASS (§4.6, SPEC-TABLES §4).
+// The ends the emitter spells are ir.TableRawRange's — the declared whole-unit
+// bounds SHIFTED BY F onto the raw scale — so the "this check cannot fire" test
+// that decides WHETHER to spell an end has to read the same numbers with the
+// same signedness. Reading the UNSHIFTED bounds against an UNSIGNED storage
+// range said `min = -8` could not beat 0 and dropped the low end of every
+// signed fixed field declared with a minimum at or below zero: a raw under the
+// declared minimum landed unclamped and uncounted, on both plans, because one
+// pass over storage serves both.
+func TestFixedBoundsPassClampsSignedFixedLowEnd(t *testing.T) {
+	src := generateCS(t, `package probe
+fixed table Tilt {
+    t fixed(12, 4) | min = -8, max = 7
+}
+`)
+	body := csFn(src, "public static void TiltFixedClampBody(")
+	if body == "" {
+		t.Fatal("a bounded fixed-point field carries no bounds pass")
+	}
+	// -8 and 7 shifted by F = 4: the raw ends are -128 and 112, and the storage
+	// is 16-bit signed, so NEITHER end sits on a limit and BOTH are spelled.
+	if !strings.Contains(body, "if (value.T < -128) { value.T = -128; clamped++; }") {
+		t.Errorf("the signed fixed field's LOW end does not clamp and count — a raw below the declared minimum rides through:\n%s", body)
+	}
+	if !strings.Contains(body, "if (value.T > 112) { value.T = 112; clamped++; }") {
+		t.Errorf("the signed fixed field's high end does not clamp at min<<F:\n%s", body)
+	}
+}
+
+// AND THE ELISION STILL HOLDS WHERE IT IS TRUE: fixed(4,4) | min = -8 shifts to
+// -128, which IS 8-bit signed storage's own floor, so that low end is a
+// comparison no stored value can satisfy and the emitter drops it. The fix is
+// about reading the right numbers, not about spelling every end.
+func TestFixedBoundsPassDropsSignedFixedEndOnTheStorageFloor(t *testing.T) {
+	src := generateCS(t, `package probe
+fixed table Lean {
+    t fixed(4, 4) | min = -8, max = 7
+}
+`)
+	body := csFn(src, "public static void LeanFixedClampBody(")
+	if body == "" {
+		t.Fatal("a bounded fixed-point field carries no bounds pass")
+	}
+	if strings.Contains(body, "value.T < -128") {
+		t.Errorf("an end sitting ON the storage floor is spelled; it can never fire:\n%s", body)
+	}
+	if !strings.Contains(body, "if (value.T > 112) { value.T = 112; clamped++; }") {
+		t.Errorf("the high end is missing:\n%s", body)
+	}
+}
