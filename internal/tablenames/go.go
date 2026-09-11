@@ -395,7 +395,6 @@ func init() {
 		Name{Name: "tableFixedPut128", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedGet32", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedGet64", What: "the fixed form (form 3)"},
-		Name{Name: "tableFixedHashOf", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedCopyRun", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedRun", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedLayoutEntry", What: "the fixed form (form 3)"},
