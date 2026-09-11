@@ -241,6 +241,58 @@ table Config {
 	}
 }
 
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX. A one-byte compare
+// fires arm 1 on a foreign 0x0101. The C++/IR leftover on #830 was that JS
+// still read src[guard] as a single byte; TableFixedTagAt is the C++ twin and
+// the ninth lane carries the width the compiler stamps the way C++ stamps
+// e.argw. Flavour stays in Meta. Identity is still one COPY of the body —
+// the ArgW lane on that entry is 1, which is the width a tag had when this
+// field did not exist.
+func TestFixedGuardComparedAtArgW(t *testing.T) {
+	u := unitFrom(t, `package probe
+table Root { n int32 }
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "function TableFixedRun(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no TableFixedRun in the generated unit")
+	}
+	if !strings.Contains(src, "function TableFixedTagAt(") {
+		t.Error("the runtime never names TableFixedTagAt")
+	}
+	if !strings.Contains(src, "const TableFixedLaneArgW = 8;") {
+		t.Error("the plan omits the ArgW lane")
+	}
+	if !strings.Contains(src, "export const TableFixedLanes = 9;") {
+		t.Error("a plan entry is nine int32 lanes, not eight")
+	}
+	if strings.Contains(src, "src[srcAt + guard] !== e[b + TableFixedLaneArg]") {
+		t.Error("the run loop still compares the union guard as one byte")
+	}
+	if !strings.Contains(src, "TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW])") {
+		t.Error("the run loop does not compare the guard at ArgW")
+	}
+	if strings.Contains(src, "if (identity)") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+	if !strings.Contains(src, "RootFixedIdentity = new Int32Array([0, 0, 0, 4, 0, -1, 0, 0, 1])") {
+		t.Error("the identity plan omitted the ArgW lane (ninth is 1)")
+	}
+	if !strings.Contains(src, "plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;") {
+		t.Error("the compiler does not stamp ArgW from the writer's tag width")
+	}
+}
+
 func unitFrom(t *testing.T, src string) *ir.Unit {
 	t.Helper()
 	f, perrs := parser.Parse("Probe.schema", []byte(src))
