@@ -378,11 +378,23 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
         // enum gained a variant IN THE MIDDLE is remapped here and never
         // reinterpreted.
+        //
+        // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped through the
+        // writer's table while the raw is inside the table, and THE RAW
+        // ITSELF, UNREMAPPED, once it is past the writer's variant count.
+        // The op COUNTS NOTHING: the generated BOUNDS PASS over storage
+        // clamps any ordinal past THIS READER'S extent to None and counts it
+        // clamped there, on the identity plan and the compiled plan alike. A
+        // pass over storage cannot tell a forged None from a real one, so the
+        // raw value has to survive this op to reach the pass; the lock
+        // guarantees the raw fits the reader's storage, because widths only
+        // grow. The counter's place is the contract: the pass counts, the op
+        // does not, and a port that counts in both counts twice.
         let raw = 0;
         for (let k = 0; k < size; k++) { raw |= src[s + k] << (8 * k); }
         raw = raw >>> 0;
         const table = e[b + TableFixedLaneAux];
-        let v = 0;
+        let v = raw;
         if (raw !== 0 && raw <= remap[table]) { v = remap[table + raw]; }
         const width = e[b + TableFixedLaneMeta] & 0xff;
         for (let k = 0; k < width; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }

@@ -55,6 +55,16 @@ enum : uint8_t
     kTableFixedTextBytes = 3,
 };
 
+// meta on a kTableFixedConst entry: the union TAG's "None" entry, which lands
+// the writer's RAW TAG out of the record instead of the constant in aux, so
+// that a tag naming no arm reaches the bounds pass as the number it was
+// (§5.9 #27). size is the writer's tag width and dstsize this reader's,
+// the pair ordinal already spells; an arm's own const carries neither.
+enum : uint8_t
+{
+    kTableFixedConstRawTag = 1,
+};
+
 constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 
 // THE PLAN'S SOURCE AND DESTINATION NEVER ALIAS: one is a record in a read
@@ -304,15 +314,20 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             // enum gained a variant IN THE MIDDLE is remapped here and never
             // reinterpreted. The table is the plan's own, laid down by the
             // compiler above the entries.
+            //
+            // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped through the
+            // writer's table while the raw is INSIDE that table, and the RAW
+            // ITSELF, UNREMAPPED, once it is past the writer's variant count.
+            // IT COUNTS NOTHING — the bounds pass clamps an ordinal past THIS
+            // READER's extent to None and counts it there, on both plans,
+            // because a pass over STORAGE cannot tell a forged None from a real
+            // one and so the raw has to survive this op to reach it. The lock
+            // guarantees the raw fits the reader's storage: widths only grow.
             uint64_t raw = 0;
             memcpy( &raw, src + p.src, p.size );
             const uint16_t * table = (const uint16_t *) (const void *) ( base + p.aux );
-            uint64_t v = 0;
-            if ( raw != 0 )
-            {
-                if ( raw <= (uint64_t) table[0] ) { v = table[raw]; }
-                if ( v == 0 ) { clamped++; }
-            }
+            uint64_t v = raw;
+            if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }
             memcpy( dst + p.dst, &v, p.dstsize );
             break;
         }
@@ -343,15 +358,27 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p.dst, &p.aux, p.size );
-            // An unguarded None const with dstsize = the WRITER's arm count:
-            // a tag past that set lands None (already written) and COUNTS.
-            if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
+            // THE TAG'S "NONE" ENTRY LANDS THE WRITER'S RAW TAG, not a zero
+            // (§5.9 #27, the ordinal ruling's other half). The arms that follow
+            // overwrite it with this reader's own ordinal under the writer's
+            // tag, so the raw stands only where the tag names NO arm — and then
+            // the bounds pass, which is the one thing that sees the reader's
+            // extent, clamps it to None and counts. A zero here would reach
+            // that pass as a lawful None and count nothing.
+            //
+            // meta says which this is: the op's own argument, never the
+            // guard's (fix 12). The arm count is GONE from dstsize, which is
+            // now what it is everywhere else — the destination's width — with
+            // size the SOURCE's, exactly as ordinal spells the same pair.
+            uint64_t v = p.aux;
+            uint32_t width = p.size;
+            if ( p.meta == kTableFixedConstRawTag )
             {
-                uint64_t raw = 0;
-                memcpy( &raw, src + p.src, p.size );
-                if ( raw > (uint64_t) p.dstsize ) { clamped++; }
+                v = 0;
+                memcpy( &v, src + p.src, p.size );
+                width = p.dstsize;
             }
+            memcpy( dst + p.dst, &v, width );
             break;
         }
         case kTableFixedPresent:
@@ -454,7 +481,12 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
         case kTableFixedWidenF: lands[1] = e.dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e.dst + e.dstsize; break;
-        default: lands[1] = e.dst + e.size; break; // copy, const
+        // A raw-tag const lands at the DESTINATION's width (§5.9 #27); every
+        // other const lands size bytes of its own constant.
+        case kTableFixedConst:
+            lands[1] = e.dst + ( e.meta == kTableFixedConstRawTag ? (uint32_t) e.dstsize : e.size );
+            break;
+        default: lands[1] = e.dst + e.size; break; // copy
     }
 }
 
@@ -1096,10 +1128,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 const uint8_t inner_argw = c.argw;
                 if ( guard != kTableFixedNoGuard ) { c.argw = saved_argw ? saved_argw : 1u; }
                 TableFixedEntry none;
-                none.src = their_at; none.dst = aux_at; none.size = my_tag;
+                // THE RAW TAG LANDS HERE (§5.9 #27), so size is the WRITER's
+                // tag width and dstsize is THIS reader's — the pair ordinal
+                // already spells — and meta says this const reads the record
+                // rather than carrying a constant. The WRITER'S ARM COUNT IS
+                // GONE FROM dstsize: the op clamps nothing now, so nothing
+                // needs it, and the lane means what it means everywhere else.
+                none.src = their_at; none.dst = aux_at;
+                none.size = ( their_tag >= 1u && their_tag <= 8u ) ? their_tag : 1u;
                 none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
-                // Writer arm count, for a tag past the old set (bill §12.5).
-                if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
+                none.meta = kTableFixedConstRawTag;
+                none.dstsize = ( my_tag >= 1u && my_tag <= 8u ) ? (uint8_t) my_tag : (uint8_t) 1;
                 TableFixedPush( c, none );
                 c.argw = inner_argw;
             }

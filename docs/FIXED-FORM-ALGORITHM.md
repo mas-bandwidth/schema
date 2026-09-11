@@ -240,10 +240,10 @@ to this build's own records; only to a peer's.
 | `copy` | source offset | destination offset | bytes | — | — |
 | `count` | the count field | the count's storage | **the reader's own bound, in ELEMENTS** | — | — |
 | `text` | the length; payload at `src+4` | the length's storage | the payload's BYTE span, `min(mine, theirs)` | **the buffer's offset** | `meta` = flavour |
-| `ordinal` | the source ordinal | the destination | the source ordinal's width | the remap table's offset | `dstsize` |
+| `ordinal` | the source ordinal | the destination | the source ordinal's width | the remap table's offset | `dstsize`. **It lands the RAW VALUE past the writer's variant count** (§5.9 #27) |
 | `widen` | source | destination | the source width | — | `dstsize`, `sign` |
 | `widenf` | source (4) | destination (8) | — | — | f32 into f64 |
-| `const` | — | the tag's storage | the tag width | **the constant**: this reader's own arm ordinal | `guard`, `arg` |
+| `const` | the writer's tag, for the `None` entry | the tag's storage | the tag width — **the WRITER's on the `None` entry** | **the constant**: this reader's own arm ordinal, `0` on the `None` entry | `guard`, `arg`; `meta` = `raw tag`, and then `dstsize` is THIS reader's tag width (§5.9 #27). **The writer's arm count is NOT a lane**: `dstsize` carried it and no longer does, the op having nothing left to clamp |
 
 Flavours: `1` utf8, `2` wide, `3` bytes. An **identity plan carries only `copy`, `count` and `text`** — an enum
 ordinal and a union tag ride inside plain `copy` runs there, so the range closing of §4.5 must live in the
@@ -319,9 +319,9 @@ The reader validates on load in **every** build, release included, and a clamp c
 | `copy` | `COPY(out+dst, record+src, size)`. Nothing to validate |
 | `count` | `v := SLE(4, record+src)`; if `v < 0` then `v := 0, COUNT clamped`, else if `v > size` then `v := size, COUNT clamped`; `PUT(4, out+dst, v)`. The bound is the READER's own `Max`, in ELEMENTS |
 | `text` | `unit := (meta == wide) ? 2 : 1`; `cap := size / unit`; `v := SLE(4, record+src)` clamped into `[0, cap]`, `COUNT clamped` if it fired. Copy the payload, and terminate at the used length where the language stores a terminator — never for `bytes`. **The CONTENT RULES apply to the USED UNITS and nothing else**: UTF-8 validity over `v` bytes, never over `N`; wide code units over `v`, never `2N`, an astral pair counting two (fix 7). **A content violation REFUSES BY NAME, the verdict the packet reader gives**, this form having no `L` to continue past (fix 11) |
-| `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : 0`; `PUT(dstsize, out+dst, v)` |
+| `ordinal` | `raw := LE(size, record+src)` **through a 64-bit temporary**, an ordinal width of `8` being admissible; the remap table's first entry is its length `n`; `v := (raw != 0 and raw <= n) ? table[raw] : raw` — **THE RAW ITSELF past the writer's count, unremapped**, which is what lets the bounds pass see it (§4.6, §5.9 #27); `PUT(dstsize, out+dst, v)`. **It counts nothing** |
 | `widen` / `widenf` | `raw := LE(size, record+src)`, sign-extended from `size*8` bits when `sign`, then `PUT(dstsize, out+dst, raw)`; `widenf` is the f32 at `src` as an f64 at `dst`. Both `COUNT widened`, and both are exact by construction, NaN payloads included |
-| `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode |
+| `const` | `PUT(size, out+dst, aux)` — the guarded entry landing THIS reader's arm ordinal when the writer's tag says that arm rode. **The union's `None` entry (`meta` = `raw tag`) instead lands the WRITER'S RAW TAG: `raw := LE(size, record+src)`, `PUT(dstsize, out+dst, raw)`** — the arms overwrite it under the writer's tag, so the raw stands exactly where the tag names no arm, and the bounds pass is what clamps it to `None` and counts (§5.9 #27). **It counts nothing** |
 | a `bool` or a PRESENT FLAG | lands as **`byte != 0`**, normalised to the language's own true. `0x02` is not a bool a reader stores verbatim (fix 2) |
 
 ### 4.6 The bounds pass
@@ -339,7 +339,11 @@ clamp on every clean read. A type that bounds nothing emits no pass at all.
 - **A RANGED SCALAR** clamps to its declared min and max, `COUNT clamped`. **A fixed-point field's bounds are in
   VALUE UNITS and its storage is raw**, so both ends are shifted by `F` first; a `bits(N)` clamps to `2^N - 1`.
 - **A UNION TAG past the arm count, or an ENUM ORDINAL past the enum's top value, lands `None`** — the same
-  nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). There is no `| max = K` headroom on
+  nothing an unset union holds — and `COUNT clamped` (fixes 5, 9 and 14). **THIS IS THE ONE PLACE THAT COUNTS
+  EITHER, on the compiled plan exactly as on the identity one** (§5.9 #27), and it is why the `ordinal` op lands
+  a raw past the writer's count unremapped and the union's `None` entry lands the writer's raw tag: a pass over
+  STORAGE cannot tell a forged `None` from a real one, so the raw has to survive the loop to reach the pass. The
+  lock makes that safe — widths only grow, so a raw the writer could write fits the storage this reader declared. There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
   compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
 
@@ -885,8 +889,8 @@ when every value lands.
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
 | `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, and a widened run is never folded, so a fixture asserts that EXACT count (§5.9 #33) |
 | `count`, `text` | `clamped` | once per entry per record, when the length or count was out of range |
-| the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
-| `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
+| the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal** — one past the WRITER's own variant count, which the `ordinal` op lands AS THE RAW VALUE so that this pass can see it, clamp it to `None` and count it, **on the COMPILED plan exactly as on the identity one** (§4.6, §5.9 #27, the bill's rule). A forged union TAG is the same row: the `None` entry lands the writer's raw tag and this pass clamps it |
+| `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing. **`ordinal` lands the RAW VALUE past the writer's count and the `None` const lands the writer's RAW TAG**, precisely so the clamp to `None` is the BOUNDS PASS's to make and to count, on BOTH plans (§5.9 #27); a port that counts in the op as well counts twice, and one that clamps in the op leaves the pass nothing to count |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **every counter stays at zero**: an append the reader knows is not an event |
 
 A `bool` or a present byte that is not `0` or `1` is normalised to the language's own true and **counts
@@ -1311,12 +1315,32 @@ hash. It is NOT §5.3 step 9: step 9 is arithmetic over a FILE's tail, and routi
 reports a lock bug as a wire event, with `malformed` and no name. Where the lineage arrived at run time the
 entry carries `layout_malformed` and LOAD refuses by that name, exactly as #8 says.
 
-**27. A COUNTER THE OP ALREADY MOVES.** §5.4 puts the forged ordinal's `clamped` in the BOUNDS PASS, on both
-plans, and says a port counting in the op as well counts twice. A leg that already counts it IN THE OP, with a
-green fixture asserting the number, has **the OP to move and not the fixture**: the counter's PLACE is the
-contract, because it is what makes the compiled and identity plans agree, and a fixture pinned to the wrong
-place pins the bug. The leg re-pins the fixture after the move, in the same change, and says in its PR that the
-number did not change — or why it did.
+**27. A COUNTER THE OP ALREADY MOVES — AND WHAT THE OP MUST LAND FOR THE PASS TO COUNT IT.** §5.4 puts the
+forged ordinal's `clamped` in the BOUNDS PASS, on both plans, and says a port counting in the op as well counts
+twice. A leg that already counts it IN THE OP, with a green fixture asserting the number, has **the OP to move
+and not the fixture**: the counter's PLACE is the contract, because it is what makes the compiled and identity
+plans agree, and a fixture pinned to the wrong place pins the bug. The leg re-pins the fixture after the move,
+in the same change, and says in its PR that the number did not change — or why it did.
+
+**The place is kept and MADE POSSIBLE** (Rowan, final, 2026-09-11). **A pass over STORAGE cannot tell a forged
+`None` from a real one** — both are a zero in the tag's bytes, and an unset union writes that zero lawfully on
+every clean record — so a counter in the pass needs THE RAW VALUE TO SURVIVE THE LOOP. Therefore:
+
+- **the `ordinal` op LANDS THE RAW VALUE**: remapped through the writer's table while the raw is INSIDE that
+  table, and **the raw itself, unremapped, once it is past the writer's variant count**;
+- **the union tag's `None` entry LANDS THE WRITER'S RAW TAG** rather than a zero — the arms overwrite it under
+  the writer's own tag, so the raw stands exactly where the tag names no arm;
+- **the BOUNDS PASS (§4.6, §5.3 step 11, over storage) clamps any ordinal or tag past THIS READER'S extent to
+  `None` and counts `clamped`**, on the compiled plan and the identity plan alike;
+- **the op counts nothing, and clamps nothing.**
+
+**The lock is what makes landing the raw safe**: widths only grow (§5.1's LADDER), so a raw the writer's own
+storage could hold fits the storage this reader declares, and the pass that reads it back is reading a number,
+not a stray byte. **The op's lanes say so**: `size` is the SOURCE's width and `dstsize` the DESTINATION's, on
+the `None` const exactly as on `ordinal`, with `meta` = `raw tag` marking it — and **the writer's arm count,
+which `dstsize` carried as a second meaning for the op's own clamp, is gone, because the op no longer clamps**.
+A leg whose plan lanes cannot express that pair says so in its PR rather than keeping a zero the pass cannot
+read.
 
 **28. THE CORPUS'S OWN FILE NAMES.** `old_<row>.bin` / `new_<row>.bin` is the pair, and the rows that are not a
 pair have names only the dump states: **`old_floor.bin` / `mid_floor.bin` / `new_floor.bin`** for §5.7's three

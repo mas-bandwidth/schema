@@ -1149,7 +1149,21 @@ const tableFixedWireSource = `
                         if (p.Size == 1) raw = src[(int)p.Src];
                         else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
                         else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
-                        uint v = 0;
+                        // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped
+                        // through the writer's table while the raw is inside
+                        // the table, and THE RAW ITSELF, UNREMAPPED, once it
+                        // is past the writer's variant count. The op COUNTS
+                        // NOTHING: the generated BOUNDS PASS over storage
+                        // clamps any ordinal past THIS READER'S extent to None
+                        // and counts it clamped there, on the identity plan
+                        // and the compiled plan alike. A pass over storage
+                        // cannot tell a forged None from a real one, so the raw
+                        // value has to survive this op to reach the pass; the
+                        // lock guarantees the raw fits the reader's storage,
+                        // because widths only grow. The counter's place is the
+                        // contract: the pass counts, the op does not, and a
+                        // port that counts in both counts twice.
+                        uint v = raw;
                         if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                         {
                             ReadOnlySpan<byte> tableBytes = planBytes.Slice((int)p.Aux);
@@ -1158,7 +1172,6 @@ const tableFixedWireSource = `
                             {
                                 v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                             }
-                            if (raw > count && report != null) { report.Clamped++; }
                         }
                         if (slots[(int)p.Dst].SetRaw != null)
                         {

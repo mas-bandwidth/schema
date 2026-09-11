@@ -484,6 +484,16 @@ pub fn table_fixed_run(
                 // A VARIANT ORDINAL IS ITS POSITION IN THE BLOCK, so a writer
                 // whose enum gained a variant IN THE MIDDLE is remapped here
                 // and never reinterpreted.
+                //
+                // THE OP LANDS THE RAW VALUE AND COUNTS NOTHING (§5.9 #27). An
+                // ordinal inside the writer's table comes through the table; one
+                // PAST the writer's variant count lands UNREMAPPED, exactly as it
+                // arrived. The generated BOUNDS PASS over storage is what clamps
+                // an ordinal past THIS reader's extent to None and counts the
+                // clamped, on the identity plan and the compiled plan alike. That
+                // pass cannot tell a forged None from a real one, so the raw has
+                // to survive to it — and the lock guarantees the raw fits this
+                // reader's storage, because widths only grow.
                 let n = p.size as usize;
                 let w = p.dstsize as usize;
                 if src.len() < s + n || image.len() < d + w {
@@ -499,18 +509,10 @@ pub fn table_fixed_run(
                     Some(count) if raw != 0 && raw <= u64::from(*count) => {
                         u64::from(remap[base + raw as usize])
                     }
-                    Some(count) => {
-                        // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT
-                        // OF RANGE, as a count past its bound is: it lands as
-                        // None and counts one clamped. A variant the writer DOES
-                        // carry and this reader cannot name is a different thing
-                        // — it resolves to None through the table and counts
-                        // nothing, because nothing was out of range.
-                        if raw > u64::from(*count) {
-                            report.clamped += 1;
-                        }
-                        0
-                    }
+                    // PAST THE WRITER'S VARIANT COUNT: THE RAW ITSELF, with no
+                    // remap and no count — the bounds pass judges it (§5.9 #27).
+                    // Ordinal 0 IS None and lands as itself, which is 0.
+                    Some(_) => raw,
                     None => 0,
                 };
                 for i in 0..w {

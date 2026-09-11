@@ -85,6 +85,16 @@ enum
     kTableFixedTextBytes = 3
 };
 
+/* meta on a kTableFixedConst entry: the union TAG's "None" entry, which lands
+   the writer's RAW TAG out of the record instead of the constant in aux, so
+   that a tag naming no arm reaches the bounds pass as the number it was
+   (§5.9 #27). size is the writer's tag width and dstsize this reader's,
+   the pair ordinal already spells; an arm's own const carries neither. */
+enum
+{
+    kTableFixedConstRawTag = 1
+};
+
 /* kTableFixedNoGuard IS THE ONE CONSTANT THAT CANNOT BE AN ENUMERATOR, and the
    reason is arithmetic rather than taste: an enumerator in C is an int, and
    0xFFFFFFFF does not fit one. So the value the C++ reference spells as an
@@ -454,11 +464,20 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
             /* A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
                enum gained a variant IN THE MIDDLE is remapped here and never
                reinterpreted. The table is the plan's own, laid down by the
-               compiler above the entries. */
+               compiler above the entries.
+
+               THE OP LANDS THE RAW VALUE (§5.9 #27): remapped through the
+               writer's table while the raw is INSIDE that table, and the RAW
+               ITSELF, UNREMAPPED, once it is past the writer's variant count.
+               IT COUNTS NOTHING — the bounds pass clamps an ordinal past THIS
+               READER's extent to None and counts it there, on both plans,
+               because a pass over STORAGE cannot tell a forged None from a real
+               one and so the raw has to survive this op to reach it. The lock
+               guarantees the raw fits the reader's storage: widths only grow. */
             uint32_t raw = 0;
             memcpy( &raw, src + p->src, p->size );
             const uint16_t * remap = (const uint16_t *) (const void *) ( base + p->aux );
-            uint32_t v = 0;
+            uint32_t v = raw;
             if ( raw != 0 && raw <= (uint32_t) remap[0] ) { v = remap[raw]; }
             memcpy( dst + p->dst, &v, p->dstsize );
             break;
@@ -490,7 +509,22 @@ static SCHEMA_UNUSED @INLINE@ void table_fixed_apply( const TableFixedEntry * p,
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p->dst, &p->aux, p->size );
+            /* THE TAG'S "NONE" ENTRY LANDS THE WRITER'S RAW TAG, not a zero
+               (§5.9 #27, the ordinal ruling's other half). The arms that
+               follow overwrite it with this reader's own ordinal under the
+               writer's tag, so the raw stands only where the tag names NO arm
+               — and then the bounds pass, which is the one thing that sees the
+               reader's extent, clamps it to None and counts. A zero here would
+               reach that pass as a lawful None and count nothing. */
+            uint64_t v = p->aux;
+            uint32_t width = p->size;
+            if ( p->meta == kTableFixedConstRawTag )
+            {
+                v = 0;
+                memcpy( &v, src + p->src, p->size );
+                width = p->dstsize;
+            }
+            memcpy( dst + p->dst, &v, width );
             break;
         }
         /* T INTO ?T: the reader wraps what the writer sent plain, so the present
@@ -624,7 +658,12 @@ static SCHEMA_UNUSED void table_fixed_entry_lands( const TableFixedEntry * e, ui
         case kTableFixedWidenF: lands[1] = e->dst + 8u; break;
         case kTableFixedWiden:
         case kTableFixedOrdinal: lands[1] = e->dst + e->dstsize; break;
-        default: lands[1] = e->dst + e->size; break; /* copy, const */
+        /* A raw-tag const lands at the DESTINATION's width (§5.9 #27); every
+           other const lands size bytes of its own constant. */
+        case kTableFixedConst:
+            lands[1] = e->dst + ( e->meta == kTableFixedConstRawTag ? (uint32_t) e->dstsize : e->size );
+            break;
+        default: lands[1] = e->dst + e->size; break; /* copy */
     }
 }
 
@@ -1318,8 +1357,15 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                    this form writes twice, and it is the compiled path's alone. */
                 {
                     TableFixedEntry none = table_fixed_entry_zero();
-                    none.src = their_at; none.dst = aux_at; none.size = my_tag;
+                    /* THE RAW TAG LANDS HERE (§5.9 #27), so size is the
+                       WRITER's tag width and dstsize is THIS reader's — the
+                       pair ordinal already spells — and meta says this
+                       const reads the record rather than carrying a constant. */
+                    none.src = their_at; none.dst = aux_at;
+                    none.size = ( their_tag >= 1u && their_tag <= 8u ) ? their_tag : 1u;
                     none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                    none.meta = kTableFixedConstRawTag;
+                    none.dstsize = ( my_tag >= 1u && my_tag <= 8u ) ? (uint8_t) my_tag : (uint8_t) 1;
                     table_fixed_push( c, none );
                 }
                 for ( k = 0; k < me.children && my_arm < mine->count; ++k )

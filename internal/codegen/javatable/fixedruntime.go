@@ -422,17 +422,21 @@ public final class TableFixed {
                     if (p.src + p.size > srcLength) { report.malformed = true; return; }
                     final long raw = getUint(src, srcAt + p.src, p.size);
                     final int n = remap[p.aux] & 0xFFFF;
-                    long v = 0;
+                    // THE OP LANDS THE RAW VALUE (§5.9 #27): remapped through
+                    // the writer's table while the raw is inside the table,
+                    // and THE RAW ITSELF, UNREMAPPED, once it is past the
+                    // writer's variant count n. The op COUNTS NOTHING: the
+                    // generated BOUNDS PASS over storage clamps any ordinal
+                    // past THIS READER'S extent to None and counts it clamped
+                    // there, on the identity plan and the compiled plan alike.
+                    // A pass over storage cannot tell a forged None from a
+                    // real one, so the raw value has to survive this op to
+                    // reach the pass; the lock guarantees the raw fits the
+                    // reader's storage, because widths only grow. The
+                    // counter's place is the contract: the pass counts, the op
+                    // does not, and a port that counts in both counts twice.
+                    long v = raw;
                     if (raw != 0 && raw <= n) { v = remap[p.aux + (int) raw] & 0xFFFF; }
-                    // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT LANDS None
-                    // AND COUNTS: the writer's layout says how many variants
-                    // it has, so a value past them is damage rather than a
-                    // variant this reader happens not to know. A variant it
-                    // knows of and this reader does not lands None too — that
-                    // one is a version difference and counts nothing. Slack
-                    // of a counted array is not this op's: scatter walks the
-                    // LIVE count, so unused slots never reach a clamp.
-                    if (raw > n) { report.clamped++; }
                     putUint(image, p.dst, v, p.dstsize);
                     break;
                 }
