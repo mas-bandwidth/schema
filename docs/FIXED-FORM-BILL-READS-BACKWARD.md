@@ -243,7 +243,7 @@ Adding but never removing?" Three.
 - Whether a writer's *deprecated* field (older writer, still writing it) needs any rule: the reader is newer
   and has the name, so it reads or drops by the reader's own deprecation; it seems to need none.
 
-## 10. The variable table, for a separate decision
+## 10. The variable table: HELD, for a separate decision (Glenn: "I don't know yet. Hold this for later.")
 
 Glenn: "I think the reads backwards rule is going to be required for the variable table too." The same law
 holds; the difference is where "newer" is detected. Form 1 has no layout, so today it finds out PER RECORD
