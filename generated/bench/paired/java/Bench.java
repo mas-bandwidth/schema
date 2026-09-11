@@ -3284,6 +3284,11 @@ public final class Bench {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 200.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 200L) {
+                v = 200L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 8;
@@ -3303,6 +3308,11 @@ public final class Bench {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 200.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 200L) {
+                v = 200L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 8;
@@ -3322,6 +3332,11 @@ public final class Bench {
             // two roundings, not one: the product rounds to float32 BEFORE 0.5
             // is added, and the sum rounds before the floor (SPEC §4.3)
             v = (long) Math.floor(n * 200.0f + 0.5f);
+            // the normative integer clamp (SPEC §4.3): at a step count in
+            // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+            if (v > 200L) {
+                v = 200L;
+            }
         }
         scratch |= v << scratchBits;
         scratchBits += 8;
