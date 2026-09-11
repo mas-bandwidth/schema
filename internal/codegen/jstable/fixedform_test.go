@@ -600,3 +600,99 @@ func TestFixedRootsAndRefusalAgree(t *testing.T) {
 		}
 	}
 }
+
+// A TABLE PAST §3.4's CEILING HAS NO FORM, SO IT HAS NO LINEAGE TO PARSE
+// (docs/SPEC-TABLES.md §3.4, docs/FIXED-FORM-ALGORITHM.md §5.9 #8).
+//
+// `tables/examples` holds `WideBlob`, a `fixed table` whose body is 280012
+// bytes. The compiler already says what that means — THE FIXED FORM IS NOT
+// EMITTED FOR IT, because no conforming reader decodes a record that size — and
+// the lock still carries a lineage entry for it, because the lock records every
+// fixed table's layout and the lock is one file five legs read.
+//
+// Those two facts met in this leg and the build died: `fixedRefusal` did not
+// name the ceiling, so the table was a ROOT here and nowhere else, and
+// `refuseFixedLineage` then held the lock's entry to the FORM's rules — where
+// the root's size is past the 65536 the reader caps a record at, so the layout
+// "does not parse" and §5.9 #8 failed the build over a lock that is correct.
+// The rule the other legs keep is the one this test states: a table with no form
+// has no layout of this form's shape, so there is nothing of it to parse, and
+// the only thing the module owes it is the line saying the form is not there.
+func TestJSFixedNoFormMeansNoLineageToParse(t *testing.T) {
+	const src = `package probe
+fixed table Small
+{
+    keep uint32 = 0
+}
+fixed table Huge
+{
+    payload bytes(70000)
+}
+`
+	u := jsUnitOf(t, src)
+
+	// THE CEILING IS A REFUSAL HERE, the way it is in every other leg: the table
+	// is not a root, and the module says so by name.
+	roots := jsFixedUnitRoots(u)
+	if len(roots) != 1 || roots[0].Name != "Small" {
+		var got []string
+		for _, st := range roots {
+			got = append(got, st.Name)
+		}
+		t.Fatalf("a table past the 65536-byte ceiling is NOT a fixed-form root, got roots %v", got)
+	}
+	huge := findTable(t, u, "Huge")
+	if n := fixedTypeBytes(huge); n <= ir.TableFixedRecordMaxBytes {
+		t.Fatalf("the fixture's body is %d bytes, which is not past the %d-byte ceiling", n, ir.TableFixedRecordMaxBytes)
+	}
+	if fixedRefusal(huge) == "" {
+		t.Error("a table past §3.4's ceiling is refused BY NAME, so the module can say which table and why")
+	}
+
+	// THE LOCK'S ENTRY FOR IT IS HANDED IN, exactly as `lockfile.Lineage` hands
+	// the one `tables/examples/schema.lock` holds for `WideBlob`: the layout the
+	// walk computes over the whole body, and the record size that body accounts
+	// for. GENERATE MUST NOT REFUSE IT — it is not an entry of this form.
+	w := fixedWalkRoot(huge)
+	layout := fixedLayoutBytes(w.entries)
+	overCeiling := FixedLineageEntry{
+		Wire:   ir.TableFixedLayoutHash(layout, huge),
+		Layout: layout,
+		Record: fixedHashBytes + fixedTypeBytes(huge),
+	}
+	own, ok := FixedLineageOf(u, "Small")
+	if !ok {
+		t.Fatal("no lineage entry for Small")
+	}
+	files, err := GenerateLineage(u, map[string][]FixedLineageEntry{
+		"Small": {own},
+		"Huge":  {overCeiling},
+	})
+	if err != nil {
+		t.Fatalf("a lineage entry for a table with NO FORM must not fail the build: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("the unit has a fixed root, so a module is written")
+	}
+
+	// AND NOTHING OF IT IS EMITTED: no known layout, no plan, no body size. The
+	// line naming the refusal is the whole of what `Huge` gets.
+	base64Layout := fixedLayoutBase64(layout)
+	sawRefusalLine := false
+	for name, body := range files {
+		src := string(body)
+		for _, bad := range []string{
+			"HugeFixedBodyBytes", "HugeFixedRecordBytes", "HugeFixedLayout",
+			"HugeFixedKnownLayout", "HugeFixedWriteBody", "HugeFixedDecode",
+			base64Layout,
+		} {
+			if strings.Contains(src, bad) {
+				t.Errorf("%s names %q — a table with no fixed form has no fixed surface and no known layout", name, bad)
+			}
+		}
+		sawRefusalLine = sawRefusalLine || strings.Contains(src, "table Huge has NO FIXED FORM in JavaScript")
+	}
+	if !sawRefusalLine {
+		t.Error("NAMED, NEVER SILENT: a generated module says which table has no fixed form and why")
+	}
+}
