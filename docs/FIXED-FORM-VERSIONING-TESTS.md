@@ -50,7 +50,8 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, `clamped` == 0 | the range |
 | `range_added` | `int32` | — | `int32 \| 0..100`: "range added where none was" | — | — |
 | `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the width |
-| `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed" | the raw scaled value exact | the width |
+| `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed (8 -> 4)"; `fixed(12,4)` from `fixed(8,8)`: "F changed" (I + F EQUALS a storage width per SPEC §4.6, so with F held a narrowed I IS a narrowed kind, and the only same-storage move is I against F) | the raw scaled value exact | the width |
+| `fixed_I_grow_element` | `[4]fixed(12,4)` | `[4]fixed(28,4)` | `[4]fixed(12,4)` from `[4]fixed(28,4)`: "element I narrowed (28 -> 12)" | as the scalar row, per slot | the element width |
 | `optional_add` | `T` | `?T` | `T` from `?T`: "optional removed" | present == 1, value exact | the present byte |
 | `nested_append` | `Root { v Vec }`, `Vec {x,y,z}` | `Vec {x,y,z,w}` | `Vec {x,y}`: "field removed" (in the nested type, named as `Root: Vec.z`) | as `field_append`, inside Root | the field Vec.w |
 | `default_change` | `a int32 = 1` | — | `a int32 = 2`: "default changed" | — | — |
