@@ -37,8 +37,16 @@ const (
 // fixedNoGuard is the guard an entry that belongs to no union arm carries.
 const fixedNoGuard = -1
 
-// fixedPlanEntry is one plan entry, in the eight lanes the Dart runtime reads
+// fixedPlanEntry is one plan entry, in the nine lanes the Dart runtime reads
 // it through.
+//
+// argw IS THE GUARD'S WIDTH IN BYTES and it is the ninth lane. A union tag is
+// one, two, four or eight bytes wide and the guard is compared at ALL of them:
+// tested at its first byte, a foreign tag of 0x0101 fires arm 1 and runs that
+// arm's entries over a stranger's record — wrong bytes on the IDENTITY plan as
+// much as on a compiled one (docs/FIXED-FORM-ALGORITHM.md §5.2, THE GUARD'S
+// WIDTH; §7 fix 12). An entry under no guard carries 1, and zero reads as one at
+// run time, so a plan laid down before this lane existed still reads.
 type fixedPlanEntry struct {
 	op    int
 	src   int64
@@ -47,20 +55,30 @@ type fixedPlanEntry struct {
 	aux   int64
 	guard int64
 	arg   int
+	argw  int
 	meta  int
 	note  string
 }
 
 type fixedPlanBuild struct {
 	entries []fixedPlanEntry
+	// argw is THE CURRENT UNION'S TAG WIDTH, stamped onto every entry pushed
+	// beneath it. One outside a union; the union case saves it, sets its own and
+	// restores it, so a nested union's arms carry their OWN tag's width.
+	argw int
 }
 
-func (p *fixedPlanBuild) push(e fixedPlanEntry) { p.entries = append(p.entries, e) }
+func (p *fixedPlanBuild) push(e fixedPlanEntry) {
+	if e.argw = p.argw; e.argw <= 0 {
+		e.argw = 1
+	}
+	p.entries = append(p.entries, e)
+}
 
 // fixedIdentityPlan is this type's leaf walk, coalesced — the same coalescer
 // the plan compiler runs, so the two are one array read by one loop.
 func fixedIdentityPlan(st *ir.Struct) []fixedPlanEntry {
-	p := &fixedPlanBuild{}
+	p := &fixedPlanBuild{argw: 1}
 	var at int64
 	for _, f := range st.Fields {
 		fixedPlanField(p, f, at)
@@ -136,9 +154,13 @@ func fixedPlanElement(p *fixedPlanBuild, f *ir.Field, src, dst, guard int64, arg
 			tag := fixedUnionTagBytes(r)
 			p.push(fixedPlanEntry{op: fixedOpCopy, src: src, dst: dst, size: tag,
 				guard: guard, arg: arg, note: "the tag"})
+			// THE ARMS' GUARD IS THIS UNION'S TAG, AT THIS UNION'S WIDTH.
+			saved := p.argw
+			p.argw = int(tag)
 			for i, v := range r.Variants {
 				fixedPlanElement(p, v.F, src+tag, dst+tag, src, i+1)
 			}
+			p.argw = saved
 			return
 		}
 	}
@@ -251,7 +273,7 @@ func fixedCoalesce(in []fixedPlanEntry) []fixedPlanEntry {
 		if n := len(out); n > 0 {
 			p := &out[n-1]
 			if p.op == fixedOpCopy && e.op == fixedOpCopy && p.guard == e.guard && p.arg == e.arg &&
-				p.src+p.size == e.src && p.dst+p.size == e.dst {
+				p.argw == e.argw && p.src+p.size == e.src && p.dst+p.size == e.dst {
 				p.size += e.size
 				continue
 			}

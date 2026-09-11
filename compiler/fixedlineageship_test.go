@@ -32,12 +32,12 @@ import (
 )
 
 // fixedLineageShipTargets are the targets whose table backend takes the
-// lineage as data today: `c`, `cs`, `go`, `java`, `js` and `rust` through
-// `GenerateLineage`, and `cpp` through the lock the driver now opens for it.
-// Every other built-in target's table backend has no second entry point yet
-// (dart, elixir); their `GenerateLineage` lives on the open port branches,
+// lineage as data today: `c`, `cs`, `dart`, `go`, `java`, `js` and `rust`
+// through `GenerateLineage`, and `cpp` through the lock the driver now opens
+// for it. Every other built-in target's table backend has no second entry point
+// yet (elixir is here); their `GenerateLineage` lives on the open port branches,
 // and the day one lands its target joins this list and nothing else changes.
-var fixedLineageShipTargets = []string{"c", "cpp", "cs", "elixir", "go", "java", "js", "rust"}
+var fixedLineageShipTargets = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "rust"}
 
 // fixedLineageHashSpelling is ONE layout hash as the target's emitted source
 // writes it. It is a per-target NEEDLE and not a per-target assertion: the
@@ -57,8 +57,23 @@ var fixedLineageShipTargets = []string{"c", "cpp", "cs", "elixir", "go", "java",
 // shape, emitted that way rather than checked afterwards, and a hex literal
 // there is written in UPPER case — so a lower-case needle found nothing in a
 // module that carried every entry.
+//
+// The DART leg is the third. Its emitter writes a 64-bit constant through
+// `fixedDartHex`, which spells a value that fits Dart's signed 63-bit smi range
+// with NO zero padding — `0x1f3a…` and not `0x00001f3a…` — because the padded
+// form of a hash with the high bit set is the only one that leg needs. So the
+// needle is that same function's spelling and not a fixed width.
+func fixedLineageDartHex(hash uint64) string {
+	if hash <= 0x7fffffffffffffff {
+		return fmt.Sprintf("0x%x", hash)
+	}
+	return fmt.Sprintf("0x%016x", hash)
+}
+
 func fixedLineageHashSpelling(target string, hash uint64) string {
 	switch target {
+	case "dart":
+		return fixedLineageDartHex(hash)
 	case "js":
 		return fmt.Sprintf("0x%08x, 0x%08x", uint32(hash), uint32(hash>>32))
 	case "elixir":
@@ -254,6 +269,13 @@ var fixedLineageShipKnownRecord = map[string]func(hash uint64) *regexp.Regexp{
 	// inside the call — then the layout's byte length and the record size last.
 	"js": func(h uint64) *regexp.Regexp {
 		return regexp.MustCompile(fmt.Sprintf(`new TableFixedKnownLayout\(0x%08x, 0x%08x, (?:\w+FixedLayout|TableFixedDecodeLayout\(\s*"[^"]*"\)), \d+, (\d+)\)`, uint32(h), uint32(h>>32)))
+	},
+	// internal/codegen/darttable/fixedmodule.go: one constructor call per
+	// entry — the hash as `fixedDartHex` spells it, then the layout as a
+	// `Uint8List.fromList(const <int>[…])` whose bytes run over many lines, then
+	// the layout's byte length and the record size last.
+	"dart": func(h uint64) *regexp.Regexp {
+		return regexp.MustCompile(fmt.Sprintf(`TableFixedKnownLayout\(%s, Uint8List\.fromList\(const <int>\[[^\]]*\]\), \d+, (\d+)\)`, regexp.QuoteMeta(fixedLineageDartHex(h))))
 	},
 	// internal/codegen/elixirtable/fixedelixir.go: one map per entry, §5.9 #19's
 	// four members on their own lines and in its order — the hash in UPPER-case
