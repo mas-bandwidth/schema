@@ -963,6 +963,7 @@ function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
 //   66..69  effect's widest arm     70..71  tail
 const OPT_PRESENT = 20, OPT_V = 21, NUM_PRESENT = 37, MARK_PRESENT = 42;
 const WRAP_LEAF_PRESENT = 48, WRAP_LEAF_V = 49, EFFECT_TAG = 65;
+const PLAIN = 16, MARK = MARK_PRESENT + 1, BOOST_POWER = EFFECT_TAG + 1;
 
 // setText lays a string(N) member down the way every port must: the bytes,
 // then the USED LENGTH beside them.
@@ -1708,13 +1709,13 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     const b = body;
     bad[b + OPT_PRESENT] = 7;
-    bad[b + OPT_V] = 0x39; bad[b + OPT_V + 1] = 0x30; // 12345, so a projection is visible
+    bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03; // 999, in Leaf.v's range, so a projection is visible
     bad[b + WRAP_LEAF_PRESENT] = 0xff;
     bad[b + WRAP_LEAF_V] = 0x2a;
     bad[b + NUM_PRESENT] = 2;
     bad[b + MARK_PRESENT] = 0x80;
     const { n, v, r } = load(bad);
-    check(n === 1 && v.OptPresent && v.Opt.V === 12345,
+    check(n === 1 && v.OptPresent && v.Opt.V === 999,
       `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.OptPresent}, ${v.Opt.V})`);
     check(v.Wrap.LeafPresent && v.Wrap.Leaf.V === 42,
       "NEGATIVE CONTROL: 0xff inside a nested table reads as present too");
@@ -1753,9 +1754,9 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     const b = body;
     bad[b + OPT_PRESENT] = 7;
-    bad[b + OPT_V] = 0x39; bad[b + OPT_V + 1] = 0x30;
+    bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03;
     const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.OptPresent && v.Opt.V === 12345,
+    check(n === 1 && v.OptPresent && v.Opt.V === 999,
       "NEGATIVE CONTROL: a present byte of 7 reads as present through a COMPILED plan too");
   }
   {
@@ -1792,6 +1793,82 @@ function optionalControls(check, o, dir) {
     const { n, v } = load(bad, fo2, fo2home);
     check(n === 1 && v.Effect.Type === 0,
       "a union tag beyond the arm count is None on the COMPILED path too, by the guard matching nothing");
+  }
+
+  // A RANGED INTEGER CLAMPS ON LOAD AND COUNTS. Identity is one OP_COPY, so
+  // the plan never holds the bound; the projection is the pass both paths
+  // share. `plain` is `int32 | min = 0, max = 1000`.
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 1000,
+      `NEGATIVE CONTROL: a ranged integer past max lands as this reader's max (got ${v.Plain})`);
+    check(r.clamped === 1, `NEGATIVE CONTROL: a ranged integer past max counts one clamped (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      "NEGATIVE CONTROL: a ranged clamp is an event and not a refusal — the record still reads");
+  }
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, -1, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 0 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer below min lands as this reader's min (got ${v.Plain}, clamped ${r.clamped})`);
+  }
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 1000, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 1000 && r.clamped === 0,
+      "NEGATIVE CONTROL: a ranged integer AT the bound is not a clamp and moves no counter");
+  }
+  {
+    // the same bound through a COMPILED plan: same-size is a copy, so the
+    // decode is what holds it, on this path too
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
+    const { n, v, r } = load(bad, fo2, fo2home);
+    check(n === 1 && v.Plain2 === 1000 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer past max clamps through a COMPILED plan too (got ${v.Plain2}, clamped ${r.clamped})`);
+  }
+  {
+    // a ranged field under a live union arm, identity COPY of the whole body
+    const bad = oneRecord(0);
+    new DataView(bad.buffer).setInt32(body + BOOST_POWER, 9999, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Effect.Type === 1 && v.Effect.Boost.Power === 1000 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer under a live arm clamps (got power ${v.Effect.Boost.Power}, clamped ${r.clamped})`);
+  }
+
+  // AN ENUM ORDINAL PAST THE TOP VALUE LANDS None AND COUNTS ONE clamped.
+  // Record 0 has `mark` PRESENT as Gold (2). Identity copies the ordinal raw.
+  {
+    const bad = oneRecord(0);
+    bad[body + MARK] = 9;
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.MarkPresent && v.Mark === 0,
+      `NEGATIVE CONTROL: an enum ordinal past the last variant lands as None (got ${v.Mark})`);
+    check(r.clamped === 1, `NEGATIVE CONTROL: an enum ordinal past the last variant counts one clamped (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      "NEGATIVE CONTROL: an enum ordinal past the set is an event and not a refusal — the record still reads");
+    check(v.Tail === 16, "NEGATIVE CONTROL: the rest of the record still lands beside a clamped enum");
+  }
+  {
+    const bad = oneRecord(0);
+    bad[body + MARK] = 2;
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.MarkPresent && v.Mark === 2 && r.clamped === 0,
+      "NEGATIVE CONTROL: an enum ordinal in the set is not a clamp and moves no counter");
+  }
+  {
+    // compiled path: kind 30 remaps through an ordinal op, so a value past
+    // this reader's table is already None in the image and the decode's
+    // comparison does not fire. The consumer still sees None.
+    const bad = oneRecord(0);
+    bad[body + MARK] = 9;
+    const { n, v } = load(bad, fo2, fo2home);
+    check(n === 1 && v.MarkPresent && v.Mark === 0,
+      "NEGATIVE CONTROL: an enum ordinal past the last variant is None on the COMPILED path too");
   }
 }
 
