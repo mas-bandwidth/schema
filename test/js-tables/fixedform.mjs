@@ -76,10 +76,17 @@ const LAYOUT_AT = 20;
 // entry is handed to the reader as its lock — and §1.1's seven rules are owed as
 // the LOCK's validation of what it records.
 //
-// THREE OF THESE FUNCTIONS ARE MIXED and the skip over-reaches: bytesArrayConvention,
+// THREE OF THESE FUNCTIONS WERE MIXED and the skip over-reached: bytesArrayConvention,
 // holePrefill and referenceOracle each assert an IDENTITY half that §5 does not
-// touch beside a COMPILED half that it retires. Splitting them is named here and
-// CARDED rather than folded into a green (§5.9 #31).
+// touch beside a COMPILED half that it retires, and a skip over the whole
+// function took the identity half down with it — including the two assertions
+// NOTHING ELSE ON THIS LEG MAKES: the reference's own fx1.bin read back byte for
+// byte, and §3.4's "the slack is zero" over CONSTRUCTED storage. THE THREE ARE
+// NOW SPLIT, one function per half: `referenceOracleIdentity`, `holePrefillIdentity`
+// and `bytesArrayConventionIdentity` RUN, and `referenceOracleCompiled`,
+// `holePrefillCompiled` and `bytesArrayConventionCompiled` are retired BY NAME
+// beside the rest. The compiled halves were not un-retired to do it: §5 retires
+// exactly the walk of a stranger's layout and nothing less.
 let retiredCount = 0;
 function retired(name, why) {
   console.log("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): " + name + " — " + why);
@@ -106,14 +113,17 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   forgedCounts(check, bench, fixed, corpusDir);
   guardComparedAtArgW(check, fx1home);
   retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
-  retired("bytesArrayConvention", "its COMPILED half walks a stranger's layout; the identity half is owed a split");
+  bytesArrayConventionIdentity(check, fx1, fx1home);
+  retired("bytesArrayConventionCompiled", "FX2 over an FX1 record and over the reference's fx1.bin, both a stranger's layout through a compiled plan; owed on the lineage harness");
   liveCountSlack(check, fx1, fx1home);
-  retired("holePrefill", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
+  holePrefillIdentity(check, fx1, fx1home);
+  retired("holePrefillCompiled", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
   retired("negativeControls", "every control reads a stranger's layout through a compiled plan; owed on the lineage harness");
   retired("layoutValidation", "§1.1's seven rules fired at READ time; owed as the LOCK's validation of what it records");
   retired("unionArmText", "the guard and flavour lanes across two generations with no lineage; owed on the lineage harness");
   if (oracleDir) {
-    retired("referenceOracle", "its COMPILED half reads the reference's FX2 file with no lineage entry; the byte half is owed a split");
+    referenceOracleIdentity(check, fx1, fx1home, oracleDir);
+    retired("referenceOracleCompiled", "it reads the reference's FX2 file with no lineage entry; owed on the lineage harness");
   }
 
   if (optionalDir) {
@@ -1138,7 +1148,15 @@ function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
 // from CONSTRUCTED storage instead, and `label` has a declared default, so
 // record 1's `label_length = 0` means the whole span is slack over storage that
 // holds "fx". A port that wrote the span would put those two bytes on the wire.
-function referenceOracle(check, fx1, fx2, fx1home, oracleDir) {
+//
+// THE SPLIT (§5.6, §5.9 #31): the fx1.bin block below is THIS BUILD'S OWN layout
+// — its own hash, its own identity plan, its own writer — and §5 does not touch
+// one byte of it, so it RUNS. Nothing else on this leg makes its two load-bearing
+// assertions: the reference's own file saved back IDENTICAL, and "the slack is
+// zero" over records built from CONSTRUCTED storage rather than read from a file.
+// `referenceOracleCompiled`, below it, is the half §5 retires: FX1 reading the
+// reference's FX2 file with no lineage entry for FX2's hash.
+function referenceOracleIdentity(check, fx1, fx1home, oracleDir) {
   const read = (name) => {
     try {
       return new Uint8Array(readFileSync(resolve(oracleDir, name)));
@@ -1221,6 +1239,25 @@ function referenceOracle(check, fx1, fx2, fx1home, oracleDir) {
       `reference oracle: fx1.bin built from CONSTRUCTED storage is identical to the C++ reference's — the slack is zero — first byte differing from the C++ reference at ${bat}` +
       (bat < 0 ? "" : ` (ours 0x${built[bat].toString(16)}, reference 0x${file[bat].toString(16)})`));
   }
+}
+
+// RETIRED BY §5.6 (called by name at the call site, kept compiling, §5.9 #23):
+// fx2.bin is ANOTHER WRITER'S LAYOUT and FX1 has no lineage entry for its hash,
+// so under §5 this file comes back layout_newer. The coverage is owed on the
+// lineage harness, where FX2's entry is HANDED to the reader as its lock.
+function referenceOracleCompiled(check, fx1, fx1home, oracleDir) {
+  const read = (name) => {
+    try {
+      return new Uint8Array(readFileSync(resolve(oracleDir, name)));
+    } catch {
+      return null;
+    }
+  };
+  const textOf = (buf, n) => {
+    let out = "";
+    for (let i = 0; i < n; i++) { out += String.fromCharCode(buf[i]); }
+    return out;
+  };
 
   // ---- fx2.bin: ANOTHER WRITER'S LAYOUT, so the plan path reads it
   {
@@ -1290,14 +1327,23 @@ function liveCountSlack(check, fx1, fx1home) {
     `live-count: clamped counts 0 not 3 (got ${r.clamped})`);
 }
 
-// HOLE PREFILL: identity's hole list is empty (one COPY of the whole body).
-// Compiled FX2→FX1 has holes for Gone; a dirty image still reads the default.
-function holePrefill(check, fx1, fx2, fx1home, fx2home) {
+// HOLE PREFILL, THE IDENTITY HALF: §5.3 step 8's own text, "identity's hole list
+// is empty", because the identity plan is ONE COPY of the whole body and there is
+// nothing left unwritten to prefill. There is no identity FLAG in the record loop
+// — THE EMPTY LIST IS WHAT SKIPS THE WORK — so this assertion is the only thing
+// standing between that and a prefill that runs on every identity read. It walks
+// no stranger's layout: the plan, the cover and the holes are all this build's own.
+function holePrefillIdentity(check, fx1, fx1home) {
   const identity = new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0, 1]);
   const idPlan = fx1.FxRootFixedNewPlan();
   const idHoles = fx1home.TableFixedHoles(identity, 1, idPlan.cover, idPlan.holes);
   check(idHoles === 0, `hole prefill: identity's hole list is empty, got ${idHoles}`);
+}
 
+// RETIRED BY §5.6: compiled FX2→FX1 has holes for Gone and a dirty image still
+// reads the default — through a plan compiled from a FILE, which is the walk §5
+// retires. Owed on the lineage harness, where the 0x5A poison now lies.
+function holePrefillCompiled(check, fx1, fx2, fx1home, fx2home) {
   const two = new fx2home.FxRoot();
   two.Keep = 5150;
   two.Narrow = 70000;
@@ -1342,7 +1388,48 @@ function holePrefill(check, fx1, fx2, fx1home, fx2home) {
 //
 // FX2's `blob` is the same field at the same wire id, so an FX2 reader over an
 // FX1 record is the compiled path over a bytes(N) row this port wrote itself.
-function bytesArrayConvention(check, fx1, fx2, fx1home, fx2home, oracleDir) {
+//
+// THE SPLIT (§5.6, §5.9 #31): the INSTRUMENT here is the two paths against each
+// other, and the compiled path is a stranger's layout, so the instrument itself
+// is retired — `bytesArrayConventionCompiled` below. What §5 does not touch, and
+// what runs here, is the IDENTITY path's own landing: this leg writes a partly
+// used `bytes(N)` with its own writer, reads it back through its own identity
+// plan, and the used length, the content and the slack are all its own facts. A
+// swapped destination pair is not what this half catches; a writer or an identity
+// reader that lost the used length is.
+function bytesArrayConventionIdentity(check, fx1, fx1home) {
+  const one = new fx1home.FxRoot();
+  one.Keep = 4242; one.Narrow = 40000; one.Renamed = 321; one.Gone = 654;
+  one.Nested.A = 111; one.Nested.B = 222;
+  one.LabelLength = setText(one.Label, "fx1");
+  one.Marks[0] = 101; one.Marks[1] = 202; one.MarksCount = 2;
+  one.Blob[0] = 0xDE; one.Blob[1] = 0xAD; one.Blob[2] = 0xBE; one.Blob[3] = 0xEF;
+  one.BlobLength = 4;
+
+  const w1 = new Uint8Array(fx1.FxRootFixedMeasure(1));
+  check(fx1.FxRootFixedSave([one], 1, w1) === w1.length,
+    "bytes(N) identity: FX1 save of a partly-used blob");
+
+  const ident = [new fx1home.FxRoot()];
+  const ri = new fx1home.TableFixedReport();
+  check(fx1.FxRootFixedLoad(ident, 1, w1, w1.length, fx1.FxRootFixedNewPlan(), ri) === 1,
+    "bytes(N) identity: the identity path reads the record");
+  check(!ri.malformed && ri.refused === 0,
+    "bytes(N) identity: the identity read moves no refusal counter");
+  check(ident[0].BlobLength === 4,
+    `bytes(N) identity: the used length lands, got ${ident[0].BlobLength}`);
+  check(ident[0].Blob[0] === 0xDE && ident[0].Blob[1] === 0xAD &&
+    ident[0].Blob[2] === 0xBE && ident[0].Blob[3] === 0xEF,
+    `bytes(N) identity: the blob is the one that was written — got ` +
+    `[${ident[0].Blob[0]}, ${ident[0].Blob[1]}, ${ident[0].Blob[2]}, ${ident[0].Blob[3]}], want [222, 173, 190, 239]`);
+  check(ident[0].Blob[4] === 0 && ident[0].Blob[5] === 0,
+    "bytes(N) identity: the slack behind the used length is zero");
+}
+
+// RETIRED BY §5.6: every assertion below the first save reads a record through
+// FX2's plan compiled from FX1's block, and the reference's fx1.bin the same way.
+// Owed on the lineage harness, where FX1's entry is handed to FX2 as its lock.
+function bytesArrayConventionCompiled(check, fx1, fx2, fx1home, fx2home, oracleDir) {
   // an FX1 record whose blob is PARTLY USED, so a swapped pair is loud: a used
   // length of 4 in the buffer's place would read back as a content byte, and
   // the first four content bytes in the length's place as a length of 4028645
@@ -1933,7 +2020,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const oracle = process.argv[5] ?? "build/fixedform-corpus";
   await checkFixedForm(check, generated, corpus, optional, oracle);
   if (retiredCount !== 0) {
-    console.log("retired by §5.6 and owed again: " + retiredCount + " sections, each named above");
+    console.log("retired by §5.6 and owed again: " + retiredCount + " sections, each named above — " +
+      "the COMPILED half only, now that referenceOracle, holePrefill and bytesArrayConvention " +
+      "are split and their identity halves RUN above");
   }
   if (failed) {
     console.log("FAILED");
@@ -1946,6 +2035,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     "MOVED: a fixed table reads BACKWARD and never forward (§5), so the sections " +
     "that compiled a stranger\'s layout are retired by name above and the rows are " +
     "held by internal/codegen/jstable/fixedversioning_test.go over the reference\'s " +
-    "own corpus");
+    "own corpus — and the three that were MIXED are SPLIT, so the reference\'s own " +
+    "fx1.bin still saves back identical, \"the slack is zero\" is still checked over " +
+    "CONSTRUCTED storage, and §5.3 step 8\'s empty identity hole list is still " +
+    "asserted here and not only owed");
   console.log("OK");
 }
