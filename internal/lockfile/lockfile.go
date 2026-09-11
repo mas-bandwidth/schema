@@ -97,7 +97,22 @@ import (
 // narrowed (4 -> 2)" needs them written down. They ride at the END of the
 // entry line, after `deprecated`, so a line is read left to right the way it
 // grew. v5 locks are deleted and rewritten, the same sentence v1 took.
-const Version = 6
+// 7 is THE LINEAGE (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.6, §11.7):
+// one `lineage` line per layout a fixed table has had, oldest first, each with
+// the WIRE hash the file header carries, the layout bytes, the §13 definitions
+// digest, the record size, a retired mark and a reason (lineage.go). It is what
+// COMPILE reads to lay one plan per supported version down as static data, and
+// it is the first thing in this file that is HISTORY rather than a projection of
+// the declaration — so v6 locks SALVAGE (§11.8): the one layout a v6 lock holds
+// becomes the first lineage entry and nothing in the file is deleted. That
+// sentence replaces "delete it and write it again" from here on, because
+// deleting this file now means wiping a fleet's lineage.
+const Version = 7
+
+// salvageFrom is the oldest rendering version this compiler reads and carries
+// forward rather than refusing (§11.8). Below it a lock holds nothing a hand or
+// this command can turn into a lineage.
+const salvageFrom = 6
 
 // FileName is the lock's name beside the unit's schema files. Unlike the
 // tables baseline, its presence is not what turns the check on for a unit
@@ -147,6 +162,12 @@ type Table struct {
 	Layout uint64
 
 	Entries []Entry
+
+	// Lineage is every layout this table has had, OLDEST FIRST, the current one
+	// LAST — the record COMPILE reads (lineage.go, bill §6b and §11.7). It is
+	// filled on a FIXED table and empty on a nested `type`: a type has no file
+	// of its own and no hash a file carries, and its changes are the holder's.
+	Lineage []LineageEntry
 }
 
 // An Entry is one field of a locked record, and it is the unit the check
@@ -474,6 +495,11 @@ func (r *renderer) table(decl string, st *ir.Struct) Table {
 
 func (r *renderer) renderTable(decl string, st *ir.Struct) Table {
 	t := Table{Decl: decl, Name: st.WireName()}
+	if decl == DeclFixedTable {
+		// THE ONE LAYOUT A RENDERING KNOWS (lineage.go): the declaration's own.
+		// [Update] carries the committed history forward onto it.
+		t.Lineage = renderLineage(r.u, st)
+	}
 	layout := ir.RecordLayout(r.u, st)
 	for _, f := range st.Fields {
 		e := Entry{
@@ -868,6 +894,11 @@ func (u *Unit) Text() string {
 		for _, e := range t.Entries {
 			fmt.Fprintf(&b, "    %s\n", e.line())
 		}
+		// THE LINEAGE AFTER THE LAW, oldest first: the entries above say what
+		// the record IS, and these say every shape it has BEEN (lineage.go).
+		for _, l := range t.Lineage {
+			fmt.Fprintf(&b, "    %s\n", l.line())
+		}
 	}
 	for _, v := range u.Values {
 		fmt.Fprintf(&b, "\n%s %s values=0x%016x\n", v.Decl, v.Name, v.Hash)
@@ -925,7 +956,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s: %q is not a rendering version", where, fields[1])
 			}
-			if v != Version {
+			if v != Version && v < salvageFrom {
 				// THE ONE PARSE REFUSAL THAT IS NOT A HAND-EDIT. The
 				// rendering version is the compiler's own, so there is
 				// nothing here for a person to repair: the file is
@@ -935,6 +966,9 @@ func Parse(path string, data []byte) (*Unit, error) {
 				// this is the one case where that command needs the old file
 				// gone first.
 				return nil, fmt.Errorf("%s: this lock is rendering version %d and this compiler writes version %d — the rendering version is the compiler's own and this file holds nothing a hand can carry forward: delete it and write it again with `schema lock`", where, v, Version)
+			}
+			if v > Version {
+				return nil, fmt.Errorf("%s: this lock is rendering version %d and this compiler writes version %d — it was written by a NEWER compiler than this one, and this one cannot know what it holds: build the compiler this tree pins, or relock with it", where, v, Version)
 			}
 			u.Version = v
 		case fields[0] == "package":
@@ -972,6 +1006,20 @@ func Parse(path string, data []byte) (*Unit, error) {
 			}
 			u.Values = append(u.Values, ValueList{Decl: fields[0], Name: fields[1], Hash: h})
 			cur, curList = nil, &u.Values[len(u.Values)-1]
+		case fields[0] == "lineage":
+			// ONE LAYOUT THE TABLE HAS HAD (lineage.go). The lines are OLDEST
+			// FIRST, the current layout last, and nothing ever removes one.
+			if cur == nil {
+				return nil, fmt.Errorf("%s: a lineage line before any record line", where)
+			}
+			if cur.Decl != DeclFixedTable {
+				return nil, fmt.Errorf("%s: a %s carries no lineage — a nested record has no file of its own and no hash a file carries; its changes are the holder's layout", where, cur.Decl)
+			}
+			l, err := parseLineage(line)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", where, err)
+			}
+			cur.Lineage = append(cur.Lineage, l)
 		case fields[0] == "field":
 			if cur == nil {
 				return nil, fmt.Errorf("%s: a field line before any record line", where)
@@ -1012,6 +1060,17 @@ func Parse(path string, data []byte) (*Unit, error) {
 	}
 	if u.Version == 0 {
 		return nil, fmt.Errorf("%s: empty — a %s begins with %q and its rendering version", path, FileName, magic)
+	}
+	// EVERY FIXED TABLE CARRIES ITS LINEAGE, from the rendering version that
+	// introduced it. An older lock is salvage (§11.8) and its lineage is filled
+	// from the declaration it is held against.
+	if u.Version == Version {
+		for i := range u.Tables {
+			t := &u.Tables[i]
+			if t.Decl == DeclFixedTable && len(t.Lineage) == 0 {
+				return nil, fmt.Errorf("%s: fixed table %s carries no lineage line — every fixed table's layouts are the record a reader is compiled from (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.7)", path, t.Name)
+			}
+		}
 	}
 	return u, nil
 }

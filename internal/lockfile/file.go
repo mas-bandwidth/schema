@@ -88,8 +88,12 @@ func Check(u *ir.Unit, paths []string) []error {
 	if locked.Package != u.Package {
 		return []error{fmt.Errorf("%s: lock is for package %s, this unit is package %s — the lock belongs to the unit it sits beside", path, locked.Package, u.Package)}
 	}
+	live := Render(u)
+	// A LOCK FROM AN OLDER RENDERING IS SALVAGE, NOT A DELETE (§11.8): it holds
+	// one layout and no lineage, and that layout is this declaration's.
+	salvageLineage(locked, live)
 	var errs []error
-	for _, e := range Diff(locked, Render(u), Current) {
+	for _, e := range Diff(locked, live, Current) {
 		errs = append(errs, fmt.Errorf("%s: %w", path, e))
 	}
 	return errs
@@ -134,9 +138,18 @@ func Update(u *ir.Unit, paths []string) (path string, rewrote bool, err error) {
 		if locked.Package != u.Package {
 			return "", false, fmt.Errorf("%s: lock is for package %s, this unit is package %s — the lock belongs to the unit it sits beside", path, locked.Package, u.Package)
 		}
+		// THE SALVAGE FIRST (§11.8): a lock written before the lineage existed
+		// holds one layout and no history, and the single layout it holds is
+		// this declaration's — so it becomes the first lineage entry and
+		// nothing in the file is deleted.
+		salvageLineage(locked, live)
 		if errs := Diff(locked, live, Appendable); len(errs) > 0 {
 			return "", false, fmt.Errorf("%s: %w — `schema lock` appends, and this is not an append; the lock is not a way to make the refusal go away (docs/SPEC-TABLES.md §2.10)", path, errs[0])
 		}
+		// THE HISTORY CARRIED FORWARD onto what is about to be written: every
+		// locked layout stays, with its retired mark and its reason, and the
+		// declaration's own layout is appended when the hash has MOVED (§11.6).
+		mergeLineage(locked, live)
 		if live.Text() == string(data) {
 			return path, false, nil
 		}

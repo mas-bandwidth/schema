@@ -52,6 +52,13 @@ const (
 // promises nothing. Under [Current] it is a stale lock, like any other drift.
 func Diff(locked, live *Unit, policy Policy) []error {
 	var errs []error
+	// THE LINEAGE IS NEVER THE ACCOUNT OF A CHANGE, only its consequence: a
+	// root's layout hash moves because a field moved or a nested type, enum,
+	// flags mask or union moved, and that is the sentence a person acts on. So
+	// these are held back and reported only when nothing else refused — which
+	// is the case the record itself is wrong in: a lineage a hand truncated, or
+	// a lock from a rendering that had none.
+	var lineage []error
 	for i := range locked.Tables {
 		lk := &locked.Tables[i]
 		// THE SELF-CONSISTENCY CHECK, FIRST. The layout hash and the entries
@@ -71,6 +78,14 @@ func Diff(locked, live *Unit, policy Policy) []error {
 		}
 		if err := diffTable(lk, lv, policy); err != nil {
 			errs = append(errs, err)
+			continue
+		}
+		// THE LINEAGE, after the law (lineage.go): the law says the declaration
+		// may stand where it stands, and the lineage says the record ends there.
+		if lk.Decl == DeclFixedTable {
+			if err := diffLineage(lk, lv, policy); err != nil {
+				lineage = append(lineage, err)
+			}
 		}
 	}
 	for i := range locked.Values {
@@ -105,6 +120,9 @@ func Diff(locked, live *Unit, policy Policy) []error {
 				errs = append(errs, stale(lv.Decl, lv.Name, valueName(lv, 0), "in the declaration and not in the lock"))
 			}
 		}
+	}
+	if len(errs) == 0 {
+		errs = lineage
 	}
 	return errs
 }

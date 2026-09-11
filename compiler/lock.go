@@ -24,6 +24,15 @@ func SchemaLockText(u *ir.Unit) string {
 	return lockfile.Render(u).Text()
 }
 
+// SchemaLockWarnings is the committed lock's advisories — today the bill's
+// §11.6 bound on how many layouts one fixed table has had. They are warnings
+// and never refusals: COMPILE lays one plan per supported layout down as static
+// data in every leg, so a long lineage is a cost a person should see and decide
+// about, not a break.
+func SchemaLockWarnings(paths []string) []string {
+	return lockfile.Warnings(paths)
+}
+
 // UpdateSchemaLock writes the unit's committed lock — the schema.lock beside
 // its schema files. It is the only writer of that file, and it only ever
 // appends entries, adds tables and flips `deprecated` on: it runs the check's

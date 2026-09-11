@@ -215,6 +215,11 @@ func main() {
 		if err != nil {
 			fail(err)
 		}
+		// THE LINEAGE'S OWN ADVISORY (docs/FIXED-FORM-BILL-READS-BACKWARD.md
+		// §11.6), said where the person who moved the file sees it.
+		for _, w := range compiler.SchemaLockWarnings(paths) {
+			fmt.Fprintln(os.Stderr, "warning: "+w)
+		}
 		if verbose {
 			if rewrote {
 				fmt.Printf("wrote %s\n", path)

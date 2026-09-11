@@ -1,8 +1,10 @@
-schema-lock 6
+schema-lock 7
 package armdemo
 
 fixed table Node layout=0x3157106757693e8a
     field v id=0xaf63eb4c86020609 kind=4 width=4 default=0
+    lineage wire=0x79d3bdf48b9c6647 record=4 bytes=020000008db6f6d2c61cbd660d0400000001000000090602864ceb63af040400000000000000
 
 fixed table Only layout=0x4593a4b74e06f09e
     field w id=0xaf63ea4c86020456 kind=4 width=4 default=0
+    lineage wire=0x2078b2b4cf504f6e record=4 bytes=02000000970b5f6cc0dbba310d0400000001000000560402864cea63af040400000000000000

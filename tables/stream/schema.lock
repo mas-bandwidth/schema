@@ -1,5 +1,6 @@
-schema-lock 6
+schema-lock 7
 package streamdemo
 
 fixed table Header layout=0xc02a8f516086a873
     field name id=0xc4bcadba8e631b86 kind=12 width=24 default=bytes: cap=16
+    lineage wire=0xaaf88cbc7745c547 record=20 bytes=0200000040abcff0c33fd8750d1400000001000000861b638ebaadbcc40c1400000000000000
