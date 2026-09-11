@@ -97,7 +97,7 @@ compiler, every run. Two packages were carrying almost all of it:
 | --- | --- | --- |
 | `go test ./compiler/` | 199 s | **18 s** |
 | `go test ./internal/codegen/gotable/` | 163 s | **2.8 s** |
-| `go test ./internal/codegen/...` (19 packages) | 164 s | **~45 s** |
+| `go test ./internal/codegen/...` (19 packages) | 164 s | **22 s** (slowest: `ctable`, 17 s) |
 | `make tables-cs-leg` | 74 s | unchanged — now also `-debug` / `-release`, ~37 s each |
 
 Nothing was dropped. `internal/slowtest` gates the toolchain half:
