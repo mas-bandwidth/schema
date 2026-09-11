@@ -19,7 +19,6 @@ package lockfile
 import (
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 // The scalar LADDERS (§2: "at most the reader's, same signedness ladder"). A
@@ -391,6 +390,3 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 	}
 	return widened, what, nil
 }
-
-// ensure the rule phrases stay greppable from the docs that name them
-var _ = strings.TrimSpace

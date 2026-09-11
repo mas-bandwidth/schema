@@ -122,8 +122,8 @@ func gone(lk, lv *Table) error {
 		if lk.Decl == DeclType && lv.Decl == DeclFixedTable {
 			rule = "fixed added"
 		}
-		return fmt.Errorf("%s %s is %s %s in the declaration: %s — the `fixed` keyword is a FORM and not a version: the fixed record and the variable table are two wires, and neither reads the other's bytes (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); a change of form is a NEW table under a NEW name",
-			lk.Decl, lk.Name, article(lv.Decl), lv.Decl, rule)
+		return fmt.Errorf("%s %s is a %s in the declaration: %s — the `fixed` keyword is a FORM and not a version: the fixed record and the variable table are two wires, and neither reads the other's bytes (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); a change of form is a NEW table under a NEW name",
+			lk.Decl, lk.Name, lv.Decl, rule)
 	}
 	if lk.Decl == DeclFixedTable {
 		return fmt.Errorf("fixed table %s is in the lock and this unit no longer declares it as a fixed table: fixed removed — a fixed table's layout is a promise to every record already written, and a promise is not withdrawn; compaction is a NEW table under a NEW name (docs/SPEC-TABLES.md §2.10)",
@@ -297,12 +297,4 @@ func stale(decl, name, line, what string) error {
 	}
 	return fmt.Errorf("%s %s — the lock is the committed record of what a fixed table's readers stand on, and this declaration has moved past it: an append, a new block and a deprecation are the changes the rule allows, and a change the rule allows is still a change the record must carry (docs/SPEC-TABLES.md §2.10); write it with `schema lock`",
 		subject, what)
-}
-
-// article is the word in front of a declaration keyword in a sentence.
-func article(decl string) string {
-	if decl == DeclFixedTable {
-		return "a"
-	}
-	return "a"
 }
