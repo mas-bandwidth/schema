@@ -9438,6 +9438,8 @@ func TableHitEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// TableHitEvent's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func TableHitEventFixedWriteBody(b []byte, value *TableHitEvent) {
 	tableFixedPut32(b[0:], uint32(value.TargetId))
 	tableFixedPut32(b[4:], uint32(value.Damage))
@@ -9468,6 +9470,8 @@ func TableChatEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// TableChatEvent's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func TableChatEventFixedWriteBody(b []byte, value *TableChatEvent) {
 	tableFixedPut32(b[0:], uint32(value.Channel))
 	tableFixedPut32(b[4:], uint32(value.Speaker))
@@ -9490,6 +9494,8 @@ func TablePickupEventFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// TablePickupEvent's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func TablePickupEventFixedWriteBody(b []byte, value *TablePickupEvent) {
 	tableFixedPut32(b[0:], uint32(value.ItemId))
 	tableFixedPut32(b[4:], uint32(value.Amount))
@@ -9686,6 +9692,8 @@ func TableMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// TableMixed's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	tableFixedPut16(b[0:], uint16(value.ProtocolMagic))
 	tableFixedPut32(b[2:], uint32(value.Sequence))
@@ -9698,11 +9706,11 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 	tableFixedPut64(b[42:], uint64(value.FrameTick))
 	tableFixedPutF32(b[50:], value.ServerTime)
 	tableFixedPut32(b[54:], uint32(value.EntitiesCount))
-	for i := int64(0); i < 8; i++ {
+	for i := int64(0); i < int64(value.EntitiesCount); i++ {
 		TableEntityFixedWriteBody(b[58:][i*51:], &value.Entities[i])
 	}
 	tableFixedPut32(b[466:], uint32(value.StatsCount))
-	for i := int64(0); i < 80; i++ {
+	for i := int64(0); i < int64(value.StatsCount); i++ {
 		TableStatFixedWriteBody(b[470:][i*8:], &value.Stats[i])
 	}
 	tableFixedPut8(b[1110:], uint8(value.GameEvent.Type))
@@ -9718,9 +9726,9 @@ func TableMixedFixedWriteBody(b []byte, value *TableMixed) {
 		tableFixedPut8(b[1124:][i*1:], uint8(value.Loadout[i]))
 	}
 	tableFixedPut32(b[1128:], uint32(value.PlayerNameLength))
-	copy(b[1128:][4:], value.PlayerName[:])
+	copy(b[1128:][4:], value.PlayerName[:value.PlayerNameLength])
 	tableFixedPut32(b[1147:], uint32(value.PayloadLength))
-	copy(b[1147:][4:], value.Payload[:])
+	copy(b[1147:][4:], value.Payload[:value.PayloadLength])
 	tableFixedPutF32(b[1167:], value.AimX)
 	tableFixedPutF32(b[1171:], value.AimY)
 	tableFixedPutF32(b[1175:], value.AimZ)
