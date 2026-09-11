@@ -10,7 +10,7 @@
 //
 //   array_bounded_grow  array_fixed_grow  array_elem_widen  constant_grow
 //   string_grow  wstring_grow  bytes_grow  int_widen  uint_widen  float_widen
-//   range_widen  bits_grow  fixed_I_grow  optional_add
+//   range_widen  bits_grow  fixed_I_grow  fixed_I_grow_element  optional_add
 //   floor_at  floor_below  floor_raise_live
 //   hash_unknown  hash_known_bytes_differ  hash_identity  lineage_merge
 //
@@ -80,6 +80,8 @@
 #include "VNEW_bits_growTable.h"
 #include "VOLD_fixed_I_growTable.h"
 #include "VNEW_fixed_I_growTable.h"
+#include "VOLD_fixed_I_grow_elementTable.h"
+#include "VNEW_fixed_I_grow_elementTable.h"
 #include "VOLD_optional_addTable.h"
 #include "VNEW_optional_addTable.h"
 #include "VOLD_floorTable.h"
@@ -847,6 +849,56 @@ void fixed_I_grow_case()
 }
 
 // ---------------------------------------------------------------------------
+// 13b. fixed_I_grow_element — [4]fixed(12,4) -> [4]fixed(28,4). The ELEMENT's I
+//      GROWS, F IS EQUAL: the array-element port of the row above, so the scale
+//      may not move and the RAW SCALED VALUE is what must land exactly, PER SLOT.
+
+void fixed_I_grow_element_case()
+{
+    ROW_MOVES_THE_HASH( vold_fixed_i_grow_element::FixedIGrowElementFixedHash,
+                        vnew_fixed_i_grow_element::FixedIGrowElementFixedHash, "fixed_I_grow_element" );
+
+    vold_fixed_i_grow_element::FixedIGrowElement old;
+    vold_fixed_i_grow_element::FixedIGrowElementReset( old );
+    old.lead = 0xAAAAAAAAu;
+    old.vals[0] = -1;   // the one value a zero-extension gets wrong
+    old.vals[1] = -128; // the OLD element's raw floor
+    old.vals[2] = 0;
+    old.vals[3] = 112;  // the OLD element's raw ceiling
+    old.trail = 0xBBBBBBBBu;
+    std::vector<uint8_t> ob = one( old, vold_fixed_i_grow_element::FixedIGrowElementFixedMeasure,
+                                   vold_fixed_i_grow_element::FixedIGrowElementFixedSave,
+                                   "fixed_I_grow_element: OLD save" );
+    {
+        vnew_fixed_i_grow_element::FixedIGrowElement back;
+        vnew_fixed_i_grow_element::FixedIGrowElementReset( back );
+        vnew_fixed_i_grow_element::TableReport r;
+        std::vector<vnew_fixed_i_grow_element::TableFixedEntry> plan( 4096 );
+        check( vnew_fixed_i_grow_element::FixedIGrowElementFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                                      plan.data(), 4096, NULL, &r ) == 1,
+               "fixed_I_grow_element/NEW-READS-OLD: one record" );
+        check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
+               "fixed_I_grow_element/NEW-READS-OLD: lead and trail bracket the row exactly" );
+        // The element's I widens with F held: the raw scaled value every older
+        // writer packed is the same number in a wider slot, so each slot lands
+        // exactly and the element WIDENED, not kind_mismatch.
+        check( back.vals[0] == -1 && back.vals[1] == -128 && back.vals[2] == 0 && back.vals[3] == 112,
+               "fixed_I_grow_element/NEW-READS-OLD: the RAW SCALED VALUE lands exactly, per slot (F equal)" );
+        check( r.kind_mismatch == 0,
+               "fixed_I_grow_element/NEW-READS-OLD: the element widened, not kind_mismatch" );
+        check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+               "fixed_I_grow_element/NEW-READS-OLD: nothing else fired" );
+    }
+    vnew_fixed_i_grow_element::FixedIGrowElement nv;
+    vnew_fixed_i_grow_element::FixedIGrowElementReset( nv );
+    nv.vals[0] = 1000; // a raw value fixed(12,4) has no room for
+    std::vector<uint8_t> nb = one( nv, vnew_fixed_i_grow_element::FixedIGrowElementFixedMeasure,
+                                   vnew_fixed_i_grow_element::FixedIGrowElementFixedSave,
+                                   "fixed_I_grow_element: NEW save" );
+    OLD_REFUSES_NEW( vold_fixed_i_grow_element, FixedIGrowElement, "fixed_I_grow_element", nb );
+}
+
+// ---------------------------------------------------------------------------
 // 14. optional_add — T -> ?T: every old value lands PRESENT
 
 void optional_add_case()
@@ -1194,6 +1246,7 @@ int versioning_numbers_cases()
     range_widen_hostile_case();
     bits_grow_case();
     fixed_I_grow_case();
+    fixed_I_grow_element_case();
     optional_add_case();
     floor_cases();
     hash_cases();
