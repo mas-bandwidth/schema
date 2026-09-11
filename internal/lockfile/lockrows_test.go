@@ -620,3 +620,53 @@ func TestLockRenameWithoutWasRefuses(t *testing.T) {
 func TestLockRenameWithoutWasAllows(t *testing.T) {
 	rowUnchanged(t, rowTable("    a int32"), rowTable("    b int32 | was = \"a\""))
 }
+
+// ---- the record size is the entry's layout's ----
+
+// TestLockLineageRecordIsTheEntrysLayout is §5.9 #26 AT THE LOCK: the lineage
+// line's `record=` is the ROOT ENTRY's own size, and a hand that moves one
+// without the other is a LOCK BUG the build refuses HERE — never §5.3 step 9's
+// arithmetic over a file's tail. `record=` used to be range-checked alone, so a
+// hand-edited size rode into COMPILE and out to every leg as a record size no
+// layout accounts for.
+func TestLockLineageRecordIsTheEntrysLayout(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    x int32\n    y int32"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatalf("locking: %v", err)
+	}
+	path := filepath.Join(dir, lockfile.FileName)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(raw), "\n")
+	edited := false
+	for i, line := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(line), "lineage wire=") {
+			continue
+		}
+		for _, was := range strings.Fields(line) {
+			if strings.HasPrefix(was, "record=") {
+				lines[i] = strings.Replace(line, was, "record=7", 1)
+				edited = true
+			}
+		}
+		break
+	}
+	if !edited {
+		t.Fatal("the lock must carry a lineage line to edit")
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Open(paths); err == nil {
+		t.Fatal("a record size the entry's layout does not account for is a LOCK BUG and the build fails")
+	} else {
+		got := err.Error()
+		for _, want := range []string{"record=7", "entry 0 accounts for 8"} {
+			if !strings.Contains(got, want) {
+				t.Fatalf("the refusal names BOTH values: want %q in %q", want, got)
+			}
+		}
+	}
+}

@@ -6571,12 +6571,23 @@ once and cost the reader the one thing it has, a straight walk. **A PRE-ORDER
 WALK WITH NO BACK REFERENCE CANNOT EXPRESS A CYCLE**, which is why the
 validation below has no cycle rule and needs none.
 
-**THE HASH IS `fnv1a64` OVER THE LAYOUT'S BYTES, EXACTLY AS WRITTEN, and it is
-the eight bytes every record carries.** Two writers whose layouts agree byte for
-byte agree on every id, kind, size and position in the closure, which is the
-whole of what a reader needs; two writers whose layouts differ anywhere get
-different hashes and neither reads the other's record against its own
-declaration. The hash is a wire identity and not a security claim (§5's note on
+**THE HASH IS `fnv1a64` OVER THE LAYOUT'S BYTES AND THEN OVER THE DEFINITIONS
+DIGEST, and it is the eight bytes every record carries.** The layout bytes are
+the wire's shape; the DIGEST is every fact of the versioning law that is NOT
+wire shape — each range, each `flags` bit count, each `bits(N)`, each `fixed`
+`I` and `F` — folded into the same `fnv1a64` state after the last layout byte
+(the bill §13, algorithm §5.2, `ir/fixedform.go`'s `TableFixedLayoutHash`).
+**The digest NEVER rides the wire**: nothing on the wire carries it and no
+runtime recomputes the hash, so the hash is what binds it. An EMPTY digest — a
+table carrying none of those facts — leaves the hash equal to a hash of the
+layout bytes alone, which is why this reads as "the layout's bytes" wherever
+the digest is empty. Two writers whose layouts agree byte for byte AND whose
+definitions agree agree on every id, kind, size, position and bound in the
+closure, which is the whole of what a reader needs; two writers who differ
+anywhere in either get different hashes and neither reads the other's record
+against its own declaration. Without the digest `int32 | 0..100` and
+`int32 | 0..200` would hash identically and an old reader could not refuse the
+widening. The hash is a wire identity and not a security claim (§5's note on
 the same function).
 
 **THE LAYOUT IS A COMPILE-TIME CONSTANT OF THE UNIT.** Every byte is settled by
@@ -6963,21 +6974,33 @@ HASH is the hash §3 puts at offset `8`:
 
 ```
 offset  0        form byte 3
-offsets 1 .. 7   reserved, zero
+offsets 1 .. 7   reserved, zero — and a reader REFUSES a nonzero one, `malformed`
 offsets 8 .. 15  the LAYOUT HASH (u64 LE)
 offset  16       layout length (u32 LE), then the layout
                  records, back to back, to the end of the file
 ```
+
+**AND THE ORDER THE HEADER IS READ IN** (algorithm §5.3 steps 1 and 2): a file
+with NO FIRST BYTE is `malformed`; **then the form byte earns its name, BEFORE
+the file's length is measured** — a committed form-`1` file is ten bytes and a
+form-`2` batch three, so a reader that measured first would answer `malformed`
+for every real file of the two forms this section promises to name; then the
+twenty-byte minimum, `malformed`; then the seven reserved bytes, `malformed` if
+any is nonzero; and only then the layout's length and the hash.
 
 - **THE HEADER NAMES THE LAYOUT ONCE; A RECORD NAMES IT AGAIN.** The eight bytes
   at `8` are the hash of the layout behind them, and every record still carries
   its own eight-byte hash — which is what this section has said from the start
   and what the header does not replace. A record is never self-describing, and
   the two hashes are two different questions: the header's says *which layout is
-  in this file*, a record's says *which layout stamped this record*. **A HEADER
-  WHOSE HASH IS NOT THE HASH OF THE LAYOUT BEHIND IT IS REFUSED**,
-  `layout_malformed`, and it is checked LAST of the three so that a broken
-  layout is never reported as a lying header.
+  in this file*, a record's says *which layout stamped this record*. **NO
+  RUNTIME RECOMPUTES EITHER HASH** — the definitions digest is folded into it
+  and the digest is not on the wire, so a hash derived from a file's bytes
+  would be a hash of a different thing. The header's hash is taken as GIVEN and
+  the header is held to the layout behind it by a BYTE COMPARISON instead:
+  **a known hash whose layout bytes are not the lock's own bytes for that hash
+  is refused**, `layout_malformed`; a hash in no lineage entry is `layout_newer`
+  (algorithm §5.3 steps 3 to 7).
 - **THE FIXED FORM DOES NOT NEED THE PADDING AND PAYS IT ANYWAY** (§3). Nothing
   in this form memory-maps a body today; the sixteen bytes are paid so that the
   bytes do not move again when the cook and the block form join the registry
@@ -7086,9 +7109,17 @@ added moves it without anyone remembering to.
 - **THE FORM BYTE'S OWN REFUSALS, one per direction** (§3): a fixed reader given
   `1` answers `previous_form`, given `2` answers `message_form_as_file`, given a
   byte no form defines answers `newer_form`, and each moves no counter and
-  reports no damage. Beside them the HEADER's own row: a file whose header hash
-  is not the hash of the layout behind it is refused `layout_malformed`, which is
-  what proves the header's eight bytes are READ and not merely written.
+  reports no damage. **THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH**, so a
+  ten-byte form-`1` file and a three-byte form-`2` batch — the sizes those forms
+  actually commit — are each answered by NAME and not as `malformed`; only a
+  file with no first byte at all is `malformed` before the byte is read, and the
+  twenty-byte minimum comes after it. Beside them the HEADER's own row: a file
+  whose header hash is known but whose layout bytes are not the lock's bytes for
+  that hash is refused `layout_malformed`, which is what proves the header's
+  eight bytes are READ and not merely written; a hash in no entry is
+  `layout_newer` (algorithm §5.3). **AND THE SEVEN RESERVED BYTES**: any of
+  offsets `1..7` nonzero is `malformed`, refused rather than ignored, which is
+  what keeps them spendable later.
 - **THE FIRST BYTE, AT THE TOOL** (§3): `schema check` handed a saved file
   answers `FORM <n> <name>` before it says anything else about the file, or
   refuses the byte by name, over every row of the registry and over a file with
@@ -16432,7 +16463,9 @@ reaches itself.
 ### 21.5 The lineage, the floor, and the plans
 
 `schema.lock` keeps each fixed table's LINEAGE: every layout it has had, in order, with its hash and its
-layout bytes. The layout hash is the version; nothing on the wire carries a number. A FLOOR per table names
+layout bytes, and its DEFINITIONS DIGEST. The layout hash is the version — `fnv1a64` over the layout bytes
+AND THEN over that digest (§3.4, the bill §13) — and nothing on the wire carries a number; the digest does not
+ride the wire either, the hash being what binds it. A FLOOR per table names
 the oldest supported entry; the reader accepts the lineage from the floor to its own layout and refuses
 older ones as `layout_unsupported`. Because the accepted set is finite and known at build time, the plan
 for each supported version is compiled at build time from the lock and shipped as static data; at load the

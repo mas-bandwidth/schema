@@ -220,12 +220,22 @@ public final class TableFixed {
      *  caller, after the layout's own rules have each had their say, so a
      *  broken layout is never reported as a lying header (§3). */
     public static boolean readHeader(byte[] data, Header out, Report report) {
-        if (data == null || data.length < fileHeaderBytes + 4) { report.malformed = true; return false; }
+        // THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH (§5.3): a committed
+        // form-1 file is TEN bytes and a form-2 batch THREE, so a reader that
+        // measured first would answer malformed for every real file of the two
+        // forms it is supposed to name. Only a file with NO FIRST BYTE is
+        // malformed before the byte is read.
+        if (data == null || data.length < 1) { report.malformed = true; return false; }
         if (data[0] != form) {
             report.refuse(data[0] == variableForm ? Reason.previousForm
                     : data[0] == messageForm ? Reason.messageFormAsFile
                     : Reason.newerForm);
             return false;
+        }
+        if (data.length < fileHeaderBytes + 4) { report.malformed = true; return false; }
+        // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).
+        for (int i = 1; i < hashAt; i++) {
+            if (data[i] != 0) { report.malformed = true; return false; }
         }
         final long length = get32(data, fileHeaderBytes) & 0xFFFFFFFFL;
         if (length + fileHeaderBytes + 4 > data.length) { report.refuse(Reason.layoutMalformed); return false; }

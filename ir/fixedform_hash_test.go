@@ -230,3 +230,32 @@ func float64LE(v float64) []byte {
 	binary.LittleEndian.PutUint64(buf[:], math.Float64bits(v))
 	return buf[:]
 }
+
+// TestTableFixedDefinitionsDigestFloatBoundIsItsFloat64Bits pins ONE float
+// range's digest bytes against a LITERAL. The contract table in
+// docs/FIXED-FORM-ALGORITHM.md §5.2 used to say min and max ride "each as an
+// i64 LE" for every range, integer and float alike; the code writes
+// math.Float64bits for a float bound, and a reader that followed the words
+// would hash 0.5 and 0.25 the same — both truncate to the i64 `0`. The literal
+// below is 0.5 and 0.25 as their IEEE-754 float64 bits, little-endian.
+func TestTableFixedDefinitionsDigestFloatBoundIsItsFloat64Bits(t *testing.T) {
+	st := &Struct{Name: "F", Fields: []*Field{
+		{Name: "x", Type: FieldType{Kind: TFloat32}, HasFloatRange: true, FMin: 0.25, FMax: 0.5},
+	}}
+	want := []byte{
+		'R',
+		0, 0, 0, 0, 0, 0, 0xd0, 0x3f, // 0.25
+		0, 0, 0, 0, 0, 0, 0xe0, 0x3f, // 0.5
+	}
+	if got := TableFixedDefinitionsDigest(st); !bytes.Equal(got, want) {
+		t.Fatalf("a float bound rides as its float64 bits: got %x, want %x", got, want)
+	}
+	// And the same two bounds truncated to i64 are BOTH zero, which is the read
+	// the retired wording invited: it must not be the read the code takes.
+	other := &Struct{Name: "F", Fields: []*Field{
+		{Name: "x", Type: FieldType{Kind: TFloat32}, HasFloatRange: true, FMin: 0.75, FMax: 0.9},
+	}}
+	if bytes.Equal(TableFixedDefinitionsDigest(st), TableFixedDefinitionsDigest(other)) {
+		t.Fatal("two float ranges inside the same integer truncation must not share a digest")
+	}
+}

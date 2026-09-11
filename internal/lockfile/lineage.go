@@ -253,6 +253,17 @@ func parseLineage(line string) (LineageEntry, error) {
 	// THE ENTRY IS ONE STATEMENT MADE TWICE, like the layout= hash over the
 	// field lines: the wire hash IS fnv1a64 over these bytes and this digest,
 	// so a hand that moves either without the other is caught here.
+	// AND THE RECORD SIZE IS THE ENTRY'S LAYOUT'S, NOT A RANGE (§5.9 #26).
+	// Entry 0 of the layout bytes carries the ROOT's constant size — the record
+	// BODY — so `record=` is not a free number: a size that is not what this
+	// entry's own layout accounts for is a LOCK BUG and the build fails HERE,
+	// never as §5.3's arithmetic over a file's tail.
+	if len(e.Layout) >= lineageEntry0SizeAt+4 {
+		if root := int64(le32(e.Layout[lineageEntry0SizeAt:])); root != e.Record {
+			return LineageEntry{}, fmt.Errorf("this lineage entry records record=%d over a layout whose entry 0 accounts for %d bytes — the record size IS the root entry's size, so the two halves of this line disagree (docs/FIXED-FORM-ALGORITHM.md §5.9 #26)",
+				e.Record, root)
+		}
+	}
 	if got := lineageWireHash(e.Layout, e.Digest); got != e.Wire {
 		return LineageEntry{}, fmt.Errorf("this lineage entry records wire=0x%016x over bytes that hash to 0x%016x — the wire hash IS the hash of the layout bytes and the definitions digest, so the two halves of this line disagree",
 			e.Wire, got)
@@ -740,4 +751,13 @@ func carryRetired(locked, live *Unit) {
 		copy(live.Values[at+1:], live.Values[at:])
 		live.Values[at] = lk
 	}
+}
+
+// lineageEntry0SizeAt is where entry 0's `size` sits in the layout bytes: the
+// u32 entry count, then entry 0's id (8) and kind (1). Entry 0 is the ROOT
+// (algorithm §1.1, §2), so its size is the record's body.
+const lineageEntry0SizeAt = 4 + 8 + 1
+
+func le32(b []byte) uint32 {
+	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16 | uint32(b[3])<<24
 }

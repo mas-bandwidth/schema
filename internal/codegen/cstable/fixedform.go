@@ -1698,17 +1698,30 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<byte> data,\n")
 	g.pf("    Span<TableFixedEntry> plan,\n")
 	g.pf("    TableReport report = null)\n{\n")
-	g.pf("    if (data.Length < TableFixedWire.HeaderBytes + 4)\n    {\n")
+	// STEP 1 (§5.3): only whether there IS a first byte. THE FORM BYTE IS READ
+	// BEFORE THE FILE'S LENGTH — a committed form-1 file is TEN bytes and a
+	// form-2 batch THREE. And the DIRECTIONS are §5.3's, the same eight other
+	// legs answer: 1 previous_form, 2 message_form_as_file, OTHERWISE newer_form
+	// — never "below this form" for a byte, which named 0 previous_form.
+	g.pf("    if (data.Length < 1)\n    {\n")
 	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    if (data[0] != TableFixedWire.Form)\n    {\n")
 	g.pf("        if (report != null)\n        {\n")
 	g.pf("            report.Refused = true;\n")
-	g.pf("            report.Reason = data[0] == 2 ? \"message_form_as_file\"\n")
-	g.pf("                          : data[0] < TableFixedWire.Form ? \"previous_form\"\n")
+	g.pf("            report.Reason = data[0] == 1 ? \"previous_form\"\n")
+	g.pf("                          : data[0] == 2 ? \"message_form_as_file\"\n")
 	g.pf("                          : \"newer_form\";\n")
 	g.pf("            report.Verdict = TableWire.Verdict.Refused;\n        }\n")
 	g.pf("        return -1;\n    }\n")
+	g.pf("    if (data.Length < TableFixedWire.HeaderBytes + 4)\n    {\n")
+	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("        return -1;\n    }\n")
+	// STEP 2's second half: THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED.
+	g.pf("    for (int reserved = 1; reserved < TableFixedWire.HashAt; reserved++)\n    {\n")
+	g.pf("        if (data[reserved] != 0)\n        {\n")
+	g.pf("            if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
+	g.pf("            return -1;\n        }\n    }\n")
 	g.pf("    uint layout_bytes = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(TableFixedWire.HeaderBytes));\n")
 	g.pf("    if ((long)layout_bytes + TableFixedWire.HeaderBytes + 4 > data.Length)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")

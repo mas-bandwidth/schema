@@ -483,13 +483,24 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("inline int64_t %sFixedLoad( %s * values, int64_t capacity, const uint8_t * data, int64_t bytes,\n", st.Name, st.Name)
 	g.pf("                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )\n{\n")
 	g.pf("    TableReport local;\n    if ( report == NULL ) { report = &local; }\n")
-	g.pf("    if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
+	// STEP 1 AND STEP 2 (§5.3): THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH.
+	// A committed form-1 file is TEN bytes and a form-2 batch THREE, so a reader
+	// that measured first would answer `malformed` for every real file of the two
+	// forms it is supposed to name. Only a file with NO FIRST BYTE is malformed
+	// before the byte is read; the twenty-byte minimum and the seven reserved
+	// bytes follow it.
+	g.pf("    if ( data == NULL || bytes < 1 ) { report->malformed = true; return -1; }\n")
 	g.pf("    if ( data[0] != kTableFixedForm )\n    {\n")
 	g.pf("        report->refused = true;\n")
 	g.pf("        report->reason = data[0] == kTableWireForm ? previous_form\n")
 	g.pf("                       : data[0] == kTableWireMessageForm ? message_form_as_file\n")
 	g.pf("                       : newer_form;\n")
 	g.pf("        return -1;\n    }\n")
+	g.pf("    if ( bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }\n")
+	g.pf("    // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3): a nonzero\n")
+	g.pf("    // one is `malformed`, which is what keeps them spendable later.\n")
+	g.pf("    for ( int32_t i = 1; i < kTableFixedHashAt; ++i )\n")
+	g.pf("    {\n        if ( data[i] != 0 ) { report->malformed = true; return -1; }\n    }\n")
 	g.pf("    const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );\n")
 	g.pf("    if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }\n")
 	g.pf("    const uint8_t * layout = data + kTableFixedHeaderBytes + 4;\n")

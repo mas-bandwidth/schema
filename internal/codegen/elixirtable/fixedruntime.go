@@ -177,16 +177,26 @@ const fixedRuntimeBody = `  @moduledoc """
     {:ok, hash, layout, records}
   end
 
-  # STEP 1 BEFORE STEP 2 (§5.3): a file with no header in it at all is the
-  # RESIDUE — malformed, with no name — and the FORM BYTE is read only once there
-  # are bytes enough to carry one.
+  # THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH (§5.3, step 1). A file with
+  # NO FIRST BYTE is the RESIDUE — malformed, with no name — but a file that HAS
+  # one has its byte earn its name whatever the file's length: a committed form-1
+  # file is TEN bytes and a form-2 batch THREE, so measuring first would answer
+  # malformed for every real file of the two forms this reader names.
+  def read_file_header(<<>>), do: {:error, :malformed}
+  def read_file_header(<<1, _::binary>>), do: {:error, :previous_form}
+  def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
+  def read_file_header(<<form, _::binary>>) when form != @form, do: {:error, :newer_form}
+
+  # STEP 2: the twenty-byte minimum, and then THE SEVEN RESERVED BYTES, which
+  # are REFUSED and not ignored so they stay spendable later (§3.4, §5.3).
   def read_file_header(data) when is_binary(data) and byte_size(data) < @file_header_bytes + 4,
     do: {:error, :malformed}
 
-  def read_file_header(<<1, _::binary>>), do: {:error, :previous_form}
-  def read_file_header(<<2, _::binary>>), do: {:error, :message_form_as_file}
+  def read_file_header(<<@form, reserved::binary-size(@file_hash_at - 1), _::binary>>)
+      when reserved != <<0::size((@file_hash_at - 1) * 8)>>,
+      do: {:error, :malformed}
+
   def read_file_header(<<@form, _::binary>>), do: {:error, :layout_malformed}
-  def read_file_header(<<_form, _::binary>>), do: {:error, :newer_form}
   def read_file_header(_), do: {:error, :layout_malformed}
 
   # ---------------------------------------------------------------------------

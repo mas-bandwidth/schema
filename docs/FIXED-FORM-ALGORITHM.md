@@ -126,7 +126,7 @@ or a chain of single-child entries is a stack depth the wire chooses.
 ```
 a FILE:
   0        form byte, 3
-  1 .. 7   reserved, written zero
+  1 .. 7   reserved, written zero — AND A READER REFUSES A NONZERO ONE, `malformed`
   8 .. 15  the layout hash (u64 LE)
   16 .. 19 the layout's LENGTH IN BYTES (u32 LE)
   20 ..    the layout — whose OWN first four bytes are its entry count — then
@@ -139,8 +139,8 @@ load, in order:**
 
 | # | step |
 |---|---|
-| 1 | fewer than 20 bytes: `malformed` |
-| 2 | `b[0] != 3` — refuse **by direction**: `1` is `previous_form` (the variable form is OLDER), `2` is `message_form_as_file`, anything else `newer_form`. From the other end, a form-`1` reader given `3` refuses `newer_form` |
+| 1 | no first byte at all: `malformed`. Then `b[0] != 3` — refuse **by direction**: `1` is `previous_form` (the variable form is OLDER), `2` is `message_form_as_file`, anything else `newer_form`. From the other end, a form-`1` reader given `3` refuses `newer_form`. **The form byte is read before the file's length**: a committed form-1 file is TEN bytes and a form-2 batch THREE, so a reader that measured first would answer `malformed` for every real file of the two forms it is supposed to name |
+| 2 | fewer than 20 bytes: `malformed`. Then any of `b[1..7]` nonzero: `malformed` — the reserved bytes are REFUSED rather than ignored, which is what keeps them usable when the cook and the block form join the registry |
 | 3 | `L := LE(4, b+16)`; if `20 + L > bytes`, `REFUSE layout_malformed`. **The hash is `LE(8, b+8)`, the header's own** — §5.3 took the recompute out, the definitions digest not being on the wire |
 | 4 | **`h` selects the plan (§5.3)**: this build's own hash takes the baked identity plan and record size; another hash of the lineage takes that entry's plan, its layout bytes compared and its record size read from the lock; a hash in no entry is `layout_newer` |
 | 5 | **RETIRED by §5.3**: there is no third thing to check. The byte comparison against the lock's own layout holds the header and the layout together, and a known hash over different bytes is `layout_malformed` |
@@ -399,7 +399,8 @@ WIDENS(a, b):                            -- b may replace a
     ?T vs T:       optional(a) implies optional(b)                     or FAIL "optional removed"
     default:       default(a) == default(b)                            or FAIL "default changed"   -- SPEC §18
     reader limit:  limit(a) <= limit(b)
-    plan cap:      for every supported older entry x, PLAN(x, b) fits plan_too_large and the leaf cap
+    plan cap:      for every SUPPORTED older entry x — at or above the floor, never a retired one,
+                   whose plan §5.2 does not build at all — PLAN(x, b) fits plan_too_large and the leaf cap
                                                                     or FAIL "plan too large for lineage entry x" (bill §12.10)
     deprecated:    deprecated(a) implies deprecated(b)                 or FAIL "undeprecated" (one way, bill §12.3)
 ```
@@ -517,6 +518,12 @@ the struct from this page alone and landing a different spelling breaks a gate r
 **The file's hash lands on the report as `layout_hash`**, last on the report and zero on every other path
 (§5.9 #15).
 
+**AND THE PLAN CAP IS OVER SUPPORTED ENTRIES ONLY** (§5.1's `plan cap` row). COMPILE builds a PLAN for every
+entry AT OR ABOVE the floor and for no entry below it: a RETIRED entry's plan is never built, so it cannot fail
+the build, and a lineage entry that would not fit `plan_too_large` is retired rather than carried. That is the
+same cut in both directions — `layout_unsupported` at run time, no plan at build time — and it is why retiring
+an entry is the operator's remedy for a plan the cap will not take.
+
 **The floor is one number and the lineage is one array**, so "retired" is an index cut and the operator's two
 answers stay distinct: below the floor is `layout_unsupported` (upgrade the client), outside the lineage is
 `layout_newer` (ship the reader). A retired entry stays in the lineage forever.
@@ -545,7 +552,9 @@ once — and append, per field:
 
 | the fact | the bytes |
 |---|---|
-| an integer, float or fixed-point RANGE | `'R'`, then min and max, each as an i64 LE |
+| an INTEGER range | `'R'`, then min and max, each as an i64 LE |
+| a FLOAT range | `'R'`, then min and max, each as the **IEEE-754 bits of the `float64` bound**, u64 LE (`math.Float64bits`) — never the bound narrowed to an integer, which would hash `0.5` and `0.25` the same |
+| a FIXED-POINT range | `'R'`, then min and max, each as its RAW scaled i64 LE |
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
 | a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
@@ -556,7 +565,8 @@ once — and append, per field:
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) and
+**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) — EIGHT BYTES PER BOUND either
+way, an i64 for an integer or fixed-point bound and the `float64`'s own bits for a float one — and
 `'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
 unions share one `seen` map keyed by bare name.**
 
@@ -772,9 +782,13 @@ is a bug in the lock, refused by name at build.
 
 ```
 LOAD(R, file, out, capacity, report):                  -- R the static data COMPILE laid down for T
-  1  if file is absent or len(file) < 20:               report.malformed := true ; return -1
-  2  if file[0] != 3:                                   REFUSE by DIRECTION: 1 previous_form,
+  1  if file is absent or len(file) < 1:                report.malformed := true ; return -1
+     if file[0] != 3:                                   REFUSE by DIRECTION: 1 previous_form,
                                                             2 message_form_as_file, otherwise newer_form
+                                                        -- THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH
+  2  if len(file) < 20:                                 report.malformed := true ; return -1
+     if any of file[1..7] != 0:                         report.malformed := true ; return -1
+                                                        -- the seven reserved bytes, so they stay usable later
   3  L := LE(4, file+16) ; if 20 + L > len(file):       REFUSE layout_malformed
      layout := file + 20
   4  h := LE(8, file+8)                                 -- THE HEADER'S HASH, TAKEN AS GIVEN.
@@ -804,6 +818,16 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
      return n
 ```
 
+**THE FORM BYTE IS READ BEFORE THE FILE'S LENGTH, so a file too short to be a form-3 header is still
+refused by the name its first byte earns.** A committed form-1 file is TEN BYTES and a form-2 batch is
+THREE. A reader that measured first would answer `malformed` for every real file of the two forms it is
+supposed to name, and SPEC-TABLES §3.4's promise — "a fixed reader given `1` answers `previous_form`,
+given `2` answers `message_form_as_file`" — would hold for no file anyone has. So **step 1 asks only
+whether there is a first byte at all, and then lets that byte earn its name**; the twenty-byte minimum
+is step 2, and **the seven reserved bytes are step 2's second half**: any of `file[1..7]` nonzero is
+`malformed`, refused rather than ignored, which is what keeps those bytes spendable when the cook and
+the block form join the registry under the same header.
+
 **The order is load-bearing and it is not §1.1's order.** A layout arriving on the wire is no longer walked,
 so the seven rules do not fire at run time: the hash is looked up, then the floor, then the bytes are
 compared. **The seven §1.1 malformations under a KNOWN hash all come back as one name**, `layout_malformed`
@@ -824,8 +848,10 @@ nothing could reach.
 
 | condition | refusal | what it reports |
 |---|---|---|
-| shorter than 20 bytes, or no bytes at all | — | `malformed`, and `-1` |
-| form byte `1` / `2` / anything else | `previous_form` / `message_form_as_file` / `newer_form` | the name |
+| no bytes at all — there is no first byte to read | — | `malformed`, and `-1` |
+| form byte `1` / `2` / anything else, **whatever the file's length** | `previous_form` / `message_form_as_file` / `newer_form` | the name |
+| shorter than 20 bytes, the form byte having already answered | — | `malformed`, and `-1` |
+| any reserved byte `1..7` nonzero | — | `malformed`, and `-1` |
 | `20 + L` past the file | `layout_malformed` | the name |
 | the hash is in no lineage entry | `layout_newer` | **the file's hash, and nothing else** |
 | the hash is in the lineage, below the floor | `layout_unsupported` | the file's hash |
@@ -849,7 +875,7 @@ answer; `malformed` is the other; they are NEVER both set, and the counters are 
 | the outcome | `refused` | `reason` | `malformed` | returns | the counters |
 |---|---|---|---|---|---|
 | a REFUSAL BY NAME — every row above that HAS a name | `true` | that name; `layout_newer` ALSO sets `layout_hash` to THE FILE'S hash and nothing else | **`false`** | `-1` | all zero, and not one destination byte written |
-| a MALFORMED read — under 20 bytes, `record_bytes <= 8`, a ragged tail | **`false`** | untouched | `true` | `-1` | all zero |
+| a MALFORMED read — no first byte, under 20 bytes, a nonzero reserved byte, `record_bytes <= 8`, a ragged tail | **`false`** | untouched | `true` | `-1` | all zero |
 | a read that lands values | `false` | untouched | `false` | `n` | §5.4's |
 
 **`layout_unsupported` fills `layout_hash` too** — both layout refusals report the file's hash, and what belongs
