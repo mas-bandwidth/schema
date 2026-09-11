@@ -34,6 +34,19 @@ const (
 // declares no table: a table-free unit's Rust output is byte-identical with
 // this backend in the chain or out of it.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is Generate with the LOCK'S LINEAGE handed in as data
+// (docs/FIXED-FORM-ALGORITHM.md §5.2's COMPILE, and §5.9 #1: the backend takes
+// the lineage AS DATA through a second entry point and opens no file itself).
+// `lineage` is per fixed table the lock's entries OLDEST FIRST, each carrying
+// §5.2's facts; the table's own layout is appended last when the lineage does
+// not already end on it, and the floor is 1 + the highest retired index.
+//
+// Generate is the NO-LINEAGE case — a unit that was never locked promises
+// nothing, so it emits the identity plan and a lineage of one.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return nil, nil
 	}
@@ -77,7 +90,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out[BuildVersionModule+".rs"] = buildVersionModule(u)
 
 	for _, f := range u.Files {
-		g := &gen{unit: u, file: f, closure: closure}
+		g := &gen{unit: u, file: f, closure: closure, lineage: lineage}
 		if body := g.recordsModule(); body != nil {
 			out[strings.ToLower(f.Base)+"_records.rs"] = body
 		}
@@ -137,6 +150,9 @@ type gen struct {
 	unit    *ir.Unit
 	file    *ir.File
 	closure map[string]bool
+	// lineage is the LOCK'S, per fixed table, OLDEST FIRST (§5.2); nil for a
+	// unit that was never locked, whose lineage is its own layout alone.
+	lineage map[string][]FixedLineageEntry
 
 	body strings.Builder
 }
