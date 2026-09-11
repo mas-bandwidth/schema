@@ -34,14 +34,14 @@ import (
 
 const deadCUnprobedSrc = `package probe
 
-table ScalarLeaf
+fixed table ScalarLeaf
 {
     id    int32
     scale float32 = 1.0
     tag   string(16)
 }
 
-table RootTable
+fixed table RootTable
 {
     count  int32
     scores [4]int32
@@ -50,13 +50,13 @@ table RootTable
 
 const deadCProbedSrc = `package probe
 
-table Leaf
+fixed table Leaf
 {
     x int32 = 0
     y int32 = 0
 }
 
-table Outer
+fixed table Outer
 {
     id   int32
     leaf Leaf

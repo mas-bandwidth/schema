@@ -19,13 +19,13 @@ import (
 // space the formatter puts after a line's code.
 const mapExampleFormatted = `package docs
 
-table ShipConfig
+fixed table ShipConfig
 {
     name   string(64)
     health int32
 }
 
-table Item { count int32 }
+fixed table Item { count int32 }
 
 table Fleet
 {
@@ -42,7 +42,7 @@ table Fleet
 // nothing but the bytes says the author's source no longer reads as the page
 // spells it.
 func TestFormatsTheMapExampleOfThePage(t *testing.T) {
-	src := "package docs\n\n" + fencedBlockContaining(t, "../../docs/SPEC-TABLES.md", "table Item { count int32 }", 1)
+	src := "package docs\n\n" + fencedBlockContaining(t, "../../docs/SPEC-TABLES.md", "fixed table Item { count int32 }", 1)
 	out, err := Format("Probe.schema", []byte(src))
 	if err != nil {
 		t.Fatalf("format: %v", err)

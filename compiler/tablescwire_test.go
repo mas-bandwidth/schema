@@ -29,7 +29,7 @@ Current
 Second
 }
 type Leaf { choice Choice }
-table Root {
+fixed table Root {
 `)
 	for i := range 127 {
 		fmt.Fprintf(&schema, "field%d uint8\n", i)
@@ -172,7 +172,7 @@ func TestCTableOpenDistinctnessVerdict(t *testing.T) {
 		t.Fatal("could not find two ids that share a 512-slot mix")
 	}
 	u := unitFromSource(t, `package probe
-table Leaf { x uint32 }
+fixed table Leaf { x uint32 }
 `)
 	source := fmt.Sprintf(`#include "ProbeTable.h"
 #include <stdio.h>
@@ -225,7 +225,7 @@ int main(void)
 // must preserve its sign and payload without quieting a signaling NaN.
 func TestCTableWireWidening(t *testing.T) {
 	u := unitFromSource(t, `package probe
-    table Root {
+    fixed table Root {
         low int32 = 1000 | min = 1000, max = 2000
         high int32 = -1000 | min = -2000, max = -1000
         positive uint64 = 1000 | min = 1000, max = 2000
@@ -283,7 +283,7 @@ func TestCTableWireWidening(t *testing.T) {
 func TestCTableWireDefaultRecovery(t *testing.T) {
 	u := unitFromSource(t, `package probe
 flags Caps { Jump, Crouch }
-table Root {
+fixed table Root {
  name string(8) = "new"
  data bytes(4) = "ab"
  caps Caps = { Jump }
@@ -324,7 +324,7 @@ int main(void) {
 // through an out-of-range float-to-integer conversion or wrap to zero.
 func TestCTableWireJsonIntegerDomain(t *testing.T) {
 	u := unitFromSource(t, `package probe
-table Root {
+fixed table Root {
  small uint8
  bounded uint64 | min = 0, max = 18446744073709551615
  debt int64
@@ -355,12 +355,12 @@ int main(void) {
 // that first field and measuring its frame must walk the payload once.
 func TestCTableWireDeepFrames(t *testing.T) {
 	var schema, member strings.Builder
-	schema.WriteString("package probe\ntable Layer0 { value uint8 }\n")
+	schema.WriteString("package probe\nfixed table Layer0 { value uint8 }\n")
 	for i := 1; i <= 24; i++ {
-		fmt.Fprintf(&schema, "table Layer%d { child Layer%d }\n", i, i-1)
+		fmt.Fprintf(&schema, "fixed table Layer%d { child Layer%d }\n", i, i-1)
 		member.WriteString(".child")
 	}
-	schema.WriteString("table Root { child Layer24 }\n")
+	schema.WriteString("fixed table Root { child Layer24 }\n")
 	u := unitFromSource(t, schema.String())
 	runCTableWireProbe(t, u, fmt.Sprintf(`#include "ProbeTable.h"
 int main(void) {
@@ -520,7 +520,7 @@ int main(void) {
 // return to its caller and release through the same pair that allocated it.
 func TestCTableWireAllocatorFailures(t *testing.T) {
 	u := unitFromSource(t, `package probe
-table Node { value uint32 }
+fixed table Node { value uint32 }
 table Payload { entries map[int32]*Node }
 table Root {
  first *Node
@@ -595,7 +595,7 @@ First
 Second
 Third
 }
-table Root { slots [Key]uint32 }
+fixed table Root { slots [Key]uint32 }
 `)
 	for _, release := range []bool{false, true} {
 		t.Run(fmt.Sprint(release), func(t *testing.T) {

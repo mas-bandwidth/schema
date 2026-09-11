@@ -39,7 +39,7 @@ import (
 
 const deadCppWideSrc = `package probe
 
-table Note
+fixed table Note
 {
     title wstring(4)
     tally int32
@@ -50,7 +50,7 @@ table Note
 // nothing else moved.
 const deadCppNarrowSrc = `package probe
 
-table Note
+fixed table Note
 {
     title string(4)
     tally int32

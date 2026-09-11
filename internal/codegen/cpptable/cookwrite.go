@@ -577,33 +577,39 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    int64_t align = %d;\n", ir.RegionAlignOf(ml.Align))
 	g.pf("    if ( region.offsets != NULL ) { region.offsets[0] = 0; }\n")
 	g.pf("    for ( int64_t k = 0; k < numbering.count; k++ )\n    {\n")
-	g.pf("        int64_t size = 0;\n")
-	g.pf("        int64_t node_align = 0;\n")
-	g.pf("        switch ( numbering.entries[k].type_id )\n        {\n")
-	for _, t := range reachable {
-		tl := ir.RecordLayout(g.unit, t)
-		if g.anyExtent && g.hasExtent(t) {
-			g.pf("            case 0x%016xull: // %s\n", ir.TableWireId(t.WireName()), t.Name)
-			g.emitCookNodeBytes(t, "                ", fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
-			g.pf("                break;\n")
-			continue
+	if nodeDispatchEmpty(reachable, blobs) {
+		// a type id this root cannot name is the two walks disagreeing (§7.2)
+		g.pf("        (void) numbering.entries[k].type_id;\n")
+		g.pf("        return false;\n")
+	} else {
+		g.pf("        int64_t size = 0;\n")
+		g.pf("        int64_t node_align = 0;\n")
+		g.pf("        switch ( numbering.entries[k].type_id )\n        {\n")
+		for _, t := range reachable {
+			tl := ir.RecordLayout(g.unit, t)
+			if g.anyExtent && g.hasExtent(t) {
+				g.pf("            case 0x%016xull: // %s\n", ir.TableWireId(t.WireName()), t.Name)
+				g.emitCookNodeBytes(t, "                ", fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
+				g.pf("                break;\n")
+				continue
+			}
+			g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableWireId(t.WireName()), tl.Size, tl.Align, t.Name)
 		}
-		g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableWireId(t.WireName()), tl.Size, tl.Align, t.Name)
-	}
-	for _, b := range blobs {
-		// a byte buffer's node is its header and its bytes, at eight (§7.2)
-		extra := 0
-		if b.terminated {
-			extra = 1
+		for _, b := range blobs {
+			// a byte buffer's node is its header and its bytes, at eight (§7.2)
+			extra := 0
+			if b.terminated {
+				extra = 1
+			}
+			g.pf("            case %s: size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + %d; node_align = 8; break; // *%s\n", b.constant, extra, b.word)
 		}
-		g.pf("            case %s: size = kTableBlobHeader + (int64_t) ( (const TableBlob *) numbering.entries[k].node )->length + %d; node_align = 8; break; // *%s\n", b.constant, extra, b.word)
+		g.pf("            default: return false;\n")
+		g.pf("        }\n")
+		g.pf("        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );\n")
+		g.pf("        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }\n")
+		g.pf("        offset += size;\n")
+		g.pf("        if ( node_align > align ) { align = node_align; }\n")
 	}
-	g.pf("            default: return false;\n")
-	g.pf("        }\n")
-	g.pf("        offset = ( offset + node_align - 1 ) & ~( node_align - 1 );\n")
-	g.pf("        if ( region.offsets != NULL ) { region.offsets[k + 1] = offset; }\n")
-	g.pf("        offset += size;\n")
-	g.pf("        if ( node_align > align ) { align = node_align; }\n")
 	g.pf("    }\n")
 	g.pf("    region.bytes = ( offset + align - 1 ) & ~( align - 1 );\n")
 	g.pf("    region.align = align;\n")

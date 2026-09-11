@@ -210,9 +210,16 @@ build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance
 # builder, no arena, no reference slot, no lifecycle surface, no extra
 # descriptor column. The pointer-free corpus's generated headers must not
 # contain one symbol of it.
+#
+# `examples` IS NOT ON THIS LIST ANY MORE, for the reason its C++ twin is not
+# (see TABLES_ZERO_COST_HEADERS in the root Makefile): under the KEYWORD (#823)
+# `Guarded.schema`'s `Patrol` is a plain `table` — a guarded branch is exactly
+# the construct that keeps it one — so `tables/examples` is a VARIABLE unit and
+# carries the machinery by right. The follow-on that brings it back is the same
+# one: move `Guarded.schema` into a unit of its own.
 .PHONY: tables-c-zero-cost
 tables-c-zero-cost: build/tables-generated-c/.stamp
-	@for f in build/tables-generated-c/examples/*Table.h build/tables-generated-c/v1/*Table.h \
+	@for f in build/tables-generated-c/v1/*Table.h \
 	          build/tables-generated-c/v2/*Table.h build/tables-generated-c/p1/*Table.h \
 	          build/tables-generated-c/p3/*Table.h; do \
 		if grep -nE "TableArena|TableWorker|TableRef([^u]|$$)|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
@@ -882,7 +889,13 @@ test-c tables-c: tables-c-view
 # test/c-tables/fixedform.h is the whole surface between them and names no
 # generated type at all, and the main links them — the shape the conformance
 # driver already uses for two generations of one schema.
-build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/tables/FX2.schema test/tables/V1.schema test/tables/V2.schema test/tables/UT1.schema test/tables/UT2.schema
+#
+# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
+# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
+# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
+# to agree on the text (reference-fix 12). UT1/UT2 is the two-lane / slid-arm
+# half of the same hole. C++ already generates the pair; this stamp did not.
+build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/tables/FX2.schema test/tables/V1.schema test/tables/V2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FU1.schema test/tables/FU2.schema
 	@mkdir -p build/tables-generated-c-fixed
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fx1 test/tables/FX1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fx2 test/tables/FX2.schema
@@ -890,14 +903,18 @@ build/tables-generated-c-fixed/.stamp: bin/schema test/tables/FX1.schema test/ta
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/v2 test/tables/V2.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/ut1 test/tables/UT1.schema
 	./bin/schema generate --lang c --out build/tables-generated-c-fixed/ut2 test/tables/UT2.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fu1 test/tables/FU1.schema
+	./bin/schema generate --lang c --out build/tables-generated-c-fixed/fu2 test/tables/FU2.schema
 	@touch $@
 
 C_FIXEDFORM_SOURCES := test/c-tables/fixedform_main.c test/c-tables/fixedform_fx1.c test/c-tables/fixedform_fx2.c \
 	test/c-tables/fixedform_v1.c test/c-tables/fixedform_v2.c \
-	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c
+	test/c-tables/fixedform_ut1.c test/c-tables/fixedform_ut2.c \
+	test/c-tables/fixedform_fu1.c test/c-tables/fixedform_fu2.c
 C_FIXEDFORM_INCLUDES := -Itest/c-tables -Ibuild/tables-generated-c-fixed/fx1 -Ibuild/tables-generated-c-fixed/fx2 \
 	-Ibuild/tables-generated-c-fixed/v1 -Ibuild/tables-generated-c-fixed/v2 \
-	-Ibuild/tables-generated-c-fixed/ut1 -Ibuild/tables-generated-c-fixed/ut2 -I$(SERIALIZE_C)
+	-Ibuild/tables-generated-c-fixed/ut1 -Ibuild/tables-generated-c-fixed/ut2 \
+	-Ibuild/tables-generated-c-fixed/fu1 -Ibuild/tables-generated-c-fixed/fu2 -I$(SERIALIZE_C)
 
 build/schema_test_c_fixedform: build/tables-generated-c-fixed/.stamp $(C_FIXEDFORM_SOURCES) test/c-tables/fixedform.h
 	@mkdir -p build

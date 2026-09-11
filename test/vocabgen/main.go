@@ -47,7 +47,10 @@ package %s
 
 `, filepath.Base(*out), *pkg, *tables, *out, *tables, *tables*fields, boundary(*tables*fields), refBits(*tables*fields), *pkg)
 	for t := range *tables {
-		fmt.Fprintf(&b, "table Wide%02d\n{\n", t)
+		// `fixed table`, because THE MESSAGE FORM IS A FIXED TABLE'S
+		// (docs/SPEC-TABLES.md §2.2, §3.3, #823) and this unit exists for the
+		// message form. The class is declared, so the generator declares it.
+		fmt.Fprintf(&b, "fixed table Wide%02d\n{\n", t)
 		for f := range fields {
 			fmt.Fprintf(&b, "    field_%02d_%02d uint32 = 0\n", t, f)
 		}

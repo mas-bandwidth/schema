@@ -46,12 +46,12 @@ type Ping
 }
 
 // depth three: the origin of an insert
-table User
+fixed table User
 {
     name string(16)
 }
 
-table Script
+fixed table Script
 {
     path string(MaxPath)
     line uint32
@@ -66,13 +66,13 @@ union Origin
 }
 
 // depth two: an edit's body
-table Selection
+fixed table Selection
 {
     start Cursor
     end   Cursor
 }
 
-table InsertText
+fixed table InsertText
 {
     at      Cursor
     text    string(32)
@@ -81,7 +81,7 @@ table InsertText
     modes   ?[..2]Mode
 }
 
-table RemoveText
+fixed table RemoveText
 {
     span Selection
 }
@@ -96,27 +96,27 @@ union EditBody
     mode   Mode
 }
 
-table Edit
+fixed table Edit
 {
     revision uint32
     body     EditBody
 }
 
 // depth one: the message set
-table OpenDocument
+fixed table OpenDocument
 {
     path   string(MaxPath)
     mode   Mode = Read
     cursor Cursor
 }
 
-table SaveDocument
+fixed table SaveDocument
 {
     path  string(MaxPath)
     force bool
 }
 
-table Transaction
+fixed table Transaction
 {
     reason      string(16)
     edits       [..3]Edit
@@ -137,7 +137,7 @@ union ToolBody
     ack
 }
 
-table ToolMessage
+fixed table ToolMessage
 {
     sequence uint32
     body     ToolBody

@@ -6,7 +6,7 @@
 // unknown to RT1 at all.
 package tblrt3
 
-table Beam
+fixed table Beam
 {
     value int32 = 0 | min = 0, max = 1000
 }

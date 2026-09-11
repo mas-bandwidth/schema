@@ -6,7 +6,7 @@ package listdemo
 // record plus the extent its list commands. Lists and maps are ONE population
 // in the extent, in declaration order, pre-order.
 
-table Sample { v int32 }
+fixed table Sample { v int32 }
 
 table Row
 {
@@ -20,7 +20,7 @@ table Sheet
     pinned *Row  // a pointed-at holder: the node's extent is its list's
 }
 
-table Item { count int32 }
+fixed table Item { count int32 }
 
 table Squad
 {

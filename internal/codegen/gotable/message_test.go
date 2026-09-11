@@ -15,7 +15,7 @@ func TestMessageWriter(t *testing.T) {
  pair [2]int16
  words string(12)
  ping }
- table Root { yes bool
+ fixed table Root { yes bool
  small int16 | min = -5, max = 14
  raw uint64
  big uint128

@@ -6,9 +6,9 @@ package listdemo
 // both read into equal values. The bound is ABOVE the instance's count, so the
 // row proves the framing and not the clamp.
 
-table Unit { v int32 }
+fixed table Unit { v int32 }
 
-table Bounded
+fixed table Bounded
 {
     items [..8]Unit
     tag   int32

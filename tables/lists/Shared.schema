@@ -6,7 +6,7 @@ package listdemo
 // and numbers it first. A walk that grouped lists after the pointer fields
 // would number the two the other way round and the pinned wire says so.
 
-table Photo
+fixed table Photo
 {
     width  uint32
     height uint32

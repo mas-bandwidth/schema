@@ -6,7 +6,7 @@ package tabledemo
 
 const MaxBlobBytes = 70000
 
-table WideBlob
+fixed table WideBlob
 {
     label   string(70000)
     payload bytes(MaxBlobBytes)

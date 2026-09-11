@@ -8,7 +8,9 @@
 //	4096   ADVISORY, always on. The table still carries the fixed form.
 //	65536  THE WIRE'S CEILING. The fixed form is not emitted for the table at
 //	       all, because a reader holds an untrusted peer's layout to the same
-//	       number and would refuse the record; the table keeps form 1.
+//	       number and would refuse the record; the table keeps form 1. The
+//	       `fixed` KEYWORD DOES NOT MAKE THIS A REFUSAL — it declares the
+//	       CLASS and this bound is the FORM's; see the last test in the file.
 //	--fixed-record-limit  A PROJECT'S POLICY, off by default. Past it the unit
 //	       does not compile.
 package compiler
@@ -31,7 +33,7 @@ import (
 func fixedSizeUnit(t *testing.T, name string, payload int) (dir string, body int64) {
 	t.Helper()
 	dir = t.TempDir()
-	src := fmt.Sprintf("package probe\n\ntable %s\n{\n    payload bytes(%d)\n}\n", name, payload)
+	src := fmt.Sprintf("package probe\n\nfixed table %s\n{\n    payload bytes(%d)\n}\n", name, payload)
 	if err := os.WriteFile(filepath.Join(dir, "Probe.schema"), []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -161,17 +163,27 @@ func generatedFixedForm(t *testing.T, dir string) string {
 	return all.String()
 }
 
-// A DECLARED FIXED TABLE PAST THE CEILING DOES NOT COMPILE (docs/SPEC-TABLES.md
-// §3.4, #823). The two bounds above are the DERIVED mode's, which asked for
-// nothing and keeps form 1; the keyword is a request, and *"if we add any
-// feature that stops it from being fixed, it is a compile error … we don't want
-// to surprise the user"* — the project owner. A declared fixed table encodes as
-// form 3 ALWAYS, so past the ceiling there is nothing for it to be.
+// A DECLARED FIXED TABLE PAST THE CEILING KEEPS FORM 1 AND IS NAMED — it does
+// NOT fail the compile (docs/SPEC-TABLES.md §3.4, #823). This is the one place
+// the keyword's *"if we add any feature that stops it from being fixed, it is a
+// compile error"* does not reach, and the reason is that the keyword declares
+// the CLASS and this bound belongs to the FORM:
 //
-// The `fixed table` keyword lives on branch `fixed-table-keyword` and is not
-// merged, so this test sets the IR marker the keyword will set. That is the
-// whole difference: the refusal is real, the parser's half is #823's.
-func TestDeclaredFixedTablePastTheCeilingRefusesTheCompile(t *testing.T) {
+//   - THE CLASS is a by-value storage, a cook, a block form (§19) and no arena
+//     edge anywhere in the closure. A 7.5 MB record is all of those things.
+//   - THE FORM is form `3` on the tolerant wire, and 65536 is what a PEER's
+//     reader holds an untrusted layout to (`layout_record_too_large`).
+//
+// §12.1's render frame and §2.8's `WideBlob` are DECLARED `fixed table` in this
+// tree — they have to be, because that is what gives them their storage and
+// their block form — and they were never form-`3` tables at all, form `3` being
+// younger than both. Refusing them would be refusing the class over one of its
+// wires. What the keyword DOES refuse is a construct that makes the body vary
+// in size (§2.2, `ir.FixedClosureBreaks`), which a large record is not.
+//
+// AND IT IS NOT SILENT, which is the whole of the owner's rule: the table and
+// its size are in the message, at compile time, always on.
+func TestDeclaredFixedTablePastTheCeilingKeepsFormOneAndIsNamed(t *testing.T) {
 	dir, body := fixedSizeUnit(t, "Huge", ir.TableFixedRecordMaxBytes)
 	paths, err := GatherPaths([]string{dir})
 	if err != nil {
@@ -179,29 +191,54 @@ func TestDeclaredFixedTablePastTheCeilingRefusesTheCompile(t *testing.T) {
 	}
 	u, err := New().Load(paths)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the ceiling names the table; it never refuses the unit: %v", err)
 	}
 	st := u.Tables["Huge"]
 	if st == nil {
 		t.Fatal("the probe declares Huge")
 	}
-	// UNDECLARED: a warning, the form dropped, and the unit still compiles.
+	// THE PROBE SAYS `fixed table`, so the parser has already set the flag —
+	// nothing in this file reaches into the IR to fake it any more.
+	if !st.FixedDeclared {
+		t.Fatal("`fixed table Huge` must arrive DECLARED: the keyword is the class")
+	}
 	warns, errs := ir.TableFixedRecordBounds(u, 0)
-	if len(errs) != 0 || len(warns) != 1 {
-		t.Fatalf("a DERIVED fixed table past the ceiling warns and compiles: warns=%v errs=%v", warns, errs)
+	if len(errs) != 0 {
+		t.Fatalf("the ceiling is the FORM's bound and refuses no unit: %v", errs)
 	}
-	// DECLARED: a refusal by name, and no warning pretending the form was kept.
-	st.FixedDeclared = true
-	warns, errs = ir.TableFixedRecordBounds(u, 0)
-	if len(errs) != 1 {
-		t.Fatalf("a DECLARED fixed table past the ceiling must not compile: warns=%v errs=%v", warns, errs)
+	if len(warns) != 1 {
+		t.Fatalf("exactly one report, got %d: %v", len(warns), warns)
 	}
-	if len(warns) != 0 {
-		t.Errorf("a refusal replaces the warning rather than joining it: %v", warns)
+	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "§3.4", "form 1", "CLASS"} {
+		if !strings.Contains(warns[0], want) {
+			t.Errorf("the report must carry %q — the class is what the table keeps: %s", want, warns[0])
+		}
 	}
-	for _, want := range []string{"Huge", fmt.Sprint(body), fmt.Sprint(ir.TableFixedRecordMaxBytes), "§3.4", "DECLARED"} {
-		if !strings.Contains(errs[0].Error(), want) {
-			t.Errorf("the refusal must carry %q: %s", want, errs[0])
+}
+
+// AND THE CORPUS'S OWN MEGABYTE FIXED TABLES COMPILE. §3.4 names two by name,
+// and a spec whose own examples do not build is a spec nobody can follow.
+func TestTheCorpusMegabyteFixedTablesCompile(t *testing.T) {
+	for _, dir := range []string{"../tables/examples", "../tables/block"} {
+		paths, err := GatherPaths([]string{dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var warns []string
+		c := New()
+		c.OnWarn = func(msg string) { warns = append(warns, msg) }
+		if _, err := c.Load(paths); err != nil {
+			t.Fatalf("%s must compile: %v", dir, err)
+		}
+		// AND THE TABLE PAST THE CEILING IS NAMED, not passed over.
+		var named bool
+		for _, w := range warns {
+			if strings.Contains(w, "fixed-form ceiling") {
+				named = true
+			}
+		}
+		if !named {
+			t.Errorf("%s: the table past the ceiling must be NAMED — a table nobody warned about is a table nobody fixed: %v", dir, warns)
 		}
 	}
 }
@@ -218,7 +255,9 @@ func TestDeclaredFixedTableInsideTheCeilingCompiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u.Tables["Small"].FixedDeclared = true
+	if !u.Tables["Small"].FixedDeclared {
+		t.Fatal("`fixed table Small` must arrive DECLARED")
+	}
 	warns, errs := ir.TableFixedRecordBounds(u, 0)
 	if len(errs) != 0 || len(warns) != 0 {
 		t.Fatalf("a small declared fixed table says nothing: warns=%v errs=%v", warns, errs)

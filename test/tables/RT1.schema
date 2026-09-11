@@ -17,7 +17,7 @@ table Leaf
     next  *Leaf
 }
 
-table Inner
+fixed table Inner
 {
     tag  string(8)
     hits int32 = 0 | min = 0, max = 100

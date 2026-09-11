@@ -5,7 +5,7 @@ package armdemo
 // arm alone puts them in the set a load places, a cook lays out and a region
 // resolves.
 
-table Only { w int32 }
+fixed table Only { w int32 }
 
 union Reach
 {
