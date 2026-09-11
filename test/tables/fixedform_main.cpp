@@ -1541,6 +1541,145 @@ static void cache_case()
     check( cache.compiles == 1, "cache: identity never increments the compile counter" );
 }
 
+
+// ---- rowan/corpus-manifest: BEGIN -----------------------------------------
+// THE MANIFEST'S OWN CHECK (docs/FIXED-FORM-ALGORITHM.md §5.7 step 1, ruling
+// #32). A port asserts the corpus's values from `manifest.txt` and never from
+// test/tables/fixedform_dump.cpp, so the manifest has to be COMPLETE and its
+// roots have to be real: every `.bin` the dump wrote needs a line, and every
+// `root=` has to name a table the generator actually emitted — a renamed table
+// whose manifest line kept the old name is the one way this could lie quietly.
+#if !defined( _WIN32 )
+#include <dirent.h>
+#include <set>
+#include <string>
+
+static std::string slurp( const std::string & path )
+{
+    FILE * f = std::fopen( path.c_str(), "rb" );
+    if ( !f ) { return std::string(); }
+    std::string out;
+    char buf[4096];
+    size_t n;
+    while ( ( n = std::fread( buf, 1, sizeof( buf ), f ) ) > 0 ) { out.append( buf, n ); }
+    std::fclose( f );
+    return out;
+}
+
+static std::string field_of( const std::string & line, const char * key )
+{
+    const std::string k( key );
+    const size_t at = line.find( k );
+    if ( at == std::string::npos ) { return std::string(); }
+    const size_t end = line.find( ' ', at + k.size() );
+    return line.substr( at + k.size(), end == std::string::npos ? std::string::npos : end - at - k.size() );
+}
+
+// every `<Name>FixedSave` the generator emitted, under the generated trees: the
+// dump calls exactly these, so a root is a table the dump generated or it is not
+static void fixed_save_names( const std::string & dir, std::set<std::string> & into, int depth )
+{
+    if ( depth > 4 ) { return; }
+    DIR * d = opendir( dir.c_str() );
+    if ( !d ) { return; }
+    while ( const struct dirent * e = readdir( d ) )
+    {
+        const std::string name( e->d_name );
+        if ( name == "." || name == ".." ) { continue; }
+        const std::string path = dir + "/" + name;
+        if ( name.size() > 2 && name.compare( name.size() - 2, 2, ".h" ) == 0 )
+        {
+            const std::string text = slurp( path );
+            const std::string needle( "FixedSave" );
+            for ( size_t at = text.find( needle ); at != std::string::npos; at = text.find( needle, at + 1 ) )
+            {
+                size_t b = at;
+                while ( b > 0 )
+                {
+                    const char c = text[b - 1];
+                    const bool word = ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) ||
+                                      ( c >= '0' && c <= '9' ) || c == '_';
+                    if ( !word ) { break; }
+                    b--;
+                }
+                if ( b < at ) { into.insert( text.substr( b, at - b ) ); }
+            }
+        }
+        else
+        {
+            fixed_save_names( path, into, depth + 1 );
+        }
+    }
+    closedir( d );
+}
+
+static void manifest_case()
+{
+    const std::string dir = "build/fixedform-corpus";
+    const std::string manifest = slurp( dir + "/manifest.txt" );
+    DIR * corpus = opendir( dir.c_str() );
+    if ( !corpus )
+    {
+        // the corpus is another target's output; when it is not there this case
+        // has nothing to hold and says so rather than passing quietly
+        std::printf( "NOTE: build/fixedform-corpus is absent, manifest check skipped"
+                     " (run `make tables-fixedform-corpus`)\n" );
+        return;
+    }
+    check( !manifest.empty(), "manifest: build/fixedform-corpus/manifest.txt exists and is not empty" );
+
+    std::set<std::string> roots;
+    int lines = 0;
+    for ( size_t at = 0; at < manifest.size(); )
+    {
+        const size_t nl = manifest.find( '\n', at );
+        const std::string line = manifest.substr( at, nl == std::string::npos ? std::string::npos : nl - at );
+        at = nl == std::string::npos ? manifest.size() : nl + 1;
+        if ( line.empty() ) { continue; }
+        lines++;
+        const std::string file = field_of( line, "file=" );
+        const std::string row = field_of( line, "row=" );
+        const std::string side = field_of( line, "side=" );
+        const std::string root = field_of( line, "root=" );
+        const std::string records = field_of( line, "records=" );
+        const bool shaped = !file.empty() && !row.empty() && !side.empty() && !root.empty() &&
+                            !records.empty() && line.find( " values=" ) != std::string::npos;
+        if ( !shaped ) { std::printf( "  manifest line: %s\n", line.c_str() ); }
+        check( shaped, "manifest: every line carries file, row, side, root, records and values" );
+        if ( !root.empty() ) { roots.insert( root ); }
+    }
+
+    int files = 0;
+    while ( const struct dirent * e = readdir( corpus ) )
+    {
+        const std::string name( e->d_name );
+        if ( name.size() < 5 || name.compare( name.size() - 4, 4, ".bin" ) != 0 ) { continue; }
+        files++;
+        const bool listed = manifest.find( "file=" + name + " " ) != std::string::npos;
+        if ( !listed ) { std::printf( "  no manifest line for %s\n", name.c_str() ); }
+        check( listed, "manifest: every corpus file has a manifest line" );
+    }
+    closedir( corpus );
+    check( files > 0 && lines == files, "manifest: one line per corpus file, and no line without a file" );
+
+    std::set<std::string> generated;
+    fixed_save_names( "build/tables-generated", generated, 0 );
+    fixed_save_names( "build/tables-generated-fxw", generated, 0 );
+    check( !generated.empty(), "manifest: the generated trees name at least one fixed table" );
+    for ( std::set<std::string>::const_iterator i = roots.begin(); i != roots.end(); ++i )
+    {
+        const bool known = generated.find( *i ) != generated.end();
+        if ( !known ) { std::printf( "  manifest root %s names no generated table\n", i->c_str() ); }
+        check( known, "manifest: every root names a table the dump generated" );
+    }
+    std::printf( "manifest: %d lines, %d corpus files, %d roots, all generated\n",
+                 lines, files, (int) roots.size() );
+}
+#else
+static void manifest_case() {}
+#endif
+// ---- rowan/corpus-manifest: END -------------------------------------------
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -1565,6 +1704,8 @@ int main()
     cache_case();
     layout_validation();
     fuzz_case();
+    // ---- rowan/corpus-manifest ----
+    manifest_case();
     // ---- rowan/cpp-versioning-numbers: BEGIN ----
     failures += versioning_numbers_cases();
     // ---- rowan/cpp-versioning-numbers: END ----
