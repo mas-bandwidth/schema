@@ -26,6 +26,7 @@ func init() {
 		Name{Name: "TableFixedNoGuard", What: "the guard offset a plan entry that belongs to no union arm carries", RustConst: true},
 		Name{Name: "TableFixedOp", What: "the fixed form's plan ops — the whole set"},
 		Name{Name: "TableFixedEntry", What: "one plan entry: src, dst, size and the op that moves them"},
+		Name{Name: "TableFixedKnown", What: "one known layout of a lineage entry: its hash, its bytes and its record size — the Rust leg's spelling of the page's TableFixedKnownLayout"},
 		Name{Name: "TableFixedReason", What: "the fixed form's refusals, each one BY NAME"},
 		Name{Name: "TableFixedReport", What: "the fixed form's read report — §4's ledger and this form's refusals"},
 		Name{Name: "TableFixedBlock", What: "a parsed vocabulary block: the bytes and the entry count"},
