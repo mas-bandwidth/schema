@@ -49,7 +49,7 @@ The table's own law, additions and deprecation only, extends to every definition
 | a text kind (`string`, `wstring`, `bytes`) | the same | any change between the three (old bytes stop being valid under the new content rules) |
 | an array's shape (`[N]`, `[..N]`, `[Enum]`) and its key enum | the same shape and key | a shape change or a swapped key; an element type follows the widening ladder, an element narrowed is refused |
 | a reader-side limit a table declares (a record count, a batch size) | at most the reader's | smaller; where the limit is a compiler flag it is outside the law and the doc says so |
-| a deprecated field | still written, still in its place | leaving the layout (that is a removal); undeprecating is allowed |
+| a deprecated field | still written, still in its place, read on every plan | leaving the layout (that is a removal); undeprecating (one way, §12.3) |
 | a rename | through `was` | without it (the baseline's identity is by name, the fixed wire's by position) |
 
 **The invariant that makes widening safe** (Glenn: "widening with default values is what saves us here"):
@@ -308,3 +308,58 @@ supported version per table per leg; at five hundred entries and thirty versions
 of layout bytes per table per leg in generated source. Java's 64 KB static-initializer limit and JS/Dart
 bundle size bite first; the legs carry layout bytes as a resource or a string constant where the language
 needs it. Bounded by §11.6 and the floor.
+
+## 12. The implementer's cold read and the lock survey: the rulings (2026-09-11 02:45Z)
+
+A second Fable reader read as the implementer who is blamed for a wrong read; a third child surveyed
+`internal/lockfile` row by row. Defaults, recorded on #898, Glenn's to reverse.
+
+1. **The lock's rule becomes MONOTONE, not equal.** Today the lock refuses every narrowing AND every
+   widening with one sentence ("keeps its width"), `schema lock` refuses the relock, and `bits(N)` is
+   recorded nowhere. Step 1 of #898 rewrites the comparison to §2's direction per row and records the facts
+   it lacks: each bound and capacity as a NUMBER, `bits=N`, `fixed`'s I and F, an int's width and
+   signedness ladder, a reader-side limit, and judges every constant by its EVALUATED use (a constant
+   behind `min =` widens by going DOWN). SPEC §2.10's "nothing is widened" is superseded by this bill.
+2. **"Kind" means the family.** WIDENS checks the ladder BEFORE kind equality: an int into a wider int of
+   the same signedness, `f32` into `f64`, an enum's or tag's ordinal width into a wider one, `bits(N)`
+   into a wider storage, are widenings although the wire kind byte changes. Every other kind change refuses.
+3. **Deprecation is one way, and a deprecated field is READ on every plan.** §2.10's reason stands
+   ("what would come back is not data"): undeprecating is refused; §2's row is corrected. And a deprecated
+   field keeps its slot and is landed by every plan, identity included; nothing is dropped and `unknown`
+   does not move for it. The application ignores it. One answer for one field on every version.
+4. **`layout_newer` carries the hash and nothing else.** The refusal walk over a stranger's layout is
+   REMOVED from LOAD: no parse, no names, no depth bound, no size arithmetic on untrusted bytes, anywhere.
+   The seven §1.1 checks are the lock's validation of what it records and the oracle's validation of the
+   corpus; at run time a known hash is a byte comparison and an unknown hash is a refusal. The design's
+   OLD-REFUSES-NEW column asserts the hash, not a name.
+5. **The plan carries the writer's bounds, and the hostile pass is per plan.** For lineage entry x, the
+   plan's `count`, `ordinal`, tag and range checks use x's bound, x's variant count, x's arm count and x's
+   range (the writer's own), never the reader's; a forged value past the WRITER's bound clamps or lands
+   `None` and counts, exactly as §4.5 and §4.6 say, with the bound taken from the plan, not from the
+   reader's type. One pass over storage per plan, laid down at build time.
+6. **A grown `[N]` fills the ELEMENT DEFAULT, never zeros.** The prefill recurses into the reader's fresh
+   image (a nested type's own defaults, an element's own), so a reader-added field of a nested type and a
+   grown fixed-size array both land what a fresh value holds. `[..N]`'s slack past the count is zeros.
+7. **A grown ordinal width is a `widen`, and the guard compares at the tag's width.** An enum crossing
+   255 variants, a union crossing 255 arms: the plan widens, and every leg's guard/arg lane is full width
+   (card 14 on #876 becomes a rule: no byte lane anywhere).
+8. **`T` to `?T` is a `present` op**, an unguarded constant 1 into the present byte, then the value; named
+   as its own op so no leg invents it.
+9. **LOAD keeps every framing and file check.** Form byte, header length, `20 + L`, the per-record hash
+   (`no_layout`), `batch_too_large`, the ragged tail as `malformed`; the vacuous record-bytes clause is
+   dropped; the retired hashes are emitted for `layout_unsupported`.
+10. **PLAN can fail at build, so BASELINE has a cap row.** A widening whose plan for ANY supported older
+    entry exceeds `plan_too_large` or the leaf cap is refused at commit, naming the entry; the remedy is
+    the floor or a new table.
+11. **The default row is in §6's table.** A changed specified default is refused (SPEC §18 was built for
+    it); it was in prose only.
+12. **Smaller.** A bool or present byte not 0 or 1 is normalised and counts nothing (ALG §4.5 stands; the
+    hostile list is corrected). `unknown` counts for a deprecated writer field that the reader lacks
+    entirely: none, by ruling 3, so the counter is removed from PLAN. `bits(N)` refuses with text. The
+    headroom sentence at ALG §1.1 (`>= key.children`) goes with C11. `ufixed` is in the spec's table. A
+    compressed float's quantization never refuses. §6's law is judged on evaluated uses, stated. The bill's
+    line saying the baseline "can hold" the law is deleted; the lock holds it (§6).
+
+The implementer's verdict was "not ready to build from"; with §11 and §12 applied it is the bill a stranger
+can implement, and the tests in `FIXED-FORM-VERSIONING-TESTS.md` are corrected to match (the refusal
+carries the hash; `[N]` lands defaults; deprecated fields read).
