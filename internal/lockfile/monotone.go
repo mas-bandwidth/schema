@@ -124,6 +124,17 @@ func shapeWord(shape string) string {
 
 // kindRule classifies a kind change on the scalar ladders: widen reports true,
 // and everything else comes back as the rule phrase that names it.
+//
+// WHY `fixed`'s I NEEDS NO COMPARISON OF ITS OWN, although the lock records it
+// (`ibits=`) and docs/FIXED-FORM-ALGORITHM.md §5.1 states the law as
+// "I(a) <= I(b) and F(a) == F(b)": SPEC §4.6 makes I + F EQUAL a storage width
+// (internal/check/check.go), so the kind pins I + F, and a declaration that
+// holds F and narrows I has narrowed the KIND — which is the branch below,
+// naming I in the sentence. A declaration that narrows I inside one storage
+// width has widened F, which is a moved SCALE and takes [rangeRule]'s "F
+// changed". There is no third move, and a hand-edited `ibits=` does not reach
+// here: the layout hash the lock records covers the entry line, `ibits=` with
+// it. Checked against both docs 2026-09-11.
 func kindRule(want, got Entry) (rule string, widened bool) {
 	wf, wb := ladder(want.Kind)
 	gf, gb := ladder(got.Kind)
@@ -154,12 +165,19 @@ func elemRule(want, got Entry) (rule string, widened bool) {
 	case wf != ladderNone && wf == gf && gb > wb:
 		return "", true
 	case wf != ladderNone && wf == gf && (wf == ladderFixed || wf == ladderUFixed):
-		return fmt.Sprintf("element I narrowed (%s -> %s)", kindName(want.ElemKind), kindName(got.ElemKind)), false
+		return fmt.Sprintf("element I narrowed (%d -> %d)", want.IBits, got.IBits), false
 	case wf != ladderNone && wf == gf:
 		return fmt.Sprintf("element narrowed (%s -> %s)", kindName(want.ElemKind), kindName(got.ElemKind)), false
 	default:
 		return fmt.Sprintf("element kind changed (%s -> %s)", elemWord(want.ElemKind, want.ElemWidth), elemWord(got.ElemKind, got.ElemWidth)), false
 	}
+}
+
+// namedElement reports whether an entry's ELEMENT is a named type whose own
+// block in the lock is where its changes are reported — the element's side of
+// the `HeldName` rule the field's own Width already follows.
+func namedElement(want, got Entry) bool {
+	return want.ElemKind == got.ElemKind && want.HeldName != "" && want.ElemWidth != got.ElemWidth
 }
 
 // rangeRule classifies a move of a field's declared bounds or its scale. A
@@ -321,7 +339,27 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 		return false, "", fmt.Errorf("%s, held %s in the lock and %s in the declaration: held type changed (%s -> %s) — a field already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
 			where, heldName(want.HeldName), heldName(got.HeldName), heldName(want.HeldName), heldName(got.HeldName))
 	}
-	if want.ElemKind != got.ElemKind || want.ElemWidth != got.ElemWidth {
+	if namedElement(want, got) {
+		// THE ELEMENT IS A NAMED TYPE — a nested record, an enum, a flags mask,
+		// a union — and then its WIDTH IS NOT THIS ENTRY'S FACT. It is the width
+		// of that type's OWN locked block, and the bill's law for it is that
+		// block's law, recursively: "a nested table or type by value | the
+		// table's own law, recursively: fields added at the end" (§2). An
+		// appended field in `Vec` widens every `[4]Vec` in the unit, and the
+		// removal that would shrink one is refused in Vec's block, by the type
+		// and the field, exactly as `nested_append` already proves for a field
+		// that holds ONE Vec. Both directions are therefore silent HERE, and the
+		// grown one is this entry widened — the same sentence the field's own
+		// Width already takes from `HeldName`, one level in.
+		//
+		// Without this the append read as "element kind changed (table ->
+		// table)": a refusal of a widening the bill allows, naming no change at
+		// all, and a widening the lock refuses is a table that cannot be
+		// versioned.
+		if got.ElemWidth > want.ElemWidth {
+			widened = true
+		}
+	} else if want.ElemKind != got.ElemKind || want.ElemWidth != got.ElemWidth {
 		rule, ok := elemRule(want, got)
 		if !ok {
 			return false, "", fmt.Errorf("%s, holds %s elements in the lock and %s elements in the declaration: %s — a field already in the lock keeps its element type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",

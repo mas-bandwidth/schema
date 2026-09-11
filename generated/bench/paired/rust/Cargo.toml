@@ -11,8 +11,16 @@
 #
 # The serialize.rs dependency is the PACKET module's — the generated table
 # modules name no runtime at all — and the crate links it because the unit's
-# packet codec is part of the same crate. The path is the sibling checkout at
-# make/rust.mk's own SERIALIZE_RS default.
+# packet codec is part of the same crate.
+#
+# IT NAMES A SYMLINK UNDER build/ AND NOT A CHECKOUT, so that THIS FILE NEVER
+# MOVES. make/rust.mk's `tables-rust-fixed-matched` and bench/paired's own build
+# step each point build/paired/serialize.rs at $(SERIALIZE_RS) — the sibling
+# `../serialize.rs` by default — before cargo runs. A checkout that is not
+# beside serialize.rs then builds without rewriting a tracked file, which is
+# what the cleanliness checks in bench/paired/nine.sh and build.json's `dirty`
+# require: a dirty tree there means the OPERATOR changed something, never that
+# the driver did.
 [package]
 name = "benchpaired"
 version = "0.0.0"
@@ -22,4 +30,4 @@ edition = "2024"
 path = "lib.rs"
 
 [dependencies]
-serialize = { package = "serialize-official", path = "../../../../../serialize.rs" }
+serialize = { package = "serialize-official", path = "../../../../build/paired/serialize.rs" }
