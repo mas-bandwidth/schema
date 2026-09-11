@@ -332,33 +332,7 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             widened++;
             break;
         }
-        case kTableFixedWidenF:
-        {
-            // f32 into f64, exact: a NaN's payload is data and rides on the
-            // bits, since the hardware conversion would set the quiet bit
-            // (§4). Same surgery as TableWidenF32, the packet form's float
-            // rung. ALGORITHM §4.5: widenf is exact by construction, NaN
-            // payloads included.
-            const uint32_t bits = TableFixedGet32( src + p.src );
-            double d;
-            if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
-            {
-                const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
-                const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
-                const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
-                memcpy( &d, &nan_bits, 8 );
-            }
-            else
-            {
-                float f;
-                memcpy( &f, &bits, 4 );
-                d = (double) f;
-            }
-            memcpy( dst + p.dst, &d, 8 );
-            widened++;
-            break;
-        }
-        case kTableFixedConst:
+@WIDENF_APPLY@        case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
@@ -1411,6 +1385,39 @@ inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntr
         cache.slots[i].made = 0;
     }
 }
+`
+
+// tableFixedWidenFApply is kTableFixedWidenF's body in the one read loop: f32
+// into f64, exact, the same bit surgery as packet TableWidenF32. It is spliced
+// at @WIDENF_APPLY@ only where the unit's census declares kind 11 (widen.go's
+// f32 bool). A unit that never reaches the float rung must carry none of it,
+// including the comment that names TableWidenF32.
+const tableFixedWidenFApply = `        case kTableFixedWidenF:
+        {
+            // f32 into f64, exact: a NaN's payload is data and rides on the
+            // bits, since the hardware conversion would set the quiet bit
+            // (§4). Same surgery as TableWidenF32, the packet form's float
+            // rung. ALGORITHM §4.5: widenf is exact by construction, NaN
+            // payloads included.
+            const uint32_t bits = TableFixedGet32( src + p.src );
+            double d;
+            if ( ( bits & 0x7F800000u ) == 0x7F800000u && ( bits & 0x007FFFFFu ) != 0 )
+            {
+                const uint64_t sign = (uint64_t) ( bits >> 31 ) << 63;
+                const uint64_t payload = (uint64_t) ( bits & 0x007FFFFFu ) << 29;
+                const uint64_t nan_bits = sign | 0x7FF0000000000000ull | payload;
+                memcpy( &d, &nan_bits, 8 );
+            }
+            else
+            {
+                float f;
+                memcpy( &f, &bits, 4 );
+                d = (double) f;
+            }
+            memcpy( dst + p.dst, &d, 8 );
+            widened++;
+            break;
+        }
 `
 
 // tableFixedRuntime128 is the FIXED FORM's 128-bit half, and it is separate for

@@ -2575,15 +2575,6 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             widened++;
             break;
         }
-        case kTableFixedWidenF:
-        {
-            float f = 0.0f;
-            memcpy( &f, src + p.src, 4 );
-            const double d = (double) f;
-            memcpy( dst + p.dst, &d, 8 );
-            widened++;
-            break;
-        }
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
