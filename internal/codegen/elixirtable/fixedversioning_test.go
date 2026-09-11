@@ -42,14 +42,17 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/elixir"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -131,7 +134,7 @@ var versionRows = []versionRow{
 
 func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
-	elixir := elixirBinary(t)
+	elixirBin := elixirBinary(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
@@ -156,7 +159,7 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
   v = hd(values)
   _ = {v, want_lead, want_trail}
 %s`, lead, trail, poisonLine(r.poison), counters, r.check)
-			out, err := runVersionProbe(t, elixir, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
+			out, err := runVersionProbe(t, elixirBin, "VNEW_"+r.row, []string{"VOLD_" + r.row}, 0,
 				filepath.Join(corpus, "old_"+r.row+".bin"), body)
 			if err != nil {
 				t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
@@ -182,7 +185,7 @@ func poisonLine(poison bool) string {
 
 func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	corpus := fixedCorpus(t)
-	elixir := elixirBinary(t)
+	elixirBin := elixirBinary(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
@@ -218,7 +221,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
   # comparison is the value itself against a fresh one.
   check(fresh == fresh_value(), "REFUSE wrote destination values")`
 			}
-			out, err := runVersionProbe(t, elixir, "VOLD_"+r.row, nil, 0,
+			out, err := runVersionProbe(t, elixirBin, "VOLD_"+r.row, nil, 0,
 				filepath.Join(corpus, "new_"+r.row+".bin"), body)
 			if err != nil {
 				t.Fatalf("OLD-REFUSES-NEW %s: %v\n%s", r.row, err, out)
@@ -236,13 +239,13 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 
 func TestFixedVersioningFloor(t *testing.T) {
 	corpus := fixedCorpus(t)
-	elixir := elixirBinary(t)
+	elixirBin := elixirBinary(t)
 	oldFile := filepath.Join(corpus, "old_floor.bin")
 	midFile := filepath.Join(corpus, "mid_floor.bin")
 
 	run := func(t *testing.T, retire int, body string) {
 		t.Helper()
-		out, err := runVersionProbe(t, elixir, "VNEW_floor", []string{"VOLD_floor", "VMID_floor"}, retire,
+		out, err := runVersionProbe(t, elixirBin, "VNEW_floor", []string{"VOLD_floor", "VMID_floor"}, retire,
 			oldFile, body)
 		if err != nil {
 			t.Fatalf("floor: %v\n%s", err, out)
@@ -288,13 +291,13 @@ func TestFixedVersioningFloor(t *testing.T) {
 
 func TestFixedVersioningHash(t *testing.T) {
 	corpus := fixedCorpus(t)
-	elixir := elixirBinary(t)
+	elixirBin := elixirBinary(t)
 	old := filepath.Join(corpus, "old_field_append.bin")
 	newer := filepath.Join(corpus, "new_field_append.bin")
 
 	probe := func(t *testing.T, body string) {
 		t.Helper()
-		out, err := runVersionProbe(t, elixir, "VNEW_field_append", []string{"VOLD_field_append"}, 0, old, body)
+		out, err := runVersionProbe(t, elixirBin, "VNEW_field_append", []string{"VOLD_field_append"}, 0, old, body)
 		if err != nil {
 			t.Fatalf("hash case: %v\n%s", err, out)
 		}
@@ -344,7 +347,7 @@ func TestFixedVersioningHash(t *testing.T) {
 
 func TestFixedVersioningLineageMerge(t *testing.T) {
 	corpus := fixedCorpus(t)
-	elixir := elixirBinary(t)
+	elixirBin := elixirBinary(t)
 	body := fmt.Sprintf(`  for path <- [%s, %s] do
     data = File.read!(path)
     {tag, _values, report} = load(data)
@@ -352,7 +355,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
       "#{path}: both pre-merge files read on the merged build: #{inspect(tag)} #{why(report)}")
   end`, elixirString(filepath.Join(corpus, "a_lineage_merge.bin")),
 		elixirString(filepath.Join(corpus, "b_lineage_merge.bin")))
-	out, err := runVersionProbe(t, elixir, "VNEW_lineage_merge",
+	out, err := runVersionProbe(t, elixirBin, "VNEW_lineage_merge",
 		[]string{"VOLD_lineage_merge", "VBRA_lineage_merge", "VBRB_lineage_merge"}, 0,
 		filepath.Join(corpus, "old_lineage_merge.bin"), body)
 	if err != nil {
@@ -504,7 +507,7 @@ func versionRoot(t *testing.T, u *ir.Unit) *ir.Struct {
 // floor), writes ONE GENERATED PROBE beside it, and runs it with the leg's own
 // toolchain. A probe is generated, never hand-written, so a row and its
 // negative control cost the same (§5.9 #18).
-func runVersionProbe(t *testing.T, elixir, reader string, older []string, retire int, file, body string) (string, error) {
+func runVersionProbe(t *testing.T, elixirBin, reader string, older []string, retire int, file, body string) (string, error) {
 	t.Helper()
 	u := versionSchema(t, reader)
 	lineage := map[string][]FixedLineageEntry{}
@@ -522,10 +525,17 @@ func runVersionProbe(t *testing.T, elixir, reader string, older []string, retire
 			lineage[st.Name] = append(lineage[st.Name], e)
 		}
 	}
-	files, err := GenerateLineage(u, lineage)
+	// THE PACKET LIBRARY TOO: a row's unions, enums and flags lower to modules
+	// there, and the fixed surface names them the way a consumer does.
+	files, err := elixir.Generate(u)
+	if err != nil {
+		t.Fatalf("generate packet: %v", err)
+	}
+	tables, err := GenerateLineage(u, lineage)
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
+	maps.Copy(files, tables)
 	dir := t.TempDir()
 	var names []string
 	for name, data := range files {
@@ -589,7 +599,7 @@ Probe.run()
 		args = append(args, "-r", n)
 	}
 	args = append(args, "probe.exs")
-	cmd := exec.Command(elixir, args...)
+	cmd := exec.Command(elixirBin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out, err := cmd.CombinedOutput()
@@ -612,17 +622,26 @@ func otpBin(t *testing.T) string {
 
 // sortedRuntimeFirst puts FixedRuntime.ex first and BuildVersion.ex next: a
 // module a later one calls at COMPILE time must already be loaded, and the
-// lineage's plans are built at module load (§5.9 #3).
+// lineage's plans are built at module load (§5.9 #3). A union's or an enum's
+// own struct lowers to a PACKET module, so those come before the fixed surface
+// that names them — and the order is sorted rather than a map's, because a map's
+// iteration order would make a row pass or fail by luck.
 func sortedRuntimeFirst(names []string) []string {
-	var first, rest []string
+	var first, packet, fixed []string
 	for _, n := range names {
-		if n == "FixedRuntime.ex" || n == "BuildVersion.ex" {
+		switch {
+		case n == "FixedRuntime.ex" || n == "BuildVersion.ex":
 			first = append(first, n)
-		} else {
-			rest = append(rest, n)
+		case strings.HasSuffix(n, FixedModuleSuffix+".ex"):
+			fixed = append(fixed, n)
+		default:
+			packet = append(packet, n)
 		}
 	}
-	return append(first, rest...)
+	sort.Strings(first)
+	sort.Strings(packet)
+	sort.Strings(fixed)
+	return append(append(first, packet...), fixed...)
 }
 
 // fileOf is the schema FILE that declares `name`: the Elixir fixed surface is
