@@ -7049,7 +7049,7 @@ static SCHEMA_UNUSED void schema_tabledemo_team_config_fixed_clamp_( TeamConfig 
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t team_config_fixed_body_bytes = 24;
 static SCHEMA_UNUSED const int64_t team_config_fixed_record_bytes = 8 + 24; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t team_config_fixed_hash = 0x527038c53c0297c3ull; /* fnv1a64 over the layout's bytes */
+static SCHEMA_UNUSED const uint64_t team_config_fixed_hash = 0x5a61da98d3a823e3ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -7172,11 +7172,16 @@ static SCHEMA_UNUSED int64_t team_config_fixed_load( TeamConfig * values, int64_
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
     layout = data + kTableFixedHeaderBytes + 4;
-    hash = table_fixed_hash_of( layout, (int64_t) layout_bytes );
+    hash = table_fixed_get64( data + kTableFixedHashAt ); /* the header's hash; digest is not on the wire */
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 24;
-    if ( hash != team_config_fixed_hash )
+    if ( hash == team_config_fixed_hash )
+    {
+        if ( (int64_t) layout_bytes != (int64_t) sizeof( team_config_fixed_layout ) || memcmp( layout, team_config_fixed_layout, (size_t) layout_bytes ) != 0 )
+        { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    }
+    else
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
            and CACHED BY HASH, so the compile is paid once per peer, not per record.
@@ -7244,11 +7249,9 @@ static SCHEMA_UNUSED int64_t team_config_fixed_load( TeamConfig * values, int64_
             entry_guarded = compiled_guarded;
         }
     }
-    /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-       the layout's own rules each refuse under their own name first, so a
-       broken layout is never reported as a lying header. A header whose hash
-       is not the hash of the layout behind it is refused (§3). */
-    if ( table_fixed_get64( data + kTableFixedHashAt ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    /* THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+       against this build's; digest is not on the wire, so the header hash
+       is not a hash of the layout bytes alone (§3, bill §13). */
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
@@ -7280,7 +7283,7 @@ static SCHEMA_UNUSED int64_t team_config_fixed_load( TeamConfig * values, int64_
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t gunner_config_fixed_body_bytes = 5;
 static SCHEMA_UNUSED const int64_t gunner_config_fixed_record_bytes = 8 + 5; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t gunner_config_fixed_hash = 0x113a539593602242ull; /* fnv1a64 over the layout's bytes */
+static SCHEMA_UNUSED const uint64_t gunner_config_fixed_hash = 0x113a539593602242ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -7401,11 +7404,16 @@ static SCHEMA_UNUSED int64_t gunner_config_fixed_load( GunnerConfig * values, in
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
     layout = data + kTableFixedHeaderBytes + 4;
-    hash = table_fixed_hash_of( layout, (int64_t) layout_bytes );
+    hash = table_fixed_get64( data + kTableFixedHashAt ); /* the header's hash; digest is not on the wire */
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 5;
-    if ( hash != gunner_config_fixed_hash )
+    if ( hash == gunner_config_fixed_hash )
+    {
+        if ( (int64_t) layout_bytes != (int64_t) sizeof( gunner_config_fixed_layout ) || memcmp( layout, gunner_config_fixed_layout, (size_t) layout_bytes ) != 0 )
+        { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    }
+    else
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
            and CACHED BY HASH, so the compile is paid once per peer, not per record.
@@ -7473,11 +7481,9 @@ static SCHEMA_UNUSED int64_t gunner_config_fixed_load( GunnerConfig * values, in
             entry_guarded = compiled_guarded;
         }
     }
-    /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-       the layout's own rules each refuse under their own name first, so a
-       broken layout is never reported as a lying header. A header whose hash
-       is not the hash of the layout behind it is refused (§3). */
-    if ( table_fixed_get64( data + kTableFixedHashAt ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    /* THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+       against this build's; digest is not on the wire, so the header hash
+       is not a hash of the layout bytes alone (§3, bill §13). */
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
@@ -7506,7 +7512,7 @@ static SCHEMA_UNUSED int64_t gunner_config_fixed_load( GunnerConfig * values, in
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t turret_config_fixed_body_bytes = 14;
 static SCHEMA_UNUSED const int64_t turret_config_fixed_record_bytes = 8 + 14; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t turret_config_fixed_hash = 0xd8715b0be3854d91ull; /* fnv1a64 over the layout's bytes */
+static SCHEMA_UNUSED const uint64_t turret_config_fixed_hash = 0xd8715b0be3854d91ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 7 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -7638,11 +7644,16 @@ static SCHEMA_UNUSED int64_t turret_config_fixed_load( TurretConfig * values, in
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
     layout = data + kTableFixedHeaderBytes + 4;
-    hash = table_fixed_hash_of( layout, (int64_t) layout_bytes );
+    hash = table_fixed_get64( data + kTableFixedHashAt ); /* the header's hash; digest is not on the wire */
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 14;
-    if ( hash != turret_config_fixed_hash )
+    if ( hash == turret_config_fixed_hash )
+    {
+        if ( (int64_t) layout_bytes != (int64_t) sizeof( turret_config_fixed_layout ) || memcmp( layout, turret_config_fixed_layout, (size_t) layout_bytes ) != 0 )
+        { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    }
+    else
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
            and CACHED BY HASH, so the compile is paid once per peer, not per record.
@@ -7710,11 +7721,9 @@ static SCHEMA_UNUSED int64_t turret_config_fixed_load( TurretConfig * values, in
             entry_guarded = compiled_guarded;
         }
     }
-    /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-       the layout's own rules each refuse under their own name first, so a
-       broken layout is never reported as a lying header. A header whose hash
-       is not the hash of the layout behind it is refused (§3). */
-    if ( table_fixed_get64( data + kTableFixedHashAt ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    /* THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+       against this build's; digest is not on the wire, so the header hash
+       is not a hash of the layout bytes alone (§3, bill §13). */
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
@@ -7743,7 +7752,7 @@ static SCHEMA_UNUSED int64_t turret_config_fixed_load( TurretConfig * values, in
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t hull_config_fixed_body_bytes = 50;
 static SCHEMA_UNUSED const int64_t hull_config_fixed_record_bytes = 8 + 50; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t hull_config_fixed_hash = 0xc65dc3bc15d5a954ull; /* fnv1a64 over the layout's bytes */
+static SCHEMA_UNUSED const uint64_t hull_config_fixed_hash = 0xc65dc3bc15d5a954ull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 15 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -7902,11 +7911,16 @@ static SCHEMA_UNUSED int64_t hull_config_fixed_load( HullConfig * values, int64_
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
     layout = data + kTableFixedHeaderBytes + 4;
-    hash = table_fixed_hash_of( layout, (int64_t) layout_bytes );
+    hash = table_fixed_get64( data + kTableFixedHashAt ); /* the header's hash; digest is not on the wire */
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 50;
-    if ( hash != hull_config_fixed_hash )
+    if ( hash == hull_config_fixed_hash )
+    {
+        if ( (int64_t) layout_bytes != (int64_t) sizeof( hull_config_fixed_layout ) || memcmp( layout, hull_config_fixed_layout, (size_t) layout_bytes ) != 0 )
+        { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    }
+    else
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
            and CACHED BY HASH, so the compile is paid once per peer, not per record.
@@ -7974,11 +7988,9 @@ static SCHEMA_UNUSED int64_t hull_config_fixed_load( HullConfig * values, int64_
             entry_guarded = compiled_guarded;
         }
     }
-    /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-       the layout's own rules each refuse under their own name first, so a
-       broken layout is never reported as a lying header. A header whose hash
-       is not the hash of the layout behind it is refused (§3). */
-    if ( table_fixed_get64( data + kTableFixedHashAt ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    /* THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+       against this build's; digest is not on the wire, so the header hash
+       is not a hash of the layout bytes alone (§3, bill §13). */
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
@@ -8025,7 +8037,7 @@ static SCHEMA_UNUSED void schema_tabledemo_keyed_config_fixed_clamp_( KeyedConfi
    value the type can hold (docs/SPEC-TABLES.md §3.4). */
 static SCHEMA_UNUSED const int64_t keyed_config_fixed_body_bytes = 234;
 static SCHEMA_UNUSED const int64_t keyed_config_fixed_record_bytes = 8 + 234; /* the hash and the body */
-static SCHEMA_UNUSED const uint64_t keyed_config_fixed_hash = 0xac0c8c80f3967de4ull; /* fnv1a64 over the layout's bytes */
+static SCHEMA_UNUSED const uint64_t keyed_config_fixed_hash = 0x39fbd26a1a70582bull; /* fnv1a64 over the layout and the definitions digest (bill §13) */
 
 /* THE LAYOUT (form 1 calls this the vocabulary block): 36 entries, a
    PRE-ORDER walk of the closure in the writer's declared order.
@@ -8268,11 +8280,16 @@ static SCHEMA_UNUSED int64_t keyed_config_fixed_load( KeyedConfig * values, int6
     layout_bytes = table_fixed_get32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
     layout = data + kTableFixedHeaderBytes + 4;
-    hash = table_fixed_hash_of( layout, (int64_t) layout_bytes );
+    hash = table_fixed_get64( data + kTableFixedHashAt ); /* the header's hash; digest is not on the wire */
     at = layout + layout_bytes;
     rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
     record_bytes = 8 + 234;
-    if ( hash != keyed_config_fixed_hash )
+    if ( hash == keyed_config_fixed_hash )
+    {
+        if ( (int64_t) layout_bytes != (int64_t) sizeof( keyed_config_fixed_layout ) || memcmp( layout, keyed_config_fixed_layout, (size_t) layout_bytes ) != 0 )
+        { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    }
+    else
     {
         /* ANOTHER WRITER: the same loop, over a plan compiled from its layout
            and CACHED BY HASH, so the compile is paid once per peer, not per record.
@@ -8340,11 +8357,9 @@ static SCHEMA_UNUSED int64_t keyed_config_fixed_load( KeyedConfig * values, int6
             entry_guarded = compiled_guarded;
         }
     }
-    /* THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-       the layout's own rules each refuse under their own name first, so a
-       broken layout is never reported as a lying header. A header whose hash
-       is not the hash of the layout behind it is refused (§3). */
-    if ( table_fixed_get64( data + kTableFixedHashAt ) != hash ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }
+    /* THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+       against this build's; digest is not on the wire, so the header hash
+       is not a hash of the layout bytes alone (§3, bill §13). */
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = 1; return -1; }
     count = rest / record_bytes;
     if ( count > capacity ) { report->refused = 1; report->reason = SCHEMA_TABLE_BATCH_TOO_LARGE; return -1; }
