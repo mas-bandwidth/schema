@@ -21,7 +21,7 @@ import (
 func TestBytesNDstRowIsAnArray(t *testing.T) {
 	u := unitFrom(t, `package probe
 
-table Probe
+fixed table Probe
 {
     label string(8)
     blob  bytes(6)
@@ -477,7 +477,7 @@ func assertOnePathLoad(t *testing.T, src, who string) {
 }
 
 func fixedHashLine(src string) string {
-	for _, line := range strings.Split(src, "\n") {
+	for line := range strings.SplitSeq(src, "\n") {
 		if strings.Contains(line, "public static final long hash =") {
 			return strings.TrimSpace(line)
 		}

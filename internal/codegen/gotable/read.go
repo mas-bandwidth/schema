@@ -67,18 +67,22 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
-	if g.refusesForm1(st) {
-		g.emitFixedForm1Load(st)
-		return
-	}
 	if g.hasFixedForm(st) {
-		// DERIVED into the fixed mode, not declared fixed (§2.2 vs §3.4). It
-		// carries FixedSave/FixedLoad for form 3 AND keeps the form-1 Load it
-		// never lost. When #823's `fixed table` keyword marks it declared,
-		// this Load becomes the `previous_form` refusal above.
-		g.pf("// %s also carries the fixed form (form 3), because its closure lays out\n", n)
-		g.pf("// fixed — but nobody DECLARED it fixed, so this reader still reads form 1.\n")
-		g.pf("// A `fixed table` (docs/SPEC-TABLES.md §3.4, #823) refuses form 1 by name.\n")
+		// IT CARRIES BOTH FORMS AND EACH ENTRY POINT CARRIES ONE (§3.4, §15).
+		// <T>FixedLoad reads form 3 and names a form-1 file `previous_form`;
+		// this <T>Load reads form 1 and names a form-3 file `newer_form`. The
+		// `fixed table` keyword (#823) decides what a WRITER emits, not which
+		// bytes a reader of the variable form can still be handed: the shared
+		// corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a DECLARED
+		// fixed root, the C++ reference reads it there (cpptable/fixedform.go's
+		// header: "a fixed-table type's reader accepts both, by the form byte"),
+		// and a leg that refused it alone would be the one leg disagreeing with
+		// the reference. The dispatch §15 names as the follow-on is what would
+		// let one entry point answer both; it is not this one refusing.
+		g.pf("// %s also carries the FIXED form (form 3): %sFixedLoad reads that one and\n", n, n)
+		g.pf("// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry\n")
+		g.pf("// point and reads form 1, whether or not the table was DECLARED fixed\n")
+		g.pf("// (docs/SPEC-TABLES.md §3.4, §15).\n")
 	}
 	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
 	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")

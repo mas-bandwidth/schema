@@ -20,6 +20,13 @@ import (
 // refuses. The writer is FX2 and the reader FX1, so the hash never matches and
 // the plan path — the path a stranger's layout takes — is the path under test.
 func TestFixedFormLayoutRules(t *testing.T) {
+	// RETIRED BY §5.6: a layout arriving on the wire is no longer walked, so the
+	// seven rules do not fire at run time — a KNOWN hash whose bytes differ is
+	// one name, layout_malformed (asserted by TestFixedVersioningHash), and an
+	// unknown hash is layout_newer. The seven rules stay as the LOCK'S
+	// validation of what it records and the oracle's of the corpus, and that is
+	// where this coverage is owed next.
+	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; the seven rules are the lock's validation now")
 	fx1, err := os.ReadFile("../../../test/tables/FX1.schema")
 	if err != nil {
 		t.Fatal(err)
@@ -258,8 +265,11 @@ func TestLayoutMalformedResidue(t *testing.T) {
 	var r tblfx1.TableReport
 	plan := make([]tblfx1.TableFixedEntry, 1024)
 	n := tblfx1.FxRootFixedLoad(v, f, plan, &r)
-	if n >= 0 || r.Verdict != tblfx1.TableOpenRefused || r.Reason != "layout_malformed" || r.Malformed {
-		t.Fatalf("a header hash that is not the hash of the layout behind it: n=%d %+v", n, r)
+	// Digest is not on the wire (bill §13): the header hash is not
+	// hash_of(layout), so a lying header is caught when the records still
+	// carry the real hash — no_layout — rather than as layout_malformed.
+	if n >= 0 || r.Verdict != tblfx1.TableOpenRefused || r.Reason != "no_layout" || r.Malformed {
+		t.Fatalf("a header hash that is not the hash the records carry: n=%d %+v", n, r)
 	}
 }
 `

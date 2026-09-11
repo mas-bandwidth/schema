@@ -194,13 +194,13 @@ enum Slot { Alpha, Beta, Gamma }
 
 flags Mark { One, Two }
 
-table Leaf
+fixed table Leaf
 {
     a int32 = 7 | min = 0, max = 1000
     b uint16 = 3
 }
 
-table FixedProbe
+fixed table FixedProbe
 {
     small   uint8 = 5
     wide    uint64 = 9
@@ -262,7 +262,7 @@ func TestRustFixedFormLayoutIsIrsByteForByte(t *testing.T) {
 		}
 		key := screamingOf(st.Name)
 		want[key] = strings.Join(hex, " ")
-		wantHash[key] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout))
+		wantHash[key] = fmt.Sprintf("0x%016x", ir.TableFixedLayoutHash(layout, st))
 	}
 	if len(want) == 0 {
 		t.Fatal("ir names no fixed root in a unit of fixed tables — the fixture, not the emitter, is what broke")

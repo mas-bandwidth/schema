@@ -540,6 +540,35 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
   // nothing is decoded and there is nothing to count.
   const fresh = () => [new fx1home.FxRoot()];
   {
+    const R = fx1home.TableFixedRefusal;
+    const seven = [
+      R.LayoutCountMismatch, R.LayoutKindUnknown, R.LayoutSizeMismatch,
+      R.LayoutKindInvalid, R.LayoutTreeUnclosed, R.LayoutRecordTooLarge,
+      R.LayoutTooDeep,
+    ];
+    check(new Set(seven).size === 7 && seven.every((v) => v !== R.LayoutMalformed && v !== R.None),
+      "the seven layout refusals are distinct, and none is layout_malformed");
+  }
+  {
+    // A LAYOUT THAT IS NOT A LAYOUT IS REFUSED BY NAME, whole, and never damage.
+    // Every rule has its own case in layoutValidation() below; this one is
+    // here because it is also the check that a refusal MOVES NO COUNTER.
+    const two = new fx2home.FxRoot();
+    const w2 = new Uint8Array(fx2.FxRootFixedMeasure(1));
+    fx2.FxRootFixedSave([two], 1, w2);
+    const broken = Uint8Array.from(w2);
+    // THE ENTRY COUNT, which is the layout's own first four bytes and not
+    // the u32 LENGTH in front of them: a length that no longer matches the
+    // file is a different rule with a different name.
+    broken[LAYOUT_AT] ^= 0xff;
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(fresh(), 1, broken, broken.length, fx1.FxRootFixedNewPlan(), r);
+    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutCountMismatch,
+      "REFUSED BY NAME: layout_count_mismatch");
+    check(r.unknown === 0 && r.kindMismatch === 0 && !r.malformed,
+      "REFUSED BY NAME: a refusal moves no counter");
+  }
+  {
     // THE FORM BYTE SAYS WHICH DIRECTION (§3). The registry is ORDERED, so a
     // byte this reader cannot read is named by WHERE IT SITS relative to this
     // form — and never by one word for all three.
@@ -581,8 +610,8 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     bad[LAYOUT_AT + 4 + 13] = 0x7f; // the root's child count, which now closes nothing
     const r = new fx1home.TableFixedReport();
     const n = fx1.FxRootFixedLoad(fresh(), 1, bad, bad.length, fx1.FxRootFixedNewPlan(), r);
-    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutMalformed,
-      "REFUSAL: a layout whose tree does not close is layout_malformed, and it sets nothing");
+    check(n === -1 && r.refused === fx1home.TableFixedRefusal.LayoutTreeUnclosed,
+      "REFUSAL: a layout whose tree does not close is layout_tree_unclosed, and it sets nothing");
   }
   {
     // THE HEADER NAMES THE LAYOUT ONCE, AND IT IS CHECKED LAST (§3): a header
@@ -659,16 +688,9 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
 // (test/tables/fixedform_main.cpp, layout_validation) — each taking a layout
 // this reader ACCEPTS and breaking EXACTLY ONE THING in it.
 //
-// THE ASSERTION IS ON THE NAME AND NOT ON THE VALUE, which is the one place
-// this leg departs from the reference's spelling. `TableFixedRefusal` does not
-// carry §1.1's seven members yet, so `fx1home.TableFixedRefusal.LayoutCountMismatch`
-// is `undefined` and `r.refused === undefined` would go red reading "false" —
-// one opaque failure that says nothing about which rule is missing. So the
-// refusal's VALUE is reverse-mapped through the frozen enum to its MEMBER NAME
-// and the name string is what is compared. That is exactly as strong as the
-// enum comparison — a wrong member fails it, and it passes unchanged the day
-// the runtime registers the seven — and it makes every red say what the
-// document owes and what this leg actually answers.
+// THE ASSERTION IS ON THE NAME. The seven members exist; the fixture still
+// reverse-maps the frozen enum to the MEMBER NAME so a missing rule still
+// says which one, and a wrong member still fails.
 //
 // The file is §3's HEADER (the form byte, seven reserved zero bytes, the layout
 // hash at 8, the body at 16), then `u32 layout length, layout, records` — so
@@ -680,14 +702,12 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
 // that is consistent with itself: the header's hash IS the hash of the layout
 // it carries, and so is every record's. §2 step 5 puts the header hash check
 // LAST of the three for exactly this reason — so a broken layout is never
-// reported as a lying header — and this leg's loader does order it last in its
-// code. But the rules it orders it after are the ones it HAS, and §1.1's seven
-// are not among them: a file left with the good layout's hash in its header
-// would be refused `layout_malformed` for the tampering rather than for the
-// rule, and every red below would read the same whether the rule is checked
-// late, misnamed, or absent. So the layout's fnv1a64 is recomputed over the
-// broken bytes and stamped into the header and into the record behind it. What
-// refuses a sealed file is the RULE or nothing, which is the measurement.
+// reported as a lying header. The seven named rules run first; the seal is
+// still the measurement, because a file left with the good layout's hash in
+// its header would be refused `layout_malformed` for the tampering rather
+// than for the rule. The layout's fnv1a64 is recomputed over the broken bytes
+// and stamped into the header and into the record behind it. What refuses a
+// sealed file is the RULE or nothing.
 //
 // The hash is computed here from §1's own definition, in BigInt, rather than
 // borrowed from the module under test — a driver that hashed with the code it
@@ -937,7 +957,6 @@ function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // 4. THE OPTIONALS — §3.4's kind 35, against the C++ reference's own bytes
 // ---------------------------------------------------------------------------
@@ -963,6 +982,7 @@ function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
 //   66..69  effect's widest arm     70..71  tail
 const OPT_PRESENT = 20, OPT_V = 21, NUM_PRESENT = 37, MARK_PRESENT = 42;
 const WRAP_LEAF_PRESENT = 48, WRAP_LEAF_V = 49, EFFECT_TAG = 65;
+const PLAIN = 16, MARK = MARK_PRESENT + 1, BOOST_POWER = EFFECT_TAG + 1;
 
 // setText lays a string(N) member down the way every port must: the bytes,
 // then the USED LENGTH beside them.
@@ -1708,13 +1728,13 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     const b = body;
     bad[b + OPT_PRESENT] = 7;
-    bad[b + OPT_V] = 0x39; bad[b + OPT_V + 1] = 0x30; // 12345, so a projection is visible
+    bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03; // 999, in Leaf.v's range, so a projection is visible
     bad[b + WRAP_LEAF_PRESENT] = 0xff;
     bad[b + WRAP_LEAF_V] = 0x2a;
     bad[b + NUM_PRESENT] = 2;
     bad[b + MARK_PRESENT] = 0x80;
     const { n, v, r } = load(bad);
-    check(n === 1 && v.OptPresent && v.Opt.V === 12345,
+    check(n === 1 && v.OptPresent && v.Opt.V === 999,
       `NEGATIVE CONTROL: a present byte of 7 reads as PRESENT and projects the payload (got ${v.OptPresent}, ${v.Opt.V})`);
     check(v.Wrap.LeafPresent && v.Wrap.Leaf.V === 42,
       "NEGATIVE CONTROL: 0xff inside a nested table reads as present too");
@@ -1753,9 +1773,9 @@ function optionalControls(check, o, dir) {
     const bad = oneRecord(1);
     const b = body;
     bad[b + OPT_PRESENT] = 7;
-    bad[b + OPT_V] = 0x39; bad[b + OPT_V + 1] = 0x30;
+    bad[b + OPT_V] = 0xe7; bad[b + OPT_V + 1] = 0x03;
     const { n, v } = load(bad, fo2, fo2home);
-    check(n === 1 && v.OptPresent && v.Opt.V === 12345,
+    check(n === 1 && v.OptPresent && v.Opt.V === 999,
       "NEGATIVE CONTROL: a present byte of 7 reads as present through a COMPILED plan too");
   }
   {
@@ -1792,6 +1812,82 @@ function optionalControls(check, o, dir) {
     const { n, v } = load(bad, fo2, fo2home);
     check(n === 1 && v.Effect.Type === 0,
       "a union tag beyond the arm count is None on the COMPILED path too, by the guard matching nothing");
+  }
+
+  // A RANGED INTEGER CLAMPS ON LOAD AND COUNTS. Identity is one OP_COPY, so
+  // the plan never holds the bound; the projection is the pass both paths
+  // share. `plain` is `int32 | min = 0, max = 1000`.
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 1000,
+      `NEGATIVE CONTROL: a ranged integer past max lands as this reader's max (got ${v.Plain})`);
+    check(r.clamped === 1, `NEGATIVE CONTROL: a ranged integer past max counts one clamped (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      "NEGATIVE CONTROL: a ranged clamp is an event and not a refusal — the record still reads");
+  }
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, -1, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 0 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer below min lands as this reader's min (got ${v.Plain}, clamped ${r.clamped})`);
+  }
+  {
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 1000, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Plain === 1000 && r.clamped === 0,
+      "NEGATIVE CONTROL: a ranged integer AT the bound is not a clamp and moves no counter");
+  }
+  {
+    // the same bound through a COMPILED plan: same-size is a copy, so the
+    // decode is what holds it, on this path too
+    const bad = oneRecord(1);
+    new DataView(bad.buffer).setInt32(body + PLAIN, 9999, true);
+    const { n, v, r } = load(bad, fo2, fo2home);
+    check(n === 1 && v.Plain2 === 1000 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer past max clamps through a COMPILED plan too (got ${v.Plain2}, clamped ${r.clamped})`);
+  }
+  {
+    // a ranged field under a live union arm, identity COPY of the whole body
+    const bad = oneRecord(0);
+    new DataView(bad.buffer).setInt32(body + BOOST_POWER, 9999, true);
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.Effect.Type === 1 && v.Effect.Boost.Power === 1000 && r.clamped === 1,
+      `NEGATIVE CONTROL: a ranged integer under a live arm clamps (got power ${v.Effect.Boost.Power}, clamped ${r.clamped})`);
+  }
+
+  // AN ENUM ORDINAL PAST THE TOP VALUE LANDS None AND COUNTS ONE clamped.
+  // Record 0 has `mark` PRESENT as Gold (2). Identity copies the ordinal raw.
+  {
+    const bad = oneRecord(0);
+    bad[body + MARK] = 9;
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.MarkPresent && v.Mark === 0,
+      `NEGATIVE CONTROL: an enum ordinal past the last variant lands as None (got ${v.Mark})`);
+    check(r.clamped === 1, `NEGATIVE CONTROL: an enum ordinal past the last variant counts one clamped (got ${r.clamped})`);
+    check(!r.malformed && r.refused === 0,
+      "NEGATIVE CONTROL: an enum ordinal past the set is an event and not a refusal — the record still reads");
+    check(v.Tail === 16, "NEGATIVE CONTROL: the rest of the record still lands beside a clamped enum");
+  }
+  {
+    const bad = oneRecord(0);
+    bad[body + MARK] = 2;
+    const { n, v, r } = load(bad);
+    check(n === 1 && v.MarkPresent && v.Mark === 2 && r.clamped === 0,
+      "NEGATIVE CONTROL: an enum ordinal in the set is not a clamp and moves no counter");
+  }
+  {
+    // compiled path: kind 30 remaps through an ordinal op, so a value past
+    // this reader's table is already None in the image and the decode's
+    // comparison does not fire. The consumer still sees None.
+    const bad = oneRecord(0);
+    bad[body + MARK] = 9;
+    const { n, v } = load(bad, fo2, fo2home);
+    check(n === 1 && v.MarkPresent && v.Mark === 0,
+      "NEGATIVE CONTROL: an enum ordinal past the last variant is None on the COMPILED path too");
   }
 }
 

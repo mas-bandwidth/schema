@@ -97,6 +97,48 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c )
 	}
 }
 
+func TestOwedCLegStripped(t *testing.T) {
+	// C++-only algorithm §5 rows against empty C. After the map they are
+	// gone; a leftover would mean the OWED stripper missed a row.
+	c := `
+    return kind >= 2 && kind <= 5;
+`
+	cpp := `
+    kTableFixedPresent = 7,
+    if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; }
+    if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; }
+    return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 );
+    case kTableFixedPresent: { dst[p.dst] = 1; break; }
+    if ( me.kind == 35 && te.kind != 35 )
+    {
+        TableFixedEntry e;
+        e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg; e.op = kTableFixedPresent;
+        TableFixedPush( c, e );
+        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+        return;
+    }
+    if ( te.size < me.size )
+    {
+        TableFixedEntry e;
+        e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
+        e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+        TableFixedPush( c, e );
+        break;
+    }
+    struct TableFixedKnownLayout
+    {
+        uint64_t hash = 0;
+        const uint8_t * layout = NULL;
+        int64_t layout_bytes = 0;
+        int64_t record_bytes = 0;
+    };
+`
+	left := diffLines("fixture", canonicalize(c), canonicalize(cpp))
+	if len(left) != 0 {
+		t.Fatalf("OWED C-leg rows should be empty after the map:\n%s", strings.Join(left, "\n"))
+	}
+}
+
 func TestPlantedDivergenceReds(t *testing.T) {
 	c := `enum { kTableFixedCopy = 99, kTableFixedCount = 1 };`
 	cpp := `enum : uint8_t { kTableFixedCopy = 0, kTableFixedCount = 1, };`

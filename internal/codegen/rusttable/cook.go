@@ -632,8 +632,91 @@ func (g *gen) emitCookRow(st *ir.Struct) {
 	g.pf("    fn default() -> Self {\n")
 	g.pf("        // a cooked record is plain bytes with no niche in it, so the zero\n")
 	g.pf("        // form is a value of the type by construction\n")
-	g.pf("        unsafe { core::mem::zeroed() }\n")
+	if cookNamedTextReachable(st) {
+		// NAMED string(N)/bytes(N) DEFAULTS LIVE HERE (SPEC §4.2), matching
+		// C++ `char label[8 + 1] = "fx"`. Prefill already carries the same
+		// bytes for holes the plan does not write; this is constructed
+		// storage, not dest-row, not identity fill.
+		g.pf("        let mut value: Self = unsafe { core::mem::zeroed() };\n")
+		g.emitCookNamedTextDefaults(st, "        ")
+		g.pf("        value\n")
+	} else {
+		g.pf("        unsafe { core::mem::zeroed() }\n")
+	}
 	g.pf("    }\n}\n\n")
+}
+
+// cookNamedTextReachable reports whether constructed storage of st, or of a
+// nested struct it holds, carries a named string(N) or bytes(N) default.
+func cookNamedTextReachable(st *ir.Struct) bool {
+	return cookNamedTextWalk(st, make(map[*ir.Struct]bool))
+}
+
+func cookNamedTextWalk(st *ir.Struct, seen map[*ir.Struct]bool) bool {
+	if st == nil || seen[st] {
+		return false
+	}
+	seen[st] = true
+	for _, f := range st.Fields {
+		if cookFieldNamedText(f) {
+			return true
+		}
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		nested, ok := f.Type.Ref.(*ir.Struct)
+		if ok && cookNamedTextWalk(nested, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func cookFieldNamedText(f *ir.Field) bool {
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.Type.Pointer {
+		return false
+	}
+	switch f.Type.Kind {
+	case ir.TString, ir.TBytes:
+		return f.HasDefault && len(f.DefBytes) > 0
+	}
+	return false
+}
+
+// emitCookNamedTextDefaults overlays declared string(N)/bytes(N) defaults onto
+// a zeroed Row, then constructs nested Rows that carry one of their own.
+func (g *gen) emitCookNamedTextDefaults(st *ir.Struct, ind string) {
+	for _, f := range st.Fields {
+		if cookFieldNamedText(f) {
+			n := len(f.DefBytes)
+			if int64(n) > f.Type.Size {
+				n = int(f.Type.Size)
+			}
+			g.pf("%svalue.%s[..%d].copy_from_slice(b%s); // the declared default (SPEC §4.2)\n",
+				ind, f.Name, n, fixedRustByteString(f.DefBytes[:n]))
+			g.pf("%svalue.%s_length = %d;\n", ind, f.Name, n)
+			continue
+		}
+		if f.Type.Kind != ir.TNamed {
+			continue
+		}
+		nested, ok := f.Type.Ref.(*ir.Struct)
+		if !ok || !cookNamedTextReachable(nested) {
+			continue
+		}
+		switch {
+		case f.KeyEnum != "":
+			g.pf("%sfor i in 0..%d {\n", ind, f.KeyEnumRef.Max)
+			g.pf("%s    value.%s[i] = %sRow::default();\n", ind, f.Name, nested.Name)
+			g.pf("%s}\n", ind)
+		case f.Array != ir.ArrayNone:
+			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
+			g.pf("%s    value.%s[i] = %sRow::default();\n", ind, f.Name, nested.Name)
+			g.pf("%s}\n", ind)
+		default:
+			g.pf("%svalue.%s = %sRow::default();\n", ind, f.Name, nested.Name)
+		}
+	}
 }
 
 func (g *gen) emitCookRowField(f *ir.Field) {

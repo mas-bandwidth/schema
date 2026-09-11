@@ -2998,17 +2998,24 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderCamera>[] RenderCameraFixedSlots = new TableFixedSlot<RenderCamera>[] {
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.CameraId = unchecked((uint)v)),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.CameraType = unchecked((uint)v)),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Fov = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Fov = (float)d),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d, reset: (t) => { t.Position.X = 0.0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d, reset: (t) => { t.Position.Y = 0.0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d, reset: (t) => { t.Position.Z = 0.0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d, reset: (t) => { t.Rotation.X = 0.0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d, reset: (t) => { t.Rotation.Y = 0.0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d, reset: (t) => { t.Rotation.Z = 0.0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d, reset: (t) => { t.Rotation.W = 1.0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.CameraId = unchecked((uint)v), reset: (t) => { t.CameraId = 0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.CameraType = unchecked((uint)v), reset: (t) => { t.CameraType = 0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v), reset: (t) => { t.TargetObjectId = 0; }),
+            new TableFixedSlot<RenderCamera>(setRaw: (t, v) => t.Fov = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Fov = (float)d, reset: (t) => { t.Fov = 0.0f; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderCameraFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 11u),
         };
 
         public static readonly TableFixedPlan RenderCameraFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -3091,13 +3098,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderCameraFixedPlan;
             long record_bytes = RenderCameraFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderCameraFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderCameraFixedHash)
+            {
+                if (layout_bytes != (uint)RenderCameraFixedLayout.Length || !layout.SequenceEqual(RenderCameraFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -3113,11 +3130,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderCameraFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderCameraFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -3130,10 +3149,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderCamera(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCameraFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -3171,7 +3192,7 @@ namespace Blockdemo
 
         public const long RenderShipFixedBodyBytes = 81;
         public const long RenderShipFixedRecordBytes = 8 + RenderShipFixedBodyBytes;
-        public const ulong RenderShipFixedHash = 0x890e08a270d96102ul;
+        public const ulong RenderShipFixedHash = 0x863125cfa2630ceeul;
 
         public static readonly byte[] RenderShipFixedLayout = new byte[] {
             0x1a, 0x00, 0x00, 0x00, 0x07, 0x60, 0xad, 0x3f, 0xd9, 0xed, 0x00, 0x5b, 0x0d, 0x51, 0x00, 0x00,
@@ -3235,22 +3256,29 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderShip>[] RenderShipFixedSlots = new TableFixedSlot<RenderShip>[] {
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Flags = v),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Thrust = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Thrust = (float)d),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v)),
-            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { if (v > 3) { t.ShipType = 0; if (rep != null) rep.Clamped++; } else { t.ShipType = (ShipType)v; } }),
-            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.HasTargetLock = v != 0),
-            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.PredictedExplode = v != 0),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d, reset: (t) => { t.Position.X = 0.0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d, reset: (t) => { t.Position.Y = 0.0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d, reset: (t) => { t.Position.Z = 0.0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d, reset: (t) => { t.Rotation.X = 0.0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d, reset: (t) => { t.Rotation.Y = 0.0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d, reset: (t) => { t.Rotation.Z = 0.0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d, reset: (t) => { t.Rotation.W = 1.0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Flags = v, reset: (t) => { t.Flags = 0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v), reset: (t) => { t.ObjectId = 0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v), reset: (t) => { t.TargetObjectId = 0; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.Thrust = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Thrust = (float)d, reset: (t) => { t.Thrust = 0.0f; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v), reset: (t) => { t.ObjectSequence = 0; }),
+            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { if (v > 3) { t.ShipType = 0; if (rep != null) rep.Clamped++; } else { t.ShipType = (ShipType)v; } }, reset: (t) => { t.ShipType = global::Blockdemo.ShipType.None; }),
+            new TableFixedSlot<RenderShip>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.HasTargetLock = v != 0, reset: (t) => { t.HasTargetLock = false; }),
+            new TableFixedSlot<RenderShip>(setRaw: (t, v) => t.PredictedExplode = v != 0, reset: (t) => { t.PredictedExplode = false; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderShipFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 16u),
         };
 
         public static readonly TableFixedPlan RenderShipFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -3338,13 +3366,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderShipFixedPlan;
             long record_bytes = RenderShipFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderShipFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderShipFixedHash)
+            {
+                if (layout_bytes != (uint)RenderShipFixedLayout.Length || !layout.SequenceEqual(RenderShipFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -3360,11 +3398,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderShipFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderShipFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -3377,10 +3417,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderShip(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderShipFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -3466,18 +3508,25 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderTurret>[] RenderTurretFixedSlots = new TableFixedSlot<RenderTurret>[] {
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ParentObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.TurretIndex = unchecked((uint)v)),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v)),
-            new TableFixedSlot<RenderTurret>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
-            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.HasTargetLock = v != 0),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d, reset: (t) => { t.Rotation.X = 0.0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d, reset: (t) => { t.Rotation.Y = 0.0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d, reset: (t) => { t.Rotation.Z = 0.0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d, reset: (t) => { t.Rotation.W = 1.0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v), reset: (t) => { t.ObjectId = 0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ParentObjectId = unchecked((uint)v), reset: (t) => { t.ParentObjectId = 0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.TurretIndex = unchecked((uint)v), reset: (t) => { t.TurretIndex = 0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.TargetObjectId = unchecked((uint)v), reset: (t) => { t.TargetObjectId = 0; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v), reset: (t) => { t.ObjectSequence = 0; }),
+            new TableFixedSlot<RenderTurret>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+            new TableFixedSlot<RenderTurret>(setRaw: (t, v) => t.HasTargetLock = v != 0, reset: (t) => { t.HasTargetLock = false; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderTurretFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 12u),
         };
 
         public static readonly TableFixedPlan RenderTurretFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -3561,13 +3610,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderTurretFixedPlan;
             long record_bytes = RenderTurretFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderTurretFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderTurretFixedHash)
+            {
+                if (layout_bytes != (uint)RenderTurretFixedLayout.Length || !layout.SequenceEqual(RenderTurretFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -3583,11 +3642,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderTurretFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderTurretFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -3600,10 +3661,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderTurret(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderTurretFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -3695,18 +3758,25 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderMissile>[] RenderMissileFixedSlots = new TableFixedSlot<RenderMissile>[] {
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v)),
-            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { if (v > 2) { t.MissileType = 0; if (rep != null) rep.Clamped++; } else { t.MissileType = (MissileType)v; } }),
-            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d, reset: (t) => { t.Position.X = 0.0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d, reset: (t) => { t.Position.Y = 0.0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d, reset: (t) => { t.Position.Z = 0.0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d, reset: (t) => { t.Rotation.X = 0.0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d, reset: (t) => { t.Rotation.Y = 0.0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d, reset: (t) => { t.Rotation.Z = 0.0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d, reset: (t) => { t.Rotation.W = 1.0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v), reset: (t) => { t.ObjectId = 0; }),
+            new TableFixedSlot<RenderMissile>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v), reset: (t) => { t.ObjectSequence = 0; }),
+            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { if (v > 2) { t.MissileType = 0; if (rep != null) rep.Clamped++; } else { t.MissileType = (MissileType)v; } }, reset: (t) => { t.MissileType = global::Blockdemo.MissileType.None; }),
+            new TableFixedSlot<RenderMissile>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderMissileFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 12u),
         };
 
         public static readonly TableFixedPlan RenderMissileFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -3790,13 +3860,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderMissileFixedPlan;
             long record_bytes = RenderMissileFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderMissileFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderMissileFixedHash)
+            {
+                if (layout_bytes != (uint)RenderMissileFixedLayout.Length || !layout.SequenceEqual(RenderMissileFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -3812,11 +3892,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderMissileFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderMissileFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -3829,10 +3911,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderMissile(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderMissileFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -3926,18 +4010,25 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderDynamicProp>[] RenderDynamicPropFixedSlots = new TableFixedSlot<RenderDynamicProp>[] {
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v)),
-            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }),
-            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d, reset: (t) => { t.Position.X = 0.0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d, reset: (t) => { t.Position.Y = 0.0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d, reset: (t) => { t.Position.Z = 0.0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d, reset: (t) => { t.Rotation.X = 0.0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d, reset: (t) => { t.Rotation.Y = 0.0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d, reset: (t) => { t.Rotation.Z = 0.0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d, reset: (t) => { t.Rotation.W = 1.0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.ObjectId = unchecked((uint)v), reset: (t) => { t.ObjectId = 0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRaw: (t, v) => t.ObjectSequence = unchecked((byte)v), reset: (t) => { t.ObjectSequence = 0; }),
+            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
+            new TableFixedSlot<RenderDynamicProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderDynamicPropFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 12u),
         };
 
         public static readonly TableFixedPlan RenderDynamicPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -4021,13 +4112,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderDynamicPropFixedPlan;
             long record_bytes = RenderDynamicPropFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderDynamicPropFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderDynamicPropFixedHash)
+            {
+                if (layout_bytes != (uint)RenderDynamicPropFixedLayout.Length || !layout.SequenceEqual(RenderDynamicPropFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -4043,11 +4144,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderDynamicPropFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderDynamicPropFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -4060,10 +4163,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderDynamicProp(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderDynamicPropFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -4157,18 +4262,25 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderStaticProp>[] RenderStaticPropFixedSlots = new TableFixedSlot<RenderStaticProp>[] {
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Scale = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Scale = d),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
-            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.StaticPropId = unchecked((uint)v)),
-            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }),
-            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d, reset: (t) => { t.Position.X = 0.0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d, reset: (t) => { t.Position.Y = 0.0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d, reset: (t) => { t.Position.Z = 0.0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d, reset: (t) => { t.Rotation.X = 0.0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d, reset: (t) => { t.Rotation.Y = 0.0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d, reset: (t) => { t.Rotation.Z = 0.0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d, reset: (t) => { t.Rotation.W = 1.0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Scale = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Scale = d, reset: (t) => { t.Scale = 0.0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
+            new TableFixedSlot<RenderStaticProp>(setRaw: (t, v) => t.StaticPropId = unchecked((uint)v), reset: (t) => { t.StaticPropId = 0; }),
+            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
+            new TableFixedSlot<RenderStaticProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderStaticPropFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 12u),
         };
 
         public static readonly TableFixedPlan RenderStaticPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -4252,13 +4364,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderStaticPropFixedPlan;
             long record_bytes = RenderStaticPropFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderStaticPropFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderStaticPropFixedHash)
+            {
+                if (layout_bytes != (uint)RenderStaticPropFixedLayout.Length || !layout.SequenceEqual(RenderStaticPropFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -4274,11 +4396,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderStaticPropFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderStaticPropFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -4291,10 +4415,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderStaticProp(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderStaticPropFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -4390,19 +4516,26 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderCosmeticProp>[] RenderCosmeticPropFixedSlots = new TableFixedSlot<RenderCosmeticProp>[] {
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Scale = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Scale = d),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v)),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.CosmeticPropId = unchecked((uint)v)),
-            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.PropSequence = unchecked((byte)v)),
-            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }),
-            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d, reset: (t) => { t.Position.X = 0.0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d, reset: (t) => { t.Position.Y = 0.0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d, reset: (t) => { t.Position.Z = 0.0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d, reset: (t) => { t.Rotation.X = 0.0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d, reset: (t) => { t.Rotation.Y = 0.0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d, reset: (t) => { t.Rotation.Z = 0.0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d, reset: (t) => { t.Rotation.W = 1.0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Scale = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Scale = d, reset: (t) => { t.Scale = 0.0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.Flags = unchecked((ulong)v), reset: (t) => { t.Flags = 0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.CosmeticPropId = unchecked((uint)v), reset: (t) => { t.CosmeticPropId = 0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRaw: (t, v) => t.PropSequence = unchecked((byte)v), reset: (t) => { t.PropSequence = 0; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { if (v > 3) { t.PropType = 0; if (rep != null) rep.Clamped++; } else { t.PropType = (PropType)v; } }, reset: (t) => { t.PropType = global::Blockdemo.PropType.None; }),
+            new TableFixedSlot<RenderCosmeticProp>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderCosmeticPropFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 13u),
         };
 
         public static readonly TableFixedPlan RenderCosmeticPropFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -4487,13 +4620,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderCosmeticPropFixedPlan;
             long record_bytes = RenderCosmeticPropFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderCosmeticPropFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderCosmeticPropFixedHash)
+            {
+                if (layout_bytes != (uint)RenderCosmeticPropFixedLayout.Length || !layout.SequenceEqual(RenderCosmeticPropFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -4509,11 +4652,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderCosmeticPropFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderCosmeticPropFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -4526,10 +4671,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderCosmeticProp(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderCosmeticPropFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -4617,16 +4764,23 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderLaser>[] RenderLaserFixedSlots = new TableFixedSlot<RenderLaser>[] {
-            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.X = d),
-            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.Y = d),
-            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.Z = d),
-            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.X = d),
-            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.Y = d),
-            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.Z = d),
-            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.T = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.T = d),
-            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.LaserId = unchecked((uint)v)),
-            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { if (v > 2) { t.LaserType = 0; if (rep != null) rep.Clamped++; } else { t.LaserType = (LaserType)v; } }),
-            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.X = d, reset: (t) => { t.Start.X = 0.0; }),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.Y = d, reset: (t) => { t.Start.Y = 0.0; }),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Start.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Start.Z = d, reset: (t) => { t.Start.Z = 0.0; }),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.X = d, reset: (t) => { t.Finish.X = 0.0; }),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.Y = d, reset: (t) => { t.Finish.Y = 0.0; }),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.Finish.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Finish.Z = d, reset: (t) => { t.Finish.Z = 0.0; }),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.T = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.T = d, reset: (t) => { t.T = 0.0; }),
+            new TableFixedSlot<RenderLaser>(setRaw: (t, v) => t.LaserId = unchecked((uint)v), reset: (t) => { t.LaserId = 0; }),
+            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { if (v > 2) { t.LaserType = 0; if (rep != null) rep.Clamped++; } else { t.LaserType = (LaserType)v; } }, reset: (t) => { t.LaserType = global::Blockdemo.LaserType.None; }),
+            new TableFixedSlot<RenderLaser>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderLaserFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 10u),
         };
 
         public static readonly TableFixedPlan RenderLaserFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -4708,13 +4862,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderLaserFixedPlan;
             long record_bytes = RenderLaserFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderLaserFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderLaserFixedHash)
+            {
+                if (layout_bytes != (uint)RenderLaserFixedLayout.Length || !layout.SequenceEqual(RenderLaserFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -4730,11 +4894,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderLaserFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderLaserFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -4747,10 +4913,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderLaser(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderLaserFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -4842,18 +5010,25 @@ namespace Blockdemo
         };
 
         public static readonly TableFixedSlot<RenderExplosion>[] RenderExplosionFixedSlots = new TableFixedSlot<RenderExplosion>[] {
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.T = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.T = d),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.ExplosionId = unchecked((uint)v)),
-            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.ParentObjectId = unchecked((uint)v)),
-            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { if (v > 2) { t.ExplosionType = 0; if (rep != null) rep.Clamped++; } else { t.ExplosionType = (ExplosionType)v; } }),
-            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.X = d, reset: (t) => { t.Position.X = 0.0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Y = d, reset: (t) => { t.Position.Y = 0.0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Position.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Position.Z = d, reset: (t) => { t.Position.Z = 0.0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.X = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.X = d, reset: (t) => { t.Rotation.X = 0.0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.Y = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Y = d, reset: (t) => { t.Rotation.Y = 0.0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.Z = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.Z = d, reset: (t) => { t.Rotation.Z = 0.0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.Rotation.W = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Rotation.W = d, reset: (t) => { t.Rotation.W = 1.0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.T = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.T = d, reset: (t) => { t.T = 0.0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.ExplosionId = unchecked((uint)v), reset: (t) => { t.ExplosionId = 0; }),
+            new TableFixedSlot<RenderExplosion>(setRaw: (t, v) => t.ParentObjectId = unchecked((uint)v), reset: (t) => { t.ParentObjectId = 0; }),
+            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { if (v > 2) { t.ExplosionType = 0; if (rep != null) rep.Clamped++; } else { t.ExplosionType = (ExplosionType)v; } }, reset: (t) => { t.ExplosionType = global::Blockdemo.ExplosionType.None; }),
+            new TableFixedSlot<RenderExplosion>(setRawReport: (t, v, rep) => { if (v > 4) { t.Team = 0; if (rep != null) rep.Clamped++; } else { t.Team = (Team)v; } }, reset: (t) => { t.Team = global::Blockdemo.Team.None; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RenderExplosionFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 12u),
         };
 
         public static readonly TableFixedPlan RenderExplosionFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -4937,13 +5112,23 @@ namespace Blockdemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RenderExplosionFixedPlan;
             long record_bytes = RenderExplosionFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RenderExplosionFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RenderExplosionFixedHash)
+            {
+                if (layout_bytes != (uint)RenderExplosionFixedLayout.Length || !layout.SequenceEqual(RenderExplosionFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -4959,11 +5144,13 @@ namespace Blockdemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RenderExplosionFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RenderExplosionFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -4976,10 +5163,12 @@ namespace Blockdemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RenderExplosion(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RenderExplosionFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }

@@ -4,7 +4,8 @@
 // bytes they run) from the paired Fixed Table headers, normalises them
 // through the token map in bench/paired/TWIN.md, and diffs the rest.
 // Any leftover line that is not one of the three named remaining
-// differences is a failure.
+// differences is a failure. C++-only algorithm §5 rows are OWED by the
+// C leg and stripped by the map; they are not a fourth named remaining.
 package main
 
 import (

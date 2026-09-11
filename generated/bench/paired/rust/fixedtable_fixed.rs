@@ -66,8 +66,8 @@ pub fn fixed_table_fixed_clamp_body(value: &mut FixedTableRow, clamped: &mut i32
 /// is a constant and not a walk (docs/SPEC-TABLES.md §3.4).
 pub const FIXED_TABLE_FIXED_BODY_BYTES: usize = 1236;
 pub const FIXED_TABLE_FIXED_RECORD_BYTES: usize = 8 + FIXED_TABLE_FIXED_BODY_BYTES; // the hash and the body
-/// fnv1a64 over the layout's bytes, exactly as written.
-pub const FIXED_TABLE_FIXED_HASH: u64 = 0x32f1c4a302a224eb;
+/// fnv1a64 over the layout and the definitions digest (bill §13).
+pub const FIXED_TABLE_FIXED_HASH: u64 = 0x6237c1dc195f9ec9;
 
 /// THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 /// PRE-ORDER walk of the closure in the writer's declared order. Every byte
@@ -340,7 +340,11 @@ pub fn fixed_table_fixed_load(
         return report.refuse(TableFixedReason::LayoutMalformed);
     }
     let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + block_bytes];
-    let hash = table_fixed_hash(block);
+    let hash = u64::from_le_bytes(
+        data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
+            .try_into()
+            .expect("eight bytes"),
+    ); // the header's hash; digest is not on the wire
     let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + block_bytes..];
 
     // WHICH PLAN, and that is the only thing that differs between reading this
@@ -348,7 +352,11 @@ pub fn fixed_table_fixed_load(
     let mut compiled = 0usize;
     let mut record_bytes = FIXED_TABLE_FIXED_RECORD_BYTES;
     let identity = hash == FIXED_TABLE_FIXED_HASH;
-    if !identity {
+    if identity {
+        if block != FIXED_TABLE_FIXED_BLOCK.as_slice() {
+            return report.refuse(TableFixedReason::LayoutMalformed);
+        }
+    } else {
         let theirs = match TableFixedBlock::parse(block) {
             Ok(b) => b,
             Err(why) => return report.refuse(why),
@@ -363,17 +371,9 @@ pub fn fixed_table_fixed_load(
         };
         record_bytes = 8 + theirs.entry(0).size as usize;
     }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header (§3).
-    if u64::from_le_bytes(
-        data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
-            .try_into()
-            .expect("eight bytes"),
-    ) != hash
-    {
-        return report.refuse(TableFixedReason::LayoutMalformed);
-    }
+    // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+    // against this build's; digest is not on the wire, so the header hash is
+    // not a hash of the layout bytes alone (§3, bill §13).
     if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
         report.malformed = true;
         return None;

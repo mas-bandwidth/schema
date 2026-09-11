@@ -51,8 +51,10 @@ fixed table Point {
 	// DECLARED fixed, because #823's keyword is the SELECTION POINT: the form
 	// follows the declaration and nothing is derived in either direction (§2.2,
 	// [ir.TableFixedRoots]), so the surface above exists for a `fixed table`
-	// and for nothing else. What <T>Load then is — a named form-1 refusal — is
-	// held next door by TestFixedFormForm1RefusalIsByTheKeyword, and the
+	// and for nothing else. The keyword selects the FORM a writer emits; it
+	// does not move the form-1 refusal out of FixedLoad and into <T>Load, which
+	// stays the variable form's entry point and still reads form 1 — the pair is
+	// held next door by TestFixedFormForm1RefusalLivesInFixedLoad, and the
 	// variable half by TestForm1OfVariableTableStillLoads.
 	if funcSource(body, "func PointLoad(") == "" {
 		t.Fatal("PointLoad was not emitted")
@@ -61,8 +63,16 @@ fixed table Point {
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
-	if !strings.Contains(fixedLoad, "identity") || !strings.Contains(fixedLoad, "tableFixedHoles") {
+	if !strings.Contains(fixedLoad, "tableFixedHoles") {
 		t.Error("compiled FixedLoad does not prefill the plan's holes")
+	}
+	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
+	// the lineage and the floor are static data, and the two answers an
+	// unmatched hash owes are distinct.
+	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "layout_newer", "PointFixedFloor", "layout_unsupported"} {
+		if !strings.Contains(fixedLoad, want) {
+			t.Errorf("FixedLoad does not select by hash: missing %q", want)
+		}
 	}
 	if strings.Contains(fixedLoad, "if identity {") {
 		t.Error("identity flag still forks the record loop")
@@ -81,11 +91,17 @@ fixed table Point {
 	}
 }
 
-// TestFixedFormForm1RefusalIsByTheKeyword is the other half of the surface
-// above, and the difference is #823's `fixed table`: a DECLARED fixed table
-// encodes as form 3 always, so a form-1 file handed to its Load is a named
-// refusal and never a slower read of the same records (Glenn 2026-09-09).
-func TestFixedFormForm1RefusalIsByTheKeyword(t *testing.T) {
+// TestFixedFormForm1RefusalLivesInFixedLoad is the other half of the surface
+// above, and it is #823's `fixed table` keyword that makes it worth pinning:
+// the keyword decides what a WRITER emits (form 3, always) and which ENTRY
+// POINT names a form-1 file `previous_form` — <T>FixedLoad — and it does NOT
+// turn <T>Load, the variable form's own entry point, into a refusal. The
+// shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a DECLARED
+// fixed root and the C++ reference reads it there, so a Go <T>Load that
+// refused would be the one leg disagreeing with the reference
+// (docs/SPEC-TABLES.md §3.4, §15). The schema says the keyword and the fixture
+// walks the real parser: there is no second way to say the class here.
+func TestFixedFormForm1RefusalLivesInFixedLoad(t *testing.T) {
 	files := generate(t, `package probe
 fixed table Point {
     x int32
@@ -102,11 +118,15 @@ fixed table Point {
 	if load == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
-	if !strings.Contains(load, "previous_form") || !strings.Contains(load, "tableFixedRefuse") {
-		t.Error("PointLoad of a DECLARED fixed table is not a named form-1 refusal")
+	if !strings.Contains(load, "PointLoadBody") {
+		t.Error("PointLoad of a DECLARED fixed table must still walk form 1")
 	}
-	if strings.Contains(load, "PointLoadBody") {
-		t.Error("PointLoad still walks a form-1 file of a declared fixed table")
+	if strings.Contains(load, "previous_form") {
+		t.Error("PointLoad, the form-1 entry point, refuses form 1")
+	}
+	fixedLoad := funcSource(body, "func PointFixedLoad(")
+	if !strings.Contains(fixedLoad, "previous_form") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
+		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
 }
 
@@ -173,8 +193,11 @@ func TestRoundTrip(t *testing.T) {
 	broken := append([]byte(nil), buf...)
 	broken[TableFixedHeaderBytes+4] ^= 0xFF
 	r = TableReport{}
-	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_count_mismatch" {
-		t.Fatalf("layout_count_mismatch: %d %+v", n, r)
+	// Hash chooses first (bill §12.4): a known hash whose layout bytes differ
+	// is layout_malformed. The seven §1.1 names are for a layout that is not
+	// a layout; they do not fire against a header this build has locked.
+	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
+		t.Fatalf("known hash, different layout bytes: %d %+v", n, r)
 	}
 	lying := append([]byte(nil), buf...)
 	lying[TableFixedHeaderBytes+4+len(PointFixedLayout)] ^= 0xFF
@@ -186,7 +209,20 @@ func TestRoundTrip(t *testing.T) {
 `)
 }
 
+// RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This test and the two
+// below read a file written under ANOTHER schema's layout WITHOUT that layout
+// being in the reader's lineage, and they assert the run-time walk of a
+// stranger's layout — the seven §1.1 names, and a forward read. §5.6 retires
+// exactly that: "Reading a layout the lock has never seen. The run-time walk of
+// a stranger's layout ... the recompute of the header's hash". Under §5 every
+// one of these files comes back layout_newer, which is the new law and not a
+// regression. What is OWED is the same coverage on the lineage harness
+// (fixedversioning_test.go's runVersionProbe): the plan path with the peer's
+// entry handed to the reader as its lock, and §1.1's seven rules moved to the
+// LOCK's validation of what it records.
 func TestFixedFormPlanPath(t *testing.T) {
+	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness")
+
 	fx1, err := os.ReadFile("../../../test/tables/FX1.schema")
 	if err != nil {
 		t.Fatal(err)
@@ -428,7 +464,10 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 	}
 }
 
-func TestForm1OfFixedTableRefused(t *testing.T) {
+// TestForm1OfFixedTableReadsAndFixedLoadRefuses is the runtime half: the two
+// entry points of a DECLARED fixed table, each over the other's form byte —
+// Load reads the form-1 file back, FixedLoad names it `previous_form`.
+func TestForm1OfFixedTableReadsAndFixedLoadRefuses(t *testing.T) {
 	runGenerated(t, `package probe
 fixed table Point {
     x int32 = 1
@@ -437,7 +476,7 @@ fixed table Point {
 `, `package probe
 import ("testing")
 
-func TestForm1LoadIsNamedRefusal(t *testing.T) {
+func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
 	one := Point{X: 4242, Y: -7}
 	need := PointMeasure(&one)
 	if need < 0 {
@@ -452,14 +491,14 @@ func TestForm1LoadIsNamedRefusal(t *testing.T) {
 	}
 	var got Point
 	var r TableReport
-	if PointLoad(&got, form1, &r) {
-		t.Fatalf("form-1 Load of a DECLARED fixed table succeeded: %+v seq=%+v", r, got)
+	if !PointLoad(&got, form1, &r) {
+		t.Fatalf("form-1 Load of a DECLARED fixed table refused: %+v", r)
 	}
-	if r.Reason != "previous_form" || r.Verdict != TableOpenRefused || r.Malformed {
-		t.Fatalf("want named previous_form, got %+v", r)
+	if r.Reason != "" || r.Verdict != TableOpenOk || r.Malformed {
+		t.Fatalf("form-1 Load of a DECLARED fixed table is not a clean read: %+v", r)
 	}
-	if got.X == 4242 || got.Y == -7 {
-		t.Fatalf("form-1 Load of a DECLARED fixed table was a slow read: %+v", got)
+	if got.X != 4242 || got.Y != -7 {
+		t.Fatalf("form-1 Load of a DECLARED fixed table lost the record: %+v", got)
 	}
 	batch := make([]Point, 1)
 	r = TableReport{}
@@ -611,9 +650,9 @@ func TestHostileBoolOnTheIdentityPath(t *testing.T) {
 
 func TestHostileBoolOnThePlanPath(t *testing.T) {
 	buf := hostileRecord(t)
-	parsed, ok := tableFixedParseLayout(HostFixedLayout)
-	if !ok {
-		t.Fatal("my own layout does not parse")
+	parsed, why := tableFixedParseLayout(HostFixedLayout)
+	if why != "" {
+		t.Fatalf("my own layout does not parse: %s", why)
 	}
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport
@@ -755,6 +794,7 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 // is both the guard's arm ordinal and the text flavour, the compiled read
 // drops the string silently.
 func TestFixedFormArgLaneTextUnderSecondArm(t *testing.T) {
+	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness")
 	dir := t.TempDir()
 	runtime, err := filepath.Abs("../../../../serialize.go")
 	if err != nil {
@@ -890,9 +930,9 @@ func TestOldArgLaneControl(t *testing.T) {
 
 	layoutBytes := tableFixedGet32(buf[TableFixedHeaderBytes:])
 	layout := buf[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
-	parsed, ok := tableFixedParseLayout(layout)
-	if !ok {
-		t.Fatal("writer layout does not parse")
+	parsed, why := tableFixedParseLayout(layout)
+	if why != "" {
+		t.Fatalf("writer layout does not parse: %s", why)
 	}
 	plan := make([]TableFixedEntry, 256)
 	var r TableReport

@@ -34,7 +34,7 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	const (
 		refEntries   = 75
 		refLayoutLen = fixedHeaderBytes + refEntries*fixedEntryBytes
-		refHash      = uint64(0x32f1c4a302a224eb)
+		refHash      = uint64(0x6237c1dc195f9ec9)
 		refBodyBytes = int64(1236)
 	)
 	if len(w.entries) != refEntries {
@@ -43,7 +43,7 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	if len(layout) != refLayoutLen {
 		t.Fatalf("layout bytes = %d, the C++ reference emits %d", len(layout), refLayoutLen)
 	}
-	if got := fixedLayoutHash(layout); got != refHash {
+	if got := ir.TableFixedLayoutHash(layout, st); got != refHash {
 		t.Fatalf("layout hash = 0x%016x, the C++ reference emits 0x%016x — the two walks disagree somewhere in the closure", got, refHash)
 	}
 	if got := fixedTypeBytes(st); got != refBodyBytes {
@@ -288,6 +288,76 @@ table LiveRoot
 	}
 }
 
+// A STRING, BYTES, OR WSTRING WRITE COPIES LENGTH AND ZEROES SLACK
+// (docs/SPEC-TABLES.md §3.4). Writing all N units would put unwritten or
+// stale storage onto the wire instead of the used length. Slack is zeroed.
+func TestWriteStringAndBytesCopiesLengthAndZeroesSlack(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+table SpanRoot
+{
+    label string(8)
+    blob  bytes(6)
+    wide  wstring(4)
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "void spanRootFixedWriteBody(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no spanRootFixedWriteBody in the generated unit")
+	}
+	body := src
+	if i := strings.Index(src, "void spanRootFixedWriteBody("); i >= 0 {
+		body = src[i:]
+		if j := strings.Index(body[1:], "\nvoid "); j >= 0 {
+			body = body[:j+1]
+		}
+	}
+
+	// string(8): copies length bytes, not bound 8; zeroes slack
+	if !strings.Contains(body, "bytes.setRange(at + 4, at + 4 + value.labelLength, value.label);") {
+		t.Fatalf("string write must copy length bytes:\n%s", body)
+	}
+	if strings.Contains(body, "bytes.setRange(at + 4, at + 12, value.label);") {
+		t.Fatalf("string write still copies declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 4 + value.labelLength, at + 12, 0);") {
+		t.Fatalf("string write must zero slack:\n%s", body)
+	}
+
+	// bytes(6): copies length bytes, not bound 6; zeroes slack
+	if !strings.Contains(body, "bytes.setRange(at + 16, at + 16 + value.blobLength, value.blob);") {
+		t.Fatalf("bytes write must copy length bytes:\n%s", body)
+	}
+	if strings.Contains(body, "bytes.setRange(at + 16, at + 22, value.blob);") {
+		t.Fatalf("bytes write still copies declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 16 + value.blobLength, at + 22, 0);") {
+		t.Fatalf("bytes write must zero slack:\n%s", body)
+	}
+
+	// wstring(4): loops length code units, not bound 4; zeroes slack
+	if !strings.Contains(body, "for (var i = 0; i < value.wideLength; i++) {") {
+		t.Fatalf("wstring write must loop length code units:\n%s", body)
+	}
+	if strings.Contains(body, "for (var i = 0; i < 4; i++) {") {
+		t.Fatalf("wstring write still loops declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 26 + value.wideLength * 2, at + 34, 0);") {
+		t.Fatalf("wstring write must zero slack:\n%s", body)
+	}
+}
+
 // THE PREFILL IS THE DECLARED DEFAULTS, and the one this corpus carries is
 // `has_extra bool = true` — the byte that would silently read false if the
 // prefill were a zero fill.
@@ -306,6 +376,131 @@ func TestFixedPrefillCarriesDeclaredDefaults(t *testing.T) {
 	if prefill[52] != 1 {
 		t.Fatalf("prefill[52] = %d, `entities [1..8]` is born at its minimum of 1", prefill[52])
 	}
+}
+
+// TestFixedIdentityCoverIsThePlanAndHolesAreEmpty holds Glenn's ruling: the
+// cover IS the identity plan's destinations, so subtracting what that plan
+// lands leaves nothing. Empty fill is the skip — identity prefills nothing.
+func TestFixedIdentityCoverIsThePlanAndHolesAreEmpty(t *testing.T) {
+	u := loadUnit(t, "../../../bench/corpus/Bench.schema", "../../../bench/corpus/FixedTable.schema")
+	st := findTable(t, u, "FixedTable")
+	plan := fixedIdentityPlan(st)
+	cover := fixedIdentityCover(plan)
+	if len(cover) == 0 {
+		t.Fatal("identity coverage of FixedTable is empty")
+	}
+	body := fixedTypeBytes(st)
+	if len(cover) != 1 || cover[0].dst != 0 || cover[0].size != body {
+		t.Fatalf("identity cover = %v, Dart's image is the wire so the cover is one run of %d", cover, body)
+	}
+	covered := make([]bool, len(cover))
+	for _, e := range plan {
+		for _, r := range fixedEntryLands(e) {
+			found := false
+			for i, c := range cover {
+				if r.dst >= c.dst && r.dst+r.size <= c.dst+c.size {
+					covered[i] = true
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("plan dest [%d,%d) is not in identity coverage", r.dst, r.dst+r.size)
+			}
+		}
+	}
+	for i, ok := range covered {
+		if !ok {
+			t.Fatalf("coverage range [%d,%d) is not a plan destination — identity holes must be empty",
+				cover[i].dst, cover[i].dst+cover[i].size)
+		}
+	}
+}
+
+// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: the plan
+// compiler prefills exactly the ranges the plan does not land; identity
+// prefills nothing. Hash chooses the plan and nothing else. There is no
+// identity flag in the record loop — an empty list is what skips the work.
+func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
+	u := unitFrom(t, `package probe
+table Config {
+    scale float32 = 1.0
+    extra int32 = 9
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "int configFixedLoad(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no configFixedLoad in the generated unit")
+	}
+	load := dartFn(src, "int configFixedLoad(")
+	if load == "" {
+		t.Fatal("configFixedLoad was not a closed function")
+	}
+	if !strings.Contains(load, "tableFixedFillRun") {
+		t.Error("the load does not copy the plan's unwritten ranges")
+	}
+	if !strings.Contains(load, "configFixedPrefill") {
+		t.Error("the load has no default image to copy into holes")
+	}
+	if !strings.Contains(load, "configFixedCover") {
+		t.Error("the load does not hand the cover to the plan compiler")
+	}
+	if !strings.Contains(load, "fillCount = 0") {
+		t.Error("identity hole list is not the empty skip")
+	}
+	if strings.Contains(load, "plan.image.setRange") {
+		t.Error("the load still prefills the whole image; holes are the bytes the plan does not land")
+	}
+	i := strings.Index(load, "for (var k = 0; k < n; k++)")
+	if i < 0 {
+		t.Fatal("the load has no record loop")
+	}
+	loop := load[i:]
+	if strings.Contains(loop, "identity") {
+		t.Error("the load loop still branches on identity; an empty hole list is what skips work")
+	}
+	runtimeHas := false
+	for _, b := range files {
+		if strings.Contains(string(b), "void tableFixedFillRun(") &&
+			strings.Contains(string(b), "static int fills(") {
+			runtimeHas = true
+			break
+		}
+	}
+	if !runtimeHas {
+		t.Error("the fixed runtime is missing tableFixedFillRun or TableFixedCompiler.fills")
+	}
+}
+
+func dartFn(body, sig string) string {
+	i := strings.Index(body, sig)
+	if i < 0 {
+		return ""
+	}
+	n := 0
+	for j := i; j < len(body); j++ {
+		switch body[j] {
+		case '{':
+			n++
+		case '}':
+			n--
+			if n == 0 {
+				return body[i : j+1]
+			}
+		}
+	}
+	return body[i:]
 }
 
 // A NAMED string(N) DEFAULT LIVES IN CONSTRUCTED STORAGE, not only in the

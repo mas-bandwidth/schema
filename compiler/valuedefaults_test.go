@@ -205,7 +205,7 @@ const fixedValueDefaultsUnit = `package vdef
 
 flags Caps { Jump, Crouch }
 
-table Ship
+fixed table Ship
 {
     name string(32) = "untitled"
     tag  bytes(4) = "ab"
@@ -247,6 +247,14 @@ func TestFixedTableValueDefaultsEveryLeg(t *testing.T) {
 			for _, want := range []string{`"fx"`, "labelLength = 2", "..[0] = 0x66", "..[1] = 0x78"} {
 				if !strings.Contains(got, want) {
 					t.Errorf("dart fixed-form storage lacks %q", want)
+				}
+			}
+		case "rust":
+			// constructed Row::default(), not length-only zeroed: C++ writes
+			// `char label[8 + 1] = "fx"` and `uint8_t tag[4] = { 0x61, 0x62 }`
+			for _, want := range []string{`copy_from_slice(b"fx")`, "label_length = 2", `copy_from_slice(b"ab")`, "tag_length = 2"} {
+				if !strings.Contains(got, want) {
+					t.Errorf("rust fixed-form storage lacks %q", want)
 				}
 			}
 		}

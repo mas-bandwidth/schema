@@ -88,11 +88,11 @@ type Loose
 		edge  string
 		form1 bool // form-1 / variable tables still refuse; the fixed form does not
 	}{
-		{"direct", "table", "", false},
-		{"nested_type", "type", "type Middle { badge Badge }\ntable Root { middle Middle }", false},
-		{"fixed_array", "type", "table Root { badges [2]Badge }", false},
-		{"counted_array", "type", "table Root { badges [..2]Badge }", false},
-		{"union_arm", "type", "union Choice { badge Badge }\ntable Root { choice Choice }", false},
+		{"direct", "fixed table", "", false},
+		{"nested_type", "type", "type Middle { badge Badge }\nfixed table Root { middle Middle }", false},
+		{"fixed_array", "type", "fixed table Root { badges [2]Badge }", false},
+		{"counted_array", "type", "fixed table Root { badges [..2]Badge }", false},
+		{"union_arm", "type", "union Choice { badge Badge }\nfixed table Root { choice Choice }", false},
 		{"union_array_arm", "type", "union Choice { badges [2]Badge }\ntable Root { choice Choice }", true},
 		{"pointer", "table", "table Root { badge *Badge }", true},
 		{"map_value", "type", "table Root { badges map[uint8]Badge }", true},

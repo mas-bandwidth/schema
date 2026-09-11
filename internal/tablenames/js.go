@@ -43,8 +43,17 @@ func init() {
 		// framing, its view and the five reads a walk of it makes
 		Name{Name: "TableFixedLayoutHeaderBytes", What: "the layout's own framing: the u32 entry count, and nothing else"},
 		Name{Name: "TableFixedEntryBytes", What: "a layout entry is seventeen bytes, and the format never moves"},
-		Name{Name: "TableFixedLayoutView", What: "a parsed layout: the bytes, the offset and the entry count"},
-		Name{Name: "TableFixedParseLayout", What: "a layout is refused WHOLE or not at all — a count that overruns, a tree that does not close"},
+		Name{Name: "TableFixedRecordMaxBytes", What: "the fixed form: §3.4's 65536-byte record ceiling"},
+		Name{Name: "TableFixedMaxDepth", What: "the fixed form: a bound on the layout WALK, not on the wire"},
+		Name{Name: "TableFixedLayoutView", What: "a parsed layout: the bytes, the offset, the entry count and the named refusal"},
+		Name{Name: "TableFixedParseLayout", What: "a layout is refused WHOLE or not at all — each of §1.1's seven rules under its own name"},
+		Name{Name: "TableFixedKnownKind", What: "whether a kind is in the closed set — a kind outside it is layout_kind_unknown, never stepped over"},
+		Name{Name: "TableFixedLeafSize", What: "a leaf kind's admitted sizes — 1 ok, 0 size mismatch, -1 not a leaf"},
+		Name{Name: "TableFixedOrdinalWidth", What: "whether n is an ordinal width: 1, 2, 4 or 8"},
+		Name{Name: "TableFixedFail", What: "keep the FIRST layout-refusal reason and stop"},
+		Name{Name: "TableFixedClearView", What: "a failed parse sets nothing: bytes, offset and count go back to empty"},
+		Name{Name: "TableFixedCheckEntry", What: "validate the subtree at i: kind, size, shape, depth, then how many entries it occupies"},
+		Name{Name: "TableFixedRefusalName", What: "the refusal's own name, matching the C++ reference's spellings"},
 		Name{Name: "TableFixedIdLo", What: "an entry's wire id, low lane: an id is compared, never arithmetic, so it never becomes a BigInt"},
 		Name{Name: "TableFixedIdHi", What: "an entry's wire id, high lane"},
 		Name{Name: "TableFixedKind", What: "an entry's kind byte"},
@@ -91,7 +100,7 @@ func init() {
 		Name{Name: "TableFixedPlanCache", What: "the plan cache BY HASH, so a compile is paid once per peer and never once per record"},
 		Name{Name: "TableFixedReport", What: "the fixed form's read report — §4's six counters and the refusal beside them"},
 		Name{Name: "TableFixedResetReport", What: "the report reset, which the caller owns and the codec never allocates"},
-		Name{Name: "TableFixedRefusal", What: "the fixed form's refusals, each one BY NAME — the three directions a form byte can be wrong in among them"},
+		Name{Name: "TableFixedRefusal", What: "the fixed form's refusals, each one BY NAME — the three directions a form byte can be wrong in, and the seven named layout rules"},
 
 		// the hash, the ONE read loop, and the plan compiler with its own
 		// private walk

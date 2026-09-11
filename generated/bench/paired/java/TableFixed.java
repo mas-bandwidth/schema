@@ -212,8 +212,8 @@ public final class TableFixed {
         if (length + fileHeaderBytes + 4 > data.length) { report.refuse(Reason.layoutMalformed); return false; }
         out.layoutAt = fileHeaderBytes + 4;
         out.layoutLength = (int) length;
-        out.hash = hash(data, out.layoutAt, (int) length);
-        out.declaredHash = get64(data, hashAt);
+        out.hash = get64(data, hashAt); // the header's hash; digest is not on the wire
+        out.declaredHash = out.hash;
         out.recordsAt = out.layoutAt + (int) length;
         return true;
     }

@@ -178,141 +178,6 @@ namespace Bench
         // ONE loop over ONE plan, the identity plan here and a plan compiled from
         // the writer's own block for anybody else.
 
-        // MixedEntity's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedEntityFixedWriteBody(Span<byte> b, MixedEntity value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.EntityId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.PosX);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.PosY);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(12), (int)value.PosZ);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(16), (uint)value.Yaw);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(20), (uint)value.Pitch);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(24), (int)value.VelX);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(28), (int)value.VelY);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(32), (int)value.VelZ);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(36), (int)value.Health);
-            b.Slice(40)[0] = (byte)value.Weapon;
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(41), (ulong)value.Damage);
-            b.Slice(49)[0] = (byte)(value.Moving ? 1 : 0);
-            b.Slice(50)[0] = (byte)(value.Firing ? 1 : 0);
-        }
-
-        // MixedStat's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedStatFixedWriteBody(Span<byte> b, MixedStat value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.StatId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Delta);
-        }
-
-        // MixedHitEvent's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedHitEventFixedWriteBody(Span<byte> b, MixedHitEvent value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.TargetId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Damage);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.HitKind);
-            b.Slice(12)[0] = (byte)(value.Crit ? 1 : 0);
-        }
-
-        // MixedChatEvent's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedChatEventFixedWriteBody(Span<byte> b, MixedChatEvent value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Channel);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(4), (uint)value.Speaker);
-        }
-
-        // MixedPickupEvent's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void MixedPickupEventFixedWriteBody(Span<byte> b, MixedPickupEvent value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.ItemId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Amount);
-        }
-
-        // BenchMixed's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void BenchMixedFixedWriteBody(Span<byte> b, BenchMixed value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.Sequence);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.AckSequence);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(8), (uint)value.AckBits);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(12), (long)value.SessionId);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), (int)value.ClientId);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(24), (long)value.Nonce);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), (long)value.WorldTime);
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(40), (ulong)value.FrameTick);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(48), (uint)value.ServerTime);
-            int count_entities = value.EntitiesCount;
-            System.Diagnostics.Debug.Assert(count_entities >= 0 && count_entities <= 8); // the declared count is the bound (§3.4)
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(52), count_entities);
-            if (value.Entities != null)
-            {
-                for (int i = 0; i < count_entities && i < value.Entities.Length; ++i)
-                {
-                    MixedEntityFixedWriteBody(b.Slice(56 + i * 51), value.Entities[i]);
-                }
-            }
-            int count_stats = value.StatsCount;
-            System.Diagnostics.Debug.Assert(count_stats >= 0 && count_stats <= 80); // the declared count is the bound (§3.4)
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(464), count_stats);
-            if (value.Stats != null)
-            {
-                for (int i = 0; i < count_stats && i < value.Stats.Length; ++i)
-                {
-                    MixedStatFixedWriteBody(b.Slice(468 + i * 8), value.Stats[i]);
-                }
-            }
-            if (value.GameEvent != null)
-            {
-                b.Slice(1108)[0] = (byte)value.GameEvent.Type;
-                switch (value.GameEvent.Type)
-                {
-                    case MixedEventType.Hit:
-                        MixedHitEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Hit);
-                        break;
-                    case MixedEventType.Chat:
-                        MixedChatEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Chat);
-                        break;
-                    case MixedEventType.Pickup:
-                        MixedPickupEventFixedWriteBody(b.Slice(1108).Slice(1), value.GameEvent.Pickup);
-                        break;
-                    default: break;
-                }
-            }
-            if (value.Loadout != null) { value.Loadout.AsSpan(0, Math.Min(value.Loadout.Length, 4)).CopyTo(b.Slice(1122)); }
-            int len_player_name = value.PlayerName != null ? value.PlayerNameLength : 0;
-            System.Diagnostics.Debug.Assert(len_player_name <= 15);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1126), len_player_name);
-            if (len_player_name > 0) { value.PlayerName.AsSpan(0, len_player_name).CopyTo(b.Slice(1130)); }
-            int len_payload = value.Payload != null ? value.PayloadLength : 0;
-            System.Diagnostics.Debug.Assert(len_payload <= 16);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1145), len_payload);
-            if (len_payload > 0) { value.Payload.AsSpan(0, len_payload).CopyTo(b.Slice(1149)); }
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1165), value.AimX);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1169), value.AimY);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1173), value.AimZ);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(1177), value.Recoil);
-            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1181), value.Drift);
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189), (ulong)(unchecked((UInt128)value.WideKey)));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1189).Slice(8), (ulong)(unchecked((UInt128)value.WideKey) >> 64));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205), (ulong)(unchecked((UInt128)(Int128)value.Flux)));
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(1205).Slice(8), (ulong)(unchecked((UInt128)(Int128)value.Flux) >> 64));
-            BinaryPrimitives.WriteUInt16LittleEndian(b.Slice(1221), (ushort)value.Ping);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(1223), (uint)value.CrcHint);
-            b.Slice(1227)[0] = (byte)(value.HasExtra ? 1 : 0);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1228), (int)value.Extra);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1232), (int)value.IdleTicks);
-        }
-
         // FixedTable's stores. The template — the hash, then zeros — is memcpy'd first,
         // which is also what zero-fills every byte of declared slack.
         public static void FixedTableFixedWriteBody(Span<byte> b, FixedTable value)
@@ -325,7 +190,7 @@ namespace Bench
 
         public const long FixedTableFixedBodyBytes = 1236;
         public const long FixedTableFixedRecordBytes = 8 + FixedTableFixedBodyBytes;
-        public const ulong FixedTableFixedHash = 0x32f1c4a302a224ebul;
+        public const ulong FixedTableFixedHash = 0x6237c1dc195f9ec9ul;
 
         public static readonly byte[] FixedTableFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
@@ -490,315 +355,322 @@ namespace Bench
         };
 
         public static readonly TableFixedSlot<FixedTable>[] FixedTableFixedSlots = new TableFixedSlot<FixedTable>[] {
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Sequence = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckSequence = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckBits = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.SessionId = unchecked((ulong)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ClientId = unchecked((uint)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Nonce = unchecked((ulong)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WorldTime = unchecked((long)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.FrameTick = (ulong)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ServerTime = (int)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.EntitiesCount = (int)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].EntityId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Yaw = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Pitch = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Health = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[0].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[0].Weapon = (MixedWeapon)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Damage = v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Moving = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Firing = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].EntityId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Yaw = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Pitch = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Health = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[1].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[1].Weapon = (MixedWeapon)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Damage = v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Moving = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Firing = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].EntityId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Yaw = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Pitch = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Health = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[2].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[2].Weapon = (MixedWeapon)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Damage = v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Moving = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Firing = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].EntityId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Yaw = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Pitch = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Health = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[3].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[3].Weapon = (MixedWeapon)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Damage = v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Moving = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Firing = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].EntityId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Yaw = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Pitch = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Health = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[4].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[4].Weapon = (MixedWeapon)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Damage = v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Moving = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Firing = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].EntityId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Yaw = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Pitch = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Health = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[5].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[5].Weapon = (MixedWeapon)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Damage = v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Moving = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Firing = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].EntityId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Yaw = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Pitch = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Health = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[6].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[6].Weapon = (MixedWeapon)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Damage = v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Moving = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Firing = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].EntityId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Yaw = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Pitch = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelX = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelY = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelZ = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Health = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[7].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[7].Weapon = (MixedWeapon)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Damage = v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Moving = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Firing = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.StatsCount = (int)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].StatId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].Delta = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 3) { t.Value.GameEvent.Type = (MixedEventType)0; if (rep != null) rep.Clamped++; } else { t.Value.GameEvent.Type = (MixedEventType)v; } }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.TargetId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.Damage = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.HitKind = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.Crit = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Channel = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Speaker = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.ItemId = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.Amount = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Value.Loadout.Length)).CopyTo(t.Value.Loadout); }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.PlayerNameLength = (int)v),
-            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.PlayerName != null) b.Slice(0, Math.Min(b.Length, t.Value.PlayerName.Length)).CopyTo(t.Value.PlayerName); }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.PayloadLength = (int)v),
-            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.Payload != null) b.Slice(0, Math.Min(b.Length, t.Value.Payload.Length)).CopyTo(t.Value.Payload); }),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimX = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimX = (float)d),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimY = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimY = (float)d),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimZ = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimZ = (float)d),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Recoil = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.Recoil = (float)d),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Drift = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Value.Drift = d),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WideKey = unchecked((System.UInt128)v), setWide: (t, w) => t.Value.WideKey = unchecked((System.UInt128)w)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Flux = unchecked((System.Int128)v), setWide: (t, w) => t.Value.Flux = unchecked((System.Int128)w)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Ping = (ushort)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.CrcHint = (uint)v),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.HasExtra = v != 0),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Extra = unchecked((int)v)),
-            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.IdleTicks = unchecked((int)v)),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Sequence = (uint)v, reset: (t) => { t.Value.Sequence = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckSequence = unchecked((int)v), reset: (t) => { t.Value.AckSequence = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AckBits = (uint)v, reset: (t) => { t.Value.AckBits = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.SessionId = unchecked((ulong)v), reset: (t) => { t.Value.SessionId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ClientId = unchecked((uint)v), reset: (t) => { t.Value.ClientId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Nonce = unchecked((ulong)v), reset: (t) => { t.Value.Nonce = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WorldTime = unchecked((long)v), reset: (t) => { t.Value.WorldTime = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.FrameTick = (ulong)v, reset: (t) => { t.Value.FrameTick = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.ServerTime = (int)v, reset: (t) => { t.Value.ServerTime = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.EntitiesCount = (int)v, reset: (t) => { t.Value.EntitiesCount = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].EntityId = (uint)v, reset: (t) => { t.Value.Entities[0].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[0].PosX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[0].PosY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[0].PosZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Yaw = (uint)v, reset: (t) => { t.Value.Entities[0].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Pitch = (uint)v, reset: (t) => { t.Value.Entities[0].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[0].VelX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[0].VelY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[0].VelZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[0].Health = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[0].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[0].Weapon = (MixedWeapon)v; } }, reset: (t) => { t.Value.Entities[0].Weapon = global::Bench.MixedWeapon.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Damage = v, reset: (t) => { t.Value.Entities[0].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Moving = v != 0, reset: (t) => { t.Value.Entities[0].Moving = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[0].Firing = v != 0, reset: (t) => { t.Value.Entities[0].Firing = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].EntityId = (uint)v, reset: (t) => { t.Value.Entities[1].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[1].PosX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[1].PosY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[1].PosZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Yaw = (uint)v, reset: (t) => { t.Value.Entities[1].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Pitch = (uint)v, reset: (t) => { t.Value.Entities[1].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[1].VelX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[1].VelY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[1].VelZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[1].Health = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[1].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[1].Weapon = (MixedWeapon)v; } }, reset: (t) => { t.Value.Entities[1].Weapon = global::Bench.MixedWeapon.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Damage = v, reset: (t) => { t.Value.Entities[1].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Moving = v != 0, reset: (t) => { t.Value.Entities[1].Moving = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[1].Firing = v != 0, reset: (t) => { t.Value.Entities[1].Firing = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].EntityId = (uint)v, reset: (t) => { t.Value.Entities[2].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[2].PosX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[2].PosY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[2].PosZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Yaw = (uint)v, reset: (t) => { t.Value.Entities[2].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Pitch = (uint)v, reset: (t) => { t.Value.Entities[2].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[2].VelX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[2].VelY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[2].VelZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[2].Health = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[2].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[2].Weapon = (MixedWeapon)v; } }, reset: (t) => { t.Value.Entities[2].Weapon = global::Bench.MixedWeapon.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Damage = v, reset: (t) => { t.Value.Entities[2].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Moving = v != 0, reset: (t) => { t.Value.Entities[2].Moving = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[2].Firing = v != 0, reset: (t) => { t.Value.Entities[2].Firing = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].EntityId = (uint)v, reset: (t) => { t.Value.Entities[3].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[3].PosX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[3].PosY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[3].PosZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Yaw = (uint)v, reset: (t) => { t.Value.Entities[3].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Pitch = (uint)v, reset: (t) => { t.Value.Entities[3].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[3].VelX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[3].VelY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[3].VelZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[3].Health = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[3].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[3].Weapon = (MixedWeapon)v; } }, reset: (t) => { t.Value.Entities[3].Weapon = global::Bench.MixedWeapon.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Damage = v, reset: (t) => { t.Value.Entities[3].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Moving = v != 0, reset: (t) => { t.Value.Entities[3].Moving = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[3].Firing = v != 0, reset: (t) => { t.Value.Entities[3].Firing = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].EntityId = (uint)v, reset: (t) => { t.Value.Entities[4].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[4].PosX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[4].PosY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[4].PosZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Yaw = (uint)v, reset: (t) => { t.Value.Entities[4].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Pitch = (uint)v, reset: (t) => { t.Value.Entities[4].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[4].VelX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[4].VelY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[4].VelZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[4].Health = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[4].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[4].Weapon = (MixedWeapon)v; } }, reset: (t) => { t.Value.Entities[4].Weapon = global::Bench.MixedWeapon.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Damage = v, reset: (t) => { t.Value.Entities[4].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Moving = v != 0, reset: (t) => { t.Value.Entities[4].Moving = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[4].Firing = v != 0, reset: (t) => { t.Value.Entities[4].Firing = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].EntityId = (uint)v, reset: (t) => { t.Value.Entities[5].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[5].PosX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[5].PosY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[5].PosZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Yaw = (uint)v, reset: (t) => { t.Value.Entities[5].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Pitch = (uint)v, reset: (t) => { t.Value.Entities[5].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[5].VelX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[5].VelY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[5].VelZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[5].Health = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[5].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[5].Weapon = (MixedWeapon)v; } }, reset: (t) => { t.Value.Entities[5].Weapon = global::Bench.MixedWeapon.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Damage = v, reset: (t) => { t.Value.Entities[5].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Moving = v != 0, reset: (t) => { t.Value.Entities[5].Moving = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[5].Firing = v != 0, reset: (t) => { t.Value.Entities[5].Firing = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].EntityId = (uint)v, reset: (t) => { t.Value.Entities[6].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[6].PosX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[6].PosY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[6].PosZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Yaw = (uint)v, reset: (t) => { t.Value.Entities[6].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Pitch = (uint)v, reset: (t) => { t.Value.Entities[6].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[6].VelX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[6].VelY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[6].VelZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[6].Health = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[6].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[6].Weapon = (MixedWeapon)v; } }, reset: (t) => { t.Value.Entities[6].Weapon = global::Bench.MixedWeapon.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Damage = v, reset: (t) => { t.Value.Entities[6].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Moving = v != 0, reset: (t) => { t.Value.Entities[6].Moving = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[6].Firing = v != 0, reset: (t) => { t.Value.Entities[6].Firing = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].EntityId = (uint)v, reset: (t) => { t.Value.Entities[7].EntityId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosX = unchecked((int)v), reset: (t) => { t.Value.Entities[7].PosX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosY = unchecked((int)v), reset: (t) => { t.Value.Entities[7].PosY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].PosZ = unchecked((int)v), reset: (t) => { t.Value.Entities[7].PosZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Yaw = (uint)v, reset: (t) => { t.Value.Entities[7].Yaw = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Pitch = (uint)v, reset: (t) => { t.Value.Entities[7].Pitch = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelX = unchecked((int)v), reset: (t) => { t.Value.Entities[7].VelX = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelY = unchecked((int)v), reset: (t) => { t.Value.Entities[7].VelY = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].VelZ = unchecked((int)v), reset: (t) => { t.Value.Entities[7].VelZ = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Health = unchecked((int)v), reset: (t) => { t.Value.Entities[7].Health = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 15) { t.Value.Entities[7].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Value.Entities[7].Weapon = (MixedWeapon)v; } }, reset: (t) => { t.Value.Entities[7].Weapon = global::Bench.MixedWeapon.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Damage = v, reset: (t) => { t.Value.Entities[7].Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Moving = v != 0, reset: (t) => { t.Value.Entities[7].Moving = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Entities[7].Firing = v != 0, reset: (t) => { t.Value.Entities[7].Firing = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.StatsCount = (int)v, reset: (t) => { t.Value.StatsCount = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].StatId = (uint)v, reset: (t) => { t.Value.Stats[0].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[0].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[0].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].StatId = (uint)v, reset: (t) => { t.Value.Stats[1].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[1].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[1].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].StatId = (uint)v, reset: (t) => { t.Value.Stats[2].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[2].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[2].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].StatId = (uint)v, reset: (t) => { t.Value.Stats[3].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[3].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[3].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].StatId = (uint)v, reset: (t) => { t.Value.Stats[4].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[4].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[4].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].StatId = (uint)v, reset: (t) => { t.Value.Stats[5].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[5].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[5].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].StatId = (uint)v, reset: (t) => { t.Value.Stats[6].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[6].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[6].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].StatId = (uint)v, reset: (t) => { t.Value.Stats[7].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[7].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[7].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].StatId = (uint)v, reset: (t) => { t.Value.Stats[8].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[8].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[8].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].StatId = (uint)v, reset: (t) => { t.Value.Stats[9].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[9].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[9].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].StatId = (uint)v, reset: (t) => { t.Value.Stats[10].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[10].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[10].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].StatId = (uint)v, reset: (t) => { t.Value.Stats[11].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[11].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[11].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].StatId = (uint)v, reset: (t) => { t.Value.Stats[12].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[12].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[12].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].StatId = (uint)v, reset: (t) => { t.Value.Stats[13].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[13].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[13].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].StatId = (uint)v, reset: (t) => { t.Value.Stats[14].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[14].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[14].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].StatId = (uint)v, reset: (t) => { t.Value.Stats[15].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[15].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[15].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].StatId = (uint)v, reset: (t) => { t.Value.Stats[16].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[16].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[16].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].StatId = (uint)v, reset: (t) => { t.Value.Stats[17].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[17].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[17].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].StatId = (uint)v, reset: (t) => { t.Value.Stats[18].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[18].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[18].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].StatId = (uint)v, reset: (t) => { t.Value.Stats[19].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[19].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[19].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].StatId = (uint)v, reset: (t) => { t.Value.Stats[20].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[20].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[20].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].StatId = (uint)v, reset: (t) => { t.Value.Stats[21].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[21].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[21].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].StatId = (uint)v, reset: (t) => { t.Value.Stats[22].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[22].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[22].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].StatId = (uint)v, reset: (t) => { t.Value.Stats[23].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[23].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[23].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].StatId = (uint)v, reset: (t) => { t.Value.Stats[24].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[24].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[24].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].StatId = (uint)v, reset: (t) => { t.Value.Stats[25].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[25].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[25].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].StatId = (uint)v, reset: (t) => { t.Value.Stats[26].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[26].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[26].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].StatId = (uint)v, reset: (t) => { t.Value.Stats[27].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[27].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[27].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].StatId = (uint)v, reset: (t) => { t.Value.Stats[28].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[28].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[28].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].StatId = (uint)v, reset: (t) => { t.Value.Stats[29].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[29].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[29].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].StatId = (uint)v, reset: (t) => { t.Value.Stats[30].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[30].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[30].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].StatId = (uint)v, reset: (t) => { t.Value.Stats[31].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[31].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[31].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].StatId = (uint)v, reset: (t) => { t.Value.Stats[32].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[32].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[32].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].StatId = (uint)v, reset: (t) => { t.Value.Stats[33].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[33].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[33].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].StatId = (uint)v, reset: (t) => { t.Value.Stats[34].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[34].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[34].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].StatId = (uint)v, reset: (t) => { t.Value.Stats[35].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[35].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[35].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].StatId = (uint)v, reset: (t) => { t.Value.Stats[36].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[36].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[36].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].StatId = (uint)v, reset: (t) => { t.Value.Stats[37].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[37].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[37].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].StatId = (uint)v, reset: (t) => { t.Value.Stats[38].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[38].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[38].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].StatId = (uint)v, reset: (t) => { t.Value.Stats[39].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[39].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[39].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].StatId = (uint)v, reset: (t) => { t.Value.Stats[40].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[40].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[40].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].StatId = (uint)v, reset: (t) => { t.Value.Stats[41].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[41].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[41].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].StatId = (uint)v, reset: (t) => { t.Value.Stats[42].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[42].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[42].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].StatId = (uint)v, reset: (t) => { t.Value.Stats[43].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[43].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[43].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].StatId = (uint)v, reset: (t) => { t.Value.Stats[44].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[44].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[44].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].StatId = (uint)v, reset: (t) => { t.Value.Stats[45].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[45].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[45].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].StatId = (uint)v, reset: (t) => { t.Value.Stats[46].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[46].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[46].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].StatId = (uint)v, reset: (t) => { t.Value.Stats[47].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[47].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[47].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].StatId = (uint)v, reset: (t) => { t.Value.Stats[48].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[48].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[48].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].StatId = (uint)v, reset: (t) => { t.Value.Stats[49].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[49].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[49].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].StatId = (uint)v, reset: (t) => { t.Value.Stats[50].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[50].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[50].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].StatId = (uint)v, reset: (t) => { t.Value.Stats[51].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[51].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[51].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].StatId = (uint)v, reset: (t) => { t.Value.Stats[52].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[52].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[52].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].StatId = (uint)v, reset: (t) => { t.Value.Stats[53].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[53].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[53].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].StatId = (uint)v, reset: (t) => { t.Value.Stats[54].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[54].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[54].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].StatId = (uint)v, reset: (t) => { t.Value.Stats[55].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[55].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[55].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].StatId = (uint)v, reset: (t) => { t.Value.Stats[56].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[56].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[56].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].StatId = (uint)v, reset: (t) => { t.Value.Stats[57].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[57].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[57].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].StatId = (uint)v, reset: (t) => { t.Value.Stats[58].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[58].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[58].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].StatId = (uint)v, reset: (t) => { t.Value.Stats[59].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[59].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[59].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].StatId = (uint)v, reset: (t) => { t.Value.Stats[60].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[60].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[60].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].StatId = (uint)v, reset: (t) => { t.Value.Stats[61].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[61].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[61].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].StatId = (uint)v, reset: (t) => { t.Value.Stats[62].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[62].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[62].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].StatId = (uint)v, reset: (t) => { t.Value.Stats[63].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[63].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[63].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].StatId = (uint)v, reset: (t) => { t.Value.Stats[64].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[64].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[64].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].StatId = (uint)v, reset: (t) => { t.Value.Stats[65].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[65].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[65].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].StatId = (uint)v, reset: (t) => { t.Value.Stats[66].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[66].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[66].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].StatId = (uint)v, reset: (t) => { t.Value.Stats[67].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[67].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[67].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].StatId = (uint)v, reset: (t) => { t.Value.Stats[68].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[68].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[68].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].StatId = (uint)v, reset: (t) => { t.Value.Stats[69].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[69].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[69].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].StatId = (uint)v, reset: (t) => { t.Value.Stats[70].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[70].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[70].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].StatId = (uint)v, reset: (t) => { t.Value.Stats[71].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[71].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[71].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].StatId = (uint)v, reset: (t) => { t.Value.Stats[72].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[72].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[72].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].StatId = (uint)v, reset: (t) => { t.Value.Stats[73].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[73].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[73].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].StatId = (uint)v, reset: (t) => { t.Value.Stats[74].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[74].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[74].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].StatId = (uint)v, reset: (t) => { t.Value.Stats[75].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[75].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[75].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].StatId = (uint)v, reset: (t) => { t.Value.Stats[76].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[76].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[76].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].StatId = (uint)v, reset: (t) => { t.Value.Stats[77].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[77].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[77].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].StatId = (uint)v, reset: (t) => { t.Value.Stats[78].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[78].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[78].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].StatId = (uint)v, reset: (t) => { t.Value.Stats[79].StatId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Stats[79].Delta = unchecked((int)v), reset: (t) => { t.Value.Stats[79].Delta = 0; }),
+            new TableFixedSlot<FixedTable>(setRawReport: (t, v, rep) => { if (v > 3) { t.Value.GameEvent.Type = (MixedEventType)0; if (rep != null) rep.Clamped++; } else { t.Value.GameEvent.Type = (MixedEventType)v; } }, reset: (t) => { t.Value.GameEvent.Type = MixedEventType.None; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.TargetId = (uint)v, reset: (t) => { t.Value.GameEvent.Hit.TargetId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.Damage = unchecked((int)v), reset: (t) => { t.Value.GameEvent.Hit.Damage = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.HitKind = unchecked((int)v), reset: (t) => { t.Value.GameEvent.Hit.HitKind = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Hit.Crit = v != 0, reset: (t) => { t.Value.GameEvent.Hit.Crit = false; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Channel = unchecked((int)v), reset: (t) => { t.Value.GameEvent.Chat.Channel = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Chat.Speaker = (uint)v, reset: (t) => { t.Value.GameEvent.Chat.Speaker = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.ItemId = (uint)v, reset: (t) => { t.Value.GameEvent.Pickup.ItemId = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.GameEvent.Pickup.Amount = unchecked((int)v), reset: (t) => { t.Value.GameEvent.Pickup.Amount = 0; }),
+            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Value.Loadout.Length)).CopyTo(t.Value.Loadout); }, reset: (t) => { if (t.Value.Loadout != null) Array.Clear(t.Value.Loadout, 0, t.Value.Loadout.Length); }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.PlayerNameLength = (int)v, reset: (t) => { t.Value.PlayerNameLength = 0; }),
+            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.PlayerName != null) b.Slice(0, Math.Min(b.Length, t.Value.PlayerName.Length)).CopyTo(t.Value.PlayerName); }, reset: (t) => { if (t.Value.PlayerName != null) { Array.Clear(t.Value.PlayerName, 0, t.Value.PlayerName.Length); } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.PayloadLength = (int)v, reset: (t) => { t.Value.PayloadLength = 0; }),
+            new TableFixedSlot<FixedTable>(setBytes: (t, b, l) => { if (t.Value.Payload != null) b.Slice(0, Math.Min(b.Length, t.Value.Payload.Length)).CopyTo(t.Value.Payload); }, reset: (t) => { if (t.Value.Payload != null) { Array.Clear(t.Value.Payload, 0, t.Value.Payload.Length); } }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimX = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimX = (float)d, reset: (t) => { t.Value.AimX = 0.0f; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimY = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimY = (float)d, reset: (t) => { t.Value.AimY = 0.0f; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.AimZ = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.AimZ = (float)d, reset: (t) => { t.Value.AimZ = 0.0f; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Recoil = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Value.Recoil = (float)d, reset: (t) => { t.Value.Recoil = 0.0f; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Drift = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Value.Drift = d, reset: (t) => { t.Value.Drift = 0.0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.WideKey = unchecked((System.UInt128)v), setWide: (t, w) => t.Value.WideKey = unchecked((System.UInt128)w), reset: (t) => { t.Value.WideKey = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Flux = unchecked((System.Int128)v), setWide: (t, w) => t.Value.Flux = unchecked((System.Int128)w), reset: (t) => { t.Value.Flux = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Ping = (ushort)v, reset: (t) => { t.Value.Ping = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.CrcHint = (uint)v, reset: (t) => { t.Value.CrcHint = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.HasExtra = v != 0, reset: (t) => { t.Value.HasExtra = true; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.Extra = unchecked((int)v), reset: (t) => { t.Value.Extra = 0; }),
+            new TableFixedSlot<FixedTable>(setRaw: (t, v) => t.Value.IdleTicks = unchecked((int)v), reset: (t) => { t.Value.IdleTicks = 0; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] FixedTableFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 309u),
         };
 
         public static readonly TableFixedPlan FixedTableFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -1177,13 +1049,23 @@ namespace Bench
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = FixedTableFixedPlan;
             long record_bytes = FixedTableFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != FixedTableFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == FixedTableFixedHash)
+            {
+                if (layout_bytes != (uint)FixedTableFixedLayout.Length || !layout.SequenceEqual(FixedTableFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1199,11 +1081,13 @@ namespace Bench
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = FixedTableFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, FixedTableFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -1216,10 +1100,12 @@ namespace Bench
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new FixedTable(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), FixedTableFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }

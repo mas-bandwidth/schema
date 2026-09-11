@@ -74,6 +74,89 @@ fixed table Root { pick Pick }
 	}
 }
 
+// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: identity prefills
+// nothing; the plan compiler prefills exactly the ranges the plan does not land.
+// Empty fill is the skip. There is no identity flag in the record loop.
+func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
+	if !strings.Contains(tableFixedRuntimeTypes, "public struct TableFixedFill") {
+		t.Error("TableFixedFill is missing")
+	}
+	if !strings.Contains(tableFixedRuntimeTypes, "public readonly Action<T> Reset;") {
+		t.Error("TableFixedSlot has no Reset")
+	}
+	if !strings.Contains(tableFixedWireSource, "public static int Fills(") {
+		t.Error("the runtime never names Fills")
+	}
+	if !strings.Contains(tableFixedWireSource, "public static void FillRun<T>(") {
+		t.Error("the runtime never names FillRun")
+	}
+	if strings.Contains(tableFixedWireSource, "if (identity)") || strings.Contains(tableFixedWireSource, "if(identity)") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+
+	src := generateCS(t, `package probe
+fixed table Config {
+    scale float32 = 1.0
+    extra int32 = 9
+}
+`)
+	load := csFn(src, "public static long ConfigFixedLoad(")
+	if load == "" {
+		t.Fatal("ConfigFixedLoad was not emitted")
+	}
+	if !strings.Contains(src, "ConfigFixedCover") {
+		t.Error("the type has no identity cover")
+	}
+	if !strings.Contains(load, "TableFixedWire.Fills(") {
+		t.Error("compiled FixedLoad does not prefill the plan's holes")
+	}
+	if !strings.Contains(load, "TableFixedWire.FillRun(") {
+		t.Error("the record loop does not run the hole list")
+	}
+	if strings.Contains(load, "TableReset(values[k])") {
+		t.Error("identity still TableReset's each record; prefill is the hole list")
+	}
+	if strings.Contains(load, "if (identity)") {
+		t.Error("identity flag still forks the record loop")
+	}
+	if !strings.Contains(src, "reset: (t) => { t.Extra = 9; }") && !strings.Contains(src, "reset: (t) => { t.Extra = 9 }") {
+		t.Error("the extra slot has no declared-default Reset")
+	}
+}
+
+func csFn(src, sig string) string {
+	i := strings.Index(src, sig)
+	if i < 0 {
+		return ""
+	}
+	src = src[i:]
+	depth := 0
+	for j := 0; j < len(src); j++ {
+		switch src[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[:j+1]
+			}
+		}
+	}
+	return src
+}
+
+func TestIdentitySlotCoverIsWhatThePlanLands(t *testing.T) {
+	plan := []fixedPlanEntry{
+		{dst: 0, op: 0},
+		{dst: 1, op: 0},
+		{dst: 3, op: 2, aux: 4},
+	}
+	got := identitySlotCover(plan, 5)
+	if len(got) != 2 || got[0] != (fixedFillRange{0, 2}) || got[1] != (fixedFillRange{3, 2}) {
+		t.Fatalf("cover = %+v", got)
+	}
+}
+
 func guardedPlanHasArgW(src string, want int) bool {
 	start := strings.Index(src, "RootFixedPlan = new TableFixedPlan")
 	if start < 0 {
@@ -108,11 +191,7 @@ func guardedPlanHasArgW(src string, want int) bool {
 
 func generateCS(t *testing.T, src string) string {
 	t.Helper()
-	u := unitFrom(t, src)
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
-	}
+	files := generateFiles(t, "Probe", src)
 	var b strings.Builder
 	for _, body := range files {
 		b.Write(body)
@@ -122,6 +201,16 @@ func generateCS(t *testing.T, src string) string {
 		t.Fatal("Generate emitted nothing")
 	}
 	return out
+}
+
+func generateFiles(t *testing.T, name, src string) map[string][]byte {
+	t.Helper()
+	u := unitFrom(t, src)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
 
 func unitFrom(t *testing.T, src string) *ir.Unit {
@@ -137,4 +226,166 @@ func unitFrom(t *testing.T, src string) *ir.Unit {
 		t.Fatalf("check: %v", cerrs[0])
 	}
 	return u
+}
+
+func methodBody(src, sig string) string {
+	i := strings.Index(src, sig)
+	if i < 0 {
+		return ""
+	}
+	body := src[i:]
+	if j := strings.Index(body[1:], "\n        public "); j >= 0 {
+		body = body[:j+1]
+	}
+	return body
+}
+
+func TestFixedWriteAbsentOptionalGuarded(t *testing.T) {
+	files := generateFiles(t, "Probe", `package probe
+
+type Child {
+    val int32
+}
+
+enum Status {
+    Inactive
+    Active
+}
+
+fixed table Root {
+    scalar ?int32
+    child  ?Child
+    status ?Status
+    flag   ?bool
+}
+`)
+
+	var body string
+	for name, data := range files {
+		if strings.HasSuffix(name, "Table.cs") {
+			body += string(data)
+		}
+	}
+	if body == "" {
+		t.Fatal("no Table.cs emitted")
+	}
+
+	writeBody := methodBody(body, "public static void RootFixedWriteBody(Span<byte> b, Root value)")
+	if writeBody == "" {
+		t.Fatalf("RootFixedWriteBody not found in emitted code:\n%s", body)
+	}
+
+	// Each optional field's payload write must be wrapped in:
+	//   b[offset] = (byte)(value.<Field>Present ? 1 : 0);
+	//   if (value.<Field>Present)
+	//   {
+	//       <payload store>
+	//   }
+	for _, f := range []struct {
+		name    string
+		payload string
+	}{
+		{"Scalar", "BinaryPrimitives.WriteInt32LittleEndian"},
+		{"Child", "ChildFixedWriteBody"},
+		{"Status", "value.Status"},
+		{"Flag", "value.Flag ? 1 : 0"},
+	} {
+		flagCheck := "value." + f.name + "Present ? 1 : 0"
+		if !strings.Contains(writeBody, flagCheck) {
+			t.Errorf("missing presence flag write for %s: expected %q", f.name, flagCheck)
+		}
+
+		guardCheck := "if (value." + f.name + "Present)\n            {\n"
+		if !strings.Contains(writeBody, guardCheck) {
+			t.Errorf("missing presence guard for %s: expected %q in RootFixedWriteBody:\n%s", f.name, guardCheck, writeBody)
+		}
+
+		if !strings.Contains(writeBody, f.payload) {
+			t.Errorf("missing payload write %q for %s in RootFixedWriteBody:\n%s", f.payload, f.name, writeBody)
+		}
+	}
+}
+
+// ONE DEFINITION PER UNIT. `Schema` is ONE partial class across a unit's
+// files, so a second `public static void <T>FixedWriteBody(` is CS0111 and the
+// unit does not compile. A fixed table in one file holding a fixed table
+// declared in ANOTHER file used to make both files emit the whole reachable
+// closure's write bodies; the body belongs to the file that DECLARES the type,
+// the same rule the enum identities follow.
+func TestFixedWriteBodyEmittedOnceAcrossUnitFiles(t *testing.T) {
+	leaf := `package probe
+
+fixed table Inner
+{
+    damage float32 = 1.0
+}
+
+fixed table Middle
+{
+    inner Inner
+    count int32 = 1 | min = 0, max = 8
+}
+`
+	outer := `package probe
+
+fixed table Outer
+{
+    middle Middle
+    tag    uint8
+}
+`
+	files := generateCSFiles(t, []check.SourceFile{
+		sourceFile(t, "Leaf", leaf),
+		sourceFile(t, "Outer", outer),
+	})
+	counts := map[string]int{}
+	for _, body := range files {
+		for line := range strings.SplitSeq(string(body), "\n") {
+			line = strings.TrimSpace(line)
+			const pre = "public static void "
+			_, sig, ok := strings.Cut(line, pre)
+			if !ok {
+				continue
+			}
+			name, _, ok := strings.Cut(sig, "FixedWriteBody(")
+			if !ok {
+				continue
+			}
+			counts[name+"FixedWriteBody"]++
+		}
+	}
+	for _, want := range []string{"InnerFixedWriteBody", "MiddleFixedWriteBody", "OuterFixedWriteBody"} {
+		switch n := counts[want]; {
+		case n == 0:
+			t.Errorf("%s is never defined: the file that declares the type must emit its body", want)
+		case n > 1:
+			t.Errorf("%s is defined %d times; `Schema` is one partial class across the unit's files, so the second is CS0111", want, n)
+		}
+	}
+}
+
+func sourceFile(t *testing.T, base, src string) check.SourceFile {
+	t.Helper()
+	path := base + ".schema"
+	f, perrs := parser.Parse(path, []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse %s: %v", path, perrs[0])
+	}
+	return check.SourceFile{Path: path, Name: path, Base: base, Bytes: []byte(src), AST: f}
+}
+
+func generateCSFiles(t *testing.T, srcs []check.SourceFile) map[string][]byte {
+	t.Helper()
+	u, cerrs := check.Unit(srcs)
+	if len(cerrs) > 0 {
+		t.Fatalf("check: %v", cerrs[0])
+	}
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("Generate emitted nothing")
+	}
+	return files
 }

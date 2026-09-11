@@ -409,15 +409,3 @@ func appendFixedU64(b []byte, v uint64) []byte {
 	}
 	return b
 }
-
-// fixedLayoutHash is fnv1a64 over the layout's bytes exactly as written, and
-// it is the eight bytes every record carries (§3.4). It is a WIRE IDENTITY and
-// not a security claim.
-func fixedLayoutHash(layout []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, b := range layout {
-		h ^= uint64(b)
-		h *= 0x100000001b3
-	}
-	return h
-}

@@ -99,11 +99,12 @@ func fixedCounted(e ir.TableFixedLayoutEntry) bool { return e.Dst.Counted != 0 }
 // THE PREFILL IMAGE: the declared defaults, as record bytes
 //
 // §3.4's answer to an absent field is a PREFILL, and this is what this port
-// prefills WITH. C++ calls the type's own Reset; Rust's table surface has no
-// by-value reset (a `<Name>Row` is `core::mem::zeroed`), so the defaults are
-// laid down HERE, as the record image a fresh value would write. It is a
-// compile-time constant like the block and the template, and it is the one
-// place a declared default reaches this form.
+// prefills WITH. C++ calls the type's own Reset. Named string(N)/bytes(N)
+// defaults also live in constructed `<Name>Row::default()` (matching C++
+// `char label[8 + 1] = "fx"`). The load copies THIS image into the holes the
+// plan does not write (Glenn: prefill the bytes the plan does not write).
+// Identity's hole list is empty because its plan is one Copy of the whole
+// body — empty fill is the skip, not a second path.
 // ---------------------------------------------------------------------------
 
 func fixedDefaultImage(st *ir.Struct) []byte {
@@ -844,7 +845,7 @@ func (g *gen) emitFixedScatterUnion(un *ir.Union) {
 func (g *gen) emitFixedRoot(st *ir.Struct) {
 	entries := ir.TableFixedWalkRoot(st)
 	block := ir.TableFixedLayoutBytes(entries)
-	hash := ir.TableFixedLayoutHash(block)
+	hash := ir.TableFixedLayoutHash(block, st)
 	body := ir.TableFixedTypeBytes(st)
 	defaults := fixedDefaultImage(st)
 	up := ir.RustConstName(st.Name)
@@ -854,7 +855,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// is a constant and not a walk (docs/SPEC-TABLES.md §3.4).\n")
 	g.pf("pub const %s_FIXED_BODY_BYTES: usize = %d;\n", up, body)
 	g.pf("pub const %s_FIXED_RECORD_BYTES: usize = 8 + %s_FIXED_BODY_BYTES; // the hash and the body\n", up, up)
-	g.pf("/// fnv1a64 over the layout's bytes, exactly as written.\n")
+	g.pf("/// fnv1a64 over the layout and the definitions digest (bill §13).\n")
 	g.pf("pub const %s_FIXED_HASH: u64 = 0x%016x;\n\n", up, hash)
 
 	g.pf("/// THE LAYOUT (form 1 calls this the vocabulary block): %d entries, a\n", len(entries))
@@ -960,14 +961,19 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {\n")
 	g.pf("        return report.refuse(TableFixedReason::LayoutMalformed);\n    }\n")
 	g.pf("    let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + block_bytes];\n")
-	g.pf("    let hash = table_fixed_hash(block);\n")
+	g.pf("    let hash = u64::from_le_bytes(\n")
+	g.pf("        data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]\n")
+	g.pf("            .try_into()\n            .expect(\"eight bytes\"),\n    ); // the header's hash; digest is not on the wire\n")
 	g.pf("    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + block_bytes..];\n\n")
 	g.pf("    // WHICH PLAN, and that is the only thing that differs between reading this\n")
 	g.pf("    // build's own record and reading anybody else's.\n")
 	g.pf("    let mut compiled = 0usize;\n")
 	g.pf("    let mut record_bytes = %s_FIXED_RECORD_BYTES;\n", up)
 	g.pf("    let identity = hash == %s_FIXED_HASH;\n", up)
-	g.pf("    if !identity {\n")
+	g.pf("    if identity {\n")
+	g.pf("        if block != %s_FIXED_BLOCK.as_slice() {\n", up)
+	g.pf("            return report.refuse(TableFixedReason::LayoutMalformed);\n        }\n")
+	g.pf("    } else {\n")
 	g.pf("        let theirs = match TableFixedBlock::parse(block) {\n")
 	g.pf("            Ok(b) => b,\n")
 	g.pf("            Err(why) => return report.refuse(why),\n        };\n")
@@ -979,13 +985,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            None => return report.refuse(TableFixedReason::PlanTooLarge),\n        };\n")
 	g.pf("        record_bytes = 8 + theirs.entry(0).size as usize;\n")
 	g.pf("    }\n")
-	g.pf("    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:\n")
-	g.pf("    // the layout's own rules each refuse under their own name first, so a\n")
-	g.pf("    // broken layout is never reported as a lying header (§3).\n")
-	g.pf("    if u64::from_le_bytes(\n")
-	g.pf("        data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]\n")
-	g.pf("            .try_into()\n            .expect(\"eight bytes\"),\n    ) != hash\n    {\n")
-	g.pf("        return report.refuse(TableFixedReason::LayoutMalformed);\n    }\n")
+	g.pf("    // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout\n")
+	g.pf("    // against this build's; digest is not on the wire, so the header hash is\n")
+	g.pf("    // not a hash of the layout bytes alone (§3, bill §13).\n")
 	g.pf("    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
 	g.pf("        report.malformed = true;\n        return None;\n    }\n")
 	g.pf("    let n = rest.len() / record_bytes;\n")

@@ -918,7 +918,7 @@ namespace Tabledemo
 
         public const long RangedSignedFixedBodyBytes = 72;
         public const long RangedSignedFixedRecordBytes = 8 + RangedSignedFixedBodyBytes;
-        public const ulong RangedSignedFixedHash = 0xaaf4b92f603d1a73ul;
+        public const ulong RangedSignedFixedHash = 0xcbf32b9992cc8183ul;
 
         public static readonly byte[] RangedSignedFixedLayout = new byte[] {
             0x13, 0x00, 0x00, 0x00, 0x2e, 0xbe, 0x28, 0xda, 0x1d, 0x75, 0x79, 0xec, 0x0d, 0x48, 0x00, 0x00,
@@ -968,24 +968,31 @@ namespace Tabledemo
         };
 
         public static readonly TableFixedSlot<RangedSigned>[] RangedSignedFixedSlots = new TableFixedSlot<RangedSigned>[] {
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I8Span = unchecked((sbyte)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I8Low = unchecked((sbyte)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I8High = unchecked((sbyte)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I8Inside = unchecked((sbyte)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I16Span = unchecked((short)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I16Low = unchecked((short)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I16High = unchecked((short)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I16Inside = unchecked((short)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I32Span = unchecked((int)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I32Low = unchecked((int)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I32High = unchecked((int)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I32Inside = unchecked((int)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64Span = unchecked((long)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64Low = unchecked((long)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64High = unchecked((long)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64Inside = unchecked((long)v)),
-            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.EdgesCount = (int)v),
-            new TableFixedSlot<RangedSigned>(setBytes: (t, b, l) => { if (t.Edges != null) MemoryMarshal.Cast<byte, short>(b.Slice(0, Math.Min(b.Length, t.Edges.Length * 2))).CopyTo(t.Edges); }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I8Span = unchecked((sbyte)v), reset: (t) => { t.I8Span = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I8Low = unchecked((sbyte)v), reset: (t) => { t.I8Low = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I8High = unchecked((sbyte)v), reset: (t) => { t.I8High = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I8Inside = unchecked((sbyte)v), reset: (t) => { t.I8Inside = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I16Span = unchecked((short)v), reset: (t) => { t.I16Span = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I16Low = unchecked((short)v), reset: (t) => { t.I16Low = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I16High = unchecked((short)v), reset: (t) => { t.I16High = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I16Inside = unchecked((short)v), reset: (t) => { t.I16Inside = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I32Span = unchecked((int)v), reset: (t) => { t.I32Span = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I32Low = unchecked((int)v), reset: (t) => { t.I32Low = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I32High = unchecked((int)v), reset: (t) => { t.I32High = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I32Inside = unchecked((int)v), reset: (t) => { t.I32Inside = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64Span = unchecked((long)v), reset: (t) => { t.I64Span = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64Low = unchecked((long)v), reset: (t) => { t.I64Low = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64High = unchecked((long)v), reset: (t) => { t.I64High = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.I64Inside = unchecked((long)v), reset: (t) => { t.I64Inside = 0; }),
+            new TableFixedSlot<RangedSigned>(setRaw: (t, v) => t.EdgesCount = (int)v, reset: (t) => { t.EdgesCount = 0; }),
+            new TableFixedSlot<RangedSigned>(setBytes: (t, b, l) => { if (t.Edges != null) MemoryMarshal.Cast<byte, short>(b.Slice(0, Math.Min(b.Length, t.Edges.Length * 2))).CopyTo(t.Edges); }, reset: (t) => { if (t.Edges != null) Array.Clear(t.Edges, 0, t.Edges.Length); }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RangedSignedFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 18u),
         };
 
         public static readonly TableFixedPlan RangedSignedFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -1075,13 +1082,23 @@ namespace Tabledemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedSignedFixedPlan;
             long record_bytes = RangedSignedFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RangedSignedFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RangedSignedFixedHash)
+            {
+                if (layout_bytes != (uint)RangedSignedFixedLayout.Length || !layout.SequenceEqual(RangedSignedFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1097,11 +1114,13 @@ namespace Tabledemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RangedSignedFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RangedSignedFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -1114,10 +1133,12 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RangedSigned(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedSignedFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -1155,7 +1176,7 @@ namespace Tabledemo
 
         public const long RangedUnsignedFixedBodyBytes = 96;
         public const long RangedUnsignedFixedRecordBytes = 8 + RangedUnsignedFixedBodyBytes;
-        public const ulong RangedUnsignedFixedHash = 0x9e7760dd0c2ba2f6ul;
+        public const ulong RangedUnsignedFixedHash = 0x8b7880ef6aaed3c0ul;
 
         public static readonly byte[] RangedUnsignedFixedLayout = new byte[] {
             0x13, 0x00, 0x00, 0x00, 0xf1, 0x8b, 0xd2, 0xb7, 0xc4, 0xc0, 0x1e, 0x03, 0x0d, 0x60, 0x00, 0x00,
@@ -1205,24 +1226,31 @@ namespace Tabledemo
         };
 
         public static readonly TableFixedSlot<RangedUnsigned>[] RangedUnsignedFixedSlots = new TableFixedSlot<RangedUnsigned>[] {
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U8Span = unchecked((byte)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U8Low = unchecked((byte)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U8High = unchecked((byte)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U8Inside = unchecked((byte)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U16Span = unchecked((ushort)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U16Low = unchecked((ushort)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U16High = unchecked((ushort)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U16Inside = unchecked((ushort)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U32Span = unchecked((uint)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U32Low = unchecked((uint)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U32High = unchecked((uint)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U32Inside = unchecked((uint)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64Span = unchecked((ulong)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64Low = unchecked((ulong)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64High = unchecked((ulong)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64Inside = unchecked((ulong)v)),
-            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.CountsCount = (int)v),
-            new TableFixedSlot<RangedUnsigned>(setBytes: (t, b, l) => { if (t.Counts != null) MemoryMarshal.Cast<byte, ulong>(b.Slice(0, Math.Min(b.Length, t.Counts.Length * 8))).CopyTo(t.Counts); }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U8Span = unchecked((byte)v), reset: (t) => { t.U8Span = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U8Low = unchecked((byte)v), reset: (t) => { t.U8Low = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U8High = unchecked((byte)v), reset: (t) => { t.U8High = 1; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U8Inside = unchecked((byte)v), reset: (t) => { t.U8Inside = 1; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U16Span = unchecked((ushort)v), reset: (t) => { t.U16Span = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U16Low = unchecked((ushort)v), reset: (t) => { t.U16Low = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U16High = unchecked((ushort)v), reset: (t) => { t.U16High = 1; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U16Inside = unchecked((ushort)v), reset: (t) => { t.U16Inside = 1; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U32Span = unchecked((uint)v), reset: (t) => { t.U32Span = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U32Low = unchecked((uint)v), reset: (t) => { t.U32Low = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U32High = unchecked((uint)v), reset: (t) => { t.U32High = 1; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U32Inside = unchecked((uint)v), reset: (t) => { t.U32Inside = 1; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64Span = unchecked((ulong)v), reset: (t) => { t.U64Span = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64Low = unchecked((ulong)v), reset: (t) => { t.U64Low = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64High = unchecked((ulong)v), reset: (t) => { t.U64High = 1ul; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.U64Inside = unchecked((ulong)v), reset: (t) => { t.U64Inside = 1ul; }),
+            new TableFixedSlot<RangedUnsigned>(setRaw: (t, v) => t.CountsCount = (int)v, reset: (t) => { t.CountsCount = 0; }),
+            new TableFixedSlot<RangedUnsigned>(setBytes: (t, b, l) => { if (t.Counts != null) MemoryMarshal.Cast<byte, ulong>(b.Slice(0, Math.Min(b.Length, t.Counts.Length * 8))).CopyTo(t.Counts); }, reset: (t) => { if (t.Counts != null) Array.Clear(t.Counts, 0, t.Counts.Length); }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RangedUnsignedFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 18u),
         };
 
         public static readonly TableFixedPlan RangedUnsignedFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -1312,13 +1340,23 @@ namespace Tabledemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedUnsignedFixedPlan;
             long record_bytes = RangedUnsignedFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RangedUnsignedFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RangedUnsignedFixedHash)
+            {
+                if (layout_bytes != (uint)RangedUnsignedFixedLayout.Length || !layout.SequenceEqual(RangedUnsignedFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1334,11 +1372,13 @@ namespace Tabledemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RangedUnsignedFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RangedUnsignedFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -1351,10 +1391,12 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RangedUnsigned(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedUnsignedFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -1392,7 +1434,7 @@ namespace Tabledemo
 
         public const long RangedWidthsFixedBodyBytes = 32;
         public const long RangedWidthsFixedRecordBytes = 8 + RangedWidthsFixedBodyBytes;
-        public const ulong RangedWidthsFixedHash = 0x0f48d5bc4bc8f930ul;
+        public const ulong RangedWidthsFixedHash = 0xe45869be02e1f158ul;
 
         public static readonly byte[] RangedWidthsFixedLayout = new byte[] {
             0x07, 0x00, 0x00, 0x00, 0xd7, 0x5e, 0x4f, 0x9e, 0x4e, 0x69, 0x59, 0xbf, 0x0d, 0x20, 0x00, 0x00,
@@ -1417,12 +1459,19 @@ namespace Tabledemo
         };
 
         public static readonly TableFixedSlot<RangedWidths>[] RangedWidthsFixedSlots = new TableFixedSlot<RangedWidths>[] {
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B8 = (uint)v),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B16 = (uint)v),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B32 = (uint)v),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B64 = (ulong)v),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B12 = (uint)v),
-            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B48 = (ulong)v),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B8 = (uint)v, reset: (t) => { t.B8 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B16 = (uint)v, reset: (t) => { t.B16 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B32 = (uint)v, reset: (t) => { t.B32 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B64 = (ulong)v, reset: (t) => { t.B64 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B12 = (uint)v, reset: (t) => { t.B12 = 0; }),
+            new TableFixedSlot<RangedWidths>(setRaw: (t, v) => t.B48 = (ulong)v, reset: (t) => { t.B48 = 0; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] RangedWidthsFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 6u),
         };
 
         public static readonly TableFixedPlan RangedWidthsFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -1500,13 +1549,23 @@ namespace Tabledemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedWidthsFixedPlan;
             long record_bytes = RangedWidthsFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != RangedWidthsFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == RangedWidthsFixedHash)
+            {
+                if (layout_bytes != (uint)RangedWidthsFixedLayout.Length || !layout.SequenceEqual(RangedWidthsFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1522,11 +1581,13 @@ namespace Tabledemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = RangedWidthsFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, RangedWidthsFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -1539,10 +1600,12 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new RangedWidths(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), RangedWidthsFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }

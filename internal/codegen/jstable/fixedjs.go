@@ -23,6 +23,7 @@ package jstable
 
 import (
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -387,11 +388,15 @@ func (g *fixedGen) loadTag(ind, lhs, at string, width int64) {
 // that projects the reader's own image into the language's objects.
 //
 // THIS IS THE STEP C++ GETS FOR FREE. There a struct IS its bytes, so the plan
-// lands values in the value itself and there is nothing after the loop; here a
-// value is an object with named properties and the image is a Uint8Array, so
+// lands values in the value itself and the bounds pass walks that storage; here
+// a value is an object with named properties and the image is a Uint8Array, so
 // the projection is a pass of constant-offset loads — the same straight line
-// the flat packet reader is, minus the bit cursor. A COUNTED ARRAY WALKS ITS
-// LIVE COUNT, never the bound: slack is never projected and never clamped.
+// the flat packet reader is, minus the bit cursor — AND it is §4.6's bounds
+// pass. The plan never clamps: identity is one OP_COPY of the whole body, a
+// compiled plan copies a same-size ranged integer, and an ordinal op remaps by
+// name. Hash chooses the plan. This decode is the one path both land in.
+// A COUNTED ARRAY WALKS ITS LIVE COUNT, never the bound: slack is never
+// projected and never clamped.
 func (g *fixedGen) emitDecodeBody(st *ir.Struct) {
 	g.pf("// %s's loads, out of the reader's own image and into the value the\n", st.Name)
 	g.pf("// caller handed in — filled, never returned, exactly as Read<Name>Flat is.\n")
@@ -517,10 +522,103 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		case *ir.Enum:
 			g.loadTag(ind, expr, off(base, at), int64(r.StorageBits/8))
+			// AN ORDINAL PAST THE ENUM'S TOP VALUE LANDS None (0) AND COUNTS
+			// ONE clamped. Identity is one OP_COPY of the whole body, so the
+			// plan never holds the set; this projection is the bounds pass
+			// both paths share. A value inside an `| max = K` headroom is in
+			// the set and stands (r.Max, not the named-variant count).
+			if max, ok := fixedEnumClampMax(r); ok {
+				g.pf("%sif (%s > %d) { %s = 0; report.clamped++; }\n",
+					ind, expr, max, expr)
+			}
 			return
 		}
 	}
 	g.load(ind, expr, "view", off(base, at), f.Type)
+	g.emitDecodeBounds(ind, expr, f)
+}
+
+// emitDecodeBounds is §4.6's ranged-scalar clamp, inline: a declared min/max
+// (and a bits(N) width that does not fill storage) is held AFTER the load, on
+// the value the consumer will see. The plan never does this. Vacuous ends —
+// a bound sitting on the storage width's own limit — are dropped, because no
+// loaded value can fail them.
+func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		asBig := fixedIsBig(f.Type)
+		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
+		low, high := fixedClampEnds(f)
+		switch {
+		case low && high:
+			g.pf("%sif (%s < %s) { %s = %s; report.clamped++; } else if (%s > %s) { %s = %s; report.clamped++; }\n",
+				ind, expr, lo, expr, lo, expr, hi, expr, hi)
+		case low:
+			g.pf("%sif (%s < %s) { %s = %s; report.clamped++; }\n", ind, expr, lo, expr, lo)
+		case high:
+			g.pf("%sif (%s > %s) { %s = %s; report.clamped++; }\n", ind, expr, hi, expr, hi)
+		}
+	}
+	w := fixedStorageBytes(f.Type)
+	if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*w {
+		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		lit := jsIntLit(maxv, fixedIsBig(f.Type))
+		g.pf("%sif (%s > %s) { %s = %s; report.clamped++; }\n", ind, expr, lit, expr, lit)
+	}
+}
+
+// fixedEnumClampMax is the enum's top wire value when a loaded ordinal can
+// actually sit past it. loadTag reads 1, 2 or 4 unsigned bytes; a Max that
+// fills that load has no out-of-range ordinal to close.
+func fixedEnumClampMax(r *ir.Enum) (int64, bool) {
+	if r == nil || r.StorageBits <= 0 {
+		return 0, false
+	}
+	var loaded int64
+	switch {
+	case r.StorageBits <= 8:
+		loaded = 255
+	case r.StorageBits <= 16:
+		loaded = 65535
+	default:
+		loaded = 4294967295
+	}
+	if r.Max >= loaded {
+		return 0, false
+	}
+	return r.Max, true
+}
+
+// fixedClampEnds answers which ends of a declared min/max a loaded value can
+// actually fail. A bound on the storage width's own limit is a comparison no
+// DataView load can lose.
+func fixedClampEnds(f *ir.Field) (low, high bool) {
+	rlo, rhi, ok := ir.TableRawRange(f)
+	if !ok {
+		return false, false
+	}
+	bits := uint(8 * fixedStorageBytes(f.Type))
+	if bits == 0 {
+		return false, false
+	}
+	one := big.NewInt(1)
+	var lo, hi *big.Int
+	if ir.TableKindSigned(ir.TableScalarKind(f)) {
+		top := new(big.Int).Lsh(one, bits-1)
+		lo, hi = new(big.Int).Neg(top), new(big.Int).Sub(top, one)
+	} else {
+		lo, hi = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(one, bits), one)
+	}
+	return rlo.Cmp(lo) > 0, rhi.Cmp(hi) < 0
+}
+
+func jsIntLit(n *big.Int, asBig bool) string {
+	if n == nil {
+		return "0"
+	}
+	if asBig {
+		return n.String() + "n"
+	}
+	return n.String()
 }
 
 // ---------------------------------------------------------------------------

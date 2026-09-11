@@ -188,146 +188,6 @@ namespace Tabledemo
         // ONE loop over ONE plan, the identity plan here and a plan compiled from
         // the writer's own block for anybody else.
 
-        // Buff's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void BuffFixedWriteBody(Span<byte> b, Buff value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteSingleLittleEndian(b, value.Multiplier);
-        }
-
-        // Debuff's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void DebuffFixedWriteBody(Span<byte> b, Debuff value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Amount);
-        }
-
-        // WeaponConfig's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void WeaponConfigFixedWriteBody(Span<byte> b, WeaponConfig value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteSingleLittleEndian(b, value.Damage);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Speed);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.Penetration);
-            BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(12), (uint)value.Channel);
-            b.Slice(16)[0] = (byte)(value.Homing ? 1 : 0);
-            if (value.Effect != null)
-            {
-                b.Slice(17)[0] = (byte)value.Effect.Type;
-                switch (value.Effect.Type)
-                {
-                    case EffectType.Buff:
-                        BuffFixedWriteBody(b.Slice(17).Slice(1), value.Effect.Buff);
-                        break;
-                    case EffectType.Debuff:
-                        DebuffFixedWriteBody(b.Slice(17).Slice(1), value.Effect.Debuff);
-                        break;
-                    default: break;
-                }
-            }
-        }
-
-        // Attachment's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void AttachmentFixedWriteBody(Span<byte> b, Attachment value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Slot);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Power);
-        }
-
-        // LoadoutConfig's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void LoadoutConfigFixedWriteBody(Span<byte> b, LoadoutConfig value)
-        {
-            if (value == null) return;
-            b[0] = (byte)value.Grade;
-            int count_grades = value.GradesCount;
-            System.Diagnostics.Debug.Assert(count_grades >= 0 && count_grades <= 4); // the declared count is the bound (§3.4)
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(1), count_grades);
-            if (value.Grades != null) { MemoryMarshal.AsBytes(value.Grades.AsSpan(0, Math.Min(value.Grades.Length, count_grades))).CopyTo(b.Slice(5)); }
-            if (value.Podium != null) { MemoryMarshal.AsBytes(value.Podium.AsSpan(0, Math.Min(value.Podium.Length, 3))).CopyTo(b.Slice(9)); }
-            BinaryPrimitives.WriteUInt64LittleEndian(b.Slice(12), (ulong)value.Perks);
-            WeaponConfigFixedWriteBody(b.Slice(20), value.Primary);
-            if (value.Backups != null)
-            {
-                for (int i = 0; i < 2 && i < value.Backups.Length; ++i)
-                {
-                    WeaponConfigFixedWriteBody(b.Slice(42 + i * 22), value.Backups[i]);
-                }
-            }
-            int count_attachments = value.AttachmentsCount;
-            System.Diagnostics.Debug.Assert(count_attachments >= 0 && count_attachments <= 8); // the declared count is the bound (§3.4)
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(86), count_attachments);
-            if (value.Attachments != null)
-            {
-                for (int i = 0; i < count_attachments && i < value.Attachments.Length; ++i)
-                {
-                    AttachmentFixedWriteBody(b.Slice(90 + i * 8), value.Attachments[i]);
-                }
-            }
-        }
-
-        // ProfileConfig's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void ProfileConfigFixedWriteBody(Span<byte> b, ProfileConfig value)
-        {
-            if (value == null) return;
-            int len_name = value.Name != null ? value.NameLength : 0;
-            System.Diagnostics.Debug.Assert(len_name <= 32);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(0), len_name);
-            if (len_name > 0) { value.Name.AsSpan(0, len_name).CopyTo(b.Slice(4)); }
-            int len_icon = value.Icon != null ? value.IconLength : 0;
-            System.Diagnostics.Debug.Assert(len_icon <= 16);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(36), len_icon);
-            if (len_icon > 0) { value.Icon.AsSpan(0, len_icon).CopyTo(b.Slice(40)); }
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(56), (int)value.Experience);
-            b.Slice(60)[0] = unchecked((byte)value.Tilt);
-            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(61), (short)value.Heading);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(63), (long)value.Timestamp);
-            b.Slice(71)[0] = unchecked((byte)value.Badge);
-            BinaryPrimitives.WriteInt16LittleEndian(b.Slice(72), (short)value.Port);
-            BinaryPrimitives.WriteInt64LittleEndian(b.Slice(74), (long)value.Epoch);
-            BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(82), value.Precision);
-            if (value.Ratings != null) { MemoryMarshal.AsBytes(value.Ratings.AsSpan(0, Math.Min(value.Ratings.Length, 4))).CopyTo(b.Slice(90)); }
-            b.Slice(106)[0] = (byte)(value.HasLoadout ? 1 : 0);
-            LoadoutConfigFixedWriteBody(b.Slice(107), value.Loadout);
-        }
-
-        // RootConfig's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void RootConfigFixedWriteBody(Span<byte> b, RootConfig value)
-        {
-            if (value == null) return;
-            int len_version_note = value.VersionNote != null ? value.VersionNoteLength : 0;
-            System.Diagnostics.Debug.Assert(len_version_note <= 16);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(0), len_version_note);
-            if (len_version_note > 0) { value.VersionNote.AsSpan(0, len_version_note).CopyTo(b.Slice(4)); }
-            int count_weapons = value.WeaponsCount;
-            System.Diagnostics.Debug.Assert(count_weapons >= 0 && count_weapons <= 8); // the declared count is the bound (§3.4)
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(20), count_weapons);
-            if (value.Weapons != null)
-            {
-                for (int i = 0; i < count_weapons && i < value.Weapons.Length; ++i)
-                {
-                    WeaponConfigFixedWriteBody(b.Slice(24 + i * 22), value.Weapons[i]);
-                }
-            }
-            int count_profiles = value.ProfilesCount;
-            System.Diagnostics.Debug.Assert(count_profiles >= 0 && count_profiles <= 4); // the declared count is the bound (§3.4)
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(200), count_profiles);
-            if (value.Profiles != null)
-            {
-                for (int i = 0; i < count_profiles && i < value.Profiles.Length; ++i)
-                {
-                    ProfileConfigFixedWriteBody(b.Slice(204 + i * 261), value.Profiles[i]);
-                }
-            }
-        }
-
         // ArchiveConfig's stores. The template — the hash, then zeros — is memcpy'd first,
         // which is also what zero-fills every byte of declared slack.
         public static void ArchiveConfigFixedWriteBody(Span<byte> b, ArchiveConfig value)
@@ -341,7 +201,7 @@ namespace Tabledemo
 
         public const long ArchiveConfigFixedBodyBytes = 1252;
         public const long ArchiveConfigFixedRecordBytes = 8 + ArchiveConfigFixedBodyBytes;
-        public const ulong ArchiveConfigFixedHash = 0x0914256792928e9ful;
+        public const ulong ArchiveConfigFixedHash = 0x98b16f3242e9406bul;
 
         public static readonly byte[] ArchiveConfigFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf, 0x7b, 0x3e, 0x41, 0x0d, 0xe4, 0x04, 0x00,
@@ -506,315 +366,322 @@ namespace Tabledemo
         };
 
         public static readonly TableFixedSlot<ArchiveConfig>[] ArchiveConfigFixedSlots = new TableFixedSlot<ArchiveConfig>[] {
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.VersionNoteLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.VersionNote != null) b.Slice(0, Math.Min(b.Length, t.Root.VersionNote.Length)).CopyTo(t.Root.VersionNote); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.WeaponsCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[0].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[0].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[0].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[0].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[1].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[1].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[1].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[1].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[2].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[2].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[2].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[2].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[2].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[3].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[3].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[3].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[3].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[3].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[4].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[4].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[4].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[4].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[4].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[5].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[5].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[5].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[5].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[5].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[6].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[6].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[6].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[6].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[6].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[7].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[7].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[7].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[7].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[7].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.ProfilesCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].NameLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Name.Length)).CopyTo(t.Root.Profiles[0].Name); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].IconLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Icon.Length)).CopyTo(t.Root.Profiles[0].Icon); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Experience = unchecked((uint)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Tilt = unchecked((sbyte)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Heading = unchecked((short)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Timestamp = unchecked((long)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Badge = unchecked((byte)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Port = unchecked((ushort)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Epoch = unchecked((ulong)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[0].Precision = d),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Ratings.Length * 4))).CopyTo(t.Root.Profiles[0].Ratings); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].HasLoadout = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Root.Profiles[0].Loadout.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[0].Loadout.Grade = (Grade)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.GradesCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Grades); }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Podium); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Perks = v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[0].Loadout.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[0].Loadout.Primary.Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[0].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[0].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[0].Loadout.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[0].Loadout.Backups[0].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[1].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[1].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[0].Loadout.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[0].Loadout.Backups[1].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.AttachmentsCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[0].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[0].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[1].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[1].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[2].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[2].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[3].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[3].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[4].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[4].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[5].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[5].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[6].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[6].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[7].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[7].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].NameLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Name.Length)).CopyTo(t.Root.Profiles[1].Name); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].IconLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Icon.Length)).CopyTo(t.Root.Profiles[1].Icon); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Experience = unchecked((uint)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Tilt = unchecked((sbyte)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Heading = unchecked((short)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Timestamp = unchecked((long)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Badge = unchecked((byte)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Port = unchecked((ushort)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Epoch = unchecked((ulong)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[1].Precision = d),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Ratings.Length * 4))).CopyTo(t.Root.Profiles[1].Ratings); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].HasLoadout = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Root.Profiles[1].Loadout.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[1].Loadout.Grade = (Grade)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.GradesCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Grades); }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Podium); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Perks = v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[1].Loadout.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[1].Loadout.Primary.Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[0].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[0].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[1].Loadout.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[1].Loadout.Backups[0].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[1].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[1].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[1].Loadout.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[1].Loadout.Backups[1].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.AttachmentsCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[0].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[0].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[1].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[1].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[2].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[2].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[3].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[3].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[4].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[4].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[5].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[5].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[6].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[6].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[7].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[7].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].NameLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Name.Length)).CopyTo(t.Root.Profiles[2].Name); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].IconLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Icon.Length)).CopyTo(t.Root.Profiles[2].Icon); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Experience = unchecked((uint)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Tilt = unchecked((sbyte)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Heading = unchecked((short)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Timestamp = unchecked((long)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Badge = unchecked((byte)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Port = unchecked((ushort)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Epoch = unchecked((ulong)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[2].Precision = d),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Ratings.Length * 4))).CopyTo(t.Root.Profiles[2].Ratings); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].HasLoadout = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Root.Profiles[2].Loadout.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[2].Loadout.Grade = (Grade)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.GradesCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Grades); }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Podium); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Perks = v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[2].Loadout.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[2].Loadout.Primary.Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[0].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[0].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[2].Loadout.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[2].Loadout.Backups[0].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[1].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[1].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[2].Loadout.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[2].Loadout.Backups[1].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.AttachmentsCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[0].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[0].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[1].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[1].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[2].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[2].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[3].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[3].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[4].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[4].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[5].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[5].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[6].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[6].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[7].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[7].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].NameLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Name.Length)).CopyTo(t.Root.Profiles[3].Name); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].IconLength = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Icon.Length)).CopyTo(t.Root.Profiles[3].Icon); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Experience = unchecked((uint)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Tilt = unchecked((sbyte)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Heading = unchecked((short)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Timestamp = unchecked((long)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Badge = unchecked((byte)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Port = unchecked((ushort)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Epoch = unchecked((ulong)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[3].Precision = d),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Ratings.Length * 4))).CopyTo(t.Root.Profiles[3].Ratings); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].HasLoadout = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Root.Profiles[3].Loadout.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[3].Loadout.Grade = (Grade)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.GradesCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Grades); }),
-            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Podium); }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Perks = v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[3].Loadout.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[3].Loadout.Primary.Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[0].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[0].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[3].Loadout.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[3].Loadout.Backups[0].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[1].Damage = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[1].Speed = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Penetration = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Channel = (uint)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Homing = v != 0),
-            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[3].Loadout.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[3].Loadout.Backups[1].Effect.Type = (EffectType)v; } }),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.AttachmentsCount = (int)v),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[0].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[0].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[1].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[1].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[2].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[2].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[3].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[3].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[4].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[4].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[5].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[5].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[6].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[6].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[7].Slot = unchecked((int)v)),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[7].Power = (float)d),
-            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Count = unchecked((int)v)),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.VersionNoteLength = (int)v, reset: (t) => { t.Root.VersionNoteLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.VersionNote != null) b.Slice(0, Math.Min(b.Length, t.Root.VersionNote.Length)).CopyTo(t.Root.VersionNote); }, reset: (t) => { if (t.Root.VersionNote != null) { Array.Clear(t.Root.VersionNote, 0, t.Root.VersionNote.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.WeaponsCount = (int)v, reset: (t) => { t.Root.WeaponsCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[0].Damage = (float)d, reset: (t) => { t.Root.Weapons[0].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[0].Speed = (float)d, reset: (t) => { t.Root.Weapons[0].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Penetration = unchecked((int)v), reset: (t) => { t.Root.Weapons[0].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Channel = (uint)v, reset: (t) => { t.Root.Weapons[0].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Homing = v != 0, reset: (t) => { t.Root.Weapons[0].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[0].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Weapons[0].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Weapons[0].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[0].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Weapons[0].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[1].Damage = (float)d, reset: (t) => { t.Root.Weapons[1].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[1].Speed = (float)d, reset: (t) => { t.Root.Weapons[1].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Penetration = unchecked((int)v), reset: (t) => { t.Root.Weapons[1].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Channel = (uint)v, reset: (t) => { t.Root.Weapons[1].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Homing = v != 0, reset: (t) => { t.Root.Weapons[1].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[1].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Weapons[1].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Weapons[1].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[1].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Weapons[1].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[2].Damage = (float)d, reset: (t) => { t.Root.Weapons[2].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[2].Speed = (float)d, reset: (t) => { t.Root.Weapons[2].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Penetration = unchecked((int)v), reset: (t) => { t.Root.Weapons[2].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Channel = (uint)v, reset: (t) => { t.Root.Weapons[2].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Homing = v != 0, reset: (t) => { t.Root.Weapons[2].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[2].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[2].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Weapons[2].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[2].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Weapons[2].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[2].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Weapons[2].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[3].Damage = (float)d, reset: (t) => { t.Root.Weapons[3].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[3].Speed = (float)d, reset: (t) => { t.Root.Weapons[3].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Penetration = unchecked((int)v), reset: (t) => { t.Root.Weapons[3].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Channel = (uint)v, reset: (t) => { t.Root.Weapons[3].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Homing = v != 0, reset: (t) => { t.Root.Weapons[3].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[3].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[3].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Weapons[3].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[3].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Weapons[3].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[3].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Weapons[3].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[4].Damage = (float)d, reset: (t) => { t.Root.Weapons[4].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[4].Speed = (float)d, reset: (t) => { t.Root.Weapons[4].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Penetration = unchecked((int)v), reset: (t) => { t.Root.Weapons[4].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Channel = (uint)v, reset: (t) => { t.Root.Weapons[4].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Homing = v != 0, reset: (t) => { t.Root.Weapons[4].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[4].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[4].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Weapons[4].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[4].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Weapons[4].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[4].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Weapons[4].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[5].Damage = (float)d, reset: (t) => { t.Root.Weapons[5].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[5].Speed = (float)d, reset: (t) => { t.Root.Weapons[5].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Penetration = unchecked((int)v), reset: (t) => { t.Root.Weapons[5].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Channel = (uint)v, reset: (t) => { t.Root.Weapons[5].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Homing = v != 0, reset: (t) => { t.Root.Weapons[5].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[5].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[5].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Weapons[5].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[5].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Weapons[5].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[5].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Weapons[5].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[6].Damage = (float)d, reset: (t) => { t.Root.Weapons[6].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[6].Speed = (float)d, reset: (t) => { t.Root.Weapons[6].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Penetration = unchecked((int)v), reset: (t) => { t.Root.Weapons[6].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Channel = (uint)v, reset: (t) => { t.Root.Weapons[6].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Homing = v != 0, reset: (t) => { t.Root.Weapons[6].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[6].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[6].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Weapons[6].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[6].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Weapons[6].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[6].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Weapons[6].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[7].Damage = (float)d, reset: (t) => { t.Root.Weapons[7].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[7].Speed = (float)d, reset: (t) => { t.Root.Weapons[7].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Penetration = unchecked((int)v), reset: (t) => { t.Root.Weapons[7].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Channel = (uint)v, reset: (t) => { t.Root.Weapons[7].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Homing = v != 0, reset: (t) => { t.Root.Weapons[7].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Weapons[7].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Weapons[7].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Weapons[7].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Weapons[7].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Weapons[7].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Weapons[7].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Weapons[7].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.ProfilesCount = (int)v, reset: (t) => { t.Root.ProfilesCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].NameLength = (int)v, reset: (t) => { t.Root.Profiles[0].NameLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Name.Length)).CopyTo(t.Root.Profiles[0].Name); }, reset: (t) => { if (t.Root.Profiles[0].Name != null) { Array.Clear(t.Root.Profiles[0].Name, 0, t.Root.Profiles[0].Name.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].IconLength = (int)v, reset: (t) => { t.Root.Profiles[0].IconLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Icon.Length)).CopyTo(t.Root.Profiles[0].Icon); }, reset: (t) => { if (t.Root.Profiles[0].Icon != null) { Array.Clear(t.Root.Profiles[0].Icon, 0, t.Root.Profiles[0].Icon.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Experience = unchecked((uint)v), reset: (t) => { t.Root.Profiles[0].Experience = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Tilt = unchecked((sbyte)v), reset: (t) => { t.Root.Profiles[0].Tilt = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Heading = unchecked((short)v), reset: (t) => { t.Root.Profiles[0].Heading = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Timestamp = unchecked((long)v), reset: (t) => { t.Root.Profiles[0].Timestamp = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Badge = unchecked((byte)v), reset: (t) => { t.Root.Profiles[0].Badge = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Port = unchecked((ushort)v), reset: (t) => { t.Root.Profiles[0].Port = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Epoch = unchecked((ulong)v), reset: (t) => { t.Root.Profiles[0].Epoch = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[0].Precision = d, reset: (t) => { t.Root.Profiles[0].Precision = 0.0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Ratings.Length * 4))).CopyTo(t.Root.Profiles[0].Ratings); }, reset: (t) => { if (t.Root.Profiles[0].Ratings != null) Array.Clear(t.Root.Profiles[0].Ratings, 0, t.Root.Profiles[0].Ratings.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].HasLoadout = v != 0, reset: (t) => { t.Root.Profiles[0].HasLoadout = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Root.Profiles[0].Loadout.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[0].Loadout.Grade = (Grade)v; } }, reset: (t) => { t.Root.Profiles[0].Loadout.Grade = global::Tabledemo.Grade.Silver; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[0].Loadout.GradesCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[0].Loadout.Grades != null) Array.Clear(t.Root.Profiles[0].Loadout.Grades, 0, t.Root.Profiles[0].Loadout.Grades.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[0].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[0].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[0].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[0].Loadout.Podium != null) Array.Clear(t.Root.Profiles[0].Loadout.Podium, 0, t.Root.Profiles[0].Loadout.Podium.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[0].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Homing = v != 0, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[0].Loadout.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[0].Loadout.Primary.Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Primary.Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[0].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[0].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Backups[0].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[0].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[0].Loadout.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[0].Loadout.Backups[0].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[0].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Backups[0].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[1].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[1].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Backups[1].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[1].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[0].Loadout.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[0].Loadout.Backups[1].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[1].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Backups[1].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.AttachmentsCount = (int)v, reset: (t) => { t.Root.Profiles[0].Loadout.AttachmentsCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[0].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[0].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[0].Power = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[0].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[1].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[1].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[1].Power = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[1].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[2].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[2].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[2].Power = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[2].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[3].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[3].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[3].Power = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[3].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[4].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[4].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[4].Power = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[4].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[5].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[5].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[5].Power = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[5].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[6].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[6].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[6].Power = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[6].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[7].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[7].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[0].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[0].Loadout.Attachments[7].Power = (float)d, reset: (t) => { t.Root.Profiles[0].Loadout.Attachments[7].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].NameLength = (int)v, reset: (t) => { t.Root.Profiles[1].NameLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Name.Length)).CopyTo(t.Root.Profiles[1].Name); }, reset: (t) => { if (t.Root.Profiles[1].Name != null) { Array.Clear(t.Root.Profiles[1].Name, 0, t.Root.Profiles[1].Name.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].IconLength = (int)v, reset: (t) => { t.Root.Profiles[1].IconLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Icon.Length)).CopyTo(t.Root.Profiles[1].Icon); }, reset: (t) => { if (t.Root.Profiles[1].Icon != null) { Array.Clear(t.Root.Profiles[1].Icon, 0, t.Root.Profiles[1].Icon.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Experience = unchecked((uint)v), reset: (t) => { t.Root.Profiles[1].Experience = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Tilt = unchecked((sbyte)v), reset: (t) => { t.Root.Profiles[1].Tilt = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Heading = unchecked((short)v), reset: (t) => { t.Root.Profiles[1].Heading = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Timestamp = unchecked((long)v), reset: (t) => { t.Root.Profiles[1].Timestamp = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Badge = unchecked((byte)v), reset: (t) => { t.Root.Profiles[1].Badge = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Port = unchecked((ushort)v), reset: (t) => { t.Root.Profiles[1].Port = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Epoch = unchecked((ulong)v), reset: (t) => { t.Root.Profiles[1].Epoch = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[1].Precision = d, reset: (t) => { t.Root.Profiles[1].Precision = 0.0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Ratings.Length * 4))).CopyTo(t.Root.Profiles[1].Ratings); }, reset: (t) => { if (t.Root.Profiles[1].Ratings != null) Array.Clear(t.Root.Profiles[1].Ratings, 0, t.Root.Profiles[1].Ratings.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].HasLoadout = v != 0, reset: (t) => { t.Root.Profiles[1].HasLoadout = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Root.Profiles[1].Loadout.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[1].Loadout.Grade = (Grade)v; } }, reset: (t) => { t.Root.Profiles[1].Loadout.Grade = global::Tabledemo.Grade.Silver; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[1].Loadout.GradesCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[1].Loadout.Grades != null) Array.Clear(t.Root.Profiles[1].Loadout.Grades, 0, t.Root.Profiles[1].Loadout.Grades.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[1].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[1].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[1].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[1].Loadout.Podium != null) Array.Clear(t.Root.Profiles[1].Loadout.Podium, 0, t.Root.Profiles[1].Loadout.Podium.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[1].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Homing = v != 0, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[1].Loadout.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[1].Loadout.Primary.Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Primary.Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[0].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[0].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Backups[0].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[0].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[1].Loadout.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[1].Loadout.Backups[0].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[0].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Backups[0].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[1].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[1].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Backups[1].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[1].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[1].Loadout.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[1].Loadout.Backups[1].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[1].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Backups[1].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.AttachmentsCount = (int)v, reset: (t) => { t.Root.Profiles[1].Loadout.AttachmentsCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[0].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[0].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[0].Power = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[0].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[1].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[1].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[1].Power = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[1].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[2].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[2].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[2].Power = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[2].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[3].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[3].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[3].Power = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[3].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[4].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[4].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[4].Power = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[4].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[5].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[5].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[5].Power = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[5].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[6].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[6].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[6].Power = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[6].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[7].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[7].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[1].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[1].Loadout.Attachments[7].Power = (float)d, reset: (t) => { t.Root.Profiles[1].Loadout.Attachments[7].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].NameLength = (int)v, reset: (t) => { t.Root.Profiles[2].NameLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Name.Length)).CopyTo(t.Root.Profiles[2].Name); }, reset: (t) => { if (t.Root.Profiles[2].Name != null) { Array.Clear(t.Root.Profiles[2].Name, 0, t.Root.Profiles[2].Name.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].IconLength = (int)v, reset: (t) => { t.Root.Profiles[2].IconLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Icon.Length)).CopyTo(t.Root.Profiles[2].Icon); }, reset: (t) => { if (t.Root.Profiles[2].Icon != null) { Array.Clear(t.Root.Profiles[2].Icon, 0, t.Root.Profiles[2].Icon.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Experience = unchecked((uint)v), reset: (t) => { t.Root.Profiles[2].Experience = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Tilt = unchecked((sbyte)v), reset: (t) => { t.Root.Profiles[2].Tilt = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Heading = unchecked((short)v), reset: (t) => { t.Root.Profiles[2].Heading = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Timestamp = unchecked((long)v), reset: (t) => { t.Root.Profiles[2].Timestamp = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Badge = unchecked((byte)v), reset: (t) => { t.Root.Profiles[2].Badge = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Port = unchecked((ushort)v), reset: (t) => { t.Root.Profiles[2].Port = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Epoch = unchecked((ulong)v), reset: (t) => { t.Root.Profiles[2].Epoch = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[2].Precision = d, reset: (t) => { t.Root.Profiles[2].Precision = 0.0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Ratings.Length * 4))).CopyTo(t.Root.Profiles[2].Ratings); }, reset: (t) => { if (t.Root.Profiles[2].Ratings != null) Array.Clear(t.Root.Profiles[2].Ratings, 0, t.Root.Profiles[2].Ratings.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].HasLoadout = v != 0, reset: (t) => { t.Root.Profiles[2].HasLoadout = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Root.Profiles[2].Loadout.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[2].Loadout.Grade = (Grade)v; } }, reset: (t) => { t.Root.Profiles[2].Loadout.Grade = global::Tabledemo.Grade.Silver; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[2].Loadout.GradesCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[2].Loadout.Grades != null) Array.Clear(t.Root.Profiles[2].Loadout.Grades, 0, t.Root.Profiles[2].Loadout.Grades.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[2].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[2].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[2].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[2].Loadout.Podium != null) Array.Clear(t.Root.Profiles[2].Loadout.Podium, 0, t.Root.Profiles[2].Loadout.Podium.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[2].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Homing = v != 0, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[2].Loadout.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[2].Loadout.Primary.Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Primary.Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[0].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[0].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Backups[0].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[0].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[2].Loadout.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[2].Loadout.Backups[0].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[0].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Backups[0].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[1].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[1].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Backups[1].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[1].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[2].Loadout.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[2].Loadout.Backups[1].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[1].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Backups[1].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.AttachmentsCount = (int)v, reset: (t) => { t.Root.Profiles[2].Loadout.AttachmentsCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[0].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[0].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[0].Power = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[0].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[1].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[1].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[1].Power = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[1].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[2].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[2].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[2].Power = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[2].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[3].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[3].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[3].Power = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[3].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[4].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[4].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[4].Power = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[4].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[5].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[5].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[5].Power = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[5].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[6].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[6].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[6].Power = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[6].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[7].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[7].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[2].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[2].Loadout.Attachments[7].Power = (float)d, reset: (t) => { t.Root.Profiles[2].Loadout.Attachments[7].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].NameLength = (int)v, reset: (t) => { t.Root.Profiles[3].NameLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Name != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Name.Length)).CopyTo(t.Root.Profiles[3].Name); }, reset: (t) => { if (t.Root.Profiles[3].Name != null) { Array.Clear(t.Root.Profiles[3].Name, 0, t.Root.Profiles[3].Name.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].IconLength = (int)v, reset: (t) => { t.Root.Profiles[3].IconLength = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Icon != null) b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Icon.Length)).CopyTo(t.Root.Profiles[3].Icon); }, reset: (t) => { if (t.Root.Profiles[3].Icon != null) { Array.Clear(t.Root.Profiles[3].Icon, 0, t.Root.Profiles[3].Icon.Length); } }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Experience = unchecked((uint)v), reset: (t) => { t.Root.Profiles[3].Experience = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Tilt = unchecked((sbyte)v), reset: (t) => { t.Root.Profiles[3].Tilt = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Heading = unchecked((short)v), reset: (t) => { t.Root.Profiles[3].Heading = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Timestamp = unchecked((long)v), reset: (t) => { t.Root.Profiles[3].Timestamp = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Badge = unchecked((byte)v), reset: (t) => { t.Root.Profiles[3].Badge = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Port = unchecked((ushort)v), reset: (t) => { t.Root.Profiles[3].Port = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Epoch = unchecked((ulong)v), reset: (t) => { t.Root.Profiles[3].Epoch = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Precision = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Root.Profiles[3].Precision = d, reset: (t) => { t.Root.Profiles[3].Precision = 0.0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Ratings != null) MemoryMarshal.Cast<byte, float>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Ratings.Length * 4))).CopyTo(t.Root.Profiles[3].Ratings); }, reset: (t) => { if (t.Root.Profiles[3].Ratings != null) Array.Clear(t.Root.Profiles[3].Ratings, 0, t.Root.Profiles[3].Ratings.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].HasLoadout = v != 0, reset: (t) => { t.Root.Profiles[3].HasLoadout = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 3) { t.Root.Profiles[3].Loadout.Grade = 0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[3].Loadout.Grade = (Grade)v; } }, reset: (t) => { t.Root.Profiles[3].Loadout.Grade = global::Tabledemo.Grade.Silver; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.GradesCount = (int)v, reset: (t) => { t.Root.Profiles[3].Loadout.GradesCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Grades != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Grades.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Grades); }, reset: (t) => { if (t.Root.Profiles[3].Loadout.Grades != null) Array.Clear(t.Root.Profiles[3].Loadout.Grades, 0, t.Root.Profiles[3].Loadout.Grades.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setBytes: (t, b, l) => { if (t.Root.Profiles[3].Loadout.Podium != null) MemoryMarshal.Cast<byte, Grade>(b.Slice(0, Math.Min(b.Length, t.Root.Profiles[3].Loadout.Podium.Length * 1))).CopyTo(t.Root.Profiles[3].Loadout.Podium); }, reset: (t) => { if (t.Root.Profiles[3].Loadout.Podium != null) Array.Clear(t.Root.Profiles[3].Loadout.Podium, 0, t.Root.Profiles[3].Loadout.Podium.Length); }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Perks = v, reset: (t) => { t.Root.Profiles[3].Loadout.Perks = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Damage = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Speed = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Channel = (uint)v, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Homing = v != 0, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[3].Loadout.Primary.Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[3].Loadout.Primary.Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Primary.Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Primary.Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[0].Damage = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[0].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[0].Speed = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[0].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Backups[0].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Channel = (uint)v, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[0].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Homing = v != 0, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[0].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[3].Loadout.Backups[0].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[3].Loadout.Backups[0].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[0].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[0].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[0].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Backups[0].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Damage = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[1].Damage = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[1].Damage = 21.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Speed = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[1].Speed = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[1].Speed = 500.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Penetration = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Backups[1].Penetration = 1; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Channel = (uint)v, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[1].Channel = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Homing = v != 0, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[1].Homing = false; }),
+            new TableFixedSlot<ArchiveConfig>(setRawReport: (t, v, rep) => { if (v > 2) { t.Root.Profiles[3].Loadout.Backups[1].Effect.Type = (EffectType)0; if (rep != null) rep.Clamped++; } else { t.Root.Profiles[3].Loadout.Backups[1].Effect.Type = (EffectType)v; } }, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[1].Effect.Type = EffectType.None; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Backups[1].Effect.Buff.Multiplier = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Backups[1].Effect.Debuff.Amount = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Backups[1].Effect.Debuff.Amount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.AttachmentsCount = (int)v, reset: (t) => { t.Root.Profiles[3].Loadout.AttachmentsCount = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[0].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[0].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[0].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[0].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[0].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[1].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[1].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[1].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[1].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[1].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[2].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[2].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[2].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[2].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[2].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[3].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[3].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[3].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[3].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[3].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[4].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[4].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[4].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[4].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[4].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[5].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[5].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[5].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[5].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[5].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[6].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[6].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[6].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[6].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[6].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[7].Slot = unchecked((int)v), reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[7].Slot = 0; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Root.Profiles[3].Loadout.Attachments[7].Power = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Root.Profiles[3].Loadout.Attachments[7].Power = (float)d, reset: (t) => { t.Root.Profiles[3].Loadout.Attachments[7].Power = 1.0f; }),
+            new TableFixedSlot<ArchiveConfig>(setRaw: (t, v) => t.Count = unchecked((int)v), reset: (t) => { t.Count = 1; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] ArchiveConfigFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 309u),
         };
 
         public static readonly TableFixedPlan ArchiveConfigFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -1186,13 +1053,23 @@ namespace Tabledemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = ArchiveConfigFixedPlan;
             long record_bytes = ArchiveConfigFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
-            if (hash != ArchiveConfigFixedHash)
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
+            if (hash == ArchiveConfigFixedHash)
+            {
+                if (layout_bytes != (uint)ArchiveConfigFixedLayout.Length || !layout.SequenceEqual(ArchiveConfigFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1208,11 +1085,13 @@ namespace Tabledemo
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
+                int slotN = ArchiveConfigFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, ArchiveConfigFixedCover, landed, fillBuf);
+                }
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -1225,10 +1104,12 @@ namespace Tabledemo
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new ArchiveConfig(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), ArchiveConfigFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
