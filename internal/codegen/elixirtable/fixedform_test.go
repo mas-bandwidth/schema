@@ -226,6 +226,42 @@ table Everything
 	}
 }
 
+// NEITHER PLAN CLAMPS (docs/SPEC-TABLES.md §3.4, schema#859). A read is one
+// prefill, one loop over the plan the layout hash selected, then ONE projection
+// over the image the loop wrote — the same pass for either plan. There is no
+// clamp op for a plan to carry, so a destination row is five lanes and the
+// generated decode is the bound.
+func TestNoPlanClampOp(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+
+table Cfg
+{
+    a      int32 = 5 | min = 0, max = 1000
+    marks  [..4]int32 | min = 0, max = 10
+}
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	body := string(out["Probe"+FixedModuleSuffix+".ex"])
+	if strings.Contains(runtime, "{:clamp") || strings.Contains(body, "{:clamp") {
+		t.Error("no plan op clamps: {:clamp must not exist")
+	}
+	if !strings.Contains(runtime, "defp step([{:widen, src, dst, size, width, signed} | rest]") {
+		t.Error("widen stays a plan op; only the clamp op is gone")
+	}
+	if !strings.Contains(body, "R.clamps(c, ") {
+		t.Error("the bounds pass is the clamp, and it must still be emitted")
+	}
+	if !strings.Contains(body, "{0, 0, 0, 0, 0}") {
+		t.Error("a destination row is five lanes: dest, stride, aux, counted, arg")
+	}
+	if strings.Contains(body, ", nil, nil}") {
+		t.Error("a destination row must carry no clamp ends: the pass holds the range, not the plan")
+	}
+}
+
 // CLAMP AND ORDINAL COUNT LIVE ELEMENTS ONLY, and on this path that is the
 // PROJECTION's shape rather than a plan op's wrapper. The identity plan here is
 // one run of bytes, so there is no `:live` tuple to hang a guard on; what has to

@@ -60,10 +60,10 @@ export const TableFixedEntryBytes = 17;
 // the layout's own framing: the u32 entry count, and nothing else
 export const TableFixedLayoutHeaderBytes = 4;
 
-// A PLAN ENTRY is eight int32 lanes of one flat Int32Array. A flat array of a
+// A PLAN ENTRY is nine int32 lanes of one flat Int32Array. A flat array of a
 // fixed stride is what keeps the read loop monomorphic: every lane is a
 // Smi, the loop never touches a property name, and nothing is allocated.
-export const TableFixedLanes = 8;
+export const TableFixedLanes = 9;
 // ONE BINDING PER LINE, and that is not a style choice: §11's claim is made
 // name by name, and a scan that reads a module's bindings sees the FIRST name
 // of a comma list. A lane folded into a list beside another is a lane nobody
@@ -76,6 +76,7 @@ const TableFixedLaneAux = 4;
 const TableFixedLaneGuard = 5;
 const TableFixedLaneArg = 6;
 const TableFixedLaneMeta = 7; // a widen's width and sign, a text entry's flavour
+const TableFixedLaneArgW = 8; // THE GUARD'S WIDTH IN BYTES: a union tag is 1, 2, 4 or 8
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
 // others are what a plan compiled from another writer's layout adds.
@@ -162,6 +163,8 @@ export class TableFixedPlan {
     this.hashHi = 0;
     this.ready = false;
     this.overflow = false;
+    // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
+    this.argw = 1;
   }
 }
 
@@ -219,6 +222,22 @@ function TableFixedGetU32(bytes, at) {
   return (bytes[at] | (bytes[at + 1] << 8) | (bytes[at + 2] << 16) | (bytes[at + 3] << 24)) >>> 0;
 }
 
+// THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+// byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+// for, and reading only the first byte let 0x0101 run arm 1's entries over
+// a stranger's record. ArgW 0 means 1, as C++.
+function TableFixedTagAt(src, at, argw) {
+  let w = argw | 0;
+  if (w === 0) { w = 1; }
+  else if (w > 8) { w = 8; }
+  let v = 0, p = 1;
+  for (let i = 0; i < w; i++) {
+    v += src[at + i] * p;
+    p *= 256;
+  }
+  return v;
+}
+
 // ---- THE ONE READ LOOP -----------------------------------------------------
 //
 // A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE. Which plan it is handed
@@ -231,8 +250,12 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
   for (let i = 0; i < entryCount; i++) {
     const b = i * TableFixedLanes;
     const guard = e[b + TableFixedLaneGuard];
-    // an entry belonging to an ARM runs only under its own tag
-    if (guard !== TableFixedNoGuard && src[srcAt + guard] !== e[b + TableFixedLaneArg]) { continue; }
+    // an entry belonging to an ARM runs only under its own tag, compared at
+    // ArgW bytes, never as a prefix
+    if (guard !== TableFixedNoGuard &&
+        TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)) {
+      continue;
+    }
     const s = srcAt + e[b + TableFixedLaneSrc];
     const d = e[b + TableFixedLaneDst];
     const size = e[b + TableFixedLaneSize];
@@ -509,6 +532,10 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   e[b + TableFixedLaneGuard] = guard;
   e[b + TableFixedLaneArg] = arg;
   e[b + TableFixedLaneMeta] = meta;
+  // argw IS THE GUARD'S WIDTH IN BYTES. Flavour stays in meta. Zero is one.
+  let w = plan.argw | 0;
+  if (w === 0) { w = 1; }
+  e[b + TableFixedLaneArgW] = w;
   plan.count++;
 }
 
@@ -633,6 +660,8 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
     case 15: { // a union: the tag, remapped, then each arm matched by id
       const theirTag = TableFixedTagBytes(theirs, ti);
       const myTag = TableFixedTagBytes(mine, mi);
+      const savedArgw = plan.argw;
+      plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
       const theirArms = TableFixedChildren(theirs, ti);
       const myArms = TableFixedChildren(mine, mi);
       let myArm = mi + 1;
@@ -650,6 +679,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         }
         myArm += TableFixedSubtree(mine, myArm);
       }
+      plan.argw = savedArgw;
       break;
     }
     case 30: { // an enum: the ordinal is the layout's position, so it remaps
@@ -703,6 +733,7 @@ function TableFixedCoalesce(plan) {
       const p = (out - 1) * TableFixedLanes;
       if (e[p + TableFixedLaneOp] === TableFixedOpCopy && e[b + TableFixedLaneOp] === TableFixedOpCopy &&
           e[p + TableFixedLaneGuard] === e[b + TableFixedLaneGuard] && e[p + TableFixedLaneArg] === e[b + TableFixedLaneArg] &&
+          e[p + TableFixedLaneArgW] === e[b + TableFixedLaneArgW] &&
           e[p + TableFixedLaneSrc] + e[p + TableFixedLaneSize] === e[b + TableFixedLaneSrc] &&
           e[p + TableFixedLaneDst] + e[p + TableFixedLaneSize] === e[b + TableFixedLaneDst]) {
         e[p + TableFixedLaneSize] += e[b + TableFixedLaneSize];
@@ -724,6 +755,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.count = 0;
   plan.remapUsed = 0;
   plan.overflow = false;
+  plan.argw = 1;
   TableFixedMatchChildren(plan, theirs, 0, 0, mine, 0, myDst, 0, TableFixedNoGuard, 0, report);
   if (plan.overflow) { return -1; }
   TableFixedCoalesce(plan);

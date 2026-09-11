@@ -163,11 +163,10 @@ defmodule Bench.FixedRuntime do
   hands back, so the common read allocates no new map at all.
 
   THE COUNTING IS THE GENERATED DECODE'S, for every plan (docs/SPEC-TABLES.md
-  §3.4, and the fold this leg made). A compiled plan's ops hold a foreign
-  writer's values to this reader's bounds before the projection sees them, and
-  the IDENTITY plan — ONE copy run, carrying no `count`, `text` or `clamp` op at
-  all — carries none. The projection clamps and counts either way, which is why
-  there is one decode and not two, and this is where its number joins §4's six.
+  §3.4). Neither plan clamps a ranged integer: a bound is held by the
+  projection that runs after the loop, the same pass for either plan. The
+  IDENTITY plan is one copy run; a compiled plan copies a same-size ranged
+  integer the same way. This is where the projection's number joins §4's six.
   """
   def clamped(report, 0), do: report
   def clamped(report, n), do: Map.update!(report, :clamped, &(&1 + n))
@@ -880,8 +879,6 @@ defmodule Bench.FixedRuntime do
         mine,
         mi,
         at,
-        elem(row, 5),
-        elem(row, 6),
         guard,
         tag,
         acc,
@@ -907,7 +904,7 @@ defmodule Bench.FixedRuntime do
     end
   end
 
-  defp widen_entry(theirs, ti, their_at, mine, mi, at, lo, hi, guard, tag, acc, report) do
+  defp widen_entry(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report) do
     their_kind = kind_at(theirs, ti)
     my_kind = kind_at(mine, mi)
 
@@ -919,7 +916,7 @@ defmodule Bench.FixedRuntime do
         if their_kind == 10 do
           {:widenf, their_at, at}
         else
-          {:widen, their_at, at, their_size, my_size, signed_kind?(their_kind), lo, hi}
+          {:widen, their_at, at, their_size, my_size, signed_kind?(their_kind)}
         end
 
       {guarded(acc, guard, tag, entry), report}
@@ -1012,21 +1009,18 @@ defmodule Bench.FixedRuntime do
         {guarded(acc, guard, tag, entry), report}
 
       _ ->
+        # SAME-SIZE IS A COPY. A ranged integer's bound is held after the loop
+        # by the generated projection, the same pass for either plan — there is
+        # no clamp op (docs/SPEC-TABLES.md §3.4). A narrower source still widens.
         their_size = size_at(theirs, ti)
         my_size = size_at(mine, mi)
-        lo = elem(row, 5)
-        hi = elem(row, 6)
 
         cond do
-          their_size == my_size and lo == nil ->
+          their_size == my_size ->
             {guarded(acc, guard, tag, {:copy, their_at, at, my_size}), report}
 
-          their_size == my_size ->
-            signed = signed_kind?(kind_at(mine, mi))
-            {guarded(acc, guard, tag, {:clamp, their_at, at, my_size, signed, lo, hi}), report}
-
           their_size < my_size and my_size <= 8 ->
-            entry = {:widen, their_at, at, their_size, my_size, false, lo, hi}
+            entry = {:widen, their_at, at, their_size, my_size, false}
             {guarded(acc, guard, tag, entry), report}
 
           true ->
@@ -1067,53 +1061,33 @@ defmodule Bench.FixedRuntime do
     stride = elem(row, 1)
     counted = elem(row, 3) == 1
     n = min(their_n, my_n)
-    lo = elem(row, 5)
-    hi = elem(row, 6)
-    elem_kind = kind_at(mine, mi + 1)
-
-    # THE ARRAY ROW CARRIES THE FIELD'S RANGE. The element child has no dest
-    # terms, so compile_entry would COPY a ranged int32. Identity clamps each
-    # LIVE slot; the compiled path has to do the same or the two plans disagree
-    # on the counter and on the landed value.
-    inherit_range =
-      lo != nil and kind_at(theirs, ti + 1) == elem_kind and
-        size_at(theirs, ti + 1) == my_elem and elem_kind >= 2 and elem_kind <= 9
 
     Enum.reduce(0..(n - 1)//1, {acc, report}, fn i, {acc, report} ->
-      if inherit_range do
-        entry =
-          {:clamp, their_base + i * their_elem, at + i * stride, my_elem, signed_kind?(elem_kind),
-           lo, hi}
+      {_, old_n} = acc
 
-        entry = if counted, do: live_wrap_entry(entry, aux_at, i), else: entry
-        {guarded(acc, guard, tag, entry), report}
-      else
-        {_, old_n} = acc
+      {acc, report} =
+        compile_entry(
+          theirs,
+          ti + 1,
+          their_base + i * their_elem,
+          mine,
+          mi + 1,
+          dst,
+          at + i * stride,
+          guard,
+          tag,
+          acc,
+          report
+        )
 
-        {acc, report} =
-          compile_entry(
-            theirs,
-            ti + 1,
-            their_base + i * their_elem,
-            mine,
-            mi + 1,
-            dst,
-            at + i * stride,
-            guard,
-            tag,
-            acc,
-            report
-          )
+      acc =
+        if counted do
+          wrap_new(acc, old_n, &live_wrap_entry(&1, aux_at, i))
+        else
+          acc
+        end
 
-        acc =
-          if counted do
-            wrap_new(acc, old_n, &live_wrap_entry(&1, aux_at, i))
-          else
-            acc
-          end
-
-        {acc, report}
-      end
+      {acc, report}
     end)
   end
 
@@ -1370,29 +1344,20 @@ defmodule Bench.FixedRuntime do
     end
   end
 
-  defp step([{:clamp, src, dst, size, signed, lo, hi} | rest], body, writes, report) do
-    # A RANGED INTEGER CLAMPS ON LOAD, against the READER's own bounds and
-    # nothing else — the bounds do not ride on this form (§3.4).
-    case leaf(body, src, size, signed) do
-      nil ->
-        step(rest, body, writes, report)
-
-      raw ->
-        {v, report} = clamp_value(raw, lo, hi, report)
-        step(rest, body, [{dst, image_bytes(v, size, signed)} | writes], report)
-    end
-  end
-
-  defp step([{:widen, src, dst, size, width, signed, lo, hi} | rest], body, writes, report) do
+  defp step([{:widen, src, dst, size, width, signed} | rest], body, writes, report) do
     # TWO'S COMPLEMENT WIDENS BY ITS SIGN BIT, which is the whole reason a widen
-    # is an op and not a short copy.
+    # is an op and not a short copy. The bound, if any, is held after the loop.
     case leaf(body, src, size, signed) do
       nil ->
         step(rest, body, writes, report)
 
       raw ->
-        {v, report} = clamp_value(raw, lo, hi, bump(report, :widened))
-        step(rest, body, [{dst, image_bytes(v, width, signed)} | writes], report)
+        step(
+          rest,
+          body,
+          [{dst, image_bytes(raw, width, signed)} | writes],
+          bump(report, :widened)
+        )
     end
   end
 
@@ -1483,16 +1448,6 @@ defmodule Bench.FixedRuntime do
 
   defp image_bytes(v, width, true), do: <<v::little-signed-size(width)-unit(8)>>
   defp image_bytes(v, width, false), do: <<v::little-unsigned-size(width)-unit(8)>>
-
-  defp clamp_value(raw, nil, _hi, report), do: {raw, report}
-
-  defp clamp_value(raw, lo, hi, report) do
-    cond do
-      raw < lo -> {lo, bump(report, :clamped)}
-      raw > hi -> {hi, bump(report, :clamped)}
-      true -> {raw, report}
-    end
-  end
 
   defp widen_float({:nonfinite, bits}) do
     # THE f32 PATTERN'S SIGN AND PAYLOAD, CARRIED INTO f64 — AND A SIGNALLING
