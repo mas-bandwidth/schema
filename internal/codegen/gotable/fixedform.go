@@ -544,7 +544,7 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 				g.pf("%s{ // arm %s, ordinal %d\n%s\tguardAt := n\n", ind, v.Name, i+1, ind)
 				g.emitFixedElementLeavesAt(v.F, fmt.Sprintf("%s+%d", src, tag),
 					fmt.Sprintf("%s+%s", dst, offGo(f.Type.Name, ir.GoExportName(v.Name))), tabs+1)
-				g.pf("%s\tfor q := guardAt; q < n; q++ {\n%s\t\tout[q].Guard = %s\n%s\t\tout[q].Arg = %d\n%s\t}\n", ind, ind, src, ind, i+1, ind)
+				g.pf("%s\tfor q := guardAt; q < n; q++ {\n%s\t\tout[q].Guard = %s\n%s\t\tout[q].Arg = %d\n%s\t\tout[q].ArgW = %d\n%s\t}\n", ind, ind, src, ind, i+1, ind, tag, ind)
 				g.pf("%s}\n", ind)
 			}
 			return

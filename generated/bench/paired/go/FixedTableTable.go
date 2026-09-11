@@ -668,6 +668,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 			for q := guardAt; q < n; q++ {
 				out[q].Guard = es
 				out[q].Arg = 1
+				out[q].ArgW = 1
 			}
 		}
 		{ // arm chat, ordinal 2
@@ -676,6 +677,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 			for q := guardAt; q < n; q++ {
 				out[q].Guard = es
 				out[q].Arg = 2
+				out[q].ArgW = 1
 			}
 		}
 		{ // arm pickup, ordinal 3
@@ -684,6 +686,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 			for q := guardAt; q < n; q++ {
 				out[q].Guard = es
 				out[q].Arg = 3
+				out[q].ArgW = 1
 			}
 		}
 	}

@@ -397,6 +397,7 @@ func init() {
 		Name{Name: "tableFixedGet64", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedHashOf", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedCopyRun", What: "the fixed form (form 3)"},
+		Name{Name: "tableFixedTagAt", What: "the little-endian tag load at ArgW bytes, never a prefix — a two-byte 0x0101 is not arm 1"},
 		Name{Name: "tableFixedRun", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedLayoutEntry", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedLayoutView", What: "the fixed form (form 3)"},

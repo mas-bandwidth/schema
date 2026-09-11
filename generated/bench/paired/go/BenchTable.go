@@ -1575,15 +1575,20 @@ const (
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
 
-// Arg is the guard's arm ordinal: tableFixedRun compares src[Guard] against
-// it. Meta is a text entry's flavour (tableFixedTextUtf8/Wide/Bytes). They
-// shared one lane until reference-fix 12; compiling a string under a union
-// arm overwrote the guard with the flavour and the read skipped the string.
+// Arg is THE GUARD'S TAG and nothing else: the ordinal the tag at Guard
+// must hold for this entry to run. Meta is THE OP'S OWN ARGUMENT — a text
+// entry's flavour (tableFixedTextUtf8/Wide/Bytes). They shared one lane
+// until reference-fix 12; compiling a string under a union arm overwrote
+// the guard with the flavour and the read skipped the string.
+// ArgW is THE GUARD'S WIDTH IN BYTES. A union tag is one, two, four or
+// eight, and comparing only the first of them fires arm 1 on a foreign
+// tag of 0x0101 — an ordinal no arm of this build names. Zero is read as
+// one, which is the width a tag had when this field did not exist.
 // tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
 // not this in-memory plan row — Meta does not ride the wire.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard   uint32
-	Op, Arg, DstSize, Sign, Meta uint8
+	Src, Dst, Size, Aux, Guard         uint32
+	Op, Arg, DstSize, Sign, Meta, ArgW uint8
 }
 
 type TableFixedDst struct {
@@ -1619,7 +1624,7 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 	for i := 0; i < written; i++ {
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
-			raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
 			raw[out-1].Size += raw[i].Size
@@ -1640,6 +1645,24 @@ func tableFixedPutF64(b []byte, v float64)     { tableFixedPut64(b, math.Float64
 func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFixedPut64(b[8:], hi) }
 func tableFixedGet32(b []byte) uint32          { return binary.LittleEndian.Uint32(b) }
 func tableFixedGet64(b []byte) uint64          { return binary.LittleEndian.Uint64(b) }
+
+// THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+// byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+// for, and reading only the first byte let 0x0101 run arm 1's entries over
+// a stranger's record. ArgW 0 means 1, ArgW > 8 clamps to 8, as C++.
+func tableFixedTagAt(src []byte, guard uint32, argw uint8) uint64 {
+	w := argw
+	if w == 0 {
+		w = 1
+	} else if w > 8 {
+		w = 8
+	}
+	var v uint64
+	for i := uint8(0); i < w; i++ {
+		v |= uint64(src[guard+uint32(i)]) << (8 * i)
+	}
+	return v
+}
 
 func tableFixedHashOf(layout []byte) uint64 {
 	h := uint64(0xcbf29ce484222325)
@@ -1678,7 +1701,9 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) {
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		if p.Guard != tableFixedNoGuard && src[p.Guard] != p.Arg {
+		// an entry belonging to an ARM runs only under its own tag, compared
+		// at ArgW bytes, never as a prefix
+		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
 			continue
 		}
 		switch p.Op {
@@ -1883,10 +1908,18 @@ type tableFixedCompiler struct {
 	plan                  []TableFixedEntry
 	capacity, count, pool int32
 	overflow              bool
+	argw                  uint8 // the CURRENT union's tag width, stamped onto every guarded push
 	report                *TableReport
 }
 
 func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
+	if e.Guard != tableFixedNoGuard {
+		w := c.argw
+		if w == 0 {
+			w = 1
+		}
+		e.ArgW = w
+	}
 	room := c.capacity - (c.pool+int32(unsafe.Sizeof(TableFixedEntry{}))-1)/int32(unsafe.Sizeof(TableFixedEntry{}))
 	if c.count >= room {
 		c.overflow = true
@@ -2024,6 +2057,11 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	case 15:
 		theirTag := tableFixedTagBytes(theirs, ti)
 		myTag := tableFixedTagBytes(mine, mi)
+		savedArgw := c.argw
+		c.argw = 1
+		if theirTag >= 1 && theirTag <= 8 {
+			c.argw = uint8(theirTag)
+		}
 		myArm := mi + 1
 		for k := uint32(0); k < me.Children; k++ {
 			ma := tableFixedEntryAt(mine, myArm)
@@ -2039,6 +2077,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			}
 			myArm += tableFixedSubtree(mine, myArm)
 		}
+		c.argw = savedArgw
 	case 30:
 		var m [256]uint16
 		n := te.Children
@@ -2093,7 +2132,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if !ok {
 		return -1
 	}
-	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report}
+	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report, argw: 1}
 	tableFixedMatchChildren(&c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0)
 	if c.overflow {
 		return -1
@@ -2102,7 +2141,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	for i := int32(0); i < c.count; i++ {
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
-			plan[out-1].Meta == plan[i].Meta &&
+			plan[out-1].ArgW == plan[i].ArgW && plan[out-1].Meta == plan[i].Meta &&
 			plan[out-1].Src+plan[out-1].Size == plan[i].Src &&
 			plan[out-1].Dst+plan[out-1].Size == plan[i].Dst {
 			plan[out-1].Size += plan[i].Size
