@@ -9554,7 +9554,7 @@ static SCHEMA_UNUSED const int32_t table_mixed_fixed_cover_count = 23;
    is held to by memcmp, and the record size is taken from here and NEVER
    from the file. */
 static SCHEMA_UNUSED const TableFixedKnownLayout table_mixed_fixed_known[] = {
-    { 0xf973c48271efa906ull, table_mixed_fixed_layout, (int64_t) sizeof( table_mixed_fixed_layout ), 1232 },
+    { 0x66b51fa9ec65d701ull, table_mixed_fixed_layout, (int64_t) sizeof( table_mixed_fixed_layout ), 1232 },
 };
 static SCHEMA_UNUSED const int32_t table_mixed_fixed_known_count = 1;
 /* THE FLOOR IS ONE NUMBER AND THE LINEAGE IS ONE ARRAY, so "retired" is an
