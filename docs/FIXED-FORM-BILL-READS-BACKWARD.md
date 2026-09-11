@@ -32,6 +32,20 @@ The table's own law, additions and deprecation only, extends to every definition
 | an integer or float width | at most the reader's, same signedness ladder | wider, or a different kind |
 | a field's kind | the same | different |
 | field order | any | never (by name) |
+| a fixed-size array `[N]` | N at most the reader's (the reader defaults the rest) | larger |
+| an enum-keyed array `[Enum]T` | its enum a prefix of the reader's | the enum has a name the reader lacks |
+| `bits(N)` | N at most the reader's | larger |
+| `fixed(I,F)` / `ufixed(I,F)` | I at most the reader's, F equal | I larger, or F different (the scale moves, incompatible) |
+| an optional | `T` where the reader has `?T` (landed present) | `?T` where the reader has `T` |
+| a nested table or type by value | the table's own law, recursively | anything else |
+| `flags` | bits a prefix of the reader's | a moved or missing bit |
+| a compressed float | any quantization (it rides as the float) | never |
+| the `fixed` keyword | the same | a variable table where the reader has a fixed one, or the reverse: a different form, not a version |
+
+Glenn: "wstring/strings/bytes can be widened only, not narrowed, because a narrowed string/array cannot read
+the old." The principle behind every row: a newer reader must be able to hold every value an older writer
+could produce, exactly. Where widening keeps that true it is allowed; where it cannot, the change is
+incompatible and the baseline (§6) refuses it at commit.
 
 Widening an int or a float, or an enum's ordinal width, is a read: the reader lands it exactly. That is the
 one asymmetry the bill keeps, and it is Glenn's: "you can take an enum and widen it, but you cannot narrow."
