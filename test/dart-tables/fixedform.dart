@@ -758,13 +758,16 @@ void pairedCorpus(String dir) {
       bench.fixedTableFixedLayout,
       ByteData.sublistView(bench.fixedTableFixedLayout),
       bench.fixedTableFixedDst,
+      bench.fixedTableFixedCover,
+      bench.fixedTableFixedCoverCount,
       rc,
     );
     check(made > 0, 'bench: compiled-from-own-layout wrote $made entries');
-    plan.image.setRange(
-      0,
-      bench.fixedTableFixedBodyBytes,
+    benchHome.tableFixedFillRun(
+      plan.fill,
+      plan.fillCount,
       bench.fixedTableFixedPrefill,
+      plan.image,
     );
     benchHome.tableFixedRun(
       plan.entries,
