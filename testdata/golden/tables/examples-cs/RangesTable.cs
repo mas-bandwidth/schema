@@ -918,7 +918,7 @@ namespace Tabledemo
 
         public const long RangedSignedFixedBodyBytes = 72;
         public const long RangedSignedFixedRecordBytes = 8 + RangedSignedFixedBodyBytes;
-        public const ulong RangedSignedFixedHash = 0xaaf4b92f603d1a73ul;
+        public const ulong RangedSignedFixedHash = 0xcbf32b9992cc8183ul;
 
         public static readonly byte[] RangedSignedFixedLayout = new byte[] {
             0x13, 0x00, 0x00, 0x00, 0x2e, 0xbe, 0x28, 0xda, 0x1d, 0x75, 0x79, 0xec, 0x0d, 0x48, 0x00, 0x00,
@@ -1082,7 +1082,7 @@ namespace Tabledemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedSignedFixedPlan;
@@ -1090,7 +1090,15 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash != RangedSignedFixedHash)
+            if (hash == RangedSignedFixedHash)
+            {
+                if (layout_bytes != (uint)RangedSignedFixedLayout.Length || !layout.SequenceEqual(RangedSignedFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1113,11 +1121,6 @@ namespace Tabledemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RangedSignedFixedCover, landed, fillBuf);
                 }
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -1173,7 +1176,7 @@ namespace Tabledemo
 
         public const long RangedUnsignedFixedBodyBytes = 96;
         public const long RangedUnsignedFixedRecordBytes = 8 + RangedUnsignedFixedBodyBytes;
-        public const ulong RangedUnsignedFixedHash = 0x9e7760dd0c2ba2f6ul;
+        public const ulong RangedUnsignedFixedHash = 0x8b7880ef6aaed3c0ul;
 
         public static readonly byte[] RangedUnsignedFixedLayout = new byte[] {
             0x13, 0x00, 0x00, 0x00, 0xf1, 0x8b, 0xd2, 0xb7, 0xc4, 0xc0, 0x1e, 0x03, 0x0d, 0x60, 0x00, 0x00,
@@ -1337,7 +1340,7 @@ namespace Tabledemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedUnsignedFixedPlan;
@@ -1345,7 +1348,15 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash != RangedUnsignedFixedHash)
+            if (hash == RangedUnsignedFixedHash)
+            {
+                if (layout_bytes != (uint)RangedUnsignedFixedLayout.Length || !layout.SequenceEqual(RangedUnsignedFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1368,11 +1379,6 @@ namespace Tabledemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RangedUnsignedFixedCover, landed, fillBuf);
                 }
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -1428,7 +1434,7 @@ namespace Tabledemo
 
         public const long RangedWidthsFixedBodyBytes = 32;
         public const long RangedWidthsFixedRecordBytes = 8 + RangedWidthsFixedBodyBytes;
-        public const ulong RangedWidthsFixedHash = 0x0f48d5bc4bc8f930ul;
+        public const ulong RangedWidthsFixedHash = 0xe45869be02e1f158ul;
 
         public static readonly byte[] RangedWidthsFixedLayout = new byte[] {
             0x07, 0x00, 0x00, 0x00, 0xd7, 0x5e, 0x4f, 0x9e, 0x4e, 0x69, 0x59, 0xbf, 0x0d, 0x20, 0x00, 0x00,
@@ -1543,7 +1549,7 @@ namespace Tabledemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = RangedWidthsFixedPlan;
@@ -1551,7 +1557,15 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash != RangedWidthsFixedHash)
+            if (hash == RangedWidthsFixedHash)
+            {
+                if (layout_bytes != (uint)RangedWidthsFixedLayout.Length || !layout.SequenceEqual(RangedWidthsFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1574,11 +1588,6 @@ namespace Tabledemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RangedWidthsFixedCover, landed, fillBuf);
                 }
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {

@@ -39,8 +39,8 @@ export const FixedTableFixedRecordBytes = 1244; // the hash and the body
 
 // fnv1a64 over the layout's bytes, carried as two uint32 lanes: a hash is
 // compared ONCE PER RECORD, and a BigInt there is one allocation per record.
-export const FixedTableFixedHashLo = 0x02a224eb;
-export const FixedTableFixedHashHi = 0x32f1c4a3;
+export const FixedTableFixedHashLo = 0x8ceacd29;
+export const FixedTableFixedHashHi = 0x98d3af4e;
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the
@@ -366,13 +366,20 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   const layoutBytes = (bytes[TableFixedHeaderBytes] | (bytes[TableFixedHeaderBytes + 1] << 8) |
                        (bytes[TableFixedHeaderBytes + 2] << 16) | (bytes[TableFixedHeaderBytes + 3] << 24)) >>> 0;
   if (layoutBytes + layoutAt > byteLength) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
-  const h = TableFixedHashOf(bytes, layoutAt, layoutBytes);
-  const hashLo = h[0] >>> 0, hashHi = h[1] >>> 0;
-  report.hashLo = hashLo | 0; report.hashHi = hashHi | 0;
+  const hashLo = ((bytes[TableFixedHashAt] | (bytes[TableFixedHashAt + 1] << 8) |
+                  (bytes[TableFixedHashAt + 2] << 16) | (bytes[TableFixedHashAt + 3] << 24)) >>> 0);
+  const hashHi = ((bytes[TableFixedHashAt + 4] | (bytes[TableFixedHashAt + 5] << 8) |
+                  (bytes[TableFixedHashAt + 6] << 16) | (bytes[TableFixedHashAt + 7] << 24)) >>> 0);
+  report.hashLo = hashLo | 0; report.hashHi = hashHi | 0; // the header's hash; digest is not on the wire
   if (plan === null) { report.refused = TableFixedRefusal.NoLayout; return -1; }
   let entries = FixedTableFixedIdentity, entryCount = 1, remap = null;
   let recordBytes = FixedTableFixedRecordBytes;
-  if (hashLo !== (FixedTableFixedHashLo >>> 0) || hashHi !== (FixedTableFixedHashHi >>> 0)) {
+  if (hashLo === (FixedTableFixedHashLo >>> 0) && hashHi === (FixedTableFixedHashHi >>> 0)) {
+    if (layoutBytes !== FixedTableFixedLayout.length) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+    for (let i = 0; i < layoutBytes; i++) {
+      if (bytes[layoutAt + i] !== FixedTableFixedLayout[i]) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+    }
+  } else {
     // ANOTHER WRITER: the same loop, over a plan compiled from its layout and
     // CACHED BY HASH, so the compile is paid once per peer, not per record.
     if (!plan.ready || (plan.hashLo >>> 0) !== hashLo || (plan.hashHi >>> 0) !== hashHi) {
@@ -386,16 +393,9 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     entries = plan.entries; entryCount = plan.count; remap = plan.remap;
     recordBytes = plan.recordBytes;
   }
-  // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-  // the layout's own rules each refuse under their own name first, so a
-  // broken layout is never reported as a lying header. A header whose hash
-  // is not the hash of the layout behind it is refused (§3).
-  if (((bytes[TableFixedHashAt] | (bytes[TableFixedHashAt + 1] << 8) |
-        (bytes[TableFixedHashAt + 2] << 16) | (bytes[TableFixedHashAt + 3] << 24)) >>> 0) !== hashLo ||
-      ((bytes[TableFixedHashAt + 4] | (bytes[TableFixedHashAt + 5] << 8) |
-        (bytes[TableFixedHashAt + 6] << 16) | (bytes[TableFixedHashAt + 7] << 24)) >>> 0) !== hashHi) {
-    report.refused = TableFixedRefusal.LayoutMalformed; return -1;
-  }
+  // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
+  // against this build's; digest is not on the wire, so the header hash is
+  // not a hash of the layout bytes alone (§3, bill §13).
   const rest = byteLength - layoutAt - layoutBytes;
   // BYTES LEFT OVER ARE malformed, which is §3's rule for the same reason:
   // the two ends of the file have met.

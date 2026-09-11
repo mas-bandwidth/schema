@@ -8723,7 +8723,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.server_time != 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.server_time ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 24 ); }
+        w.put( (uint64_t) ( value.server_time ), 24 );
     }
     if ( value.entities_count < 0 || value.entities_count > 8 ) { return false; } // storage invariant
     if ( value.entities_count > 0 )
@@ -8838,7 +8838,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( value.ping != 0 )
     {
         w.put( 23, kTableMessageRefBitsHere );
-        { serialize::uint128_t raw_v = serialize::uint128_t( value.ping ) - serialize::uint128_t( 0 ); w.put( uint64_t( raw_v ), 16 ); }
+        w.put( (uint64_t) ( value.ping ), 16 );
     }
     if ( value.crc_hint != 0 )
     {

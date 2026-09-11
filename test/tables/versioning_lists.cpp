@@ -702,9 +702,9 @@ static void keyed_array_enum_append_case()
     {
         vo::Lineage v;
         vo::LineageReset( v );
-        v.slots[vo::Tier::Bronze] = 101;
-        v.slots[vo::Tier::Silver] = 102;
-        v.slots[vo::Tier::Gold] = 103;
+        v.slots[vo::Tier::Bronze].n = 101;
+        v.slots[vo::Tier::Silver].n = 102;
+        v.slots[vo::Tier::Gold].n = 103;
         v.seq = 22;
         check( vo::LineageFixedSave( &v, 1, oldf.data(), (int64_t) oldf.size() ) == (int64_t) oldf.size(),
                "keyed_array_enum_append: the OLD file saves" );
@@ -713,10 +713,10 @@ static void keyed_array_enum_append_case()
     {
         vn::Lineage v;
         vn::LineageReset( v );
-        v.slots[vn::Tier::Bronze] = 201;
-        v.slots[vn::Tier::Silver] = 202;
-        v.slots[vn::Tier::Gold] = 203;
-        v.slots[vn::Tier::Platinum] = 204;
+        v.slots[vn::Tier::Bronze].n = 201;
+        v.slots[vn::Tier::Silver].n = 202;
+        v.slots[vn::Tier::Gold].n = 203;
+        v.slots[vn::Tier::Platinum].n = 204;
         v.seq = 23;
         check( vn::LineageFixedSave( &v, 1, newf.data(), (int64_t) newf.size() ) == (int64_t) newf.size(),
                "keyed_array_enum_append: the NEW file saves" );
@@ -724,16 +724,16 @@ static void keyed_array_enum_append_case()
 
     {
         vn::Lineage back;
-        vn::LineageReset( back );
+        std::memset( reinterpret_cast<unsigned char *>( &back ), 0x5A, sizeof( back ) );
         vn::TableReport r;
         std::vector<vn::TableFixedEntry> plan( 1024 );
         const int64_t n = vn::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                 plan.data(), 1024, NULL, &r );
         check( n == 1, "keyed_array_enum_append: NEW-READS-OLD — one record" );
-        check( back.slots[vn::Tier::Bronze] == 101 && back.slots[vn::Tier::Silver] == 102 &&
-               back.slots[vn::Tier::Gold] == 103,
+        check( back.slots[vn::Tier::Bronze].n == 101 && back.slots[vn::Tier::Silver].n == 102 &&
+               back.slots[vn::Tier::Gold].n == 103,
                "keyed_array_enum_append: NEW-READS-OLD — the three slots the writer had land exactly" );
-        check( back.slots[vn::Tier::Platinum] == 0,
+        check( back.slots[vn::Tier::Platinum].n == 7,
                "keyed_array_enum_append: NEW-READS-OLD — the slot the appended key opened takes the "
                "element's default" );
         check( back.seq == 22, "keyed_array_enum_append: NEW-READS-OLD — the scalar behind the array lands" );
@@ -750,7 +750,7 @@ static void keyed_array_enum_append_case()
         refuses_newer( "keyed_array_enum_append/OLD-REFUSES-NEW",
                        "the variant `Platinum` of the key enum `Tier`", n, r, VL_OWN_REASON( vo, r ),
                        vn::LineageFixedHash );
-        check_red( back.slots[vo::Tier::Bronze] == 0 && back.seq == 0,
+        check_red( back.slots[vo::Tier::Bronze].n == 7 && back.seq == 0,
                    "keyed_array_enum_append/OLD-REFUSES-NEW",
                    "keyed_array_enum_append/OLD-REFUSES-NEW: nothing was decoded, no slot touched" );
     }

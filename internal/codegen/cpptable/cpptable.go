@@ -1849,9 +1849,10 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	return order
 }
 
-// unitHas128 reports whether any closure member declares a 128-bit field —
-// an int128, a uint128, or a fixed of 128 bits — which is what decides whether
-// the Table header includes serialize.h for the storage type.
+// unitHas128 reports whether the Table header names serialize.h: a 128-bit
+// integer's storage type, or any fixed-point field — the message codec uses
+// serialize::uint128_t for the whole fixed-point family (ir.TableKindWide),
+// not only 128-bit storage.
 func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 	for name := range closure {
 		st := u.Tables[name]
@@ -1862,7 +1863,12 @@ func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 			continue
 		}
 		for _, f := range st.Fields {
-			if f.Type.Width == 128 && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) {
+			if f.Type.Kind == ir.TFixed {
+				// the message codec names serialize::uint128_t for the whole
+				// fixed-point family (ir.TableKindWide), not only 128-bit storage
+				return true
+			}
+			if f.Type.Width == 128 && f.Type.Kind == ir.TInt {
 				return true
 			}
 		}
@@ -1876,7 +1882,7 @@ func unitHas128(u *ir.Unit, closure map[string]bool) bool {
 		}
 		if un != nil {
 			for _, arm := range un.Variants {
-				if arm.F != nil && arm.F.Type.Width == 128 && (arm.F.Type.Kind == ir.TInt || arm.F.Type.Kind == ir.TFixed) {
+				if arm.F != nil && (arm.F.Type.Kind == ir.TFixed || (arm.F.Type.Width == 128 && arm.F.Type.Kind == ir.TInt)) {
 					return true
 				}
 			}

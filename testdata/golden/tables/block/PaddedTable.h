@@ -102,8 +102,24 @@ enum TableMessageReason
     layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
     layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
     layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
+    // reader has never locked is layout_newer; a hash in the lineage below the
+    // floor is layout_unsupported. Both carry the file's hash and nothing else
+    // (bill §12.4).
+    layout_newer,
+    layout_unsupported
 };
+
+#ifndef SCHEMA_HAS_LAYOUT_NEWER
+#define SCHEMA_HAS_LAYOUT_NEWER 1
+#endif
+#ifndef SCHEMA_HAS_LAYOUT_UNSUPPORTED
+#define SCHEMA_HAS_LAYOUT_UNSUPPORTED 1
+#endif
+#ifndef SCHEMA_HAS_FLOOR
+#define SCHEMA_HAS_FLOOR 1
+#endif
 
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
@@ -139,6 +155,9 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
+    // the hash and nothing else. Zero on every other path.
+    uint64_t layout_hash = 0;
 };
 
 
@@ -2284,6 +2303,7 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
 };
 
 // meta on a kTableFixedText entry
@@ -2325,9 +2345,14 @@ inline bool TableFixedWidens( uint8_t from, uint8_t to )
 {
     if ( from >= 6 && from <= 9 && to >= 6 && to <= 9 ) { return to > from; }  // u8 .. u64
     if ( from >= 2 && from <= 5 && to >= 2 && to <= 5 ) { return to > from; }  // i8 .. i64
+    if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; } // signed fixed(I,F): I grows, F stays
+    if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; } // unsigned ufixed(I,F)
     return from == 10 && to == 11;                                            // f32 -> f64
 }
-inline bool TableFixedSignedKind( uint8_t kind ) { return kind >= 2 && kind <= 5; }
+inline bool TableFixedSignedKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
+}
 
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
@@ -2572,6 +2597,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
+            break;
+        }
+        case kTableFixedPresent:
+        {
+            dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
         default: break;
@@ -3200,6 +3230,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     } depth_guard( c );
     (void) depth_guard;
     const uint32_t aux_at = my_at + d.aux;
+    // T into ?T: an unguarded present op, then the payload under the wrapper
+    // (bill §12.8, algorithm §5.2). The writer's kind is the payload's; the
+    // reader's is the optional wrapper.
+    if ( me.kind == 35 && te.kind != 35 )
+    {
+        TableFixedEntry e;
+        e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg; e.op = kTableFixedPresent;
+        TableFixedPush( c, e );
+        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+        return;
+    }
     if ( te.kind != me.kind )
     {
         if ( TableFixedWidens( te.kind, me.kind ) )
@@ -3323,6 +3364,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
             if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
+            // A GROWN ORDINAL WIDTH IS A WIDEN (bill §12.7, algorithm §5.2):
+            // append-only means the writer's ordinal IS the reader's, and the
+            // counter owes one. Remap is only for a merge that reordered names.
+            if ( te.size < me.size )
+            {
+                TableFixedEntry e;
+                e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
+                e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+                TableFixedPush( c, e );
+                break;
+            }
             uint16_t map[256];
             const uint32_t n = te.children < 255u ? te.children : 255u;
             for ( uint32_t j = 0; j < n; ++j )
@@ -3444,6 +3496,17 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
 // hash never consults it. compiles counts successful compiles through this
 // cache, which is the pin; made is 1 on a slot after the compile that
 // filled it.
+
+// One COMPILE'd lineage entry: the hash LOAD looks up, the layout bytes it
+// memcmps, the writer's record size. Plans for older hashes are compiled from
+// these trusted bytes, never from the file (algorithm §5.3).
+struct TableFixedKnownLayout
+{
+    uint64_t hash = 0;
+    const uint8_t * layout = NULL;
+    int64_t layout_bytes = 0;
+    int64_t record_bytes = 0;
+};
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
 
@@ -5724,7 +5787,7 @@ inline void PaddedRowFixedClamp( PaddedRow & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PaddedRowFixedBodyBytes = 50;
 constexpr int64_t PaddedRowFixedRecordBytes = 8 + PaddedRowFixedBodyBytes; // the hash and the body
-constexpr uint64_t PaddedRowFixedHash = 0x9683695abec5c762ull; // fnv1a64 over the layout's bytes
+constexpr uint64_t PaddedRowFixedHash = 0x9683695abec5c762ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 17 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -5808,6 +5871,43 @@ constexpr TableFixedFill PaddedRowFixedCover[] = {
 };
 constexpr int32_t PaddedRowFixedCoverCount = 3;
 
+// THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
+// the file's header hash up here and never parses a stranger's layout.
+constexpr uint64_t PaddedRowFixedLineage[] = {
+    0x9683695abec5c762ull, // identity
+};
+constexpr int32_t PaddedRowFixedLineageCount = 1;
+constexpr int32_t PaddedRowFixedFloor = 0;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+inline int32_t PaddedRowFixedFloorLive = PaddedRowFixedFloor;
+inline void PaddedRowFixedSetFloorForTest( int32_t index ) { PaddedRowFixedFloorLive = index; }
+#endif
+
+constexpr uint8_t PaddedRowFixedKnown0Layout[] = {
+    0x11, 0x00, 0x00, 0x00, 0x81, 0x75, 0x20, 0xd6, 0x48, 0x16, 0x3a, 0x1d, 0x0d, 0x32, 0x00, 0x00,
+    0x00, 0x08, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7, 0x56, 0x06, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0b, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x0b, 0x8c, 0x08, 0x79, 0xd0, 0xf2, 0xd5, 0x01,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x3a, 0x5c, 0xb5, 0x07, 0x2e, 0xb7, 0x08,
+    0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3d, 0x62, 0xcb, 0x8f, 0xec, 0xfc, 0xf7,
+    0x39, 0x0c, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x56, 0xee, 0xb1, 0x6b, 0x2e,
+    0x8c, 0xe6, 0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x6d, 0xfa, 0xa8, 0xa5,
+    0x48, 0xb0, 0xae, 0xba, 0x10, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x0c, 0x37, 0x20,
+    0x1b, 0xfb, 0xda, 0xb1, 0x24, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x7c, 0x1b,
+    0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d,
+    0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x63, 0x7c, 0x51, 0x16, 0x74, 0x6c, 0x97, 0x77, 0x23, 0x05, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x63, 0x7c, 0x51, 0x16, 0x74, 0x6c, 0x97, 0x77, 0x04, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00,
+};
+constexpr TableFixedKnownLayout PaddedRowFixedKnown[] = {
+    { 0x9683695abec5c762ull, PaddedRowFixedKnown0Layout, 293, 58 }, // identity
+};
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -5836,24 +5936,17 @@ inline int64_t PaddedRowFixedSave( const PaddedRow * values, int64_t count, uint
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
-// There is no second reader: the identity plan is data the one loop walks.
-//
-// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
-// ranges the plan compiler works out once, and on the identity plan that list
-// is EMPTY — so this read writes no byte twice, and it is one rule for both
-// plans rather than a flag that asks which one this is.
+// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// from the known set COMPILE laid down (algorithm §5.3). A stranger's
+// layout is never parsed: unknown hash is layout_newer, known hash with
+// different bytes is layout_malformed, a hash below the floor is
+// layout_unsupported. Identity is a PLAN walked by the same loop.
 inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
-    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
-    // the registry is ordered, so a byte this reader does not carry is named
-    // by where it sits relative to this form and never by one word for both.
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -5865,9 +5958,31 @@ inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const u
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
-    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
     const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
+    int32_t lineage_at = -1;
+    for ( int32_t i = 0; i < PaddedRowFixedLineageCount; ++i )
+    {
+        if ( PaddedRowFixedLineage[i] == hash ) { lineage_at = i; break; }
+    }
+    if ( lineage_at < 0 )
+    {
+        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+    }
+    int32_t floor_at = PaddedRowFixedFloor;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+    floor_at = PaddedRowFixedFloorLive;
+#endif
+    if ( lineage_at < floor_at )
+    {
+        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+    }
+    const TableFixedKnownLayout & known = PaddedRowFixedKnown[lineage_at];
+    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
+    {
+        report->refused = true; report->reason = layout_malformed; return -1;
+    }
     const TableFixedEntry * entries = PaddedRowFixedPlan;
     int32_t entry_count = PaddedRowFixedPlanCount;
     int32_t entry_guarded = PaddedRowFixedPlanGuarded;
@@ -5876,10 +5991,8 @@ inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const u
     int32_t fill_count = 0;
     if ( hash != PaddedRowFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
-        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
-        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        // AN OLDER WRITER: compile the plan from the TRUSTED known layout,
+        // never from the file's bytes (those were only compared). Cached by hash.
         const TableFixedPlanCacheSlot * hit = NULL;
         if ( cache != NULL )
         {
@@ -5901,7 +6014,7 @@ inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const u
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -5917,7 +6030,7 @@ inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const u
                                                    PaddedRowFixedCover, PaddedRowFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
@@ -5937,22 +6050,13 @@ inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const u
             entry_guarded = compiled_guarded;
         }
     }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header. A header whose hash
-    // is not the hash of the layout behind it is refused (§3).
-    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
-    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. Empty list is the skip.
-    // It is the caller's own stack and this codec allocates nothing.
     PaddedRow defaults;
     if ( fill_count > 0 )
     {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        memset( (void *) &defaults, 0, sizeof( defaults ) );
         PaddedRowReset( defaults );
     }
     for ( int64_t k = 0; k < n; ++k )
@@ -5960,8 +6064,6 @@ inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const u
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
-        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-        // storage it just wrote: the same pass for either plan (§3.4).
         PaddedRowFixedClamp( values[k], report );
         at += record_bytes;
     }
@@ -5992,7 +6094,7 @@ inline void PaddedFrameFixedClamp( PaddedFrame & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t PaddedFrameFixedBodyBytes = 3229;
 constexpr int64_t PaddedFrameFixedRecordBytes = 8 + PaddedFrameFixedBodyBytes; // the hash and the body
-constexpr uint64_t PaddedFrameFixedHash = 0x7b08b877a4f6e867ull; // fnv1a64 over the layout's bytes
+constexpr uint64_t PaddedFrameFixedHash = 0x7b08b877a4f6e867ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 23 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -6724,6 +6826,49 @@ constexpr TableFixedFill PaddedFrameFixedCover[] = {
 };
 constexpr int32_t PaddedFrameFixedCoverCount = 194;
 
+// THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
+// the file's header hash up here and never parses a stranger's layout.
+constexpr uint64_t PaddedFrameFixedLineage[] = {
+    0x7b08b877a4f6e867ull, // identity
+};
+constexpr int32_t PaddedFrameFixedLineageCount = 1;
+constexpr int32_t PaddedFrameFixedFloor = 0;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+inline int32_t PaddedFrameFixedFloorLive = PaddedFrameFixedFloor;
+inline void PaddedFrameFixedSetFloorForTest( int32_t index ) { PaddedFrameFixedFloorLive = index; }
+#endif
+
+constexpr uint8_t PaddedFrameFixedKnown0Layout[] = {
+    0x17, 0x00, 0x00, 0x00, 0xe0, 0xc3, 0x1e, 0xde, 0xc6, 0x0e, 0x05, 0xbf, 0x0d, 0x9d, 0x0c, 0x00,
+    0x00, 0x04, 0x00, 0x00, 0x00, 0x77, 0x6e, 0x48, 0x15, 0x2b, 0xb7, 0xdc, 0xed, 0x06, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x44, 0x41, 0xc6, 0x45, 0xad, 0xa9, 0x7b, 0xee, 0x09, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x81, 0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0x0e,
+    0x84, 0x0c, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0d, 0x32, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0xf3, 0xa4, 0x48, 0x44, 0x19, 0xab, 0xd7,
+    0x56, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd,
+    0xe4, 0x7c, 0x0b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x0b, 0x8c, 0x08, 0x79,
+    0xd0, 0xf2, 0xd5, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x3a, 0x5c, 0xb5,
+    0x07, 0x2e, 0xb7, 0x08, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3d, 0x62, 0xcb,
+    0x8f, 0xec, 0xfc, 0xf7, 0x39, 0x0c, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x56,
+    0xee, 0xb1, 0x6b, 0x2e, 0x8c, 0xe6, 0x0e, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x6d, 0xfa, 0xa8, 0xa5, 0x48, 0xb0, 0xae, 0xba, 0x10, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
+    0x00, 0x0c, 0x37, 0x20, 0x1b, 0xfb, 0xda, 0xb1, 0x24, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x04, 0x00,
+    0x00, 0x00, 0x7c, 0x1b, 0xac, 0xfe, 0x19, 0xde, 0xf1, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x2d, 0x3e, 0x69, 0xc1, 0xa7, 0xd3, 0xf3, 0xec, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x1c, 0x3f, 0x95, 0xd5, 0x8f, 0xd7, 0x00, 0xcf, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xb3, 0x18, 0x32, 0x0d, 0x7e, 0xc9, 0x16, 0xc4, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x63, 0x7c, 0x51, 0x16, 0x74, 0x6c, 0x97, 0x77, 0x23,
+    0x05, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x63, 0x7c, 0x51, 0x16, 0x74, 0x6c, 0x97, 0x77,
+    0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xca, 0x48, 0x91, 0xc2, 0x9b, 0xb3, 0x73,
+    0xc5, 0x0e, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+constexpr TableFixedKnownLayout PaddedFrameFixedKnown[] = {
+    { 0x7b08b877a4f6e867ull, PaddedFrameFixedKnown0Layout, 395, 3237 }, // identity
+};
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -6752,24 +6897,17 @@ inline int64_t PaddedFrameFixedSave( const PaddedFrame * values, int64_t count, 
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
-// There is no second reader: the identity plan is data the one loop walks.
-//
-// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
-// ranges the plan compiler works out once, and on the identity plan that list
-// is EMPTY — so this read writes no byte twice, and it is one rule for both
-// plans rather than a flag that asks which one this is.
+// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// from the known set COMPILE laid down (algorithm §5.3). A stranger's
+// layout is never parsed: unknown hash is layout_newer, known hash with
+// different bytes is layout_malformed, a hash below the floor is
+// layout_unsupported. Identity is a PLAN walked by the same loop.
 inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
-    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
-    // the registry is ordered, so a byte this reader does not carry is named
-    // by where it sits relative to this form and never by one word for both.
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -6781,9 +6919,31 @@ inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, con
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
-    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
     const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
+    int32_t lineage_at = -1;
+    for ( int32_t i = 0; i < PaddedFrameFixedLineageCount; ++i )
+    {
+        if ( PaddedFrameFixedLineage[i] == hash ) { lineage_at = i; break; }
+    }
+    if ( lineage_at < 0 )
+    {
+        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+    }
+    int32_t floor_at = PaddedFrameFixedFloor;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+    floor_at = PaddedFrameFixedFloorLive;
+#endif
+    if ( lineage_at < floor_at )
+    {
+        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+    }
+    const TableFixedKnownLayout & known = PaddedFrameFixedKnown[lineage_at];
+    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
+    {
+        report->refused = true; report->reason = layout_malformed; return -1;
+    }
     const TableFixedEntry * entries = PaddedFrameFixedPlan;
     int32_t entry_count = PaddedFrameFixedPlanCount;
     int32_t entry_guarded = PaddedFrameFixedPlanGuarded;
@@ -6792,10 +6952,8 @@ inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, con
     int32_t fill_count = 0;
     if ( hash != PaddedFrameFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
-        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
-        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        // AN OLDER WRITER: compile the plan from the TRUSTED known layout,
+        // never from the file's bytes (those were only compared). Cached by hash.
         const TableFixedPlanCacheSlot * hit = NULL;
         if ( cache != NULL )
         {
@@ -6817,7 +6975,7 @@ inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, con
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -6833,7 +6991,7 @@ inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, con
                                                    PaddedFrameFixedCover, PaddedFrameFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
@@ -6853,22 +7011,13 @@ inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, con
             entry_guarded = compiled_guarded;
         }
     }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header. A header whose hash
-    // is not the hash of the layout behind it is refused (§3).
-    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
-    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. Empty list is the skip.
-    // It is the caller's own stack and this codec allocates nothing.
     PaddedFrame defaults;
     if ( fill_count > 0 )
     {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        memset( (void *) &defaults, 0, sizeof( defaults ) );
         PaddedFrameReset( defaults );
     }
     for ( int64_t k = 0; k < n; ++k )
@@ -6876,8 +7025,6 @@ inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, con
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
-        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-        // storage it just wrote: the same pass for either plan (§3.4).
         PaddedFrameFixedClamp( values[k], report );
         at += record_bytes;
     }

@@ -365,32 +365,39 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 }
 
 func (g *tableGen) emitTableResetField(f *ir.Field) {
+	g.emitTableResetAt("value."+f.Name, f)
+}
+
+// emitTableResetAt is [emitTableResetField] at an arbitrary member expression:
+// a table field (`value.n`) or a union arm (`value.body.spans`). gcc refuses
+// `array = {}` assignment and a pointer arm is a TableRef, not the pointee.
+func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 	if f.IsMap() {
 		// a fresh map is EMPTY (docs/SPEC-TABLES.md §2.8): the reference is
 		// null in both encodings and the live count is zero. The builder's
 		// head and its segments are the arena's, and Reset does not free them
 		// — the arena's own reset is what reclaims a dead entry's storage.
-		g.pf("    value.%s.entries.value = 0; // %s: empty\n", f.Name, ir.TableTypeSpelling(f))
-		g.pf("    value.%s.count = 0;\n", f.Name)
-		g.pf("    value.%s.padding = 0;\n", f.Name)
+		g.pf("    %s.entries.value = 0; // %s: empty\n", expr, ir.TableTypeSpelling(f))
+		g.pf("    %s.count = 0;\n", expr)
+		g.pf("    %s.padding = 0;\n", expr)
 		return
 	}
 	if f.IsList() {
 		// a fresh list is EMPTY (docs/SPEC-TABLES.md §2.9), on the map's terms:
 		// the reference is null in both encodings and the live count is zero
-		g.pf("    value.%s.elements.value = 0; // %s: empty\n", f.Name, ir.TableTypeSpelling(f))
-		g.pf("    value.%s.count = 0;\n", f.Name)
-		g.pf("    value.%s.padding = 0;\n", f.Name)
+		g.pf("    %s.elements.value = 0; // %s: empty\n", expr, ir.TableTypeSpelling(f))
+		g.pf("    %s.count = 0;\n", expr)
+		g.pf("    %s.padding = 0;\n", expr)
 		return
 	}
 	if f.Type.Pointer {
 		switch f.Array {
 		case ir.ArrayNone:
-			g.pf("    value.%s.value = 0; // *%s — null\n", f.Name, pointeeName(f))
+			g.pf("    %s.value = 0; // *%s — null\n", expr, pointeeName(f))
 		default:
-			g.pf("    for ( int32_t i = 0; i < %d; i++ ) { value.%s[i].value = 0; } // [%d]*%s — every slot null\n", f.ArrayBound, f.Name, f.ArrayBound, f.Type.Name)
+			g.pf("    for ( int32_t i = 0; i < %d; i++ ) { %s[i].value = 0; } // [%d]*%s — every slot null\n", f.ArrayBound, expr, f.ArrayBound, f.Type.Name)
 			if f.Array == ir.ArrayCounted {
-				g.pf("    value.%s_count = 0;\n", f.Name)
+				g.pf("    %s_count = 0;\n", expr)
 			}
 		}
 		return
@@ -398,31 +405,35 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	typ, selfInit := g.cppFieldType(f.Type)
 	switch {
 	case f.Type.Kind == ir.TString && hasByteDefault(f):
-		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
-		g.pf("    memcpy( value.%s, %s, %d ); // the declared default\n", f.Name, cStringLit(f.DefBytes), len(f.DefBytes))
-		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
+		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
+		g.pf("    memcpy( %s, %s, %d ); // the declared default\n", expr, cStringLit(f.DefBytes), len(f.DefBytes))
+		g.pf("    %s_length = %d;\n", expr, len(f.DefBytes))
 	case f.Type.Kind == ir.TBytes && hasByteDefault(f):
 		g.emitBytesDefaultLocal(f)
-		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
-		g.pf("    memcpy( value.%s, %s_default, %d ); // the declared default\n", f.Name, f.Name, len(f.DefBytes))
-		g.pf("    value.%s_length = %d;\n", f.Name, len(f.DefBytes))
+		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
+		g.pf("    memcpy( %s, %s_default, %d ); // the declared default\n", expr, f.Name, len(f.DefBytes))
+		g.pf("    %s_length = %d;\n", expr, len(f.DefBytes))
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
-		g.pf("    memset( value.%s, 0, sizeof( value.%s ) );\n", f.Name, f.Name)
-		g.pf("    value.%s_length = 0;\n", f.Name)
+		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
+		g.pf("    %s_length = 0;\n", expr)
 	case f.KeyEnum != "":
-		g.emitTableResetArray(g.keyedSlots("value.", f), f.ArrayBound, typ, selfInit, f)
+		slots := expr
+		if g.owner != nil && g.owner.IsTable {
+			slots = expr + ".slots"
+		}
+		g.emitTableResetArray(slots, f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayFixed:
-		g.emitTableResetArray("value."+f.Name, f.ArrayBound, typ, selfInit, f)
+		g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
-		g.emitTableResetArray("value."+f.Name, f.ArrayBound, typ, selfInit, f)
-		g.pf("    value.%s_count = 0;\n", f.Name)
+		g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
+		g.pf("    %s_count = 0;\n", expr)
 	case selfInit:
-		g.emitTableResetOne("value."+f.Name, typ, f)
+		g.emitTableResetOne(expr, typ, f)
 	default:
-		g.pf("    value.%s = %s;\n", f.Name, g.fieldDefaultExpr(f))
+		g.pf("    %s = %s;\n", expr, g.fieldDefaultExpr(f))
 	}
 	if f.Type.Optional {
-		g.pf("    value.%s_present = false;\n", f.Name)
+		g.pf("    %s_present = false;\n", expr)
 	}
 }
 
@@ -459,19 +470,53 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 		// (bill §12.6). The union constructor only sets the tag to None, so
 		// each arm is Reset to its declared defaults, then the tag is None.
 		for _, v := range un.Variants {
-			if v.F == nil {
-				continue
-			}
-			if s, ok := v.F.Type.Ref.(*ir.Struct); ok && v.F.Type.Kind == ir.TNamed {
-				g.pf("    %sReset( %s.%s );\n", s.Name, expr, v.Name)
-			} else {
-				g.pf("    %s.%s = %s{};\n", expr, v.Name, v.Type)
-			}
+			g.emitTableResetArm(expr, v)
 		}
 		g.pf("    %s.type = %sType::None;\n", expr, un.Name)
 		return
 	}
 	g.pf("    %s = %s();\n", expr, typ)
+}
+
+// emitTableResetArm resets ONE union arm at its overlay storage (emitArmStorage):
+// a pointer or blob is a TableRef, a counted array or a string rides in an
+// unnamed struct with a companion, a fixed array is the array itself. gcc
+// refuses `array = {}` assignment, and a pointer arm is not the pointee.
+func (g *tableGen) emitTableResetArm(base string, v ir.UnionVariant) {
+	if v.F == nil {
+		return
+	}
+	f := v.F
+	if f.Type.Pointer && f.Array == ir.ArrayNone {
+		g.pf("    %s.value = 0; // *%s — null\n", base+"."+v.Name, pointeeName(f))
+		return
+	}
+	expr := armValue(base, v)
+	if armCompanioned(v) {
+		if f.Array == ir.ArrayCounted {
+			typ, selfInit := g.cppFieldType(f.Type)
+			if f.Type.Pointer {
+				g.pf("    for ( int32_t i = 0; i < %d; i++ ) { %s[i].value = 0; } // [..%d]*%s — every slot null\n", f.ArrayBound, expr, f.ArrayBound, f.Type.Name)
+			} else {
+				g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
+			}
+			g.pf("    %s = 0;\n", armCount(base, v))
+			return
+		}
+		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
+		g.pf("    %s = 0;\n", armCount(base, v))
+		return
+	}
+	if f.Array == ir.ArrayFixed {
+		typ, selfInit := g.cppFieldType(f.Type)
+		if f.Type.Pointer {
+			g.pf("    for ( int32_t i = 0; i < %d; i++ ) { %s[i].value = 0; } // [%d]*%s — every slot null\n", f.ArrayBound, expr, f.ArrayBound, f.Type.Name)
+		} else {
+			g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
+		}
+		return
+	}
+	g.emitTableResetAt(expr, f)
 }
 
 // tableResetName names the member type's Reset when the storage spelling IS

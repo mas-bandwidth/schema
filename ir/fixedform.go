@@ -510,6 +510,16 @@ func tableFixedWalkElement(w *tableFixedWalk, f *Field, id uint64, note string, 
 				TableFixedDstSpec{Dst: dst, Aux: tableFixedTerm1(f.Type.Name, "type"), AuxExtendsDst: true})
 			for _, v := range r.Variants {
 				armID := TableWireId(v.WireName())
+				if v.F == nil {
+					// A PAYLOAD-FREE ARM HAS AN ENTRY AND NO BYTES (kind 32,
+					// §3): the tag names it and there is nothing to land, the
+					// same shape an enum's variants take in this walk. It is an
+					// entry rather than nothing because the layout is what the
+					// arm list is COMPARED by — an arm appended after a
+					// payload-free one must move the hash.
+					w.push(TableFixedLayoutEntry{ID: armID, Kind: TableKindNoPayload, Size: 0, Children: 0, Note: v.Name}, TableFixedDstSpec{})
+					continue
+				}
 				tableFixedWalkElement(w, v.F, armID, v.Name, tableFixedTerm1(f.Type.Name, v.Name))
 			}
 			return
@@ -556,27 +566,27 @@ func appendTableFixedU64(b []byte, v uint64) []byte {
 }
 
 // TableFixedLayoutHash is fnv1a64 over the layout's bytes exactly as written,
-// then over a DEFINITIONS DIGEST (bill §13). The digest is every fact of the
-// versioning law that is not wire shape — each range, each flags bit count,
-// each bits(N), each fixed I and F, each reader-side limit, in closure order.
-// It is computed by the compiler, recorded in the lock's lineage, and NEVER
-// rides the wire: the hash binds it. An empty digest leaves the hash equal to
-// a hash of the layout bytes alone, so a table that carries none of those
-// facts does not move.
-func TableFixedLayoutHash(layout []byte, digest []byte) uint64 {
+// then over a DEFINITIONS DIGEST computed from st (bill §13). The digest is
+// every fact of the versioning law that is not wire shape — each range, each
+// flags bit count, each bits(N), each fixed I and F, each reader-side limit,
+// in closure order. It is computed HERE from the schema: there is no digest
+// argument for a leg to omit. It is recorded in the lock's lineage and NEVER
+// rides the wire: the hash binds it. An empty digest (a table that carries
+// none of those facts) leaves the hash equal to the layout bytes alone.
+func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 	h := uint64(0xcbf29ce484222325)
 	for _, b := range layout {
 		h ^= uint64(b)
 		h *= 0x100000001b3
 	}
-	for _, b := range digest {
+	for _, b := range TableFixedDefinitionsDigest(st) {
 		h ^= uint64(b)
 		h *= 0x100000001b3
 	}
 	return h
 }
 
-// TableFixedDefinitionsDigest is the second input to [TableFixedLayoutHash]
+// TableFixedDefinitionsDigest is the digest [TableFixedLayoutHash] folds in
 // (bill §13): the facts of §2 that are not layout bytes, in closure order.
 // Layout format is unchanged; the hash moves when a range, a flags bit count,
 // a bits(N), a fixed I/F split, or a reader-side limit does.
@@ -619,10 +629,6 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 		} else {
 			*b = append(*b, 0)
 		}
-	}
-	if f.ArrayBound != 0 {
-		// a reader-side array / text bound is already in the layout's size;
-		// nothing extra. A declared record-count limit would live here.
 	}
 	switch r := f.Type.Ref.(type) {
 	case *Flags:
@@ -668,6 +674,22 @@ func bigInt64(n *big.Int) int64 {
 		return n.Int64()
 	}
 	return 0
+}
+
+// TableFixedFixtureLineage names the older schema files of each properties
+// pair, keyed by the newer file's basename. The VOLD_/numbered filename
+// convention covers most of them; Scalars2 lives in a different directory
+// from Scalars, so it cannot. LOAD looks these up so the newer reader
+// compiles the older file and the older reader given the newer file refuses
+// layout_newer — the reverse of the old contract's both-ways compiled path.
+var TableFixedFixtureLineage = map[string][]string{
+	"FX2.schema":      {"test/tables/FX1.schema"},
+	"P3.schema":       {"test/tables/P1.schema"},
+	"FN2.schema":      {"test/tables/FN1.schema"},
+	"FM2.schema":      {"test/tables/FM1.schema"},
+	"V2.schema":       {"test/tables/V1.schema"},
+	"UT2.schema":      {"test/tables/UT1.schema"},
+	"Scalars2.schema": {"tables/scalars/Scalars.schema"},
 }
 
 // ---------------------------------------------------------------------------

@@ -85,6 +85,20 @@ func lineagePeerPaths(schemaPath string) []string {
 			add(fmt.Sprintf("%s%d", m[1], i))
 		}
 	}
+	if root := repoRoot(schemaPath); root != "" {
+		for _, rel := range ir.TableFixedFixtureLineage[filepath.Base(schemaPath)] {
+			cand := filepath.Join(root, rel)
+			if seen[cand] {
+				continue
+			}
+			st, err := os.Stat(cand)
+			if err != nil || st.IsDir() {
+				continue
+			}
+			seen[cand] = true
+			paths = append(paths, cand)
+		}
+	}
 	sort.Slice(paths, func(i, j int) bool {
 		ri, rj := lineageRank(paths[i]), lineageRank(paths[j])
 		if ri != rj {
@@ -93,6 +107,26 @@ func lineagePeerPaths(schemaPath string) []string {
 		return filepath.Base(paths[i]) < filepath.Base(paths[j])
 	})
 	return paths
+}
+
+func repoRoot(start string) string {
+	dir := start
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	if fi, err := os.Stat(dir); err == nil && !fi.IsDir() {
+		dir = filepath.Dir(dir)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
 }
 
 func lineageRank(path string) int {
@@ -147,8 +181,7 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 		}
 		entries := ir.TableFixedWalkRoot(src)
 		layout := ir.TableFixedLayoutBytes(entries)
-		digest := ir.TableFixedDefinitionsDigest(src)
-		h := ir.TableFixedLayoutHash(layout, digest)
+		h := ir.TableFixedLayoutHash(layout, src)
 		if seen[h] {
 			return
 		}

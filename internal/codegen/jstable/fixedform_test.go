@@ -32,7 +32,7 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	const (
 		refEntries   = 75
 		refBlockLen  = 4 + refEntries*fixedEntryBytes
-		refHash      = uint64(0x32f1c4a302a224eb)
+		refHash      = uint64(0x98d3af4e8ceacd29)
 		refBodyBytes = int64(1236)
 	)
 	if len(w.entries) != refEntries {
@@ -41,7 +41,7 @@ func TestFixedLayoutMatchesReference(t *testing.T) {
 	if len(block) != refBlockLen {
 		t.Fatalf("block bytes = %d, the C++ reference emits %d", len(block), refBlockLen)
 	}
-	if got := fixedLayoutHash(block); got != refHash {
+	if got := ir.TableFixedLayoutHash(block, st); got != refHash {
 		t.Fatalf("block hash = 0x%016x, the C++ reference emits 0x%016x — the two walks disagree somewhere in the closure", got, refHash)
 	}
 	if got := fixedTypeBytes(st); got != refBodyBytes {
@@ -468,7 +468,7 @@ func TestFixedOptionalRowsMatchReference(t *testing.T) {
 	// this same schema), and test/js-tables/fixedoptional_corpus.cpp prints them
 	const (
 		refEntries   = 25
-		refHash      = uint64(0x9cf625d9832802bc)
+		refHash      = uint64(0xde3aa2874e2260e8)
 		refBodyBytes = int64(72)
 	)
 	w := fixedWalkRoot(st)
@@ -476,7 +476,7 @@ func TestFixedOptionalRowsMatchReference(t *testing.T) {
 	if len(w.entries) != refEntries {
 		t.Fatalf("block entries = %d, the C++ reference emits %d", len(w.entries), refEntries)
 	}
-	if got := fixedLayoutHash(block); got != refHash {
+	if got := ir.TableFixedLayoutHash(block, st); got != refHash {
 		t.Fatalf("block hash = 0x%016x, the C++ reference emits 0x%016x", got, refHash)
 	}
 	if got := fixedTypeBytes(st); got != refBodyBytes {

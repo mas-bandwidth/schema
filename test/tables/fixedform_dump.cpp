@@ -629,19 +629,19 @@ static bool vlists_files( const char * dir )
     {
         std::vector<vold_keyed_array_enum_append::Lineage> o( 1 );
         vold_keyed_array_enum_append::LineageReset( o[0] );
-        o[0].slots[vold_keyed_array_enum_append::Tier::Bronze] = 101;
-        o[0].slots[vold_keyed_array_enum_append::Tier::Silver] = 102;
-        o[0].slots[vold_keyed_array_enum_append::Tier::Gold] = 103;
+        o[0].slots[vold_keyed_array_enum_append::Tier::Bronze].n = 101;
+        o[0].slots[vold_keyed_array_enum_append::Tier::Silver].n = 102;
+        o[0].slots[vold_keyed_array_enum_append::Tier::Gold].n = 103;
         o[0].seq = 22;
         if ( !emit( dir, "old_keyed_array_enum_append.bin", o, vold_keyed_array_enum_append::LineageFixedMeasure,
                     vold_keyed_array_enum_append::LineageFixedSave ) ) { return false; }
 
         std::vector<vnew_keyed_array_enum_append::Lineage> n( 1 );
         vnew_keyed_array_enum_append::LineageReset( n[0] );
-        n[0].slots[vnew_keyed_array_enum_append::Tier::Bronze] = 201;
-        n[0].slots[vnew_keyed_array_enum_append::Tier::Silver] = 202;
-        n[0].slots[vnew_keyed_array_enum_append::Tier::Gold] = 203;
-        n[0].slots[vnew_keyed_array_enum_append::Tier::Platinum] = 204;
+        n[0].slots[vnew_keyed_array_enum_append::Tier::Bronze].n = 201;
+        n[0].slots[vnew_keyed_array_enum_append::Tier::Silver].n = 202;
+        n[0].slots[vnew_keyed_array_enum_append::Tier::Gold].n = 203;
+        n[0].slots[vnew_keyed_array_enum_append::Tier::Platinum].n = 204;
         n[0].seq = 23;
         if ( !emit( dir, "new_keyed_array_enum_append.bin", n, vnew_keyed_array_enum_append::LineageFixedMeasure,
                     vnew_keyed_array_enum_append::LineageFixedSave ) ) { return false; }

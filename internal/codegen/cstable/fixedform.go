@@ -153,15 +153,6 @@ func appendFixedU64(b []byte, v uint64) []byte {
 	return b
 }
 
-func fixedBlockHash(block []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, b := range block {
-		h ^= uint64(b)
-		h *= 0x100000001b3
-	}
-	return h
-}
-
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
 	var out []*ir.Struct
 	for _, st := range members {
@@ -1555,7 +1546,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	}
 
 	block := fixedBlockBytes(b.entries)
-	hash := fixedBlockHash(block)
+	hash := ir.TableFixedLayoutHash(block, st)
 	body := fixedTypeBytes(st)
 	name := st.Name
 
@@ -1683,7 +1674,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
 	g.pf("    ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);\n")
-	g.pf("    ulong hash = TableFixedWire.HashOf(layout);\n")
+	g.pf("    ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire\n")
 	g.pf("    ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);\n")
 	g.pf("    int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;\n")
 	g.pf("    ReadOnlySpan<TableFixedEntry> entries = %sFixedPlan;\n", name)
@@ -1691,7 +1682,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;\n")
 	g.pf("    TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();\n")
 	g.pf("    int fillCount = 0;\n")
-	g.pf("    if (hash != %sFixedHash)\n    {\n", name)
+	g.pf("    if (hash == %sFixedHash)\n    {\n", name)
+	g.pf("        if (layout_bytes != (uint)%sFixedLayout.Length || !layout.SequenceEqual(%sFixedLayout))\n", name, name)
+	g.pf("        {\n            if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
+	g.pf("    }\n")
+	g.pf("    else\n    {\n")
 	g.pf("        if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))\n        {\n            if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
 	g.pf("        int made = TableFixedWire.Compile(parsed, %sFixedLayout, %sFixedDst, plan, report);\n", name, name)
 	g.pf("        if (made < 0)\n        {\n            if (report != null) { report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
@@ -1704,9 +1699,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            fillBuf = new TableFixedFill[slotN];\n")
 	g.pf("            fillCount = TableFixedWire.Fills(entries, %sFixedCover, landed, fillBuf);\n", name)
 	g.pf("        }\n    }\n")
-	g.pf("    if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)\n    {\n")
-	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
-	g.pf("        return -1;\n    }\n")
 	g.pf("    if (record_bytes <= 8 || rest %% record_bytes != 0)\n    {\n")
 	g.pf("        if (report != null) { report.Malformed = true; report.Verdict = TableWire.Verdict.Damaged; }\n")
 	g.pf("        return -1;\n    }\n")
