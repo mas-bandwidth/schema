@@ -27,6 +27,48 @@
 #include "PackTable.h"
 #include "FXWTable.h"
 
+// ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
+// THE VERSIONING LAW'S CORPUS (docs/FIXED-FORM-VERSIONING-TESTS.md): `old_<row>.bin`
+// and `new_<row>.bin` per row, the two read columns' shared corpus, so every leg
+// reads the SAME bytes the C++ reference wrote and the card on a port's job names
+// one file. The values are the ones test/tables/versioning_numbers.cpp asserts.
+#include "serialize.h"
+#include "VOLD_array_bounded_growTable.h"
+#include "VNEW_array_bounded_growTable.h"
+#include "VOLD_array_fixed_growTable.h"
+#include "VNEW_array_fixed_growTable.h"
+#include "VOLD_array_elem_widenTable.h"
+#include "VNEW_array_elem_widenTable.h"
+#include "VOLD_constant_growTable.h"
+#include "VNEW_constant_growTable.h"
+#include "VOLD_string_growTable.h"
+#include "VNEW_string_growTable.h"
+#include "VOLD_wstring_growTable.h"
+#include "VNEW_wstring_growTable.h"
+#include "VOLD_bytes_growTable.h"
+#include "VNEW_bytes_growTable.h"
+#include "VOLD_int_widenTable.h"
+#include "VNEW_int_widenTable.h"
+#include "VOLD_uint_widenTable.h"
+#include "VNEW_uint_widenTable.h"
+#include "VOLD_float_widenTable.h"
+#include "VNEW_float_widenTable.h"
+#include "VOLD_range_widenTable.h"
+#include "VNEW_range_widenTable.h"
+#include "VOLD_bits_growTable.h"
+#include "VNEW_bits_growTable.h"
+#include "VOLD_fixed_I_growTable.h"
+#include "VNEW_fixed_I_growTable.h"
+#include "VOLD_optional_addTable.h"
+#include "VNEW_optional_addTable.h"
+#include "VOLD_floorTable.h"
+#include "VMID_floorTable.h"
+#include "VNEW_floorTable.h"
+#include "VOLD_lineage_mergeTable.h"
+#include "VBRA_lineage_mergeTable.h"
+#include "VBRB_lineage_mergeTable.h"
+#include "VNEW_lineage_mergeTable.h"
+// ---- rowan/cpp-versioning-numbers: END ------------------------------------
 // ==== BEGIN rowan/cpp-versioning-lists: the LIST rows lineage pairs ====
 // docs/FIXED-FORM-VERSIONING-TESTS.md: two schemas per row, one table name,
 // one package each, so both generations of one lineage compile into this binary.
@@ -294,6 +336,138 @@ static bool fxw_file( const char * dir )
     return emit( dir, "fxw.bin", v, tblfxw::FxWideFixedMeasure, tblfxw::FxWideFixedSave );
 }
 
+// ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
+// ONE FILE PER SIDE PER ROW. `emit` above takes a vector and the unit's measure
+// and save, so every row below is one statement and its values are visible.
+#define VROW( NS, TBL, NAME, SETUP )                                                        \
+    do {                                                                                     \
+        std::vector<NS::TBL> v( 1 );                                                          \
+        NS::TBL##Reset( v[0] );                                                               \
+        SETUP                                                                                 \
+        if ( !emit( dir, NAME, v, NS::TBL##FixedMeasure, NS::TBL##FixedSave ) ) { return false; } \
+    } while ( 0 )
+
+static bool versioning_numbers_files( const char * dir )
+{
+    VROW( vold_array_bounded_grow, ArrayBoundedGrow, "old_array_bounded_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].vals_count = 4;
+          for ( int i = 0; i < 4; ++i ) { v[0].vals[i] = 1000 + i; } v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_array_bounded_grow, ArrayBoundedGrow, "new_array_bounded_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].vals_count = 8;
+          for ( int i = 0; i < 8; ++i ) { v[0].vals[i] = 2000 + i; } v[0].trail = 0xBBBBBBBBu; );
+
+    // the element is a NESTED TYPE with NONZERO defaults (x = 7, y = 9), so the
+    // reader's slack slots can tell an ELEMENT-DEFAULT prefill (bill §12.6)
+    // apart from a plain zero fill. No written element is ever 7 or 9.
+    VROW( vold_array_fixed_grow, ArrayFixedGrow, "old_array_fixed_grow.bin",
+          v[0].lead = 0xAAAAAAAAu;
+          for ( int i = 0; i < 4; ++i ) { v[0].vals[i].x = -500 - i; v[0].vals[i].y = -600 - i; }
+          v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_array_fixed_grow, ArrayFixedGrow, "new_array_fixed_grow.bin",
+          v[0].lead = 0xAAAAAAAAu;
+          for ( int i = 0; i < 8; ++i ) { v[0].vals[i].x = 3000 + i; v[0].vals[i].y = 4000 + i; }
+          v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_array_elem_widen, ArrayElemWiden, "old_array_elem_widen.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].vals_count = 4; v[0].vals[0] = -1; v[0].vals[1] = INT16_MIN;
+          v[0].vals[2] = INT16_MAX; v[0].vals[3] = 0; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_array_elem_widen, ArrayElemWiden, "new_array_elem_widen.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].vals_count = 4;
+          for ( int i = 0; i < 4; ++i ) { v[0].vals[i] = 100000 + i; } v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_constant_grow, ConstantGrow, "old_constant_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].vals_count = 4;
+          for ( int i = 0; i < 4; ++i ) { v[0].vals[i] = 7000 + i; } v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_constant_grow, ConstantGrow, "new_constant_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].vals_count = 8;
+          for ( int i = 0; i < 8; ++i ) { v[0].vals[i] = 8000 + i; } v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_string_grow, StringGrow, "old_string_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; std::strcpy( v[0].text, "abcdefgh" ); v[0].text_length = 8; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_string_grow, StringGrow, "new_string_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; std::strcpy( v[0].text, "0123456789abcdef" ); v[0].text_length = 16; v[0].trail = 0xBBBBBBBBu; );
+
+    const char16_t wsrc[8] = { u'h', u'e', u'l', u'l', u'o', 0xD83D, 0xDE00, u'￿' };
+    VROW( vold_wstring_grow, WstringGrow, "old_wstring_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; std::memcpy( v[0].text, wsrc, sizeof( wsrc ) ); v[0].text_length = 8; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_wstring_grow, WstringGrow, "new_wstring_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; for ( int i = 0; i < 16; ++i ) { v[0].text[i] = (char16_t) ( u'a' + i ); }
+          v[0].text_length = 16; v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_bytes_grow, BytesGrow, "old_bytes_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; for ( int i = 0; i < 8; ++i ) { v[0].blob[i] = (uint8_t) ( 0xF0 + i ); }
+          v[0].blob_length = 8; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_bytes_grow, BytesGrow, "new_bytes_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; for ( int i = 0; i < 16; ++i ) { v[0].blob[i] = (uint8_t) i; }
+          v[0].blob_length = 16; v[0].trail = 0xBBBBBBBBu; );
+
+    // THE THREE VALUES A WIDENING GETS WRONG, all three in ONE file as three records
+    {
+        std::vector<vold_int_widen::IntWiden> v( 3 );
+        const int16_t values[3] = { -1, INT16_MIN, INT16_MAX };
+        for ( int k = 0; k < 3; ++k )
+        {
+            vold_int_widen::IntWidenReset( v[(size_t) k] );
+            v[(size_t) k].lead = 0xAAAAAAAAu;
+            v[(size_t) k].v = values[k];
+            v[(size_t) k].trail = 0xBBBBBBBBu;
+        }
+        if ( !emit( dir, "old_int_widen.bin", v, vold_int_widen::IntWidenFixedMeasure,
+                    vold_int_widen::IntWidenFixedSave ) ) { return false; }
+    }
+    VROW( vnew_int_widen, IntWiden, "new_int_widen.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 100000; v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_uint_widen, UintWiden, "old_uint_widen.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 0xFFFFu; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_uint_widen, UintWiden, "new_uint_widen.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 0xDEADBEEFu; v[0].trail = 0xBBBBBBBBu; );
+
+    // A SIGNALLING NaN WITH A PAYLOAD: the bits are the value (the FU ruling)
+    {
+        const uint32_t kSignalling = 0x7F8ABCDEu;
+        float f; std::memcpy( &f, &kSignalling, 4 );
+        VROW( vold_float_widen, FloatWiden, "old_float_widen.bin",
+              v[0].lead = 0xAAAAAAAAu; v[0].v = f; v[0].trail = 0xBBBBBBBBu; );
+    }
+    VROW( vnew_float_widen, FloatWiden, "new_float_widen.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 1.0e300; v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_range_widen, RangeWiden, "old_range_widen.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 100; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_range_widen, RangeWiden, "new_range_widen.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 150; v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_bits_grow, BitsGrow, "old_bits_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 0xFFu; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_bits_grow, BitsGrow, "new_bits_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 0xFFFu; v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_fixed_i_grow, FixedIGrow, "old_fixed_I_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = -1; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_fixed_i_grow, FixedIGrow, "new_fixed_I_grow.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].v = 1000; v[0].trail = 0xBBBBBBBBu; );
+
+    VROW( vold_optional_add, OptionalAdd, "old_optional_add.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].link.value = 777; v[0].trail = 0xBBBBBBBBu; );
+    VROW( vnew_optional_add, OptionalAdd, "new_optional_add.bin",
+          v[0].lead = 0xAAAAAAAAu; v[0].link_present = false; v[0].link.value = 0; v[0].trail = 0xBBBBBBBBu; );
+
+    // THE FLOOR'S LINEAGE: three layouts, oldest first. `old_floor.bin` is the
+    // file below a floor of 1; `mid_floor.bin` the file AT it; `new_floor.bin`
+    // the reader's own.
+    VROW( vold_floor, Floored, "old_floor.bin", v[0].a = 11; );
+    VROW( vmid_floor, Floored, "mid_floor.bin", v[0].a = 11; v[0].b = 22; );
+    VROW( vnew_floor, Floored, "new_floor.bin", v[0].a = 11; v[0].b = 22; v[0].c = 33; );
+
+    // THE BRANCH CASE: both pre-merge writers, and the merged build's own
+    VROW( vold_lineage_merge, Merged, "old_lineage_merge.bin", v[0].anchor = 50; );
+    VROW( vbra_lineage_merge, Merged, "a_lineage_merge.bin", v[0].anchor = 100; v[0].from_a = 111; );
+    VROW( vbrb_lineage_merge, Merged, "b_lineage_merge.bin", v[0].anchor = 200; v[0].from_b = 222; );
+    VROW( vnew_lineage_merge, Merged, "new_lineage_merge.bin", v[0].anchor = 300; v[0].from_a = 1; v[0].from_b = 2; );
+    return true;
+}
+// ---- rowan/cpp-versioning-numbers: END ------------------------------------
 // ==== BEGIN rowan/cpp-versioning-lists: THE LISTS ROWS' LINEAGE PAIRS ======
 //
 // docs/FIXED-FORM-VERSIONING-TESTS.md, the LIST rows. One pair of files per
@@ -514,6 +688,9 @@ int main( int argc, char ** argv )
     const char * dir = argv[1];
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
          !keyed_file( dir ) || !pack_file( dir ) || !fxw_file( dir ) ) { return 1; }
+    // ---- rowan/cpp-versioning-numbers: BEGIN ----
+    if ( !versioning_numbers_files( dir ) ) { return 1; }
+    // ---- rowan/cpp-versioning-numbers: END ----
     // ==== BEGIN rowan/cpp-versioning-lists ====
     if ( !vlists_files( dir ) ) { return 1; }
     // ==== END rowan/cpp-versioning-lists =====
