@@ -1468,6 +1468,24 @@ inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8
 // tables, and nothing when it does not — a table-free unit's generated tree
 // is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, loadUnitLock(u))
+}
+
+// GenerateLineage is Generate with the unit's LOCK handed in by the caller
+// (docs/FIXED-FORM-ALGORITHM.md §5.9 #1: the lock is opened in ONE place, the
+// driver, and a backend opens no file). A nil lock is a unit that was never
+// locked — or a caller that read none — and the lineage then comes from the
+// sibling-filename convention this backend still carries as §5.8 row 1's
+// interim.
+//
+// IT TAKES THE LOCK AND NOT §5.9 #1'S ENTRIES, and that is the interim showing:
+// this backend's lineage entries also carry the RANGES of an older declaration
+// (collectKnownRanges, read off a peer schema UNIT, not off the lock) and its
+// floor falls back to a test-only map keyed by package. Those two have no
+// spelling in lockfile.LineageEntry, so nothing in the shared path can supply
+// them yet. What moved is the READ; the interpretation moves with the
+// convention.
+func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -1508,7 +1526,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// can name, and the index it takes in the ascending set TableIds's
 	// capacity counts.
 	idOrdinal := wireIdOrdinals(u)
-	lock := loadUnitLock(u)
 	var peers []*ir.Unit
 	if lock == nil {
 		// Fixture siblings (VOLD_/numbered) are TEST-ONLY. A locked unit
