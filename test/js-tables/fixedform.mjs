@@ -78,11 +78,13 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
+  guardComparedAtArgW(check, fx1home);
   versioning(check, fx1, fx2, fx1home, fx2home);
   bytesArrayConvention(check, fx1, fx2, fx1home, fx2home, oracleDir);
   liveCountSlack(check, fx1, fx1home);
   holePrefill(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
+  layoutValidation(check, fx1, fx2, fx1home, fx2home);
   unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types);
   if (oracleDir) {
     referenceOracle(check, fx1, fx2, fx1home, oracleDir);
@@ -352,6 +354,43 @@ function f32bits(x) { CONV.setFloat32(0, x, true); return CONV.getUint32(0, true
 function f64bits(x) { CONV.setFloat64(0, x, true); return CONV.getBigUint64(0, true); }
 
 // ---------------------------------------------------------------------------
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX.
+// compiler/fixedguardwidth_test.go holds the IR stamp; this is the run loop.
+// A two-byte tag 0x0101 whose low byte is 1 is not arm 1. ONE PATH: this is
+// TableFixedRun, the same loop identity and compiled both take.
+// ---------------------------------------------------------------------------
+function guardComparedAtArgW(check, home) {
+  check(home.TableFixedLanes === 9,
+    `ArgW: a plan entry is nine int32 lanes, got ${home.TableFixedLanes}`);
+
+  const run = (lanes, srcBytes) => {
+    const src = new Uint8Array(srcBytes);
+    const srcView = new DataView(src.buffer, src.byteOffset, src.length);
+    const dst = new Uint8Array(1);
+    const dstView = new DataView(dst.buffer);
+    const r = new home.TableFixedReport();
+    // op=COPY src=2 dst=0 size=1 aux=0 guard=0 arg=1 meta=0 argw=lanes[8]
+    home.TableFixedRun(new Int32Array(lanes), 1, src, srcView, 0, dst, dstView, null, r);
+    return dst[0];
+  };
+  // COPY of the payload at byte 2, guarded at 0, answering to arm 1, width 2
+  const twoByte = [0, 2, 0, 1, 0, 0, 1, 0, 2];
+  check(run(twoByte, [0x01, 0x01, 0xAA]) === 0,
+    "ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1");
+  check(run(twoByte, [0x01, 0x00, 0xAA]) === 0xAA,
+    "ArgW: a two-byte tag 0x0001 DOES run arm 1");
+  // ArgW 0 means 1, as C++: only the first byte is the tag
+  const zeroMeansOne = [0, 2, 0, 1, 0, 0, 1, 0, 0];
+  check(run(zeroMeansOne, [0x01, 0x01, 0xAA]) === 0xAA,
+    "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0");
+  const fourByte = [0, 4, 0, 1, 0, 0, 1, 0, 4];
+  check(run(fourByte, [0x01, 0x01, 0x00, 0x00, 0xBB]) === 0,
+    "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
+  check(run(fourByte, [0x01, 0x00, 0x00, 0x00, 0xBB]) === 0xBB,
+    "ArgW: a four-byte tag 0x00000001 DOES run arm 1");
+}
+
+// ---------------------------------------------------------------------------
 // 3. THE VERSIONING CONFORMANCE — the twin of test/tables/fixedform_main.cpp
 // ---------------------------------------------------------------------------
 
@@ -489,7 +528,7 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     const body = w2.subarray(LAYOUT_AT + fx2.FxRootFixedLayoutBytes + 8);
     const bodyView = new DataView(body.buffer, body.byteOffset, body.length);
     plan.image.set(new Uint8Array(plan.image.length)); // the prefill
-    fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0]),
+    fx1home.TableFixedRun(new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0, 1]),
       1, body, bodyView, 0, plan.image, plan.view, null, wr);
     fx1home.FxRootFixedDecode(wrong[0], plan.view, 0, wr);
     check(wrong[0].Keep !== right[0].Keep || wrong[0].Renamed !== right[0].Renamed ||
@@ -604,6 +643,297 @@ function negativeControls(check, fx1, fx2, fx1home, fx2home) {
     const small = new Uint8Array(fx1.FxRootFixedMeasure(1) - 1);
     check(fx1.FxRootFixedSave([one], 1, small) === -1,
       "REFUSAL: a buffer too small for the file answers -1");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE LAYOUT VALIDATION — §1.1'S SEVEN RULES, EACH UNDER ITS OWN NAME
+// ---------------------------------------------------------------------------
+//
+// THE LAYOUT ARRIVES FROM AN UNTRUSTED PEER (docs/SPEC-TABLES.md §3.4). It is
+// the one structure a reader must parse before it knows anything at all, so
+// docs/FIXED-FORM-ALGORITHM.md §1.1 holds it to SEVEN RULES and gives each one
+// ITS OWN NAME, raised before a single record byte is touched. A VALIDATION
+// NOBODY WATCHED FAIL IS A VALIDATION NOBODY HAS, so there is one case per
+// named rule here — the C++ reference's own twelve, in its own order
+// (test/tables/fixedform_main.cpp, layout_validation) — each taking a layout
+// this reader ACCEPTS and breaking EXACTLY ONE THING in it.
+//
+// THE ASSERTION IS ON THE NAME AND NOT ON THE VALUE, which is the one place
+// this leg departs from the reference's spelling. `TableFixedRefusal` does not
+// carry §1.1's seven members yet, so `fx1home.TableFixedRefusal.LayoutCountMismatch`
+// is `undefined` and `r.refused === undefined` would go red reading "false" —
+// one opaque failure that says nothing about which rule is missing. So the
+// refusal's VALUE is reverse-mapped through the frozen enum to its MEMBER NAME
+// and the name string is what is compared. That is exactly as strong as the
+// enum comparison — a wrong member fails it, and it passes unchanged the day
+// the runtime registers the seven — and it makes every red say what the
+// document owes and what this leg actually answers.
+//
+// The file is §3's HEADER (the form byte, seven reserved zero bytes, the layout
+// hash at 8, the body at 16), then `u32 layout length, layout, records` — so
+// the layout starts at LAYOUT_AT, the entry count is the four bytes there, and
+// entry k is the seventeen bytes at LAYOUT_AT + 4 + 17k: id (u64), kind (u8),
+// size (u32), children (u32), every number little-endian.
+//
+// AND THE BROKEN FILE IS SEALED AROUND THE BREAK. A hostile peer writes a file
+// that is consistent with itself: the header's hash IS the hash of the layout
+// it carries, and so is every record's. §2 step 5 puts the header hash check
+// LAST of the three for exactly this reason — so a broken layout is never
+// reported as a lying header — and this leg's loader does order it last in its
+// code. But the rules it orders it after are the ones it HAS, and §1.1's seven
+// are not among them: a file left with the good layout's hash in its header
+// would be refused `layout_malformed` for the tampering rather than for the
+// rule, and every red below would read the same whether the rule is checked
+// late, misnamed, or absent. So the layout's fnv1a64 is recomputed over the
+// broken bytes and stamped into the header and into the record behind it. What
+// refuses a sealed file is the RULE or nothing, which is the measurement.
+//
+// The hash is computed here from §1's own definition, in BigInt, rather than
+// borrowed from the module under test — a driver that hashed with the code it
+// is checking would agree with whatever that code happened to do. The seal is
+// proved against the good file first: resealing bytes that are already right
+// must change nothing.
+
+function layoutValidation(check, fx1, fx2, fx1home, fx2home) {
+  // §1'S HASH: fnv1a64 over the layout's bytes as written, THE 4-BYTE COUNT
+  // INCLUDED. A fixture's oracle, so it is written the plain way.
+  const fnv1a64 = (bytes, at, length) => {
+    let h = 0xcbf29ce484222325n;
+    for (let i = 0; i < length; i++) {
+      h = ((h ^ BigInt(bytes[at + i])) * 0x100000001b3n) & 0xffffffffffffffffn;
+    }
+    return h;
+  };
+
+  const get32 = (f, at) => (f[at] | (f[at + 1] << 8) | (f[at + 2] << 16) | (f[at + 3] << 24)) >>> 0;
+  const put32 = (f, at, v) => {
+    f[at] = v & 0xff; f[at + 1] = (v >>> 8) & 0xff;
+    f[at + 2] = (v >>> 16) & 0xff; f[at + 3] = (v >>> 24) & 0xff;
+  };
+
+  const ENTRY_BYTES = 17;
+  const entryAt = (k) => LAYOUT_AT + 4 + ENTRY_BYTES * k;
+  const KIND_AT = 8, SIZE_AT = 9, CHILDREN_AT = 13; // inside an entry
+
+  // the hash stamped into the header and into every record behind the layout
+  const seal = (f, recordBytes) => {
+    const layoutBytes = get32(f, LAYOUT_LENGTH_AT);
+    const h = fnv1a64(f, LAYOUT_AT, layoutBytes);
+    const lo = Number(h & 0xffffffffn), hi = Number((h >> 32n) & 0xffffffffn);
+    put32(f, HASH_AT, lo); put32(f, HASH_AT + 4, hi);
+    for (let at = LAYOUT_AT + layoutBytes; recordBytes > 0 && at + 8 <= f.length; at += recordBytes) {
+      put32(f, at, lo); put32(f, at + 4, hi);
+    }
+    return f;
+  };
+
+  // A FILE AROUND A HAND-BUILT LAYOUT, for the rules no single break of a real
+  // layout reaches: the form byte, the layout's length, the layout, NO records.
+  // Every rule below refuses before a record would be reached.
+  const fileOf = (layout) => {
+    const f = new Uint8Array(LAYOUT_AT + layout.length);
+    f[0] = 3; // the fixed form's byte
+    put32(f, LAYOUT_LENGTH_AT, layout.length);
+    f.set(layout, LAYOUT_AT);
+    return seal(f, 0);
+  };
+
+  const putEntry = (out, id, kind, size, children) => {
+    out.push(id & 0xff, (id >>> 8) & 0xff, (id >>> 16) & 0xff, (id >>> 24) & 0xff, 0, 0, 0, 0);
+    out.push(kind & 0xff);
+    out.push(size & 0xff, (size >>> 8) & 0xff, (size >>> 16) & 0xff, (size >>> 24) & 0xff);
+    out.push(children & 0xff, (children >>> 8) & 0xff, (children >>> 16) & 0xff, (children >>> 24) & 0xff);
+    return out;
+  };
+
+  const handLayout = (count, build) => {
+    const out = build([0, 0, 0, 0]);
+    const layout = Uint8Array.from(out);
+    put32(layout, 0, count);
+    return layout;
+  };
+
+  // THE NAME, NOT THE VALUE: the frozen enum read backwards. A refusal this
+  // build does not register at all comes back as the bare number, which is
+  // itself the report — a reader answering a value nobody named.
+  const REFUSAL_NAME = new Map(Object.entries(fx1home.TableFixedRefusal).map(([name, v]) => [v, name]));
+  const refusalName = (v) => REFUSAL_NAME.get(v) ?? `an unregistered refusal value (${v})`;
+
+  const read = (bytes) => {
+    const values = [new fx1home.FxRoot()];
+    const r = new fx1home.TableFixedReport();
+    const n = fx1.FxRootFixedLoad(values, 1, bytes, bytes.length, fx1.FxRootFixedNewPlan(), r);
+    return { n, r };
+  };
+
+  // ONE CASE IS ONE RED AND NEVER THE RUN'S LAST WORD: a throw out of the
+  // loader is a failure of THAT case and the rest are still measured, because a
+  // reader that walks a hostile layout off the end of its own array is the
+  // damage the validation exists to prevent and not a reason to stop looking.
+  const refuses = (bytes, want, what) => {
+    let got = null, n = 0, threw = null;
+    try {
+      const out = read(bytes);
+      n = out.n; got = out.r;
+    } catch (e) {
+      threw = e;
+    }
+    if (threw !== null) {
+      check(false, `${what} — expected ${want}, and the read THREW ${threw.name}: ${threw.message}`);
+      return;
+    }
+    const name = refusalName(got.refused);
+    check(n === -1 && got.refused !== 0 && name === want,
+      `${what} — expected ${want}, got ${name}` + (n === -1 ? "" : ` and a read of ${n} record(s)`));
+    // NOTHING WAS DECODED AND NOTHING WAS COUNTED. A refusal that half-read a
+    // record, or that compiled a plan over the hostile layout on its way out,
+    // would be the damage the refusal exists to prevent.
+    check(got.unknown === 0 && got.kindMismatch === 0 && got.widened === 0 && got.clamped === 0 && !got.malformed,
+      `${what}: a layout refusal sets nothing and counts nothing ` +
+      `(unknown ${got.unknown}, kindMismatch ${got.kindMismatch}, widened ${got.widened}, ` +
+      `clamped ${got.clamped}, malformed ${got.malformed})`);
+  };
+
+  // the layout this reader ACCEPTS, which every case below breaks once: the
+  // OTHER generation's file, read by this one, which is the versioning path
+  const two = new fx2home.FxRoot();
+  two.Keep = 5150; two.Narrow = 70000; two.RenamedTo = 808; two.Added = 909;
+  two.Nested.A = 33; two.Nested.B = 44; two.Extra.X = 55; two.Extra.Y = 66;
+  const good = new Uint8Array(fx2.FxRootFixedMeasure(1));
+  check(fx2.FxRootFixedSave([two], 1, good) === good.length,
+    "layout validation: the unbroken file saves");
+  const RECORD_BYTES = fx2.FxRootFixedRecordBytes;
+
+  {
+    // and it READS, so every refusal below is the ONE break and not the file
+    const { n, r } = read(good);
+    check(n === 1 && r.refused === 0 && !r.malformed,
+      `layout validation: the unbroken file reads, so the breaks below are the breaks ` +
+      `(got ${n}, refused ${refusalName(r.refused)})`);
+  }
+  {
+    // THE SEAL IS THE READER'S OWN ARITHMETIC. Resealing a file that is already
+    // consistent must not move a byte; if this goes red every case below is
+    // measuring a hash of the fixture's own making and nothing else.
+    const resealed = seal(Uint8Array.from(good), RECORD_BYTES);
+    let same = resealed.length === good.length;
+    for (let i = 0; same && i < good.length; i++) { same = resealed[i] === good[i]; }
+    check(same, "layout validation: resealing the unbroken file changes nothing, so the seal is §1's own hash");
+  }
+  {
+    // and the two entries every case below indexes are the entries it thinks
+    // they are: the ROOT is the table, entry 1 is `keep`, a u32 leaf in four
+    check(good[entryAt(0) + KIND_AT] === 13 && get32(good, entryAt(0) + SIZE_AT) > 0,
+      `layout validation: entry 0 is the root TABLE, kind 13 (got kind ${good[entryAt(0) + KIND_AT]})`);
+    check(good[entryAt(1) + KIND_AT] === 8 && get32(good, entryAt(1) + SIZE_AT) === 4 &&
+      get32(good, entryAt(1) + CHILDREN_AT) === 0,
+      `layout validation: entry 1 is a u32 LEAF in four bytes (got kind ${good[entryAt(1) + KIND_AT]}, ` +
+      `size ${get32(good, entryAt(1) + SIZE_AT)})`);
+  }
+
+  const broken = (mutate) => {
+    const f = Uint8Array.from(good);
+    mutate(f);
+    return seal(f, RECORD_BYTES);
+  };
+
+  // 1. THE ENTRY COUNT FITS THE LAYOUT'S LENGTH EXACTLY (§1.1 rule 1)
+  {
+    const f = broken((f) => put32(f, LAYOUT_AT, get32(f, LAYOUT_AT) + 1));
+    refuses(f, "LayoutCountMismatch", "RULE: the entry count fits the layout length exactly");
+  }
+  {
+    // a count of ZERO is not a layout either: there is no root to walk
+    const f = broken((f) => put32(f, LAYOUT_AT, 0));
+    refuses(f, "LayoutCountMismatch", "RULE: an entry count of zero is not a layout");
+  }
+
+  // 2. EVERY KIND IS IN THE CLOSED SET (§1.1 rule 2). A fixed form's kind set is
+  //    CLOSED — 1..30, 32, 33, 35 — so a kind outside it means a NEWER FORM
+  //    BYTE, a different form, and not a newer layout of this one. It is
+  //    refused, never stepped over.
+  {
+    const f = broken((f) => { f[entryAt(1) + KIND_AT] = 200; }); // a kind no form byte this build carries defines
+    refuses(f, "LayoutKindUnknown", "RULE: a kind outside the closed set is REFUSED, not skipped");
+  }
+
+  // 3. A KIND IS USED AS ITS DEFINITION ALLOWS (§1.1 rule 4) — here, the ROOT
+  //    is a table
+  {
+    const f = broken((f) => { f[entryAt(0) + KIND_AT] = 14; }); // an array as the root of a record
+    refuses(f, "LayoutKindInvalid", "RULE: the root entry is a TABLE");
+  }
+
+  // 4. A CONSTANT SIZE MATCHES ITS KIND (§1.1 rule 3, §1.2)
+  {
+    const f = broken((f) => put32(f, entryAt(1) + SIZE_AT, 5)); // a uint32 leaf in five bytes
+    refuses(f, "LayoutSizeMismatch", "RULE: a constant size its kind does not admit");
+  }
+  {
+    // and a TABLE's size is the SUM of its children's, not a number of its own
+    const f = broken((f) => put32(f, entryAt(0) + SIZE_AT, get32(f, entryAt(0) + SIZE_AT) + 4));
+    refuses(f, "LayoutSizeMismatch", "RULE: a table's size is the sum of its fields'");
+  }
+
+  // 5. THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES (§1.1 rule 5)
+  {
+    const f = broken((f) => put32(f, entryAt(0) + CHILDREN_AT, get32(f, entryAt(0) + CHILDREN_AT) + 1));
+    refuses(f, "LayoutTreeUnclosed", "RULE: the tree runs out of layout");
+  }
+  {
+    // THE OTHER DIRECTION: a tree that closes EARLY leaves entries no walk
+    // reaches. It takes a hand-built layout to reach, and that is itself worth
+    // stating: dropping a child of a TABLE is caught one rule sooner, by the
+    // size that no longer sums, so the only subtree whose loss the size rule
+    // cannot see is one that contributes NO size — an enum's variants, at kind
+    // 32 and size 0.
+    const layout = handLayout(4, (out) => {
+      putEntry(out, 1, 13, 4, 1); // a table of one field
+      putEntry(out, 2, 30, 4, 0); // an enum, its TWO variants unreached
+      putEntry(out, 3, 32, 0, 0);
+      putEntry(out, 4, 32, 0, 0);
+      return out;
+    });
+    refuses(fileOf(layout), "LayoutTreeUnclosed", "RULE: the layout outlasts the tree");
+  }
+
+  // 6. THE TOTAL RECORD SIZE IS WITHIN 65536 AND DOES NOT OVERFLOW (§1.1 rule 6)
+  {
+    const f = broken((f) => put32(f, entryAt(0) + SIZE_AT, 65537));
+    refuses(f, "LayoutRecordTooLarge", "RULE: a record size past 65536");
+  }
+  {
+    // A SIZE THAT WOULD WRAP. The children's sizes are summed wider than 32
+    // bits precisely so a u32 that overflows is CAUGHT rather than wrapped into
+    // a small number that then agrees with a parent.
+    const f = broken((f) => put32(f, entryAt(1) + SIZE_AT, 0xffffffff));
+    refuses(f, "LayoutRecordTooLarge", "RULE: a size that would overflow the sum");
+  }
+
+  // 7. NOTHING NESTED PAST THE READER'S WALK BOUND (§1.1 rule 7). A BOUND ON
+  //    THE WALK AND NOT ON THE WIRE: the validation recurses, so a layout of a
+  //    thousand entries each claiming one child would spend a reader's stack
+  //    before any other rule could fire. Nothing in §3.4 fixes the number; the
+  //    reference states 64.
+  {
+    const depth = 4096; // far past any reader's own bound
+    const layout = handLayout(depth + 1, (out) => {
+      for (let i = 0; i < depth; i++) {
+        // a table, then optional wrappers all the way down
+        putEntry(out, 1, i === 0 ? 13 : 35, depth - i, 1);
+      }
+      putEntry(out, 2, 1, 1, 0); // a bool at the bottom
+      return out;
+    });
+    refuses(fileOf(layout), "LayoutTooDeep", "RULE: a nesting depth past the walk's own bound");
+  }
+
+  // AND THE RESIDUE: bytes that are not a layout at all, which is the one case
+  // the seven named rules never reach (§1.1).
+  {
+    refuses(fileOf(new Uint8Array(2)), "LayoutMalformed",
+      "RULE: fewer bytes than a layout header is layout_malformed");
   }
 }
 
@@ -917,7 +1247,7 @@ function liveCountSlack(check, fx1, fx1home) {
 // HOLE PREFILL: identity's hole list is empty (one COPY of the whole body).
 // Compiled FX2→FX1 has holes for Gone; a dirty image still reads the default.
 function holePrefill(check, fx1, fx2, fx1home, fx2home) {
-  const identity = new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0]);
+  const identity = new Int32Array([0, 0, 0, fx1.FxRootFixedBodyBytes, 0, -1, 0, 0, 1]);
   const idPlan = fx1.FxRootFixedNewPlan();
   const idHoles = fx1home.TableFixedHoles(identity, 1, idPlan.cover, idPlan.holes);
   check(idHoles === 0, `hole prefill: identity's hole list is empty, got ${idHoles}`);

@@ -31,7 +31,7 @@ union Effect
     ping
 }
 
-table Cfg
+fixed table Cfg
 {
     grade  Grade
     effect Effect

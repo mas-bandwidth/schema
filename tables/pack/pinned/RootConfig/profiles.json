@@ -83,6 +83,43 @@
       0,
       0
     ],
-    "has_loadout": false
+    "has_loadout": false,
+    "loadout": {
+      "grade": "Silver",
+      "grades": [],
+      "podium": [
+        "None",
+        "None",
+        "None"
+      ],
+      "perks": [],
+      "primary": {
+        "damage": 21,
+        "speed": 500,
+        "penetration": 1,
+        "channel": 0,
+        "homing": false,
+        "effect": {}
+      },
+      "backups": [
+        {
+          "damage": 21,
+          "speed": 500,
+          "penetration": 1,
+          "channel": 0,
+          "homing": false,
+          "effect": {}
+        },
+        {
+          "damage": 21,
+          "speed": 500,
+          "penetration": 1,
+          "channel": 0,
+          "homing": false,
+          "effect": {}
+        }
+      ],
+      "attachments": []
+    }
   }
 ]

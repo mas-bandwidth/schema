@@ -54,7 +54,7 @@ union Pick
     tag
 }
 
-table Note
+fixed table Note
 {
     tally int8
     count uint8
@@ -73,7 +73,7 @@ union Pick
     tag
 }
 
-table Note
+fixed table Note
 {
     tally int64
     count uint8
@@ -92,7 +92,7 @@ union Pick
     tag
 }
 
-table Note
+fixed table Note
 {
     tally int8
     count uint32
@@ -111,7 +111,7 @@ union Pick
     tag
 }
 
-table Note
+fixed table Note
 {
     tally int8
     count uint8
@@ -132,7 +132,7 @@ union Pick
     tag
 }
 
-table Note
+fixed table Note
 {
     tally int8
     count uint8

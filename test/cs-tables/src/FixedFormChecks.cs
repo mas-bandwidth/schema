@@ -28,7 +28,55 @@ static partial class Program
         TestFixedNegativeControl();
         TestFixedLayoutValidation();
         TestFixedHostileBoolCase();
+        TestFixedGuardComparedAtArgW();
         TestFixedAbsentOptionalCase();
+    }
+
+    sealed class ArgWProbe { public byte V; }
+
+    // THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX.
+    // compiler/fixedguardwidth_test.go holds the IR stamp; this is the run loop.
+    // A two-byte tag 0x0101 whose low byte is 1 is not arm 1. ONE PATH: this is
+    // TableFixedWire.Run, the same loop identity and compiled both take.
+    static void TestFixedGuardComparedAtArgW()
+    {
+        byte Run(byte argw, uint srcOff, byte[] src)
+        {
+            FX1.TableFixedSlot<ArgWProbe>[] slots = new FX1.TableFixedSlot<ArgWProbe>[]
+            {
+                new FX1.TableFixedSlot<ArgWProbe>(setRaw: (t, v) => t.V = (byte)v)
+            };
+            // COPY of the payload at srcOff, guarded at 0, answering to arm 1
+            FX1.TableFixedEntry[] plan = new FX1.TableFixedEntry[]
+            {
+                new FX1.TableFixedEntry(srcOff, 0u, 1u, 0u, 0u, FX1.Schema.TableFixedWire.Copy, 1, 0, 0, 0, argw)
+            };
+            ArgWProbe dst = new ArgWProbe();
+            FX1.Schema.TableFixedWire.Run(plan, slots, src, dst, null, ReadOnlySpan<byte>.Empty);
+            return dst.V;
+        }
+
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x01 }, 0, 2) != 1,
+              "ArgW: TagAt reads a two-byte 0x0101 as 257, not arm 1");
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x00 }, 0, 2) == 1,
+              "ArgW: TagAt reads a two-byte 0x0001 as arm 1");
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x01 }, 0, 0) == 1,
+              "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0");
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x01, 0x00, 0x00 }, 0, 4) != 1,
+              "ArgW: TagAt reads a four-byte 0x00000101 as not arm 1");
+        Check(FX1.Schema.TableFixedWire.TagAt(new byte[] { 0x01, 0x00, 0x00, 0x00 }, 0, 4) == 1,
+              "ArgW: TagAt reads a four-byte 0x00000001 as arm 1");
+
+        Check(Run(2, 2u, new byte[] { 0x01, 0x01, 0xAA }) == 0,
+              "ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1");
+        Check(Run(2, 2u, new byte[] { 0x01, 0x00, 0xAA }) == 0xAA,
+              "ArgW: a two-byte tag 0x0001 DOES run arm 1");
+        Check(Run(0, 2u, new byte[] { 0x01, 0x01, 0xAA }) == 0xAA,
+              "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0");
+        Check(Run(4, 4u, new byte[] { 0x01, 0x01, 0x00, 0x00, 0xBB }) == 0,
+              "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1");
+        Check(Run(4, 4u, new byte[] { 0x01, 0x00, 0x00, 0x00, 0xBB }) == 0xBB,
+              "ArgW: a four-byte tag 0x00000001 DOES run arm 1");
     }
 
     static void TestFixedFxCase()

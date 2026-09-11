@@ -38,6 +38,7 @@ int main( void )
     n = fixed_fx2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_fx2_bytes(), "FX2 save" );
     fixed_fx1_read_fx2( g_buffer, n );
+    fixed_fx1_layout_validation( g_buffer, n );
 
     n = fixed_v1_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_v1_bytes(), "V1 save" );
@@ -62,6 +63,11 @@ int main( void )
     n = fixed_ut2_write( g_buffer, BufferBytes );
     fixed_check( n == fixed_ut2_bytes(), "UT2 save" );
     fixed_ut1_read_ut2( g_buffer, n );
+
+    n = fixed_fu1_write( g_buffer, BufferBytes );
+    fixed_check( n == fixed_fu1_bytes(), "FU1 save" );
+    fixed_fu1_read_own( g_buffer, n );
+    fixed_fu2_read_fu1( g_buffer, n );
 
     /* THE BYTE-FLIP FUZZ, and §3.4 says it is not optional. Every byte of a
        form-3 file, one bit at a time, handed to a reader of the other

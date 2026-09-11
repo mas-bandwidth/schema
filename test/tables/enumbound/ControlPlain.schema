@@ -17,7 +17,7 @@ union Payload
     plain int32
 }
 
-table Fleet
+fixed table Fleet
 {
     literal [8]int32
     named   [SlotCount]int32

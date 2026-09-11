@@ -288,6 +288,76 @@ table LiveRoot
 	}
 }
 
+// A STRING, BYTES, OR WSTRING WRITE COPIES LENGTH AND ZEROES SLACK
+// (docs/SPEC-TABLES.md §3.4). Writing all N units would put unwritten or
+// stale storage onto the wire instead of the used length. Slack is zeroed.
+func TestWriteStringAndBytesCopiesLengthAndZeroesSlack(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+table SpanRoot
+{
+    label string(8)
+    blob  bytes(6)
+    wide  wstring(4)
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var src string
+	for _, b := range files {
+		s := string(b)
+		if strings.Contains(s, "void spanRootFixedWriteBody(") {
+			src = s
+			break
+		}
+	}
+	if src == "" {
+		t.Fatal("no spanRootFixedWriteBody in the generated unit")
+	}
+	body := src
+	if i := strings.Index(src, "void spanRootFixedWriteBody("); i >= 0 {
+		body = src[i:]
+		if j := strings.Index(body[1:], "\nvoid "); j >= 0 {
+			body = body[:j+1]
+		}
+	}
+
+	// string(8): copies length bytes, not bound 8; zeroes slack
+	if !strings.Contains(body, "bytes.setRange(at + 4, at + 4 + value.labelLength, value.label);") {
+		t.Fatalf("string write must copy length bytes:\n%s", body)
+	}
+	if strings.Contains(body, "bytes.setRange(at + 4, at + 12, value.label);") {
+		t.Fatalf("string write still copies declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 4 + value.labelLength, at + 12, 0);") {
+		t.Fatalf("string write must zero slack:\n%s", body)
+	}
+
+	// bytes(6): copies length bytes, not bound 6; zeroes slack
+	if !strings.Contains(body, "bytes.setRange(at + 16, at + 16 + value.blobLength, value.blob);") {
+		t.Fatalf("bytes write must copy length bytes:\n%s", body)
+	}
+	if strings.Contains(body, "bytes.setRange(at + 16, at + 22, value.blob);") {
+		t.Fatalf("bytes write still copies declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 16 + value.blobLength, at + 22, 0);") {
+		t.Fatalf("bytes write must zero slack:\n%s", body)
+	}
+
+	// wstring(4): loops length code units, not bound 4; zeroes slack
+	if !strings.Contains(body, "for (var i = 0; i < value.wideLength; i++) {") {
+		t.Fatalf("wstring write must loop length code units:\n%s", body)
+	}
+	if strings.Contains(body, "for (var i = 0; i < 4; i++) {") {
+		t.Fatalf("wstring write still loops declared bound:\n%s", body)
+	}
+	if !strings.Contains(body, "bytes.fillRange(at + 26 + value.wideLength * 2, at + 34, 0);") {
+		t.Fatalf("wstring write must zero slack:\n%s", body)
+	}
+}
+
 // THE PREFILL IS THE DECLARED DEFAULTS, and the one this corpus carries is
 // `has_extra bool = true` — the byte that would silently read false if the
 // prefill were a zero fill.
@@ -305,6 +375,40 @@ func TestFixedPrefillCarriesDeclaredDefaults(t *testing.T) {
 	// and the counted array `entities` is born at its declared minimum of 1
 	if prefill[52] != 1 {
 		t.Fatalf("prefill[52] = %d, `entities [1..8]` is born at its minimum of 1", prefill[52])
+	}
+}
+
+// A NAMED string(N) DEFAULT LIVES IN CONSTRUCTED STORAGE, not only in the
+// prefill and not only as a used length. FX1's `label string(8) = "fx"` is
+// the leftover: C++ still writes `char label[8 + 1] = "fx"`, and Dart used
+// to emit `Uint8List(8)` plus `labelLength = 2` — two claimed bytes of NULs.
+func TestNamedStringDefaultLivesInStorage(t *testing.T) {
+	u := unitFrom(t, `package probe
+
+table Fx1
+{
+    label string(8) = "fx"
+}
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	var all string
+	for _, b := range files {
+		all += string(b)
+	}
+	if !strings.Contains(all, `"fx"`) {
+		t.Fatalf("generated Dart must carry the named default \"fx\":\n%s", all)
+	}
+	if !strings.Contains(all, "labelLength = 2") {
+		t.Fatalf("generated Dart must carry labelLength = 2:\n%s", all)
+	}
+	if strings.Contains(all, "final Uint8List label = Uint8List(8);") {
+		t.Fatalf("construction allocated an empty buffer; \"fx\" is length-only:\n%s", all)
+	}
+	if !strings.Contains(all, "..[0] = 0x66") || !strings.Contains(all, "..[1] = 0x78") {
+		t.Fatalf("construction must lay the bytes of \"fx\" into the buffer:\n%s", all)
 	}
 }
 
@@ -459,6 +563,57 @@ func fixedSubtree(entries []fixedLayoutEntry, i int) int {
 		n += sub
 	}
 	return n
+}
+
+// TestFixedFormFU1FU2OnePath is the TEXT-UNDER-AN-ARM generate pin
+// (docs/SPEC-TABLES.md §3.4, §15; docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12).
+// FU1 writes a string(8) in the union's SECOND arm; FU2 appends `extra` so a
+// read of those bytes is a COMPILED plan. The generated load is the one-path
+// load: hash chooses the plan, tableFixedRun walks it, empty fill/holes is
+// the skip. No second reader. No `if (identity)` door.
+func TestFixedFormFU1FU2OnePath(t *testing.T) {
+	fu1 := loadUnit(t, "../../../test/tables/FU1.schema")
+	fu2 := loadUnit(t, "../../../test/tables/FU2.schema")
+	files1, err := Generate(fu1)
+	if err != nil {
+		t.Fatalf("FU1 generate: %v", err)
+	}
+	files2, err := Generate(fu2)
+	if err != nil {
+		t.Fatalf("FU2 generate: %v", err)
+	}
+	var all1, all2 string
+	for _, b := range files1 {
+		all1 += string(b)
+	}
+	for _, b := range files2 {
+		all2 += string(b)
+	}
+	if !strings.Contains(all1, "int fuRootFixedLoad(") {
+		t.Fatal("FU1 did not emit fuRootFixedLoad")
+	}
+	if !strings.Contains(all2, "int fuRootFixedLoad(") {
+		t.Fatal("FU2 did not emit fuRootFixedLoad")
+	}
+	if strings.Contains(all1, "if (identity)") || strings.Contains(all1, "if identity") {
+		t.Error("FU1 load still forks on an identity flag")
+	}
+	if !strings.Contains(all1, "tableFixedRun(") {
+		t.Error("FU1 FixedLoad is not the one-path load")
+	}
+	if !strings.Contains(all2, "int extra = 11") {
+		t.Error("FU2 did not emit extra's declared default")
+	}
+	h1 := strings.Index(all1, "const int fuRootFixedHash = ")
+	h2 := strings.Index(all2, "const int fuRootFixedHash = ")
+	if h1 < 0 || h2 < 0 {
+		t.Fatal("missing fuRootFixedHash")
+	}
+	line1 := all1[h1 : h1+80]
+	line2 := all2[h2 : h2+80]
+	if line1 == line2 {
+		t.Fatal("FU2 extra did not change the layout hash; compiled path is not a compile trigger")
+	}
 }
 
 func findTable(t *testing.T, u *ir.Unit, name string) *ir.Struct {

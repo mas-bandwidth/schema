@@ -16,11 +16,11 @@ import (
 // ordinary name lets it exercise hash zero (which is a valid id, not None).
 func TestWireLargeVocabularyAndZeroId(t *testing.T) {
 	var schema strings.Builder
-	schema.WriteString("package probe\ntable Child {\n")
+	schema.WriteString("package probe\nfixed table Child {\n")
 	for i := range 140 {
 		fmt.Fprintf(&schema, "f%03d uint64\n", i)
 	}
-	schema.WriteString("}\ntable Root { children [2]Child }\n")
+	schema.WriteString("}\nfixed table Root { children [2]Child }\n")
 	old := ir.TableWireIdHook
 	ir.TableWireIdHook = func(name string) (uint64, bool) { return 0, name == "f000" }
 	defer func() { ir.TableWireIdHook = old }()
@@ -130,7 +130,7 @@ func TestFormVerdicts(t *testing.T) {
 // preserves the sign, quiet bit and payload when widening a kind-10 value.
 func TestWireSignalingNaNWideningAndLEBOverflow(t *testing.T) {
 	runGenerated(t, `package probe
-table Root { value float64 }
+fixed table Root { value float64 }
 `, `package probe
 import("testing";"math";"hash/fnv")
 func TestSignalingNaN(t *testing.T) {

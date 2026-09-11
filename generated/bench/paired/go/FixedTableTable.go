@@ -154,15 +154,17 @@ func FixedTableLoadBody(r *TableReader, value *FixedTable) bool {
 	}
 }
 
-// FixedTable also carries the fixed form (form 3), because its closure lays out
-// fixed — but nobody DECLARED it fixed, so this reader still reads form 1.
-// A `fixed table` (docs/SPEC-TABLES.md §3.4, #823) refuses form 1 by name.
 func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
 	}
-	r, verdict := tableOpen(data, report)
+	FixedTableReset(value)
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(report, "previous_form")
+		return false
+	}
+	_, verdict := tableOpen(data, report)
 	report.Verdict = verdict
 	report.Reason = ""
 	if verdict == TableOpenRefused {
@@ -171,48 +173,10 @@ func FixedTableLoad(value *FixedTable, data []byte, report *TableReport) bool {
 			report.Reason = "message form requires an announced vocabulary and a message reader"
 		}
 	}
-	if verdict != TableOpenOk {
-		FixedTableReset(value)
-		if verdict == TableOpenDamaged {
-			report.Malformed = true
-		}
-		return false
-	}
-	// The root read answers its own early end after the walk, not before it.
-	// A body that returned at its zero reference left the cursor on the byte
-	// after that reference. Every field leaves the cursor where skip would, so
-	// r.Offset != len(r.Buffer) is the old EndsEarly on the true path.
-	// Nothing is decoded on the damaged path: the value goes back to defaults
-	// and the report goes back to what the caller handed in, so an early end
-	// counts no unknown, no kind mismatch and no clamp — as when the framing
-	// walk refused before the reader had seen one byte.
-	before := *report
-	if !FixedTableLoadBody(&r, value) {
-		// The reading walk stops on rules the framing walk has no opinion about
-		// — a reserved id in a file body is the one that matters — so a body
-		// that stopped is still asked the framing question from the start of
-		// the body, and a body whose framing ends early is damage whatever else
-		// was wrong with it.
-		probe := r
-		probe.Offset = 0
-		if probe.EndsEarly() {
-			FixedTableReset(value)
-			*report = before
-			report.Malformed = true
-			report.Verdict = TableOpenDamaged
-			return false
-		}
-		report.Verdict = TableOpenBodyStopped
-		return false
-	}
-	if r.Offset != int64(len(r.Buffer)) {
-		FixedTableReset(value)
-		*report = before
+	if verdict == TableOpenDamaged {
 		report.Malformed = true
-		report.Verdict = TableOpenDamaged
-		return false
 	}
-	return true
+	return false
 }
 
 const FixedTableLoadRetainBuilder = "FixedTable: retention requires a region round trip through the VARIABLE form"
@@ -1322,9 +1286,6 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
 	hash := tableFixedHashOf(layout)
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
-		return tableFixedRefuse(report, "layout_malformed")
-	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := FixedTableFixedPlan.Entries
@@ -1332,17 +1293,26 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	recordBytes := int64(FixedTableFixedRecordBytes)
 	identity := hash == FixedTableFixedHash
 	if !identity {
-		parsed, ok := tableFixedParseLayout(layout)
-		if !ok {
-			return tableFixedRefuse(report, "layout_malformed")
+		// ANOTHER WRITER: the same loop, over a plan compiled from its layout.
+		// THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
+		// every rule it fails refuses under ITS OWN NAME (§1.1).
+		parsed, why := tableFixedParseLayout(layout)
+		if why != "" {
+			return tableFixedRefuse(report, why)
 		}
 		made := tableFixedCompile(parsed, FixedTableFixedLayout, FixedTableFixedDst, plan, report)
+		if made == -2 {
+			return tableFixedRefuse(report, "layout_malformed")
+		}
 		if made < 0 {
 			return tableFixedRefuse(report, "plan_too_large")
 		}
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
+	}
+	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+		return tableFixedRefuse(report, "layout_malformed")
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true

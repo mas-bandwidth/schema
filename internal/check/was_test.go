@@ -85,7 +85,7 @@ type Badge
     caps  Caps = {}
 }
 
-table Ship | pinned, was = "Vessel"
+fixed table Ship | pinned, was = "Vessel"
 {
     name  string(32) = "untitled"
     tag   bytes(4) = "ab"

@@ -16,7 +16,7 @@ type Inner
     named  [SlotCount]int32
 }
 
-table Root
+fixed table Root
 {
     inner Inner
 }

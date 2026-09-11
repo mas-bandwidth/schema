@@ -770,7 +770,15 @@ func fpDecl(b *strings.Builder, d ast.Decl) {
 		fmt.Fprintf(b, "%stype %s %s\n", fpDoc(d.Doc), d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
 	case *ast.TableDecl:
-		fmt.Fprintf(b, "%stable %s %s\n", fpDoc(d.Doc), d.Name, fpAttrs(d.Attrs))
+		// THE CLASS KEYWORD IS PART OF THE DECLARATION (docs/SPEC-TABLES.md
+		// §2.2): `fixed table` and `table` are two different wires, so the
+		// fingerprint carries the word and the formatter cannot drop or add
+		// one without the safety net seeing it.
+		class := "table"
+		if d.Fixed {
+			class = "fixed table"
+		}
+		fmt.Fprintf(b, "%s%s %s %s\n", fpDoc(d.Doc), class, d.Name, fpAttrs(d.Attrs))
 		fpBlock(b, d.Body)
 	case *ast.UnionDecl:
 		// AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6), so an arm's

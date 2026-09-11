@@ -21,14 +21,14 @@ import (
 // bounded declarations — the two halves of the `list_migrates` claim.
 const listUnit = `package save
 
-table Placement
+fixed table Placement
 {
     x     float32
     y     float32
     model uint32
 }
 
-table LogEntry { tick uint32 }
+fixed table LogEntry { tick uint32 }
 
 table Save
 {
@@ -40,14 +40,14 @@ table Save
 
 const listBoundUnit = `package save
 
-table Placement
+fixed table Placement
 {
     x     float32
     y     float32
     model uint32
 }
 
-table LogEntry { tick uint32 }
+fixed table LogEntry { tick uint32 }
 
 table Save
 {
@@ -295,7 +295,7 @@ func TestListElementKindMismatch(t *testing.T) {
 func TestListWalkOrder(t *testing.T) {
 	const src = `package walk
 
-table Mark { tick uint32 }
+fixed table Mark { tick uint32 }
 
 table Head
 {
@@ -338,7 +338,7 @@ table Head
 func TestListOfTablesReachesTheirEdges(t *testing.T) {
 	const src = `package deep
 
-table Leaf { tick uint32 }
+fixed table Leaf { tick uint32 }
 
 table Row  { leaf *Leaf }
 
@@ -428,7 +428,7 @@ func TestListFileRegionMeasureUsesFraming(t *testing.T) {
 // but reaches an oversized count only while decoding into that region.
 func TestListCountCrossesLength(t *testing.T) {
 	m := listModel(t, `package listdemo
- table Photo { width uint32
+ fixed table Photo { width uint32
  height uint32 }
  table Album { photos []*Photo
  cover *Photo }

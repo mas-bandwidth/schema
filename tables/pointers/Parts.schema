@@ -21,7 +21,7 @@ type Colour | cpp_native = ColourMath, cpp_include = "graph_colour.h"
 // neither the variable set nor the pointer-target set names it — which is
 // exactly why a file-scoped emission rule forgets it. Its count companion
 // still bounds any traversal of tag, so it still needs an Open walk.
-table Stamp
+fixed table Stamp
 {
     tag string(8)
     seq int32 = 0 | min = 0, max = 1000

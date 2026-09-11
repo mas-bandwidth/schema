@@ -8,9 +8,9 @@ import (
 )
 
 const blockBuilderSchema = `package probe
-table Row { value uint64
+fixed table Row { value uint64
  flag bool }
-table Root { stamp uint64
+fixed table Root { stamp uint64
  rows [..65]Row
  other [..3]Row }
 `

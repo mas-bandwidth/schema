@@ -22,7 +22,7 @@ import (
 // kind and its bound are both live, plus the table the value names.
 const mapFixtureSrc = `package fixture
 
-table ShipConfig
+fixed table ShipConfig
 {
     hull int32
 }
@@ -39,12 +39,12 @@ table Fleet
 // `key` and `value`, under the two constant ids that makes them (§2.8).
 const mapPairSrc = `package fixture
 
-table ShipConfig
+fixed table ShipConfig
 {
     hull int32
 }
 
-table Pair
+fixed table Pair
 {
     key   string(32)
     value ShipConfig
@@ -230,7 +230,7 @@ func TestTheArrayToMapEditWarns(t *testing.T) {
 func TestTheMapShapeCarveOutIsNarrow(t *testing.T) {
 	const scalarArray = `package fixture
 
-table ShipConfig
+fixed table ShipConfig
 {
     hull int32
 }

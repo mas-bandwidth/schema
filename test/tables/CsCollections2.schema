@@ -6,7 +6,7 @@ table Row
     after uint8
 }
 
-table WideNode { value uint128 }
+fixed table WideNode { value uint128 }
 table WideRoot
 {
     nodes []*WideNode
