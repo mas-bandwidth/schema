@@ -28,6 +28,7 @@ static partial class Program
         TestFixedNegativeControl();
         TestFixedLayoutValidation();
         TestFixedHostileBoolCase();
+        TestFixedAbsentOptionalCase();
     }
 
     static void TestFixedFxCase()
@@ -786,4 +787,61 @@ static partial class Program
         Check(savedAgain == resaved.Length, "hostile bool: resave");
         Check(resaved[homingOffset] == 1, "hostile bool: resaved byte is strictly 1, not 0x7F");
     }
+
+    static void TestFixedAbsentOptionalCase()
+    {
+        P3.Chain v = new P3.Chain();
+        P3.Schema.TableReset(v);
+        byte[] absentBytes = Encoding.UTF8.GetBytes("absent");
+        Array.Copy(absentBytes, v.Name, absentBytes.Length);
+        v.NameLength = 6;
+        v.LinkPresent = false;
+        v.Link.Value = 0x5A5A5A;
+        Array.Fill(v.Link.Tag, (byte)0x5A);
+        v.Link.TagLength = 5;
+        Check(v.Link.Tag[0] == 0x5A, "CONTROL: the absent payload really is stained in storage");
+
+        byte[] w = new byte[P3.Schema.ChainFixedMeasure(1)];
+        Check(P3.Schema.ChainFixedSave(v, w) == w.Length, "absent optional: the record saves");
+        int bodyOffset = P3.Schema.TableFixedWire.HeaderBytes + 4 + (int)P3.Schema.ChainFixedLayoutBytes + 8;
+        int bodyBytes = (int)P3.Schema.ChainFixedBodyBytes;
+        Span<byte> body = w.AsSpan(bodyOffset, bodyBytes);
+        Check(body.IndexOf((byte)0x5A) < 0,
+              "ABSENT OPTIONAL: not one byte of the absent payload reached the wire");
+
+        // and the reader reads what the flag says, with the payload at its defaults
+        {
+            P3.Chain back = new P3.Chain();
+            P3.TableReport r = new P3.TableReport();
+            P3.TableFixedEntry[] plan = new P3.TableFixedEntry[1024];
+            Check(P3.Schema.ChainFixedLoad(back, w, plan, r) == 1,
+                  "absent optional: the record reads");
+            Check(!back.LinkPresent, "absent optional: the flag");
+            Check(back.Link.Value == 0 && back.Link.TagLength == 0,
+                  "absent optional: the payload reads as the wire's zeros");
+            Check(r.Clamped == 0 && !r.Malformed && !r.Refused,
+                  "absent optional: a clean read moves no counter");
+        }
+
+        // THE DISCRIMINATING HALF: the same payload, PRESENT. Those bytes do reach
+        // the wire, so the check above is about the flag and not about the writer
+        // never having written a payload.
+        {
+            P3.Chain present = new P3.Chain();
+            P3.Schema.TableReset(present);
+            Array.Copy(absentBytes, present.Name, absentBytes.Length);
+            present.NameLength = 6;
+            present.LinkPresent = true;
+            present.Link.Value = 0x5A5A5A;
+            Array.Fill(present.Link.Tag, (byte)0x5A);
+            present.Link.TagLength = 4;
+            byte[] pw = new byte[P3.Schema.ChainFixedMeasure(1)];
+            Check(P3.Schema.ChainFixedSave(present, pw) == pw.Length,
+                  "absent optional: the present twin saves");
+            Span<byte> pbody = pw.AsSpan(bodyOffset, bodyBytes);
+            Check(pbody.IndexOf((byte)0x5A) >= 0,
+                  "absent optional: the present twin puts the bytes on the wire");
+        }
+    }
 }
+
