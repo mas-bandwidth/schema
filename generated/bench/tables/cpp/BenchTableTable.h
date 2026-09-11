@@ -11102,7 +11102,7 @@ inline void TableMixedFixedClamp( TableMixed & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TableMixedFixedBodyBytes = 1224;
 constexpr int64_t TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes; // the hash and the body
-constexpr uint64_t TableMixedFixedHash = 0xf973c48271efa906ull; // fnv1a64 over the layout and the definitions digest (bill §13)
+constexpr uint64_t TableMixedFixedHash = 0x66b51fa9ec65d701ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -11352,7 +11352,7 @@ constexpr int32_t TableMixedFixedCoverCount = 23;
 // THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
 // the file's header hash up here and never parses a stranger's layout.
 constexpr uint64_t TableMixedFixedLineage[] = {
-    0xf973c48271efa906ull, // identity
+    0x66b51fa9ec65d701ull, // identity
 };
 constexpr int32_t TableMixedFixedLineageCount = 1;
 constexpr int32_t TableMixedFixedFloor = 0;
@@ -11444,7 +11444,7 @@ constexpr uint8_t TableMixedFixedKnown0Layout[] = {
     0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 constexpr TableFixedKnownLayout TableMixedFixedKnown[] = {
-    { 0xf973c48271efa906ull, TableMixedFixedKnown0Layout, 1279, 1232 }, // identity
+    { 0x66b51fa9ec65d701ull, TableMixedFixedKnown0Layout, 1279, 1232 }, // identity
 };
 
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)

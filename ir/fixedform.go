@@ -27,6 +27,7 @@ package ir
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -590,6 +591,17 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 // (bill §13): the facts of §2 that are not layout bytes, in closure order.
 // Layout format is unchanged; the hash moves when a range, a flags bit count,
 // a bits(N), a fixed I/F split, or a reader-side limit does.
+//
+// Byte layout, per field, declared order, depth first; each named type once:
+//
+//	'R'  integer, float or fixed-point range: min then max, each i64 LE
+//	     (a float bound is the IEEE-754 bits of the float64 value)
+//	'B'  bits(N): N as u32 LE
+//	'X'  fixed(I,F) / ufixed(I,F): I u32 LE, F u32 LE, then 1 signed or 0 unsigned
+//	'F'  a flags type: wire bit count as u32 LE, then per flag 'f' and fnv1a64(name) as u64 LE
+//	'L'  a reader-side limit: the limit as u64 LE
+//	     nested table/type: recurse, once per type name
+//	     union: recurse into each arm's payload, in declared order, once per union name
 func TableFixedDefinitionsDigest(st *Struct) []byte {
 	var b []byte
 	seen := map[string]bool{}
@@ -611,10 +623,15 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 	if f == nil {
 		return
 	}
-	if f.HasIntRange {
+	switch {
+	case f.HasIntRange:
 		*b = append(*b, 'R')
 		*b = tableFixedDigestI64(*b, bigInt64(f.IntMin))
 		*b = tableFixedDigestI64(*b, bigInt64(f.IntMax))
+	case f.HasFloatRange:
+		*b = append(*b, 'R')
+		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMin))
+		*b = tableFixedDigestU64(*b, math.Float64bits(f.FMax))
 	}
 	switch f.Type.Kind {
 	case TBits:
@@ -632,6 +649,10 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 	}
 	switch r := f.Type.Ref.(type) {
 	case *Flags:
+		if seen[r.Name] {
+			break
+		}
+		seen[r.Name] = true
 		*b = append(*b, 'F')
 		n := r.WireBits
 		if n == 0 {
@@ -645,6 +666,10 @@ func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
 	case *Struct:
 		tableFixedDigestStruct(r, b, seen)
 	case *Union:
+		if seen[r.Name] {
+			break
+		}
+		seen[r.Name] = true
 		for i := range r.Variants {
 			tableFixedDigestField(r.Variants[i].F, b, seen)
 		}
@@ -674,22 +699,6 @@ func bigInt64(n *big.Int) int64 {
 		return n.Int64()
 	}
 	return 0
-}
-
-// TableFixedFixtureLineage names the older schema files of each properties
-// pair, keyed by the newer file's basename. The VOLD_/numbered filename
-// convention covers most of them; Scalars2 lives in a different directory
-// from Scalars, so it cannot. LOAD looks these up so the newer reader
-// compiles the older file and the older reader given the newer file refuses
-// layout_newer — the reverse of the old contract's both-ways compiled path.
-var TableFixedFixtureLineage = map[string][]string{
-	"FX2.schema":      {"test/tables/FX1.schema"},
-	"P3.schema":       {"test/tables/P1.schema"},
-	"FN2.schema":      {"test/tables/FN1.schema"},
-	"FM2.schema":      {"test/tables/FM1.schema"},
-	"V2.schema":       {"test/tables/V1.schema"},
-	"UT2.schema":      {"test/tables/UT1.schema"},
-	"Scalars2.schema": {"tables/scalars/Scalars.schema"},
 }
 
 // ---------------------------------------------------------------------------

@@ -386,7 +386,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	hash := ir.TableFixedLayoutHash(layout, st)
 	body := ir.TableFixedTypeBytes(st)
 	known := g.lineageEntries(st)
-	floor := lineageFloor(g.unit)
+	floor := g.lineageFloor(st)
 
 	g.pf("// ---- %s, the fixed form ----\n\n", st.Name)
 	g.pf("// MeasureBody IS A CONSTEXPR on this form: the body is the same size for\n")

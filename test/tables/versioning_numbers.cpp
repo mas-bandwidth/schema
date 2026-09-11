@@ -998,7 +998,8 @@ void hash_cases()
     //
     // The file below is the reader's OWN (so its header hash is a hash the
     // lineage knows); each case breaks the layout BYTES and leaves that hash
-    // alone. Today every one of them comes back with its §1.1 name instead.
+    // alone. The seven land layout_malformed, one name for a lie about a
+    // known version.
     {
         vnew_floor::Floored own;
         vnew_floor::FlooredReset( own );

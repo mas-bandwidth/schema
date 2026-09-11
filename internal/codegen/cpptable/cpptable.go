@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -126,9 +127,13 @@ type tableGen struct {
 	// counts. A generated field header carries its ordinal as a literal beside
 	// the id, and the id table answers a repeat from slot[ordinal].
 	idOrdinal map[uint64]int
+	// lock is the unit's schema.lock when it has one (algorithm §5.2 COMPILE).
+	// Lineage and Floor come from it; a unit that was never locked falls back
+	// to fixture peers.
+	lock *lockfile.Unit
 	// lineagePeers are older schema units whose matching fixed tables this
-	// generate COMPILEs known hashes and layout bytes from (algorithm §5.2),
-	// because the lock's lineage is not on the tip yet.
+	// generate COMPILEs known hashes and layout bytes from when the unit has
+	// no lock — the test-only fixture map (VOLD_/VNEW_, numbered pairs).
 	lineagePeers []*ir.Unit
 	// msgDepth is the message codec's nesting depth while it emits: every
 	// loop variable and local a nested payload declares carries the depth as
@@ -1503,10 +1508,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// can name, and the index it takes in the ascending set TableIds's
 	// capacity counts.
 	idOrdinal := wireIdOrdinals(u)
-	peers := loadLineagePeers(u)
+	lock := loadUnitLock(u)
+	peers := loadFixturePeers(u)
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
-			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal, lineagePeers: peers}
+			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal, lock: lock, lineagePeers: peers}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
 		for _, d := range f.Decls {

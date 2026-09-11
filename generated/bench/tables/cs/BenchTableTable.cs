@@ -7984,7 +7984,7 @@ namespace Benchtable
 
         public const long TableMixedFixedBodyBytes = 1224;
         public const long TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes;
-        public const ulong TableMixedFixedHash = 0xf973c48271efa906ul;
+        public const ulong TableMixedFixedHash = 0x66b51fa9ec65d701ul;
 
         public static readonly byte[] TableMixedFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,

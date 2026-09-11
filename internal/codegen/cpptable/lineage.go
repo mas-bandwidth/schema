@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/lockfile"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -27,15 +28,61 @@ type fixedKnown struct {
 
 var numberedSchema = regexp.MustCompile(`^([A-Za-z]+)(\d+)$`)
 
-// loadLineagePeers returns older schema units this generate may COMPILE plans
-// from. Emma's lock lineage is not on the tip; the fixture pairs (VOLD/VNEW,
-// FX1/FX2, the numbered evolution set) sit beside each other, so a NEW
-// generate reads the OLD schema and bakes its hash and layout bytes.
-func loadLineagePeers(u *ir.Unit) []*ir.Unit {
+// fixtureLineage is TEST-ONLY: older schema files of each properties pair
+// that has no schema.lock. Production COMPILE reads lockfile.Lineage.
+// Scalars2 lives in a different directory from Scalars, so the VOLD_/numbered
+// filename convention cannot name it.
+var fixtureLineage = map[string][]string{
+	"FX2.schema":      {"test/tables/FX1.schema"},
+	"P3.schema":       {"test/tables/P1.schema"},
+	"FN2.schema":      {"test/tables/FN1.schema"},
+	"FM2.schema":      {"test/tables/FM1.schema"},
+	"V2.schema":       {"test/tables/V1.schema"},
+	"UT2.schema":      {"test/tables/UT1.schema"},
+	"Scalars2.schema": {"tables/scalars/Scalars.schema"},
+}
+
+// fixtureFloor is TEST-ONLY: the floor the VNEW_floor fixture assumes, because
+// that unit has no schema.lock to retire the oldest entry in. Production
+// COMPILE reads lockfile.Floor.
+var fixtureFloor = map[string]int32{
+	"vnew_floor": 1,
+}
+
+func unitPaths(u *ir.Unit) []string {
+	if u == nil {
+		return nil
+	}
+	var paths []string
+	for _, f := range u.Files {
+		if f != nil && f.Path != "" {
+			paths = append(paths, f.Path)
+		}
+	}
+	return paths
+}
+
+func loadUnitLock(u *ir.Unit) *lockfile.Unit {
+	paths := unitPaths(u)
+	if len(paths) == 0 {
+		return nil
+	}
+	lock, ok, err := lockfile.Open(paths)
+	if err != nil || !ok {
+		return nil
+	}
+	return lock
+}
+
+// loadFixturePeers returns older schema units this generate may COMPILE plans
+// from when the unit has no lock. The VOLD_/VNEW_ pairs, the numbered
+// evolution set, and fixtureLineage sit beside each other, so a NEW generate
+// reads the OLD schema and bakes its hash and layout bytes.
+func loadFixturePeers(u *ir.Unit) []*ir.Unit {
 	if u == nil || len(u.Files) == 0 || u.Files[0].Path == "" {
 		return nil
 	}
-	paths := lineagePeerPaths(u.Files[0].Path)
+	paths := fixturePeerPaths(u.Files[0].Path)
 	if len(paths) == 0 {
 		return nil
 	}
@@ -50,7 +97,7 @@ func loadLineagePeers(u *ir.Unit) []*ir.Unit {
 	return out
 }
 
-func lineagePeerPaths(schemaPath string) []string {
+func fixturePeerPaths(schemaPath string) []string {
 	dir := filepath.Dir(schemaPath)
 	base := strings.TrimSuffix(filepath.Base(schemaPath), ".schema")
 	seen := map[string]bool{}
@@ -86,7 +133,7 @@ func lineagePeerPaths(schemaPath string) []string {
 		}
 	}
 	if root := repoRoot(schemaPath); root != "" {
-		for _, rel := range ir.TableFixedFixtureLineage[filepath.Base(schemaPath)] {
+		for _, rel := range fixtureLineage[filepath.Base(schemaPath)] {
 			cand := filepath.Join(root, rel)
 			if seen[cand] {
 				continue
@@ -175,28 +222,42 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 	want := st.WireName()
 	var out []fixedKnown
 	seen := map[uint64]bool{}
-	add := func(u *ir.Unit, src *ir.Struct, note string) {
+	add := func(hash uint64, layout []byte, recordBytes int64, note string) {
+		if seen[hash] {
+			return
+		}
+		seen[hash] = true
+		out = append(out, fixedKnown{
+			hash:        hash,
+			layout:      layout,
+			recordBytes: recordBytes,
+			note:        note,
+		})
+	}
+	idLayout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+	idHash := ir.TableFixedLayoutHash(idLayout, st)
+	if g.lock != nil {
+		for _, e := range lockfile.Lineage(g.lock, want) {
+			note := "lock"
+			if e.Wire == idHash {
+				note = "identity"
+			}
+			add(e.Wire, e.Layout, 8+e.Record, note)
+		}
+	}
+	addFromUnit := func(u *ir.Unit, src *ir.Struct, note string) {
 		if u == nil || src == nil || !ir.TableFixedEmitted(u, src) {
 			return
 		}
 		entries := ir.TableFixedWalkRoot(src)
 		layout := ir.TableFixedLayoutBytes(entries)
 		h := ir.TableFixedLayoutHash(layout, src)
-		if seen[h] {
-			return
-		}
-		seen[h] = true
-		out = append(out, fixedKnown{
-			hash:        h,
-			layout:      layout,
-			recordBytes: 8 + ir.TableFixedTypeBytes(src),
-			note:        note,
-		})
+		add(h, layout, 8+ir.TableFixedTypeBytes(src), note)
 	}
 	for _, peer := range g.lineagePeers {
-		add(peer, peerTable(peer, want), peer.Package)
+		addFromUnit(peer, peerTable(peer, want), peer.Package)
 	}
-	add(g.unit, st, "identity")
+	addFromUnit(g.unit, st, "identity")
 	return out
 }
 
@@ -212,9 +273,16 @@ func peerTable(u *ir.Unit, wireName string) *ir.Struct {
 	return nil
 }
 
-func lineageFloor(u *ir.Unit) int32 {
-	if u != nil && u.Package == "vnew_floor" {
-		return 1
+func (g *tableGen) lineageFloor(st *ir.Struct) int32 {
+	if g.lock != nil && st != nil {
+		if lin := lockfile.Lineage(g.lock, st.WireName()); len(lin) > 0 {
+			return int32(lockfile.Floor(g.lock, st.WireName()))
+		}
+	}
+	if g.unit != nil {
+		if n, ok := fixtureFloor[g.unit.Package]; ok {
+			return n
+		}
 	}
 	return 0
 }
