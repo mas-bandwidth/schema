@@ -66,12 +66,41 @@ type cVersionRow struct {
 	widens bool
 	// check is C asserting the landed values, over `back`.
 	check string
+	// poison writes 0x5A over every byte of `back` AFTER the reset and BEFORE
+	// the load (§5.7, and the C++ reference's own harness does it). A row that
+	// asserts an ELEMENT DEFAULT cannot prove the prefill WRITES unless the
+	// destination held something else first: against zeroed storage "the slot
+	// reads 7" and "the slot was never touched" are the same sentence when the
+	// default is 0, and for a nonzero default they are the same sentence the
+	// day the prefill's ranges are wrong and the zeros are the memset's. 0x5A
+	// is neither a default nor a written value, so every byte the read owes is
+	// a byte that must CHANGE.
+	poison bool
 }
 
 var cVersionRows = []cVersionRow{
 	{row: "array_bounded_grow"},
 	{row: "array_elem_widen", widens: true},
-	{row: "array_fixed_grow"},
+	{row: "array_fixed_grow", poison: true, check: `
+    /* THE GROWN SLOTS ARE THE ELEMENT'S DECLARED DEFAULTS, not zeros and not the
+       0x5A the storage held a line ago: [4]Vec -> [8]Vec, so slots 4..7 are
+       §3.4's PREFILL and the law reads x = 7, y = 9 (the row's own comment). */
+    {
+        int k;
+        for ( k = 4; k < 8; ++k )
+        {
+            if ( back[0].vals[k].x != 7 || back[0].vals[k].y != 9 )
+                { printf( "the grown slot %d is not the ELEMENT'S defaults: x=%d y=%d\n", k, back[0].vals[k].x, back[0].vals[k].y ); return 1; }
+        }
+        /* and the slots THE WRITER carried were landed by the plan, over the poison */
+        for ( k = 0; k < 4; ++k )
+        {
+            if ( back[0].vals[k].x == 0x5A5A5A5A || back[0].vals[k].y == 0x5A5A5A5A )
+                { printf( "the old writer's slot %d kept the poison: the plan landed nothing there\n", k ); return 1; }
+        }
+    }
+    if ( back[0].lead == 0x5A5A5A5Au || back[0].trail == 0x5A5A5A5Au )
+        { printf( "a bracketing field kept the poison: lead=%u trail=%u\n", back[0].lead, back[0].trail ); return 1; }`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
 	{row: "constant_grow"},
@@ -98,7 +127,20 @@ var cVersionRows = []cVersionRow{
             if ( back[k].lead != 0xAAAAAAAAu || back[k].trail != 0xBBBBBBBBu ) { printf( "record %d moved a neighbour\n", k ); return 1; }
         }
     }`},
-	{row: "keyed_array_enum_append"},
+	{row: "keyed_array_enum_append", poison: true, check: `
+    /* ONE VARIANT APPENDED TO THE KEY, so the array gains its last slot and that
+       slot is §3.4's PREFILL: Qty.n = 7, over 0x5A and not over zeros. */
+    if ( back[0].slots[TIER_MAX - 1].n != 7 )
+        { printf( "the appended key's slot is not Qty's declared default: %d\n", back[0].slots[TIER_MAX - 1].n ); return 1; }
+    {
+        int k;
+        for ( k = 0; k < TIER_MAX - 1; ++k )
+        {
+            if ( back[0].slots[k].n == 0x5A5A5A5A )
+                { printf( "the old writer's slot %d kept the poison: the plan landed nothing there\n", k ); return 1; }
+        }
+    }
+    if ( back[0].seq == 0x5A5A5A5A ) { printf( "seq kept the poison\n" ); return 1; }`},
 	{row: "nested_append"},
 	{row: "optional_add"},
 	{row: "range_widen"},
@@ -131,8 +173,17 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
     %s
     %s
 `, counters, r.check)
+			poison := ""
+			if r.poison {
+				// §5.7'S 0x5A, and it goes in AFTER the reset: the harness
+				// resets `back` so a refusal's "wrote not one byte" check has
+				// something to compare against, and this row's claim is the
+				// opposite one — that the prefill WRITES — so the poison has to
+				// survive to the load.
+				poison = `    memset( back, 0x5A, sizeof( back ) ); /* §5.7: every byte the read owes must CHANGE */`
+			}
 			out, err := cRunVersionProbe(t, newer, []string{older}, 0,
-				filepath.Join(corpus, "old_"+r.row+".bin"), body)
+				filepath.Join(corpus, "old_"+r.row+".bin"), body, poison)
 			if err != nil {
 				t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
 			}
@@ -169,7 +220,7 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
     if ( memcmp( &back[0], &fresh, sizeof( fresh ) ) != 0 ) { printf( "REFUSE wrote destination bytes\n" ); return 1; }
 `
 			}
-			out, err := cRunVersionProbe(t, older, nil, 0, file, body)
+			out, err := cRunVersionProbe(t, older, nil, 0, file, body, "")
 			if err != nil {
 				t.Fatalf("OLD-REFUSES-NEW %s: %v\n%s", r.row, err, out)
 			}
@@ -197,7 +248,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		// Nothing retired: the OLDEST file is at the floor and it reads.
 		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 0, oldFile, `
     if ( n < 1 || r.reason != 0 || r.malformed ) { printf( "a file AT the floor must read: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
-`)
+`, "")
 		if err != nil {
 			t.Fatalf("floor_at: %v\n%s", err, out)
 		}
@@ -210,7 +261,7 @@ func TestFixedVersioningFloor(t *testing.T) {
     if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED )
         { printf( "a file below the floor owes layout_unsupported: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
     if ( r.malformed || r.widened != 0 || r.unknown != 0 || r.clamped != 0 ) { printf( "REFUSE is total\n" ); return 1; }
-`)
+`, "")
 		if err != nil {
 			t.Fatalf("floor_below: %v\n%s", err, out)
 		}
@@ -221,7 +272,7 @@ func TestFixedVersioningFloor(t *testing.T) {
 		out, err := cRunVersionProbe(t, newer, []string{older, mid}, 2, midFile, `
     if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_UNSUPPORTED )
         { printf( "the floor raised by one: yesterday's file must refuse: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
-`)
+`, "")
 		if err != nil {
 			t.Fatalf("floor_raise_live: %v\n%s", err, out)
 		}
@@ -243,7 +294,7 @@ func TestFixedVersioningHash(t *testing.T) {
 			filepath.Join(corpus, "old_field_append.bin"), `
     if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_NEWER || r.layout_hash != 0xDEADBEEFCAFEF00Dull || r.malformed )
         { printf( "hash_unknown: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
-`, `
+`, "", `
     memcpy( data + kTableFixedHashAt, &(uint64_t){ 0xDEADBEEFCAFEF00Dull }, 8 );
 `)
 		if err != nil {
@@ -261,7 +312,7 @@ func TestFixedVersioningHash(t *testing.T) {
 			filepath.Join(corpus, "old_field_append.bin"), `
     if ( n != -1 || r.reason != SCHEMA_TABLE_LAYOUT_MALFORMED || r.malformed )
         { printf( "hash_known_bytes_differ: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
-`, `
+`, "", `
     data[kTableFixedHeaderBytes + 4] ^= 0xFF;
 `)
 		if err != nil {
@@ -276,7 +327,7 @@ func TestFixedVersioningHash(t *testing.T) {
 			filepath.Join(corpus, "new_field_append.bin"), `
     if ( n < 1 || r.reason != 0 || r.malformed ) { printf( "hash_identity: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
     if ( back[0].w != 777 ) { printf( "the identity plan lost a value: %d\n", back[0].w ); return 1; }
-`)
+`, "")
 		if err != nil {
 			t.Fatalf("hash_identity: %v\n%s", err, out)
 		}
@@ -301,7 +352,7 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 				filepath.Join(corpus, name), `
     if ( n < 1 || r.reason != 0 || r.malformed )
         { printf( "both pre-merge files read on the merged build: n=%lld reason=%d\n", (long long) n, r.reason ); return 1; }
-`)
+`, "")
 			if err != nil {
 				t.Fatalf("lineage_merge %s: %v\n%s", name, err, out)
 			}
@@ -383,8 +434,10 @@ func cFixedRootName(t *testing.T, u *ir.Unit) string {
 // locked entries handed to it as its lineage — oldest first, the reader's own
 // layout last — marks the first `retire` entries retired, writes a probe main
 // that loads `file`, compiles the pair and runs it. `pre` is C that may damage
-// the bytes before the load (the hash cases).
-func cRunVersionProbe(t *testing.T, reader string, older []string, retire int, file, body string, pre ...string) ([]byte, error) {
+// the bytes before the load (the hash cases), and `poison` is C that runs AFTER
+// the reset and immediately before the load — §5.7's 0x5A over the destination,
+// for the rows whose claim is that the PREFILL WRITES.
+func cRunVersionProbe(t *testing.T, reader string, older []string, retire int, file, body, poison string, pre ...string) ([]byte, error) {
 	t.Helper()
 	u := cUnitOf(t, reader)
 	lineage := map[string][]FixedLineageEntry{}
@@ -464,13 +517,14 @@ int main( void )
     memset( back, 0, sizeof( back ) );
     %s( &fresh );
     for ( k = 0; k < 8; ++k ) { %s( &back[k] ); }
+%s
     memset( &r, 0, sizeof( r ) );
     n = %s( back, 8, data, len, plan, 4096, NULL, &r );
     (void) want; (void) fresh;
 %s
     return 0;
 }
-`, header, file, root, root, damage, snake+"_reset", snake+"_reset", snake+"_fixed_load", body)
+`, header, file, root, root, damage, snake+"_reset", snake+"_reset", poison, snake+"_fixed_load", body)
 	if err := os.WriteFile(filepath.Join(dir, "probe.c"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
