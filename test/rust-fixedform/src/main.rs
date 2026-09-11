@@ -1610,6 +1610,88 @@ fn the_write_slack() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// THE COUNT CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5).
+//
+// A counted array's count is four bytes a stranger wrote. Below zero it is
+// zero and past the reader's own bound in elements, it is the bound, and
+// either way COUNT clamped once for the field.
+//
+// THE FORGERY IS IN THE BYTES, not through the writer: write-side bound checks
+// are DEBUG ONLY by rule and clamp nothing, so a count of -1 is a thing only
+// the wire can say.
+fn the_count_clamp() {
+    // Create a clean record first
+    let mut one = tblfx1::FxRootRow::default();
+    one.marks[0] = 7;
+    one.marks[1] = 8;
+    one.marks_count = 2;
+    let mut file = vec![0u8; tblfx1::fx_root_fixed_measure(1)];
+    check(
+        tblfx1::fx_root_fixed_save(&[one], &mut file) == Some(file.len()),
+        "count clamp: the record saves",
+    );
+
+    // The count offset is at body 34 (from the record's scatter code).
+    // The bound is 4 elements.
+    let body_at = records_at(&file) + 8;
+    let count_offset = body_at + 34;
+    let bound: i32 = 4;
+
+    // C1: A count below zero (-1 as 0xFFFFFFFF)
+    file[count_offset..count_offset + 4].copy_from_slice(&0xFFFFFFFFu32.to_le_bytes());
+    let mut back = [tblfx1::FxRootRow::default(); 1];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "C1: a forged count of -1 still reads");
+    check(
+        back[0].marks_count == 0,
+        "C1: a count below zero clamps to ZERO",
+    );
+    check(
+        report.clamped == 1,
+        "C1: and counts exactly one clamp",
+    );
+    check(
+        !report.malformed && !report.refused,
+        "C1: a clamp is neither malformed nor a refusal",
+    );
+
+    // C2: A count past the reader's own bound (Max+1)
+    file[count_offset..count_offset + 4].copy_from_slice(&((bound + 1) as u32).to_le_bytes());
+    let mut back = [tblfx1::FxRootRow::default(); 1];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "C2: a forged count of Max+1 still reads");
+    check(
+        back[0].marks_count == bound,
+        "C2: a count past Max clamps to MAX, in elements",
+    );
+    check(
+        report.clamped == 1,
+        "C2: and counts exactly one clamp",
+    );
+
+    // CONTROL: A count of exactly Max is in range
+    file[count_offset..count_offset + 4].copy_from_slice(&(bound as u32).to_le_bytes());
+    let mut back = [tblfx1::FxRootRow::default(); 1];
+    let mut plan = [tblfx1::TableFixedEntry::default(); 512];
+    let mut remap = [0u16; 512];
+    let mut report = tblfx1::TableFixedReport::default();
+    let n = tblfx1::fx_root_fixed_load(&mut back, &file, &mut plan, &mut remap, &mut report);
+    check(n == Some(1), "count clamp: a count of exactly Max reads");
+    check(
+        back[0].marks_count == bound && report.clamped == 0,
+        "CONTROL: a count of exactly Max is in range and counts NOTHING",
+    );
+}
+
+// ---------------------------------------------------------------------------
+
 fn main() {
     let mut args = std::env::args().skip(1);
     let dir = match args.next() {
@@ -1642,6 +1724,7 @@ fn main() {
     the_guard_is_the_whole_tag();
     the_declared_range();
     the_text_content_rule(&dir);
+    the_count_clamp();
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures != 0 {
         println!("rust fixed form: {failures} FAILED");
