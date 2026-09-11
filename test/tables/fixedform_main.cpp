@@ -1512,6 +1512,114 @@ static void count_clamp_case()
 
 // ---------------------------------------------------------------------------
 
+// W6: THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, fix 6).
+// Every UNGUARDED entry first, then every guarded one, and the plan states
+// where the second half starts — `split` is the NUMBER OF UNGUARDED ENTRIES and
+// not a count of guarded ones. The entries that are nearly all of a plan then
+// never test a guard, which is the measurement the requirement was bought with
+// (63.5 ns against 55).
+//
+// AND NO COALESCED RUN CROSSES THE SPLIT: merging is inside each half only, or
+// an entry that must run under a tag would ride inside one that always runs.
+// The pair at the boundary is the whole of what that forbids, so it is the pair
+// this case tests.
+static void partition_is_held( const tblfx1::TableFixedEntry * plan, int32_t count, int32_t split, const char * who )
+{
+    char what[256];
+    std::snprintf( what, sizeof( what ), "W6: %s — split is in range", who );
+    check( split >= 0 && split <= count, what );
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        const bool guarded = plan[i].guard != tblfx1::kTableFixedNoGuard;
+        if ( i < split && guarded )
+        {
+            std::snprintf( what, sizeof( what ), "W6: %s — entry %d is below the split and carries a GUARD", who, (int) i );
+            check( false, what );
+        }
+        if ( i >= split && !guarded )
+        {
+            std::snprintf( what, sizeof( what ), "W6: %s — entry %d is above the split and carries NO guard", who, (int) i );
+            check( false, what );
+        }
+    }
+    // THE BOUNDARY PAIR: had the coalescer merged across the split, the entry
+    // below it and the entry at it would be one entry. They are two, and this
+    // says why they have to be.
+    if ( split > 0 && split < count )
+    {
+        const tblfx1::TableFixedEntry & a = plan[split - 1];
+        const tblfx1::TableFixedEntry & b = plan[split];
+        const bool mergeable = a.op == tblfx1::kTableFixedCopy && b.op == tblfx1::kTableFixedCopy &&
+                               a.guard == b.guard && a.arg == b.arg &&
+                               a.src + a.size == b.src && a.dst + b.size == b.dst;
+        std::snprintf( what, sizeof( what ), "W6: %s — the pair at the split was not coalesced across it", who );
+        check( !mergeable, what );
+    }
+}
+
+static void plan_partition_case()
+{
+    // A PLAN WITH BOTH HALVES: UT1 carries a union, so its arms' entries are
+    // guarded and the scalars around them are not.
+    partition_is_held( (const tblfx1::TableFixedEntry *) (const void *) tblut1::UtRootFixedPlan,
+                       tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded, "UT1 identity plan" );
+    check( tblut1::UtRootFixedPlanGuarded < tblut1::UtRootFixedPlanCount,
+           "W6: UT1's identity plan really has a guarded half, so the case is not vacuous" );
+    check( tblut1::UtRootFixedPlanGuarded > 0, "W6: and an unguarded one" );
+    partition_is_held( (const tblfx1::TableFixedEntry *) (const void *) tblut2::UtRootFixedPlan,
+                       tblut2::UtRootFixedPlanCount, tblut2::UtRootFixedPlanGuarded, "UT2 identity plan" );
+    partition_is_held( (const tblfx1::TableFixedEntry *) (const void *) tblv1::CfgFixedPlan,
+                       tblv1::CfgFixedPlanCount, tblv1::CfgFixedPlanGuarded, "V1 identity plan" );
+
+    // A PLAN WITH NO GUARDED HALF AT ALL: the split is then the whole plan, and
+    // `split` being a count of UNGUARDED entries rather than of guarded ones is
+    // what makes that come out right.
+    partition_is_held( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
+                       "FX1 identity plan" );
+    check( tblfx1::FxRootFixedPlanGuarded == tblfx1::FxRootFixedPlanCount,
+           "W6: a plan with no guarded entry has its split at the END, not at zero" );
+
+    // AND A COMPILED PLAN, which is the half an identity plan cannot speak for:
+    // the walk runs TWICE, unguarded first, and each pass keeps its own half.
+    // The caller never sees the split, so the property is read off the plan
+    // itself — once a guarded entry has been seen, no unguarded entry follows.
+    {
+        tblut1::UtRoot one;
+        tblut1::UtRootReset( one );
+        one.head = 42; one.tail = 99;
+        one.pick.type = tblut1::PickType::B;
+        std::strcpy( one.pick.b.label, "seven77" );
+        one.pick.b.label_length = 7;
+        one.pick.b.m = 1234;
+        std::vector<uint8_t> w( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+        check( tblut1::UtRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W6: UT1 saves" );
+
+        tblut2::UtRoot back;
+        tblut2::TableReport r;
+        std::vector<tblut2::TableFixedEntry> plan( 1024 );
+        check( tblut2::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "W6: UT2 reads a UT1 record through a COMPILED plan" );
+        int32_t seen_guarded = -1;
+        int32_t guarded_count = 0;
+        for ( int32_t i = 0; i < (int32_t) plan.size(); ++i )
+        {
+            if ( plan[i].op == 0 && plan[i].size == 0 && plan[i].src == 0 && plan[i].dst == 0 ) { break; }
+            if ( plan[i].guard != tblut2::kTableFixedNoGuard )
+            {
+                if ( seen_guarded < 0 ) { seen_guarded = i; }
+                guarded_count++;
+            }
+            else
+            {
+                check( seen_guarded < 0, "W6: a COMPILED plan puts every unguarded entry in front of every guarded one" );
+            }
+        }
+        check( guarded_count > 0, "W6: the compiled plan really has guarded entries, so the case is not vacuous" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -1532,6 +1640,7 @@ int main()
     layout_validation();
     record_bound_case();
     count_clamp_case();
+    plan_partition_case();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
     if ( known_red_hits != 0 )
