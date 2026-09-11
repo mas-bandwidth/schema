@@ -374,7 +374,20 @@ fixed table LiveRoot
 // the union's SECOND arm; FU2 appends `extra` so a read of those bytes is a
 // COMPILED plan. Both reads go through FuRootFixed.load — the same one-path
 // load the rest of this form uses. The compiled read has to see "hello".
+// RETIRED BY §5.6, AND SKIPPED BY NAME RATHER THAN DELETED (§5.7 step 5): this
+// is the Java leg's twin of the pilot's TestFixedFormArgLaneTextUnderSecondArm —
+// it asserts that a DIFFERENT hash compiles a plan from the stranger's layout
+// and reads it, which is the forward read "the fixed table reads backward, never
+// forward" removed. Under §5.3 the FU1 file comes back `layout_newer` on an FU2
+// build that never locked it. THE COVERAGE IS OWED as a LINEAGE PAIR (FU1/FU2,
+// one of §5.7's seven pairs) in internal/codegen/javatable/fixedversioning_test.go,
+// where the newer build is given the older layout in its lineage; the arm's
+// guard and flavour lanes are watched meanwhile by
+// `make tables-java-fixedform-arm-negative-control`, whose case reads a record
+// through parse/compile/run directly and not through the load path.
 func TestFixedFormFU1FU2(t *testing.T) {
+	t.Skip("retired by §5.6: a compiled read of a stranger's layout; owed as the FU1/FU2 lineage pair in fixedversioning_test.go")
+
 	fu1Files, err := Generate(schemaUnit(t, "FU1.schema"))
 	if err != nil {
 		t.Fatal(err)

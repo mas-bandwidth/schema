@@ -173,6 +173,56 @@ func fieldTypeName(f *ir.Field) string { return f.Type.Name }
 
 func javaPackageOf(u *ir.Unit) string { return u.Package }
 
+// wasNames is the `was =` map of a build: the NEW spelling to the OLD one, for
+// every field of every struct the unit declares. A rename THROUGH `was` is not a
+// version at all — the id is the hash of the WIRE name and `was` keeps the old
+// one, so the layout bytes do not move (§5.1) — but the leg's VALUE surface is
+// spelled with the NEW name, so a comparison across two generations pairs the
+// two spellings through this map or it pairs nothing.
+func wasNames(u *ir.Unit) map[string]string {
+	out := map[string]string{}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			collectWas(st, out)
+		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok {
+				collectWas(st, out)
+			}
+		}
+	}
+	return out
+}
+
+func collectWas(st *ir.Struct, out map[string]string) {
+	for _, f := range st.Fields {
+		if f.WasName != "" {
+			out[f.Name] = f.WasName
+		}
+	}
+}
+
+// wireName translates a dotted field path through the `was =` map, segment by
+// segment: the name the WRITER knew is the one the older build's dump is keyed
+// by.
+func wireName(path string, was map[string]string) string {
+	if len(was) == 0 {
+		return path
+	}
+	parts := strings.Split(path, ".")
+	for i, p := range parts {
+		name, idx, hasIdx := strings.Cut(p, "[")
+		if old, ok := was[name]; ok {
+			if hasIdx {
+				parts[i] = old + "[" + idx
+			} else {
+				parts[i] = old
+			}
+		}
+	}
+	return strings.Join(parts, ".")
+}
+
 // probeSource is the generated probe: a reflection dump of the destination
 // value, the report, and nothing else. One per row per column (§5.9 #18).
 //
@@ -531,7 +581,7 @@ func TestFixedVersioningRows(t *testing.T) {
 				t.Errorf("NEW-READS-OLD: n=%d refused=%v reason=%s malformed=%v, want %d records and no refusal",
 					got.n, got.refused, got.reason, got.malformed, oracle.n)
 			}
-			assertValuesLand(t, oracle, got)
+			assertValuesLand(t, oracle, got, wasNames(versioningSchemaUnit(t, "VNEW_"+row.name+".schema")))
 			assertCounters(t, "NEW-READS-OLD", row, got)
 
 			// OLD-REFUSES-NEW: `layout_newer`, the FILE's hash and nothing
@@ -568,8 +618,19 @@ func TestFixedVersioningRows(t *testing.T) {
 // assertValuesLand is §5.7's NEW-READS-OLD column: every field the two builds
 // share lands EXACTLY, and every field only the newer build names comes back
 // its declared default.
-func assertValuesLand(t *testing.T, oracle, got probeRun) {
+func assertValuesLand(t *testing.T, oracle, got probeRun, was map[string]string) {
 	t.Helper()
+	// THE NEWER BUILD'S FIELD NAMES, TRANSLATED THROUGH `was =` to the names the
+	// writer knew: one field, two spellings, one wire id.
+	mine := map[string]string{}
+	for k, v := range got.value {
+		mine[wireName(k, was)] = v
+	}
+	fresh := map[string]string{}
+	for k, v := range got.fresh {
+		fresh[wireName(k, was)] = v
+	}
+	got = probeRun{n: got.n, fresh: fresh, value: mine}
 	for k, want := range oracle.value {
 		have, ok := got.value[k]
 		if !ok {
