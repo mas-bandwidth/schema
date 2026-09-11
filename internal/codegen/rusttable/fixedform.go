@@ -899,7 +899,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	// layout LAST (§5.9 #2, so the identity plan is always reachable), and the
 	// floor where the operator's retired mark cuts. A unit with no lock hands
 	// nothing and its lineage is that one entry.
-	own := FixedLineageEntry{Wire: hash, Layout: block, Record: int64(8 + body)}
+	own := FixedLineageEntry{Wire: hash, Layout: block, Record: 8 + body}
 	lineage, floor := g.fixedLineage(st, own)
 	ownIndex := len(lineage) - 1
 	for i, e := range lineage {
@@ -949,10 +949,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("pub const %s_FIXED_OWN: usize = %d;\n\n", up, ownIndex)
 
 	if len(lineage) > 1 {
-		planCap := int(body) + 2*len(entries) + 256
-		if planCap < 512 {
-			planCap = 512
-		}
+		planCap := max(int(body)+2*len(entries)+256, 512)
 		remapCap := 1024 + 32*len(entries)
 		g.pf("/// THE PLAN'S DECLARED CAPACITY, per lineage entry. The build sizes the\n")
 		g.pf("/// storage BY CONSTRUCTION and the capacity is REAL: an entry whose plan\n")

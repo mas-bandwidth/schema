@@ -50,7 +50,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 		return FixedLineageEntry{
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
-			Record: int64(8 + ir.TableFixedTypeBytes(st)),
+			Record: 8 + ir.TableFixedTypeBytes(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false
