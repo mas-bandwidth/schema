@@ -3184,7 +3184,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             if ( d.counted )
             {
                 TableFixedEntry e;
-                e.src = their_at; e.dst = aux_at; e.size = my_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
+                e.src = their_at; e.dst = aux_at; e.size = their_n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
                 TableFixedPush( c, e );
             }
             const uint32_t n = their_n < my_n ? their_n : my_n;

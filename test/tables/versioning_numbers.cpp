@@ -214,6 +214,38 @@ void array_bounded_grow_case()
     OLD_REFUSES_NEW( vold_array_bounded_grow, ArrayBoundedGrow, "array_bounded_grow", nb );
 }
 
+// A forged count of 7 in the OLD file (writer declared [..4]), read by the
+// NEW reader ([..8]). The plan carries the WRITER's bound (bill §12.5): clamp
+// to 4, COUNT clamped, never land a count the old writer could not have written.
+void array_bounded_grow_hostile_case()
+{
+    vold_array_bounded_grow::ArrayBoundedGrow old;
+    vold_array_bounded_grow::ArrayBoundedGrowReset( old );
+    old.lead = 0xAAAAAAAAu;
+    old.vals_count = 4;
+    for ( int i = 0; i < 4; ++i ) { old.vals[i] = 1000 + i; }
+    old.trail = 0xBBBBBBBBu;
+    std::vector<uint8_t> ob = one( old, vold_array_bounded_grow::ArrayBoundedGrowFixedMeasure,
+                                   vold_array_bounded_grow::ArrayBoundedGrowFixedSave, "array_bounded_grow_hostile: OLD save" );
+    const size_t rec = (size_t) vold_array_bounded_grow::kTableFixedHeaderBytes + 4
+        + (size_t) vold_array_bounded_grow::ArrayBoundedGrowFixedLayoutBytes;
+    vold_array_bounded_grow::TableFixedPut32( ob.data() + rec + 8 + 4, 7u );
+    {
+        vnew_array_bounded_grow::ArrayBoundedGrow back;
+        vnew_array_bounded_grow::ArrayBoundedGrowReset( back );
+        vnew_array_bounded_grow::TableReport r;
+        std::vector<vnew_array_bounded_grow::TableFixedEntry> plan( 4096 );
+        check( vnew_array_bounded_grow::ArrayBoundedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
+                                                                   plan.data(), 4096, NULL, &r ) == 1,
+               "array_bounded_grow_hostile: the forged file reads" );
+        check( back.vals_count == 4,
+               "array_bounded_grow_hostile: a count of 7 clamps to the WRITER's [..4], not the reader's [..8]" );
+        check( r.clamped >= 1, "array_bounded_grow_hostile: COUNT clamped" );
+        check( back.lead == 0xAAAAAAAAu && back.trail == 0xBBBBBBBBu,
+               "array_bounded_grow_hostile: lead and trail stand" );
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 2. array_fixed_grow — [4]Vec -> [8]Vec, and the element's DEFAULTS ARE NONZERO
 //
@@ -1118,6 +1150,7 @@ int versioning_numbers_cases()
 {
     std::printf( "\n=== the versioning law, the NUMBERS (docs/FIXED-FORM-VERSIONING-TESTS.md) ===\n" );
     array_bounded_grow_case();
+    array_bounded_grow_hostile_case();
     array_fixed_grow_case();
     array_elem_widen_case();
     constant_grow_case();

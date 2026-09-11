@@ -237,6 +237,8 @@ func stripOwedC(s string) string {
 	s = reOwedKnownLayout.ReplaceAllString(s, "")
 	// owed 6: arg is full width (bill §12.7). C still has a byte lane.
 	s = strings.ReplaceAll(s, "uint64_t arg", "uint8_t arg")
+	// owed 5 / bill §12.5: count op bound is the WRITER's; C still uses the reader's.
+	s = strings.ReplaceAll(s, "e.size = their_n;", "e.size = my_n;")
 	s = strings.ReplaceAll(s, "TableFixedTagAt( src, p.guard, p.argw ) != p.arg", "TableFixedTagAt( src, p.guard, p.argw ) != (uint64_t) p.arg")
 	// owed 13: compiled remap COUNT clamped on a forged ordinal; C counts nothing.
 	s = reOwedOrdinalCount.ReplaceAllString(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }")
