@@ -311,7 +311,7 @@ const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
 // bytes per wire byte where base64 is four per three. The reader's OWN
 // layout is the array above, not a second copy.
 const FixedTableFixedKnown = [
-  new TableFixedKnownLayout(0x8ceacd29, 0x98d3af4e, FixedTableFixedLayout, 1279, 1244),
+  new TableFixedKnownLayout(0x195f9ec9, 0x6237c1dc, FixedTableFixedLayout, 1279, 1244),
 ];
 
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
