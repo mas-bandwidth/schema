@@ -70,12 +70,29 @@ writer's own variant count, a tag past the writer's own arm count, a bool byte t
 remain the reader's straight-line validation on every build, and they still land `None` or clamp and
 `COUNT clamped`, because they are a lie about the writer's own layout, not a version.
 
-## 6. What holds it up: the baseline
+## 6. The monotone law, guaranteed by the lock
 
-`tables.baseline` already refuses the edits the wire cannot see. It gains the monotone law for definitions:
-a bound or size that shrinks, a variant or arm removed (deprecate instead), a range that narrows, an int or
-float that narrows, a kind that changes. A schema that breaks the law fails at commit, so no reader ever
-meets a pair that is neither older nor newer.
+Glenn: "how do we guarantee ONLY widening is allowed (enums can have entries added at end, no shuffling of
+entries for meaning, new entries at end...)". The lock records the last shape and the baseline refuses any
+commit that is not a widening of it. Per definition:
+
+| definition | the lock records | the baseline refuses |
+|---|---|---|
+| enum, union | the variants or arms IN ORDER, each with its name hash | insert not at the end, reorder, rename, remove; deprecate is allowed and keeps its place |
+| array bound, string or `bytes` size, a constant behind either | the number | a smaller number |
+| ranged scalar | both ends | either end moving inward |
+| int, float, ordinal or tag width | the width and signedness | narrower, or the other ladder |
+| a field's kind | the kind | a different kind |
+| a table's fields | the list | anything but append and deprecate (today's law) |
+
+The compiler refuses to generate against a lock the schema contradicts; CI runs the same check; the refusal
+names the definition and the rule. So the law holds on every machine, and no reader ever meets a pair that
+is neither older nor newer.
+
+**What appending buys on the wire.** With variants and arms append-only, the writer's ordinal IS the
+reader's ordinal: no remap table, no lookup per record; an enum lands as a `copy`, or a `widen` when its
+width grew. The plan-time check for an enum is "the writer's list is a prefix of mine", one comparison per
+enum, and the same for a union's arms. Faster than the remap by name, and nothing to get wrong.
 
 ## 6a. Versions: the hash is the version, the lock holds the law
 
