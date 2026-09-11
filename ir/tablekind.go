@@ -359,32 +359,6 @@ func TableTypeSpelling(f *Field) string {
 	return "?"
 }
 
-// ArmFixedWidth is the payload width a union ARM's `L` must equal, or 0 where
-// the arm's payload is length-shaped (docs/SPEC-TABLES.md §2.6, §3). AN ARM
-// CARRIES NO KIND BYTE, so this is the whole of what a reader can check about
-// an arm's declared type: a length that is not this width is a KIND MISMATCH,
-// and an arm retyped under one width is §4.1's silent class, which §18's
-// baseline refuses.
-func ArmFixedWidth(f *Field) int {
-	if f == nil || f.Array != ArrayNone || f.Type.Kind == TString || f.Type.Kind == TWString || f.Type.Kind == TBytes {
-		return 0
-	}
-	if f.Type.Pointer {
-		return 4 // a node index (§3.1)
-	}
-	kind := TableScalarKind(f)
-	switch kind {
-	case TableKindTable, TableKindUnion:
-		return 0
-	}
-	if f.Type.Kind == TNamed {
-		if _, isEnum := f.Type.Ref.(*Enum); isEnum {
-			return 2 // the u16 hash of the variant's name (§3)
-		}
-	}
-	return TableKindWidth(kind)
-}
-
 func itoa(v int) string { return big.NewInt(int64(v)).String() }
 
 func itoa64(v int64) string { return big.NewInt(v).String() }
@@ -473,8 +447,8 @@ type WideTableKindScope struct {
 // WideTableKinds answers [WideTableKindScope] for one backend. `fixedForm` is
 // the BACKEND'S OWN answer to "do I emit a form-3 codec for this unit", because
 // which types a port lays out in the fixed form is that port's own state and
-// not a fact about the unit — [TableFixedAnyEmitted] is the answer a port whose
-// coverage matches the reference's passes.
+// not a fact about the unit: each port answers it from its OWN roots, which is
+// why there is no helper here to answer it for them.
 func WideTableKinds(u *Unit, backend string, fixedForm bool) WideTableKindScope {
 	refusal := RefuseWideTableKinds(u, backend)
 	if refusal == nil {
