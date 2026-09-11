@@ -124,6 +124,24 @@ public final class TableFixed {
         }
     }
 
+    // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+    // byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+    // for, and reading only the first byte let 0x0101 run arm 1's entries over
+    // a stranger's record. ArgW 0 means 1, which is the width a tag had when
+    // this field did not exist; past 8 clamps to 8. Little-endian, one to
+    // eight bytes, never a prefix. Flavour stays in meta.
+    /** a union tag at ArgW bytes, little-endian. */
+    public static long tagAt(byte[] src, int at, int argw) {
+        int w = argw;
+        if (w == 0) { w = 1; }
+        else if (w > 8) { w = 8; }
+        long v = 0;
+        for (int i = 0; i < w; i++) {
+            v |= (src[at + i] & 0xFFL) << (8 * i);
+        }
+        return v;
+    }
+
     /** a two's-complement integer read back at a declared storage width, sign extended. */
     public static long getInt(byte[] b, int at, int width) {
         switch (width) {
@@ -266,13 +284,19 @@ public final class TableFixed {
         /** a widen's source is two's complement, so it sign-extends. */
         public byte sign;
         /** an op's OWN byte, which the guard never reads: a text entry's
-         *  flavour. */
+         *  flavour. Flavour stays here. The guard never reads it. */
         public byte meta;
+        /** THE GUARD'S WIDTH IN BYTES. A union tag is one, two, four or
+         *  eight, and comparing only the FIRST of them fires arm 1 on a
+         *  foreign tag of 0x0101 — an ordinal no arm of this build names.
+         *  Zero is read as one. It sits last so op, arg, meta, dstsize and
+         *  sign keep their names. */
+        public byte argw = 1;
 
         /** an entry, reset to a plain copy that belongs to no arm. */
         public void reset() {
             src = 0; dst = 0; size = 0; aux = 0; guard = noGuard;
-            op = opCopy; arg = 0; dstsize = 0; sign = 0; meta = 0;
+            op = opCopy; arg = 0; dstsize = 0; sign = 0; meta = 0; argw = 1;
         }
     }
 
@@ -368,8 +392,12 @@ public final class TableFixed {
         for (int i = 0; i < count; i++) {
             final Entry p = plan[i];
             if (p.guard != noGuard) {
-                if (p.guard >= srcLength) { report.malformed = true; return; }
-                if ((src[srcAt + p.guard] & 0xFF) != (p.arg & 0xFF)) { continue; }
+                // THE TAG IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX.
+                int w = p.argw & 0xFF;
+                if (w == 0) { w = 1; }
+                else if (w > 8) { w = 8; }
+                if (p.guard < 0 || (long) p.guard + w > srcLength) { report.malformed = true; return; }
+                if (tagAt(src, srcAt + p.guard, p.argw & 0xFF) != (p.arg & 0xFFL)) { continue; }
             }
             switch (p.op) {
                 case opCopy: {
@@ -729,6 +757,7 @@ public final class TableFixed {
         int remapUsed;
         boolean overflow;
         Report report;
+        byte argw = 1; // the CURRENT union's tag width, stamped onto every push
 
         void push(int src, int dst, int size, int aux, int guard, byte op, byte arg, byte dstsize, byte sign) {
             push(src, dst, size, aux, guard, op, arg, dstsize, sign, (byte) 0);
@@ -740,6 +769,10 @@ public final class TableFixed {
             final Entry e = plan[count];
             e.src = src; e.dst = dst; e.size = size; e.aux = aux; e.guard = guard;
             e.op = op; e.arg = arg; e.dstsize = dstsize; e.sign = sign; e.meta = meta;
+            // argw IS THE GUARD'S WIDTH IN BYTES. Flavour stays in meta. Zero is one.
+            byte w = argw;
+            if (w == 0) { w = 1; }
+            e.argw = w;
             count++;
         }
 
@@ -879,6 +912,8 @@ public final class TableFixed {
             case 15: { // a union: the tag, remapped, then each arm matched by id
                 final int theirTag = theirs.tagBytes(ti);
                 final int myTag = mine.tagBytes(mi);
+                final byte savedArgw = c.argw;
+                c.argw = (theirTag >= 1 && theirTag <= 8) ? (byte) theirTag : (byte) 1;
                 final long theirArms = theirs.children(ti);
                 final long myArms = mine.children(mi);
                 int myArm = mi + 1;
@@ -898,6 +933,7 @@ public final class TableFixed {
                     }
                     myArm += mine.subtree(myArm);
                 }
+                c.argw = savedArgw;
                 break;
             }
             case 30: { // an enum: the ordinal is the layout's POSITION, so it remaps
@@ -955,6 +991,7 @@ public final class TableFixed {
         c.remap = remap;
         c.dest = dest;
         c.report = report;
+        c.argw = 1;
         matchChildren(c, theirs, 0, 0, mine, 0, 0, noGuard, (byte) 0);
         if (c.overflow) { return -1; }
         // COALESCE, exactly as the identity plan is coalesced: two neighbouring
@@ -972,6 +1009,7 @@ public final class TableFixed {
             if (out > 0) {
                 final Entry prev = plan[out - 1];
                 if (prev.op == opCopy && e.op == opCopy && prev.guard == e.guard && prev.arg == e.arg
+                        && prev.argw == e.argw
                         && prev.src + prev.size == e.src && prev.dst + prev.size == e.dst) {
                     prev.size += e.size;
                     continue;
@@ -981,7 +1019,7 @@ public final class TableFixed {
                 final Entry dst = plan[out];
                 dst.src = e.src; dst.dst = e.dst; dst.size = e.size; dst.aux = e.aux;
                 dst.guard = e.guard; dst.op = e.op; dst.arg = e.arg; dst.dstsize = e.dstsize; dst.sign = e.sign;
-                dst.meta = e.meta;
+                dst.meta = e.meta; dst.argw = e.argw;
             }
             out++;
         }

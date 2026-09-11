@@ -214,6 +214,7 @@ public final class FixedTableFixed {
         private static TableFixed.Entry[] build() {
             TableFixed.Entry[] p = TableFixed.plan(1);
             p[0].size = bodyBytes;
+            p[0].argw = 1; // the width a tag had when this field did not exist
             return p;
         }
     }
