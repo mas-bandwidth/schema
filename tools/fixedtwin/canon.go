@@ -111,6 +111,7 @@ var (
 	reOwedNestedNoneRest = regexp.MustCompile(`TableFixedPush\( c, none \);\s*c\.argw = inner_argw;`)
 	reOwedNestedRestamp  = regexp.MustCompile(`(?s)const int32_t restamp_from = c\.count;\s*`)
 	reOwedNestedRewrite  = regexp.MustCompile(`(?s)if \( guard != kTableFixedNoGuard \)\s*\{\s*const uint8_t outer_w = saved_argw \? saved_argw : 1u;\s*for \( int32_t i = restamp_from; i < c\.count; \+\+i \)\s*\{\s*if \( c\.plan\[i\]\.guard == their_at \)\s*\{\s*c\.plan\[i\]\.guard = guard;\s*c\.plan\[i\]\.arg = arg;\s*c\.plan\[i\]\.argw = outer_w;\s*\}\s*\}\s*\}`)
+	reOwedOrdinalCount   = regexp.MustCompile(`(?s)if \( raw != 0 \)\s*\{\s*if \( raw <= \(uint64_t\) table\[0\] \) \{ v = table\[raw\]; \}\s*if \( v == 0 \) \{ clamped\+\+; \}\s*\}`)
 )
 
 func tableFixedIdent(name string) string {
@@ -237,6 +238,8 @@ func stripOwedC(s string) string {
 	// owed 6: arg is full width (bill §12.7). C still has a byte lane.
 	s = strings.ReplaceAll(s, "uint64_t arg", "uint8_t arg")
 	s = strings.ReplaceAll(s, "TableFixedTagAt( src, p.guard, p.argw ) != p.arg", "TableFixedTagAt( src, p.guard, p.argw ) != (uint64_t) p.arg")
+	// owed 13: compiled remap COUNT clamped on a forged ordinal; C counts nothing.
+	s = reOwedOrdinalCount.ReplaceAllString(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }")
 	// owed 8: ordinal reads through a 64-bit temporary; C still uses 32.
 	s = strings.ReplaceAll(s, "if ( raw != 0 && raw <= (uint64_t) table[0] ) { v = table[raw]; }", "if ( raw != 0 && raw <= table[0] ) { v = table[raw]; }")
 	s = strings.ReplaceAll(s, "tag.arg = (uint64_t) j + 1u;", "tag.arg = (uint8_t) ( j + 1 );")
