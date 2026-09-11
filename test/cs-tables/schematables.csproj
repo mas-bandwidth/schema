@@ -77,6 +77,8 @@
     <Compile Include="../../build/tables-generated-cs/p3/*.cs" />
     <Compile Include="../../build/tables-generated-cs/fx1/*.cs" />
     <Compile Include="../../build/tables-generated-cs/fx2/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/fu1/*.cs" />
+    <Compile Include="../../build/tables-generated-cs/fu2/*.cs" />
     <Compile Include="../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>
