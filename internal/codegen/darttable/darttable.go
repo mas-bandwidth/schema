@@ -101,6 +101,15 @@ func runtimeHome(u *ir.Unit) string {
 // homes, for every unit that declares tables, and nothing for one that
 // declares none.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is [Generate] with the LINEAGE the build holds for each fixed
+// table: per table the lock's entries, OLDEST FIRST, the current layout last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #1). The backend opens no file — the
+// caller makes `lockfile.Open`, `lockfile.Lineage` and `lockfile.Floor` — so the
+// disk is read in one place and a test can play the lock in one line.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -140,7 +149,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
 	// FIRST table wire. Form 1 is still deferred to schema#514 and nothing
 	// here reads or writes one.
-	fixed, err := generateFixedFiles(u, wide)
+	fixed, err := generateFixedFiles(u, wide, lineage)
 	if err != nil {
 		return nil, err
 	}

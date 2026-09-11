@@ -686,7 +686,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	// these entries, and the layout it carries is COMPARED with the bytes the
 	// lock recorded, never walked. The floor is 1 + the highest retired index.
 	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
-	g.pf("var %sFixedKnown = []TableFixedKnown{\n", st.Name)
+	g.pf("var %sFixedKnown = []TableFixedKnownLayout{\n", st.Name)
 	for _, e := range entries {
 		g.pf("\t{\n\t\tHash:   0x%016x,\n", e.Wire)
 		if e.Retired {
