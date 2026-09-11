@@ -177,6 +177,19 @@ Readers first, always. A writer ships only after every reader that will meet its
 can roll a reader back across (§8a.2). Getting the order wrong is a `layout_newer` refusal at the first
 file, not a truncated array in production.
 
+## 7a. What the versioning does, and what a person still does
+
+Glenn: "in practice this is the delta between the live clients and the backend"; "We did stuff like, if
+version is > x, read these vars, otherwise set to default, which i think is what you are doing here, so it
+SHOULD work"; "it's not 100% 'i don't have to think at all the versioning does this for me'."
+
+The versioning does the bytes: a file is never read wrong, and never read silently wrong. The compiler writes
+the `if version > x` chain from the lineage, one plan per supported version, the file's hash picking the
+branch. A person still does five things: append and never modify (the baseline catches the slip); choose a
+default once, because it defines every old file forever; ship readers before writers, by a margin a reader
+can roll back across; set the floor to the real delta between live clients and the backend; start a new
+table when the old one has grown past sense, and retire it when nothing live speaks it.
+
 ## 8. What changes on the board (#876)
 
 - E1 (unknown field): becomes `layout_newer`; the deprecated-field drop is its own item.
