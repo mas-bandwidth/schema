@@ -2803,7 +2803,7 @@ build/schema_test_tables_asan: build/tables-generated/.stamp test/tables/main.cp
 # order is proven to refuse rather than to garble.
 #
 # The toolchain is not a system binary and is not assumed: CI installs an
-# exact pinned version (.github/workflows/ci.yml) and these two variables name
+# exact pinned version (.github/workflows/ci-full.yml) and these two variables name
 # what it installed, so the leg runs anywhere the same pair is on PATH.
 BE_CXX ?= s390x-linux-gnu-g++
 BE_RUN ?= qemu-s390x
