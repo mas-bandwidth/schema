@@ -54,9 +54,34 @@ representation cannot express a cycle**, and there is no cycle rule to write.
 **`bytes(N)` is walked as an ARRAY OF `u8`** — kind `14` with one synthetic child at kind `6`, size `1` — never
 as a text kind; only `string(N)` (`12`) and `wstring(N)` (`33`) are text kinds in a layout. **The hash** is
 `h := 0xcbf29ce484222325; for each byte v: h ^= v; h *= 0x100000001b3` over the layout's bytes as written,
-**the 4-byte count included** and nothing else; it is a wire identity, never a security claim (fix 8). **The closed
+**the 4-byte count included**, and then over the DEFINITIONS DIGEST (§5.2) — the facts a range, a `bits(N)`, a
+`fixed(I,F)` split or a `flags` bit count states and the layout's sizes do not, which never ride the wire. An
+empty digest leaves the hash the layout's alone. It is a wire identity, never a security claim (fix 8). **The closed
 kind set is `1..30`, `32`, `33`, `35`** — `31` (§3's framing escape) and `34` (reserved) are not in it, and a
 kind outside it names a form this reader never saw: `REFUSE layout_kind_unknown`, never stepped over.
+
+**THE KIND CODES, the whole closed set.** A port needs the NUMBERS and not only the set's shape, and they are
+wire format and frozen (`ir/tablekind.go:17-62`, `ir/tablewire.go:117-127`, `ir/buildversion.go:56`,
+`ir/fixedform.go:40`; the ladder rungs at the reference: fixedruntime.go:84-95).
+
+| code | kind | code | kind |
+|---|---|---|---|
+| `1` | bool | `18` | i128 |
+| `2` `3` `4` `5` | i8, i16, i32, i64 | `19` | u128 |
+| `6` `7` `8` `9` | u8, u16, u32, u64 | `20`–`24` | `fixed(I,F)` SIGNED, at 8/16/32/64/128 storage bits |
+| `10` `11` | f32, f64 | `25`–`29` | `ufixed(I,F)` UNSIGNED, the same five widths |
+| `12` | string(N) | `30` | enum |
+| `13` | table | `31` | §3's framing escape — **NOT in the closed set** |
+| `14` | array — and `bytes(N)`, as an array of `6` | `32` | a variant, or a payload-free arm: size `0`, no children |
+| `15` | union | `33` | wstring(N) |
+| `16` | enum-keyed array | `34` | reserved (float16) — **NOT in the closed set** |
+| `17` | a `*T` pointer index | `35` | the OPTIONAL wrapper — a LAYOUT kind, the one §3.4 adds to §3's set |
+
+`0` is the reserved value no declaration spells. `17`, `18`, `19` and both fixed-point runs ARE in the closed
+set and a stranger may send them; a pointer inside a fixed table's own closure is a compile refusal (§5.5), so
+`17` reaches a reader only from a peer, where it is a kind mismatch against whatever the reader names there.
+**The widening ladder runs INSIDE a family and upward only** — `2..5`, `6..9`, `20..24`, `25..29`, and
+`10 -> 11` — so `6 -> 4` (u8 into i32) is a kind that MOVED and is reported, not a widen.
 
 ### 1.1 The seven rules, before a single record byte
 
@@ -116,9 +141,9 @@ load, in order:**
 |---|---|
 | 1 | fewer than 20 bytes: `malformed` |
 | 2 | `b[0] != 3` — refuse **by direction**: `1` is `previous_form` (the variable form is OLDER), `2` is `message_form_as_file`, anything else `newer_form`. From the other end, a form-`1` reader given `3` refuses `newer_form` |
-| 3 | `L := LE(4, b+16)`; if `20 + L > bytes`, `REFUSE layout_malformed`. Then `h := fnv1a64(b+20, L)` |
-| 4 | if `h` is this build's own hash, take the baked identity plan and record size; otherwise validate the layout (§1.1) — each rule under its own name — compile a plan (§4.2), and take `record_bytes = 8 + root.size` |
-| 5 | **only now** check `LE(8, b+8) == h`, else `REFUSE layout_malformed`. Checked LAST of the three, so a broken layout is never reported as a lying header |
+| 3 | `L := LE(4, b+16)`; if `20 + L > bytes`, `REFUSE layout_malformed`. **The hash is `LE(8, b+8)`, the header's own** — §5.3 took the recompute out, the definitions digest not being on the wire |
+| 4 | **`h` selects the plan (§5.3)**: this build's own hash takes the baked identity plan and record size; another hash of the lineage takes that entry's plan, its layout bytes compared and its record size read from the lock; a hash in no entry is `layout_newer` |
+| 5 | **RETIRED by §5.3**: there is no third thing to check. The byte comparison against the lock's own layout holds the header and the layout together, and a known hash over different bytes is `layout_malformed` |
 | 6 | `rest := bytes - 20 - L`; if `record_bytes <= 8` or `rest % record_bytes != 0`, `malformed` — bytes left over means the two ends of the file have met. If `rest / record_bytes` passes the caller's capacity, `REFUSE batch_too_large` |
 | 7 | per record: if `LE(8, at) != h`, `REFUSE no_layout`; then §4.4 |
 
@@ -250,7 +275,9 @@ compile-time evaluation carries this form. Two shapes are permitted, both the co
   takes when its storage is not the wire's: a `string(N)` stored as `N+1` units, a union that is a real tagged enum.
 
 Coalesce inside each half, **never across the split**. **For any other hash the SAME loop runs over a plan
-compiled once from the writer's layout, and CACHED BY HASH.** (note b) The compiler walks the layout against the
+compiled once from the writer's layout, and CACHED BY HASH.** (note b) **§5 moves that compile to build time and
+the layout it walks to the LOCK's own bytes** — a file's layout is compared, never parsed — so read the two
+paragraphs below as what a plan IS, and §5.2 as where it comes from. The compiler walks the layout against the
 reader's own descriptors, resolves each id to a field of its own or to nothing, and emits one entry per landing
 field with the op the pair calls for. **Every evolution decision of §5 is made HERE, once per peer** — the whole
 `unknown` census included, which is why the read loop never raises `unknown` again per record.
@@ -322,13 +349,19 @@ old versions CANNOT read new versions, and complain loudly and refuse." The orde
 on the fixed table first (this section), then the bitpacked fixed form; the variable table is HELD.
 
 Three procedures. `BASELINE` runs at commit and holds the law; `COMPILE` runs at build time from the lock and
-lays down one plan per supported version as static data; `LOAD` runs per file and selects a plan by hash.
-Nothing parses a stranger's layout at run time.
+lays the lineage down as static data; `LOAD` runs per file and **selects by hash**. **Nothing parses a
+stranger's layout, on any path.** A hash the lineage does not hold is a refusal, and a hash it does hold is
+read under the layout bytes THE LOCK recorded — the file's own layout bytes are never walked, only compared.
+
+This section is written FROM the green reference (`internal/codegen/cpptable`, `ir/fixedform.go`) and it
+SUPERSEDES §2's load table at steps 3 to 5: the header's hash is **taken as given**, not recomputed from the
+layout behind it, and the layout is held to a byte comparison instead of to §1.1's seven rules. §5.8 lists
+where the reference still owes this page; a port implements THIS page.
 
 ### 5.1 BASELINE(old, new): the monotone law, at commit
 
 `old` is the last locked shape of the unit (`schema.lock`, SPEC §2.10 as superseded by the bill's §6 and §12.1; the comparison is MONOTONE per row, on EVALUATED values); `new` is the unit being committed. For every fixed
-table `T` in `new` and every definition `D` in `T`'s closure (§5.4), with `D0` the same definition in `old`
+table `T` in `new` and every definition `D` in `T`'s closure (§5.5), with `D0` the same definition in `old`
 where it existed:
 
 ```
@@ -340,11 +373,13 @@ BASELINE(old, new):                      -- at a merge commit, run once per pare
       D0 := old.lookup(D.name); if none: continue           -- added: allowed
       WIDENS(D0, D) or REFUSE "T: D: <rule> (<old> -> <new>)"
   for T in old.fixed_tables:
-    if T not in new or new[T] is not fixed: REFUSE "T: fixed removed"  -- deprecate; remove only when nothing live speaks it
+    if T not in new or new[T] is not fixed:
+      if not retired(old[T]):           REFUSE "T: fixed removed"  -- retire first (bill §11.5); the lineage stays
 
 WIDENS(a, b):                            -- b may replace a
   LADDER(a, b) or kind(a) == kind(b)     or FAIL "kind changed"       -- LADDER: int into wider int same signedness, f32 into f64,
-                                                                       -- ordinal/tag width wider, bits(N) into wider storage (bill §12.2);
+                                                                       -- ordinal/tag width wider, bits(N) into wider storage,
+                                                                       -- fixed(I,F) into wider I at equal F (bill §12.2);
                                                                        -- string/wstring/bytes and [N]/[..N]/[Enum] never cross
   match kind:
     table, type:   fields(a) is a SUBSET of fields(b) by NAME and a SUBSEQUENCE of it by position (append-only per
@@ -368,78 +403,689 @@ WIDENS(a, b):                            -- b may replace a
 ```
 
 Every FAIL names the table, the definition, the rule, and both values. The compiler refuses to generate
-against a lock the schema contradicts; CI runs the same check.
+against a lock the schema contradicts; CI runs the same check. **A rename THROUGH `was =` is not a version
+at all**: an id is the hash of the wire name and `was` keeps the old one, so the layout bytes do not move and
+the two generations share one hash. **A deprecation is not a version either** — the slot is still written
+and still read (bill §12.3).
 
-### 5.2 COMPILE(lock, T): one plan per supported version, at build time
+### 5.2 COMPILE(lock, T): the lineage as static data, at build time
+
+**What the lock must provide, per fixed table `T`** (bill §11.7):
+
+| the lock gives | COMPILE uses it for |
+|---|---|
+| a LINEAGE, one entry per locked layout, **OLDEST FIRST**, the current one LAST | the index a hash resolves to, and the order the floor cuts at |
+| per entry: the WIRE hash — `HASH(layout bytes, definitions digest)` | `R.lineage[i]`, the only thing a file is matched on |
+| per entry: the LAYOUT BYTES, verbatim | `R.known[i].layout`, what LOAD compares and what PLAN walks |
+| per entry: the DEFINITIONS DIGEST | the hash's second input; it never rides the wire |
+| per entry: the record body size | `R.known[i].record_bytes`, taken from the lock and never from the file |
+| per entry: a RETIRED mark and its reason (`schema lock --retire T@<hash>`) | the floor, and `layout_unsupported` |
+| the defaults, the deprecation marks, the closure | the prefill image, §5.1, §5.5 |
+
+**WHAT THE LOCK NOW PROVIDES** (#909, merged into `fixed-table-form`). `internal/lockfile/lineage.go` is the
+home bill §11.7 named, and a backend reads exactly three calls: `lockfile.Open(paths)` locates and parses the
+unit's lock — `ok` false for a unit that was never locked is not an error, because a unit that has never been
+locked promises nothing; `lockfile.Lineage(lock, T)` is the slice COMPILE walks, **OLDEST FIRST, the current
+layout last**, and nil for a name the lock carries as a nested `type` rather than a fixed table; and
+`lockfile.Floor(lock, T)` is §5.2's one number — one past the highest `Retired` index, `0` when none is. A
+`LineageEntry` carries the five facts the table above asks for and the two the operator writes: **`Wire`**
+(the eight bytes the header and every record carry — the lineage's key and the only fact a file is matched
+on), **`Layout`** (the bytes verbatim: a u32 entry count and a run of seventeen-byte entries, what LOAD
+memcmps and what PLAN walks), **`Digest`** (§13, empty where a table carries none of those facts),
+**`Record`** (the body size), **`Retired`**, and **`Reason`** (the operator's sentence). Nothing changed about
+the FILE: the digest still never rides the wire.
+
+The text is one line per entry — `lineage wire=0x… record=<n> bytes=<hex> [digest=<hex>] [retired]
+[reason=<sentence>]`, the wire hash first because it is what a file is matched on and the reason last because
+it is the one token that holds a sentence — and **the line is ONE STATEMENT MADE TWICE**: the parse recomputes
+fnv1a64 over `bytes` and then `digest` and refuses a line whose `wire` disagrees, the way `layout=` is held to
+the field lines. **The SET is bound too**: `lineage=0x…` on the `fixed table` line is one hash over every
+entry's wire hash and retired mark, in order (#912), so a hand that DELETES, reorders or re-marks a lineage
+line is caught by name — and the remedy it names is never "write it again", because no command can recover the
+layout bytes of a record nobody declares any more: restore the file from version control. A layout stops being
+served by being RETIRED, `schema lock --retire T@0x<hash> --reason "…"`, which keeps the entry and moves the
+floor. A lock written before the lineage existed is SALVAGED and never deleted (bill §11.8): its single layout
+becomes the first entry, and every field line, default and deprecation mark is carried forward unchanged.
+
+**§5.1 has its implementation too**: `internal/lockfile/monotone.go`, reached from the lock's own diff — one
+comparison per recorded fact, in the order that names the change best, the first difference is the finding,
+and the rule phrase is the clause a person greps for.
+
+**The reference reads none of it yet.** `internal/codegen/cpptable/lineage.go` builds its lineage from SIBLING
+SCHEMA FILES at generate time by filename convention — `VOLD_`/`VNEW_`, the numbered evolution sets, and
+`ir.TableFixedFixtureLineage` for the pairs no convention can name (`Scalars2` lives in a different directory
+from `Scalars`) — and its floor is hard-coded for one test package. **That is the interim, and it is named as
+an interim**: the convention goes away the day COMPILE reads `lockfile.Lineage` and `lockfile.Floor`, and
+until then §5.8 holds it as a divergence. A port implements THIS page against the lock, never the convention.
 
 ```
 COMPILE(lock, T):
-  y := T.layout                                   -- the current layout, its hash H(y)
-  for each older layout x in lock.lineage(T) with index >= T.floor:
-    plans[H(x)] := PLAN(x, y); known[H(x)] := bytes(x)
-  plans[H(y)] := IDENTITY; known[H(y)] := bytes(y)
-  emit plans, known as static data
-
-PLAN(x, y):                                        -- x older, y the reader's own; x WIDENS into y by §5.1
-  walk x and y side by side, entry by entry (x is a prefix of y at every level; where a merge reordered a
-  list, match by NAME and emit a remap, identity when the lists agree):
-    same width:            copy
-    wider in y:            widen / widenf   (COUNT widened)
-    enum, prefix:          copy when the width is equal, widen when the writer's ordinal width is narrower
-                           (the ordinals are the reader's); reordered after a merge: ordinal remap by name
-    absent in x:           default            (a field y added; the reader's FRESH IMAGE, recursing into a
-                                               nested type's and an element's own defaults, bill §12.6)
-    deprecated in y:       copy               (read on every plan, identity included; nothing dropped, bill §12.3)
-    text, bytes, [..N]:    copy the writer's extent; the slack past the count is zeros
-    [N] grown:             copy x's N elements; the reader's remaining elements take the ELEMENT DEFAULT
-    ?T where x has T:      present (an unguarded constant 1 into the present byte, its own op), then the value
-    bounds for the hostile pass: the plan carries x's bound, variant count, arm count and range (the
-                           WRITER's own), and §4.5/§4.6 clamp against those, per plan (bill §12.5)
-  the plan is a straight-line list of ops; no per-record decision
+  y := T's own layout ; Hy := HASH(bytes(y), T)            -- the digest is computed AT the hash, from T
+  R.own_hash := Hy
+  R.identity, R.split, R.cover := the baked identity plan of §4.2, its split, the type's value bytes
+  i := 0
+  for each entry x in lock.lineage(T), OLDEST FIRST:            -- the current layout is the last of them
+    R.lineage[i] := x.hash ; R.known[i] := { x.hash, x.layout_bytes, x.record_bytes }
+    R.plans[i]   := (x.hash == Hy) ? IDENTITY : PLAN(x.layout_bytes, bytes(y))
+    i := i + 1
+  R.floor := 1 + the highest index marked RETIRED, or 0 when none is
+  emit R as static data: the hashes, the layout bytes, the record sizes, the plans, the floor
 ```
 
-Because §5.1 held at every commit, PLAN never fails at build time; a lineage that is not monotone is a bug
-in the lock, refused by name at build.
+**The ENTRY POINT a backend receives the lineage through, what "build time" means in a language with no
+`constexpr`, and how a plan's storage is sized are §5.9 #1 to #4** — the first three things the pilot port had
+to guess, and now rules.
+
+**The floor is one number and the lineage is one array**, so "retired" is an index cut and the operator's two
+answers stay distinct: below the floor is `layout_unsupported` (upgrade the client), outside the lineage is
+`layout_newer` (ship the reader). A retired entry stays in the lineage forever.
+
+**THE HASH.** The eight bytes a file's header and every record carry. **The digest is computed AT THE HASH
+SITE, from the schema** — the reference's signature is `ir.TableFixedLayoutHash(layout, st)` and there is no
+digest argument for a leg to omit. That is the point of the shape: a leg that forgot the second argument, or
+passed an empty one, would hash the layout bytes alone and publish a number that collides with every sibling
+the digest exists to separate. A LINEAGE ENTRY is the one caller with no live schema behind it — a historical
+layout has no `*Struct` — so it stores the two runs and hashes the concatenation, which is the same walk
+because FNV is sequential and a nil schema is an empty second run:
+
+```
+HASH(layout_bytes, T):
+  h := 0xcbf29ce484222325
+  for v in layout_bytes:   h ^= v ; h *= 0x100000001b3
+  for v in DIGEST(T):      h ^= v ; h *= 0x100000001b3   -- computed here; never an argument a caller supplies
+  return h
+```
+
+**THE DEFINITIONS DIGEST** (bill §13) is every fact of §5.1 that is not wire shape. Without it
+`int32 | 0..100` and `| 0..200` hash identically and an old reader cannot refuse the widening. It is the
+compiler's, it is recorded in the lock beside the layout bytes, and **it never rides the wire**: the hash
+binds it. Walk `T`'s closure as §1.1 walks it — declared field order, depth first, each NAMED type emitted
+once — and append, per field:
+
+| the fact | the bytes |
+|---|---|
+| an integer, float or fixed-point RANGE | `'R'`, then min and max, each as an i64 LE |
+| `bits(N)` | `'B'`, then `N` as u32 LE |
+| `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
+| a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
+| a reader-side limit | `'L'`, then the limit as u64 LE |
+| a nested `table` / `type` | recurse, once per type name |
+| a union | recurse into each arm's payload, in declared order |
+
+Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
+carrying none of these facts does not move the day the digest lands.
+
+**THAT TABLE IS THE CONTRACT, and the reference does not implement it yet.** Bill §13 says EVERY range —
+a float range and a fixed-point one included — and every reader-side limit, tag `'L'`. The reference at this
+head emits `'R'` for `HasIntRange` ALONE and emits no `'L'` anywhere (`ir/fixedform.go:610-652`), which is
+§5.8 row 10. **That row is an INTEROP BREAK and not a missed refusal.** Every other row of §5.8 is a reader
+being too kind; this one moves THE NUMBER — a leg that implements this table computes a different digest, so
+a different hash, for any table carrying a float range or a limit, and its files and the reference's do not
+match each other at all. **So the reference owes it BEFORE ANY LEG PORTS**: landing it moves every such hash
+once more and re-pins the corpus, and a lineage entry pinned under the old digest is a hash no later build
+can produce.
+
+**The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, then the KIND TAG — `'B'`
+for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
+for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
+none, one, two or three of those, in that order and never another.
+
+**Flags are NOT deduped by name in the reference, and the contract says they must be.** The `seen` set guards
+STRUCTS only (`ir/fixedform.go:600-604`), so one flags type named by three fields writes its `'F'`, its bit
+count and its whole `'f'`/`fnv1a64(name)` run THREE times, where a struct named by three fields writes once.
+**The ruling is the contract's own words — each NAMED type emitted ONCE** — so a flags type is emitted once
+too, and §5.8 row 10 carries that fix beside the missing tags. **And a flags type's WIRE BIT COUNT falls back
+to `len(Variants)` when it is `0`** (636-640): a `flags` declared with no explicit width spends one bit per
+flag, and the digest records the count either way.
+
+**`EMIT` switches on a KIND CODE**, and §1's kind-code table is the whole numbering — the fixed-point rungs
+`20..24` and `25..29` included. A port that invents its own numbering for the same set emits different layout
+bytes and a different hash, and nothing else it does can recover.
+
+```
+PLAN(x, y):                                        -- x the WRITER's layout bytes FROM THE LOCK, y the reader's own
+  parse x and y under §1.1; either failing is a bug in the lock, not a wire event: REFUSE layout_malformed
+  record := x.root.size                            -- EVERY entry is bounded by this, and by nothing the file said
+  pass 1: MATCH(x, 0, y, 0, guard = NONE) keeping only UNGUARDED entries, counting the census
+  split := the entries so far
+  pass 2: MATCH(x, 0, y, 0, guard = NONE) keeping only GUARDED entries, COUNTING NOTHING
+  coalesce copies inside each half, never across the split (§4.2's rule, plus `arg` and the guard WIDTH equal)
+  fills := COVER(y) MINUS every byte the entries land               -- §4.3; for IDENTITY this is empty
+  if an entry reached past `record`:  REFUSE layout_record_too_large
+  if the entries or their tables do not fit the declared capacity: REFUSE plan_too_large
+
+MATCH(x, ti, y, mi, guard, arg):                   -- two TABLE entries, side by side
+  for each child `mc` of y[mi], in declared order:
+    find the child `tc` of x[ti] with tc.id == mc.id, summing the writer's child sizes to reach its offset
+    if found: EMIT(tc, its offset, mc, its storage offset, guard, arg)
+  for each child `tc` of x[ti] no child of y[mi] names:   COUNT unknown      -- once per peer, never per record
+```
+
+`id` is `fnv1a64(wire name)`, so `was =` matches by the OLD name and a reorder after a merge matches by NAME
+and never by position. A writer field the reader cannot name gets no entry: **skipping is not an act**. A
+reader field the writer does not carry gets no entry either, and the prefill answers it.
+
+```
+EMIT(te, their_at, me, my_at, guard, arg):
+  if depth > 64:                                         REFUSE layout_malformed      -- the wire picks no recursion
+  if me.kind == 35 and te.kind != 35:                    -- T into ?T (bill §12.8)
+      emit `present`  at the reader's present byte, under `guard`/`arg`
+      EMIT(te, their_at, the wrapper's payload, my_at, guard, arg) ; return
+  if te.kind != me.kind:
+      if LADDER(te.kind, me.kind): emit `widenf` when te is f32 else `widen`,
+                                   sign := te.kind is a signed integer or a signed fixed-point ; return
+      COUNT kind_mismatch ; return                       -- a kind that MOVED is reported, never reinterpreted
+  by me.kind:
+    35 optional: `copy` 1 byte (the present flag), then EMIT the payload
+    13 table:    MATCH
+    14 array:    head := 4 when the reader's array carries a count
+                 their_n := (te.size - head) / their element size ; my_n := (me.size - head) / my element size
+                 when counted: emit `count`, size := THE WRITER'S their_n (bill §12.5)
+                 for i in 0 .. min(their_n, my_n): EMIT the element at their_at+head+i*their elem, at my stride
+                 the reader's elements past that get NO entry, so the prefill lands THE ELEMENT'S DEFAULTS
+    16 keyed:    per reader slot, find the writer's key variant with the same id; EMIT the element at its slot
+    15 union:    their_tag := te.size - widest arm ; my_tag := me.size - widest arm
+                 FIRST, UNGUARDED: `const 0` of my_tag bytes into the reader's tag -- None, and it stands when no arm matches
+                 per reader arm, matched to the writer's arm by id:
+                   `const` of the READER's ordinal (position from 1), guarded by THE WRITER'S TAG OFFSET,
+                      at the writer's tag WIDTH, with the writer's ordinal as the guard value
+                   EMIT the arm's payload under that same guard and ordinal
+                 a PAYLOAD-FREE arm (kind 32) has a LAYOUT ENTRY and NO BYTES: the tag names it and there is
+                      nothing to land, so it takes the `const` of its ordinal and no payload EMIT at all. It
+                      is an entry rather than nothing because the arm list is what the layout is COMPARED by
+                      — an arm appended AFTER a payload-free one must move the hash
+    30 enum:     if te.size < me.size: emit `widen`, unsigned                      -- a grown ordinal width (bill §12.7)
+                 else: emit `ordinal` with a remap table — entry j is the reader's position of the writer's
+                       variant j, or 0 when the reader has no such name
+    12 / 33 text: emit `text`, span := min(me.size, te.size) - 4 BYTES, dst := the LENGTH word,
+                  aux := the BUFFER, flavour from the READER's field (1 utf8, 2 wide, 3 bytes)
+    every other leaf: te.size == me.size -> `copy` ; te.size < me.size and me.size <= 8 -> `widen` ;
+                      otherwise COUNT kind_mismatch
+```
+
+**THE AUX LANE.** Every plan entry names TWO destinations: `dst`, the field's own storage offset, and `aux`,
+its COMPANION — and which of the two an op writes is contract, never an implementation choice. The compiler
+hands both down beside the reader's layout entry (`Dst` and `Aux` on `TableFixedDstSpec`,
+`ir/fixedform.go:385-402`), and the compile step derives the pair at its top as `my_at + d.dst` and
+`my_at + d.aux` — the parent's storage base plus the row's own offsets (the reference: fixedruntime.go:973).
+
+| the READER's kind | `dst` | `aux` | which the op writes |
+|---|---|---|---|
+| `35` optional | the payload's own storage; the wrapper row adds none | the PRESENT byte | `T` into `?T` lands `present`, an unguarded constant `1`, at `aux` (971-980); `?T` into `?T` lands the writer's flag with a one-byte `copy` at `aux` (1008) |
+| a COUNTED array `[..N]T` | the element run | the live COUNT word | `count` writes its four bytes at `aux` (1024) |
+| `bytes(N)` | the BUFFER | the LENGTH word | the same `count` op, at `aux` — `bytes(N)` is an ARRAY row (fix 10) |
+| `12` / `33` text | the LENGTH word | the BUFFER | `text` puts the length at `dst` and copies the payload to `aux` (1137, 281-295) |
+| `15` union | the union's own storage | the TAG — **`dst` PLUS the tag's offset inside that storage**, the `AuxExtendsDst` row | both `const`s write at `aux`: the unguarded `None` (1074) and each arm's ordinal (1090) |
+| `13` table, `14` uncounted, `16` keyed | the field's storage | unused, `0` | nothing; these recurse |
+| every LEAF | the field's storage | unused, `0` | `copy`, `widen`, `widenf`, `ordinal` write at `dst` |
+
+**Text and `bytes(N)` are the two rows the other way round**, and that is fix 10: text is length-at-`dst`,
+buffer-at-`aux`; `bytes(N)` is buffer-at-`dst`, length-at-`aux`. A port that lands `bytes(N)` under the text
+convention hands a compiled plan a count destination that is the buffer's first four bytes and an element
+destination that is the length field — and the IDENTITY plan reads neither column, so only the compiled path
+ever sees it.
+
+**How a port DERIVES `aux`**: from its OWN storage, the same way it derives `dst` — the `offsetof` of the
+companion member, `_present` / `_count` / `_length` / the union's `type` — and the build-time assertion §7
+names covers both lanes, not just `dst`. It is never derived from the wire: a companion is storage the wire
+does not carry.
+
+**THE TEXT OP, in full** (the reference: fixedruntime.go:281-295). `span` is BYTES and the clamp is UNITS, and
+they are not the same number:
+
+```
+TEXT(p):
+  unit := 2 when the flavour is WIDE, else 1                  -- wstring(N) rides as UTF-16 code units
+  cap  := p.span / unit                                       -- the CAP is in UNITS, the SPAN is in BYTES
+  v    := LE(4, src + p.src) read as SIGNED
+  if v < 0:    v := 0   ; COUNT clamped
+  if v > cap:  v := cap ; COUNT clamped
+  PUT(4, dst + p.dst, v)                                      -- the length lands at DST
+  COPY(dst + p.aux, src + p.src + 4, p.span)                  -- THE WHOLE SPAN, never v * unit
+  if the flavour is not BYTES:                                -- terminate AT THE USED LENGTH
+      ZERO(dst + p.aux + v * unit, unit)
+```
+
+Three facts, and a port gets them wrong one at a time. **The cap is `span / unit`**: a `wstring(64)` whose span
+is 128 bytes clamps at 64, and a port that clamps at 128 lets a length past the buffer through. **The copy is
+the WHOLE SPAN and not the used length**: the writer wrote `length` units onto a ZEROED template and stopped
+(fix 1), so the bytes behind the length are the writer's zeros, and copying them is how read-then-save-back
+comes out byte-identical (§7 item 1). A port that copies `v * unit` passes every value check and fails the
+dump identity — and **on a POISONED destination it fails louder**, because the `0x5A` behind the terminator
+survives into the buffer and the saved file carries it back out. **The terminator is a STORE of ONE UNIT at
+the used length**, which the storage has room for because text storage is one unit longer than the bound. So
+the bytes a text entry LANDS are `[aux, aux + span + unit)` for a text flavour and `[aux, aux + span)` for
+`bytes` (the reference: fixedruntime.go:436-437) — which is what the prefill's cover subtracts. The reader's
+own span past `min(me.size, te.size) - 4` gets NO entry at all: a reader whose bound GREW takes the writer's
+units and the PREFILL answers the rest.
+
+**A WIDEN'S SIGN IS THE LADDER'S, and the SAME-KIND widen has none.** There are two ways to reach `widen` and
+they extend differently. Across the LADDER — `te.kind != me.kind` and `TableFixedWidens` holds — the source
+SIGN-extends when the WRITER's kind is signed, `i8..i64` or a signed `fixed(I,F)`, and zero-extends otherwise
+(the reference: fixedruntime.go:993, over 92-95). Within ONE kind — `te.kind == me.kind`, `te.size < me.size`,
+`me.size <= 8` — the source ZERO-extends: the entry's sign is left at zero (1152-1159), and so is the grown
+enum ordinal's (1115). That is right today, because the only same-kind rows admitting two widths are `6`/`7`
+carrying a `bits(N)` at its declared storage width and kind `30`, all unsigned. But a port that infers "extend
+by the kind's signedness" has written a DIFFERENT RULE that agrees by accident, and it diverges the first day
+a signed kind admits two widths. Take it as stated: **ladder widen, sign by the WRITER's kind; same-kind widen
+and enum widen, ZERO.** Both count `widened`, once per entry per record.
+
+**THE GUARD'S WIDTH, and the remap table's shape.** Two small structures a port must match exactly.
+
+**`argw` is the guard's width in BYTES, clamped to `1..8` at both ends, and `0` reads as `1`.** At compile a
+union stamps `their_tag` onto every entry beneath it, taking `1` for anything outside `1..8` (the reference:
+fixedruntime.go:1063); the push re-stamps the current union's width and reads a zero as one (856-857); and at
+run time the tag load clamps again — `0` to `1`, anything past `8` to `8` (171). **Zero means one** because
+one is the width a tag had when this lane did not exist, so a plan laid down before it still reads. The guard
+is tested at its FULL width and never at its first byte: one byte fires arm `1` on a foreign tag of `0x0101`,
+an ordinal no arm of this build names (§7, fix 12). And the guard's own reach, `guard + argw`, is bounded by
+the writer's record like every other offset (858-862).
+
+**The remap table carries its own LENGTH in slot `0`.** `TableFixedLayTable` writes `n` at `table[0]` and the
+`n` values at `table[1 .. n]` (the reference: fixedruntime.go:880-885); the entry's `aux` is the table's BYTE
+OFFSET from the plan's base; and the `ordinal` op reads
+`v := (raw != 0 and raw <= table[0]) ? table[raw] : 0` (305-310) — so slot `0` is the length, and an ordinal
+of `0` is `None` BY CONSTRUCTION and never an index. Entry `j` is the reader's position of the WRITER's
+variant `j`, or `0` when the reader has no such name. **The reference CAPS the table at 255 entries**,
+`n := min(te.children, 255)` (1119-1120): a writer's enum past 255 variants silently loses the 256th on, each
+remapping to `None` as though the reader did not name it. That is a divergence and not this page's rule —
+§5.8 row 14 — and this page says the table is **as long as the WRITER's variant count**, with a length word as
+wide as it needs to be.
+
+**The TWO-PASS SPLIT gates the POOL, not only the entries.** The walk runs twice, unguarded first, and each
+pass drops the entries that are not its half (849). A kind that ALLOCATES from the plan's pool BEFORE it
+pushes — the enum, whose remap table `TableFixedLayTable` lays — must test the half FIRST, or the discarded
+pass still spends the pool and a plan that fits comes back `plan_too_large`. The reference tests it at the top
+of the enum case, before it builds the map (1113). The pool is the caller's own plan storage: remap tables and
+prefill ranges grow DOWNWARD from the top while entries grow up, and the two meeting is `plan_too_large`.
+
+**Every entry is bounded by the WRITER'S OWN declared record size**, `x.root.size`: `src + size`, plus `4`
+for a text entry's length word, and `guard + the guard's width` too. One entry past it refuses the plan
+WHOLE — never partly compiled. **The plan also carries the WRITER'S bounds for the hostile pass** (bill
+§12.5): that peer's count bound, variant count, arm count and range, so a value forged past what the WRITER
+could have written clamps and counts, and a value the reader merely widened does not.
+
+**The prefill's image is the reader's OWN FRESH VALUE** — a zeroed destination with the type's `Reset` over
+it — so every default §5.1 let through reaches the bytes the plan does not write: an appended field, an
+element past the writer's count, a keyed slot an appended key opened. A union inside that image is reset
+**arm by arm, at each arm's own overlay storage**, and only then the tag to `None`: an arm is not the member
+it looks like, because a pointer arm is a reference and not its pointee, a counted array or a text arm rides
+beside a companion, and a whole-value assignment over an overlay resets one arm's worth of bytes and calls it
+all of them. An arm whose defaults the image does not carry is a default that silently becomes zero for every
+field the plan leaves alone.
+
+**The test of that is a POISON and not a reset.** Fill the destination with `0x5A` through a byte pointer,
+load, and read the tail: it must be the DECLARED default. A `Reset` before the load only proves the load did
+not clobber what was there, and a zero-fill looks exactly like a zero default, so neither can tell a prefill
+that ran from one that never did. `keyed_array_enum_append`'s element is a fixed table with a nonzero default
+for this reason (§5.7).
+
+Because §5.1 held at every commit, `PLAN` never fails on a monotone lineage; a lineage that is not monotone
+is a bug in the lock, refused by name at build.
 
 ### 5.3 LOAD(R, file): select by hash, never parse a stranger
 
 ```
-LOAD(R, file):                                     -- R the reader's static data for T
-  h := file.layout_hash
-  if h not in R.known:
-    if h in R.retired:                    REFUSE layout_unsupported   -- COMPILE emits the retired hashes (bill §11.4)
-    else:                                 REFUSE layout_newer      -- an older reader given a newer file
-  if file.layout_bytes != R.known[h]:     REFUSE layout_malformed  -- a lie about a known version
-  framing as §2: the form byte, the header length, 20 + L, the per-record hash (no_layout), batch_too_large,
-    a ragged tail (malformed); nothing here parses the layout
-  for each record: run R.plans[h] (§4), then the hostile pass (§4.5, §4.6) against the bounds THE PLAN
-    CARRIES (the writer's own, bill §12.5); a bool or present byte not 0/1 is normalised and counts nothing
+LOAD(R, file, out, capacity, report):                  -- R the static data COMPILE laid down for T
+  1  if file is absent or len(file) < 20:               report.malformed := true ; return -1
+  2  if file[0] != 3:                                   REFUSE by DIRECTION: 1 previous_form,
+                                                            2 message_form_as_file, otherwise newer_form
+  3  L := LE(4, file+16) ; if 20 + L > len(file):       REFUSE layout_malformed
+     layout := file + 20
+  4  h := LE(8, file+8)                                 -- THE HEADER'S HASH, TAKEN AS GIVEN.
+                                                        -- Nothing is recomputed from the wire: the digest is
+                                                        -- not on the wire, so the hash cannot be re-derived.
+  5  i := the FIRST index with R.lineage[i] == h
+     if none:                                           REFUSE layout_newer, reporting h AND NOTHING ELSE
+  6  if i < R.floor:                                    REFUSE layout_unsupported, reporting h
+  7  k := R.known[i]
+     if L != k.layout_length or the L bytes at `layout` differ from k.layout:
+                                                        REFUSE layout_malformed
+  8  plan, split, fills := R.plans[i] ; record_bytes := k.record_bytes
+     for the identity entry the fills are EMPTY and record_bytes is 8 + C(root)
+  9  rest := len(file) - 20 - L
+     if record_bytes <= 8 or rest mod record_bytes != 0: report.malformed := true ; return -1
+                                                        -- 8 is the per-record hash; a body of nothing behind
+                                                        -- it would make `n` the file's length (fixedform.go:563)
+ 10  n := rest / record_bytes ; if n > capacity:         REFUSE batch_too_large
+ 11  per record, at `at`:
+       if LE(8, at) != h:                               REFUSE no_layout        -- BEFORE any byte is landed
+       PREFILL(out[rec], fills)                         -- §4.3
+       RUN(plan, split, at+8, out[rec])                 -- §4.4, one loop, either plan
+       BOUNDS(out[rec])                                 -- §4.5, §4.6, against THE PLAN'S bounds
+       at := at + record_bytes
+     return n
 ```
 
-REFUSE is total: no counter moves, nothing decoded. `layout_newer` carries the file's hash and NOTHING ELSE
-(bill §12.4): no walk over a stranger's layout anywhere in LOAD, on any path.
+**The order is load-bearing and it is not §1.1's order.** A layout arriving on the wire is no longer walked,
+so the seven rules do not fire at run time: the hash is looked up, then the floor, then the bytes are
+compared. **The seven §1.1 malformations under a KNOWN hash all come back as one name**, `layout_malformed`
+— "a lie about a known version" (bill §12.4, §13).
 
-### 5.4 The closure
+| condition | refusal | what it reports |
+|---|---|---|
+| shorter than 20 bytes, or no bytes at all | — | `malformed`, and `-1` |
+| form byte `1` / `2` / anything else | `previous_form` / `message_form_as_file` / `newer_form` | the name |
+| `20 + L` past the file | `layout_malformed` | the name |
+| the hash is in no lineage entry | `layout_newer` | **the file's hash, and nothing else** |
+| the hash is in the lineage, below the floor | `layout_unsupported` | the file's hash |
+| a known hash, different layout length or bytes | `layout_malformed` | the name |
+| the plan does not fit the caller's capacity | `plan_too_large` | the name |
+| an entry past the writer's record size | `layout_record_too_large` | the name |
+| a record size of `8` or less — the per-record hash and no body behind it | — | `malformed`, and `-1` |
+| a ragged tail: `rest mod record_bytes != 0` | — | `malformed`, and `-1` |
+| more records than the caller's capacity | `batch_too_large` | the name |
+| a record hash that is not the file's | `no_layout` | the name |
+| ill-formed text in the USED units | the name fix 11 owes (§4.5) | nothing decoded past it; the reference sets `malformed` instead — §5.8 |
+
+**REFUSE is total: no counter moves, nothing is decoded, and not one destination byte is written** — the
+prefill included. `malformed` is the residue and not a bucket a named rule falls into.
+
+**THE REPORT IS TWO ANSWERS, AND EVERY FIXTURE ASSERTS THEM JOINTLY** (`test/tables/versioning_lists.cpp:178`,
+the three lines `refuses_newer` shares with every OLD-REFUSES-NEW column). `refused` plus `reason` is one
+answer; `malformed` is the other; they are NEVER both set, and the counters are a third thing again.
+
+| the outcome | `refused` | `reason` | `malformed` | returns | the counters |
+|---|---|---|---|---|---|
+| a REFUSAL BY NAME — every row above that HAS a name | `true` | that name; `layout_newer` ALSO sets `layout_hash` to THE FILE'S hash and nothing else | **`false`** | `-1` | all zero, and not one destination byte written |
+| a MALFORMED read — under 20 bytes, `record_bytes <= 8`, a ragged tail | **`false`** | untouched | `true` | `-1` | all zero |
+| a read that lands values | `false` | untouched | `false` | `n` | §5.4's |
+
+**`layout_unsupported` fills `layout_hash` too** — both layout refusals report the file's hash, and what belongs
+to `layout_newer` alone is "and nothing else" (§5.9 #7). **The COMPILE census lands ONCE, after step 11's loop,
+on a read that returns** (§5.9 #6), which is how REFUSE stays total.
+
+So a port that sets `malformed` BESIDE a reason fails the joint assertion even though it refused correctly,
+and a port that refuses with no reason fails it too. That is exactly what §5.8 row 8 is: ill-formed text
+zeroes the field and sets `malformed`, where the ruling is a refusal by name.
+
+### 5.4 The counters, per op and per condition
+
+The fixtures assert these exactly, so a port that moves a different counter on the same bytes is wrong even
+when every value lands.
+
+| where | counter | when |
+|---|---|---|
+| `MATCH`, at COMPILE | `unknown` | once per writer field no reader field names, **once per peer and never per record** |
+| `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
+| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width** |
+| `count`, `text` | `clamped` | once per entry per record, when the length or count was out of range |
+| the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
+| `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
+| a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **every counter stays at zero**: an append the reader knows is not an event |
+
+A `bool` or a present byte that is not `0` or `1` is normalised to the language's own true and **counts
+nothing** (bill §12.12).
+
+**A clamp that cannot fire is not emitted, and nothing moves.** An ordinal whose extent FILLS its storage
+width — 255 variants in a byte, 65535 in two — has no read-side clamp: the comparison would be `> extent`
+against a value of that very width, which no value satisfies. The elided check never clamped, so the counter
+it would have moved never moved either; a port that emits the tautology instead is still conforming, and a
+port whose warnings-as-errors build refuses a tautology is free to drop it. The same rule already applies to a
+ranged scalar whose declared end sits on its width's limit.
+
+### 5.5 The closure
 
 `closure(T)` is `T`, every `table` or `type` it reaches by value, every enum, union, flags and constant any
 of them names, recursively. Every table or type in it is declared `fixed`; a pointer, map or unbounded array
 in it is a compile refusal; `T` is never in its own closure.
 
-### 5.5 What is retired by this section
+### 5.6 What is retired by this section
 
-The plan compiler at run time (§4.1–§4.4 become the build-time PLAN of §5.2); reading a layout the lock has
-never seen; the count clamp across bounds, the range clamp across versions, the remap of an unknown variant
-to `None`, the drop-and-count of an unknown field (all forward reads, now `layout_newer`). The seven §1.1
-checks stay as the lock's validation of what it records and the oracle's validation of the corpus; at run
-time a known hash is a byte comparison and an unknown hash is a refusal (bill §12.4). Every hostile
+Reading a layout the lock has never seen. The run-time walk of a stranger's layout — the seven §1.1 checks
+stay as the LOCK's validation of what it records and the oracle's validation of the corpus. The recompute of
+the header's hash from the layout behind it, and with it §2's step 5: there is no third thing to check, the
+byte comparison holds the header and the layout together, and the digest could not be re-derived from the
+wire anyway. The count clamp across bounds, the range clamp across versions, the remap of an unknown variant
+to `None`, the drop-and-count of an unknown field — all forward reads, now `layout_newer`. Every hostile
 check on a KNOWN layout's records stays (§4.5, §4.6).
 
-### 5.6 The tests
+### 5.7 The tests
 
 One test per row of §5.1, red first, in the compiler: the baseline REFUSES the narrowing and names it, and
-ACCEPTS the widening. One fixture per row of §5.2 in the reference (an older file read by the current
-build, the landed values and counters asserted), ported to every leg. One fixture per refusal of §5.3
-(`layout_newer`, `layout_unsupported`, `layout_malformed` on a known hash), reference first, every leg.
+ACCEPTS the widening. One fixture per row of §5.2 in the reference, ported to every leg: the LIST rows in
+`test/tables/versioning_lists.cpp` (`field_append`, `field_deprecate`, `field_undeprecate`, `enum_append`,
+`enum_width`, `union_append`, `union_arm_payload_widen`, `flags_append`, `keyed_array_enum_append`,
+`nested_append`, `rename_without_was`) and the NUMBER rows in `versioning_numbers.cpp` (the widenings, the
+grown bounds, `array_fixed_grow` with a NONZERO element default, `optional_add`, the floor and the hash
+cases). Each row is ONE definition change, two schemas of one table name in two packages, a `lead` and a
+`trail` bracketing the row so a mislaid size moves a neighbour.
+
+Every row owes two columns. **NEW-READS-OLD**: every old value lands exactly, the reader's tail is its
+declared default, the counters are §5.4's. **OLD-REFUSES-NEW**: `layout_newer` before any record, with the
+FILE's hash in the report, no counter moved, nothing marked malformed, and the destination still every field
+of a fresh value. A row whose edit moves no layout byte and no digest byte (`rename_without_was`,
+`field_deprecate`, `field_undeprecate`) has no second column: the hashes are equal, both sides take the
+identity plan, and it READS in both directions — **which is the test that the hash, and only the hash, is
+the version.** The floor owes three: a file AT the floor reads, a file ONE BELOW refuses
+`layout_unsupported`, and the floor raised by one makes yesterday's file refuse today.
+
+**The properties gate carries the pairs too.** `test/tables/fixedform_properties.cpp` runs its save / load /
+compare properties over every fixture — `P1` among them — and then ONE PAIR RUN per lineage pair: `FX1`/`FX2`,
+`P1`/`P3`, `FN1`/`FN2`, `FM1`/`FM2`, `V1`/`V2`, **`UT1`/`UT2`** (the guard and flavour lanes, which §7 item 6
+already names as a fixture) and `Scalars`/`Scalars2` — **SEVEN pairs**, and `ir.TableFixedFixtureLineage`
+(`ir/fixedform.go:685-693`) is the list, the one place to read it. That is §5.7's two columns inside the
+gate rather than only inside the versioning cases. FORWARD: the newer reader compiles the older file through
+its lineage and returns one record. REVERSE: the older reader given the newer file refuses, and the refusal is
+`layout_newer` BY NAME. **The old contract's both-ways compiled read is retired, not bent** — a reader that
+compiled a stranger's layout in either direction was the thing this section replaced. The pairs resolve
+through `ir.TableFixedFixtureLineage`, the map from a newer fixture's basename to its older files, which is
+what lets a pair no filename convention can name (`Scalars2`, in a different directory from `Scalars`) join
+the gate at all.
+
+**The gate's own record check is the READER'S COMPILED HASH CONSTANT**, never a hash of the layout bytes it
+just read. The digest is not on the wire, so `hash_of(layout)` is the wrong identity for any table carrying a
+range, a `bits(N)`, a `fixed(I,F)` or a flags type — a harness that recomputes it is asserting the one number
+§5.2 says cannot be re-derived from a file.
+
+**`keyed_array_enum_append`'s element is a fixed table with a NONZERO default**, `fixed table Qty { n int32 = 7 }`,
+so the slot the appended key opens reads `7` and not `0`. Its NEW-READS-OLD destination, and
+`array_fixed_grow`'s, are POISONED with `0x5A` through a byte pointer before the load: with a zero default and
+a zeroed destination the row passes whether the prefill ran or not, and this is the row whose whole subject is
+that it ran. OLD-REFUSES-NEW reads the same way from the other side — the destination holds `7`, the fresh
+value's own default, because REFUSE wrote nothing.
+
+**Three notes a porter needs before reading the fixtures as an oracle.**
+
+**`union_arm_payload_widen` IS NOT A WIDEN**, and its name misleads. The row appends a field `y` INSIDE arm
+`alpha`; nothing grows a width, so it is an APPEND and it counts `widened == 0` and `unknown == 0` like every
+other one — `reads_clean( "union_arm_payload_widen", r, 0, 0 )`, `test/tables/versioning_lists.cpp:611`. A
+port reading the name and looking for a `widen` entry in the plan is looking for one that is not there.
+
+**NO FIXTURE EXERCISES A NONZERO `unknown`.** Every `reads_clean` call in both files passes `0` for it, so
+§5.4's "once per peer, never per record" — and §5.8 row 11's divergence, which counts once per ELEMENT of an
+array of tables — is asserted by NO row today. Proving it needs a row whose OLD schema carries a field the new
+one dropped, over an array of tables, and that row does not exist: **owed**, and a leg that ports the fixtures
+as they stand inherits row 11 untested.
+
+**A STALE COMMENT at `test/tables/versioning_numbers.cpp:1001`** (the block's own preamble, 998-1002), over the seven broken-layout cases under a
+known hash, says "Today every one of them comes back with its §1.1 name instead". That is the reader §5.3
+retired: a §1.1 malformation under a KNOWN hash is ONE name, `layout_malformed`, and the block's own
+assertions now check exactly that (`r.reason == layout_malformed`, line 1046). The cases are right; the
+comment describes a reader that no longer exists. **Noted for Johnny**, with the C++ green phase.
+
+**The C leg's port list, from the twin.** `tools/fixedtwin` holds the C and C++ fixed-form runtimes to one
+canonical text and fails on ANY difference, so a row C++ has and C does not would break the gate. Those rows
+are recorded as **OWED BY THE C LEG** and stripped, each naming the §5 section the C card implements from
+(`bench/paired/TWIN.md`). They are not divergences from this page — they are this page's port list for C:
+
+| OWED by C | what it is | from |
+|---|---|---|
+| `kTableFixedPresent`: the enumerator, the Apply case (`dst[p.dst] = 1`), and the compile of `T` into `?T` (`me.kind == 35 && te.kind != 35`) | the present op — an UNGUARDED constant `1` into the reader's present byte, then the payload under the same guard and ordinal | §5.2 EMIT, bill §12.8 |
+| `TableFixedWidens` rungs `20..24` and `25..29`, and `TableFixedSignedKind` over `20..24` | the signed and unsigned `fixed(I,F)` ladders, and a signed fixed-point's sign for the widening | §5.1 `fixed(I,F)` |
+| the enum case `te.size < me.size` emitted as `kTableFixedWiden` | a grown ordinal or tag width is a `widen`, unsigned, and counts `widened` | §5.2 EMIT kind 30, §5.4 |
+| `struct TableFixedKnownLayout` | the known-layout table itself: per entry the hash, the layout bytes, the record size | §5.2, §5.3 |
+| `layout_newer`, `layout_unsupported` and the floor, in the per-type codec rather than the shared extract | the version-range gates: refuse a hash the lineage does not hold, and a hash below the floor | §5.3 |
+
+Five rows, and the C leg takes each from THIS PAGE rather than from the C++ text beside it. The twin's own
+note says so: do not port the C from the C++.
+
+**PORTING A LEG, IN ORDER.** The pilot port (#914, the Go leg, written from this section with the reference
+unopened) ran it this way and nothing in it is optional.
+
+| # | the step |
+|---|---|
+| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing |
+| 2 | **LOAD, §5.3's eleven steps IN ORDER.** The framing checks, the header's hash TAKEN AS GIVEN, the lineage select, the floor, the byte comparison, the per-record hash BEFORE the prefill. Every refusal by its own name, nothing decoded, no counter moved. This is the half the negative controls watch |
+| 3 | **The static data**: the lineage from the lock, oldest first, the current layout last (§5.9 #1, #2); the floor as one number; every plan laid down OFF THE LOAD PATH (§5.9 #3, #4). Nothing here reads a file at run time |
+| 4 | **PLAN / MATCH / EMIT**, §5.2, against §1's kind-code table — the ladder rungs `20..24` and `25..29` included, the aux lane's seven rows, the text op's three facts, the widen's two signs, the guard's width, the remap table's length word, the two-pass split before the pool spends |
+| 5 | **The three tests §5.6 RETIRES, by name.** The leg's twins of `TestFixedFormPlanPath`, `TestFixedFormArgLaneTextUnderSecondArm` and `TestFixedFormLayoutRules` asserted the run-time walk of a stranger's layout and a forward read; under this section each file comes back `layout_newer`. **SKIP them by name with the sentence that says where the coverage is owed** — the plan path moves to the lineage harness, §1.1's seven rules move to the LOCK's validation of what it records — and never delete them: a deleted test is a coverage claim nobody can audit |
+| 6 | **The gate**, both halves, hung off that leg's `test-<lang>`: the BYTE gate against the reference's corpus and the VERSIONING gate over §5.7's rows, each with a negative control that moves one byte and proves the gate goes red (§5.9 #11) |
+
+**What to SKIP, by name**: nothing that §5.3 gives a name to. §5.8's fourteen rows are the REFERENCE's debts and
+not a port's work list — a leg that reproduces a divergence to match the reference has ported the bug, and the
+one row that must be waited on rather than matched is row 10, the digest (§5.9 #12).
+
+**What to leave RED, named rather than faked**: the hostile pass under the WRITER's bounds until the plan
+carries them (§5.8 row 4); a nonzero `unknown`, which no fixture exercises (§5.7); the remap table past 255
+entries (row 14); the clamp count on a forged ordinal under a compiled plan (row 12). A leg reports these as
+owed, in its own words, in the PR that lands it. **A red nobody wrote down is a red nobody owes.**
+
+### 5.8 What the green reference owes this section
+
+Every row is a divergence that STILL STANDS on `fixed-table-form` with the C++ green phase merged (#910) and
+the lock's lineage merged (#909), re-read against the branch. **Implement this page, not the reference** — for
+each row the bill's ruling is the second column, and **the reference owes this**.
+
+| # | what the reference does | what this page says — the reference owes this |
+|---|---|---|
+| 1 | the lineage is read from SIBLING SCHEMA FILES at generate time, by filename convention plus a fixture map (`cpptable/lineage.go`, `ir.TableFixedFixtureLineage`) | the lineage comes from the lock — `lockfile.Lineage`, with a retired mark and a reason per entry. The convention is the INTERIM, named as one (§5.2) |
+| 2 | the floor is hard-coded to one index for one test package (`lineageFloor`) | the floor is `1 +` the highest retired index, from `lockfile.Floor` |
+| 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
+| 4 | the `count` op's bound, the ranges, the variant and arm counts are the READER's (`e.size = my_n`) | the bounds are the WRITER's, per plan (bill §12.5) |
+| 5 | `arg`, the guard's ordinal, is still a BYTE lane (`uint8_t`), so a union past 255 arms cannot express its guard value — the tag is READ at its own width and the remap table is `uint16_t`, so only this lane is short | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
+| 6 | a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH | an arm inside an arm answers to the OUTER tag too (§4.1) |
+| 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
+| 8 | ill-formed text zeroes the field, restores its default and counts `malformed` | a content violation REFUSES BY NAME (§4.5, fix 11) |
+| 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
+| 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
+| 11 | the `unknown` census is counted once per ELEMENT of an array of tables | once per field per peer |
+| 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `COUNT clamped` on both (§4.6) |
+| 13 | an entry reaching past the writer's declared record comes back through the compile's failure path as `layout_malformed`; the name `layout_record_too_large` is wired only to the 65536 bound and to a zero root size | `layout_record_too_large` for the entry too (fix 3) |
+| 14 | the enum remap table is CAPPED AT 255 entries, `n := min( te.children, 255 )`, and its length word is a `uint16_t` | the table is as long as the WRITER's variant count (§5.2): today a writer's 256th variant and beyond remap to `None` as though the reader did not name them — a SILENT wrong value, not a refusal |
+
+**What #910 and #909 settled, and this list no longer carries.** `BASELINE` exists: the monotone law is
+`internal/lockfile/monotone.go`, the lock holds a lineage with a retired mark and a reason per entry, and
+`schema lock --retire T@0x<hash> --reason "…"` is the one non-append edit the file takes — so the row that
+said "no lineage in the lock, no monotone check, no `--retire`" is closed, and what remains of it is rows 1
+and 2 above, which are about the BACKEND not reading what the lock now holds. The digest is no longer a
+second argument a leg can omit — it is computed inside the hash from the schema (§5.2) — and the reference's
+properties gate now reads its cross-schema pairs through the fixture lineage map with the reverse direction
+named `layout_newer` rather than compiled both ways (§5.7).
+
+### 5.9 The twelve the pilot port had to guess, answered
+
+The PILOT PORT (#914) wrote the Go leg from this section alone, with `internal/codegen/cpptable` and the C++
+runtime unopened, and went green on every fixture row. It also listed twelve places where this page was SILENT
+and a porter had to choose. Each is answered here so the next eight legs choose nothing. Where the pilot's
+choice is right it is the rule; where the bill overrules it, the bill's answer is the rule and the pilot's is
+named as the wrong turn. Each row says what the MERGED reference does today, because a leg reading the
+reference beside this page needs to know which of the two it is looking at.
+
+**1. THE ENTRY POINT BY WHICH A BACKEND RECEIVES THE LINEAGE.** A backend takes the lineage AS DATA, through a
+SECOND entry point beside the plain one: `Generate(u)` is the NO-LINEAGE case — a unit that was never locked
+promises nothing, so it emits the identity plan and a lineage of one — and `GenerateLineage(u, lineage)` is the
+one COMPILE runs, where `lineage` is per fixed table the lock's entries OLDEST FIRST, each carrying §5.2's six
+facts (`lockfile.LineageEntry`: `Wire`, `Layout`, `Digest`, `Record`, `Retired`, `Reason`), plus the floor.
+**The backend opens no file**: `lockfile.Open`, `lockfile.Lineage` and `lockfile.Floor` are the CALLER's three
+calls, so the disk is read in one place and a test can play the lock in one line. The pilot's shape is the
+rule. The reference has no such entry point — `cpptable.Generate(u *ir.Unit)` (`cpptable.go:1465`) builds its
+lineage by opening sibling schema files itself (`cpptable/lineage.go`, `loadLineagePeers`), which is §5.8 row
+1's interim; the reference owes the second entry point too.
+
+**2. THE CURRENT LAYOUT IS ALWAYS THE LAST ENTRY.** `R.lineage` is never empty. COMPILE appends the table's own
+layout when the lock's last entry is not already it, so `R.own_hash` always resolves to an index and the
+IDENTITY plan is always reachable — including on a build with no lock at all, whose lineage is that one entry.
+The pilot's choice is the rule; the reference does the same.
+
+**3. WHAT "BUILD TIME" MEANS FOR A LEG WITH NO `constexpr`.** **Plans built at package initialization from THE
+LOCK'S BYTES are build time for this page, and they are conforming.** That is not a run-time walk of a
+stranger's layout: the bytes came from the lock, the walk happens once per process, off every load path, and a
+plan that will not build is a BUILD failure and never a refusal at the first file that needs it. What bill
+§12.5 and §5.8 row 3 forbid is the other thing — compiling a plan FROM A FILE'S BYTES when a load asks for it,
+and keeping it in a cache a load can miss. Emitting every older plan as source is equally conforming and is the
+better shape where the language has a constant initializer; which of the two a leg picks is SHAPE in §7's
+sense, and a leg says in its PR which it took. **Contract: nothing on the load path compiles, nothing on the
+load path parses a layout, and the load path cannot fail for want of a plan.** The reference compiles at first
+load into a caller-supplied cache, which is the row this page is holding it to.
+
+**4. HOW A PLAN'S STORAGE IS SIZED.** The build sizes it BY CONSTRUCTION — the plan is laid down, so its entry
+count, its pool and its remap tables are all known before anything runs. How the build discovers that size is
+shape: the pilot grew `256 → 1024 → … → 2^18` and retried, and a leg that computes the size up front is no
+different. **Contract: the DECLARED CAPACITY a build holds an entry to is real, and an entry whose plan
+exceeds it records `plan_too_large` ON THAT ENTRY** — BASELINE refuses the widening at commit under §5.1's cap
+row (bill §12.10), and LOAD reports `plan_too_large` by name if a file ever selects that entry. The reference
+sizes no plan at build: the caller passes `plan_capacity` and the plan is compiled into the caller's buffer
+(`fixedruntime.go:1174-1187`), §5.8 row 3 again.
+
+**5. WHAT THE CALLER'S PLAN SLICE MEANS ONCE PLANS ARE STATIC.** It stays a **CAPACITY DECLARATION**, and it is
+no longer written through. The selected plan's entry count is checked against it and refuses `plan_too_large`
+by name — so §5.3's row stands exactly as written and §7's negative control, a one-entry plan slice, stays red.
+The pilot's choice is the rule. A leg whose API carries no such argument still owes the refusal, from the
+plan's entry count against its OWN declared cap: the name is the contract, the argument is not.
+
+**6. WHERE THE COMPILE CENSUS LANDS IN LOAD.** `unknown` and `kind_mismatch` are the PLAN'S OWN NUMBERS, fixed
+when the plan was built; the load carries them onto the report **ONCE, AFTER step 11's record loop, and only on
+a read that RETURNS `n`**. Not inside the loop — §5.4 says once per peer, never per record. Not before it — a
+refusal that came after would have moved a counter, and **REFUSE IS TOTAL**. The pilot's choice is the rule.
+The reference counts them into the live report at compile (`fixedruntime.go:948`, `998`, and `1194`'s "counting
+it twice would lie"), and because it compiles at first load they land on whichever load happened to compile the
+plan and on no other — a second read of the same peer reports `unknown == 0`. Under this page every returning
+read of that peer reports the same census.
+
+**7. WHETHER `layout_unsupported` SETS THE HASH FIELD.** **YES.** Both named layout refusals report the file's
+hash: §5.3's condition table says `layout_unsupported` reports it, and the bill's ruling that "the retired
+hashes are emitted for `layout_unsupported`" (§12, ruling 9) is what the field is FOR — an operator who must
+decide between "upgrade the client" and "ship the reader" needs the number in both answers. What belongs to
+`layout_newer` alone is the words **AND NOTHING ELSE** (bill §12.4): its report carries the hash and no other
+fact. The joint-answer table's phrasing is about what else a row may carry, not about which rows fill the hash
+field. The pilot's choice is the rule. (The ruling is bill §12.4 with §12's ruling 9; §12.12 is the bool and
+present-byte normalisation, a different row.)
+
+**8. A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT.** The primary answer is the one §5.2 already gives and a
+leg must not soften it: **it is a bug in the lock and the BUILD FAILS**, naming the table and the entry's hash.
+Where a leg cannot fail a build because the lineage arrived at run time — a test or a host handing entries in —
+the entry carries `layout_malformed` and LOAD refuses by that name if a file ever matches its hash, with
+nothing decoded and no counter moved. The pilot's choice is the rule for that second path only; a leg that
+takes it at BUILD time has turned a lock bug into a wire event.
+
+**9. WHICH FIXED TABLE IS A FILE'S ROOT WHEN A SCHEMA DECLARES TWO.** **Every declared `fixed table` is a root**
+(`ir.TableFixedRoots`) with its own layout, its own hash, its own lineage and its own files — a nested fixed
+table is not a lesser table, it is one THIS file is not. Nothing in a file names its root: the reader chooses
+the root and **the HASH is what resolves**, so a file written from `Vec` and read as `Lineage` is
+`layout_newer`, which is the right answer and not a near miss. For the corpus rows the writer names the root
+explicitly — `test/tables/fixedform_dump.cpp` writes `nested_append` from `Lineage`, `optional_add` from
+`OptionalAdd`, `p1`/`p3` from `Chain` — and in every row it is the OUTER table, the fixed table no other fixed
+table of the unit names by value. The pilot's heuristic gives that same answer on every row; **the rule is the
+dump's**, and a leg reads each corpus file with the root the dump wrote it from.
+
+**10. THE COUNTERS A ROW OWES, PER ROW.** An APPEND row owes **every counter at zero** — an append the reader
+knows is not an event (§5.4's last line). A WIDTH row owes **`widened` nonzero and every other counter zero**.
+The exact number is §5.4's rule multiplied out: `widened` moves once per widen entry per record, so a row's
+count is its plan's widen entries times its record count, and a leg that knows its plan asserts the number
+while one that does not asserts nonzero. **No clean row asserts `clamped` at all.** `union_arm_payload_widen`
+is an APPEND and owes `0, 0` despite its name (§5.7). The pilot asserted the floor of this and it stands; the
+multiple is the addition.
+
+**11. THE LEG'S BYTE GATE EXISTS, AND A LEG OWES TWO GATES.** `make tables-go-fixed-form` **is in the tree** —
+`make/go.mk:475`, hung off `test-go`, with a negative control at `make/go.mk:489` that adds one to every text
+length through `go build -overlay` and demands the gate go red. It is the WRITE-side byte gate: the Go leg's
+layout and the whole 80915-byte file against the C++ reference's corpus, byte for byte. The VERSIONING half is
+a second target, `make tables-go-fixedform` (`make/go.mk:58`), `go test ./internal/codegen/gotable -run
+TestFixedForm`. **The pilot guessed wrong here, and the way it guessed wrong is the lesson**: it grepped
+`Makefile` alone, and this repository's per-language targets live in `make/<lang>.mk`. So: **every leg owes
+both gates** — bytes against the reference's corpus, and §5.7's rows against the versioning corpus — each hung
+off that leg's `test-<lang>`, and each with a negative control, because a byte comparison nobody has seen fail
+may be comparing a file with itself.
+
+**12. THE DIGEST IS THE SHARED FUNCTION'S, AND A LINEAGE WAITS ON ROW 10.** A leg computes every hash through
+the compiler's own `ir.TableFixedLayoutHash(layout, st)` and never through a private re-derivation — §5.2's
+signature has no digest argument for a leg to omit, and a leg that reaches for the digest separately has
+already diverged. The pilot did this and its hashes move WITH the reference the day §5.8 row 10 lands. **The
+consequence a porter needs stated: a lineage entry pinned TODAY for a table carrying a float range or a
+reader-side limit is a hash no build after row 10 can reproduce.** So do not lock a lineage for such a table
+until row 10 is in — which is the same sentence as §5.2's "the reference owes it BEFORE ANY LEG PORTS", read
+from the operator's side.
 
 ## 6. The bounds
 
@@ -540,5 +1186,10 @@ Where this page and the C++ reference or §3.4 disagree, **this page is the ruli
 
 Three smaller divergences, recorded rather than fixed here. **(a)** §3.4's `C` table gives an enum's ordinal
 width as `1, 2 or 4`, where the compiler and the reader both admit `8`, derived from the enum's top wire value.
-**(b)** §3.4 says a compiled plan is "cached by hash"; the reference recompiles on every load with a
-non-matching hash. **(c)** The compile-time guard is the tables baseline of §18 — there is no §2.10 on the tip.
+**(b)** §3.4 says a compiled plan is "cached by hash", and the reference DOES cache it — `TableFixedPlanCache`,
+the CALLER's own storage, sixty-four slots keyed by the file's hash
+(`internal/codegen/cpptable/fixedruntime.go:1252-1281`, looked up and filled at
+`internal/codegen/cpptable/fixedform.go:524-545`), so a second load under the same hash compiles nothing. The
+line that stood here, saying the reference recompiles on every load with a non-matching hash, was FALSE and is
+withdrawn. What remains is not a cache miss but §5.8 row 3: **nothing should compile at run time at all**, and
+then there is no cache to keep. **(c)** The compile-time guard is the tables baseline of §18 — there is no §2.10 on the tip.
