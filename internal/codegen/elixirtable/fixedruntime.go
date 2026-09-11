@@ -1807,10 +1807,19 @@ const fixedRuntimeBody = `  @moduledoc """
   selects it (§5.9 #8, #26 for the run-time half; at BUILD the same fact is a
   lock bug and the build fails). A lane is never an exception, so @on_load always
   returns :ok and a module always loads.
+
+  OWN IS THE READER'S OWN WIRE HASH, handed in by the compiler as the number it
+  recorded for this build's layout — the same number the lineage is keyed on. IT
+  IS NOT DERIVABLE HERE: the wire hash folds the DEFINITIONS DIGEST in over the
+  layout bytes (ir.TableFixedLayoutHash, §5.9 #12), and the digest is not in the
+  bytes. This leg computed hash(my_bytes) instead — fnv1a64 over the layout ALONE
+  — so it matched no entry, NOTHING was ever identity, and §5.3 step 8's lane was
+  dead: every read, this build's own layout included, ran a compiled plan. It was
+  invisible in the answers, because the plan for your own layout IS the identity
+  projection.
   """
-  def lineage_init(module, root, known, my_bytes, dst, capacity) do
+  def lineage_init(module, root, known, own, my_bytes, dst, capacity) do
     mine = my_layout(module, my_bytes)
-    own = hash(my_bytes)
 
     lanes =
       for i <- 0..(tuple_size(known) - 1) do

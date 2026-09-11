@@ -1125,6 +1125,34 @@ Leg.eq(
 # the lock is what holds the header and the layout together.
 Leg.eq("the header names this build's own layout", stated, Tblfx1.FX1Fixed.fx_root_fixed_hash())
 
+# §5.3 STEP 8: THE READER'S OWN WIRE HASH TAKES THE IDENTITY LANE, and no plan
+# runs on that read. The identity lane is not an optimization — it is the step
+# that says a reader reading its OWN bytes does no projection at all, so the
+# prefill, the destination walk and the census are all bypassed and the record's
+# body IS the image.
+#
+# IT WAS DEAD IN THIS LEG. `lineage_init` decided identity by `hash(my_bytes)` —
+# fnv1a64 over the layout bytes ALONE — and the lineage's own key is the WIRE
+# hash, which folds in the definitions digest (`ir.TableFixedLayoutHash`, §5.9
+# #12). The two numbers never agree, so NO entry was ever identity and every
+# read this leg ever made, its own layout included, ran a compiled plan. It is
+# invisible in the bytes — the plan for your own layout is the identity
+# projection, so the answers match — which is exactly why the lane itself has to
+# be asserted rather than the values it produces.
+{:ok, own_index} =
+  Tblfx1.FixedRuntime.select(
+    Tblfx1.FX1Fixed.fx_root_fixed_known(),
+    Tblfx1.FX1Fixed.fx_root_fixed_floor(),
+    stated,
+    layout
+  )
+
+Leg.eq(
+  "the reader's own layout takes the IDENTITY lane, with no compiled plan (§5.3 step 8)",
+  Tblfx1.FixedRuntime.lineage_lane(Tblfx1.FX1Fixed, :fx_root, own_index),
+  :identity
+)
+
 # THE SEVEN §1.1 RULES ARE NOT READ-TIME RULES ANY MORE (§5.3, §5.6). A layout
 # arriving on the wire is NEVER WALKED: the header's hash is looked up in the
 # lineage the BUILD laid down, then the floor, then the bytes are COMPARED

@@ -1716,6 +1716,10 @@ func (g *fixedGen) emitLineageInit(roots []*ir.Struct) {
 		g.pf("      __MODULE__,\n")
 		g.pf("      :%s,\n", snake)
 		g.pf("      @%s_known,\n", snake)
+		// THE READER'S OWN WIRE HASH, beside the lineage it is a key of (§5.3 step
+		// 8). It cannot be computed from the layout bytes in the runtime — the
+		// definitions digest is not in them — so the compiler hands it in.
+		g.pf("      @%s_hash,\n", snake)
 		g.pf("      @%s_layout,\n", snake)
 		g.pf("      @%s_dst,\n", snake)
 		g.pf("      R.plan_capacity()\n")

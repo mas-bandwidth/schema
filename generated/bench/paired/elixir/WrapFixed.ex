@@ -372,6 +372,7 @@ defmodule Bench.WrapFixed do
       __MODULE__,
       :fixed_table,
       @fixed_table_known,
+      @fixed_table_hash,
       @fixed_table_layout,
       @fixed_table_dst,
       R.plan_capacity()
