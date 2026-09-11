@@ -1601,11 +1601,18 @@ jobs:
       # this pulls them out of a log that is thousands of compiler lines long
       # and puts them in the run's annotations.
       #
-      # The overrides are certify.yml's: RUSTUP_BIN defaults to a homebrew keg
-      # on the author's machine, and DART, JAVA/JAVAC, ELIXIR/MIX and NODE
+      # The overrides are certify.yml's: DART, JAVA/JAVAC, ELIXIR/MIX and NODE
       # default to the repo-local dist/ toolchains, while on CI the setup steps
       # above put the pinned versions on PATH. They are harmless in a group that
       # runs no control needing them.
+      #
+      # RUSTUP_BIN IS NOT AMONG THEM ANY MORE. A group's targets come out of
+      # tools/negativecontrols and include go-test targets, and make prepends
+      # $(RUSTUP_BIN) to PATH around the whole recipe — so pointing it at the
+      # image's own /usr/bin put the image's older go in front of the one
+      # actions/setup-go installed (run 34600421804). The make default is a keg
+      # that does not exist on a runner, which costs nothing to prepend and
+      # leaves every setup step's toolchain in front.
       - name: every negative control in the ${{ matrix.name }} group
         run: |
           set -o pipefail
@@ -1614,7 +1621,7 @@ jobs:
           status=0
           # shellcheck disable=SC2086
           make -k $targets \
-            RUSTUP_BIN=/usr/bin DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
+            DART=dart JAVA=java JAVAC=javac ELIXIR=elixir MIX=mix NODE=node \
             2>&1 | tee controls.log || status=1
           if grep -qE '^NEGATIVE CONTROL( FAILED)?:' controls.log; then
             echo "::error::a negative control refused. Either its sabotage no longer patches the line it aims at, or the gate it watches stayed green under the sabotage. Both are stop-the-line: the control is watching nothing until it is repaired."

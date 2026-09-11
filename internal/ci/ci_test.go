@@ -397,16 +397,16 @@ var theImagesOwnToolchainDirs = []string{"/usr/bin", "/bin", "/usr/local/bin", "
 // directory that is not there costs nothing and leaves every setup step's
 // toolchain in front, which is what ci-full.yml's rust versioning step does.
 //
-// THE GATE IS SCOPED TO THE FAST LANE, AND THE REST IS A REPORTED FINDING
-// RATHER THAN A SILENT EXEMPTION. `RUSTUP_BIN=/usr/bin` is also handed to whole
+// THE GATE WATCHES EVERY WORKFLOW, which is the second half of the fix the
+// commit above named and left open. The same override was handed to whole
 // suites in certify.yml's `test` and `inline-gate` jobs and to ci-full.yml's
-// negative-control groups, where it was written when the only recipes that read
-// it were `cargo` lines. `make test` now reaches `tables-rust-versioning`
-// through `test-rust`, so certify's ubuntu-latest row carries the same
-// shadowing this gate names — on a runner whose /usr/bin holds an older go. That
-// is a change to certify.yml and to a job this branch does not own, so it is
-// named here and left to its own commit; widening the glob below is the second
-// half of that fix.
+// negative-control groups, written when the only recipes that read it were
+// `cargo` lines. `make test` now reaches `tables-rust-versioning` through
+// `test-rust` and a control group's targets come out of
+// tools/negativecontrols, so both carried exactly the shadowing this gate
+// names, on a runner whose /usr/bin holds an older go. All three are gone, and
+// the glob is the whole directory rather than one lane so the next workflow
+// that copies the override is red where it is written.
 func TestNoWorkflowShadowsTheGoToolchain(t *testing.T) {
 	root := repoRoot(t)
 	vars := pathPrependingMakeVars(t, root)
@@ -418,9 +418,6 @@ func TestNoWorkflowShadowsTheGoToolchain(t *testing.T) {
 
 	watched := 0
 	for name, data := range workflows(t, root) {
-		if name != "ci-fast.yml" {
-			continue
-		}
 		watched++
 		for _, l := range lines(name, data) {
 			for _, v := range names {
@@ -435,7 +432,7 @@ func TestNoWorkflowShadowsTheGoToolchain(t *testing.T) {
 		}
 	}
 	if watched == 0 {
-		t.Fatal("ci-fast.yml is not under .github/workflows — this gate would pass over an empty set")
+		t.Fatal("no workflow found under .github/workflows — this gate would pass over an empty set")
 	}
 	t.Logf("PATH-prepending make variables watched: %s", strings.Join(names, " "))
 }

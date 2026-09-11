@@ -689,8 +689,13 @@ public final class Main {
             final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
             final int n = tblfx1.FxRootFixed.load(v, 1, lying,
                     tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
+            // The failure says WHAT IT GOT, the way checkForm above does. A
+            // refusal gate that prints only its own sentence tells a reader
+            // that the reason was wrong and not which reason it was, and the
+            // first platform to disagree is the one that needs the answer.
             check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutMalformed,
-                    "REFUSED BY NAME: a header that names a layout it does not carry");
+                    "REFUSED BY NAME: a header that names a layout it does not carry"
+                            + " (got n=" + n + " refused=" + r.refused + " reason=" + r.reason + ")");
             check(!r.malformed, "a lying header is a refusal and never damage");
         }
 

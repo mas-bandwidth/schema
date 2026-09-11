@@ -32,6 +32,16 @@ void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes )
 {
     UtRoot back;
     TableReport r;
+
+    /* POISON THE CALLER'S RECORD FIRST, and the reason is this read (§5.7). The
+       load decides which arm it writes from the WRITER's layout, so a reader
+       that handed it whatever was on the stack would be asserting about an
+       indeterminate byte whenever the record did not carry the arm this lane
+       expects — which is what gcc says out loud here, by name, about
+       `back.pick.type` and `back.pick.as.b.label_length`. A poisoned record
+       makes every assertion below a statement about what the LOAD wrote, and
+       0xA5 is a value no case below expects to see. */
+    memset( &back, 0xA5, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
     fixed_check( ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C two lanes, compiled: the record reads" );

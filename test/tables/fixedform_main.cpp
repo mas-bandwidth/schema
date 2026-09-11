@@ -52,6 +52,22 @@
 #include "FE1Table.h"
 #include "FE2Table.h"
 
+// POISON THE STORAGE, NOT THE OBJECT (docs/FIXED-FORM-ALGORITHM.md §5.9 #35).
+// A generated table's struct is a class type with its own Reset, so a
+// `std::memset( &value, ... )` over it is what gcc's -Wclass-memaccess refuses
+// by name: the compiler cannot tell a poison from a clobber, and a cast to
+// `void *` to quiet it would throw away the one diagnostic that catches the
+// clobber. What these cases actually want is the STORAGE's BYTES — so they
+// write the bytes through a character view of the object, which is the access
+// the language blesses, and hand the object back to the type's own Reset when
+// the case needs a defined value afterwards.
+template <typename T>
+static void poison_storage( T & value, unsigned char byte )
+{
+    unsigned char * storage = reinterpret_cast<unsigned char *>( &value );
+    for ( size_t i = 0; i < sizeof( T ); i++ ) { storage[i] = byte; }
+}
+
 // ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
 // THE VERSIONING LAW'S NUMBERS ROW (test/tables/versioning_numbers.cpp,
 // docs/FIXED-FORM-VERSIONING-TESTS.md). One registration call, below in main,
@@ -1024,7 +1040,7 @@ static void owed10_no_layout_writes_nothing_case()
     tblfu1::TableFixedPut64( w.data() + rec, 0xDEADBEEFCAFEBABEull );
 
     tblfu2::FuRoot back;
-    std::memset( &back, 0xAB, sizeof( back ) );
+    poison_storage( back, 0xAB );
     const tblfu2::FuRoot poison = back;
     tblfu2::TableReport r;
     std::vector<tblfu2::TableFixedEntry> plan( 1024 );
@@ -1451,13 +1467,13 @@ static void guard_width_case()
     plan[1].argw = 2;
 
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    r = {};
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0, "GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    r = {};
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
@@ -1466,7 +1482,7 @@ static void guard_width_case()
     src[1] = 0x01;
     plan[1].argw = 1;
     std::memset( dst, 0, sizeof( dst ) );
-    std::memset( &r, 0, sizeof( r ) );
+    r = {};
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 
