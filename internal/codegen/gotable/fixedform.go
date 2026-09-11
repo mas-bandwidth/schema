@@ -17,10 +17,11 @@
 // Form-1 Load of a DECLARED fixed table is a named refusal (Glenn
 // 2026-09-09), never a slow read — and the word that matters is DECLARED.
 // The refusal is keyed on the `fixed table` KEYWORD ([ir.Struct.FixedDeclared],
-// #823), not on the shape: a table the compiler merely derived into the fixed
-// mode asked for nothing and keeps the form-1 Load it never lost, even though
-// this backend also emits form 3 for it. FixedLoad itself is the form-3 reader
-// either way, and it answers by the form REGISTRY (§3): previous_form for 1,
+// #823), not on the shape, and since #823 landed so is the FORM: a bounded body
+// a plain `table` declares is the variable wire, emits no form-3 surface at all
+// and keeps the form-1 Load it never lost — nothing is derived in either
+// direction (§2.2, [ir.TableFixedRoots]). FixedLoad is the form-3 reader, and
+// it answers by the form REGISTRY (§3): previous_form for 1,
 // message_form_as_file for 2, newer_form for every byte §3 has not assigned.
 // The C++ reference still accepts form 1 by the form byte; this port does not
 // copy that for a declared fixed table.
@@ -324,10 +325,12 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 // refusesForm1 is the OTHER question, and Glenn 2026-09-09 is that they are
 // two: a form-1 file handed to <T>Load is a named refusal when the AUTHOR
 // DECLARED the table fixed, never merely because the compiler could lay it
-// out fixed. hasFixedForm above is shape; this is the keyword. Nothing sets
-// [ir.Struct.FixedDeclared] until #823's `fixed table` lands, so today every
-// table in this tree keeps its form-1 Load and the shared wire oracle reads
-// what it always read.
+// out fixed. hasFixedForm above is shape; this is the keyword. Since #823
+// landed, hasFixedForm asks the declaration too — [ir.VariableTables] is
+// [ir.Struct.FixedDeclared]'s complement — so the two answer together on this
+// leg; the conjunction stays because the refusal is owed to the KEYWORD, and a
+// backend may carry the form for FEWER types than the declaration (the leaf
+// cap above is one such narrowing) but never for more.
 func (g *tableGen) refusesForm1(st *ir.Struct) bool {
 	return g.hasFixedForm(st) && st.FixedDeclared
 }
