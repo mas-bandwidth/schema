@@ -104,7 +104,7 @@ func fixedPrefillElement(out []byte, at int64, f *ir.Field) {
 				}
 				fixedPrefillElement(out, at+tag, v.F)
 			}
-			for i := int64(0); i < tag; i++ {
+			for i := range tag {
 				out[at+i] = 0
 			}
 			return
