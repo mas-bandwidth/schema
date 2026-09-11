@@ -1632,6 +1632,135 @@ void layoutValidation() {
 }
 
 // ---------------------------------------------------------------------------
+// THE COUNT CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5, count op): counts below
+// zero and counts past the reader's bound clamp to [0, bound] and count one
+// clamp. This is the twin of test/tables/fixedform_main.cpp:count_clamp_case().
+// ---------------------------------------------------------------------------
+
+void countClampCase() {
+  // A CLEAN RECORD TO FORGE.
+  final one = fx1home.FxRoot();
+  one.marks[0] = 7;
+  one.marks[1] = 8;
+  one.marksCount = 2;
+
+  final file = Uint8List(fx1.fxRootFixedMeasure(1));
+  check(
+    fx1.fxRootFixedSave(<fx1home.FxRoot>[one], 1, file) == file.length,
+    'count clamp: the record saves',
+  );
+
+  // THE COUNT'S OFFSET IS FOUND BY THE PLAN'S OWN ROW, by shape and not by a
+  // number: a `count` op whose bound is FOUR elements is `marks` and nothing
+  // else, where `blob`'s is six.
+  int countAt = -1;
+  int bound = 0;
+  for (var i = 0; i < fx1.fxRootFixedIdentityCount; i++) {
+    final e = i * fx1home.TableFixedLane.lanes;
+    if (fx1.fxRootFixedIdentity[e + fx1home.TableFixedLane.op] ==
+            fx1home.TableFixedOp.count &&
+        fx1.fxRootFixedIdentity[e + fx1home.TableFixedLane.size] == 4) {
+      countAt = fx1.fxRootFixedIdentity[e + fx1home.TableFixedLane.src];
+      bound = fx1.fxRootFixedIdentity[e + fx1home.TableFixedLane.size];
+      break;
+    }
+  }
+  check(
+    countAt >= 0 && bound == 4,
+    'count clamp: the identity plan carries `marks`\'s count op, bound FOUR elements',
+  );
+  final bodyOffset = fx1.fxRootFixedHeaderBytes + 8;
+  check(
+    ByteData.sublistView(file).getInt32(bodyOffset + countAt, Endian.little) ==
+        2,
+    'count clamp: and the offset it names is where the live count really is',
+  );
+
+  // C1: A COUNT BELOW ZERO. Not a large number — zero, and one clamp.
+  {
+    ByteData.sublistView(file).setInt32(
+      bodyOffset + countAt,
+      0xffffffff,
+      Endian.little,
+    ); // -1, as the wire spells it
+    final back = <fx1home.FxRoot>[fx1home.FxRoot()];
+    final r = fx1home.TableFixedReport();
+    check(
+      fx1.fxRootFixedLoad(
+            back,
+            1,
+            file,
+            file.length,
+            fx1.fxRootFixedNewPlan(),
+            r,
+          ) ==
+          1,
+      'C1: a forged count of -1 still READS — a clamp is not a refusal',
+    );
+    check(back[0].marksCount == 0, 'C1: a count below zero clamps to ZERO');
+    check(r.clamped == 1, 'C1: and counts exactly one clamp');
+    check(
+      !r.malformed && r.refused == 0,
+      'C1: a clamp is neither malformed nor a refusal',
+    );
+  }
+
+  // C2: A COUNT PAST THE READER'S OWN BOUND, IN ELEMENTS.
+  {
+    ByteData.sublistView(file)
+        .setInt32(bodyOffset + countAt, bound + 1, Endian.little);
+    final back = <fx1home.FxRoot>[fx1home.FxRoot()];
+    final r = fx1home.TableFixedReport();
+    check(
+      fx1.fxRootFixedLoad(
+            back,
+            1,
+            file,
+            file.length,
+            fx1.fxRootFixedNewPlan(),
+            r,
+          ) ==
+          1,
+      'C2: a forged count of Max+1 still READS',
+    );
+    check(
+      back[0].marksCount == bound,
+      'C2: a count past Max clamps to MAX, in elements',
+    );
+    check(r.clamped == 1, 'C2: and counts exactly one clamp');
+    check(
+      back[0].marks[0] == 7 && back[0].marks[1] == 8,
+      'C2: the live elements are still the record\'s',
+    );
+  }
+
+  // AND THE CONTROL: the bound itself is not a clamp. A count EQUAL to Max is
+  // in range, and a clamp counted there would be a clamp on a clean read.
+  {
+    ByteData.sublistView(file)
+        .setInt32(bodyOffset + countAt, bound, Endian.little);
+    final back = <fx1home.FxRoot>[fx1home.FxRoot()];
+    final r = fx1home.TableFixedReport();
+    check(
+      fx1.fxRootFixedLoad(
+            back,
+            1,
+            file,
+            file.length,
+            fx1.fxRootFixedNewPlan(),
+            r,
+          ) ==
+          1,
+      'count clamp: a count of exactly Max reads',
+    );
+    check(
+      back[0].marksCount == bound && r.clamped == 0,
+      'CONTROL: a count of exactly Max is in range and counts NOTHING',
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 void main(List<String> args) {
   final corpus = args.isNotEmpty ? args[0] : 'build/fixedform-corpus';
@@ -1651,6 +1780,7 @@ void main(List<String> args) {
   absentOptionalCase();
   negativeControl();
   layoutValidation();
+  countClampCase();
 
   if (failed) {
     print('FAILED');
