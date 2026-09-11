@@ -367,3 +367,50 @@ table Fleet
 		})
 	}
 }
+
+// TestOneLinePerBreakNotOnePerFixedTable is the output's BOUND. A `type`, an
+// enum or a union is commonly in the closure of many fixed tables — twenty of
+// them in one unit is ordinary — and one edit inside it is ONE edit to fix. The
+// count of refusals is the count of definitions that moved, never the size of
+// the unit.
+func TestOneLinePerBreakNotOnePerFixedTable(t *testing.T) {
+	const sharedSrc = `package shared
+
+enum Hull { Interceptor, Gunship, Freighter }
+
+type Vec
+{
+    x float32
+    y float32
+    z float32
+}
+
+fixed table One
+{
+    offset Vec
+    hull   Hull = Gunship
+}
+
+fixed table Two
+{
+    offset Vec
+    hull   Hull = Gunship
+}
+
+fixed table Three
+{
+    offset Vec
+    hull   Hull = Gunship
+}
+`
+	edited := editOf(t, sharedSrc, "    y float32\n    z float32\n", "    y float32\n")
+	refusals, _ := baseline.Split(monotone(t, sharedSrc, edited))
+	if len(refusals) != 1 {
+		t.Errorf("one field removed from a shared `type` is one refusal, got %d:%s", len(refusals), summary(refusals))
+	}
+	both := editOf(t, edited, "enum Hull { Interceptor, Gunship, Freighter }", "enum Hull { Interceptor, Gunship }")
+	refusals, _ = baseline.Split(monotone(t, sharedSrc, both))
+	if len(refusals) != 2 {
+		t.Errorf("two definitions moved is two refusals, got %d:%s", len(refusals), summary(refusals))
+	}
+}

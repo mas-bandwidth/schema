@@ -55,17 +55,34 @@ func monotoneLists(old, new *Unit) []string {
 	out = append(out, monotoneForm(old, new)...)
 
 	oldTables, newTables := byName(old.Tables), byName(new.Tables)
+	// ONE LINE PER BREAK, not one per fixed table that reaches it. A `type`,
+	// an enum or a union is commonly in the closure of several fixed tables —
+	// a unit of twenty of them is ordinary (tables/vocab9) — and one edit
+	// inside it is ONE edit to fix: the output is bounded by the number of
+	// definitions that moved, never by the size of the unit. The root named in
+	// the line is the first fixed table, in sorted order, that reaches it.
+	seen := map[string]bool{}
+	add := func(lines []string) {
+		for _, line := range lines {
+			_, rule, _ := strings.Cut(line, ": ")
+			if seen[rule] {
+				continue
+			}
+			seen[rule] = true
+			out = append(out, line)
+		}
+	}
 	for _, root := range fixedRoots(new) {
 		// the definitions this fixed table inputs into, by the SAME walk the
 		// compiler's closure uses: by value, through types, arms and keys
 		for _, def := range closureOf(new, root) {
 			switch {
 			case def.enum != "":
-				out = append(out, monotoneEnum(root, def.enum, findEnum(old, def.enum), findEnum(new, def.enum))...)
+				add(monotoneEnum(root, def.enum, findEnum(old, def.enum), findEnum(new, def.enum)))
 			case def.union != "":
-				out = append(out, monotoneUnion(root, def.union, findUnion(old, def.union), findUnion(new, def.union))...)
+				add(monotoneUnion(root, def.union, findUnion(old, def.union), findUnion(new, def.union)))
 			default:
-				out = append(out, monotoneFields(root, def.table, oldTables[def.table], newTables[def.table])...)
+				add(monotoneFields(root, def.table, oldTables[def.table], newTables[def.table]))
 			}
 		}
 	}
