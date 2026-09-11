@@ -52,6 +52,28 @@ static void check( bool ok, const char * what )
     if ( !ok ) { std::printf( "FAIL: %s\n", what ); failures++; }
 }
 
+// A KNOWN-RED CASE, HELD FROM BOTH ENDS, the way the properties gate holds its
+// four (test/tables/fixedform_properties.cpp:45). The case is written as the
+// CONTRACT states it — docs/FIXED-FORM-ALGORITHM.md is the ruling and the
+// reference is the bug — so it fails today and the gate stays green; and the day
+// the named fix lands it starts passing, which this gate reports as a FAILURE so
+// the entry is deleted rather than left to rot. A red nobody is made to delete
+// is a red nobody reads.
+static int known_red_hits = 0;
+
+static void known_red( bool ok, const char * fix, const char * what )
+{
+    if ( ok )
+    {
+        std::printf( "FAIL: KNOWN-RED [%s] PASSES now — delete the known_red() call as part of landing %s: %s\n",
+                     fix, fix, what );
+        failures++;
+        return;
+    }
+    known_red_hits++;
+    std::printf( "KNOWN-RED [%s]: %s\n", fix, what );
+}
+
 // ---------------------------------------------------------------------------
 
 static void fx_case()
@@ -1290,6 +1312,123 @@ static void cache_case()
     check( cache.compiles == 2, "cache: identity never increments the compile counter" );
 }
 
+// ---------------------------------------------------------------------------
+
+// W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+// (docs/FIXED-FORM-ALGORITHM.md §4.2, fix 3). The plan's source offsets are
+// arithmetic over sizes a STRANGER wrote down, so a layout that passes every
+// rule of §1.1 and still names a byte past `root.size` is refused WHOLE and
+// never partly compiled, under `layout_record_too_large`.
+//
+// THE LAYOUT HERE IS INTERNALLY VALID AND SEALED: hand-built out of this
+// build's own field ids, passing all seven rules, and `file_of` recomputes the
+// hash so the header does not lie — the refusal below is the BOUND and not a
+// rule, and not the lying-hash check either (§2 step 5 runs after the compile).
+//
+// WHERE THE OVERRUN COMES FROM, precisely: an ARRAY entry's admitted size is
+// `size % elem == 0` OR `4 + n*elem`, so a size of ZERO is a valid bare array
+// of no elements — and the compiler takes the head from the READER's own row
+// (`d.counted`, internal/codegen/cpptable/fixedruntime.go:995), so a reader
+// whose field carries a live count subtracts four from zero. The elements then
+// land at `their_at + 4`, past a record that ends at four.
+static void record_bound_case()
+{
+    // the ids are READ OUT of this build's own layout rather than spelled as
+    // hashes, so the case does not quietly stop naming the fields it means
+    const tblfx1::TableFixedLayoutView mine = { tblfx1::FxRootFixedLayout, (int32_t) ( ( tblfx1::FxRootFixedLayoutBytes - 4 ) / 17 ) };
+    const uint64_t root_id = tblfx1::TableFixedEntryAt( mine, 0 ).id;
+    uint64_t keep_id = 0, blob_id = 0, blob_elem_id = 0, label_id = 0;
+    for ( int32_t i = 1; i < mine.count; ++i )
+    {
+        const tblfx1::TableFixedLayoutEntry e = tblfx1::TableFixedEntryAt( mine, i );
+        if ( e.kind == 8 && e.size == 4 && keep_id == 0 ) { keep_id = e.id; }          // `keep`, a uint32
+        if ( e.kind == 12 && label_id == 0 ) { label_id = e.id; }                      // `label`, a string(8)
+        if ( e.kind == 14 && i + 1 < mine.count )                                      // `blob`, bytes(6): an array of u8
+        {
+            const tblfx1::TableFixedLayoutEntry el = tblfx1::TableFixedEntryAt( mine, i + 1 );
+            if ( el.kind == 6 && el.size == 1 ) { blob_id = e.id; blob_elem_id = el.id; }
+        }
+    }
+    check( root_id != 0 && keep_id != 0 && blob_id != 0 && label_id != 0,
+           "W10: the ids this case names are the ids this build's own layout carries" );
+
+    // 1. AN ENTRY WHOSE `src + size` REACHES PAST `root.size`
+    {
+        std::vector<uint8_t> layout;
+        layout.resize( 4 );
+        tblfx1::TableFixedPut32( layout.data(), 4u );
+        put_entry( layout, root_id, 13u, 4u, 2u );      // a record body of FOUR bytes
+        put_entry( layout, keep_id, 8u, 4u, 0u );       // the four bytes, at 0
+        put_entry( layout, blob_id, 14u, 0u, 1u );      // an array of NO bytes, at 4
+        put_entry( layout, blob_elem_id, 6u, 1u, 0u );
+        std::vector<uint8_t> f = file_of( layout );
+        // it is the BOUND that refuses and not a rule: the same layout passes
+        // every rule of §1.1, which is what makes this case the bound's
+        {
+            tblfx1::TableFixedLayoutView parsed;
+            tblfx1::TableMessageReason why = tblfx1::layout_malformed;
+            check( tblfx1::TableFixedParseLayout( f.data() + kLayoutAt, (int64_t) layout.size(), parsed, why ),
+                   "W10: the layout passes all seven rules of §1.1, so the refusal below is the BOUND" );
+        }
+        tblfx1::FxRoot v;
+        tblfx1::FxRootReset( v );
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused, "W10: an entry past the writer's record size is REFUSED" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed,
+               "W10: the refusal sets nothing and counts nothing" );
+        check( v.keep == 7u && v.blob_length == 0, "W10: NOT PARTLY COMPILED — no entry of the plan ran" );
+        // THE NAME. fix 3's validation landed and its NAME did not: the compiler
+        // answers -2 for a layout that reaches past the record and
+        // internal/codegen/cpptable/fixedform.go:534 reports that as
+        // `layout_malformed`, where §4.2 and fix 3 both name
+        // `layout_record_too_large`.
+        known_red( r.reason == tblfx1::layout_record_too_large, "fix 3",
+                   "W10: an entry past the writer's record size owes layout_record_too_large, and the reference says layout_malformed "
+                   "(internal/codegen/cpptable/fixedform.go:534)" );
+    }
+
+    // 2. THE BOUNDARY ITSELF STANDS. The same shape one byte short of the
+    //    overrun — a text entry whose length word and payload END EXACTLY at
+    //    `root.size` — is a layout with nothing wrong with it, and a bound that
+    //    refused it would be a bound that refuses the wire.
+    //
+    //    AND WHAT A PORTER MUST KNOW: on this reference the OTHER TWO halves of
+    //    the bound — a text entry's `+4` and a `guard` offset — are UNREACHABLE
+    //    from a valid layout, because §1.1 rule 3 makes a table's size the sum
+    //    of its children's and every per-kind rule bounds a child's span inside
+    //    its parent's. A text entry's whole span IS its entry size (`>= 4`), and
+    //    a union's guard is its own offset with a tag width of `size - widest`.
+    //    So they are a defence against a HOLE IN RULE 3, and a port whose
+    //    validation is weaker than this one's needs all three.
+    {
+        std::vector<uint8_t> layout;
+        layout.resize( 4 );
+        tblfx1::TableFixedPut32( layout.data(), 3u );
+        put_entry( layout, root_id, 13u, 16u, 2u );     // four bytes, then a string(8)'s twelve
+        put_entry( layout, keep_id, 8u, 4u, 0u );
+        put_entry( layout, label_id, 12u, 12u, 0u );    // src 4, +4 the length word, 12 bytes to 16
+        std::vector<uint8_t> f = file_of( layout );
+        f.resize( f.size() + 8 + 16, 0 );               // one record: the hash, then the body
+        tblfx1::TableFixedPut64( f.data() + f.size() - 24,
+                                 tblfx1::TableFixedHashOf( layout.data(), (uint32_t) layout.size() ) );
+        tblfx1::TableFixedPut32( f.data() + f.size() - 16, 4242u );   // keep
+        tblfx1::TableFixedPut32( f.data() + f.size() - 12, 2u );      // the label's length
+        f[f.size() - 8] = 'h'; f[f.size() - 7] = 'i';
+        tblfx1::FxRoot v;
+        tblfx1::FxRootReset( v );
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, NULL, &r );
+        check( n == 1 && !r.refused && !r.malformed, "W10: a text entry ending EXACTLY at root.size is not a refusal" );
+        check( v.keep == 4242u && v.label_length == 2 && v.label[0] == 'h' && v.label[1] == 'i',
+               "W10: and it reads — the bound admits the last byte of the record" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -1308,8 +1447,13 @@ int main()
     guard_width_case();
     cache_case();
     layout_validation();
+    record_bound_case();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
+    if ( known_red_hits != 0 )
+    {
+        std::printf( "KNOWN-RED, %d case(s), each printed above and each waiting on a named fix\n", known_red_hits );
+    }
     std::printf( "fixed form: versioning conformance green\n" );
     return 0;
 }
