@@ -420,9 +420,20 @@ and still read (bill §12.3).
 | per entry: the WIRE hash — `HASH(layout bytes, definitions digest)` | `R.lineage[i]`, the only thing a file is matched on |
 | per entry: the LAYOUT BYTES, verbatim | `R.known[i].layout`, what LOAD compares and what PLAN walks |
 | per entry: the DEFINITIONS DIGEST | the hash's second input; it never rides the wire |
-| per entry: the record body size | `R.known[i].record_bytes`, taken from the lock and never from the file |
+| per entry: the record BODY size | `R.known[i].record_bytes` as **`8 + body`**: the lock stores the BODY, COMPILE adds the eight hash bytes ONCE, and a BACKEND ADDS NOTHING. Never read off the file |
 | per entry: a RETIRED mark and its reason (`schema lock --retire T@<hash>`) | the floor, and `layout_unsupported` |
 | the defaults, the deprecation marks, the closure | the prefill image, §5.1, §5.5 |
+
+**`record_bytes` IS THE WHOLE RECORD AND THE LOCK'S NUMBER IS THE BODY** — two numbers, one addition, and the
+addition happens in exactly one place. §5.2's `record_bytes` is `8 + body`, the record's own eight hash bytes
+and then the body, because that is the number §5.3 step 9 divides the tail behind the layout by. The lock
+stores the BODY (`lockfile.LineageEntry.Record`), **COMPILE adds the eight ONCE, for every backend it hands
+entries to** (`compiler/lineage.go`), and **NO BACKEND ADDS ANYTHING** — what a leg is handed is already the
+whole number its static data needs, and the reader compares the file's `record_bytes` arithmetic to that whole
+number. A leg that adds the eight a second time ships every older entry eight bytes long, and a driver that
+passes the lock's number through ships them eight bytes SHORT. `TestFixedLineageRecordSizeIsTheWholeRecord`
+(`compiler/fixedlineageship_test.go`) asserts the handed number per target, read back out of the emitted
+source.
 
 **WHAT THE LOCK NOW PROVIDES** (#909, merged into `fixed-table-form`). `internal/lockfile/lineage.go` is the
 home bill §11.7 named, and a backend reads exactly three calls: `lockfile.Open(paths)` locates and parses the
@@ -434,7 +445,8 @@ layout last**, and nil for a name the lock carries as a nested `type` rather tha
 (the eight bytes the header and every record carry — the lineage's key and the only fact a file is matched
 on), **`Layout`** (the bytes verbatim: a u32 entry count and a run of seventeen-byte entries, what LOAD
 memcmps and what PLAN walks), **`Digest`** (§13, empty where a table carries none of those facts),
-**`Record`** (the body size), **`Retired`**, and **`Reason`** (the operator's sentence). Nothing changed about
+**`Record`** (the BODY size, the one fact a backend never takes raw: `record_bytes` is `8 + Record` and COMPILE
+adds the eight), **`Retired`**, and **`Reason`** (the operator's sentence). Nothing changed about
 the FILE: the digest still never rides the wire.
 
 The text is one line per entry — `lineage wire=0x… record=<n> bytes=<hex> [digest=<hex>] [retired]
@@ -467,12 +479,30 @@ COMPILE(lock, T):
   R.identity, R.split, R.cover := the baked identity plan of §4.2, its split, the type's value bytes
   i := 0
   for each entry x in lock.lineage(T), OLDEST FIRST:            -- the current layout is the last of them
-    R.lineage[i] := x.hash ; R.known[i] := { x.hash, x.layout_bytes, x.record_bytes }
+    R.lineage[i] := x.hash ; R.known[i] := { x.hash, x.layout_bytes, 8 + x.record_body }
+                                                                -- the lock stores the BODY; the eight hash
+                                                                -- bytes are added HERE, once, and never again
+                                                                -- by a backend
     R.plans[i]   := (x.hash == Hy) ? IDENTITY : PLAN(x.layout_bytes, bytes(y))
     i := i + 1
   R.floor := 1 + the highest index marked RETIRED, or 0 when none is
   emit R as static data: the hashes, the layout bytes, the record sizes, the plans, the floor
 ```
+
+**A TABLE PAST §3.4's CEILING IS NOT A FIXED-FORM ROOT, SO COMPILE CONSULTS NO LINEAGE FOR IT.** SPEC-TABLES
+§3.4 says a fixed table whose record body is past 65536 bytes has NO FORM EMITTED and is NAMED: it keeps form
+`1`, which it never lost. COMPILE therefore **does not run for it at all** — the generator consults no lineage
+for such a table and **parses no entry of it, even when the LOCK carries one** — and the lock does carry one,
+because the lock records every fixed table's layout and is one file five legs read. **That entry is neither an
+error nor data**: not an error, because the lock is correct and #8's "a bug in the lock, and the BUILD FAILS"
+is about an entry of THIS FORM; not data, because there is no form for it to be data of. The only thing the
+generated module owes such a table is the line naming why the form is not there. **The hurt is the JavaScript
+leg** (#931): its ceiling refusal did not name the table, so `WideBlob` was a fixed-form ROOT there and nowhere
+else, and the lineage parse then held the lock's CORRECT entry to the form's rules — where the root's size is
+past the 65536 a reader caps a record at, so the layout "did not parse" and #8 FAILED THE BUILD over a lock
+that was right. `TestJSFixedNoFormMeansNoLineageToParse`
+(`internal/codegen/jstable/fixedform_test.go`) is the pin: the table is not a root, the refusal is named, a
+lineage entry handed in for it does not fail the build, and nothing of it is emitted.
 
 **The ENTRY POINT a backend receives the lineage through, what "build time" means in a language with no
 `constexpr`, and how a plan's storage is sized are §5.9 #1 to #4** — the first three things the pilot port had
@@ -758,6 +788,7 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
                                                         REFUSE layout_malformed
   8  plan, split, fills := R.plans[i] ; record_bytes := k.record_bytes  -- k is TableFixedKnownLayout (§5.9 #19,
                                                                        -- #34 on its two admitted divergences)
+     record_bytes IS THE WHOLE RECORD, 8 + body, handed down already added (§5.2)
      for the identity entry the fills are EMPTY and record_bytes is 8 + C(root)
   9  rest := len(file) - 20 - L
      if record_bytes <= 8 or rest mod record_bytes != 0: report.malformed := true ; return -1
@@ -777,6 +808,19 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
 so the seven rules do not fire at run time: the hash is looked up, then the floor, then the bytes are
 compared. **The seven §1.1 malformations under a KNOWN hash all come back as one name**, `layout_malformed`
 — "a lie about a known version" (bill §12.4, §13).
+
+**EVERY HASH A RUNTIME HOLDS WAS HANDED TO IT, AND A RUNTIME NEVER DERIVES ONE.** Step 4 takes the header's
+hash as given, and the rule behind that is wider than step 4: **the compiler hands every reader its own wire
+hash and every known hash as CONSTANTS** — `R.own_hash` and `R.lineage[i]`, laid down by COMPILE — and **a
+runtime NEVER computes a hash from layout bytes it holds**, not for the IDENTITY LANE (step 8, where the
+selected entry being the reader's own is an INDEX COMPARISON and never a recomputation), not for a gate's
+record check (§5.7), not for anything else. The reason is the digest: it is not on the wire and it is not in
+the layout bytes, so a hash a runtime computed itself is a hash of the layout bytes ALONE — it matches a
+layout that agrees in BYTES and disagrees in DEFINITIONS, which is the one thing §5.2's second input exists
+to separate. **The hurt is the Elixir leg** (#928): it hashed its own layout bytes to find itself in the
+lineage, matched NOTHING, and took a compiled plan on every read of its own files — a read that was correct in
+its values and wrong in every way that matters, because the lane that is supposed to be free was the lane
+nothing could reach.
 
 | condition | refusal | what it reports |
 |---|---|---|
@@ -821,7 +865,8 @@ string and has no integer to agree with. The C and C++ pair's values are **`18` 
 pair numbering its own set numbers them in the same order.
 
 **STEP 9 IS ABOUT A FILE, NEVER ABOUT THE LOCK.** A record size of `8` or less comes off the FILE's arithmetic
-— `record_bytes` is the lock's, but `rest`, the tail behind the layout, is the file's. **A LINEAGE ENTRY whose
+— `record_bytes` is the BUILD's, the lock's body with the eight hash bytes already added (§5.2), but `rest`,
+the tail behind the layout, is the file's. **A LINEAGE ENTRY whose
 recorded record size is wrong is a LOCK BUG and the build fails** (§5.9 #26); a leg that routes it into step 9
 has read a lock bug as a wire event.
 
@@ -977,8 +1022,8 @@ unopened) ran it this way and nothing in it is optional.
 | # | the step |
 |---|---|
 | 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **WHAT EACH FILE HOLDS IS IN `build/fixedform-corpus/manifest.txt`**, written by the dump from the same values it writes into the bytes, one line per file: `file=<name> row=<row> side=old\|new\|mid\|a\|b\|none root=<Table> records=<n> values=<field>=<value>[,...]` — the root when a schema declares two tables, the record count, and every value the dump set, records as `r<i>.`, nested fields dotted, arrays indexed, text quoted, a float by its digits AND its bits. `values=` is the last field and **runs to the end of the line**, and a quoted value may carry spaces, so split the head on spaces and take the rest whole; `row=` is the per-file name while `root=` is shared by a lineage pair. **ASSERT THE MANIFEST, NEVER READ THE DUMP** (§5.9 #32, #37): the declared default is not the value on the wire — `int_widen`'s `lead` and `trail` are `2863311530` and `3149642683` there while the schema says 1 and 2 — and a field absent from a line carries its schema default |
-| 2 | **LOAD, §5.3's eleven steps IN ORDER.** The framing checks, the header's hash TAKEN AS GIVEN, the lineage select, the floor, the byte comparison, the per-record hash BEFORE the prefill. Every refusal by its own name, nothing decoded, no counter moved. This is the half the negative controls watch |
-| 3 | **The static data**: the lineage from the lock, oldest first, the current layout last (§5.9 #1, #2); the floor as one number; every plan laid down OFF THE LOAD PATH (§5.9 #3, #4). Nothing here reads a file at run time |
+| 2 | **LOAD, §5.3's eleven steps IN ORDER.** The framing checks, the header's hash TAKEN AS GIVEN, the lineage select, the floor, the byte comparison, the per-record hash BEFORE the prefill. Every refusal by its own name, nothing decoded, no counter moved. This is the half the negative controls watch. **EVERY HASH THE RUNTIME HOLDS IS A HANDED CONSTANT** — the leg computes none from layout bytes, on the identity lane or anywhere else (§5.9 #47) |
+| 3 | **The static data**: the lineage from the lock, oldest first, the current layout last (§5.9 #1, #2); the floor as one number; every plan laid down OFF THE LOAD PATH (§5.9 #3, #4). Nothing here reads a file at run time. **`record_bytes` ARRIVES WHOLE**, `8 + body`, and the leg adds nothing to it (§5.9 #46). **A TABLE PAST §3.4's CEILING GETS NO STATIC DATA AT ALL** — no lineage consulted, no entry parsed, only the line naming the missing form (§5.9 #48) |
 | 4 | **PLAN / MATCH / EMIT**, §5.2, against §1's kind-code table — the ladder rungs `20..24` and `25..29` included, the aux lane's seven rows, the text op's three facts, the widen's two signs, the guard's width, the remap table's length word, the two-pass split before the pool spends |
 | 5 | **The three tests §5.6 RETIRES, by name.** The leg's twins of `TestFixedFormPlanPath`, `TestFixedFormArgLaneTextUnderSecondArm` and `TestFixedFormLayoutRules` asserted the run-time walk of a stranger's layout and a forward read; under this section each file comes back `layout_newer`. **SKIP them by name with the sentence that says where the coverage is owed** — the plan path moves to the lineage harness, §1.1's seven rules move to the LOCK's validation of what it records — and never delete them: a deleted test is a coverage claim nobody can audit. **A leg whose suite has no skip prints one instead** (§5.9 #23): a line at the CALL SITE naming the function, §5.6 and where the coverage is owed, plus a count at the end, and the function stays in the tree. **A NEGATIVE CONTROL PINNED TO A RETIRED CASE MOVES WITH IT**, to wherever the coverage went, and the PR names which of its controls moved (§5.9 #39) |
 | 6 | **The gate**, both halves, hung off that leg's `test-<lang>`: the BYTE gate against the reference's corpus and the VERSIONING gate over §5.7's rows, each with a negative control that moves one byte and proves the gate goes red (§5.9 #11). **The versioning gate's PROBE UNITS live beside the leg's generator** (§5.9 #18), one generated probe per row per COLUMN, built and run with the leg's own toolchain: two generations of one table name have no spelling inside one unit in every language, so the column is the unit — except where a language's own namespacing gives the two generations a spelling, and then one build and one run is conforming and the leg says so. **The versioning gate's control is a sabotage that reds exactly one column**: the wrong refusal name on a file outside the lineage (§5.9 #39) |
@@ -1041,7 +1086,7 @@ second argument a leg can omit — it is computed inside the hash from the schem
 properties gate now reads its cross-schema pairs through the fixture lineage map with the reverse direction
 named `layout_newer` rather than compiled both ways (§5.7).
 
-### 5.9 The twelve the pilot port had to guess, answered — and thirty-three the legs after it found
+### 5.9 The twelve the pilot port had to guess, answered — and thirty-six the legs after it found
 
 The PILOT PORT (#914) wrote the Go leg from this section alone, with `internal/codegen/cpptable` and the C++
 runtime unopened, and went green on every fixture row. It also listed twelve places where this page was SILENT
@@ -1055,7 +1100,9 @@ reference beside this page needs to know which of the two it is looking at.
 example. Two legs asking the same question twice is the page's own bug report, so every one of these is checked
 against the bill, against the merged C++ and against all three ports, and the rule written is the one the three
 now share. **#32 to #45 come from the corpus manifest and the FOURTH through SEVENTH legs** — Java, C#,
-JavaScript and Dart — and the block that opens them says so.
+JavaScript and Dart — and the block that opens them says so. **#46 to #48 are the three the WIRING found** —
+the driver handing the lock's lineage to nine legs at once (#920, #928, #931) — and each of them is a rule about
+what a leg is HANDED rather than about what it walks.
 
 **1. THE ENTRY POINT BY WHICH A BACKEND RECEIVES THE LINEAGE.** A backend takes the lineage AS DATA, through a
 SECOND entry point beside the plain one: `Generate(u)` is the NO-LINEAGE case — a unit that was never locked
@@ -1126,7 +1173,9 @@ takes it at BUILD time has turned a lock bug into a wire event.
 
 **9. WHICH FIXED TABLE IS A FILE'S ROOT WHEN A SCHEMA DECLARES TWO.** **Every declared `fixed table` is a root**
 (`ir.TableFixedRoots`) with its own layout, its own hash, its own lineage and its own files — a nested fixed
-table is not a lesser table, it is one THIS file is not. Nothing in a file names its root: the reader chooses
+table is not a lesser table, it is one THIS file is not. **The one exception is a table with no form at all**:
+past §3.4's 65536-byte ceiling there is no fixed-form root and no lineage to consult (#48,
+`ir.TableFixedFormRoots`). Nothing in a file names its root: the reader chooses
 the root and **the HASH is what resolves**, so a file written from `Vec` and read as `Lineage` is
 `layout_newer`, which is the right answer and not a near miss. For the corpus rows the writer names the root
 explicitly — `test/tables/fixedform_dump.cpp` writes `nested_append` from `Lineage`, `optional_add` from
@@ -1491,6 +1540,45 @@ carries no capacity argument owes it from its own declared cap (#5); a leg whose
 "my own layout did not parse" and "the pool overflowed" owes two, because the first is `layout_malformed` at
 GENERATE (#36, #8) and only the second is `plan_too_large` — the Dart leg reports the wrong name for a
 reader-side bug today and says so.
+
+**46. `record_bytes` IS THE WHOLE RECORD, AND THE ADDITION HAPPENS IN EXACTLY ONE PLACE.** §5.2 defines
+`record_bytes` as `8 + body` and the LOCK stores the BODY, so somebody adds the eight — and three legs each
+picked a different somebody. **The rule: the COMPILER adds it, once, and hands the backend the WHOLE number**
+(`compiler/lineage.go`, and `TestFixedLineageRecordSizeIsTheWholeRecord` in
+`compiler/fixedlineageship_test.go` asserts it per target, read out of the emitted source); **a BACKEND ADDS
+NOTHING**; and the reader compares the file's arithmetic — `rest mod record_bytes`, `rest / record_bytes` — to
+that whole number. Both wrong turns are silent where it hurts: a leg that adds the eight again ships every
+older entry eight bytes LONG, a driver that passes the lock's number through ships them eight bytes SHORT, and
+in both cases every record an older peer wrote is misread or the read is refused as ragged. It is invisible in
+every harness fixture because none of them carries a lock, and invisible for the CURRENT layout because the
+leg's own entry — spelled `8 + body` by every leg — wins for that one. **A leg that wants to check its own
+arithmetic checks an OLDER entry of a REAL LOCK**, never its own.
+
+**47. A RUNTIME IS HANDED EVERY HASH IT HOLDS, AND DERIVES NONE.** §5.3 step 4 takes the header's hash as
+given and §5.6 retires the recompute, both for one reason: the DEFINITIONS DIGEST is not on the wire, so a hash
+cannot be re-derived from a file. **The consequence is a rule about the READER's own side too, and it is wider
+than step 4**: the compiler hands every reader its own wire hash and every known hash as CONSTANTS (`R.own_hash`,
+`R.lineage[i]`), and a runtime **NEVER** computes a hash from layout bytes it holds — not for the IDENTITY LANE
+(§5.3 step 8, where "is this entry my own" is an INDEX comparison), not for a gate's record check (§5.7), not
+for anything. A hash a runtime computed itself is a hash of the layout BYTES ALONE, and it matches a layout that
+agrees in bytes and disagrees in DEFINITIONS — the single case the digest exists to separate. **The hurt is the
+Elixir leg** (#928): it hashed its own layout bytes to locate itself in the lineage, matched NOTHING, and ran a
+COMPILED PLAN on every read of its own files. Every value landed, so no fixture could see it; the free lane was
+simply unreachable. A leg whose hash appears anywhere outside its generated constants has this bug.
+
+**48. PAST §3.4's CEILING THERE IS NO FORM, SO THERE IS NO LINEAGE TO CONSULT.** A fixed table whose record
+body is past 65536 bytes has NO FORM EMITTED and is NAMED (SPEC-TABLES §3.4): it keeps form `1`, which it never
+lost. **Such a table is NOT a fixed-form root, so COMPILE consults no lineage for it and parses no entry of it,
+even when the LOCK carries one** — and the lock does carry one, because it records every fixed table's layout
+and is one file five legs read. **That entry is neither an error nor data**: not an error, because #8's "a bug
+in the lock, and the BUILD FAILS" rules on an entry of THIS FORM and this is not one; not data, because there
+is no form for it to be data of. What the module owes the table is the line saying the form is not there, and
+nothing else — no known layout, no plan, no record size. **The hurt is the JavaScript leg** (#931): its ceiling
+refusal did not name the table, so `WideBlob` was a root there and nowhere else, the lineage parse held the
+lock's CORRECT entry to the form's rules, the root's size was past the 65536 a reader caps a record at, and #8
+failed the BUILD over a lock that was right. The pin is `TestJSFixedNoFormMeansNoLineageToParse`. **This is the
+one place #9's "every declared `fixed table` is a root" is read too far**: every declared fixed table is a root
+of its own LINEAGE and its own files, and a table with no form is a root of neither.
 
 ## 6. The bounds
 
