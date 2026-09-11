@@ -128,6 +128,22 @@ static partial class Program
             Check(r.KindMismatch == 0 && !r.Malformed && !r.Refused, "older writer: nothing else fired");
         }
 
+        // MISSING FIELD ON A DIRTY DEST: the hole list, not a whole TableReset.
+        {
+            FX2.FxRoot dirty = new FX2.FxRoot();
+            dirty.Added = 999;
+            dirty.Extra.X = 77;
+            dirty.Extra.Y = 88;
+            dirty.Keep = 1;
+            FX2.TableReport r = new FX2.TableReport();
+            FX2.TableFixedEntry[] plan = new FX2.TableFixedEntry[1024];
+            long n = FX2.Schema.FxRootFixedLoad(dirty, w1, plan, r);
+            Check(n == 1, "dirty dest: one record");
+            Check(dirty.Added == 11, "dirty dest: missing Added is the hole's default, not the poison");
+            Check(dirty.Extra.X == 0 && dirty.Extra.Y == 0, "dirty dest: missing nested Extra is the hole's default");
+            Check(dirty.Keep == 4242u, "dirty dest: landed Keep overwrites poison");
+        }
+
         // 3. FX1 READS FX2 — an unknown field and an unknown NESTED TYPE
         {
             FX2.FxRoot two = new FX2.FxRoot();
