@@ -184,6 +184,50 @@ build/schema_test_guard: build/guard-generated/.stamp test/guard/main.cpp
 # and output root, because the big-endian negative control below regenerates
 # the WHOLE corpus from a sabotaged emitter: a second copy of these lists would
 # be a second corpus, and the gate would stop covering what the leg covers.
+# ---- rowan/cpp-versioning-numbers: BEGIN --------------------------------
+# THE VERSIONING LAW'S SCHEMAS (docs/FIXED-FORM-VERSIONING-TESTS.md). One PAIR
+# per row of the law, differing by EXACTLY that row, same table name in two
+# packages so both generations compile into one binary. Every one of them goes
+# into ONE generated directory: the emitter names its files after the SCHEMA,
+# so 35 units share a directory without colliding and the test binaries take one
+# -I instead of 35.
+SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
+	test/tables/VOLD_array_fixed_grow.schema \
+	test/tables/VOLD_array_elem_widen.schema \
+	test/tables/VOLD_constant_grow.schema \
+	test/tables/VOLD_string_grow.schema \
+	test/tables/VOLD_wstring_grow.schema \
+	test/tables/VOLD_bytes_grow.schema \
+	test/tables/VOLD_int_widen.schema \
+	test/tables/VOLD_uint_widen.schema \
+	test/tables/VOLD_float_widen.schema \
+	test/tables/VOLD_range_widen.schema \
+	test/tables/VOLD_bits_grow.schema \
+	test/tables/VOLD_fixed_I_grow.schema \
+	test/tables/VOLD_optional_add.schema \
+	test/tables/VNEW_array_bounded_grow.schema \
+	test/tables/VNEW_array_fixed_grow.schema \
+	test/tables/VNEW_array_elem_widen.schema \
+	test/tables/VNEW_constant_grow.schema \
+	test/tables/VNEW_string_grow.schema \
+	test/tables/VNEW_wstring_grow.schema \
+	test/tables/VNEW_bytes_grow.schema \
+	test/tables/VNEW_int_widen.schema \
+	test/tables/VNEW_uint_widen.schema \
+	test/tables/VNEW_float_widen.schema \
+	test/tables/VNEW_range_widen.schema \
+	test/tables/VNEW_bits_grow.schema \
+	test/tables/VNEW_fixed_I_grow.schema \
+	test/tables/VNEW_optional_add.schema \
+	test/tables/VOLD_floor.schema \
+	test/tables/VMID_floor.schema \
+	test/tables/VNEW_floor.schema \
+	test/tables/VOLD_lineage_merge.schema \
+	test/tables/VBRA_lineage_merge.schema \
+	test/tables/VBRB_lineage_merge.schema \
+	test/tables/VNEW_lineage_merge.schema
+# ---- rowan/cpp-versioning-numbers: END ----------------------------------
+
 define tables_generate
 	$(1) generate --lang cpp --out $(2)/examples tables/examples
 	$(1) generate --lang cpp --out $(2)/pointers tables/pointers
@@ -246,13 +290,18 @@ define tables_generate
 	# because examples/ pins gate 1 for all nine targets and eight of them
 	# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
 	$(1) generate --lang cpp --out $(2)/wide examples-wide
+	# ---- rowan/cpp-versioning-numbers: BEGIN ----
+	# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
+	$(foreach sc,$(SCHEMAS_VERSIONING),$(1) generate --lang cpp --out $(2)/vnum $(sc)
+	)
+	# ---- rowan/cpp-versioning-numbers: END ----
 endef
 
 tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome -Itest/tables \
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FM1.schema test/tables/FM2.schema
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FM1.schema test/tables/FM2.schema $(SCHEMAS_VERSIONING)
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -5734,20 +5783,22 @@ toolchain-negative-control:
 # and the NEGATIVE CONTROLS — the wrong plan, a form byte this reader does not
 # carry, a plan that does not fit, and ONE CORRUPTED-LAYOUT CASE PER NAMED RULE
 # a reader holds an untrusted peer's layout to.
-build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp
+build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp test/tables/versioning_numbers.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
-	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+	    -Ibuild/tables-generated/vnum \
+	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
+	    test/tables/versioning_numbers.cpp -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
 # fixed record carries no lengths and no terminators, so every offset the
 # reader uses is arithmetic over sizes a STRANGER wrote down. "The reader never
 # leaves the buffer" is a claim only a sanitizer can hold.
-build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp
+build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp test/tables/versioning_numbers.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 	    -fno-omit-frame-pointer -g \
@@ -5756,7 +5807,9 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
-	    -I$(SERIALIZE) test/tables/fixedform_main.cpp -o $@
+	    -Ibuild/tables-generated/vnum \
+	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
+	    test/tables/versioning_numbers.cpp -o $@
 
 # THE RUN COPY'S BOUND, ON ITS OWN (test/tables/fixedform_runcopy.cpp). The
 # fixtures above check the VALUES a read produces; this one checks the single
@@ -5860,6 +5913,7 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-gen
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
+	    -Ibuild/tables-generated/vnum \
 	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump

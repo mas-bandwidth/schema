@@ -47,6 +47,14 @@
 #include "FU1Table.h"
 #include "FU2Table.h"
 
+// ---- rowan/cpp-versioning-numbers: BEGIN ----------------------------------
+// THE VERSIONING LAW'S NUMBERS ROW (test/tables/versioning_numbers.cpp,
+// docs/FIXED-FORM-VERSIONING-TESTS.md). One registration call, below in main,
+// and it answers with its own failure count: its RED cases are printed by name
+// and counted there, and do not fail this target.
+int versioning_numbers_cases();
+// ---- rowan/cpp-versioning-numbers: END ------------------------------------
+
 static int failures = 0;
 
 static void check( bool ok, const char * what )
@@ -1388,6 +1396,9 @@ int main()
     cache_case();
     layout_validation();
     fuzz_case();
+    // ---- rowan/cpp-versioning-numbers: BEGIN ----
+    failures += versioning_numbers_cases();
+    // ---- rowan/cpp-versioning-numbers: END ----
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
     std::printf( "fixed form: versioning conformance green\n" );
     return 0;
