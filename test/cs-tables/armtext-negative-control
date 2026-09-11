@@ -63,7 +63,8 @@ class Program
 
         ReadOnlySpan<byte> planBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(plan);
         ReadOnlySpan<byte> at = wire.AsSpan(Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
-        Schema.TableFixedWire.Run(plan.Slice(0, made), Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes);
+        byte[] widenScratch = Array.Empty<byte>();
+        Schema.TableFixedWire.Run(plan.Slice(0, made), Schema.UtRootFixedSlots, at.Slice(8), outVal, r, planBytes, ref widenScratch);
         return outVal;
     }
 

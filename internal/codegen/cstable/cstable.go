@@ -110,13 +110,14 @@ func generatedFrom(f *ir.File, u *ir.Unit) string {
 
 type tableGen struct {
 	unit      *ir.Unit
-	file      *ir.File       // nil in the emitted-for-the-unit runtime file
-	outside   bool           // a view-only type has no checked wire identity
-	arm       bool           // descriptor rows inside a union
-	home      bool           // this file carries the unit's shared table runtime
-	anyKeyed  bool           // the unit declares at least one enum-keyed array
-	owner     *ir.Struct     // the closure member whose codec is being emitted
-	idOrdinal map[uint64]int // compile-time slot of each id TableWireIds names
+	lineage   map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
+	file      *ir.File                       // nil in the emitted-for-the-unit runtime file
+	outside   bool                           // a view-only type has no checked wire identity
+	arm       bool                           // descriptor rows inside a union
+	home      bool                           // this file carries the unit's shared table runtime
+	anyKeyed  bool                           // the unit declares at least one enum-keyed array
+	owner     *ir.Struct                     // the closure member whose codec is being emitted
+	idOrdinal map[uint64]int                 // compile-time slot of each id TableWireIds names
 	types     strings.Builder
 	schema    strings.Builder
 	indent    string // extra per-line indent while emitting inside a branch guard
@@ -148,6 +149,15 @@ func (g *tableGen) pf(format string, args ...any) {
 // named for the package — and nothing when it declares none: a table-free
 // unit's generated C# is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is Generate with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, and the second entry point §5.9 #1
+// names). A nil map is a build with no lock, and every table then carries the
+// one entry it can always compute: its own.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -177,7 +187,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// re-inclusion behind a guard
 	usedEnums := closureEnums(u, closure)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed}
+		g := &tableGen{unit: u, file: f, home: f.Base == home, anyKeyed: anyKeyed, lineage: lineage}
 		var members []*ir.Struct
 		members = append(members, f.Tables...)
 		for _, d := range f.Decls {
@@ -231,7 +241,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// the unit rather than for a file. The runtime lands in <Package>Table.cs
 	// either way — that is the whole rule.
 	if !runtimeWritten {
-		g := &tableGen{unit: u, anyKeyed: anyKeyed, home: true}
+		g := &tableGen{unit: u, anyKeyed: anyKeyed, home: true, lineage: lineage}
 		g.emitRuntime()
 		g.emitAllUnionResets()
 		out[home+"Table.cs"] = g.assemble()
@@ -664,6 +674,12 @@ public sealed class TableReport
     public string Reason;
     public Schema.TableWire.Verdict Verdict;
     public bool Malformed;     // framing damage; decode stopped, partial result kept
+    // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
+    // a member at the end rather than a field inserted among the counters,
+    // because the report is a type callers already hold. layout_newer reports
+    // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
+    // #7), the operator's other answer. Zero on every other path.
+    public ulong LayoutHash;
 }
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
