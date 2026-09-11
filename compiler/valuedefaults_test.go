@@ -205,7 +205,7 @@ const fixedValueDefaultsUnit = `package vdef
 
 flags Caps { Jump, Crouch }
 
-table Ship
+fixed table Ship
 {
     name string(32) = "untitled"
     tag  bytes(4) = "ab"
