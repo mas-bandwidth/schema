@@ -44,6 +44,7 @@
 #include "P3Table.h"
 #include "UT1Table.h"
 #include "UT2Table.h"
+#include "FH1Table.h"
 
 static int failures = 0;
 
@@ -1620,6 +1621,104 @@ static void plan_partition_case()
 
 // ---------------------------------------------------------------------------
 
+// W16: AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG
+// (docs/FIXED-FORM-ALGORITHM.md §4.1). A union's guard is stamped over
+// EVERYTHING its arm produced, and a nested union's own arm selection must
+// survive that stamp. So every entry an INNER union contributes — its own tag
+// byte included — is guarded by the OUTER tag's byte and never by the inner
+// one, or a record whose outer tag selects the other arm would run the inner
+// arm's entries over storage that arm does not own. The #864 read found JS's
+// inner union overwriting the outer guard; FU1/FU2 are the C leg's pair and are
+// not this shape, so FH1 is.
+//
+// FH1's body: `tier` at 0, `head` at 1, and the outer union at 5 — so 5 is the
+// OUTER tag's byte and 6 is the INNER's, and the two numbers being one apart is
+// what makes the assertion sharp.
+static void nested_union_case()
+{
+    // 1. THE PLAN SAYS IT. Every guarded entry answers to the OUTER tag, and
+    //    not one to the inner tag's own byte.
+    uint32_t outer_tag_at = 0xFFFFFFFFu;
+    for ( int32_t i = 0; i < tblfh1::FhRootFixedPlanCount; ++i )
+    {
+        const tblfh1::TableFixedEntry e = tblfh1::FhRootFixedPlan[i];
+        if ( e.guard == tblfh1::kTableFixedNoGuard ) { continue; }
+        if ( outer_tag_at == 0xFFFFFFFFu ) { outer_tag_at = e.guard; }
+        check( e.guard == outer_tag_at, "W16: every guarded entry of a nested union answers to ONE tag" );
+    }
+    check( outer_tag_at != 0xFFFFFFFFu, "W16: the plan really has guarded entries" );
+    // the inner union's OWN tag rides as a guarded entry, whose SOURCE is the
+    // inner tag's byte and whose GUARD is the outer's: the two lanes of the same
+    // nesting, and the assertion is that they are different numbers.
+    bool saw_inner_tag = false;
+    for ( int32_t i = 0; i < tblfh1::FhRootFixedPlanCount; ++i )
+    {
+        const tblfh1::TableFixedEntry e = tblfh1::FhRootFixedPlan[i];
+        if ( e.guard == tblfh1::kTableFixedNoGuard ) { continue; }
+        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; }
+        check( e.guard != e.src || e.src == outer_tag_at,
+               "W16: an inner entry is never guarded by the INNER tag's own byte" );
+    }
+    check( saw_inner_tag, "W16: the inner union's own tag byte is one of the entries the OUTER tag guards" );
+
+    // 2. AND THE RECORD SAYS IT. The outer tag selects B, so the inner union's
+    //    entries must not run: the inner arm's storage stays at the prefill's
+    //    default, which is the None the destination went in with.
+    {
+        tblfh1::FhRoot one;
+        tblfh1::FhRootReset( one );
+        one.tier = tblfh1::Tier::Silver;
+        one.head = 77;
+        one.pick.type = tblfh1::OuterType::B;
+        one.pick.b.m = 555;
+        std::vector<uint8_t> w( (size_t) tblfh1::FhRootFixedMeasure( 1 ) );
+        check( tblfh1::FhRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W16: the B record saves" );
+
+        tblfh1::FhRoot back;
+        tblfh1::FhRootReset( back );
+        back.pick.type = tblfh1::OuterType::A;
+        back.pick.a.inner.type = tblfh1::InnerType::Other;
+        back.pick.a.inner.other.k = 0x5A5A5A5A; // the stain, so nothing below is vacuous
+        check( back.pick.a.inner.other.k == 0x5A5A5A5A, "CONTROL: the inner arm's storage really is stained" );
+        tblfh1::TableReport r;
+        std::vector<tblfh1::TableFixedEntry> plan( 1024 );
+        check( tblfh1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "W16: the B record reads" );
+        check( back.pick.type == tblfh1::OuterType::B && back.pick.b.m == 555, "W16: the outer tag and its arm" );
+        check( back.tier == tblfh1::Tier::Silver && back.head == 77, "W16: the rest of the record" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "W16: a clean read moves no counter" );
+    }
+
+    // 3. THE OTHER WAY: the outer tag selects A, and the inner union's arm lands
+    //    whole — the stamp does not cost the inner selection.
+    {
+        tblfh1::FhRoot one;
+        tblfh1::FhRootReset( one );
+        one.tier = tblfh1::Tier::Bronze;
+        one.head = 11;
+        one.pick.type = tblfh1::OuterType::A;
+        one.pick.a.edge = 22;
+        one.pick.a.inner.type = tblfh1::InnerType::Other;
+        one.pick.a.inner.other.k = 33;
+        std::vector<uint8_t> w( (size_t) tblfh1::FhRootFixedMeasure( 1 ) );
+        check( tblfh1::FhRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W16: the A record saves" );
+
+        tblfh1::FhRoot back;
+        tblfh1::FhRootReset( back );
+        tblfh1::TableReport r;
+        std::vector<tblfh1::TableFixedEntry> plan( 1024 );
+        check( tblfh1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "W16: the A record reads" );
+        check( back.pick.type == tblfh1::OuterType::A, "W16: the outer arm" );
+        check( back.pick.a.inner.type == tblfh1::InnerType::Other && back.pick.a.inner.other.k == 33,
+               "W16: THE INNER UNION'S OWN ARM SELECTION SURVIVES THE OUTER STAMP" );
+        check( back.pick.a.edge == 22, "W16: and the outer arm's other field" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "W16: a clean read moves no counter" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -1641,6 +1740,7 @@ int main()
     record_bound_case();
     count_clamp_case();
     plan_partition_case();
+    nested_union_case();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
     if ( known_red_hits != 0 )
