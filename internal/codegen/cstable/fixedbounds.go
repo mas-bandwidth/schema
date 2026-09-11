@@ -25,6 +25,7 @@ package cstable
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -194,19 +195,32 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 		// spelled — the same numbers every other form's codec clamps at.
 		if rlo, rhi, ok := ir.TableRawRange(f); ok {
 			low, high := tableClampEnds(f, width)
+			// A 128-BIT END HAS NO LITERAL FORM IN C#: a value past ulong is
+			// spelled as two halves shifted together, which is the shape the
+			// wide codec's own clamp already uses (wideLiteral).
+			lit := func(v *big.Int) string {
+				if width == 16 {
+					return wideLiteral(v, signed)
+				}
+				return csIntLit(v, signed, width)
+			}
 			switch {
 			case low && high:
-				g.csClampBoth(expr, csIntLit(rlo, signed, width), csIntLit(rhi, signed, width), ind)
+				g.csClampBoth(expr, lit(rlo), lit(rhi), ind)
 			case low:
-				g.csClampEnd(expr, "<", csIntLit(rlo, signed, width), ind)
+				g.csClampEnd(expr, "<", lit(rlo), ind)
 			case high:
-				g.csClampEnd(expr, ">", csIntLit(rhi, signed, width), ind)
+				g.csClampEnd(expr, ">", lit(rhi), ind)
 			}
 		}
 		if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*int64(width) {
-			maxv := (uint64(1) << f.Type.Width) - 1
+			maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 			g.pf("%s// bits(%d) width clamp\n", ind, f.Type.Width)
-			g.csClampEnd(expr, ">", fmt.Sprintf("%d", maxv), ind)
+			if width == 16 {
+				g.csClampEnd(expr, ">", wideLiteral(maxv, false), ind)
+			} else {
+				g.csClampEnd(expr, ">", csIntLit(maxv, false, width), ind)
+			}
 		}
 	}
 }

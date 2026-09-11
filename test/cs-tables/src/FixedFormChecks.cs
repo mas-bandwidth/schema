@@ -427,7 +427,13 @@ static partial class Program
     {
         S2.SimState s = new S2.SimState();
         S2.Schema.TableReset(s);
-        s.Energy = -1234567890123456789L;
+        // IN RANGE, BECAUSE THE BOUNDS PASS IS REAL NOW (§4.6). `energy` is
+        // declared | min = -5000000000, max = 5000000000, and this case read
+        // -1234567890123456789 back exactly only because there was no bounds pass
+        // to hold it: the clean-read assertion below was pinning the MISSING
+        // pass. The 128-bit path is what the case is about, and a value inside
+        // the declaration exercises it just as well.
+        s.Energy = -1234567890L;
         s.Reach = -42;
         s.Mass = 100;
         s.SeedsCount = 1;
@@ -443,7 +449,7 @@ static partial class Program
         long loaded = S2.Schema.SimStateFixedLoad(back, buf, plan, r);
         Check(loaded == 1, "SimState load one record");
         Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "SimState clean read");
-        Check(back.Energy == -1234567890123456789L, "SimState energy int128 matches");
+        Check(back.Energy == -1234567890L, "SimState energy int128 matches");
         Check(back.Reach == -42, "SimState reach fixed128 matches");
         Check(back.Mass == 100, "SimState mass ufixed128 matches");
         Check(back.SeedsCount == 1 && back.Seeds[0] == 9999999999999999999UL, "SimState seeds uint128 matches");
@@ -532,11 +538,15 @@ static partial class Program
         {
             TD.ShipEntry se = new TD.ShipEntry();
             TD.Schema.TableReset(se);
+            // IN RANGE (§4.6): `hardpoints` is declared | min = 0, max = 8, and
+            // 101/202/303/404 read back exactly only because there was no bounds
+            // pass. The case is about the 16-byte FOLDED element run, which four
+            // in-range values reproduce exactly as well.
             se.HardpointsCount = 4;
-            se.Hardpoints[0] = 101;
-            se.Hardpoints[1] = 202;
-            se.Hardpoints[2] = 303;
-            se.Hardpoints[3] = 404;
+            se.Hardpoints[0] = 1;
+            se.Hardpoints[1] = 2;
+            se.Hardpoints[2] = 3;
+            se.Hardpoints[3] = 4;
 
             byte[] buf = new byte[TD.Schema.ShipEntryFixedMeasure(1)];
             long saved = TD.Schema.ShipEntryFixedSave(se, buf);
@@ -549,7 +559,7 @@ static partial class Program
             Check(loaded == 1, "ShipEntry load one record");
             Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "ShipEntry clean read");
             Check(back.HardpointsCount == 4, "ShipEntry hardpoints count");
-            Check(back.Hardpoints[0] == 101 && back.Hardpoints[1] == 202 && back.Hardpoints[2] == 303 && back.Hardpoints[3] == 404,
+            Check(back.Hardpoints[0] == 1 && back.Hardpoints[1] == 2 && back.Hardpoints[2] == 3 && back.Hardpoints[3] == 4,
                   "ShipEntry 16-byte folded int32 array reproduced");
         }
     }

@@ -720,8 +720,8 @@ const tableFixedWireSource = `
                     // slot, because the arms' consts are guarded and every
                     // guarded entry's destination counts as landed, so the
                     // prefill does not cover the tag either. The row carries its
-                    // OWN guard and ordinal â unguarded at top level, guarded
-                    // under an outer arm â which is one rule and not two
+                    // OWN guard and ordinal — unguarded at top level, guarded
+                    // under an outer arm — which is one rule and not two
                     // (§5.9 #13).
                     c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));
                     int my_arm = mi + 1;
@@ -1159,7 +1159,7 @@ const tableFixedWireSource = `
                         // A 64-BIT TEMPORARY AND AN EIGHT-BYTE CASE (§5.8 row 7,
                         // §4.5): an ordinal width of 8 is admissible, and read
                         // through a 32-bit temporary with no case for it the raw
-                        // value stayed 0 â a silent None where the writer named a
+                        // value stayed 0 — a silent None where the writer named a
                         // variant.
                         ulong raw = 0;
                         if (p.Size == 1) raw = src[(int)p.Src];
@@ -1175,11 +1175,17 @@ const tableFixedWireSource = `
                             {
                                 v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                             }
-                            // A FORGED ORDINAL â one past the WRITER's own variant
-                            // count â lands 0 here and THE BOUNDS PASS COUNTS IT
-                            // (§5.4, §5.9 #27). The counter's PLACE is the contract:
-                            // it is what makes the compiled and the identity plan
-                            // agree, and an op that counted as well counted twice.
+                            // A FORGED ORDINAL — one past the WRITER's own variant
+                            // count — lands 0 and COUNTS HERE, which is NOT where
+                            // §5.4 and §5.9 #27 put it. The move is OWED and it is
+                            // not a one-line move: a bounds pass over STORAGE cannot
+                            // tell this None from an enum or a union the writer left
+                            // unset, so the count would simply VANISH on the compiled
+                            // path. Either the op lands the RAW ordinal and the pass
+                            // clamps it, or §5.4 names this one exception. Glenn's
+                            // call; until then the number stays where this leg's own
+                            // green fixture asserts it.
+                            if (raw > count && report != null) { report.Clamped++; }
                         }
                         if (slots[(int)p.Dst].SetRaw != null)
                         {
