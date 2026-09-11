@@ -666,6 +666,261 @@ form and the cook. Those stay C++/C#, measured in the game on real render
 data, under `make tables-block-gate2` (docs/SPEC-TABLES.md §12.1) and the
 cook's open-cost gate (§7.5). No per-language block or cook bench is owed.
 
+### §1.10 The lineage corpus and the PLAN-READ arm
+
+**The belief this arm exists to measure.** Glenn's gate on the bitpacked message
+form is that the fixed table be 100% and PERFORMANT across nine languages first,
+and the performance half of that gate rests on two claims nobody has measured:
+
+1. **the identity lane is free** — the reader's own wire hash selects the
+   identity entry (docs/FIXED-FORM-ALGORITHM.md §5.3 step 8: the fills are
+   EMPTY, `record_bytes` is `8 + C(root)`, and no plan compiler runs), so a
+   fixed-form read of a CURRENT file costs nothing over the form-3 read the
+   board already publishes; and
+2. **a lineage read is within a small constant of it** — a read of an OLDER
+   layout selects a lineage entry, PREFILLS the destination with that entry's
+   fills (§4.3) and scatters through the COMPILED plan (§4.4, §4.5), and that
+   is the whole price of reading backward.
+
+**Nothing under `bench/` can measure the second claim today, and this is the
+honest inventory.** `bench/tools/ledger.go:216` admits only
+`bench_mixed` / family `gen` rows, so a fixed-form row cannot enter the
+across-time series at all. `test/bench/fixedform_measure.cpp`'s nearest arm, A3
+("the SHIPPED loop over a RUNTIME copy of the same plan"), reads the SAME
+layout through a runtime plan copy — it prices the plan's indirection, not a
+widening, and an identity plan has no fills to prefill and no scatter to do. No
+producer in the estate emits an older-layout record into a bench corpus. And no
+read arm in any of the `bench/tables/<lang>/` runners lets `LOAD` select a
+non-identity entry: every one of them loads `bench_fixed.bin`, whose hash is the
+reader's own. **A3 is not arm 2 wearing a different name, and this section is
+not a rename of A3.**
+
+**The arm is READ-ONLY, and that is structural, not an omission.** A fixed table
+writes its own layout and no other (§3.1 there), so there is no "write the old
+layout" to time and no round trip to close. The arm therefore reports the `read`
+path, **measured**, which is the one place in this standard where a measured
+`read` row is correct: §2.9's "`read` is DERIVED" binds the gen family's
+`bench_mixed` rows, where a round trip exists to derive it from. Here there is
+no round trip, so a derived number would have nothing to be derived from.
+
+#### The producer
+
+**One older-layout file per paired unit, written by the C++ dump, from a named
+VOLD schema.** The byte authority for this form is the C++ reference
+(`test/tables/fixedform_dump.cpp`, the cross-language byte oracle), so the
+reference writes these bytes too and every leg reads the same ones.
+
+- **The schema** is `bench/corpus/VOLD_bench_lineage.schema`: `BenchMixed` ONE
+  GENERATION BACK, declaring the same table name so the two layouts are one
+  lineage, in its own package so both generations compile into one binary (the
+  FX1/FX2 and `VOLD_*`/`VNEW_*` precedent). The NEW side of the pair is not a
+  new file: it is `bench/corpus/Bench.schema` itself, unchanged, because the
+  READER of this arm must be the leg's ordinary generated `BenchMixed` codec
+  and nothing built for the bench.
+- **Its widening touches every kind class a lineage read can carry**, so the
+  number is not one cheap op repeated:
+
+  | class | OLD (`VOLD_bench_lineage`) | NEW (`Bench.schema`, today) | what the plan does |
+  |---|---|---|---|
+  | appended field | body ends at `extra` | `idle_ticks int32 \| 0..15` | a FILL; the field is never on the wire |
+  | widened array bound | `stats [..64]MixedStat` | `stats [..80]MixedStat` | count and 64 elements land; slots 64..79 take the ELEMENT default — the prefill's largest span |
+  | widened text | `player_name string(8)` | `player_name string(15)` | length and used bytes exact, the slack zeroed |
+  | new union arm | `MixedEvent { hit, chat }` | `{ hit, chat, pickup }` | the pinned arm is `hit`, so the read lands through a plan ARM; the tag width is equal both sides |
+  | enum append | `MixedWeapon`, 12 variants | 15 variants | the bounds pass guards against the WRITER's variant count, carried by the plan |
+  | integer widen | `MixedStat.delta int16` | `delta int32` | **80 widen entries per record**: §5.9 #33 forbids folding a run across a widening, so this is the only arm that puts ARITHMETIC rather than a copy on the clock, and a plan-read number without it measures the cheap half |
+
+  **What this corpus does NOT carry, named rather than faked:** an enum ORDINAL
+  WIDTH widen needs 255 → 256 variants, which would destroy the shape §1.9's
+  mirror rule exists to protect. It stays in the versioning corpus's
+  `enum_width` row (docs/FIXED-FORM-VERSIONING-TESTS.md) and is not smuggled in
+  here. `wstring` and `bytes` capacity growth is the SAME plan op as
+  `string(N)` growth, so the text class is carried once.
+- **The files** are `bench/paired/corpus/bench_lineage.bin` and
+  `bench_lineage.layout`, beside `bench_fixed.bin` / `bench_fixed.layout` and
+  named the same way. **There is no length index and there must not be one:**
+  a form-3 file's records are constant-size by construction (§5.3 step 9's
+  `rest mod record_bytes`), which is exactly what the form-1 paired corpus
+  needed its 64-entry index for. The OLD record size differs from the reader's
+  and is the LOCK's, never the file's (§5.3 step 8, §5.9 #34).
+- **The values are the paired unit's own.** The 64 records are the SAME 64
+  logical records, decoded once from the canonical packet corpus, exactly as
+  `test/bench/paired_main.cpp` derives the form-1 corpus. There is no second
+  field list and no independent value generator; the three fields the OLD
+  schema cannot hold (`idle_ticks`, `stats[64..79]`, `player_name` past 8
+  bytes) are the three the reader is supposed to fill, and the dump writes a
+  manifest line for the file like every other corpus row (§5.9 #32) so a leg
+  asserts the manifest and never reads the dump.
+- **The lock is what makes the reader's layout the newer one.** The paired unit
+  gains `bench/corpus/schema.lock` carrying BenchMixed's lineage with the VOLD
+  layout at index 0, the identity at index 1, and `floor = 0`. Without that
+  entry every leg answers `layout_newer` and the arm measures a refusal; with
+  it, `LOAD` takes step 5's first matching index and step 8's plan. **The lock
+  is committed corpus**: it hashes into `corpus_id` with the bytes, because a
+  lock edit silently changes which plan ran.
+
+#### The read arm, per leg
+
+Every `bench/tables/<lang>/` runner gains ONE new mode, and in it TWO timed
+paths over the SAME 64 records at the SAME uniform iteration count per wire
+that §2.1 fixes for the identity row, in the SAME sitting, interleaved by
+§2.4:
+
+| row | what `LOAD` selects | path | statistic |
+|---|---|---|---|
+| `bench_fixed` | the identity entry | `write`, `round_trip` | **UNCHANGED**; no existing board moves |
+| `bench_fixed_read` | the identity entry, read alone | `read` | measured |
+| `bench_plan_read` | the OLDER entry, by its hash | `read` | measured |
+
+**`bench_fixed_read` is not a convenience row; §2.9 forces it into existence.**
+The plan/identity ratio needs an identity read on the clock, and
+`bench_fixed`'s read is DERIVED and printed to stderr precisely so it can never
+be divided. Deriving the ratio's denominator would be the exact failure §2.9
+legislated against.
+
+Everything §1.5, §1.6, §1.9 and §2 says applies unchanged: the golden gate
+before any clock, 1 discarded warmup plus 7 runs, best with median beside it,
+the escape barriers, the 200 ms floor, the control legs. Two clauses are
+restated because the arm is new:
+
+- **The gate before the clock is the versioning law's own.** A leg may not
+  start this clock until its `bench_plan_read` mode has proved, on all 64
+  records, that every OLD value landed exactly, that the reader's appended tail
+  holds its declared DEFAULT, and that the counters are what
+  docs/FIXED-FORM-ALGORITHM.md §5.4 says for these six classes — 80 `widened`
+  per record among them. A plan read that decoded wrongly does not get to be
+  fast.
+- **The prefill and the scatter are ON the clock, and the LOAD is the whole
+  timed operation.** PREFILL, RUN, BOUNDS (§4.3–§4.6) are the work being
+  priced; a runner that hoists the prefill out of the loop, or reuses a
+  destination it filled on a previous iteration, has measured the identity lane
+  twice. The destination is reused across iterations — that is the shipped
+  call — but every iteration pays its own prefill.
+
+#### `corpus_id`: the plan rows carry their own, by construction
+
+The plan mode loads `bench_lineage.bin`, `bench_lineage.layout` and the lock in
+ADDITION to the identity goldens, so its `corpus_id` differs from the ordinary
+table pass's by §1.6's definition, with no new rule needed. That is the whole
+protection asked of it, in both directions:
+
+- `bench_plan_read` and `bench_fixed_read` come out of ONE invocation and so
+  SHARE an id — the ratio's two halves are divisible, which is the point; and
+- neither can ever be divided against a `bench_fixed` row from the ordinary
+  pass, whose id is different. **A plan row is never divided against an
+  identity row it was not measured beside.**
+
+Rows ride the existing §5.1 columns with no schema change: family `table`,
+`path = read`, and column 2 carrying two new values. **§5.3 rule 2
+(`bytes_per_op`) refuses the plan/identity ratio, and it is RIGHT to** — the
+OLD record is a different length by construction. Only the paired driver may
+print it, the same exception §1.9 already grants it for the table-versus-packet
+ratio, and the caption MUST name both record sizes so nobody reads a
+bytes-per-record difference as a rate difference.
+
+#### What the ledger must accept
+
+> `bench/tools/ledger.go`'s row filter (`ledger.go:216`) must admit
+> `(family table, bench_fixed_read | bench_plan_read, path read)` as series of
+> their OWN, keyed by row name, never folded into the `gen` / `bench_mixed`
+> curve the C/C++ pair lock is defined over.
+
+That is one line of filter and one line of key. **The `--check` teeth stay
+OFF these rows until the bound below is ratified**: `lockedLegs` gates the
+`bench_mixed` / `gen` / `round_trip` statistic and nothing else
+(`ledger.go:44`), and extending a gate to a new statistic is a ruling, not a
+filter change — the same reason the bitpacker rows sit outside the pair lock.
+
+#### The two ratios, and their bounds
+
+| ratio | denominator | bound | status |
+|---|---|---|---|
+| **identity / hand-written straight-line** | `test/bench/fixedform_measure.cpp` arm B, one constant-offset load per leaf, hand-written so the emitter does not grade its own homework | **≤ 1.5x** | RATIFIED, docs/SPEC-TABLES.md §3.4 — the price the one-reader-path ruling was bought with |
+| **plan / identity** | `bench_fixed_read` from the same invocation | **≤ 2.0x** | **PROPOSED** (below) |
+
+**Why 2.0x for plan / identity.** The identity lane is ONE pass over the
+record: empty fills, coalesced runs, a copy. A lineage read adds exactly one
+structural thing — the PREFILL, a second pass over the SAME destination bytes
+before the runs land (§4.3) — plus a run loop that is more fragmented, because
+a widening forbids the fold (§5.9 #33) and each widened element becomes its own
+entry. Fragmentation adds loop and dispatch overhead but touches **no new
+bytes**; the prefill is the only new traffic, and it is bounded by the
+destination's size, which is the identity read's own working set. So **two
+passes where identity pays one is the structural ceiling**, and 2.0x is the
+smallest constant the prefill alone cannot break. A leg above it is not paying
+for tolerance: it is re-reading the record, or dispatching per field where the
+plan should have coalesced, and the number is a coalescing defect to fix rather
+than a cost to accept. The bound is **per leg**, not an average — Glenn's gate
+is nine languages performant, and an average hides the one that is not.
+
+`1.5 x 2.0 = 3.0x` is therefore the worst a backward read may cost against
+hand-written straight-line code, stated once so nobody has to multiply it
+themselves.
+
+#### The per-leg reporting shape
+
+Nine legs, three numbers each, one line per leg, on the paired driver's board
+beside `NINE.md`:
+
+```
+# fixed form: the identity lane and the plan lane
+# host / arch / rev / lane / rounds / corpus_id(identity) / corpus_id(plan)
+# C++ anchor: identity 000.0 ns/record / straight-line 000.0 = 0.00x  (bound 1.5x, SPEC-TABLES §3.4)
+
+leg      identity read    plan read    plan/identity
+         ns/record        ns/record    x (bound 2.0)
+cpp          00.0            00.0          0.00
+c            00.0            00.0          0.00
+go           00.0            00.0          0.00
+rust         00.0            00.0          0.00
+cs           00.0            00.0          0.00
+java         00.0            00.0          0.00
+js           00.0            00.0          0.00
+dart           —               —             —     no runner on this tree
+elixir       00.0            00.0          0.00
+```
+
+Three rules about that page, each paying for a failure this standard already
+names:
+
+- **The ratio column is the verdict and it is per leg.** A leg over 2.0x prints
+  its number and is marked, never dropped and never averaged away.
+- **A leg with no runner is NAMED with its reason**, in §1.9's and
+  `nine.sh`'s own vocabulary — "no runner on this tree", "no leg in this driver
+  yet", "runner present, but its rows do not belong to this sitting" are
+  different facts about the merge, and none is ever estimated. Eight table
+  runners exist under `bench/tables/` today; Dart's fixed-form leg has landed
+  and its bench runner has not, so the ninth line is a named refusal until it
+  does.
+- **The first ratio is C++'s alone and the board says so.** Arm B is
+  hand-written, and nine hand-maintained layouts would be nine chances for the
+  comparand to be wrong in a leg-specific way. The form's rule is one reference
+  for bytes (and one for the straight-line comparand); no leg owes a
+  hand-written arm, and the C++ anchor line is where that ratio lives.
+
+#### The work list — one file, one line, one child each
+
+1. `bench/corpus/VOLD_bench_lineage.schema` — NEW: `BenchMixed` one generation back, the six narrowings of the table above, same table name, own package.
+2. `bench/corpus/schema.lock` — NEW: the paired unit's lock, VOLD layout at lineage index 0, identity at 1, `floor = 0`.
+3. `Makefile`, `tables_generate` — generate the VOLD leg beside the `VOLD_*`/`VNEW_*` rows so both generations compile into one binary.
+4. `test/tables/fixedform_dump.cpp` — write `bench_lineage.bin` + `.layout` from the 64 packet-decoded records, and its `manifest.txt` line through `MS`/`MSI`/`MSTR` like every other row (§5.9 #32).
+5. `Makefile`, `bench-paired-corpus` — re-pin the two lineage files into `bench/paired/corpus/`; ordinary builds only verify them.
+6. `bench/paired/corpus/bench_lineage.bin`, `bench_lineage.layout` — NEW: the committed bytes.
+7. `test/tables/versioning_numbers.cpp` — the reference's NEW-READS-OLD case for this row, counters included (80 `widened` per record), RED before the arm is timed.
+8. `bench/tables/cpp/table_main.cpp` — the `--plan-read` mode: the pre-clock gate, then the two timed `read` paths.
+9. `bench/tables/c/table_main.c` — the same mode, held to the C/C++ twin gate's text.
+10. `bench/tables/go/table_main.go` — the same mode.
+11. `bench/tables/rust/src/main.rs` — the same mode.
+12. `bench/tables/cs/src/Program.cs` — the same mode.
+13. `bench/tables/java/TableMain.java` — the same mode, one timed loop method per path (the JVM discipline, #156 item 5).
+14. `bench/tables/js/table_main.mjs` — the same mode, `codec` column unchanged.
+15. `bench/tables/elixir/runner.exs` — the same mode, and its input manifest gains the two files.
+16. `bench/tables/run.sh` — pass the mode through; a leg that does not answer it is named, not dropped.
+17. `bench/tools/ledger.go` — admit `(table, bench_fixed_read|bench_plan_read, read)` as rows of their own; `lockedLegs` untouched.
+18. `bench/paired/main.go` — `-mode plan-read`: one invocation, the two rows, the distinct `corpus_id`, the `bytes_per_op` caption §5.3 rule 2 requires.
+19. `bench/paired/nine.sh` — the board above, three numbers per leg, the C++ anchor line, named refusals for absent legs.
+20. `docs/SPEC-TABLES.md` §3.4 — record the plan/identity bound once it is ratified; until then this section carries it as PROPOSED and nothing gates on it.
+
+
 ---
 
 ## §2 Methodology
