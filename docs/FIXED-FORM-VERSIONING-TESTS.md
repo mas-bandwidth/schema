@@ -82,7 +82,8 @@ only, and OLD-REFUSES-NEW for the other direction).
 
 ## Counting
 
-33 rows × up to 4 columns, the floor and hash tests, on the reference and nine legs. The reference first,
+33 rows × up to 4 columns, the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the floor and hash
+tests, on the reference and nine legs. The reference first,
 red first; then the legs from the corpus, algorithm not reference; the swarm takes the mechanical rows with
 the target and the corpus file named on the card.
 
@@ -108,3 +109,60 @@ no writer of either schema can produce them:
 **RED FIRST ON EVERY LEG, and red for a second reason today**: no leg refuses yet — four set `malformed` and
 five do nothing (§5.8 row 8) — so these three rows are the gate the first implementation turns green, and the
 `bytes` row is the one of the three that must be green from the start.
+
+## The divergence rows: §5.8's 4, 9, 11, 12
+
+Four more rows, one per divergence of `FIXED-FORM-ALGORITHM.md` §5.8 that NO row above can reach — a
+row whose subject is not a definition change but a place the reference and this page disagree. They are
+written the same way and they owe the same things: the schema pair or the forged file, the expected verdict,
+the expected counters, and WHICH of the four ways apply — a `—` is a column the row cannot have rather than
+one nobody wrote. **The counters are asserted EXACTLY and never `>= 1`**: every one of these four is a row
+where the right number counted in the wrong place, or counted twice, is the bug, so a `>=` passes the read it
+exists to catch. The reference and the dump are Johnny's; **every other leg builds the fixture from THIS TEXT
+and the row's manifest line, never from `fixedform_dump.cpp`** (§5.9 #32, #37).
+
+| row | the pair / the forged file | the read | the verdict | the counters | the four ways |
+|---|---|---|---|---|---|
+| `writer_bound_count` (§5.8 row 4) | `VOLD_/VNEW_array_bounded_grow` as they stand — `[..4]int32` → `[..8]int32`, the reader's bound WIDER than the writer's — plus one forged file, `hostile_array_bounded_grow.bin`: `old_array_bounded_grow.bin` with the count word set to `7`, a value BETWEEN the writer's `4` and the reader's `8` | the NEW build reads the forged OLD file through its lineage, so the plan is a COMPILED one | `n == 1`; `vals_count == 4` — the WRITER's bound carried by the plan, never the reader's `8` and never the forged `7`; `vals[0..3]` exactly `1000, 1001, 1002, 1003`; `vals[4..7]` the reader's declared default; `lead == 0xAAAAAAAA` and `trail == 0xBBBBBBBB` | `clamped == 1` EXACTLY — the `count` op, once per entry per record (§5.4) — and `unknown == 0`, `kind_mismatch == 0`, `widened == 0`, `malformed` false, `refused` false | NEW-READS-OLD only. LOCK-REFUSES / LOCK-ALLOWS are `array_bounded_grow`'s own and are not repeated; OLD-REFUSES-NEW is `—`: the forged file carries the OLD layout, which the OLD reader takes by identity |
+| `refuse_writes_nothing` (§5.8 row 9) | `VOLD_/VNEW_nested_append` as they stand — the appended nested field `Vec.w = 88` is a NONZERO prefill, which is the only thing that can tell a prefill that ran from one that did not — plus one forged file, `nolayout_nested_append.bin`: `old_nested_append.bin` with the PER-RECORD hash word (the record's first eight bytes) inverted, the header's hash untouched | the NEW build reads it: the header's hash selects the OLD lineage entry, so a COMPILED plan with a NONEMPTY fill list is in hand when step 11 compares the record's hash | `n == -1`, `refused` true, `reason == no_layout`, `malformed` FALSE (the joint assertion of §5.3), `layout_hash` untouched — **and the caller's storage, POISONED with `0x5A` before the load, is `0x5A` in every byte after it**: not the prefill's `88` in `v.w`, not a zero anywhere, nothing | every counter `0` — REFUSE IS TOTAL | OLD-REFUSES-NEW's sibling, run as its own column. NEW-READS-OLD is `nested_append`'s own; LOCK-* are `—` (no definition changed) |
+| `unknown_census` (§5.8 row 11) | A NEW PAIR, `VOLD_/VNEW_unknown_census`: OLD `fixed table Item { a int32 = 0, drop int32 = 0 }` and `fixed table Census { lead uint32 = 1, items [4]Item, trail uint32 = 2 }`, NEW the same with `Item.drop` REMOVED. **The pair is deliberately UNLAWFUL** — §5.1 refuses a removal, which is the row's LOCK column — so the lineage entry is HANDED IN by the probe (§5.9 #1's `GenerateLineage(u, lineage)`, the lock played in one line) and never read from a lock. One file, `old_unknown_census.bin`, four elements, every `a` and every `drop` set | the NEW build reads the OLD file through the handed-in entry | `n == 1`; `items[0..3].a` exactly `10, 11, 12, 13`; `lead`/`trail` stand; `Item.drop` lands nowhere | **`unknown == 1`** — once per FIELD per peer, NOT once per element: `Item.drop` is one field of one peer however many of the four elements carry it, and `4` is the divergence. `kind_mismatch == 0`, `widened == 0`, `clamped == 0`, `malformed` and `refused` false. The census lands ONCE, after the record loop, on a read that returns (§5.9 #6), so a SECOND read of the same peer reports `unknown == 1` again | LOCK-REFUSES: `Item { a }` from `Item { a, drop }` names the table, `Item.drop`, "field removed", and the two field lists. NEW-READS-OLD as above. LOCK-ALLOWS and OLD-REFUSES-NEW are `—`: there is no lawful widening here and no lawful newer file |
+| `forged_ordinal_both_plans` (§5.8 row 12) | `VOLD_/VNEW_enum_append` as they stand — `Tier { Bronze, Silver, Gold }` → `+ Platinum` — plus one forged file, `hostile_enum_append.bin`: `old_enum_append.bin` with `r0.tier` set to `4`, an ordinal PAST the writer's three variants and a name the reader does have | **the SAME bytes read TWICE**: once by the NEW build (the COMPILED plan, selected through the lineage) and once by the OLD build (the IDENTITY plan, its own hash) | both reads `n == 1`; both land `tier == None` and never `Platinum` — the plan's variant count is the WRITER's three; both leave `seq == 9` | **`clamped == 1` on BOTH plans, the same number on both** — the BOUNDS pass's count, once per field (§5.4), and the equality of the two is the row's whole proof. `== 1` and not `>= 1`: a leg that counts in the `ordinal` op AS WELL as in the bounds pass lands `2` and is wrong (§5.4's "counts twice"). Every other counter `0` | NEW-READS-OLD (the compiled column) and a second column on the OLD build (the identity one). LOCK-* are `enum_append`'s; OLD-REFUSES-NEW `—` |
+
+**Row 4's three other lanes read from the same rule and are already on the corpus.** The count is the lane the
+row above pins; the ranges are `range_widen_hostile` (the writer's `| 0..100`, the reader's `| 0..200`, a forged
+`150` landing `100` with `clamped == 1`), the variant count is the row below, and the arm count is
+`union_append_hostile` (a forged tag `3` against the writer's two arms landing `None` with `clamped == 1`).
+Those three exist as reference cases today asserting `r.clamped >= 1`; **this section's number is `== 1`** and a
+leg asserts the exact one.
+
+**What `fixedform_dump.cpp` owes, so nine legs read the same bytes** (§5.9 #32's manifest, `build/fixedform-corpus/manifest.txt`):
+
+| file | what the dump writes | the manifest line |
+|---|---|---|
+| `hostile_array_bounded_grow.bin` | `old_array_bounded_grow.bin`'s bytes, then the `vals_count` word OVERWRITTEN with `7` after the save | `file=hostile_array_bounded_grow.bin row=array_bounded_grow side=hostile root=ArrayBoundedGrow records=1 forged=r0.vals_count@<abs byte>=7 values=r0.lead=2863311530,r0.vals_count=4,r0.vals[0]=1000,r0.vals[1]=1001,r0.vals[2]=1002,r0.vals[3]=1003,r0.trail=3149642683` |
+| `nolayout_nested_append.bin` | `old_nested_append.bin`'s bytes, then record 0's first eight bytes (its per-record hash) bitwise INVERTED; the header's hash at file+8 untouched | `file=nolayout_nested_append.bin row=nested_append side=nolayout root=Lineage records=1 forged=r0.record_hash@<abs byte>=~<hash> values=r0.v.x=…,r0.v.y=…,r0.v.z=…,r0.seq=…` |
+| `hostile_enum_append.bin` | `old_enum_append.bin`'s bytes, then `r0.tier` OVERWRITTEN with `4` | `file=hostile_enum_append.bin row=enum_append side=hostile root=Lineage records=1 forged=r0.tier@<abs byte>=4 values=r0.tier=3,r0.seq=9` |
+| `old_unknown_census.bin` | the OLD build, one record: `lead`, `trail`, four `items` with `a` = `10 + i` and `drop` = `900 + i` | `file=old_unknown_census.bin row=unknown_census side=old root=Census records=1 values=r0.lead=…,r0.items[0].a=10,r0.items[0].drop=900,…,r0.trail=…` |
+
+**Two additions to #32's grammar, and nothing else moves.** `side=` gains **`hostile`** and **`nolayout`** —
+a leg's parser takes the side as a word and not as one of six — and a forged file carries one more field,
+**`forged=<path>@<absolute byte offset>=<wire value>`**, before `values=`, so a leg forges the same byte at the
+same place without computing a record offset out of the dump. **`values=` on a forged file is what the WRITER
+wrote, before the forge** — the wire's lawful values — **and the forged byte is the `forged=` field's;
+the VERDICT is this page's row and never the manifest's**, which is the one place a hostile row departs from
+"assert the manifest" (§5.9 #37): the manifest is the oracle for what went ONTO the wire, this table is the
+oracle for what comes BACK. `manifest_case` still holds — every `.bin` in the corpus has a line and every
+`root=` names a table the generator emitted.
+
+**Row 9's corpus files carry ONE record each, deliberately.** §5.3's loop lands record `k` before it checks
+record `k+1`'s hash, so in a two-record file the refusal arrives with record 0 already written and "not one
+destination byte" cannot be read literally. A one-record file has no such question, and **what a multi-record
+`no_layout` may leave in `out[0..k-1]` is an OPEN QUESTION for the bill, not a thing a leg should guess** —
+named here rather than answered.
+
+**Row 11's handed-in entry is the probe's, in one line, and it is the only unlawful thing in the corpus.**
+§5.9 #30 withdrew the owed lawful row because no lawful lineage can move the census; the entry is therefore
+handed to `GenerateLineage` directly. Under §5.8 row 1's INTERIM — the backend loading its lineage from sibling
+schema files by the `VOLD_`/`VNEW_` convention — naming the two files the convention's way is all the handing-in
+the row needs, because the convention never runs `BASELINE`. **The day row 1 closes and the lineage comes from
+the lock, this row needs the explicit test-only entry**, and a leg says which of the two its probe used.

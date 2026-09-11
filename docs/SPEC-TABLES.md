@@ -6659,13 +6659,30 @@ three and not one.
   here is silent**: *"we don't want to surprise the user"*, and the table and
   its size are in the message, at compile time, always on. A project that wants
   the bound to be a gate has the flag below.
+
+  **THE CEILING REFUSES NOTHING ABOUT A TABLE THAT WAS ALWAYS THIS LARGE, AND
+  THE LOCK REFUSES ONE THAT CROSSES IT.** The same number read in two
+  directions, and only one of them is a refusal. A table past the ceiling from
+  its first line never carried form `3` and loses nothing: it is NAMED, it keeps
+  form `1`, and the fixed-form generator consults **NO LINEAGE** for it and
+  parses no entry of it, even when the lock carries one — that entry is neither
+  an error nor data, there being no form for it to be data of
+  (`FIXED-FORM-ALGORITHM.md` §5.9 #48). A table already shipping form `3` whose
+  bounds GROW past the ceiling is the other case, and **`schema lock` refuses
+  that CROSSING by name** (`internal/lockfile.diffCeiling`): every monotone size
+  fact widened legally while the WIRE changed form underneath, so the readers
+  compiled from that lineage would meet a form byte no plan of theirs has a
+  branch for — a change of FORM and not a version (§2.10). **That refusal is the
+  LOCK's, on a crossing, and never the compiler's on a size**: the paragraph
+  above stands unchanged for every table the compiler sees on its own.
 - **`--fixed-record-limit N` MAKES THE ADVICE A GATE, AND ONLY EVER LOWERS.** It
   is off by default and it is a project's own policy, never a wire fact: set it
   and a fixed table whose record body exceeds `N` bytes DOES NOT COMPILE.
   **IT IS THE ONLY RECORD-SIZE BOUND THAT FAILS A COMPILE AT ALL** — neither
   4096 nor 65536 does, with or without the `fixed` keyword — so a text that says
   a declared fixed table past 65536 does not compile is describing this flag and
-  nothing else. A team
+  nothing else. The lock's refusal above is not a counter-example: it fires on a
+  CROSSING and not on a size, so a table born past the ceiling passes it. A team
   that wants the owner's rule enforced rather than advised sets it to `4096`.
   **IT CANNOT RAISE THE 65536**, and that is not a limitation but the same rule
   read from the other end: 65536 is the number a PEER's reader holds this
