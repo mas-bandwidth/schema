@@ -106,6 +106,59 @@ pool cannot take stay hosted on every event, because they need an OS it does not
 have: `big-endian` (s390x cross gcc and qemu-user on pinned Ubuntu), `windows`
 and `msvc`.
 
+### The studio pool
+
+**Six self-hosted runners on the Studio** (Apple M3 Ultra, macOS), labelled
+`[self-hosted, studio]`, one directory each:
+
+```
+~/actions-runner  ~/actions-runner-2  ~/actions-runner-3
+~/actions-runner-4  ~/actions-runner-5  ~/actions-runner-6
+```
+
+Six is the matrix width that matters: the fast lane's nine leg rows and the full
+lane's job groups fan out across them, and a seventh would contend for the same
+cores. One runner takes one job at a time.
+
+**Stopping and starting them** — each directory carries its own service script:
+
+```
+cd ~/actions-runner-3 && ./svc.sh stop      # also: start, status
+```
+
+**Never stop or start a runner during a benchmark window, and never let the pool
+run one.** A benchmark measures this machine; a CI job on the same cores makes
+the number a fiction. Stop all six before a benchmark window and start them
+after.
+
+**The warm-workspace rule.** A self-hosted runner's workspace — and, more
+importantly, its **parent** — persists between runs. `actions/checkout` cleans
+the repository directory itself (nothing in either workflow sets `clean: false`,
+and nothing may), but the sibling checkouts every leg's Makefile reaches for as
+`../serialize*` sit in that parent and survive. So **every step that clones a
+sibling runtime `rm -rf` the directory first and re-clones at the pinned tag** —
+never `if [ ! -d ]`, never a bare `git clone`. Two ways that rule is earned:
+
+- A bare clone fails by name on the second run —
+  `fatal: destination path 'serialize' already exists and is not an empty directory`.
+- A `[ ! -d ]` guard succeeds and reuses whatever the previous run left, which
+  is how a stale sibling survives a pin bump. The sibling pins are part of what
+  a green means.
+
+**A toolchain install is not a per-job step on the pool.** All six runners share
+one `$HOME`, so six concurrent `setup-*` actions write the same directory at the
+same time; one job reading a half-written SDK is enough to go red. Every
+toolchain step in both workflows is therefore gated
+`if: runner.environment == 'github-hosted'`, and the pool uses what the Studio
+already has:
+
+| toolchain | where it lives on the Studio |
+| --- | --- |
+| Go, clang, make, rustup | the keeper's own PATH |
+| .NET SDK | `~/.local/bin/dotnet` → `~/.dotnet` (10.0.400 and 10.0.401; `.github/dotnet-version` pins the band, `10.0`) |
+| JDK 21, Elixir, OTP, Dart, Node | `/Users/Shared/schema-dist` — the same `dist/` the Makefiles take |
+
+
 CI runs on Linux and macOS, and both must be green:
 
 - `make test` — the cross-language corpus and the goldens.

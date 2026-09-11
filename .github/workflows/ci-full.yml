@@ -201,7 +201,14 @@ jobs:
 
       - name: Check out the C, C++, C# and Go serialize runtimes (pinned releases)
         run: |
+          set -euo pipefail
           cd ..
+          # A SELF-HOSTED RUNNER'S WORKSPACE PARENT PERSISTS BETWEEN RUNS, so a
+          # previous run's sibling clones are still sitting here and `git clone`
+          # fails by name on them ("destination path already exists"). They are
+          # removed and re-cloned at the pinned tag every time, never reused:
+          # the sibling pins are part of what a green means.
+          rm -rf serialize serialize.c serialize.cs serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"   https://github.com/mas-bandwidth/serialize.git   serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG" https://github.com/mas-bandwidth/serialize.c.git serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
@@ -221,8 +228,18 @@ jobs:
         if: matrix.group == 'versioning'
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
+      # HOSTED ONLY, and that gate is the whole of pool defect (2). All six
+      # studio runners share one $HOME, so six concurrent setup-dotnet steps
+      # install the same SDK into the same ~/.dotnet at the same time; run
+      # 34603066277 caught one of them reading a half-written 10.0.401 —
+      #   the library 'libhostpolicy.dylib' required to execute the application
+      #   was not found in '/Users/glenn/.dotnet/sdk/10.0.401/'
+      # — and every cs row went red on a probe that never built. The Studio
+      # already carries an SDK inside the pin's band (10.0.400 and 10.0.401,
+      # .github/dotnet-version says 10.0) on PATH at ~/.local/bin, so the pool
+      # needs no install at all. Same gate ci-fast.yml's cs row already uses.
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -367,10 +384,13 @@ jobs:
       - name: the fixed form's versioning suite on the Rust leg
         if: matrix.group == 'versioning'
         run: |
-          if [ ! -d ../serialize.rs ]; then
-            git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
-              https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
-          fi
+          set -euo pipefail
+          # NOT `if [ ! -d ]`: on a warm self-hosted workspace that arm REUSES a
+          # previous run's clone, which is how a stale sibling would survive a
+          # pin bump. Removed and re-cloned at the pin every time.
+          rm -rf ../serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" \
+            https://github.com/mas-bandwidth/serialize.rs.git ../serialize.rs
           make tables-rust-versioning
 
       # THE SAME GATE ON THE JAVASCRIPT LEG (§5.9 #11: every leg owes both
@@ -573,7 +593,14 @@ jobs:
 
       - name: Check out the C++, C# and Go serialize runtimes (pinned releases)
         run: |
+          set -euo pipefail
           cd ..
+          # A SELF-HOSTED RUNNER'S WORKSPACE PARENT PERSISTS BETWEEN RUNS, so a
+          # previous run's sibling clones are still sitting here and `git clone`
+          # fails by name on them ("destination path already exists"). They are
+          # removed and re-cloned at the pinned tag every time, never reused:
+          # the sibling pins are part of what a green means.
+          rm -rf serialize serialize.cs serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
@@ -698,7 +725,10 @@ jobs:
       - name: Check out the sibling runtime this leg needs (pinned release)
         if: matrix.runtime != ''
         run: |
+          set -euo pipefail
           tag=$(printenv "${{ matrix.runtime_tag }}")
+          # warm self-hosted workspace: the parent persists, so remove first
+          rm -rf "../${{ matrix.runtime }}"
           git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/${{ matrix.runtime }}.git" "../${{ matrix.runtime }}"
 
       # bin/schema and the generated table units come out of Go in every leg.
@@ -734,8 +764,10 @@ jobs:
         if: matrix.dotnet != ''
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
+      # hosted only: the studio pool shares one ~/.dotnet across six runners
+      # and already carries an SDK in the pin's band (pool defect 2).
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.dotnet != ''
+        if: matrix.dotnet != '' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -811,6 +843,9 @@ jobs:
 
       - name: Check out the serialize.cs runtime (pinned release)
         run: |
+          set -euo pipefail
+          # warm self-hosted workspace: the parent persists, so remove first
+          rm -rf ../serialize.cs
           git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git ../serialize.cs
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -835,7 +870,10 @@ jobs:
       - name: read the .NET SDK pin
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
+      # hosted only: the studio pool shares one ~/.dotnet across six runners
+      # and already carries an SDK in the pin's band (pool defect 2).
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 
@@ -923,7 +961,11 @@ jobs:
       # other job uses: a table unit declaring a 128-bit field takes its
       # storage type (serialize::int128_t / uint128_t) from serialize.h.
       - name: Check out the serialize runtime (pinned release)
-        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+        run: |
+          set -euo pipefail
+          # warm self-hosted workspace: the parent persists, so remove first
+          rm -rf ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
 
       # The battery on the target, then the control that proves it can fail.
       # BE_CXX and BE_CC name the pinned compilers: the exact-version package
@@ -961,7 +1003,10 @@ jobs:
       # package as its table sources, and those import it.
       - name: Check out the Go serialize runtime (pinned release)
         run: |
+          set -euo pipefail
           cd ..
+          # warm self-hosted workspace: the parent persists, so remove first
+          rm -rf serialize.go
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
 
       - name: the Go table leg, big-endian
@@ -1212,7 +1257,11 @@ jobs:
       # reach for it — a table header includes nothing of it.
       - name: Check out the serialize runtime (pinned release)
         shell: bash
-        run: git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
+        run: |
+          set -euo pipefail
+          # a persistent workspace parent would fail the clone by name
+          rm -rf ../serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git ../serialize
 
       # Generation and script emission happen in bash because they are readable
       # there; the cl steps stay short. The corpus list mirrors the Makefile's
@@ -1543,7 +1592,14 @@ jobs:
       # remove the whole class of "the group forgot a sibling".
       - name: Check out the serialize runtimes (pinned releases)
         run: |
+          set -euo pipefail
           cd ..
+          # A SELF-HOSTED RUNNER'S WORKSPACE PARENT PERSISTS BETWEEN RUNS, so a
+          # previous run's sibling clones are still sitting here and `git clone`
+          # fails by name on them ("destination path already exists"). They are
+          # removed and re-cloned at the pinned tag every time, never reused:
+          # the sibling pins are part of what a green means.
+          rm -rf serialize serialize.c serialize.go serialize.rs serialize.cs serialize.js
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
           git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
@@ -1580,8 +1636,10 @@ jobs:
         if: matrix.dotnet != ''
         run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
 
+      # hosted only: the studio pool shares one ~/.dotnet across six runners
+      # and already carries an SDK in the pin's band (pool defect 2).
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
-        if: matrix.dotnet != ''
+        if: matrix.dotnet != '' && runner.environment == 'github-hosted'
         with:
           dotnet-version: ${{ env.DOTNET_SDK_PIN }}
 

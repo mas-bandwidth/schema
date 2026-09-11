@@ -381,6 +381,28 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
+      # THE SIBLING RUNTIMES, AND THIS STEP IS POOL DEFECT (4). A touched-package
+      # run can reach any leg's table codegen test, and those generate a probe
+      # whose go.mod REPLACES github.com/mas-bandwidth/serialize.go with
+      # ../serialize.go. With no sibling here the gate does not skip, it fails
+      # by name — run 34603030435, internal/codegen/gotable at 190 s:
+      #   replacement directory /Users/glenn/actions-runner-3/_work/schema/serialize.go
+      #   does not exist
+      # It is every sibling because `plan` can hand this job ./..., and it is
+      # rm -rf first because a self-hosted workspace parent is warm: a previous
+      # run's clones are still here and `git clone` fails by name on them.
+      - name: Check out the sibling runtimes (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.c serialize.go serialize.rs serialize.cs serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+
       - name: go test the touched packages
         env:
           PACKAGES: ${{ needs.plan.outputs.packages }}
