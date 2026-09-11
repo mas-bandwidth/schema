@@ -1553,6 +1553,7 @@ static void cache_case()
 #include <dirent.h>
 #include <set>
 #include <string>
+#include <vector>
 
 static std::string slurp_text( const std::string & path )
 {
@@ -1613,6 +1614,54 @@ static void fixed_save_names( const std::string & dir, std::set<std::string> & i
     closedir( d );
 }
 
+
+// ---- THE MANIFEST SAYS WHAT THE WIRE CARRIES, AND NOTHING ELSE ------------
+//
+// An audit of the corpus found the manifest stating things the bytes do not
+// carry, one class per shape, each one a number or a spelling a port would have
+// asserted and missed. These are the checks that catch each class coming back.
+// `values=` is the LAST field and runs to the end of the line; a comma INSIDE a
+// quoted value is escaped `\,`, so the split honours the backslash.
+static std::vector<std::string> manifest_values( const std::string & line )
+{
+    std::vector<std::string> out;
+    const size_t at = line.find( " values=" );
+    if ( at == std::string::npos ) { return out; }
+    const std::string rest = line.substr( at + 8 );
+    std::string cur;
+    for ( size_t i = 0; i < rest.size(); ++i )
+    {
+        if ( rest[i] == '\\' && i + 1 < rest.size() ) { cur += rest[i]; cur += rest[i + 1]; i++; continue; }
+        if ( rest[i] == ',' ) { out.push_back( cur ); cur.clear(); continue; }
+        cur += rest[i];
+    }
+    if ( !cur.empty() ) { out.push_back( cur ); }
+    return out;
+}
+
+static std::string manifest_path_of( const std::string & entry )
+{
+    const size_t eq = entry.find( '=' );
+    return eq == std::string::npos ? entry : entry.substr( 0, eq );
+}
+
+static std::string manifest_text_of( const std::string & entry )
+{
+    const size_t eq = entry.find( '=' );
+    return eq == std::string::npos ? std::string() : entry.substr( eq + 1 );
+}
+
+static bool manifest_all_hex( const std::string & t )
+{
+    if ( t.size() != 6 || t.compare( 0, 2, "0x" ) != 0 ) { return false; }
+    for ( size_t i = 2; i < t.size(); ++i )
+    {
+        const char c = t[i];
+        if ( !( ( c >= '0' && c <= '9' ) || ( c >= 'A' && c <= 'F' ) ) ) { return false; }
+    }
+    return true;
+}
+
 static void manifest_case( const char * corpus_dir )
 {
     const std::string dir( corpus_dir );
@@ -1647,6 +1696,76 @@ static void manifest_case( const char * corpus_dir )
         if ( !shaped ) { std::printf( "  manifest line: %s\n", line.c_str() ); }
         check( shaped, "manifest: every line carries file, row, side, root, records and values" );
         if ( !root.empty() ) { roots.insert( root ); }
+
+        // ---- THE SEVEN CLASSES THE AUDIT FOUND, one check each -------------
+        const std::vector<std::string> vals = manifest_values( line );
+        for ( size_t k = 0; k < vals.size(); ++k )
+        {
+            const std::string path = manifest_path_of( vals[k] );
+            const std::string text = manifest_text_of( vals[k] );
+
+            // `.slots` is a C++ MEMBER NAME: a path is a dotted SCHEMA path, so
+            // a wrapper's member must never reach the line. The one `slots` a
+            // schema may declare is a field and carries no leading dot inside
+            // the record, which this finds by the dot before it.
+            const bool leaked = path.find( ".slots[" ) != std::string::npos &&
+                                path.find( ".slots[" ) != path.find( '.' );
+            if ( leaked ) { std::printf( "  manifest path carries a C++ member: %s\n", path.c_str() ); }
+            check( !leaked, "manifest: no value path carries the C++ `.slots` wrapper member" );
+
+            // a bool — the PRESENT companion among them — rides as 1 or 0
+            const bool worded = text == "true" || text == "false";
+            if ( worded ) { std::printf( "  manifest bool as a word: %s\n", vals[k].c_str() ); }
+            check( !worded, "manifest: a bool and a present companion are 1/0, never true/false" );
+
+            // a non-printable byte inside narrow text is \uXXXX and never \xNN
+            const bool xesc = text.find( "\\x" ) != std::string::npos;
+            if ( xesc ) { std::printf( "  manifest \\xNN escape: %s\n", vals[k].c_str() ); }
+            check( !xesc, "manifest: a non-printable in text is \\uXXXX, never \\xNN" );
+
+            // ONE ENCODING FOR WIDE TEXT: `u"…"`, never a column of code units
+            const bool unit = manifest_all_hex( text );
+            if ( unit ) { std::printf( "  manifest wide unit in hex: %s\n", vals[k].c_str() ); }
+            check( !unit, "manifest: wide text is u\"...\" everywhere, never a per-unit hex line" );
+
+            // a value under an ABSENT optional is not a value: the wire carries
+            // the template's zeros there, not the store the dump made
+            if ( path.size() > 8 && path.compare( path.size() - 8, 8, "_present" ) == 0 && text == "0" )
+            {
+                const std::string head = path.substr( 0, path.size() - 8 );
+                for ( size_t j = 0; j < vals.size(); ++j )
+                {
+                    const std::string other = manifest_path_of( vals[j] );
+                    const bool under = other == head ||
+                                       ( other.size() > head.size() + 1 &&
+                                         other.compare( 0, head.size(), head ) == 0 &&
+                                         other[head.size()] == '.' );
+                    if ( under ) { std::printf( "  manifest value under an absent optional: %s\n", vals[j].c_str() ); }
+                    check( !under, "manifest: nothing is recorded under a present companion that is 0" );
+                }
+            }
+        }
+
+        // a fixed(I,F) says the real AND the scaled raw, the way a float says
+        // digits AND bits: neither alone tells a port which it owes
+        if ( row == "fixed_I_grow" )
+        {
+            bool raw = false;
+            for ( size_t k = 0; k < vals.size(); ++k )
+            {
+                if ( manifest_path_of( vals[k] ) == "r0.v" ) { raw = manifest_text_of( vals[k] ).find( "|raw=" ) != std::string::npos; }
+            }
+            if ( !raw ) { std::printf( "  manifest line: %s\n", line.c_str() ); }
+            check( raw, "manifest: a fixed(I,F) value is <real>|raw=<int>" );
+        }
+
+        // the KEYED row's slots are 0-based: the first slot a file carries is 0
+        if ( row == "keyed_array_enum_append" )
+        {
+            const bool first = line.find( "values=r0.slots[0].n=" ) != std::string::npos;
+            if ( !first ) { std::printf( "  manifest line: %s\n", line.c_str() ); }
+            check( first, "manifest: a keyed array's index is the 0-based byte slot, never the key" );
+        }
     }
 
     int files = 0;
