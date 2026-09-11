@@ -6874,6 +6874,15 @@ the writer's count to zero, and the reason the union's `None` entry carries the 
 it safe — widths only grow, so the raw fits the storage this reader declared
 (`docs/FIXED-FORM-ALGORITHM.md` §4.6, §5.9 #27).
 
+**AND THE COUNT THE PASS JUDGES AGAINST IS THE WRITER'S, WHICH THE PLAN CARRIES.** A raw in the BAND between the
+writer's variant count and THIS READER'S larger extent is one of the reader's own variants: a pass held to the
+reader's extent lands a name the writer never had and counts nothing. So the pass reads the bound off the plan,
+per entry — an `ordinal`'s remap table's length word IS the writer's variant count, a raw-tag `None` const's
+`aux` IS the writer's arm count — and the raw it judges comes back out of the RECORD, storage holding the
+REMAPPED ordinal. A guarded entry is re-tested against the writer's tag, so an arm that did not run is not held
+to a bound it never landed. **On the identity plan the writer IS the reader**, the two bounds coincide, and the
+straight-line pass over storage is the whole pass.
+
 **A READ IS A PREFILL, A LOOP, AND THE BOUNDS PASS, AND NOTHING ELSE.**
 
 ```

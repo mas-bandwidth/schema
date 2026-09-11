@@ -1003,8 +1003,93 @@ static void owed8_width8_ordinal_read_whole_case()
     tblfu1::TableFixedRun( plan, 1, 1, src, dst, &r );
     uint64_t landed = 0;
     std::memcpy( &landed, dst, 8 );
-    check( landed == 0, "owed 8: a width-8 ordinal of 2^32 is past the writer's one variant" );
-    check( r.clamped >= 1, "owed 8: COUNT clamped — a uint32_t temp would have read 0 and counted nothing" );
+    // THE OP LANDS THE RAW AND COUNTS NOTHING (§5.9 #27). The 2^32 is past the
+    // writer's one variant, so it is not remapped — it stands as itself, which
+    // is the whole point: a uint32_t temp would have read 0 here and the pass
+    // below would have found a lawful None to let through.
+    check( landed == ( uint64_t( 1 ) << 32 ), "owed 8: a width-8 ordinal of 2^32 lands RAW, read whole" );
+    check( r.clamped == 0, "owed 8: the ordinal op counts nothing" );
+    // AND THE BOUNDS PASS'S WRITER HALF, against the WRITER's one variant
+    // carried by the plan's own remap table length word.
+    tblfu1::TableFixedClampPlanBounds( plan, 1, 1, src, dst, &r );
+    std::memcpy( &landed, dst, 8 );
+    check( landed == 0, "owed 8: the bounds pass clamps a raw past the writer's one variant to None" );
+    check( r.clamped == 1, "owed 8: COUNT clamped — once, at the pass — a uint32_t temp would have read 0 and counted nothing" );
+}
+
+// THE BAND (§5.9 #27's correction, §5.8 row 4): a forged raw BETWEEN the
+// WRITER'S variant count and THIS READER'S larger extent. It is one of the
+// reader's own variants, so a bounds pass held to the READER's extent lands a
+// name the writer never had and counts nothing — the hole landing the raw left
+// open. The bound the pass judges against is the WRITER's, carried by the plan:
+// the remap table's length word. Here the writer has TWO variants and the
+// reader FIVE, and the raw is THREE.
+static void band_forged_ordinal_writer_bound_case()
+{
+    alignas( tblfu1::TableFixedEntry ) uint8_t blob[512];
+    std::memset( blob, 0, sizeof( blob ) );
+    tblfu1::TableFixedEntry * plan = reinterpret_cast<tblfu1::TableFixedEntry *>( blob );
+    const uint32_t map_at = 256;
+    uint16_t * map = reinterpret_cast<uint16_t *>( blob + map_at );
+    map[0] = 2; // THE WRITER'S VARIANT COUNT, and the pass's whole bound
+    map[1] = 1;
+    map[2] = 4; // the writer's second variant is this reader's fourth
+    plan[0].op = tblfu1::kTableFixedOrdinal;
+    plan[0].src = 0;
+    plan[0].dst = 0;
+    plan[0].size = 1;
+    plan[0].dstsize = 1;
+    plan[0].aux = map_at;
+    plan[0].guard = tblfu1::kTableFixedNoGuard;
+    plan[0].argw = 1;
+
+    // A RAW INSIDE THE WRITER'S SET IS REMAPPED AND NOTHING IS COUNTED, even
+    // though the reader's ordinal for it (4) is itself past the writer's count.
+    {
+        uint8_t src[1] = { 2 };
+        uint8_t dst[1] = { 0xAB };
+        tblfu1::TableReport r;
+        tblfu1::TableFixedRun( plan, 1, 1, src, dst, &r );
+        tblfu1::TableFixedClampPlanBounds( plan, 1, 1, src, dst, &r );
+        check( dst[0] == 4, "band: a raw inside the writer's set is remapped and kept" );
+        check( r.clamped == 0, "band: a lawful remap past the writer's count counts nothing" );
+    }
+    // AND THE BAND ITSELF: 3 is past the writer's two variants and well inside
+    // this reader's five, so the op lands it raw and the pass clamps it.
+    {
+        uint8_t src[1] = { 3 };
+        uint8_t dst[1] = { 0xAB };
+        tblfu1::TableReport r;
+        tblfu1::TableFixedRun( plan, 1, 1, src, dst, &r );
+        check( dst[0] == 3, "band: the op lands the raw, unremapped" );
+        check( r.clamped == 0, "band: the op counts nothing" );
+        tblfu1::TableFixedClampPlanBounds( plan, 1, 1, src, dst, &r );
+        check( dst[0] == 0, "band: the pass clamps a raw in the band to None" );
+        check( r.clamped == 1, "band: COUNT clamped, once, at the pass" );
+    }
+    // A FORGED UNION TAG IS THE SAME ROW: the raw-tag None const's aux IS the
+    // writer's ARM count, and the band above it is the same band.
+    {
+        tblfu1::TableFixedEntry none;
+        none.op = tblfu1::kTableFixedConst;
+        none.meta = tblfu1::kTableFixedConstRawTag;
+        none.src = 0;
+        none.dst = 0;
+        none.size = 1;
+        none.dstsize = 1;
+        none.aux = 2; // THE WRITER'S ARM COUNT
+        none.guard = tblfu1::kTableFixedNoGuard;
+        none.argw = 1;
+        uint8_t src[1] = { 3 };
+        uint8_t dst[1] = { 0xAB };
+        tblfu1::TableReport r;
+        tblfu1::TableFixedRun( &none, 1, 1, src, dst, &r );
+        check( dst[0] == 3, "band: the None const lands the writer's RAW TAG" );
+        check( r.clamped == 0, "band: the const counts nothing" );
+        tblfu1::TableFixedClampPlanBounds( &none, 1, 1, src, dst, &r );
+        check( dst[0] == 0, "band: the pass clamps a tag past the writer's arms to None" );
+        check( r.clamped == 1, "band: COUNT clamped, once, at the pass" );
+    }
 }
 
 // OWED 10: a record whose hash names nothing writes nothing to the caller's
@@ -2401,6 +2486,7 @@ int main( int argc, char ** argv )
     fu_oracle_case( corpus );
     owed7_nested_union_outer_tag_case();
     owed8_width8_ordinal_read_whole_case();
+    band_forged_ordinal_writer_bound_case();
     owed10_no_layout_writes_nothing_case();
     owed13_compiled_ordinal_counts_clamped_case();
     bytes_row_case();

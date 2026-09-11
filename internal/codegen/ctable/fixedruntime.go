@@ -572,6 +572,61 @@ static SCHEMA_UNUSED void table_fixed_run( const TableFixedEntry * plan, int32_t
     report->widened += widened;
 }
 
+/* ---- THE BOUNDS PASS'S WRITER HALF (§4.6, §5.2, bill §12.5) ----------------
+
+   A FORGED ORDINAL IS ONE PAST THE WRITER'S OWN COUNT, and THIS READER'S
+   EXTENT CANNOT SEE IT. A raw in the BAND between the writer's variant count
+   and this reader's larger extent is one of the reader's own variants: a pass
+   that knows only the reader's extent lands it as a name the writer never had
+   and counts nothing. The PLAN closes that band — §5.2 has it carry THE
+   WRITER'S bounds for the hostile pass — so this pass reads each entry's own
+   writer count out of the plan and clamps the raw against THAT: an ordinal's
+   remap table's first entry IS the writer's variant count, and a raw-tag
+   const's aux IS the writer's ARM count.
+
+   It runs on the COMPILED plan only, an identity plan carrying only copy,
+   count and text (§5.4) and its writer being the reader. A GUARDED ENTRY IS
+   RE-TESTED against the writer's tag exactly as the loop tested it. THE RAW IS
+   READ BACK OUT OF THE RECORD and not out of storage, because storage holds
+   the REMAPPED ordinal — the reader's own number for the writer's variant,
+   lawfully past the writer's count whenever a variant moved or was appended. */
+static SCHEMA_UNUSED void table_fixed_clamp_plan_bounds( const TableFixedEntry * plan, int32_t count, int32_t guarded,
+                                                         const uint8_t * src, uint8_t * dst, TableReport * report )
+{
+    int32_t clamped = 0;
+    int32_t i;
+    if ( plan == NULL || src == NULL || dst == NULL ) { return; }
+    for ( i = 0; i < count; ++i )
+    {
+        const TableFixedEntry * p = &plan[i];
+        uint64_t bound = 0;
+        uint64_t raw = 0;
+        uint64_t none = 0;
+        if ( p->op == kTableFixedOrdinal )
+        {
+            const uint16_t * remap = (const uint16_t *) (const void *) ( (const uint8_t *) plan + p->aux );
+            bound = (uint64_t) remap[0];
+        }
+        else if ( p->op == kTableFixedConst && p->meta == kTableFixedConstRawTag )
+        {
+            bound = (uint64_t) p->aux;
+        }
+        else
+        {
+            continue;
+        }
+        if ( i >= guarded && table_fixed_tag_at( src, p->guard, p->argw ) != (uint64_t) p->arg ) { continue; }
+        if ( p->size == 0 || p->size > 8 || p->dstsize == 0 ) { continue; }
+        memcpy( &raw, src + p->src, p->size );
+        if ( raw <= bound ) { continue; }
+        /* None IS THE SAME NOTHING AN UNSET UNION HOLDS (§4.6), and the clamp
+           COUNTS — once, here, on the compiled plan. */
+        memcpy( dst + p->dst, &none, p->dstsize );
+        clamped++;
+    }
+    if ( report != NULL ) { report->clamped += clamped; }
+}
+
 /* ---- THE PREFILL ----------------------------------------------------------
 
    §3.4'S PREFILL ANSWERS ONE QUESTION — what does a field the record does not
@@ -1363,7 +1418,10 @@ static SCHEMA_UNUSED void table_fixed_compile_entry( TableFixedCompiler * c,
                        const reads the record rather than carrying a constant. */
                     none.src = their_at; none.dst = aux_at;
                     none.size = ( their_tag >= 1u && their_tag <= 8u ) ? their_tag : 1u;
-                    none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                    /* aux IS THE WRITER'S ARM COUNT, the bound the hostile
+                       pass clamps the raw tag against (§5.2, bill §12.5). */
+                    none.aux = (uint32_t) te.children;
+                    none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
                     none.meta = kTableFixedConstRawTag;
                     none.dstsize = ( my_tag >= 1u && my_tag <= 8u ) ? (uint8_t) my_tag : (uint8_t) 1;
                     table_fixed_push( c, none );

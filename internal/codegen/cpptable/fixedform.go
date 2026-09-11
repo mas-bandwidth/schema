@@ -571,6 +571,15 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
+	// THE BOUNDS PASS'S WRITER HALF (§4.6, §5.2): an ordinal or a union tag is
+	// clamped against THE WRITER'S count, which the plan carries per entry —
+	// the band between that count and this reader's larger extent being
+	// exactly what a pass over the reader's own bounds cannot see. Only the
+	// compiled plan has such an entry: an identity plan carries only copy,
+	// count and text, and there the writer IS the reader.
+	g.pf("        if ( hash != %sFixedHash )\n        {\n", st.Name)
+	g.pf("            TableFixedClampPlanBounds( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
+	g.pf("        }\n")
 	g.pf("        TableFixedClampKnownRanges( %sFixedKnownRanges[lineage_at], %sFixedKnownRangeCounts[lineage_at],\n", st.Name, st.Name)
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {

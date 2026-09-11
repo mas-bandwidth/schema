@@ -343,7 +343,17 @@ clamp on every clean read. A type that bounds nothing emits no pass at all.
   EITHER, on the compiled plan exactly as on the identity one** (§5.9 #27), and it is why the `ordinal` op lands
   a raw past the writer's count unremapped and the union's `None` entry lands the writer's raw tag: a pass over
   STORAGE cannot tell a forged `None` from a real one, so the raw has to survive the loop to reach the pass. The
-  lock makes that safe — widths only grow, so a raw the writer could write fits the storage this reader declared. There is no `| max = K` headroom on
+  lock makes that safe — widths only grow, so a raw the writer could write fits the storage this reader declared.
+- **THE COUNT THE PASS JUDGES AGAINST IS THE WRITER'S, CARRIED BY THE PLAN** (§5.2, bill §12.5: "that peer's
+  count bound, variant count, arm count and range"). This is not a refinement, it is the whole of the rule: a raw
+  in the **BAND** between the writer's variant count and this reader's LARGER extent is one of the reader's own
+  variants, so a pass that knows only the reader's extent lands a name the writer never had and **counts
+  nothing**. The plan closes the band, per entry: an `ordinal`'s remap table's length word IS the writer's
+  variant count, and the raw-tag `None` const's `aux` IS the writer's arm count. **On the IDENTITY plan the
+  writer IS the reader, so the two bounds coincide** and the generated straight-line pass over storage is the
+  whole pass; a COMPILED plan runs the plan-carried half first and the raw it judges is read back out of the
+  RECORD, because storage holds the REMAPPED ordinal — the reader's own number for the writer's variant, which
+  is lawfully past the writer's count whenever a variant moved or was appended. There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
   compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
 
@@ -889,7 +899,7 @@ when every value lands.
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
 | `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, and a widened run is never folded, so a fixture asserts that EXACT count (§5.9 #33) |
 | `count`, `text` | `clamped` | once per entry per record, when the length or count was out of range |
-| the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal** — one past the WRITER's own variant count, which the `ordinal` op lands AS THE RAW VALUE so that this pass can see it, clamp it to `None` and count it, **on the COMPILED plan exactly as on the identity one** (§4.6, §5.9 #27, the bill's rule). A forged union TAG is the same row: the `None` entry lands the writer's raw tag and this pass clamps it |
+| the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal** — one past the WRITER's own variant count, which the `ordinal` op lands AS THE RAW VALUE so that this pass can see it, clamp it to `None` and count it, **on the COMPILED plan exactly as on the identity one** (§4.6, §5.9 #27, the bill's rule). A forged union TAG is the same row: the `None` entry lands the writer's raw tag and this pass clamps it. **THE BOUND IS THE WRITER'S, OUT OF THE PLAN** (§5.2): the remap table's length word for an ordinal, the raw-tag const's `aux` for an arm count — the reader's own extent cannot see a raw in the BAND between the writer's count and that extent, and on the identity plan the two coincide because the writer is the reader |
 | `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing. **`ordinal` lands the RAW VALUE past the writer's count and the `None` const lands the writer's RAW TAG**, precisely so the clamp to `None` is the BOUNDS PASS's to make and to count, on BOTH plans (§5.9 #27); a port that counts in the op as well counts twice, and one that clamps in the op leaves the pass nothing to count |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **every counter stays at zero**: an append the reader knows is not an event |
 
@@ -1040,9 +1050,10 @@ unopened) ran it this way and nothing in it is optional.
 not a port's work list — a leg that reproduces a divergence to match the reference has ported the bug, and the
 one row that must be waited on rather than matched is row 10, the digest (§5.9 #12).
 
-**What to leave RED, named rather than faked**: the hostile pass under the WRITER's bounds until the plan
-carries them (§5.8 row 4); the remap table past 255 entries (row 14); the clamp count on a forged ordinal under
-a compiled plan (row 12). **A nonzero `unknown` is no longer on this list** — it is not owed at all, because no
+**What to leave RED, named rather than faked**: the hostile pass under the WRITER's bounds **for RANGES on the
+LOCK path** (§5.8 row 4 — the variant and arm counts are carried now, §5.9 #27, and the count bound always was;
+what is left is a lock that records no declared range); the remap table past 255 entries (row 14); the clamp
+count on a forged ordinal under a compiled plan (row 12). **A nonzero `unknown` is no longer on this list** — it is not owed at all, because no
 lawful lineage can move it (§5.9 #30). A leg reports these as owed, in its own words, in the PR that lands it.
 **A red nobody wrote down is a red nobody owes** — including a red the leg did not write: a pre-existing
 failure a port has to route around is named and CARDED, never quietly carried (§5.9 #31). **Rows 4 and 12 now have
@@ -1068,7 +1079,7 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 1 | the lineage is read from SIBLING SCHEMA FILES at generate time, by filename convention plus a fixture map (`cpptable/lineage.go`, `ir.TableFixedFixtureLineage`) | the lineage comes from the lock — `lockfile.Lineage`, with a retired mark and a reason per entry. The convention is the INTERIM, named as one (§5.2) |
 | 2 | the floor is hard-coded to one index for one test package (`lineageFloor`) | the floor is `1 +` the highest retired index, from `lockfile.Floor` |
 | 3 | a plan for an older hash is compiled AT FIRST LOAD from the trusted bytes and kept in a caller-supplied cache keyed by hash | `COMPILE` lays every plan down at BUILD TIME (bill §12.5); nothing compiles at run time, and there is no cache to miss |
-| 4 | the `count` op's bound, the ranges, the variant and arm counts are the READER's (`e.size = my_n`) | the bounds are the WRITER's, per plan (bill §12.5) |
+| 4 | the `count` op's bound IS the writer's (`e.size = their_n`), and so are the **variant and arm counts**: the bounds pass reads an `ordinal`'s writer variant count off the plan's remap table length word and a raw-tag `None` const's writer arm count off its `aux` (§5.9 #27, this change). RANGES are the writer's on the FIXTURE path only — `TableFixedKnownRange`'s `lo`/`hi` come from the peer's own schema unit — and are `NULL` on the LOCK path, a lock entry carrying hash, layout bytes and record size and no declared bounds | the bounds are the WRITER's, per plan (bill §12.5). **GREEN for the count bound and for the variant and arm counts; the RANGE half is OWED on the lock path** and needs the lock to record a range per field before it can be carried |
 | 5 | `arg`, the guard's ordinal, is still a BYTE lane (`uint8_t`), so a union past 255 arms cannot express its guard value — the tag is READ at its own width and the remap table is `uint16_t`, so only this lane is short | no byte lane anywhere (bill §12.7): the ordinal is full width on both sides |
 | 6 | a nested union's arm entries carry the INNER tag's guard only, and its `None` entry carries the outer guard at the inner tag's WIDTH | an arm inside an arm answers to the OUTER tag too (§4.1) |
 | 7 | the `ordinal` op reads through a 32-BIT temporary (`uint32_t raw`) | a 64-bit temporary: an ordinal width of `8` is admissible (§4.5) |
@@ -1330,9 +1341,34 @@ every clean record — so a counter in the pass needs THE RAW VALUE TO SURVIVE T
   table, and **the raw itself, unremapped, once it is past the writer's variant count**;
 - **the union tag's `None` entry LANDS THE WRITER'S RAW TAG** rather than a zero — the arms overwrite it under
   the writer's own tag, so the raw stands exactly where the tag names no arm;
-- **the BOUNDS PASS (§4.6, §5.3 step 11, over storage) clamps any ordinal or tag past THIS READER'S extent to
-  `None` and counts `clamped`**, on the compiled plan and the identity plan alike;
+- **the BOUNDS PASS (§4.6, §5.3 step 11) clamps any ordinal or tag past THE WRITER'S VARIANT COUNT — the arm
+  count for a tag — to `None` and counts `clamped`**, on the compiled plan and the identity plan alike;
 - **the op counts nothing, and clamps nothing.**
+
+**AND THE COUNT THE PASS JUDGES AGAINST IS THE WRITER'S, NOT THE READER'S** (Rowan, correction, 2026-09-11).
+Landing the raw opens a **BAND** the reader's own extent cannot see: a forged raw BETWEEN the writer's variant
+count and this reader's larger extent is **one of the reader's own variants**, so a pass held to the reader's
+extent lands a name THE WRITER NEVER HAD and counts nothing — the hole the ruling's first landing left open. The
+plan is what closes it, and §5.2 already says so: **the plan carries THE WRITER's bounds for the hostile pass
+(bill §12.5) — "that peer's count bound, variant count, arm count and range"**. Per entry, on the branch today:
+
+- an **`ordinal`**'s remap table's **length word IS the writer's variant count** (`table[0]`), so the pass needs
+  no new lane at all;
+- the raw-tag **`None` const's `aux` IS the writer's ARM count** — the lane the constant vacated when the entry
+  began landing the record's own tag, which is the fact that needed it;
+- the raw the pass judges is read back **OUT OF THE RECORD**, not out of storage: storage holds the REMAPPED
+  ordinal, the reader's own number for the writer's variant, lawfully past the writer's count whenever a variant
+  moved or was appended;
+- a **GUARDED** entry is re-tested against the writer's tag exactly as the loop tested it, so an arm that did not
+  run is never held to a bound it never landed.
+
+**The identity plan is unaffected and that is not an exception** to "the same pass on either plan": an identity
+plan carries only `copy`, `count` and `text` (§5.4), its ordinals ride inside plain copy runs, and its writer IS
+its reader — so the generated straight-line pass over storage clamps at an extent that is the writer's too. This
+closes the variant/arm half of **§5.8 row 4**. The RANGE half is owed where the lineage comes from the LOCK: a
+lock entry carries the wire hash, the layout bytes and the record size and **no declared bounds**, so
+`TableFixedKnownRange` is filled on the fixture path and `NULL` on the lock path until the lock records a range
+per field. A leg says which of the two it has.
 
 **The lock is what makes landing the raw safe**: widths only grow (§5.1's LADDER), so a raw the writer's own
 storage could hold fits the storage this reader declares, and the pass that reads it back is reading a number,
