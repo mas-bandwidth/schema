@@ -14516,6 +14516,25 @@ of the map field moves no line. Its two fields are judged as any table's are,
 which is what puts a changed key kind, a moved key bound and a retyped value
 under the verdicts of §18.2.
 
+**THE `fixed` KEYWORD RIDES AT THE END OF THE TABLE LINE, as `fixed=true`**
+(§2.2), because the two forms are under two different LIST laws and the file
+has to say which one a member is under: the id-table wire finds a field by its
+id, so a removal is absorbed and a reorder moves no byte, while a FIXED record
+is walked by offset and the order IS the contract (§2.10). The monotone law of
+the fixed form reads it — a field, variant or arm removed, inserted before the
+end, reordered or renamed without `was` inside a fixed closure is a REFUSAL
+(docs/FIXED-FORM-BILL-READS-BACKWARD.md §6) — and so is the keyword itself
+moving: a fixed table that becomes variable, or a variable one that becomes
+fixed, is A DIFFERENT FORM AND NOT A VERSION, and compaction is a new table
+under a new name. A map's generated ENTRY carries no keyword: it is declared by
+nobody (§2.8), and a map makes its holder variable, so an entry is never inside
+a fixed closure. **AND IT BUMPS NO RENDERING VERSION**, by the bump rule's own
+test: the token sits at the END of a line every older file still parses, and
+the law reads it on the COMMITTED side, so a baseline written before this
+rendering carries it nowhere and judges nothing — the price being that such a
+unit is unguarded against the keyword moving until its next `--update`, which
+is what writes the fact down.
+
 **Every line in it is a WIRE fact.** The block form's layout — the
 projection's offsets, each row's size, each pitch — is not recorded and not
 judged here (§19.3): **the baseline guards what the wire cannot report, and

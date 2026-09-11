@@ -88,10 +88,10 @@ func refuses(t *testing.T, fs []baseline.Finding, where, rule string) {
 	if !find(fs, baseline.Refuse, where, rule) {
 		t.Errorf("the baseline must refuse, naming %s and %q, got:%s", where, rule, summary(fs))
 	}
-	for _, f := range fs {
-		if f.Verdict == baseline.Refuse && strings.Contains(f.Where, where) && !strings.Contains(f.What, "FIXED-FORM-BILL") {
-			continue
-		}
+	// AND IT CITES THE LAW. A refusal a person cannot look up is a refusal
+	// that teaches nothing, so every line this file asserts carries the bill.
+	if !find(fs, baseline.Refuse, where, "FIXED-FORM-BILL-READS-BACKWARD.md") && !find(fs, baseline.Refuse, where, "SPEC-TABLES.md") {
+		t.Errorf("the refusal cites no law:%s", summary(fs))
 	}
 }
 
