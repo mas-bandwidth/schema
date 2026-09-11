@@ -69,6 +69,32 @@
 #include "VBRB_lineage_mergeTable.h"
 #include "VNEW_lineage_mergeTable.h"
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
+// ==== BEGIN rowan/cpp-versioning-lists: the LIST rows lineage pairs ====
+// docs/FIXED-FORM-VERSIONING-TESTS.md: two schemas per row, one table name,
+// one package each, so both generations of one lineage compile into this binary.
+#include"VOLD_field_appendTable.h"
+#include "VNEW_field_appendTable.h"
+#include"VOLD_field_deprecateTable.h"
+#include "VNEW_field_deprecateTable.h"
+#include"VOLD_field_undeprecateTable.h"
+#include "VNEW_field_undeprecateTable.h"
+#include"VOLD_enum_appendTable.h"
+#include "VNEW_enum_appendTable.h"
+#include"VOLD_enum_widthTable.h"
+#include "VNEW_enum_widthTable.h"
+#include"VOLD_union_appendTable.h"
+#include "VNEW_union_appendTable.h"
+#include"VOLD_union_arm_payload_widenTable.h"
+#include "VNEW_union_arm_payload_widenTable.h"
+#include"VOLD_flags_appendTable.h"
+#include "VNEW_flags_appendTable.h"
+#include"VOLD_keyed_array_enum_appendTable.h"
+#include "VNEW_keyed_array_enum_appendTable.h"
+#include"VOLD_nested_appendTable.h"
+#include "VNEW_nested_appendTable.h"
+#include"VOLD_rename_without_wasTable.h"
+#include "VNEW_rename_without_wasTable.h"
+// ==== END rowan/cpp-versioning-lists ===================================
 
 static bool spill( const char * dir, const char * name, const std::vector<uint8_t> & data )
 {
@@ -435,6 +461,219 @@ static bool versioning_numbers_files( const char * dir )
     return true;
 }
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
+// ==== BEGIN rowan/cpp-versioning-lists: THE LISTS ROWS' LINEAGE PAIRS ======
+//
+// docs/FIXED-FORM-VERSIONING-TESTS.md, the LIST rows. One pair of files per
+// row: `old_<row>.bin` written by the OLD schema's writer and `new_<row>.bin`
+// by the NEW one's, the two schemas differing by EXACTLY the row's definition
+// change and nothing else. The reference's two read columns (NEW-READS-OLD and
+// OLD-REFUSES-NEW) live in test/tables/versioning_lists.cpp; every other leg
+// reads these same bytes, so the values below are set by hand and none of them
+// is a default.
+
+static bool vlists_files( const char * dir )
+{
+    // ---- field_append: {x,y,z} -> {x,y,z,w} --------------------------------
+    {
+        std::vector<vold_field_append::Lineage> o( 1 );
+        vold_field_append::LineageReset( o[0] );
+        o[0].x = 11; o[0].y = 22; o[0].z = 33;
+        if ( !emit( dir, "old_field_append.bin", o, vold_field_append::LineageFixedMeasure,
+                    vold_field_append::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_field_append::Lineage> n( 1 );
+        vnew_field_append::LineageReset( n[0] );
+        n[0].x = 44; n[0].y = 55; n[0].z = 66; n[0].w = 777;
+        if ( !emit( dir, "new_field_append.bin", n, vnew_field_append::LineageFixedMeasure,
+                    vnew_field_append::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- field_deprecate: {a,b,c} -> {a, b deprecated, c} ------------------
+    {
+        std::vector<vold_field_deprecate::Lineage> o( 1 );
+        vold_field_deprecate::LineageReset( o[0] );
+        o[0].a = 1; o[0].b = 2; o[0].c = 3;
+        if ( !emit( dir, "old_field_deprecate.bin", o, vold_field_deprecate::LineageFixedMeasure,
+                    vold_field_deprecate::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_field_deprecate::Lineage> n( 1 );
+        vnew_field_deprecate::LineageReset( n[0] );
+        n[0].a = 4; n[0].b = 5; n[0].c = 6;
+        if ( !emit( dir, "new_field_deprecate.bin", n, vnew_field_deprecate::LineageFixedMeasure,
+                    vnew_field_deprecate::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- field_undeprecate: {a, b deprecated, c} -> {a,b,c} ----------------
+    {
+        std::vector<vold_field_undeprecate::Lineage> o( 1 );
+        vold_field_undeprecate::LineageReset( o[0] );
+        o[0].a = 1; o[0].b = 2; o[0].c = 3;
+        if ( !emit( dir, "old_field_undeprecate.bin", o, vold_field_undeprecate::LineageFixedMeasure,
+                    vold_field_undeprecate::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_field_undeprecate::Lineage> n( 1 );
+        vnew_field_undeprecate::LineageReset( n[0] );
+        n[0].a = 4; n[0].b = 5; n[0].c = 6;
+        if ( !emit( dir, "new_field_undeprecate.bin", n, vnew_field_undeprecate::LineageFixedMeasure,
+                    vnew_field_undeprecate::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- enum_append: Tier {Bronze,Silver,Gold} -> + Platinum --------------
+    //
+    // THE NEW FILE LEADS WITH A VALUE THE OLD READER CAN NAME (Gold), because
+    // the refusal is a property of the LAYOUT and not of a record's values: an
+    // old reader must refuse this file even though its first record holds
+    // nothing it could not have held. The second record holds Platinum.
+    {
+        std::vector<vold_enum_append::Lineage> o( 1 );
+        vold_enum_append::LineageReset( o[0] );
+        o[0].tier = vold_enum_append::Tier::Gold; o[0].seq = 9;
+        if ( !emit( dir, "old_enum_append.bin", o, vold_enum_append::LineageFixedMeasure,
+                    vold_enum_append::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_enum_append::Lineage> n( 2 );
+        vnew_enum_append::LineageReset( n[0] );
+        n[0].tier = vnew_enum_append::Tier::Gold; n[0].seq = 10;
+        vnew_enum_append::LineageReset( n[1] );
+        n[1].tier = vnew_enum_append::Tier::Platinum; n[1].seq = 11;
+        if ( !emit( dir, "new_enum_append.bin", n, vnew_enum_append::LineageFixedMeasure,
+                    vnew_enum_append::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- enum_width: 255 variants -> 256, the ordinal 1 byte -> 2 ----------
+    {
+        std::vector<vold_enum_width::Lineage> o( 1 );
+        vold_enum_width::LineageReset( o[0] );
+        o[0].tier = vold_enum_width::Wide::V200; o[0].seq = 12;
+        if ( !emit( dir, "old_enum_width.bin", o, vold_enum_width::LineageFixedMeasure,
+                    vold_enum_width::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_enum_width::Lineage> n( 2 );
+        vnew_enum_width::LineageReset( n[0] );
+        n[0].tier = vnew_enum_width::Wide::V200; n[0].seq = 13;
+        vnew_enum_width::LineageReset( n[1] );
+        // the 256th variant: the ordinal the OLD side's byte cannot hold
+        n[1].tier = vnew_enum_width::Wide::V256; n[1].seq = 14;
+        if ( !emit( dir, "new_enum_width.bin", n, vnew_enum_width::LineageFixedMeasure,
+                    vnew_enum_width::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- union_append: Pick {alpha,beta} -> + gamma ------------------------
+    {
+        std::vector<vold_union_append::Lineage> o( 1 );
+        vold_union_append::LineageReset( o[0] );
+        o[0].pick.type = vold_union_append::PickType::Alpha;
+        o[0].pick.alpha.m = 7;
+        o[0].seq = 15;
+        if ( !emit( dir, "old_union_append.bin", o, vold_union_append::LineageFixedMeasure,
+                    vold_union_append::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_union_append::Lineage> n( 2 );
+        vnew_union_append::LineageReset( n[0] );
+        n[0].pick.type = vnew_union_append::PickType::Alpha;
+        n[0].pick.alpha.m = 8;
+        n[0].seq = 16;
+        vnew_union_append::LineageReset( n[1] );
+        n[1].pick.type = vnew_union_append::PickType::Gamma;
+        n[1].pick.gamma.p = 9;
+        n[1].seq = 17;
+        if ( !emit( dir, "new_union_append.bin", n, vnew_union_append::LineageFixedMeasure,
+                    vnew_union_append::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- union_arm_payload_widen: arm alpha {x} -> {x,y} -------------------
+    {
+        std::vector<vold_union_arm_payload_widen::Lineage> o( 1 );
+        vold_union_arm_payload_widen::LineageReset( o[0] );
+        o[0].pick.type = vold_union_arm_payload_widen::PickType::Alpha;
+        o[0].pick.alpha.x = 21;
+        o[0].seq = 18;
+        if ( !emit( dir, "old_union_arm_payload_widen.bin", o, vold_union_arm_payload_widen::LineageFixedMeasure,
+                    vold_union_arm_payload_widen::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_union_arm_payload_widen::Lineage> n( 1 );
+        vnew_union_arm_payload_widen::LineageReset( n[0] );
+        n[0].pick.type = vnew_union_arm_payload_widen::PickType::Alpha;
+        n[0].pick.alpha.x = 22;
+        n[0].pick.alpha.y = 23;
+        n[0].seq = 19;
+        if ( !emit( dir, "new_union_arm_payload_widen.bin", n, vnew_union_arm_payload_widen::LineageFixedMeasure,
+                    vnew_union_arm_payload_widen::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- flags_append: Caps {Jump,Crouch} -> + Fly -------------------------
+    {
+        std::vector<vold_flags_append::Lineage> o( 1 );
+        vold_flags_append::LineageReset( o[0] );
+        o[0].caps = vold_flags_append::Caps_Jump | vold_flags_append::Caps_Crouch;
+        o[0].seq = 20;
+        if ( !emit( dir, "old_flags_append.bin", o, vold_flags_append::LineageFixedMeasure,
+                    vold_flags_append::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_flags_append::Lineage> n( 1 );
+        vnew_flags_append::LineageReset( n[0] );
+        n[0].caps = vnew_flags_append::Caps_Jump | vnew_flags_append::Caps_Fly;
+        n[0].seq = 21;
+        if ( !emit( dir, "new_flags_append.bin", n, vnew_flags_append::LineageFixedMeasure,
+                    vnew_flags_append::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- keyed_array_enum_append: [Tier]int32, Tier gains Platinum --------
+    {
+        std::vector<vold_keyed_array_enum_append::Lineage> o( 1 );
+        vold_keyed_array_enum_append::LineageReset( o[0] );
+        o[0].slots[vold_keyed_array_enum_append::Tier::Bronze] = 101;
+        o[0].slots[vold_keyed_array_enum_append::Tier::Silver] = 102;
+        o[0].slots[vold_keyed_array_enum_append::Tier::Gold] = 103;
+        o[0].seq = 22;
+        if ( !emit( dir, "old_keyed_array_enum_append.bin", o, vold_keyed_array_enum_append::LineageFixedMeasure,
+                    vold_keyed_array_enum_append::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_keyed_array_enum_append::Lineage> n( 1 );
+        vnew_keyed_array_enum_append::LineageReset( n[0] );
+        n[0].slots[vnew_keyed_array_enum_append::Tier::Bronze] = 201;
+        n[0].slots[vnew_keyed_array_enum_append::Tier::Silver] = 202;
+        n[0].slots[vnew_keyed_array_enum_append::Tier::Gold] = 203;
+        n[0].slots[vnew_keyed_array_enum_append::Tier::Platinum] = 204;
+        n[0].seq = 23;
+        if ( !emit( dir, "new_keyed_array_enum_append.bin", n, vnew_keyed_array_enum_append::LineageFixedMeasure,
+                    vnew_keyed_array_enum_append::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- nested_append: Vec {x,y,z} -> {x,y,z,w}, inside Lineage -----------
+    {
+        std::vector<vold_nested_append::Lineage> o( 1 );
+        vold_nested_append::LineageReset( o[0] );
+        o[0].v.x = 1; o[0].v.y = 2; o[0].v.z = 3; o[0].seq = 24;
+        if ( !emit( dir, "old_nested_append.bin", o, vold_nested_append::LineageFixedMeasure,
+                    vold_nested_append::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_nested_append::Lineage> n( 1 );
+        vnew_nested_append::LineageReset( n[0] );
+        n[0].v.x = 4; n[0].v.y = 5; n[0].v.z = 6; n[0].v.w = 7; n[0].seq = 25;
+        if ( !emit( dir, "new_nested_append.bin", n, vnew_nested_append::LineageFixedMeasure,
+                    vnew_nested_append::LineageFixedSave ) ) { return false; }
+    }
+
+    // ---- rename_without_was: `a` -> `b was = "a"` -------------------------
+    {
+        std::vector<vold_rename_without_was::Lineage> o( 1 );
+        vold_rename_without_was::LineageReset( o[0] );
+        o[0].a = 31; o[0].seq = 26;
+        if ( !emit( dir, "old_rename_without_was.bin", o, vold_rename_without_was::LineageFixedMeasure,
+                    vold_rename_without_was::LineageFixedSave ) ) { return false; }
+
+        std::vector<vnew_rename_without_was::Lineage> n( 1 );
+        vnew_rename_without_was::LineageReset( n[0] );
+        n[0].b = 32; n[0].seq = 27;
+        if ( !emit( dir, "new_rename_without_was.bin", n, vnew_rename_without_was::LineageFixedMeasure,
+                    vnew_rename_without_was::LineageFixedSave ) ) { return false; }
+    }
+
+    return true;
+}
+
+// ==== END rowan/cpp-versioning-lists =======================================
 
 int main( int argc, char ** argv )
 {
@@ -445,5 +684,8 @@ int main( int argc, char ** argv )
     // ---- rowan/cpp-versioning-numbers: BEGIN ----
     if ( !versioning_numbers_files( dir ) ) { return 1; }
     // ---- rowan/cpp-versioning-numbers: END ----
+    // ==== BEGIN rowan/cpp-versioning-lists ====
+    if ( !vlists_files( dir ) ) { return 1; }
+    // ==== END rowan/cpp-versioning-lists =====
     return 0;
 }

@@ -395,65 +395,6 @@ namespace Blockhome
         // ONE loop over ONE plan, the identity plan here and a plan compiled from
         // the writer's own block for anybody else.
 
-        // ArmorPlate's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void ArmorPlateFixedWriteBody(Span<byte> b, ArmorPlate value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteDoubleLittleEndian(b, value.Thickness);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(8), (int)value.Material);
-            b.Slice(12)[0] = unchecked((byte)value.Layer);
-        }
-
-        // ArmorConfig's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void ArmorConfigFixedWriteBody(Span<byte> b, ArmorConfig value)
-        {
-            if (value == null) return;
-            ArmorPlateFixedWriteBody(b, value.Front);
-            ArmorPlateFixedWriteBody(b.Slice(13), value.Rear);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(26), value.Rating);
-            b.Slice(30)[0] = unchecked((byte)value.Tier);
-        }
-
-        // FiringGroup's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void FiringGroupFixedWriteBody(Span<byte> b, FiringGroup value)
-        {
-            if (value == null) return;
-            BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Barrel);
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Cooldown);
-        }
-
-        // GunnerSettings's stores. The template — the hash, then zeros — is memcpy'd first,
-        // which is also what zero-fills every byte of declared slack.
-        public static void GunnerSettingsFixedWriteBody(Span<byte> b, GunnerSettings value)
-        {
-            if (value == null) return;
-            int count_firing_groups = value.FiringGroupsCount;
-            System.Diagnostics.Debug.Assert(count_firing_groups >= 0 && count_firing_groups <= 32); // the declared count is the bound (§3.4)
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(0), count_firing_groups);
-            if (value.FiringGroups != null)
-            {
-                for (int i = 0; i < count_firing_groups && i < value.FiringGroups.Length; ++i)
-                {
-                    FiringGroupFixedWriteBody(b.Slice(4 + i * 8), value.FiringGroups[i]);
-                }
-            }
-            int count_missile_groups = value.MissileGroupsCount;
-            System.Diagnostics.Debug.Assert(count_missile_groups >= 0 && count_missile_groups <= 4); // the declared count is the bound (§3.4)
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(260), count_missile_groups);
-            if (value.MissileGroups != null)
-            {
-                for (int i = 0; i < count_missile_groups && i < value.MissileGroups.Length; ++i)
-                {
-                    FiringGroupFixedWriteBody(b.Slice(264 + i * 8), value.MissileGroups[i]);
-                }
-            }
-            BinaryPrimitives.WriteSingleLittleEndian(b.Slice(296), value.ReloadSeconds);
-            BinaryPrimitives.WriteInt32LittleEndian(b.Slice(300), (int)value.GunnerId);
-        }
-
         // PartRow's stores. The template — the hash, then zeros — is memcpy'd first,
         // which is also what zero-fills every byte of declared slack.
         public static void PartRowFixedWriteBody(Span<byte> b, PartRow value)

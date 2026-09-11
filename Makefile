@@ -274,6 +274,35 @@ define tables_generate
 	# nested TYPE the older side has no name for
 	$(1) generate --lang cpp --out $(2)/fx1 test/tables/FX1.schema
 	$(1) generate --lang cpp --out $(2)/fx2 test/tables/FX2.schema
+	# ==== BEGIN rowan/cpp-versioning-lists ====
+	# THE LIST ROWS OF THE FIXED FORM'S VERSIONING LAW
+	# (docs/FIXED-FORM-VERSIONING-TESTS.md). One pair of schemas per row,
+	# the SAME table name on both sides (one lineage) and a package each, so
+	# both generations compile into one test binary — the FX1/FX2 precedent.
+	# The reference's two read columns are test/tables/versioning_lists.cpp.
+	$(1) generate --lang cpp --out $(2)/vold_field_append test/tables/VOLD_field_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_field_append test/tables/VNEW_field_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_field_deprecate test/tables/VOLD_field_deprecate.schema
+	$(1) generate --lang cpp --out $(2)/vnew_field_deprecate test/tables/VNEW_field_deprecate.schema
+	$(1) generate --lang cpp --out $(2)/vold_field_undeprecate test/tables/VOLD_field_undeprecate.schema
+	$(1) generate --lang cpp --out $(2)/vnew_field_undeprecate test/tables/VNEW_field_undeprecate.schema
+	$(1) generate --lang cpp --out $(2)/vold_enum_append test/tables/VOLD_enum_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_enum_append test/tables/VNEW_enum_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_enum_width test/tables/VOLD_enum_width.schema
+	$(1) generate --lang cpp --out $(2)/vnew_enum_width test/tables/VNEW_enum_width.schema
+	$(1) generate --lang cpp --out $(2)/vold_union_append test/tables/VOLD_union_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_union_append test/tables/VNEW_union_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_union_arm_payload_widen test/tables/VOLD_union_arm_payload_widen.schema
+	$(1) generate --lang cpp --out $(2)/vnew_union_arm_payload_widen test/tables/VNEW_union_arm_payload_widen.schema
+	$(1) generate --lang cpp --out $(2)/vold_flags_append test/tables/VOLD_flags_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_flags_append test/tables/VNEW_flags_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_keyed_array_enum_append test/tables/VOLD_keyed_array_enum_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_keyed_array_enum_append test/tables/VNEW_keyed_array_enum_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_nested_append test/tables/VOLD_nested_append.schema
+	$(1) generate --lang cpp --out $(2)/vnew_nested_append test/tables/VNEW_nested_append.schema
+	$(1) generate --lang cpp --out $(2)/vold_rename_without_was test/tables/VOLD_rename_without_was.schema
+	$(1) generate --lang cpp --out $(2)/vnew_rename_without_was test/tables/VNEW_rename_without_was.schema
+	# ==== END rowan/cpp-versioning-lists ====
 	$(1) generate --lang cpp --out $(2)/scalars tables/scalars
 	$(1) generate --lang cpp --out $(2)/maps tables/maps
 	$(1) generate --lang cpp --out $(2)/lists tables/lists
@@ -301,7 +330,7 @@ tables_includes = -I$(1)/examples -I$(1)/pointers -I$(1)/block -I$(1)/blockhome 
 	-I$(1)/v1 -I$(1)/v2 -I$(1)/p1 -I$(1)/p2 -I$(1)/p3 -I$(1)/jsonkeys \
 	-I$(1)/messages -I$(1)/stream -I$(1)/blobs -I$(1)/m1 -I$(1)/m2 -I$(1)/a1 -I$(1)/a2 -I$(1)/g1 -I$(1)/k1 -I$(1)/k2 -I$(1)/w1 -I$(1)/w2 -I$(1)/r1 -I$(1)/r2 -I$(1)/f1 -I$(1)/f2 -I$(1)/l1 -I$(1)/scalars -I$(1)/scalars2 -I$(1)/maps -I$(1)/lists -I$(1)/arms -I$(1)/backend -I$(1)/vocab -I$(1)/vocab9 -I$(1)/bases -I$(1)/rt1 -I$(1)/rt2 -I$(1)/rt3 -I$(1)/wide -I$(SERIALIZE)
 
-build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FM1.schema test/tables/FM2.schema $(SCHEMAS_VERSIONING)
+build/tables-generated/.stamp: bin/schema $(SCHEMAS_WIDE) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_SCALARS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/K1.schema test/tables/K2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/F1.schema test/tables/F2.schema test/tables/L1.schema test/tables/Scalars2.schema test/tables/Bases.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FN1.schema test/tables/FN2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/FM1.schema test/tables/FM2.schema test/tables/VOLD_field_append.schema test/tables/VNEW_field_append.schema test/tables/VOLD_field_deprecate.schema test/tables/VNEW_field_deprecate.schema test/tables/VOLD_field_undeprecate.schema test/tables/VNEW_field_undeprecate.schema test/tables/VOLD_enum_append.schema test/tables/VNEW_enum_append.schema test/tables/VOLD_enum_width.schema test/tables/VNEW_enum_width.schema test/tables/VOLD_union_append.schema test/tables/VNEW_union_append.schema test/tables/VOLD_union_arm_payload_widen.schema test/tables/VNEW_union_arm_payload_widen.schema test/tables/VOLD_flags_append.schema test/tables/VNEW_flags_append.schema test/tables/VOLD_keyed_array_enum_append.schema test/tables/VNEW_keyed_array_enum_append.schema test/tables/VOLD_nested_append.schema test/tables/VNEW_nested_append.schema test/tables/VOLD_rename_without_was.schema test/tables/VNEW_rename_without_was.schema $(SCHEMAS_VERSIONING)
 	@mkdir -p build/tables-generated
 	$(call tables_generate,./bin/schema,build/tables-generated)
 	@touch $@
@@ -5783,7 +5812,14 @@ toolchain-negative-control:
 # and the NEGATIVE CONTROLS — the wrong plan, a form byte this reader does not
 # carry, a plan that does not fit, and ONE CORRUPTED-LAYOUT CASE PER NAMED RULE
 # a reader holds an untrusted peer's layout to.
-build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp test/tables/versioning_numbers.cpp
+# ==== BEGIN rowan/cpp-versioning-lists ====
+# THE LIST ROWS' GENERATED PAIRS, as one variable so the three recipes that
+# need them keep one line each (docs/FIXED-FORM-VERSIONING-TESTS.md).
+VLISTS_INCLUDES = -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append -Ibuild/tables-generated/vold_field_deprecate -Ibuild/tables-generated/vnew_field_deprecate -Ibuild/tables-generated/vold_field_undeprecate -Ibuild/tables-generated/vnew_field_undeprecate -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append -Ibuild/tables-generated/vold_enum_width -Ibuild/tables-generated/vnew_enum_width -Ibuild/tables-generated/vold_union_append -Ibuild/tables-generated/vnew_union_append -Ibuild/tables-generated/vold_union_arm_payload_widen -Ibuild/tables-generated/vnew_union_arm_payload_widen -Ibuild/tables-generated/vold_flags_append -Ibuild/tables-generated/vnew_flags_append -Ibuild/tables-generated/vold_keyed_array_enum_append -Ibuild/tables-generated/vnew_keyed_array_enum_append -Ibuild/tables-generated/vold_nested_append -Ibuild/tables-generated/vnew_nested_append -Ibuild/tables-generated/vold_rename_without_was -Ibuild/tables-generated/vnew_rename_without_was
+# ==== END rowan/cpp-versioning-lists ====
+
+build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
+                               test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
 	    -Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
@@ -5791,14 +5827,16 @@ build/schema_test_fixedform: build/tables-generated/.stamp test/tables/fixedform
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -Ibuild/tables-generated/vnum \
+	    $(VLISTS_INCLUDES) \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
-	    test/tables/versioning_numbers.cpp -o $@
+	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
 
 # THE SANITIZED TWIN, and it is the point of the byte-flip fuzz inside it. A
 # fixed record carries no lengths and no terminators, so every offset the
 # reader uses is arithmetic over sizes a STRANGER wrote down. "The reader never
 # leaves the buffer" is a claim only a sanitizer can hold.
-build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp test/tables/versioning_numbers.cpp
+build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixedform_main.cpp \
+                               test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp
 	@mkdir -p build
 	$(CXX) $(TABLES_CXXFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
 	    -fno-omit-frame-pointer -g \
@@ -5808,8 +5846,9 @@ build/schema_test_fixedform_asan: build/tables-generated/.stamp test/tables/fixe
 	    -Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
 	    -Ibuild/tables-generated/fu1 -Ibuild/tables-generated/fu2 \
 	    -Ibuild/tables-generated/vnum \
+	    $(VLISTS_INCLUDES) \
 	    -I$(SERIALIZE) test/tables/fixedform_main.cpp \
-	    test/tables/versioning_numbers.cpp -o $@
+	    test/tables/versioning_lists.cpp test/tables/versioning_numbers.cpp -o $@
 
 # THE RUN COPY'S BOUND, ON ITS OWN (test/tables/fixedform_runcopy.cpp). The
 # fixtures above check the VALUES a read produces; this one checks the single
@@ -5914,6 +5953,7 @@ build/schema_test_fixedform_dump: build/tables-generated/.stamp build/tables-gen
 	    -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	    -Ibuild/tables-generated/examples -Ibuild/tables-generated-fxw/fxw \
 	    -Ibuild/tables-generated/vnum \
+	    $(VLISTS_INCLUDES) \
 	    -I$(SERIALIZE) test/tables/fixedform_dump.cpp -o $@
 
 build/fixedform-corpus/.stamp: build/schema_test_fixedform_dump

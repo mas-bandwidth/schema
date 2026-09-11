@@ -49,7 +49,7 @@ The table's own law, additions and deprecation only, extends to every definition
 | a text kind (`string`, `wstring`, `bytes`) | the same | any change between the three (old bytes stop being valid under the new content rules) |
 | an array's shape (`[N]`, `[..N]`, `[Enum]`) and its key enum | the same shape and key | a shape change or a swapped key; an element type follows the widening ladder, an element narrowed is refused |
 | a reader-side limit a table declares (a record count, a batch size) | at most the reader's | smaller; where the limit is a compiler flag it is outside the law and the doc says so |
-| a deprecated field | still written, still in its place | leaving the layout (that is a removal); undeprecating is allowed |
+| a deprecated field | still written, still in its place, read on every plan | leaving the layout (that is a removal); undeprecating (one way, §12.3) |
 | a rename | through `was` | without it (the baseline's identity is by name, the fixed wire's by position) |
 
 **The invariant that makes widening safe** (Glenn: "widening with default values is what saves us here"):
@@ -257,3 +257,131 @@ refuse forward as form 3 does, form 1's header carries the writer's closure hash
 comparison at the top of the file, before any record. §4's tolerance was form 1's selling point and it is
 the same footgun under a friendlier name. This is its own bill: it changes every leg's form-1 reader, the
 wire header, and the packet form's model, and must not ride in on the fixed table's ruling.
+
+## 11. The operator's cold read, and the rulings it forced (2026-09-11 02:35Z)
+
+A cold reader on Fable read the three documents as the person who deploys this over two years. Nine
+findings changed contract sentences. Glenn was asleep; under his "run this to completion without me" each
+ruling below is a default, recorded on #898, and his to reverse.
+
+1. **A fixed table flows in one direction.** Writers ship after readers, and a reader never rolls back past
+   a writer that has shipped: a backend that must go down goes forward instead. (The reader's sentence,
+   adopted whole.) There is no migration mechanism, because writing a newer file as an older layout is the
+   forward read this bill removed. A table that flows the other way (a backend writing files clients read)
+   is its own table with the roles reversed: for it, the clients are the readers and ship first.
+2. **Readers first means readers at one hundred percent.** During a rolling reader deploy a new writer's
+   file meets old reader instances and refuses; the refusal is safe to retry against another instance and
+   carries no state, but the rule is that writers ship only after the last reader instance has.
+3. **The lineage is a set, not a line, and the merge is judged against both parents.** Two branches append
+   different fields; the merged lock's lineage is the UNION of both parents' lineages; the merged schema
+   must widen EACH parent under §2 by NAME (§8a.1), and each parent's list must be a subsequence of the
+   merged list (append-only per branch, any interleaving). §5.1's "prefix by (name, position)" is
+   corrected to that. `schema lock` at a merge commit takes both parents' locks as `old`.
+4. **The floor is the set of retired entries, not an index.** `schema lock --retire Table@<hash>` marks a
+   lineage entry retired (a permitted non-append edit, recorded with a reason); COMPILE emits the retired
+   hashes beside the supported ones (8 bytes each) so LOAD can say `layout_unsupported` rather than
+   `layout_newer`; a retired entry stays in the lineage forever. A layout that never shipped is retired the
+   same way. The two names point the operator in opposite directions (ship the reader, or upgrade the
+   client) and both stay.
+5. **A table is retired, never removed, until nothing live speaks it.** `schema lock --retire Table` marks
+   the whole table retired; its lineage stays; the schema may then drop the declaration, and §5.1's
+   "fixed removed" refusal applies only to an unretired table. "Remove it" in §8a.3 means remove the
+   declaration, keep the lineage.
+6. **What earns a lineage entry.** A change of layout hash AT COMMIT, judged by the check that runs there;
+   local iterations before a commit collapse to one entry. A warning names a lineage past thirty-two
+   entries per table; the remedies are the floor and the new table.
+7. **The lock must hold what COMPILE reads.** Today `internal/lockfile` holds one layout per table as a
+   text projection, no lineage, no floor, no layout bytes, and a hash that is `TableWireId` over its own
+   text rather than the wire's `TableFixedLayoutHash`. Step 2 of #898 gives the lock a lineage section per
+   fixed table: one entry per layout with the WIRE hash and the layout bytes, a retired mark and a reason;
+   the wire hash keys `R.known`. Defaults, deprecation marks and the closure stay where they are.
+8. **A rendering-version bump salvages, never deletes.** The lock's "delete it and write it again" remedy
+   would wipe the lineage fleet-wide. Once the lock holds history it adopts the baseline's salvage model
+   (SPEC §18.4): the new renderer reads the old lineage and rewrites it, entry for entry, bytes unchanged.
+9. **Files older than the first lock do not exist by rule.** A fixed table's layout is locked before its
+   first file ships; the first lineage entry is the first layout. A file whose hash matches nothing is
+   `layout_newer`, and the doc says why that is the right name even for a save game: the writer is one the
+   reader has never locked.
+
+The cost the reader measured: about `4 + 17E` bytes of layout plus roughly 25 bytes per plan op per
+supported version per table per leg; at five hundred entries and thirty versions, a quarter of a megabyte
+of layout bytes per table per leg in generated source. Java's 64 KB static-initializer limit and JS/Dart
+bundle size bite first; the legs carry layout bytes as a resource or a string constant where the language
+needs it. Bounded by §11.6 and the floor.
+
+## 12. The implementer's cold read and the lock survey: the rulings (2026-09-11 02:45Z)
+
+A second Fable reader read as the implementer who is blamed for a wrong read; a third child surveyed
+`internal/lockfile` row by row. Defaults, recorded on #898, Glenn's to reverse.
+
+1. **The lock's rule becomes MONOTONE, not equal.** Today the lock refuses every narrowing AND every
+   widening with one sentence ("keeps its width"), `schema lock` refuses the relock, and `bits(N)` is
+   recorded nowhere. Step 1 of #898 rewrites the comparison to §2's direction per row and records the facts
+   it lacks: each bound and capacity as a NUMBER, `bits=N`, `fixed`'s I and F, an int's width and
+   signedness ladder, a reader-side limit, and judges every constant by its EVALUATED use (a constant
+   behind `min =` widens by going DOWN). SPEC §2.10's "nothing is widened" is superseded by this bill.
+2. **"Kind" means the family.** WIDENS checks the ladder BEFORE kind equality: an int into a wider int of
+   the same signedness, `f32` into `f64`, an enum's or tag's ordinal width into a wider one, `bits(N)`
+   into a wider storage, are widenings although the wire kind byte changes. Every other kind change refuses.
+3. **Deprecation is one way, and a deprecated field is READ on every plan.** §2.10's reason stands
+   ("what would come back is not data"): undeprecating is refused; §2's row is corrected. And a deprecated
+   field keeps its slot and is landed by every plan, identity included; nothing is dropped and `unknown`
+   does not move for it. The application ignores it. One answer for one field on every version.
+4. **`layout_newer` carries the hash and nothing else.** The refusal walk over a stranger's layout is
+   REMOVED from LOAD: no parse, no names, no depth bound, no size arithmetic on untrusted bytes, anywhere.
+   The seven §1.1 checks are the lock's validation of what it records and the oracle's validation of the
+   corpus; at run time a known hash is a byte comparison and an unknown hash is a refusal. The design's
+   OLD-REFUSES-NEW column asserts the hash, not a name.
+5. **The plan carries the writer's bounds, and the hostile pass is per plan.** For lineage entry x, the
+   plan's `count`, `ordinal`, tag and range checks use x's bound, x's variant count, x's arm count and x's
+   range (the writer's own), never the reader's; a forged value past the WRITER's bound clamps or lands
+   `None` and counts, exactly as §4.5 and §4.6 say, with the bound taken from the plan, not from the
+   reader's type. One pass over storage per plan, laid down at build time.
+6. **A grown `[N]` fills the ELEMENT DEFAULT, never zeros.** The prefill recurses into the reader's fresh
+   image (a nested type's own defaults, an element's own), so a reader-added field of a nested type and a
+   grown fixed-size array both land what a fresh value holds. `[..N]`'s slack past the count is zeros.
+7. **A grown ordinal width is a `widen`, and the guard compares at the tag's width.** An enum crossing
+   255 variants, a union crossing 255 arms: the plan widens, and every leg's guard/arg lane is full width
+   (card 14 on #876 becomes a rule: no byte lane anywhere).
+8. **`T` to `?T` is a `present` op**, an unguarded constant 1 into the present byte, then the value; named
+   as its own op so no leg invents it.
+9. **LOAD keeps every framing and file check.** Form byte, header length, `20 + L`, the per-record hash
+   (`no_layout`), `batch_too_large`, the ragged tail as `malformed`; the vacuous record-bytes clause is
+   dropped; the retired hashes are emitted for `layout_unsupported`.
+10. **PLAN can fail at build, so BASELINE has a cap row.** A widening whose plan for ANY supported older
+    entry exceeds `plan_too_large` or the leaf cap is refused at commit, naming the entry; the remedy is
+    the floor or a new table.
+11. **The default row is in §6's table.** A changed specified default is refused (SPEC §18 was built for
+    it); it was in prose only.
+12. **Smaller.** A bool or present byte not 0 or 1 is normalised and counts nothing (ALG §4.5 stands; the
+    hostile list is corrected). `unknown` counts for a deprecated writer field that the reader lacks
+    entirely: none, by ruling 3, so the counter is removed from PLAN. `bits(N)` refuses with text. The
+    headroom sentence at ALG §1.1 (`>= key.children`) goes with C11. `ufixed` is in the spec's table. A
+    compressed float's quantization never refuses. §6's law is judged on evaluated uses, stated. The bill's
+    line saying the baseline "can hold" the law is deleted; the lock holds it (§6).
+
+The implementer's verdict was "not ready to build from"; with §11 and §12 applied it is the bill a stranger
+can implement, and the tests in `FIXED-FORM-VERSIONING-TESTS.md` are corrected to match (the refusal
+carries the hash; `[N]` lands defaults; deprecated fields read).
+
+## 13. The hash covers the definitions, not only the layout (2026-09-11 03:20Z)
+
+The numbers fixtures (#907) found that a ranged scalar's bounds are not in the layout: `int32 | 0..100` and
+`| 0..200` hash identically, so an old reader cannot refuse the widening and a new writer's 150 is silently
+clamped; the same holds for a `flags` bit count (#906), `bits(N)`, `fixed(I,F)`'s split, and any reader-side
+limit. §6a's sentence "any change to a definition changes the hash by itself" was false for those rows.
+
+**Ruling (default).** The layout hash a file carries is the hash of the LAYOUT BYTES together with a
+DEFINITIONS DIGEST: every fact of §2 that is not wire shape (each range, each flags bit count, each `bits(N)`,
+each `fixed` I and F, each reader-side limit, in closure order). The digest is computed by the compiler from
+the schema, recorded in the lock's lineage entry beside the layout bytes, and never rides the wire: the
+hash binds it. A stranger with a known hash and different layout bytes is caught by the byte comparison; a
+stranger with a known hash and the same layout bytes reads under the plan the reader compiled for that
+hash, whose bounds are the ones the lock recorded, so no forged range can widen a plan. The layout format
+does not change; `TableFixedLayoutHash` gains the digest as a second input; every lineage entry records
+both.
+
+Consequences for the green phase: `range_widen`, `flags_append`, `bits_grow` and `fixed_I_grow` refuse
+`layout_newer` by hash once the digest is in; the floor API the fixtures assumed (`T##FixedLineage[]`
+oldest first, `T##FixedFloor`, a test-only setter under a define) is accepted as the shape; the seven §1.1
+malformations against a known hash return one name, `layout_malformed` (§12.4).

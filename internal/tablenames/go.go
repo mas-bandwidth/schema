@@ -416,5 +416,12 @@ func init() {
 		Name{Name: "tableFixedHole", What: "the fixed form: one dst range a compiled plan does not land"},
 		Name{Name: "tableFixedHoles", What: "the fixed form: the complement of the unguarded dest writes"},
 		Name{Name: "tableFixedLand", What: "the fixed form: mark a dest range as landed for hole prefill"},
+		Name{Name: "tableFixedLayoutHeaderBytes", What: "the fixed form: the layout block's header width, four bytes before the first entry (§3.4)"},
+		Name{Name: "tableFixedRecordMaxBytes", What: "the fixed form: the read-side cap on one record's body"},
+		Name{Name: "tableFixedMaxDepth", What: "the fixed form: the read-side cap on layout nesting depth"},
+		Name{Name: "tableFixedOrdinalWidth", What: "the fixed form: the widths an ordinal — an enum's, a union tag's — may be stored at"},
+		Name{Name: "tableFixedLeafSize", What: "the fixed form: whether a kind is a leaf, and whether its stored width is admitted"},
+		Name{Name: "tableFixedCheck", What: "the fixed form: the read-side layout check's state and its refusal reason"},
+		Name{Name: "tableFixedCheckEntry", What: "the fixed form: the read-side layout check, one subtree per call"},
 	)
 }

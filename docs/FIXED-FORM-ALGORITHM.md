@@ -327,12 +327,12 @@ Nothing parses a stranger's layout at run time.
 
 ### 5.1 BASELINE(old, new): the monotone law, at commit
 
-`old` is the last locked shape of the unit (SPEC §18); `new` is the unit being committed. For every fixed
+`old` is the last locked shape of the unit (`schema.lock`, SPEC §2.10 as superseded by the bill's §6 and §12.1; the comparison is MONOTONE per row, on EVALUATED values); `new` is the unit being committed. For every fixed
 table `T` in `new` and every definition `D` in `T`'s closure (§5.4), with `D0` the same definition in `old`
 where it existed:
 
 ```
-BASELINE(old, new):
+BASELINE(old, new):                      -- at a merge commit, run once per parent lock (bill §11.3)
   for T in new.fixed_tables:
     if T not in old:                    continue            -- a new table is a new lineage
     if old[T] is not fixed:             REFUSE "T: fixed added" -- a different form, not a version
@@ -343,9 +343,12 @@ BASELINE(old, new):
     if T not in new or new[T] is not fixed: REFUSE "T: fixed removed"  -- deprecate; remove only when nothing live speaks it
 
 WIDENS(a, b):                            -- b may replace a
-  kind(a) == kind(b)                     or FAIL "kind changed"       -- includes string/wstring/bytes, [N]/[..N]/[Enum]
+  LADDER(a, b) or kind(a) == kind(b)     or FAIL "kind changed"       -- LADDER: int into wider int same signedness, f32 into f64,
+                                                                       -- ordinal/tag width wider, bits(N) into wider storage (bill §12.2);
+                                                                       -- string/wstring/bytes and [N]/[..N]/[Enum] never cross
   match kind:
-    table, type:   fields(a) is a PREFIX of fields(b) by (name, position); every a-field WIDENS into its b-field;
+    table, type:   fields(a) is a SUBSET of fields(b) by NAME and a SUBSEQUENCE of it by position (append-only per
+                   branch, any interleaving after a merge; bill §11.3); every a-field WIDENS into its b-field;
                    a deprecated field keeps its place          or FAIL "field removed | inserted | reordered | modified"
     enum:          variants(a) prefix of variants(b) by name   or FAIL "variant removed | inserted | reordered | renamed"
     union:         arms(a) prefix of arms(b) by name; each payload WIDENS   or FAIL "arm ..."
@@ -354,11 +357,14 @@ WIDENS(a, b):                            -- b may replace a
     [Enum]T:       Enum WIDENS (its own rule); element WIDENS
     int, float:    width(a) <= width(b), same ladder, same signedness   or FAIL "narrowed | ladder | signedness"
     ranged:        range(b) ⊇ range(a), or b unranged               or FAIL "range narrowed | added"
-    bits(N):       N(a) <= N(b)
+    bits(N):       N(a) <= N(b)                                     or FAIL "bits narrowed"
     fixed(I,F):    I(a) <= I(b) and F(a) == F(b)                     or FAIL "F changed"
     ?T vs T:       optional(a) implies optional(b)                     or FAIL "optional removed"
     default:       default(a) == default(b)                            or FAIL "default changed"   -- SPEC §18
     reader limit:  limit(a) <= limit(b)
+    plan cap:      for every supported older entry x, PLAN(x, b) fits plan_too_large and the leaf cap
+                                                                    or FAIL "plan too large for lineage entry x" (bill §12.10)
+    deprecated:    deprecated(a) implies deprecated(b)                 or FAIL "undeprecated" (one way, bill §12.3)
 ```
 
 Every FAIL names the table, the definition, the rule, and both values. The compiler refuses to generate
@@ -379,11 +385,16 @@ PLAN(x, y):                                        -- x older, y the reader's ow
   list, match by NAME and emit a remap, identity when the lists agree):
     same width:            copy
     wider in y:            widen / widenf   (COUNT widened)
-    enum, prefix:          copy (the ordinals are the reader's); reordered: ordinal remap by name
-    absent in x:           default            (a field y added)
-    deprecated in y:       skip x's bytes     (COUNT unknown, once per plan)
-    text, bytes, arrays:   copy the writer's extent; the reader's slack is template zeros
-    ?T where x has T:      present := 1, then the value
+    enum, prefix:          copy when the width is equal, widen when the writer's ordinal width is narrower
+                           (the ordinals are the reader's); reordered after a merge: ordinal remap by name
+    absent in x:           default            (a field y added; the reader's FRESH IMAGE, recursing into a
+                                               nested type's and an element's own defaults, bill §12.6)
+    deprecated in y:       copy               (read on every plan, identity included; nothing dropped, bill §12.3)
+    text, bytes, [..N]:    copy the writer's extent; the slack past the count is zeros
+    [N] grown:             copy x's N elements; the reader's remaining elements take the ELEMENT DEFAULT
+    ?T where x has T:      present (an unguarded constant 1 into the present byte, its own op), then the value
+    bounds for the hostile pass: the plan carries x's bound, variant count, arm count and range (the
+                           WRITER's own), and §4.5/§4.6 clamp against those, per plan (bill §12.5)
   the plan is a straight-line list of ops; no per-record decision
 ```
 
@@ -396,18 +407,17 @@ in the lock, refused by name at build.
 LOAD(R, file):                                     -- R the reader's static data for T
   h := file.layout_hash
   if h not in R.known:
-    if h in lock.lineage(T) below floor:  REFUSE layout_unsupported
+    if h in R.retired:                    REFUSE layout_unsupported   -- COMPILE emits the retired hashes (bill §11.4)
     else:                                 REFUSE layout_newer      -- an older reader given a newer file
   if file.layout_bytes != R.known[h]:     REFUSE layout_malformed  -- a lie about a known version
-  if file.record_bytes != size(R.known[h]) or rest % record_bytes != 0: REFUSE layout_malformed
-  for each record: run R.plans[h] (§4), then the hostile pass (§4.5, §4.6: a forged count past the WRITER'S
-    OWN bound, an ordinal past the writer's own variant count, a tag past its arm count, a bool byte not 0/1)
+  framing as §2: the form byte, the header length, 20 + L, the per-record hash (no_layout), batch_too_large,
+    a ragged tail (malformed); nothing here parses the layout
+  for each record: run R.plans[h] (§4), then the hostile pass (§4.5, §4.6) against the bounds THE PLAN
+    CARRIES (the writer's own, bill §12.5); a bool or present byte not 0/1 is normalised and counts nothing
 ```
 
-REFUSE is total: no counter moves, nothing decoded. `layout_newer` carries the file's hash; the refusal text
-names, where the language has text, the first definition the reader could not hold, read off the file's
-layout against the reader's own (this is the one walk over a stranger's layout, and it happens only inside a
-refusal, after the decision, with the seven §1.1 checks applied to it first).
+REFUSE is total: no counter moves, nothing decoded. `layout_newer` carries the file's hash and NOTHING ELSE
+(bill §12.4): no walk over a stranger's layout anywhere in LOAD, on any path.
 
 ### 5.4 The closure
 
@@ -420,7 +430,8 @@ in it is a compile refusal; `T` is never in its own closure.
 The plan compiler at run time (§4.1–§4.4 become the build-time PLAN of §5.2); reading a layout the lock has
 never seen; the count clamp across bounds, the range clamp across versions, the remap of an unknown variant
 to `None`, the drop-and-count of an unknown field (all forward reads, now `layout_newer`). The seven §1.1
-checks stay as the lock's validation of what it records and as the walk inside a refusal. Every hostile
+checks stay as the lock's validation of what it records and the oracle's validation of the corpus; at run
+time a known hash is a byte comparison and an unknown hash is a refusal (bill §12.4). Every hostile
 check on a KNOWN layout's records stays (§4.5, §4.6).
 
 ### 5.6 The tests

@@ -1126,7 +1126,10 @@ namespace Tabledemo
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Damage);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Cooldown);
             b[8] = (byte)(value.GunnerPresent ? 1 : 0);
-            GunnerConfigFixedWriteBody(b.Slice(9), value.Gunner);
+            if (value.GunnerPresent)
+            {
+                GunnerConfigFixedWriteBody(b.Slice(9), value.Gunner);
+            }
         }
 
         // HullConfig's stores. The template — the hash, then zeros — is memcpy'd first,
