@@ -18,6 +18,16 @@ package jstable
 // projects the image into the language's own objects, which is the step C++
 // gets for free because there a struct IS its bytes.
 //
+// A SIXTY-FOUR-BIT FACT RIDES AS TWO u32 LANES, AND THIS LEG SAYS SO (§5.9 #34,
+// #15). JavaScript's bitwise operators are 32-bit and its shifts are MOD 32, so
+// `raw |= byte << (8*k)` folds byte 4 back onto byte 0 and `v >>> 32` is `v`.
+// Every eight-byte fact here is therefore a LOW LANE AND A HIGH LANE, never a
+// shift loop: the layout hash (hashLo/hashHi), and the ORDINAL of an enum or a
+// union tag declared eight bytes wide — read lo/hi, written lo/hi. A remap table
+// is never longer than 65535 entries and no declared extent reaches 2^32, so a
+// nonzero high lane names no variant: it lands None and counts one `clamped`,
+// which is what a forged ordinal of any width is owed (§5.4).
+//
 // NOTHING HERE ALLOCATES ON THE READ PATH. The plan's storage is the caller's,
 // declared by capacity, and a layout whose plan does not fit is a refusal by
 // name — §3.3's rule for a resolved vocabulary, holding here unchanged.
@@ -378,14 +388,38 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // A VARIANT ORDINAL IS ITS POSITION IN THE LAYOUT, so a writer whose
         // enum gained a variant IN THE MIDDLE is remapped here and never
         // reinterpreted.
-        let raw = 0;
-        for (let k = 0; k < size; k++) { raw |= src[s + k] << (8 * k); }
-        raw = raw >>> 0;
+        // AN ORDINAL OF WIDTH 8 IS TWO u32 LANES, AND THIS LEG SAYS SO
+        // (§5.9 #34): an OR of src[s+k] << (8*k) shifts MOD 32 in JavaScript,
+        // so byte 4 landed back on byte 0 and a forged eight-byte ordinal read
+        // as its own low four bytes. A remap table is never longer than 65535
+        // entries, so a NONZERO HIGH LANE can name no variant at all.
+        let lo = 0, hi = 0;
+        const half = size < 4 ? size : 4;
+        for (let k = 0; k < half; k++) { lo |= src[s + k] << (8 * k); }
+        for (let k = 4; k < size; k++) { hi |= src[s + k] << (8 * (k - 4)); }
+        lo = lo >>> 0; hi = hi >>> 0;
         const table = e[b + TableFixedLaneAux];
+        const extent = remap[table];
         let v = 0;
-        if (raw !== 0 && raw <= remap[table]) { v = remap[table + raw]; }
+        if (hi !== 0 || lo > extent) {
+          // AN ORDINAL PAST THE WRITER'S OWN LAST VARIANT IS OUT OF RANGE, as a
+          // count past its bound is: it lands None AND COUNTS ONE clamped, on
+          // THIS plan exactly as the identity plan's projection counts it
+          // (§5.4, §4.6, and §5.8 row 12 — the reference counts on neither
+          // compiled path). A variant the writer DOES carry and this reader
+          // cannot name is a different thing: it resolves to None through the
+          // table and counts nothing, because nothing was out of range.
+          report.clamped++;
+        } else if (lo !== 0) {
+          v = remap[table + lo];
+        }
         const width = e[b + TableFixedLaneMeta] & 0xff;
-        for (let k = 0; k < width; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
+        const dstHalf = width < 4 ? width : 4;
+        for (let k = 0; k < dstHalf; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
+        // THE LANDED ORDINAL IS THIS READER'S OWN, never past 65535, so its high
+        // lane is zero — written, not left standing, because the prefill is not
+        // the only thing that may have been here.
+        for (let k = 4; k < width; k++) { dst[d + k] = 0; }
         break;
       }
       case TableFixedOpWiden: {
@@ -859,6 +893,14 @@ function TableFixedRemapRoom(n) {
   return TableFixedRemapScratch;
 }
 
+// THE ONE DEAD REPORT. The census — unknown and kindMismatch — is once per
+// field PER PEER and never per array element or per keyed slot (§5.4, §5.8 row
+// 11, §5.9 #43). The entries still have to be laid down for every element, so
+// the repeats walk the same pairs into a report NOBODY READS. It is module-level
+// because the compile must not allocate per element, and it is never reset
+// because nothing ever looks at it.
+const TableFixedQuietCensus = new TableFixedReport();
+
 // matchChildren walks a TABLE's children on both sides, by id.
 function TableFixedMatchChildren(plan, theirs, ti, theirAt, mine, mi, dst, myAt, guard, arg, report) {
   const theirChildren = TableFixedChildren(theirs, ti);
@@ -955,8 +997,12 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const theirBase = theirAt + head;
       const n = theirN < myN ? theirN : myN;
       for (let i = 0; i < n; i++) {
+        // THE FIRST ELEMENT CARRIES THE CENSUS AND THE REST ARE QUIET: a
+        // four-element array of a table with one unknown field is ONE unknown,
+        // not four (§5.4, §5.8 row 11).
         TableFixedCompileEntry(plan, theirs, ti + 1, theirBase + i * theirElem,
-          mine, mi + 1, dst, at + i * dst[row + TableFixedDstStride], guard, arg, report);
+          mine, mi + 1, dst, at + i * dst[row + TableFixedDstStride], guard, arg,
+          i === 0 ? report : TableFixedQuietCensus);
       }
       break;
     }
@@ -966,11 +1012,17 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
       const theirElemAt = ti + 1 + TableFixedSubtree(theirs, ti + 1);
       const myElemAt = mi + 1 + TableFixedSubtree(mine, mi + 1);
       const theirElemSize = TableFixedSize(theirs, theirElemAt);
+      // THE FIRST MATCHED SLOT CARRIES THE CENSUS, and every slot after it is
+      // quiet: a keyed array's slots are one field's storage repeated, so an
+      // unknown inside the element is ONE unknown for the peer (§5.4).
+      let keyedCounted = false;
       for (let k = 0; k < myKeyChildren; k++) {
         for (let j = 0; j < theirKeyChildren; j++) {
           if (!TableFixedSameId(theirs, ti + 2 + j, mine, mi + 2 + k)) { continue; }
           TableFixedCompileEntry(plan, theirs, theirElemAt, theirAt + j * theirElemSize,
-            mine, myElemAt, dst, at + k * dst[row + TableFixedDstStride], guard, arg, report);
+            mine, myElemAt, dst, at + k * dst[row + TableFixedDstStride], guard, arg,
+            keyedCounted ? TableFixedQuietCensus : report);
+          keyedCounted = true;
           break;
         }
       }
