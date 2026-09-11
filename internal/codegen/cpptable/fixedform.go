@@ -383,8 +383,7 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	entries := ir.TableFixedWalkRoot(st)
 	layout := ir.TableFixedLayoutBytes(entries)
-	digest := ir.TableFixedDefinitionsDigest(st)
-	hash := ir.TableFixedLayoutHash(layout, digest)
+	hash := ir.TableFixedLayoutHash(layout, st)
 	body := ir.TableFixedTypeBytes(st)
 	known := g.lineageEntries(st)
 	floor := lineageFloor(g.unit)

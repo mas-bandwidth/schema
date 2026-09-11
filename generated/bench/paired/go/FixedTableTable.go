@@ -1108,7 +1108,7 @@ func FixedTableFixedClamp(value *FixedTable, report *TableReport) {
 
 const FixedTableFixedBodyBytes = 1236
 const FixedTableFixedRecordBytes = 8 + FixedTableFixedBodyBytes
-const FixedTableFixedHash = 0x32f1c4a302a224eb
+const FixedTableFixedHash = 0x98d3af4e8ceacd29
 
 var FixedTableFixedLayout = []byte{
 	0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
@@ -1322,7 +1322,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		return tableFixedRefuse(report, "layout_malformed")
 	}
 	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
-	hash := tableFixedHashOf(layout)
+	hash := tableFixedGet64(data[TableFixedHashAt:]) // the header's hash; digest is not on the wire
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
 	entries := FixedTableFixedPlan.Entries
@@ -1347,9 +1347,14 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		entries = plan
 		entryCount = made
 		recordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)
-	}
-	if tableFixedGet64(data[TableFixedHashAt:]) != hash {
+	} else if int(layoutBytes) != len(FixedTableFixedLayout) {
 		return tableFixedRefuse(report, "layout_malformed")
+	} else {
+		for i := range layout {
+			if layout[i] != FixedTableFixedLayout[i] {
+				return tableFixedRefuse(report, "layout_malformed")
+			}
+		}
 	}
 	if recordBytes <= 8 || rest%recordBytes != 0 {
 		report.Malformed = true

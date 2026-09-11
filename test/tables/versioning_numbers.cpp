@@ -239,7 +239,11 @@ void array_fixed_grow_case()
                                    vold_array_fixed_grow::ArrayFixedGrowFixedSave, "array_fixed_grow: OLD save" );
     {
         vnew_array_fixed_grow::ArrayFixedGrow back;
-        vnew_array_fixed_grow::ArrayFixedGrowReset( back );
+        // Reset before the load only proves the load did not CLOBBER the
+        // slack; a zero-fill of the reader's struct would still look like
+        // the element's defaults. Poison, then load, then the slack must be
+        // 7 and 9 from the plan's prefill (bill §12.6).
+        std::memset( &back, 0x5A, sizeof( back ) );
         vnew_array_fixed_grow::TableReport r;
         std::vector<vnew_array_fixed_grow::TableFixedEntry> plan( 4096 );
         check( vnew_array_fixed_grow::ArrayFixedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),

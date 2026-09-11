@@ -27,6 +27,7 @@
 #include "UT2Table.h"
 #include "V1Table.h"
 #include "V2Table.h"
+#include "P1Table.h"
 #include "P3Table.h"
 #include "FN1Table.h"
 #include "FN2Table.h"
@@ -215,6 +216,7 @@ struct TAG##Codec \
     static constexpr uint64_t hash = NS::TYPE##FixedHash; \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
+    static constexpr Reason layout_newer = NS::layout_newer; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
                             uint32_t * fill_at, int32_t * fill_count, Report * r ) \
@@ -259,6 +261,7 @@ struct TAG##Codec \
     static constexpr uint64_t hash = NS::TYPE##FixedHash; \
     static constexpr uint8_t kCopy = NS::kTableFixedCopy; \
     static constexpr Reason no_layout = NS::no_layout; \
+    static constexpr Reason layout_newer = NS::layout_newer; \
     static bool parse( const uint8_t * b, int64_t n, View & v, Reason & w ) { return NS::TableFixedParseLayout( b, n, v, w ); } \
     static int32_t compile( const View & th, Entry * p, int32_t cap, int32_t * g, \
                             uint32_t * fill_at, int32_t * fill_count, Report * r ) \
@@ -323,7 +326,11 @@ static int64_t load_compiled( typename F::T & v, const uint8_t * file, int64_t b
         return -1;
     }
     const uint8_t * rec = layout + layout_bytes;
-    if ( F::get64( rec ) != F::hash_of( layout, (int64_t) layout_bytes ) )
+    // Digest is not on the wire: the record carries the layout hash, which
+    // folds the definitions digest (bill §13). hash_of(layout) is layout
+    // bytes alone and is the wrong identity for a table that has a range,
+    // bits, fixed, or flags.
+    if ( F::get64( rec ) != F::hash )
     {
         r.refused = true;
         r.reason = F::no_layout;
@@ -793,6 +800,35 @@ struct UT2 : UT2Codec
     }
 };
 
+FIXED_TRAITS( tblp1, Chain, P1 );
+struct P1 : P1Codec
+{
+    static void fill( T & v )
+    {
+        std::strcpy( v.name, "value" );
+        v.name_length = 5;
+        v.link.value = 42;
+        std::strcpy( v.link.tag, "p1" );
+        v.link.tag_length = 2;
+    }
+    static void inspect( const T & v, Issues & i )
+    {
+        if ( v.name_length < 0 || v.name_length > 16 ) { i.range_oob = true; }
+        else if ( !utf8_ok( v.name, v.name_length ) ) { i.utf8_bad = true; }
+        if ( v.link.value < 0 || v.link.value > 1000 ) { i.range_oob = true; }
+        if ( v.link.tag_length < 0 || v.link.tag_length > 8 ) { i.range_oob = true; }
+        else if ( !utf8_ok( v.link.tag, v.link.tag_length ) ) { i.utf8_bad = true; }
+    }
+    static bool same( const T & a, const T & b )
+    {
+        if ( a.name_length != b.name_length || a.name_length < 0 || a.name_length > 16 ) { return false; }
+        if ( std::memcmp( a.name, b.name, (size_t) a.name_length ) != 0 ) { return false; }
+        return a.link.value == b.link.value && a.link.tag_length == b.link.tag_length &&
+               a.link.tag_length >= 0 && a.link.tag_length <= 8 &&
+               std::memcmp( a.link.tag, b.link.tag, (size_t) a.link.tag_length ) == 0;
+    }
+};
+
 FIXED_TRAITS( tblp3, Chain, P3 );
 struct P3 : P3Codec
 {
@@ -1189,6 +1225,57 @@ struct F1 : F1Codec
 // Dedicated probes, so each named red is reached even when P3's classification
 // lands on a neighbour.
 
+// P1's reverse direction under the new contract: the older reader given the
+// newer file refuses layout_newer. The old contract compiled a stranger's
+// layout both ways; that test is retired, not bent. Forward (newer reads
+// older) is a lineage compile and returns one record.
+template<typename Older, typename Newer>
+static void run_pair_p1()
+{
+    typename Older::T ov;
+    std::memset( &ov, 0, sizeof( ov ) );
+    Older::reset( ov );
+    Older::fill( ov );
+    const int64_t oneed = Older::measure( 1 );
+    std::vector<uint8_t> ofile( (size_t) oneed + (size_t) file_slack(), 0 );
+    char what[256];
+    std::snprintf( what, sizeof( what ), "P1 %s/%s: older save", Older::name, Newer::name );
+    check( Older::save( &ov, 1, ofile.data(), oneed ) == oneed, what );
+
+    {
+        typename Newer::T back;
+        typename Newer::Report r{};
+        std::vector<typename Newer::Entry> plan( (size_t) kPlanCap );
+        std::memset( &back, 0, sizeof( back ) );
+        const int64_t n = Newer::load( &back, 1, ofile.data(), oneed, plan.data(), kPlanCap, &r );
+        std::snprintf( what, sizeof( what ),
+                       "P1 %s reads older %s: compiled path through lineage, one record",
+                       Newer::name, Older::name );
+        check( n == 1 && !r.refused && !r.malformed, what );
+    }
+
+    typename Newer::T nv;
+    std::memset( &nv, 0, sizeof( nv ) );
+    Newer::reset( nv );
+    Newer::fill( nv );
+    const int64_t nneed = Newer::measure( 1 );
+    std::vector<uint8_t> nfile( (size_t) nneed + (size_t) file_slack(), 0 );
+    std::snprintf( what, sizeof( what ), "P1 %s/%s: newer save", Older::name, Newer::name );
+    check( Newer::save( &nv, 1, nfile.data(), nneed ) == nneed, what );
+
+    {
+        typename Older::T back;
+        typename Older::Report r{};
+        std::vector<typename Older::Entry> plan( (size_t) kPlanCap );
+        std::memset( &back, 0, sizeof( back ) );
+        const int64_t n = Older::load( &back, 1, nfile.data(), nneed, plan.data(), kPlanCap, &r );
+        std::snprintf( what, sizeof( what ),
+                       "P1 %s given newer %s: layout_newer (old contract's reverse read is retired)",
+                       Older::name, Newer::name );
+        check( n == -1 && r.refused && r.reason == Older::layout_newer, what );
+    }
+}
+
 static void probe_clamp_op()
 {
     scalardemo::SimState w;
@@ -1379,6 +1466,7 @@ int main()
     run_properties<FX2>();
     run_properties<UT1>();
     run_properties<UT2>();
+    run_properties<P1>();
     run_properties<P3>();
     run_properties<FN1>();
     run_properties<FN2>();
@@ -1389,6 +1477,13 @@ int main()
     run_properties<V2>();
     run_properties<Scalars>();
     run_properties<Scalars2>();
+
+    run_pair_p1<FX1, FX2>();
+    run_pair_p1<P1, P3>();
+    run_pair_p1<FN1, FN2>();
+    run_pair_p1<FM1, FM2>();
+    run_pair_p1<V1, V2>();
+    run_pair_p1<Scalars, Scalars2>();
 
     probe_clamp_op();
     probe_text_content();

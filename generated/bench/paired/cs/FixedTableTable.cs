@@ -190,7 +190,7 @@ namespace Bench
 
         public const long FixedTableFixedBodyBytes = 1236;
         public const long FixedTableFixedRecordBytes = 8 + FixedTableFixedBodyBytes;
-        public const ulong FixedTableFixedHash = 0x32f1c4a302a224ebul;
+        public const ulong FixedTableFixedHash = 0x98d3af4e8ceacd29ul;
 
         public static readonly byte[] FixedTableFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0xb3, 0x46, 0xa7, 0xdc, 0x9c, 0x36, 0xdf, 0x85, 0x0d, 0xd4, 0x04, 0x00,
@@ -1049,7 +1049,7 @@ namespace Bench
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = FixedTableFixedPlan;
@@ -1057,7 +1057,15 @@ namespace Bench
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash != FixedTableFixedHash)
+            if (hash == FixedTableFixedHash)
+            {
+                if (layout_bytes != (uint)FixedTableFixedLayout.Length || !layout.SequenceEqual(FixedTableFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1080,11 +1088,6 @@ namespace Bench
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, FixedTableFixedCover, landed, fillBuf);
                 }
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
