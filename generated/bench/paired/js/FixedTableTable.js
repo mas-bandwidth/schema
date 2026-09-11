@@ -377,7 +377,7 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
     // CACHED BY HASH, so the compile is paid once per peer, not per record.
     if (!plan.ready || (plan.hashLo >>> 0) !== hashLo || (plan.hashHi >>> 0) !== hashHi) {
       const theirs = new TableFixedLayoutView();
-      if (!TableFixedParseLayout(bytes, layoutAt, layoutBytes, theirs)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
+      if (!TableFixedParseLayout(bytes, layoutAt, layoutBytes, theirs)) { report.refused = theirs.refusal; return -1; }
       const made = TableFixedCompile(theirs, FixedTableFixedLayout, FixedTableFixedDst, plan, report);
       if (made < 0) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
       plan.recordBytes = 8 + TableFixedSize(theirs, 0);

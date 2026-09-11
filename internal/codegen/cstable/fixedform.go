@@ -196,6 +196,60 @@ func fixedCollectTypes(st *ir.Struct, seen map[string]bool, order *[]*ir.Struct)
 	*order = append(*order, st)
 }
 
+// unitFixedOrder is every type in the UNIT that needs a fixed write body, in
+// dependency order: each fixed-emitted table and, post-order before it, every
+// type it holds by value. The set is the unit's and not a file's because
+// `Schema` is ONE partial class across a unit's files — a second definition of
+// <T>FixedWriteBody is CS0111, not C++'s harmless re-inclusion behind a guard.
+func (g *tableGen) unitFixedOrder() []*ir.Struct {
+	closure := ir.TableClosure(g.unit)
+	seen := map[string]bool{}
+	var order []*ir.Struct
+	add := func(st *ir.Struct) {
+		if !ir.TableFixedEmitted(g.unit, st) {
+			return
+		}
+		fixedCollectTypes(st, seen, &order)
+	}
+	for _, f := range g.unit.Files {
+		for _, st := range f.Tables {
+			add(st)
+		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok && closure[st.Name] {
+				add(st)
+			}
+		}
+	}
+	return order
+}
+
+// fileFixedBodies is the part of the unit's order THIS FILE declares, the one
+// file that emits each body — the rule the enum identities already follow. A
+// type a fixed table in another file reaches is that other file's business.
+func (g *tableGen) fileFixedBodies() []*ir.Struct {
+	if g.file == nil {
+		return nil
+	}
+	here := map[string]bool{}
+	for _, st := range g.file.Tables {
+		here[st.Name] = true
+	}
+	for _, d := range g.file.Decls {
+		if st, ok := d.(*ir.Struct); ok {
+			here[st.Name] = true
+		}
+	}
+	order := g.unitFixedOrder()
+	out := make([]*ir.Struct, 0, len(order))
+	for _, st := range order {
+		if here[st.Name] {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
 type fixedSlot struct {
 	setRaw       string
 	setDouble    string
@@ -1126,7 +1180,8 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 
 func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	roots := g.fixedRoots(members)
-	if len(roots) == 0 {
+	bodies := g.fileFixedBodies()
+	if len(roots) == 0 && len(bodies) == 0 {
 		return
 	}
 	g.pf("// ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----\n")
@@ -1137,12 +1192,7 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	g.pf("// ONE loop over ONE plan, the identity plan here and a plan compiled from\n")
 	g.pf("// the writer's own block for anybody else.\n\n")
 
-	seen := map[string]bool{}
-	var order []*ir.Struct
-	for _, st := range roots {
-		fixedCollectTypes(st, seen, &order)
-	}
-	for _, st := range order {
+	for _, st := range bodies {
 		g.emitFixedWriteBody(st)
 	}
 	for _, st := range roots {
