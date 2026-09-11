@@ -9,7 +9,7 @@ table Army
     field squads id=0x7848019b0c02a926 kind=14 elem=13 type=Squad array=unbounded
     field after id=0xbf82010f6f71eae9 kind=4
 
-table Bounded
+table Bounded fixed=true
     field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Unit array=bounded bound=8
     field tag id=0x56d7ab194448a4f3 kind=4
 
@@ -29,10 +29,10 @@ table Ints
     field values id=0x21277bcf1a4d67fb kind=14 elem=4 array=unbounded
     field after id=0xbf82010f6f71eae9 kind=4
 
-table Item
+table Item fixed=true
     field count id=0xb1e5e28e4479a274 kind=4
 
-table LogEntry
+table LogEntry fixed=true
     field tick id=0x1e7683ef2ebc7684 kind=8
 
 table Mixed
@@ -41,16 +41,16 @@ table Mixed
     field hits id=0x732dfbcc9b0cf0bb kind=14 elem=15 union=Hit array=unbounded
     field bounds id=0x52f60c4caef0b768 kind=14 elem=4 array=unbounded min=0 max=100
 
-table Photo
+table Photo fixed=true
     field width id=0xdbdacd932fd1e9bf kind=8
     field height id=0x17720bf67d347222 kind=8
 
-table Placement
+table Placement fixed=true
     field x id=0xaf63f54c86021707 kind=10
     field y id=0xaf63f44c86021554 kind=10
     field model id=0x9de543933e6e703a kind=8
 
-table Point
+table Point fixed=true
     field x id=0xaf63f54c86021707 kind=4
     field y id=0xaf63f44c86021554 kind=4
 
@@ -58,7 +58,7 @@ table Row
     field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Sample array=unbounded
     field label id=0x39f7fcec8fcb623d kind=4
 
-table Sample
+table Sample fixed=true
     field v id=0xaf63eb4c86020609 kind=4
 
 table Save
@@ -78,7 +78,7 @@ table Unbounded
     field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Unit array=unbounded
     field tag id=0x56d7ab194448a4f3 kind=4
 
-table Unit
+table Unit fixed=true
     field v id=0xaf63eb4c86020609 kind=4
 
 table ec07a2f760550a91.1c84390d304f4f42

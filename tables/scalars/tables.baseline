@@ -6,7 +6,7 @@ table Pose
     field y id=0xaf63f44c86021554 kind=23 frac=16 min=-30000 max=30000
     field heading id=0xb128829190ca0f75 kind=27 frac=16 min=0 max=360
 
-table SimState
+table SimState fixed=true
     field tilt id=0x1e5088ef2e9bafc6 kind=20 frac=4 min=-8 max=7
     field angle id=0x401ab8cd06158638 kind=22 frac=16 min=-180 max=180
     field position id=0x4cbf3a26fca1d74a kind=23 frac=16 min=-30000 max=30000

@@ -1,13 +1,13 @@
 schema-tables-baseline 7
 package blockdemo
 
-table PaddedFrame
+table PaddedFrame fixed=true
     field marker id=0xeddcb72b15486e77 kind=6
     field stamp id=0xee7ba9ad45c64144 kind=9
     field rows id=0xa3a7061ff10a8138 kind=14 elem=13 type=PaddedRow array=bounded bound=64
     field blob id=0xc573b39bc29148ca kind=14 elem=6 size=12
 
-table PaddedRow
+table PaddedRow fixed=true
     field tag id=0x56d7ab194448a4f3 kind=6
     field value id=0x7ce4fd9430e80cea kind=11
     field flag id=0xd5f2d079088c0b17 kind=1
@@ -17,7 +17,7 @@ table PaddedRow
     field teams id=0xbaaeb048a5a8fa6d kind=16 elem=6 array=keyed bound=4 key=Team
     field counter id=0x77976c7416517c63 kind=4 optional=true
 
-table RenderCamera
+table RenderCamera fixed=true
     field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
     field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
     field camera_id id=0x9f61700f084ab92e kind=8
@@ -25,7 +25,7 @@ table RenderCamera
     field target_object_id id=0x6a0c6a156952b9c2 kind=8
     field fov id=0xdcb27c18fed9e15c kind=10
 
-table RenderCosmeticProp
+table RenderCosmeticProp fixed=true
     field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
     field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
     field scale id=0x6aacb9fbb71a1d91 kind=11
@@ -35,7 +35,7 @@ table RenderCosmeticProp
     field prop_type id=0xe5626f155e4c5dad kind=7 enum=PropType
     field team id=0xfa23d9ef19afc32c kind=7 enum=Team
 
-table RenderDynamicProp
+table RenderDynamicProp fixed=true
     field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
     field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
     field flags id=0x17a3a1a985f75aec kind=9
@@ -44,7 +44,7 @@ table RenderDynamicProp
     field prop_type id=0xe5626f155e4c5dad kind=7 enum=PropType
     field team id=0xfa23d9ef19afc32c kind=7 enum=Team
 
-table RenderExplosion
+table RenderExplosion fixed=true
     field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
     field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
     field t id=0xaf63e94c860202a3 kind=11
@@ -53,7 +53,7 @@ table RenderExplosion
     field explosion_type id=0xdc89eb9cd3393be5 kind=7 enum=ExplosionType
     field team id=0xfa23d9ef19afc32c kind=7 enum=Team
 
-table RenderFrame
+table RenderFrame fixed=true
     field version id=0xbb62c62c9808ea37 kind=9
     field cameras id=0x0f9222d2ba7aa2a7 kind=14 elem=13 type=RenderCamera array=bounded bound=1
     field ships id=0x294a5c4913e1ad44 kind=14 elem=13 type=RenderShip array=bounded bound=4096
@@ -65,7 +65,7 @@ table RenderFrame
     field lasers id=0xd982b77b3e92d16d kind=14 elem=13 type=RenderLaser array=bounded bound=32000
     field explosions id=0x876a8c1a85806a69 kind=14 elem=13 type=RenderExplosion array=bounded bound=32000
 
-table RenderLaser
+table RenderLaser fixed=true
     field start id=0xee5d97ad45ad251f kind=13 type=RenderVector3
     field finish id=0x6917a5bab91540f2 kind=13 type=RenderVector3
     field t id=0xaf63e94c860202a3 kind=11
@@ -73,7 +73,7 @@ table RenderLaser
     field laser_type id=0x96b593c242133841 kind=7 enum=LaserType
     field team id=0xfa23d9ef19afc32c kind=7 enum=Team
 
-table RenderMissile
+table RenderMissile fixed=true
     field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
     field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
     field flags id=0x17a3a1a985f75aec kind=9
@@ -88,7 +88,7 @@ table RenderQuaternion
     field z id=0xaf63f74c86021a6d kind=11
     field w id=0xaf63ea4c86020456 kind=11 default=1.0
 
-table RenderShip
+table RenderShip fixed=true
     field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
     field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
     field flags id=0x17a3a1a985f75aec kind=9 flags=ShipFlags
@@ -101,7 +101,7 @@ table RenderShip
     field has_target_lock id=0x1554fa45a1220171 kind=1
     field predicted_explode id=0x4d5be97ba1b9cb81 kind=1
 
-table RenderStaticProp
+table RenderStaticProp fixed=true
     field position id=0x4cbf3a26fca1d74a kind=13 type=RenderVector3
     field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
     field scale id=0x6aacb9fbb71a1d91 kind=11
@@ -110,7 +110,7 @@ table RenderStaticProp
     field prop_type id=0xe5626f155e4c5dad kind=7 enum=PropType
     field team id=0xfa23d9ef19afc32c kind=7 enum=Team
 
-table RenderTurret
+table RenderTurret fixed=true
     field rotation id=0xb51afb05cd34709f kind=13 type=RenderQuaternion
     field flags id=0x17a3a1a985f75aec kind=9
     field object_id id=0x0bdab42c07f19812 kind=8

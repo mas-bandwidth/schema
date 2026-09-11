@@ -88,7 +88,7 @@ table Fleet
     field loadouts id=0x294fa1b3f0f5f070 kind=14 elem=13 array=map keykind=12 keybound=16
     field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 array=map keykind=3
 
-table Item
+table Item fixed=true
     field count id=0xb1e5e28e4479a274 kind=4
 
 table Pairs
@@ -103,7 +103,7 @@ table Runs
     field spans id=0x437dfc8ab2566816 kind=14 elem=13 array=map keykind=7
     field after id=0xbf82010f6f71eae9 kind=4
 
-table ShipConfig
+table ShipConfig fixed=true
     field name id=0xc4bcadba8e631b86 kind=12 size=64
     field health id=0x7f69d4b5288ba9cf kind=4
 

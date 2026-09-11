@@ -22,11 +22,11 @@ table GunnerSettings
     field reload_seconds id=0xad9b64728ea52486 kind=10
     field gunner_id id=0xbd9be53180256e02 kind=8
 
-table PartFrame
+table PartFrame fixed=true
     field version id=0xbb62c62c9808ea37 kind=9
     field parts id=0x0c519da7a1f958c5 kind=14 elem=13 type=PartRow array=bounded bound=32
 
-table PartRow
+table PartRow fixed=true
     field armor id=0xd19988b67e699194 kind=13 type=ArmorConfig
     field gunner id=0x40dbb648c0cd44aa kind=13 type=GunnerSettings
     field part_id id=0x04d6206b33415104 kind=8

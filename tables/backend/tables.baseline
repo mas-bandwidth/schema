@@ -1,22 +1,25 @@
 schema-tables-baseline 7
 package backenddemo
 
-table LoginRequest
+table Envelope fixed=true
+    field payload id=0xcfb8a9d063b5e9e5 kind=15 union=Payload
+
+table LoginRequest fixed=true
     field player_id id=0xc14ae3ff748dc438 kind=9 default=0
     field session_token id=0x26860f8b6834fa0d kind=14 elem=6 size=32
     field client_build id=0xb865d537bd0b08f9 kind=8 default=0
     field region id=0xc755a623f50a24dd kind=7 enum=Region
 
-table MatchResult
+table MatchResult fixed=true
     field match_id id=0xf336e379ba146826 kind=9 default=0
     field players id=0x98e3ac7518558b29 kind=14 elem=13 type=PlayerRow array=fixed bound=10
 
-table PlayerRow
+table PlayerRow fixed=true
     field player_id id=0xc14ae3ff748dc438 kind=9 default=0
     field score id=0xc10e63fbe7f624f5 kind=4 min=0 max=100000 default=0
     field placement id=0x98a3024830754a20 kind=6 min=1 max=10 default=1
 
-table StorePurchase
+table StorePurchase fixed=true
     field player_id id=0xc14ae3ff748dc438 kind=9 default=0
     field sku id=0x82429a195ce84d1a kind=12 size=32
     field quantity id=0xa3768bf56b809718 kind=6 min=1 max=99 default=1
@@ -34,6 +37,11 @@ enum Region
     variant EU id=0x08fb5f07b5965acf
     variant APAC id=0x0b38df8be8d23c24
     variant SA id=0x09460f07b5d5be59
+
+union Payload
+    arm login id=0x03c75db6e18f29d2 payload=LoginRequest
+    arm result id=0x9b51cd7cd76778c4 payload=MatchResult
+    arm purchase id=0x0ba8e96f5598f0c2 payload=StorePurchase
 
 ## history
 ### 2026-09-04 — first baseline: the message form's corpus (docs/SPEC-TABLES.md §3.3)

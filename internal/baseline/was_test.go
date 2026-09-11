@@ -65,7 +65,7 @@ func TestTableRenamedUnderWasMovesNothing(t *testing.T) {
 	// the file keeps the wire name on every line, and records the declared
 	// name beside it so a later rename can be told which spelling is right
 	text := live.Text()
-	for _, want := range []string{"table Vessel name=Ship\n", "type=Vessel", "table Fleet\n"} {
+	for _, want := range []string{"table Vessel name=Ship fixed=true\n", "type=Vessel", "table Fleet\n"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the rendered baseline lacks %q:\n%s", want, text)
 		}

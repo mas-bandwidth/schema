@@ -1420,9 +1420,14 @@ func TestWasChainIsRefused(t *testing.T) {
 	if ctrl := baseline.Diff(committed(t, wasSrc), baseline.Render(unit(t, right)), baseline.DefaultTokenPolicy); len(ctrl) != 0 {
 		t.Errorf("carrying the first wire name forward is the whole point of `was`; it must be silent, got:%s", summary(ctrl))
 	}
-	// the ATTRIBUTION control
-	if got := baseline.Diff(committed(t, wasSrc), baseline.Render(unit(t, edited)), without("was-chain")); len(got) != 0 {
-		t.Errorf("with the \"was-chain\" rule removed the edit passes as it did before, got:%s", summary(got))
+	// the ATTRIBUTION control. The `was-chain` row is what names the chain; a
+	// second `was` aimed at the intermediate spelling also hashes a NEW id,
+	// so on a FIXED table the monotone law of the fixed form sees the locked
+	// id gone and refuses on its own (monotone_lists.go, bill §6) — which is
+	// the rule working, not this one. The control is that the CHAIN refusal
+	// is the only thing the row was holding up.
+	if got := baseline.Diff(committed(t, wasSrc), baseline.Render(unit(t, edited)), without("was-chain")); find(got, baseline.Refuse, "ShipConfig.max_speed", "FIRST wire name") {
+		t.Errorf("with the \"was-chain\" rule removed the chain refusal must not fire, got:%s", summary(got))
 	}
 }
 

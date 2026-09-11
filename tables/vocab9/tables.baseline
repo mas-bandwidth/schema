@@ -1,7 +1,7 @@
 schema-tables-baseline 7
 package vocab9demo
 
-table Wide00
+table Wide00 fixed=true
     field field_00_00 id=0x0608e822268486dd kind=8 default=0
     field field_00_01 id=0x0608e7222684852a kind=8 default=0
     field field_00_02 id=0x0608e62226848377 kind=8 default=0
@@ -16,7 +16,7 @@ table Wide00
     field field_00_11 id=0x0605632226816f07 kind=8 default=0
     field field_00_12 id=0x06056422268170ba kind=8 default=0
 
-table Wide01
+table Wide01 fixed=true
     field field_01_00 id=0x5c6e9229c1ee10ec kind=8 default=0
     field field_01_01 id=0x5c6e9329c1ee129f kind=8 default=0
     field field_01_02 id=0x5c6e9429c1ee1452 kind=8 default=0
@@ -31,7 +31,7 @@ table Wide01
     field field_01_11 id=0x5c721729c1f128c2 kind=8 default=0
     field field_01_12 id=0x5c721629c1f1270f kind=8 default=0
 
-table Wide02
+table Wide02 fixed=true
     field field_02_00 id=0x89bb9c30246ce93b kind=8 default=0
     field field_02_01 id=0x89bb9b30246ce788 kind=8 default=0
     field field_02_02 id=0x89bb9e30246ceca1 kind=8 default=0
@@ -46,7 +46,7 @@ table Wide02
     field field_02_11 id=0x89b817302469d165 kind=8 default=0
     field field_02_12 id=0x89b814302469cc4c kind=8 default=0
 
-table Wide03
+table Wide03 fixed=true
     field field_03_00 id=0x5f3da63b6dd5a9ea kind=8 default=0
     field field_03_01 id=0x5f3da73b6dd5ab9d kind=8 default=0
     field field_03_02 id=0x5f3da43b6dd5a684 kind=8 default=0
@@ -61,7 +61,7 @@ table Wide03
     field field_03_11 id=0x5f410b3b6dd88b60 kind=8 default=0
     field field_03_12 id=0x5f410e3b6dd89079 kind=8 default=0
 
-table Wide04
+table Wide04 fixed=true
     field field_04_00 id=0x6078d04094e30c99 kind=8 default=0
     field field_04_01 id=0x6078cf4094e30ae6 kind=8 default=0
     field field_04_02 id=0x6078ce4094e30933 kind=8 default=0
@@ -76,7 +76,7 @@ table Wide04
     field field_04_11 id=0x6075cb4094e0ce43 kind=8 default=0
     field field_04_12 id=0x6075cc4094e0cff6 kind=8 default=0
 
-table Wide05
+table Wide05 fixed=true
     field field_05_00 id=0x37adda4bdfbd61c8 kind=8 default=0
     field field_05_01 id=0x37addb4bdfbd637b kind=8 default=0
     field field_05_02 id=0x37addc4bdfbd652e kind=8 default=0
@@ -91,7 +91,7 @@ table Wide05
     field field_05_11 id=0x37b15f4bdfc0799e kind=8 default=0
     field field_05_12 id=0x37b15e4bdfc077eb kind=8 default=0
 
-table Wide06
+table Wide06 fixed=true
     field field_06_00 id=0x8e13a4537b272237 kind=8 default=0
     field field_06_01 id=0x8e13a3537b272084 kind=8 default=0
     field field_06_02 id=0x8e13a6537b27259d kind=8 default=0
@@ -106,7 +106,7 @@ table Wide06
     field field_06_11 id=0x8e101f537b240a61 kind=8 default=0
     field field_06_12 id=0x8e101c537b240548 kind=8 default=0
 
-table Wide07
+table Wide07 fixed=true
     field field_07_00 id=0xb9ad8e59dc342fa6 kind=8 default=0
     field field_07_01 id=0xb9ad8f59dc343159 kind=8 default=0
     field field_07_02 id=0xb9ad8c59dc342c40 kind=8 default=0
@@ -121,7 +121,7 @@ table Wide07
     field field_07_11 id=0xb9b11359dc37477c kind=8 default=0
     field field_07_12 id=0xb9b11659dc374c95 kind=8 default=0
 
-table Wide08
+table Wide08 fixed=true
     field field_08_00 id=0x26de17dcb256f565 kind=8 default=0
     field field_08_01 id=0x26de16dcb256f3b2 kind=8 default=0
     field field_08_02 id=0x26de15dcb256f1ff kind=8 default=0
@@ -136,7 +136,7 @@ table Wide08
     field field_08_11 id=0x26db12dcb254b70f kind=8 default=0
     field field_08_12 id=0x26db13dcb254b8c2 kind=8 default=0
 
-table Wide09
+table Wide09 fixed=true
     field field_09_00 id=0xfbf3a1e7fb63bdb4 kind=8 default=0
     field field_09_01 id=0xfbf3a2e7fb63bf67 kind=8 default=0
     field field_09_02 id=0xfbf3a3e7fb63c11a kind=8 default=0
@@ -151,7 +151,7 @@ table Wide09
     field field_09_11 id=0xfbf6a6e7fb65fc0a kind=8 default=0
     field field_09_12 id=0xfbf6a5e7fb65fa57 kind=8 default=0
 
-table Wide10
+table Wide10 fixed=true
     field field_10_00 id=0x768f8657129836da kind=8 default=0
     field field_10_01 id=0x768f87571298388d kind=8 default=0
     field field_10_02 id=0x768f845712983374 kind=8 default=0
@@ -166,7 +166,7 @@ table Wide10
     field field_10_11 id=0x7692eb57129b1850 kind=8 default=0
     field field_10_12 id=0x7692ee57129b1d69 kind=8 default=0
 
-table Wide11
+table Wide11 fixed=true
     field field_11_00 id=0x9f5a7c4bc7bde1ab kind=8 default=0
     field field_11_01 id=0x9f5a7b4bc7bddff8 kind=8 default=0
     field field_11_02 id=0x9f5a7e4bc7bde511 kind=8 default=0
@@ -181,7 +181,7 @@ table Wide11
     field field_11_11 id=0x9f56f74bc7bac9d5 kind=8 default=0
     field field_11_12 id=0x9f56f44bc7bac4bc kind=8 default=0
 
-table Wide12
+table Wide12 fixed=true
     field field_12_00 id=0x9e1f3246a0b0489c kind=8 default=0
     field field_12_01 id=0x9e1f3346a0b04a4f kind=8 default=0
     field field_12_02 id=0x9e1f3446a0b04c02 kind=8 default=0
@@ -196,7 +196,7 @@ table Wide12
     field field_12_11 id=0x9e223746a0b286f2 kind=8 default=0
     field field_12_12 id=0x9e223646a0b2853f kind=8 default=0
 
-table Wide13
+table Wide13 fixed=true
     field field_13_00 id=0xc89d483b5747be4d kind=8 default=0
     field field_13_01 id=0xc89d473b5747bc9a kind=8 default=0
     field field_13_02 id=0xc89d463b5747bae7 kind=8 default=0
@@ -211,7 +211,7 @@ table Wide13
     field field_13_11 id=0xc899c33b5744a677 kind=8 default=0
     field field_13_12 id=0xc899c43b5744a82a kind=8 default=0
 
-table Wide14
+table Wide14 fixed=true
     field field_14_00 id=0xd0ff6e7580f6bc96 kind=8 default=0
     field field_14_01 id=0xd0ff6f7580f6be49 kind=8 default=0
     field field_14_02 id=0xd0ff6c7580f6b930 kind=8 default=0
@@ -226,7 +226,7 @@ table Wide14
     field field_14_11 id=0xd102f37580f9d46c kind=8 default=0
     field field_14_12 id=0xd102f67580f9d985 kind=8 default=0
 
-table Wide15
+table Wide15 fixed=true
     field field_15_00 id=0xcfc4447059e959e7 kind=8 default=0
     field field_15_01 id=0xcfc4437059e95834 kind=8 default=0
     field field_15_02 id=0xcfc4467059e95d4d kind=8 default=0
@@ -241,7 +241,7 @@ table Wide15
     field field_15_11 id=0xcfc0bf7059e64211 kind=8 default=0
     field field_15_12 id=0xcfc0bc7059e63cf8 kind=8 default=0
 
-table Wide16
+table Wide16 fixed=true
     field field_16_00 id=0xf88f3a650f0f04b8 kind=8 default=0
     field field_16_01 id=0xf88f3b650f0f066b kind=8 default=0
     field field_16_02 id=0xf88f3c650f0f081e kind=8 default=0
@@ -256,7 +256,7 @@ table Wide16
     field field_16_11 id=0xf892bf650f121c8e kind=8 default=0
     field field_16_12 id=0xf892be650f121adb kind=8 default=0
 
-table Wide17
+table Wide17 fixed=true
     field field_17_00 id=0xa229705d73a54449 kind=8 default=0
     field field_17_01 id=0xa2296f5d73a54296 kind=8 default=0
     field field_17_02 id=0xa2296e5d73a540e3 kind=8 default=0
@@ -271,7 +271,7 @@ table Wide17
     field field_17_11 id=0xa225eb5d73a22c73 kind=8 default=0
     field field_17_12 id=0xa225ec5d73a22e26 kind=8 default=0
 
-table Wide18
+table Wide18 fixed=true
     field field_18_00 id=0x96f836119e0ead02 kind=8 default=0
     field field_18_01 id=0x96f837119e0eaeb5 kind=8 default=0
     field field_18_02 id=0x96f834119e0ea99c kind=8 default=0
@@ -286,7 +286,7 @@ table Wide18
     field field_18_11 id=0x96fb3b119e10eb58 kind=8 default=0
     field field_18_12 id=0x96fb3e119e10f071 kind=8 default=0
 
-table Wide19
+table Wide19 fixed=true
     field field_19_00 id=0x3f4bec0a018f5073 kind=8 default=0
     field field_19_01 id=0x3f4beb0a018f4ec0 kind=8 default=0
     field field_19_02 id=0x3f4bee0a018f53d9 kind=8 default=0

@@ -171,3 +171,48 @@ func TestTheDeclaredClassReachesTheIr(t *testing.T) {
 		t.Errorf("VariableTables is not the flag's complement: %v", v)
 	}
 }
+
+// TestAFixedTableCannotReachItself is the owner's fourth sentence, its second
+// half: "fixed tables must only allow other fixed tables to be included in
+// them, and not recursively include themselves"
+// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2a). A fixed closure is a TREE of
+// fixed things, and there are exactly two paths by which a table could reach
+// itself — BY VALUE, which is an infinite record, and THROUGH A POINTER, which
+// is what a cyclic structure actually needs. Both are refused, and the first
+// half of the sentence (every member of the closure is itself fixed) is
+// TestFixedTableClosureRefusals above, a row per construct.
+func TestAFixedTableCannotReachItself(t *testing.T) {
+	for _, tc := range []struct{ name, want, src string }{
+		{
+			name: "itself by value", want: "cycle",
+			src: "package t\nfixed table Node { again Node }\n",
+		},
+		{
+			// through a `type` the path does not even exist: a table cannot
+			// ride in a `type` at all, which is a stronger refusal than the
+			// cycle and is the reason the closure is a tree of `type`s and
+			// fixed tables rather than a graph.
+			name: "itself by value, through a type", want: "not a wire type",
+			src: "package t\ntype Wrap { node Node }\nfixed table Node { wrap Wrap }\n",
+		},
+		{
+			name: "itself through a fixed array", want: "cycle",
+			src: "package t\nfixed table Node { kids [2]Node }\n",
+		},
+		{
+			// the one spelling that is not an infinite record is the one a
+			// cyclic structure wants, and a pointer is refused in a fixed
+			// closure on its own account (§2.2) — which is WHY a fixed table
+			// cannot reach itself by any path.
+			name: "itself through a pointer", want: "is a pointer",
+			src: "package t\nfixed table Node { next *Node }\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := refuse(t, tc.src)
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("the refusal must say %q: %s", tc.want, got)
+			}
+		})
+	}
+}

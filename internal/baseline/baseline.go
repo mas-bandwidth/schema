@@ -102,6 +102,21 @@ type Table struct {
 	// DOES NOT CARRY beyond `name=`: [Render] fills it on the live projection
 	// alone, where the chain refusal reads it (§18.2).
 	Was string
+
+	// Fixed is the `fixed` KEYWORD (docs/SPEC-TABLES.md §2.2), rendered as
+	// `fixed=true` at the END of the table line. It is the one fact the
+	// monotone law of the fixed form needs and the projection did not carry
+	// (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, §6): a fixed record is
+	// walked by offset, so its list law is stricter than the id-table wire's,
+	// and the file has to say which law a member is under.
+	//
+	// IT BUMPS NO RENDERING VERSION, by §18.1's own test: the token sits at
+	// the END of a line every older file still parses, and the rules below
+	// read the token on the COMMITTED side — a baseline written before this
+	// rendering carries it nowhere, so it says nothing about an untouched
+	// schema and greets it with no diagnostic. The first `--update` after
+	// this lands is what locks a unit's forms in.
+	Fixed bool
 }
 
 // A Field is one field of a closure member: its declared name, its EFFECTIVE
@@ -211,7 +226,13 @@ func Render(u *ir.Unit) *Unit {
 		// spelling, and a `was` rename moves that while moving no byte — so
 		// the entry is keyed by the holder's wire id and the field's, and a
 		// rename moves nothing in this file.
-		t := Table{Name: ir.ProjectionMemberName(u, name), Declared: name, Was: st.WasName}
+		// THE KEYWORD RIDES ON A DECLARATION. A map's generated ENTRY is
+		// declared by nobody (§2.8) — it takes the class its own body can
+		// hold — so no `fixed` token rides on its line and the monotone law
+		// of the fixed form (monotone_lists.go) does not root on it: a map
+		// makes its holder variable, so an entry is never inside a fixed
+		// closure to begin with.
+		t := Table{Name: ir.ProjectionMemberName(u, name), Declared: name, Was: st.WasName, Fixed: st.FixedDeclared && st.MapEntryOf == ""}
 		if st.MapEntryOf != "" {
 			t.Declared = t.Name
 		}
@@ -467,11 +488,17 @@ func (u *Unit) Text() string {
 	fmt.Fprintf(&b, "package %s\n", u.Package)
 
 	for _, t := range u.Tables {
+		// the TABLE LINE's tokens, in column order: the declared name of a
+		// renamed table, then the `fixed` keyword at the END (§18.1's rule
+		// for a new token, see Table.Fixed)
+		fmt.Fprintf(&b, "\ntable %s", t.Name)
 		if t.Declared != "" && t.Declared != t.Name {
-			fmt.Fprintf(&b, "\ntable %s name=%s\n", t.Name, t.Declared)
-		} else {
-			fmt.Fprintf(&b, "\ntable %s\n", t.Name)
+			fmt.Fprintf(&b, " name=%s", t.Declared)
 		}
+		if t.Fixed {
+			b.WriteString(" fixed=true")
+		}
+		b.WriteString("\n")
 		for _, f := range t.Fields {
 			fmt.Fprintf(&b, "    field %s id=0x%016x", f.Name, f.Id)
 			for _, tok := range f.Tokens {
@@ -559,9 +586,18 @@ func Parse(path string, data []byte) (*Unit, error) {
 		if !strings.HasPrefix(line, " ") {
 			// a section opener; a table line may carry `name=<declared>`, the
 			// declared name of a table renamed under `was` (§18.1)
-			declared := ""
-			if fields[0] == "table" && len(fields) == 3 && strings.HasPrefix(fields[2], "name=") {
-				declared = strings.TrimPrefix(fields[2], "name=")
+			declared, fixed := "", false
+			if fields[0] == "table" && len(fields) > 2 {
+				for _, tok := range fields[2:] {
+					switch k, val, _ := strings.Cut(tok, "="); k {
+					case "name":
+						declared = val
+					case "fixed":
+						fixed = val == "true"
+					default:
+						return nil, fmt.Errorf("%s:%d: unknown table token %q", path, i+1, tok)
+					}
+				}
 				fields = fields[:2]
 			}
 			if len(fields) != 2 {
@@ -571,7 +607,7 @@ func Parse(path string, data []byte) (*Unit, error) {
 			case "package":
 				u.Package = fields[1]
 			case "table":
-				u.Tables = append(u.Tables, Table{Name: fields[1], Declared: declared})
+				u.Tables = append(u.Tables, Table{Name: fields[1], Declared: declared, Fixed: fixed})
 			case "enum":
 				u.Enums = append(u.Enums, Enum{Name: fields[1]})
 			case "flags":

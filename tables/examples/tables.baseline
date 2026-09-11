@@ -1,7 +1,7 @@
 schema-tables-baseline 7
 package tabledemo
 
-table ArchiveConfig
+table ArchiveConfig fixed=true
     field root id=0xa354fd1ff0c467c5 kind=13 type=RootConfig
     field count id=0xb1e5e28e4479a274 kind=4 min=0 max=100 default=1
 
@@ -15,32 +15,32 @@ table Buff
 table Debuff
     field amount id=0x8113fe7ea2b16969 kind=4 min=0 max=100 default=0
 
-table GlobalSettings
+table GlobalSettings fixed=true
     field tick_rate id=0xa65f859b617deaf3 kind=8 min=1 max=240 default=60
     field difficulty id=0x467f35a74c6e4a70 kind=7 enum=Difficulty default=Normal
     field build_note id=0x14ec921cc2549d60 kind=12 size=48
     field spawn_delays id=0x09ae5613b0051271 kind=14 elem=10 array=fixed bound=3
 
-table GunnerConfig
+table GunnerConfig fixed=true
     field reaction id=0xb75aa3662201646a kind=10 default=0.2
     field tracking id=0xa6bf719a4602b0bc kind=1
 
-table GunnerSettings
+table GunnerSettings fixed=true
     field reaction id=0xb75aa3662201646a kind=10 default=0.2
     field tracking id=0xa6bf719a4602b0bc kind=1
     field callsign id=0x5bc44627b9848818 kind=12 size=24
 
-table HullConfig
+table HullConfig fixed=true
     field health id=0x7f69d4b5288ba9cf kind=10 default=100.0
     field mass id=0x1f3757a2ce7b0ab1 kind=10 default=1.0
     field turrets id=0x84f8260bc283608c kind=16 elem=13 type=TurretConfig array=keyed bound=3 key=Weapon
 
-table KeyedConfig
+table KeyedConfig fixed=true
     field teams id=0xbaaeb048a5a8fa6d kind=16 elem=13 type=TeamConfig array=keyed bound=3 key=Team
     field hulls id=0xce0ac3c25694d8ff kind=16 elem=13 type=HullConfig array=keyed bound=3 key=Hull
     field scores id=0x01986b0b27400fb2 kind=13 type=ScoreBoard
 
-table LoadoutConfig
+table LoadoutConfig fixed=true
     field grade id=0x32a89b2977c48ad4 kind=7 enum=Grade default=Silver
     field grades id=0xd90a4e7682f799c5 kind=14 elem=7 enum=Grade array=bounded bound=4
     field podium id=0xb46ff45a23d72549 kind=14 elem=7 enum=Grade array=fixed bound=3
@@ -49,7 +49,7 @@ table LoadoutConfig
     field backups id=0xde28f0f5118acc24 kind=14 elem=13 type=WeaponConfig array=fixed bound=2
     field attachments id=0xf901aa0340249a41 kind=14 elem=13 type=Attachment array=bounded bound=8
 
-table PackConfig
+table PackConfig fixed=true
     field version id=0xbb62c62c9808ea37 kind=8 default=1
     field global id=0x7fb43557b54149ce kind=13 type=GlobalSettings
     field ships id=0x294a5c4913e1ad44 kind=16 elem=13 type=ShipEntry array=keyed bound=3 key=ShipType
@@ -64,7 +64,7 @@ table Patrol
     field wander id=0xb8c758d8bd1845d4 kind=10 default=0.5
     field note id=0x3bf8fbbad1587cdd kind=12 size=8
 
-table ProfileConfig
+table ProfileConfig fixed=true
     field name id=0xc4bcadba8e631b86 kind=12 size=32
     field icon id=0xdbff4cc56c2092f0 kind=14 elem=6 size=16
     field experience id=0xab8b6d521f80b969 kind=8 default=0
@@ -79,7 +79,7 @@ table ProfileConfig
     field has_loadout id=0xa06f5e0a148e253c kind=1
     field loadout id=0x5759ce7586bbb5a3 kind=13 type=LoadoutConfig
 
-table RangedSigned
+table RangedSigned fixed=true
     field i8_span id=0x48121511bf702eb5 kind=2 min=-128 max=127
     field i8_low id=0x942bfe3168090f7d kind=2 min=-128 max=126
     field i8_high id=0xd182acd105b55dd1 kind=2 min=-127 max=127
@@ -98,7 +98,7 @@ table RangedSigned
     field i64_inside id=0xd308fcb98ece5d23 kind=5 min=-9223372036854775807 max=9223372036854775806
     field edges id=0xc70cde6b85b6197d kind=14 elem=3 array=bounded bound=4 min=-32768 max=32767
 
-table RangedUnsigned
+table RangedUnsigned fixed=true
     field u8_span id=0x0f8897557f37c021 kind=6 min=0 max=255
     field u8_low id=0x2e17553f8200a2a1 kind=6 min=0 max=254
     field u8_high id=0xa0e5c60df9301b7d kind=6 min=1 max=255 default=1
@@ -117,7 +117,7 @@ table RangedUnsigned
     field u64_inside id=0x713e12017eebcaf7 kind=9 min=1 max=18446744073709551614 default=1
     field counts id=0xc341febe5aae51e5 kind=14 elem=9 array=bounded bound=4 min=0 max=18446744073709551615
 
-table RangedWidths
+table RangedWidths fixed=true
     field b8 id=0x08a60c07b54d8dc7 kind=6
     field b16 id=0xff95701912ad97be kind=7
     field b32 id=0xff9c5c1912b39470 kind=8
@@ -125,7 +125,7 @@ table RangedWidths
     field b12 id=0xff95741912ad9e8a kind=7
     field b48 id=0xff8b681912a535a1 kind=9
 
-table RootConfig
+table RootConfig fixed=true
     field version_note id=0x8a67c9728746d394 kind=12 size=16
     field weapons id=0x41cbd901b87fabb6 kind=14 elem=13 type=WeaponConfig array=bounded bound=8
     field profiles id=0x8181e61fc0436767 kind=14 elem=13 type=ProfileConfig array=bounded bound=4
@@ -133,23 +133,23 @@ table RootConfig
 table ScoreBoard
     field per_team id=0xf10fad739a0e1660 kind=16 elem=4 array=keyed bound=3 key=Team min=0 max=100000
 
-table ShipEntry
+table ShipEntry fixed=true
     field display_name id=0x2d21d7cd66bd5a5d kind=12 size=32
     field health id=0x7f69d4b5288ba9cf kind=10 default=100.0
     field mass id=0x1f3757a2ce7b0ab1 kind=10 default=1.0
     field hardpoints id=0x95d0cce09ca82b73 kind=14 elem=4 array=bounded bound=4 min=0 max=8
     field gunner id=0x40dbb648c0cd44aa kind=13 type=GunnerSettings optional=true
 
-table TeamConfig
+table TeamConfig fixed=true
     field spawn_count id=0xceec99e2d65db674 kind=4 min=0 max=64 default=4
     field banner id=0xbca0dab1c7a00ccf kind=12 size=16
 
-table TurretConfig
+table TurretConfig fixed=true
     field damage id=0x7f6308be8ab37fc0 kind=10 default=10.0
     field cooldown id=0xdc2cbe6953343d48 kind=10 default=0.5
     field gunner id=0x40dbb648c0cd44aa kind=13 type=GunnerConfig optional=true
 
-table WeaponConfig
+table WeaponConfig fixed=true
     field damage id=0x7f6308be8ab37fc0 kind=10 default=21.0
     field speed id=0x1733055702acb1d2 kind=10 default=500.0 was=velocity
     field penetration id=0x4f31c5309e13e932 kind=4 min=0 max=10 default=1
@@ -157,7 +157,7 @@ table WeaponConfig
     field homing id=0xad6587bc602e3f59 kind=1
     field effect id=0x36c1c83b51f24394 kind=15 union=Effect
 
-table WideBlob
+table WideBlob fixed=true
     field label id=0x39f7fcec8fcb623d kind=12 size=70000
     field payload id=0xcfb8a9d063b5e9e5 kind=14 elem=6 size=70000
     field samples id=0xe3b1ca6a3b48dddc kind=14 elem=7 array=bounded bound=70000

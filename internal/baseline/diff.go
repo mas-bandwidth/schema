@@ -208,6 +208,7 @@ func Diff(base, live *Unit, policy map[string]TokenRule) []Finding {
 	out = append(out, d.diffEnums()...)
 	out = append(out, d.diffFlags()...)
 	out = append(out, d.diffUnions()...)
+	out = append(out, monotoneListFindings(base, live)...) // monotone law, lists (bill §6)
 	return out
 }
 

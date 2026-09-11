@@ -12,7 +12,7 @@ table Feed
     field parts id=0x0c519da7a1f958c5 kind=14 elem=17 type=Chunk array=bounded bound=4
     field pair id=0x0369250deb889a31 kind=14 elem=17 type=Chunk array=fixed bound=2
 
-table Header
+table Header fixed=true
     field name id=0xc4bcadba8e631b86 kind=12 size=16
 
 union Frame

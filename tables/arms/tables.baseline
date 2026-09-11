@@ -24,10 +24,10 @@ table Nest
     field outer id=0x30e6ed678f5e1bd4 kind=15 union=Outer
     field tail id=0xd94c56ef0798d723 kind=14 elem=4 array=unbounded
 
-table Node
+table Node fixed=true
     field v id=0xaf63eb4c86020609 kind=4
 
-table Only
+table Only fixed=true
     field w id=0xaf63ea4c86020456 kind=4
 
 table Rack
