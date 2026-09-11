@@ -1029,13 +1029,13 @@ fn the_bench_corpus(dir: &str) {
         "bench_fixed: this build's LAYOUT IS the corpus's, byte for byte",
     );
     check(
-        // RE-PINNED by a3fbb47d ("digest is computed inside
-        // ir.TableFixedLayoutHash": the hash is fnv1a64 over the layout bytes
-        // AND the definitions digest, bill §13). The corpus carries this value
-        // at byte 8 and every other leg pins it — generated/bench/paired/{go,c,
-        // cpp,cs}, internal/codegen/{js,dart,elixir}table/fixedform_test.go —
-        // and this line is the one that was left on the old number.
-        benchfixed::FIXED_TABLE_FIXED_HASH == 0x98d3_af4e_8cea_cd29,
+        // RE-PINNED AGAIN by #916 (the definitions digest now reaches a
+        // float field's range, so every fixed layout's hash moved). The value
+        // is not chosen here: it is the one the corpus carries at byte 8 of
+        // bench_fixed.bin, and every other leg pins the same number —
+        // generated/bench/paired/{go,c,cpp,cs},
+        // internal/codegen/{js,dart,elixir}table/fixedform_test.go.
+        benchfixed::FIXED_TABLE_FIXED_HASH == 0x6237_c1dc_195f_9ec9,
         "bench_fixed: the pinned block hash",
     );
 

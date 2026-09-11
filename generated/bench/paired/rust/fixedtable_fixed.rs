@@ -269,7 +269,7 @@ pub const FIXED_TABLE_FIXED_PLAN: [TableFixedEntry; 1] = [TableFixedEntry {
 /// is not on the wire and the number cannot be re-derived from a file (§5.2).
 pub const FIXED_TABLE_FIXED_LINEAGE: [TableFixedKnown; 1] = [
     TableFixedKnown {
-        hash: 0x98d3af4e8ceacd29,
+        hash: 0x6237c1dc195f9ec9,
         layout: &FIXED_TABLE_FIXED_BLOCK,
         record: 1244,
         retired: false,
