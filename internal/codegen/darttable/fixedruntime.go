@@ -67,11 +67,11 @@ abstract final class TableFixedOp {
   static const int textBytes = 3;
 }
 
-/// A PLAN ENTRY is eight int32 lanes of one flat Int32List. A flat list of a
+/// A PLAN ENTRY is nine int32 lanes of one flat Int32List. A flat list of a
 /// fixed stride is what keeps the read loop monomorphic: the loop never
 /// touches a field name and nothing is allocated.
 abstract final class TableFixedLane {
-  static const int lanes = 8;
+  static const int lanes = 9;
   static const int op = 0;
   static const int src = 1;
   static const int dst = 2;
@@ -80,6 +80,9 @@ abstract final class TableFixedLane {
   static const int guard = 5;
   static const int arg = 6;
   static const int meta = 7;
+
+  // THE GUARD'S WIDTH IN BYTES: a union tag is one, two, four or eight
+  static const int argw = 8;
 
   // MY SIDE of the layout, five lanes per entry of my own: the storage facts a
   // layout entry cannot carry. In C++ these are offsetof rows; the reader's own
@@ -667,6 +670,9 @@ final class TableFixedPlan {
   bool ready = false;
   bool overflow = false;
 
+  /// the CURRENT union's tag width, stamped onto every push — C++'s c.argw
+  int argw = 1;
+
   /// the sixteen-byte conversion scratch the float rung widens through
   final ByteData conv = ByteData(16);
 }
@@ -682,6 +688,24 @@ final class TableFixedPlanCache {
     plans[hash] = plan;
     return plan;
   }
+}
+
+/// THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose low
+/// byte happens to be 1 is not arm 1: it is an ordinal this build has no arm
+/// for, and reading only the first byte let 0x0101 run arm 1's entries over
+/// a stranger's record. ArgW 0 means 1, as C++; >8 clamps to 8.
+int tableFixedTagAt(Uint8List src, int at, int argw) {
+  var w = argw;
+  if (w == 0) {
+    w = 1;
+  } else if (w > 8) {
+    w = 8;
+  }
+  var v = 0;
+  for (var i = 0; i < w; i++) {
+    v |= src[at + i] << (8 * i);
+  }
+  return v;
 }
 
 /// THE ONE READ LOOP. A READ IS A PREFILL AND THIS LOOP, AND NOTHING ELSE.
@@ -710,9 +734,11 @@ void tableFixedRun(
   for (var i = 0; i < entryCount; i++) {
     final b = i * TableFixedLane.lanes;
     final guard = plan[b + TableFixedLane.guard];
-    // an entry belonging to an ARM runs only under its own tag
+    // an entry belonging to an ARM runs only under its own tag, compared at
+    // ArgW bytes, never as a prefix
     if (guard != tableFixedNoGuard &&
-        source[at + guard] != plan[b + TableFixedLane.arg]) {
+        tableFixedTagAt(source, at + guard, plan[b + TableFixedLane.argw]) !=
+            plan[b + TableFixedLane.arg]) {
       continue;
     }
     final s = at + plan[b + TableFixedLane.src];
@@ -866,6 +892,12 @@ abstract final class TableFixedCompiler {
     e[b + TableFixedLane.guard] = guard;
     e[b + TableFixedLane.arg] = arg;
     e[b + TableFixedLane.meta] = meta;
+    // argw IS THE GUARD'S WIDTH IN BYTES. Flavour stays in meta. Zero is one.
+    var w = plan.argw;
+    if (w == 0) {
+      w = 1;
+    }
+    e[b + TableFixedLane.argw] = w;
     plan.count++;
   }
 
@@ -1057,6 +1089,8 @@ abstract final class TableFixedCompiler {
       case 15: // a union: the tag, remapped, then each arm matched by id
         final theirTag = theirs.tagBytes(ti);
         final myTag = mine.tagBytes(mi);
+        final savedArgw = plan.argw;
+        plan.argw = (theirTag >= 1 && theirTag <= 8) ? theirTag : 1;
         final theirArms = theirs.children(ti);
         final myArms = mine.children(mi);
         var myArm = mi + 1;
@@ -1093,6 +1127,7 @@ abstract final class TableFixedCompiler {
           }
           myArm += mine.subtree(myArm);
         }
+        plan.argw = savedArgw;
         break;
       case 30: // an enum: the ordinal is the layout's position, so it remaps
         final theirVariants = theirs.children(ti);
@@ -1182,6 +1217,7 @@ abstract final class TableFixedCompiler {
             e[b + TableFixedLane.op] == TableFixedOp.copy &&
             e[p + TableFixedLane.guard] == e[b + TableFixedLane.guard] &&
             e[p + TableFixedLane.arg] == e[b + TableFixedLane.arg] &&
+            e[p + TableFixedLane.argw] == e[b + TableFixedLane.argw] &&
             e[p + TableFixedLane.src] + e[p + TableFixedLane.size] ==
                 e[b + TableFixedLane.src] &&
             e[p + TableFixedLane.dst] + e[p + TableFixedLane.size] ==
@@ -1215,6 +1251,7 @@ abstract final class TableFixedCompiler {
     plan.count = 0;
     plan.remapUsed = 0;
     plan.overflow = false;
+    plan.argw = 1;
     matchChildren(plan, 0, 0, 0, myDst, 0, tableFixedNoGuard, 0, report);
     if (plan.overflow) {
       return -1;
