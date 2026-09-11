@@ -224,12 +224,32 @@ jobs:
               [ -d "${p#./}" ] || continue
               case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
             done
-            packages=$(echo "$packages" | xargs || true)
+            # trimmed by an unquoted expansion rather than by `xargs`: see the
+            # block at the JSON line below for why xargs is not used here.
+            packages=$(echo $packages)
           fi
 
-          # the legs as a JSON array, which is what a matrix reads
-          json=$(printf '%s' "$legs" | xargs -n1 2>/dev/null | sort -u | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $1} END{printf "]"}')
+          # THE LEGS AS A JSON ARRAY, which is what a matrix reads — and an
+          # EMPTY SELECTION MUST BE `[]`, because a matrix reading `[""]`
+          # dispatches one row whose leg name is the empty string. That is
+          # exactly what PR #933 ran: a bench-only diff touches no leg, and the
+          # row `fixed form + versioning ()` reddened on this file's own
+          # `no fixed-form gate is registered for leg ''`.
+          #
+          # THE CAUSE WAS `xargs`, and it is a real difference between the
+          # platforms: POSIX and GNU xargs run the command ONCE EVEN WITH NO
+          # INPUT (BSD/macOS xargs does not), so `printf '' | xargs -n1` prints
+          # one blank line on the ubuntu runner, `sort -u` keeps it, and awk
+          # emits a single empty element. Verified on x86-64 Linux before this
+          # change: the old pipeline printed `[""]` for an empty `legs`.
+          # So the splitting is an unquoted expansion and `awk NF` drops any
+          # blank record — with no input at all, awk's BEGIN/END still print
+          # `[]`, which is what `leg-gate`'s `if:` below tests for.
+          json=$(printf '%s\n' $legs | awk 'NF' | sort -u | awk 'BEGIN{printf "["} {printf "%s\"%s\"", (NR>1?",":""), $1} END{printf "]"}')
           [ -n "$json" ] || json='[]'
+          case "$json" in
+            *'""'*) echo "::error::the leg selection contains an empty element ($json) — a matrix row with no leg name would run the default arm of leg-gate"; exit 1 ;;
+          esac
 
           echo "broad=$broad"        >> "$GITHUB_OUTPUT"
           echo "packages=$packages"  >> "$GITHUB_OUTPUT"
@@ -335,6 +355,53 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # THE SIBLING RUNTIMES, because `go test` of an emitter package is not a
+      # unit test: it writes a probe module into a temp dir whose go.mod
+      # `replace`s the runtime to ../../../../serialize.go (and ../serialize.c,
+      # ../serialize.cs, ../serialize.rs for the C, C# and Rust emitters) and
+      # then compiles it. ci-full.yml's `go-test` clones these four before it
+      # runs a single test FOR THIS REASON; this job did not, and so PR #955's
+      # touched package died as `--- FAIL: TestArrayLengthCacheWire ...
+      # FAIL probe [setup failed]` — the probe module's replace target was not
+      # on disk. A gate that cannot compile the thing it measures is not a
+      # cheaper gate, it is a red one.
+      #
+      # ALL FIVE, ALWAYS, AND MEASURED: these are shallow clones of five ~1 MB
+      # repositories in parallel — about 1-3 s, against a 25-35 s floor for the
+      # job — so selecting the subset a package happens to need would cost more
+      # reading than it saves running. ../serialize is in the list on its own
+      # account: internal/fuzz's compile check SKIPS ITSELF without it, which is
+      # the quiet green ci-full.yml's block names. serialize.rs joins the four
+      # `go-test` clones because internal/codegen/rust's tests link it by path.
+      #
+      # THE PINS ARE THIS FILE'S OWN `env:` BLOCK, the same tags ci-full.yml and
+      # certify.yml carry: what a schema commit proves must not change because
+      # a sibling merged to main at lunchtime.
+      - name: Check out the sibling runtimes the touched packages link (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          # A self-hosted runner's workspace PARENT persists between runs, so a
+          # previous run's clones are still sitting here. They are removed and
+          # re-cloned at the pinned tag every time, never reused: the sibling
+          # pins are part of what a green means.
+          rm -rf serialize serialize.go serialize.c serialize.rs serialize.cs serialize.js
+          clone() { git clone --quiet --depth 1 --branch "$2" "https://github.com/mas-bandwidth/$1.git" "$1"; }
+          pids=""
+          clone serialize    "$SERIALIZE_TAG"    & pids="$pids $!"
+          clone serialize.c  "$SERIALIZE_C_TAG"  & pids="$pids $!"
+          clone serialize.go "$SERIALIZE_GO_TAG" & pids="$pids $!"
+          clone serialize.cs "$SERIALIZE_CS_TAG" & pids="$pids $!"
+          clone serialize.rs "$SERIALIZE_RS_TAG" & pids="$pids $!"
+          failed=0
+          for pid in $pids; do wait "$pid" || failed=1; done
+          if [ "$failed" != 0 ]; then
+            echo "::error::a sibling runtime failed to clone — the probe modules the emitter tests compile would not resolve"
+            exit 1
+          fi
+          ls -d serialize*
+
       # the Studio's own go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         if: runner.environment == 'github-hosted'
