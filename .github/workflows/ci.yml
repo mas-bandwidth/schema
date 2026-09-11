@@ -215,6 +215,21 @@ jobs:
       - name: go test
         run: go test ./...
 
+      # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),
+      # which the step above does NOT run. Its harness reads the C++
+      # reference's byte oracle out of build/fixedform-corpus and SKIPS itself
+      # when that directory is absent — which it always is under a bare
+      # `go test ./...` — so until this step existed the whole of §5 was
+      # unwatched on the diff that changes it, reporting green over a suite
+      # that asserted nothing. `make tables-go-versioning` builds the oracle
+      # with the reference's own dump first (~7 s) and sets
+      # SCHEMA_REQUIRE_CORPUS=1, under which the skip is a failure: a corpus
+      # that failed to build can no longer pass here quietly. About half a
+      # minute, and the ../serialize checkout this job already makes is the
+      # only thing the C++ dump needs.
+      - name: the fixed form's versioning suite reads the reference's bytes
+        run: make tables-go-versioning
+
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line

@@ -423,6 +423,16 @@ func fixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "old_field_append.bin")); err != nil {
+		// THE SKIP IS A FAILURE WHEN SOMETHING PROMISED THE CORPUS. A bare
+		// `go test ./...` on a tree that never built the oracle has nothing to
+		// read and says so; but `make tables-go-versioning` builds the corpus
+		// first and sets SCHEMA_REQUIRE_CORPUS=1, so under that target a
+		// missing file means the build did not do what the target says it did
+		// — and a suite that skips itself there would report green over §5
+		// having never run, which is the whole reason this gate exists.
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
 	return dir
