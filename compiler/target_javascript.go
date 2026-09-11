@@ -17,7 +17,18 @@ type jsTarget struct{}
 
 func (jsTarget) Names() []string { return []string{"js", "javascript"} }
 
-func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+// Generate is the NO-LINEAGE case: a unit whose lock the caller did not read,
+// or that has none. Every fixed table then carries the single entry it can
+// always compute — its own (docs/FIXED-FORM-ALGORITHM.md §5.9 #1).
+func (t jsTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return t.GenerateLineage(u, opts, nil)
+}
+
+// GenerateLineage is the second entry point of §5.9 #1: the driver read the
+// unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
+// jstable opens no file and a build ships a reader for every layout the lock
+// records.
+func (jsTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
 	// Packet wide text is carried; table kind 33 remains refused.
 	if err := refuseWideText(u, "js"); err != nil {
 		return nil, err
@@ -43,7 +54,7 @@ func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	// <Base>Block.js and <Base>Cook.js READERS (docs/SPEC-TABLES.md); a
 	// table-free unit's output is byte-identical to what the packet emitter
 	// alone produces
-	tables, err := jstable.Generate(u)
+	tables, err := jstable.GenerateLineage(u, jsTableLineage(u, lineage))
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +65,31 @@ func (jsTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 		files[name] = data
 	}
 	return files, nil
+}
+
+// jsTableLineage is the lock's lineage in the JavaScript backend's own spelling.
+// Nil in, nil out: a unit with no lock hands nothing.
+func jsTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]jstable.FixedLineageEntry {
+	if lineage == nil {
+		return nil
+	}
+	out := map[string][]jstable.FixedLineageEntry{}
+	for _, st := range ir.TableFixedRoots(u) {
+		entries := lineage.Entries(st.Name)
+		if len(entries) == 0 {
+			continue
+		}
+		for _, e := range entries {
+			out[st.Name] = append(out[st.Name], jstable.FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  fixedLineageRecordBytes(e.Record),
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return out
 }
 
 func init() {
