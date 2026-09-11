@@ -289,6 +289,31 @@ tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
 	$(JAVA) -ea -cp build/java-fixedform Main build/fixedform-corpus
 	$(JAVA)     -cp build/java-fixedform Main build/fixedform-corpus
 
+# THE VERSIONING HALF OF THE FIXED FORM ON THE JAVA LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/javatable/fixedversioning_test.go reads the C++ reference's
+# byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
+# and the floor, hash and lineage-merge files — generates ONE JAVA PROBE PER ROW
+# PER COLUMN (§5.9 #18) beside this leg's own generator, compiles it with this
+# leg's `javac` and runs it: NEW-READS-OLD lands every old value with §5.4's
+# counters, and OLD-REFUSES-NEW answers `layout_newer` before any record, on the
+# file's hash alone (§5.3).
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
+# SKIPS itself when build/fixedform-corpus is absent, which is right for a bare
+# `go test ./...` on a tree that never built the oracle — and is exactly how a §5
+# regression rides into a green CI, since the go-test job runs nothing but
+# `go test ./...`. So the target BUILDS THE ORACLE FIRST (the reference's own
+# dump) and then sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a
+# FAILURE: under this name a missing corpus can never pass silently. It is the
+# Java twin of `tables-go-versioning` (make/go.mk) and it is hung off the same
+# job, for the same reason.
+.PHONY: tables-java-versioning
+tables-java-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
+	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
+
 # THE PAIRED BENCH CORPUS on this form: the same sixty-four logical records the
 # matched bench uses, written by the C++ reference with its form-3 writer and
 # stated beside as a VALUE ORACLE, because a reader and a writer that share one

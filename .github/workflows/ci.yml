@@ -230,6 +230,16 @@ jobs:
       - name: the fixed form's versioning suite reads the reference's bytes
         run: make tables-go-versioning
 
+      # THE SAME SUITE ON THE JAVA LEG (§5 of docs/FIXED-FORM-ALGORITHM.md), and
+      # it is here rather than in a Java job for the reason the Go step above is:
+      # the harness is a GO test that generates, compiles and runs Java probes,
+      # so it rides the job that already has the Go toolchain and the ../serialize
+      # checkout, and `make tables-java-versioning` brings the reference's dump
+      # and the JDK pin with it. SCHEMA_REQUIRE_CORPUS=1 lives inside the recipe,
+      # so a corpus that failed to build cannot pass here quietly.
+      - name: the fixed form's versioning suite reads the reference's bytes, on the Java leg
+        run: make tables-java-versioning
+
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line
