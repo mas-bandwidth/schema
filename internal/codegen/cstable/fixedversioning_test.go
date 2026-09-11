@@ -106,6 +106,21 @@ var csVersionRows = []csVersionRow{
 	{row: "field_deprecate", sameHash: true},
 	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
+	{row: "fixed_I_grow_element", widens: true, check: `
+            {
+                int[] wantRaw = { -1, -1, -1, -1 };
+                for (int k = 0; k < 4; ++k)
+                {
+                    if (back[0].Vals[k] != wantRaw[k])
+                    {
+                        bad += ProbeLog.Fail(@NAME@, "slot " + k + " did not land the raw scaled value exact: " + back[0].Vals[k]);
+                    }
+                }
+                if (back[0].Lead != 0xAAAAAAAAu || back[0].Trail != 0xBBBBBBBBu)
+                {
+                    bad += ProbeLog.Fail(@NAME@, "a neighbour moved: lead=" + back[0].Lead + " trail=" + back[0].Trail);
+                }
+            }`},
 	{row: "flags_append"},
 	{row: "float_widen", widens: true},
 	{row: "int_widen", widens: true},
