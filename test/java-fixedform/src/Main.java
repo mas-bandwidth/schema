@@ -420,6 +420,101 @@ public final class Main {
     }
 
     // ------------------------------------------------------------------
+    // TEXT UNDER A UNION ARM (docs/SPEC-TABLES.md §3.4, §15) — FU1 and FU2
+    // ------------------------------------------------------------------
+    //
+    // A PLAN ENTRY FOR A TEXT FIELD INSIDE A UNION ARM HAS TO CARRY TWO FACTS
+    // AT ONCE: which arm's tag it is guarded by, and which flavour of text it
+    // moves. A port that spends ONE LANE on both loses whichever it wrote
+    // second, and the loss is silent — a `string(N)` in a union's SECOND arm
+    // read as '' through a compiled plan while the identity read landed the
+    // text, with no counter and no refusal (reference-fix 12). UT.schema asks
+    // the same question by compiling a plan from this reader's own layout.
+    // FU1/FU2 asks it through the ONE PATH the rest of this form uses: FU2
+    // appends `extra` so a read of FU1's bytes is a COMPILED plan, and both
+    // reads go through FuRootFixed.load. The hash chooses the plan and
+    // nothing else.
+
+    static void textUnderAnArm() {
+        check(tblfu1.FuRootFixed.hash != tblfu2.FuRootFixed.hash,
+                "text under an arm: FU2 extra changes the layout hash");
+
+        final tblfu1.FuRootFixed.Value[] older = {
+            new tblfu1.FuRootFixed.Value(), new tblfu1.FuRootFixed.Value()
+        };
+        older[0].flag = true;
+        older[0].notePresent = true;
+        older[0].note = 44;
+        older[0].pick.type = tblfu1.PickFixed.labelled;
+        older[0].pick.labelled.lead = 101;
+        setText(older[0].pick.labelled.label, "hello");
+        older[0].pick.labelled.labelLength = 5;
+        older[0].pick.labelled.trail = 202;
+        older[0].tail = 11;
+
+        older[1].pick.type = tblfu1.PickFixed.plain;
+        older[1].pick.plain.n = 303;
+        older[1].tail = 12;
+
+        final byte[] file = new byte[tblfu1.FuRootFixed.measure(2)];
+        check(tblfu1.FuRootFixed.save(older, 2, file) == file.length,
+                "text under an arm: FU1 writes its two records");
+
+        // THE IDENTITY READ, through the same load the compiled read uses.
+        final tblfu1.FuRootFixed.Value[] mine = {
+            new tblfu1.FuRootFixed.Value(), new tblfu1.FuRootFixed.Value()
+        };
+        final tblfu1.TableFixed.Report r = new tblfu1.TableFixed.Report();
+        check(tblfu1.FuRootFixed.load(mine, 2, file, tblfu1.TableFixed.plan(1024),
+                new short[1024], tblfu1.FuRootFixed.image(), r) == 2,
+                "text under an arm: the identity read takes both records");
+        check(!r.refused && !r.malformed && r.clamped == 0 && r.unknown == 0 && r.kindMismatch == 0,
+                "text under an arm: its own layout is the identity plan, and it moves no counter");
+        check(mine[0].pick.type == tblfu1.PickFixed.labelled,
+                "text under an arm: identity, the SECOND arm");
+        check(mine[0].pick.labelled.lead == 101,
+                "text under an arm: identity, the scalar BEFORE the text");
+        check(mine[0].pick.labelled.labelLength == 5
+                && textOf(mine[0].pick.labelled.label, mine[0].pick.labelled.labelLength).equals("hello"),
+                "text under an arm: the IDENTITY read lands the text");
+        check(mine[0].pick.labelled.trail == 202,
+                "text under an arm: identity, the scalar AFTER the text");
+        check(mine[0].flag && mine[0].notePresent && mine[0].note == 44 && mine[0].tail == 11,
+                "text under an arm: identity, the rest of the labelled record");
+        check(mine[1].pick.type == tblfu1.PickFixed.plain && mine[1].pick.plain.n == 303 && mine[1].tail == 12,
+                "text under an arm: identity, the FIRST arm as well");
+
+        // AND THE COMPILED READ of the same bytes through a peer whose layout
+        // hash differs — which is the only thing that changes.
+        final tblfu2.FuRootFixed.Value[] theirs = {
+            new tblfu2.FuRootFixed.Value(), new tblfu2.FuRootFixed.Value()
+        };
+        final tblfu2.TableFixed.Report r2 = new tblfu2.TableFixed.Report();
+        check(tblfu2.FuRootFixed.load(theirs, 2, file, tblfu2.TableFixed.plan(1024),
+                new short[1024], tblfu2.FuRootFixed.image(), r2) == 2,
+                "text under an arm: the compiled read takes both records");
+        check(!r2.malformed && !r2.refused && r2.clamped == 0 && r2.kindMismatch == 0,
+                "text under an arm: and nothing was damaged, clamped or refused");
+        check(theirs[0].pick.type == tblfu2.PickFixed.labelled,
+                "text under an arm: compiled, the SECOND arm");
+        check(theirs[0].pick.labelled.lead == 101,
+                "text under an arm: compiled, the scalar BEFORE the text");
+        check(theirs[0].pick.labelled.labelLength == 5
+                && textOf(theirs[0].pick.labelled.label, theirs[0].pick.labelled.labelLength).equals("hello"),
+                "text under an arm: the COMPILED read still sees the text");
+        check(theirs[0].pick.labelled.trail == 202,
+                "text under an arm: compiled, the scalar AFTER the text");
+        check(theirs[0].flag && theirs[0].notePresent && theirs[0].note == 44 && theirs[0].tail == 11,
+                "text under an arm: compiled, the rest of the labelled record");
+        check(theirs[0].extra == 11,
+                "text under an arm: the field FU1 does not carry took its declared default");
+        check(theirs[1].pick.type == tblfu2.PickFixed.plain && theirs[1].pick.plain.n == 303 && theirs[1].tail == 12,
+                "text under an arm: compiled, the FIRST arm as well");
+        check(theirs[1].extra == 11,
+                "text under an arm: compiled, `extra` defaults on the FIRST arm too");
+    }
+
+    // ------------------------------------------------------------------
     // THE VERSIONING CONFORMANCE
     // ------------------------------------------------------------------
 
@@ -826,6 +921,7 @@ public final class Main {
         packWrite(dir);
         compiledSelfPlan(dir);
         armTextUnderASecondArm();
+        textUnderAnArm();
         anOlderWriter(dir);
         aNewerWriter(dir);
         anOptional(dir);
