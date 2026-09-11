@@ -99,11 +99,12 @@ func fixedCounted(e ir.TableFixedLayoutEntry) bool { return e.Dst.Counted != 0 }
 // THE PREFILL IMAGE: the declared defaults, as record bytes
 //
 // §3.4's answer to an absent field is a PREFILL, and this is what this port
-// prefills WITH. C++ calls the type's own Reset; Rust's table surface has no
-// by-value reset (a `<Name>Row` is `core::mem::zeroed`), so the defaults are
-// laid down HERE, as the record image a fresh value would write. It is a
-// compile-time constant like the block and the template, and it is the one
-// place a declared default reaches this form.
+// prefills WITH. C++ calls the type's own Reset. Named string(N)/bytes(N)
+// defaults also live in constructed `<Name>Row::default()` (matching C++
+// `char label[8 + 1] = "fx"`). The load copies THIS image into the holes the
+// plan does not write (Glenn: prefill the bytes the plan does not write).
+// Identity's hole list is empty because its plan is one Copy of the whole
+// body — empty fill is the skip, not a second path.
 // ---------------------------------------------------------------------------
 
 func fixedDefaultImage(st *ir.Struct) []byte {
@@ -958,7 +959,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        data[TABLE_FIXED_HEADER_BYTES..TABLE_FIXED_HEADER_BYTES + 4]\n")
 	g.pf("            .try_into()\n            .expect(\"four bytes\"),\n    ) as usize;\n")
 	g.pf("    if block_bytes > data.len() - TABLE_FIXED_HEADER_BYTES - 4 {\n")
-	g.pf("        return report.refuse(TableFixedReason::BlockMalformed);\n    }\n")
+	g.pf("        return report.refuse(TableFixedReason::LayoutMalformed);\n    }\n")
 	g.pf("    let block = &data[TABLE_FIXED_HEADER_BYTES + 4..TABLE_FIXED_HEADER_BYTES + 4 + block_bytes];\n")
 	g.pf("    let hash = table_fixed_hash(block);\n")
 	g.pf("    let rest = &data[TABLE_FIXED_HEADER_BYTES + 4 + block_bytes..];\n\n")
@@ -969,11 +970,11 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    let identity = hash == %s_FIXED_HASH;\n", up)
 	g.pf("    if !identity {\n")
 	g.pf("        let theirs = match TableFixedBlock::parse(block) {\n")
-	g.pf("            Some(b) => b,\n")
-	g.pf("            None => return report.refuse(TableFixedReason::BlockMalformed),\n        };\n")
+	g.pf("            Ok(b) => b,\n")
+	g.pf("            Err(why) => return report.refuse(why),\n        };\n")
 	g.pf("        let mine = match TableFixedBlock::parse(&%s_FIXED_BLOCK) {\n", up)
-	g.pf("            Some(b) => b,\n")
-	g.pf("            None => return report.refuse(TableFixedReason::BlockMalformed),\n        };\n")
+	g.pf("            Ok(b) => b,\n")
+	g.pf("            Err(why) => return report.refuse(why),\n        };\n")
 	g.pf("        compiled = match table_fixed_compile(&theirs, &mine, &%s_FIXED_COUNTED, plan, remap, report) {\n", up)
 	g.pf("            Some(n) => n,\n")
 	g.pf("            None => return report.refuse(TableFixedReason::PlanTooLarge),\n        };\n")
@@ -985,7 +986,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if u64::from_le_bytes(\n")
 	g.pf("        data[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]\n")
 	g.pf("            .try_into()\n            .expect(\"eight bytes\"),\n    ) != hash\n    {\n")
-	g.pf("        return report.refuse(TableFixedReason::BlockMalformed);\n    }\n")
+	g.pf("        return report.refuse(TableFixedReason::LayoutMalformed);\n    }\n")
 	g.pf("    if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {\n")
 	g.pf("        report.malformed = true;\n        return None;\n    }\n")
 	g.pf("    let n = rest.len() / record_bytes;\n")
