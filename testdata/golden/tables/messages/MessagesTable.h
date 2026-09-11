@@ -2250,6 +2250,16 @@ struct TableFixedEntry
     // sits last so a ten-value aggregate still names op, arg, meta, dstsize
     // and sign in that order.
     uint8_t argw = 1;
+    // guard2 / arg2 / argw2 ARE THE OUTER TAG AN ARM INSIDE AN ARM ALSO
+    // ANSWERS TO, and they are a CONJUNCTION with guard/arg: an entry runs
+    // when BOTH tags hold their ordinal (§4.1, §5.8 row 6). Stamping the
+    // outer tag OVER the inner one fired every inner arm the moment the
+    // outer one rode and the last arm won; testing only the inner one landed
+    // an inner arm's bytes under an outer arm that never rode. kTableFixedNoGuard
+    // is "no second condition", which is every entry that is not nested.
+    uint32_t guard2 = kTableFixedNoGuard;
+    uint64_t arg2 = 0;
+    uint8_t argw2 = 1;
 };
 
 // A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
@@ -2469,7 +2479,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         }
         case kTableFixedConst:
         {
-            memcpy( dst + p.dst, &p.aux, p.size );
+            // THROUGH A 64-BIT TEMPORARY: a tag is one, two, four or EIGHT
+            // bytes, and a memcpy of p.size out of the four-byte aux lane
+            // reads the member beside it (§4.5, §5.8 row 7).
+            const uint64_t lands = p.aux;
+            memcpy( dst + p.dst, &lands, p.size );
             // An unguarded None const with dstsize = the WRITER's arm count:
             // a tag past that set lands None (already written) and COUNTS.
             if ( p.aux == 0 && p.dstsize != 0 && p.guard == kTableFixedNoGuard )
@@ -2509,6 +2523,7 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
     {
         const TableFixedEntry & p = plan[i];
         if ( TableFixedTagAt( src, p.guard, p.argw ) != p.arg ) { continue; }
+        if ( p.guard2 != kTableFixedNoGuard && TableFixedTagAt( src, p.guard2, p.argw2 ) != p.arg2 ) { continue; }
         TableFixedApply( p, (const uint8_t *) plan, src, dst, clamped, widened );
     }
     report->clamped += clamped;
@@ -2995,8 +3010,11 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
     {
         if ( e.guard != kTableFixedNoGuard ) { e.argw = c.argw ? c.argw : 1u; }
         const uint8_t gw = e.argw == 0 ? 1u : e.argw;
-        const bool guard_out = e.guard != kTableFixedNoGuard &&
-            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record );
+        const uint8_t gw2 = e.argw2 == 0 ? 1u : e.argw2;
+        const bool guard_out = ( e.guard != kTableFixedNoGuard &&
+            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
+            ( e.guard2 != kTableFixedNoGuard &&
+            ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( e.op == kTableFixedText ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
@@ -3253,27 +3271,23 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 }
                 my_arm += TableFixedSubtree( mine, my_arm );
             }
-            // Nested: an arm inside an arm answers to the OUTER tag, which is
-            // the one that decides whether any of it is there at all. Identity
-            // rewrites inner-guarded leaves onto that tag; the compiled path
-            // does the same so a foreign outer arm is not read as this inner
-            // union (#876 card 13).
+            // Nested: an arm inside an arm answers to the OUTER tag TOO — the
+            // one that decides whether any of those bytes are there at all —
+            // and its OWN arm selection must survive that (§4.1). So the two
+            // tags are CONJOINED on the second guard lane rather than the
+            // outer one replacing the inner (§5.8 row 6).
             if ( guard != kTableFixedNoGuard )
             {
                 const uint8_t outer_w = saved_argw ? saved_argw : 1u;
-                for ( int32_t i = restamp_from; i < c.count; ++i )
+                for ( int32_t q = restamp_from; q < c.count; ++q )
                 {
-                    // The inner tag's own consts stay on the inner tag: restamping
-                    // them onto the outer tag fires every inner arm when the outer
-                    // matches, and the last arm wins. Payload leaves answer to the
-                    // OUTER tag (#876 card 13).
-                    if ( c.plan[i].guard == their_at &&
-                         !( c.plan[i].op == kTableFixedConst && c.plan[i].dst == aux_at ) )
-                    {
-                        c.plan[i].guard = guard;
-                        c.plan[i].arg = arg;
-                        c.plan[i].argw = outer_w;
-                    }
+                    // A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
+                    // cannot carry it: the plan REFUSES BY NAME rather than
+                    // drop one (the guard chain is the follow-on, §5.8 row 6).
+                    if ( c.plan[q].guard2 != kTableFixedNoGuard ) { c.hostile = true; break; }
+                    c.plan[q].guard2 = guard;
+                    c.plan[q].arg2 = arg;
+                    c.plan[q].argw2 = outer_w;
                 }
             }
             c.argw = saved_argw;
@@ -3389,6 +3403,8 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
         if ( out > split && plan[out-1].op == kTableFixedCopy && plan[i].op == kTableFixedCopy &&
              plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
              plan[out-1].argw == plan[i].argw &&
+             plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
+             plan[out-1].argw2 == plan[i].argw2 &&
              plan[out-1].src + plan[out-1].size == plan[i].src &&
              plan[out-1].dst + plan[out-1].size == plan[i].dst )
         {
@@ -14837,7 +14853,7 @@ constexpr TableFixedDst UserFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry UserFixedPlan[] = {
-    { 0u, 20u, 16u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // name
+    { 0u, 20u, 16u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // name
 };
 constexpr int32_t UserFixedPlanCount = 1;
 constexpr int32_t UserFixedPlanGuarded = 1;
@@ -15099,8 +15115,8 @@ constexpr TableFixedDst ScriptFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry ScriptFixedPlan[] = {
-    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // path
-    { 68u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // line
+    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // path
+    { 68u, 72u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // line
 };
 constexpr int32_t ScriptFixedPlanCount = 2;
 constexpr int32_t ScriptFixedPlanGuarded = 2;
@@ -15353,7 +15369,7 @@ constexpr TableFixedDst SelectionFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry SelectionFixedPlan[] = {
-    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // line
+    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // line
 };
 constexpr int32_t SelectionFixedPlanCount = 1;
 constexpr int32_t SelectionFixedPlanGuarded = 1;
@@ -15610,7 +15626,7 @@ constexpr TableFixedDst RemoveTextFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry RemoveTextFixedPlan[] = {
-    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // line
+    { 0u, 0u, 16u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // line
 };
 constexpr int32_t RemoveTextFixedPlanCount = 1;
 constexpr int32_t RemoveTextFixedPlanGuarded = 1;
@@ -15886,9 +15902,9 @@ constexpr TableFixedDst OpenDocumentFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry OpenDocumentFixedPlan[] = {
-    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // path
-    { 68u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // mode
-    { 69u, 76u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // line
+    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // path
+    { 68u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // mode
+    { 69u, 76u, 8u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // line
 };
 constexpr int32_t OpenDocumentFixedPlanCount = 3;
 constexpr int32_t OpenDocumentFixedPlanGuarded = 3;
@@ -16157,8 +16173,8 @@ constexpr TableFixedDst SaveDocumentFixedDst[] = {
 // then the arms: the entries that are nearly all of a plan never test a
 // guard at all.
 constexpr TableFixedEntry SaveDocumentFixedPlan[] = {
-    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1 }, // path
-    { 68u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1 }, // force
+    { 0u, 68u, 64u, 0u, kTableFixedNoGuard, kTableFixedText, 0, 1, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // path
+    { 68u, 72u, 1u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1 }, // force
 };
 constexpr int32_t SaveDocumentFixedPlanCount = 2;
 constexpr int32_t SaveDocumentFixedPlanGuarded = 2;
