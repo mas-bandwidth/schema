@@ -314,11 +314,14 @@ func TestBytesBase64(t *testing.T) {
 // §16.2: a guarded group's guard is an ordinary bool in the text, and the walk
 // infers NOTHING from the presence of the group.
 func TestGuardsInferNothing(t *testing.T) {
-	m, inst, r := read(t, "ProfileConfig", `{ "loadout": { "grade": "Gold" } }`)
+	// Guarded.schema's Patrol, not Tables.schema's ProfileConfig: a guarded
+	// branch disqualifies a `fixed table` (docs/SPEC-TABLES.md §2.2, §3.4), so
+	// every guard in this corpus lives on a plain `table`.
+	m, inst, r := read(t, "Patrol", `{ "speed": 2.5 }`)
 	if !r.Silent() {
 		t.Fatalf("expected silence, got %+v", r)
 	}
-	if field(t, inst, "has_loadout").Cell.B {
+	if field(t, inst, "active").Cell.B {
 		t.Fatal("the walk inferred a guard from the presence of the group")
 	}
 	// and the writer drops the group while the guard reads false
@@ -326,7 +329,7 @@ func TestGuardsInferNothing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(text, []byte(`"loadout"`)) {
+	if bytes.Contains(text, []byte(`"speed"`)) {
 		t.Fatalf("a guarded-out group should not be written:\n%s", text)
 	}
 }

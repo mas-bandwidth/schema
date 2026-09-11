@@ -2,7 +2,9 @@
 // the generated NestedTable.h includes TablesTable.h (docs/SPEC-TABLES.md).
 package tabledemo
 
-table ArchiveConfig
+// FIXED: it holds RootConfig by value, and RootConfig is a `fixed table`
+// again now that ProfileConfig's guarded branch is gone.
+fixed table ArchiveConfig
 {
     root  RootConfig
     count int32 = 1  | min = 0, max = 100

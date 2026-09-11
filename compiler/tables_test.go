@@ -60,7 +60,7 @@ type Packet
 // already, so this adds a table and no other declaration — the independence
 // proof below still compares like with like.
 const tableSrc = packetSrc + `
-table Config
+fixed table Config
 {
     scale  float32 = 1.0
     label  string(24)
@@ -75,7 +75,7 @@ table Config
 // from tableSrc on purpose — the zero-cost gate reads tableSrc and a keyed
 // array legitimately emits a C++ class template, which that gate greps for.
 const runtimeSrc = tableSrc + `
-table Keyed
+fixed table Keyed
 {
     slots [Kind]int32
     extra ?Point
@@ -264,7 +264,7 @@ func TestGeneratedTableCodeAllocatesNothing(t *testing.T) {
 }
 
 const pointerSrc = packetSrc + `
-table Leaf
+fixed table Leaf
 {
     quality int32 = 2 | min = 0, max = 4
 }
@@ -275,7 +275,7 @@ table Node
     next  *Node
 }
 
-table Plain
+fixed table Plain
 {
     scale float32 = 1.0
 }
@@ -831,7 +831,7 @@ type Free
     slot   fixed(6, 10) | min = 0, max = 30
 }
 
-table Only
+fixed table Only
 {
     n int32
 }
@@ -975,7 +975,7 @@ func TestEmittedBuildVersionIsTheSpecsNumber(t *testing.T) {
 
 enum Grade { Bronze, Silver, Gold }
 
-table ShipConfig
+fixed table ShipConfig
 {
     damage float32 = 21.0
     speed  float32 = 500.0 | was = "velocity"

@@ -4,7 +4,7 @@ import "testing"
 
 func TestRegionLists(t *testing.T) {
 	runGenerated(t, `package probe
-table Child { n int32 = 7 }
+fixed table Child { n int32 = 7 }
 table Inner { values []int16 }
 table Root { numbers []int32
  children []Child
@@ -64,7 +64,7 @@ func TestCount(t *testing.T){var b RootBuilder;b.Init();defer b.Shutdown();var r
 func TestNestedTerminationAndStringDefault(t *testing.T) {
 	runGenerated(t, `package probe
 enum Key { first }
-table Child { n int32 = 7 }
+fixed table Child { n int32 = 7 }
 table Root { name string(16) = "default"
  values [..2]Child
  slots [Key]Child
@@ -80,7 +80,7 @@ func TestRecovery(t *testing.T){var ids TableIds;wire:=make([]byte,512);w:=Table
 
 func TestRegionCountCrossesLength(t *testing.T) {
 	runGenerated(t, `package listdemo
- table Photo { width uint32
+ fixed table Photo { width uint32
  height uint32 }
  table Album { photos []*Photo
  cover *Photo }

@@ -5,7 +5,7 @@
 // attribute deleted. The corpus holds both halves.
 package jsonkeys
 
-table Ship
+fixed table Ship
 {
     ship_type  int32       | json = "type"
     name       string(24)  | json = "label"

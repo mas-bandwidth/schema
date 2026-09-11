@@ -79,7 +79,7 @@ type BoonWide
 }
 
 // a pointer arm's target: a pointer points at a TABLE (§3.1)
-table Chunk
+fixed table Chunk
 {
     seq uint32
 }
@@ -738,7 +738,7 @@ type A
     w int32 = 4
 }
 
-table Holder
+fixed table Holder
 {
     a A
 }
@@ -771,7 +771,7 @@ type B
     w int32 = 66
 }
 
-table Holder
+fixed table Holder
 {
     a A2
     b B
@@ -814,7 +814,7 @@ type A3
     w int32 = 4
 }
 
-table Holder
+fixed table Holder
 {
     a A2
     b A3
@@ -915,7 +915,7 @@ type Piece
     armour int32 = 1
 }
 
-table Loadout
+fixed table Loadout
 {
     pieces [Slot]Piece
 }
@@ -954,7 +954,7 @@ func TestKeyedBoundIsNotJudgedAsAnExtent(t *testing.T) {
 
 enum Slot { Head, Chest, Legs }
 
-table Loadout
+fixed table Loadout
 {
     pieces  [Slot]int32
     spares  [..3]int32
@@ -1243,7 +1243,7 @@ func TestCheckRefusesAForeignBaseline(t *testing.T) {
 // else.
 const rangeSrc = `package ranged
 
-table Ship
+fixed table Ship
 {
     hull  int32 = 50          | min = 0, max = 1000
     angle fixed(16, 16) = 0   | min = -180, max = 180
@@ -1373,7 +1373,7 @@ func TestRangeIsRecorded(t *testing.T) {
 
 const MaxHull = 1000
 
-table Ship
+fixed table Ship
 {
     hull int32 = 50 | min = 0, max = MaxHull
 }
@@ -1391,7 +1391,7 @@ table Ship
 // once and rides under the first name's hash.
 const wasSrc = `package renaming
 
-table Ship
+fixed table Ship
 {
     speed float32 = 500.0 | was = "velocity"
     hull  int32 = 50      | min = 0, max = 1000
@@ -1678,7 +1678,7 @@ union U3
     item int32
 }
 
-table Root
+fixed table Root
 {
     selected U1
     one      U1

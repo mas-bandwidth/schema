@@ -46,8 +46,8 @@ func announcementWith(u *ir.Unit, vocabulary []byte) []byte {
 // declared bytes, and a genuinely repeated entry is still malformed.
 func TestCppTableAnnouncementDistinctQuantizedShapes(t *testing.T) {
 	u := unitFromSource(t, `package probe
-table First { rate float32 | min = 0, max = 1, resolution = 0.1 }
-table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
+fixed table First { rate float32 | min = 0, max = 1, resolution = 0.1 }
+fixed table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
 `)
 	entries := ir.TableVocabulary(u)
 	rate := -1

@@ -25,7 +25,7 @@ type Pair
 `
 
 const issue759WithTable = issue759Packet + `
-table Pairs
+fixed table Pairs
 {
     item Pair
 }

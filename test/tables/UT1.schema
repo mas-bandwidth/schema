@@ -34,7 +34,7 @@ union Pick
     b ArmB
 }
 
-table UtRoot
+fixed table UtRoot
 {
     head int32 = 1
     pick Pick

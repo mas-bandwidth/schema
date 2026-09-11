@@ -85,25 +85,25 @@ union Effect
 
 `)
 	b.WriteString("// 200 fields: the count of them SET is the count of references that\n")
-	b.WriteString("// separate the root's early block from its late one\ntable Wide\n{\n")
+	b.WriteString("// separate the root's early block from its late one\nfixed table Wide\n{\n")
 	for i := range headerProbeWideFields {
 		fmt.Fprintf(&b, "    f%03d int32\n", i)
 	}
 	b.WriteString("}\n\n")
-	b.WriteString(`table Leaf
+	b.WriteString(`fixed table Leaf
 {
     n   int32
     big uint128
     neg int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
 }
 
-table Slot
+fixed table Slot
 {
     power float32 = 1.0
     tag   int32
 }
 
-table Root
+fixed table Root
 {
     head        uint32
     early_big   uint128

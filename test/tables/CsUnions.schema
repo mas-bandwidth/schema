@@ -16,7 +16,7 @@ union Leaf
 }
 
 // The shared checker requires each general union to be named by a table.
-table LeafHolder { leaf Leaf }
+fixed table LeafHolder { leaf Leaf }
 
 union Choice
 {
@@ -27,7 +27,7 @@ union Choice
     signal
 }
 
-table Root
+fixed table Root
 {
     item Choice
     history [..3]Choice

@@ -14,13 +14,13 @@
 // does not care, because identity is the field-name hash and nothing else.
 package tblfx1
 
-table FxNested
+fixed table FxNested
 {
     a int32 = 1 | min = 0, max = 1000
     b int32 = 2 | min = 0, max = 1000
 }
 
-table FxRoot
+fixed table FxRoot
 {
     keep    uint32 = 7
     narrow  uint16 = 3

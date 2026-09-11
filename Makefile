@@ -302,7 +302,24 @@ TABLES_ZERO_COST_SYMBOLS := TableArena|TableSlot|TableWorker|TableRef|TableRefus
 # costs the unit one enum and one out-parameter and no machinery at all.
 TABLES_ZERO_COST_ALLOWED := kTableNodeTableFieldId|TableRefuseReason
 
-TABLES_ZERO_COST_HEADERS := build/tables-generated/examples/*Table.h build/tables-generated/v1/*Table.h \
+# THE SCANNED UNITS, AND WHY `examples` IS NOT ONE OF THEM ANY MORE (#823).
+# The property this gate holds is stated of a UNIT — "in a unit whose tables are
+# all fixed-size the generated output carries no builder, no arena, no reference
+# type, no lifecycle surface" (docs/SPEC-TABLES.md §2.2) — and under the KEYWORD
+# `tables/examples` is no longer such a unit: `Guarded.schema`'s `Patrol` is a
+# plain `table`, because a guarded branch is exactly the construct that keeps it
+# one, so the whole unit is a variable unit and carries the machinery by right.
+# Scanning it would be this gate asserting something the declaration has made
+# false, which is worse than not scanning it.
+#
+# THE FOLLOW-ON THAT WOULD GIVE THE GATE ITS BIGGEST SUBJECT BACK is to move
+# `Guarded.schema` into a UNIT OF ITS OWN — the guarded corpus is the VARIABLE
+# class's fixture and does not belong in the pointer-free demo unit — at which
+# point `examples` returns to this list unchanged. That is a corpus move with a
+# blast radius (a package rename through `test/tables/main.cpp`, the goldens,
+# and the tabletext and tablepack suites that load `tables/examples` by name),
+# so it is named here rather than done under a wire branch.
+TABLES_ZERO_COST_HEADERS := build/tables-generated/v1/*Table.h \
 	build/tables-generated/v2/*Table.h build/tables-generated/p1/*Table.h \
 	build/tables-generated/p3/*Table.h \
 	build/tables-generated/messages/*Table.h build/tables-generated/m1/*Table.h \
@@ -325,7 +342,7 @@ tables-zero-cost: build/tables-generated/.stamp
 .PHONY: tables-zero-cost-negative-control
 tables-zero-cost-negative-control: build/tables-generated/.stamp
 	@rm -rf build/zero-cost-control && mkdir -p build/zero-cost-control
-	@cp build/tables-generated/examples/GuardedTable.h build/zero-cost-control/GuardedTable.h
+	@cp build/tables-generated/scalars/ScalarsTable.h build/zero-cost-control/GuardedTable.h
 	@printf 'static const TableNodeMap * kPlanted = NULL; /* PLANTED */\n' >> build/zero-cost-control/GuardedTable.h
 	@if ! grep -ohE "$(TABLES_ZERO_COST_SYMBOLS)" build/zero-cost-control/GuardedTable.h \
 			| grep -vxE "$(TABLES_ZERO_COST_ALLOWED)" | sort -u | grep -q .; then \
@@ -349,29 +366,38 @@ tables-json-walk: build/tables-generated/.stamp
 	done
 	@echo "tables generic-walk gate: one walker, byte-identical in $$(ls build/json-walk | wc -l | tr -d ' ') generated .cpp files"
 
-# THE GRAPH-WALK GATE (docs/SPEC-TABLES.md §16.7): the variable class's half of
-# the text form is emitted only in a unit that declares a pointer, and it is ONE
-# half too — the same bytes in every pointered .cpp of the corpus, on the walk's
-# own terms — and none of it reaches a pointer-free unit, which is the zero-cost
-# property (§2.2) holding for the text form.
+# THE GRAPH-WALK GATE (docs/SPEC-TABLES.md §16.7): the VARIABLE class's half of
+# the text form is emitted only in a unit that carries a VARIABLE table, and it
+# is ONE half too — the same bytes in every such .cpp of the corpus, on the
+# walk's own terms — and none of it reaches an ALL-FIXED unit, which is the
+# zero-cost property (§2.2) holding for the text form.
+#
+# "VARIABLE", not "pointered", and the two stopped being the same word at #823.
+# The variable class stores through the arena and the region whether or not it
+# has a pointer in it, so a variable table's own `FromJson` names the graph
+# half's entry points — which is why `tables/examples` moved from the second
+# list to the first here: `Guarded.schema`'s `Patrol` is a plain `table`, and a
+# guarded branch is exactly the construct that keeps it one. The gate is
+# UNCHANGED in strength: every unit is still on one list or the other, and the
+# byte comparison across the first list now spans one unit more.
 .PHONY: tables-json-graph-walk
 tables-json-graph-walk: build/tables-generated/.stamp
 	@rm -rf build/json-graph-walk && mkdir -p build/json-graph-walk
-	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp build/tables-generated/blobs/*Table.cpp; do \
+	@for f in build/tables-generated/pointers/*Table.cpp build/tables-generated/p2/*Table.cpp build/tables-generated/blobs/*Table.cpp build/tables-generated/examples/*Table.cpp; do \
 		out=build/json-graph-walk/$$(echo $$f | tr / _); \
 		awk '/---- json graph walk: begin ----/,/---- json graph walk: end ----/' $$f > $$out; \
 		if [ ! -s $$out ]; then echo "GRAPH-WALK GATE FAILED: no graph half in $$f"; exit 1; fi; \
 	done
-	@for f in build/tables-generated/examples/*Table.cpp build/tables-generated/v1/*Table.cpp build/tables-generated/p1/*Table.cpp; do \
+	@for f in build/tables-generated/v1/*Table.cpp build/tables-generated/p1/*Table.cpp; do \
 		if grep -q -- '---- json graph walk: begin ----' $$f; then \
-			echo "GRAPH-WALK GATE FAILED: the graph half leaked into the pointer-free $$f"; exit 1; fi; \
+			echo "GRAPH-WALK GATE FAILED: the graph half leaked into the all-fixed $$f"; exit 1; fi; \
 	done
 	@first=""; for f in build/json-graph-walk/*; do \
 		if [ -z "$$first" ]; then first=$$f; else \
 			cmp -s $$first $$f || { echo "GRAPH-WALK GATE FAILED: the graph half in $$f is not the one in $$first"; exit 1; }; \
 		fi; \
 	done
-	@echo "tables graph-walk gate: one graph half, byte-identical in $$(ls build/json-graph-walk | wc -l | tr -d ' ') pointered .cpp files"
+	@echo "tables graph-walk gate: one graph half, byte-identical in $$(ls build/json-graph-walk | wc -l | tr -d ' ') variable-class .cpp files"
 
 # The NEGATIVE CONTROL for the walk (docs/SPEC-TABLES.md §16.5). A green round-trip
 # suite proves nothing until the suite is shown capable of going red: the
@@ -5916,7 +5942,7 @@ tables-was-negative-control: build/tables-generated/.stamp test/tables/was_contr
 	@cat build/tables-was-nc/with-was.log
 	@grep -q '^unknown=0 kind_mismatch=0 malformed=0 flagship=Aurora escorts=2 home_name=untitled$$' build/tables-was-nc/with-was.log || \
 		{ echo "CONTROL FAILED: with was, the W1 fleet did not read in silence under W2"; exit 1; }
-	@sed -e 's/^table Ship | was = "Vessel"$$/table Ship/' test/tables/W2.schema > build/tables-was-nc/W2.schema
+	@sed -e 's/^fixed table Ship | was = "Vessel"$$/fixed table Ship/' test/tables/W2.schema > build/tables-was-nc/W2.schema
 	@cmp -s test/tables/W2.schema build/tables-was-nc/W2.schema && \
 		{ echo "NEGATIVE CONTROL: the was sabotage patched nothing"; exit 1; } || true
 	@rm -rf build/tables-was-nc/w2 && ./bin/schema generate --lang cpp --out build/tables-was-nc/w2 build/tables-was-nc/W2.schema

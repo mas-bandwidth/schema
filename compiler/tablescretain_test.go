@@ -15,8 +15,8 @@ func TestCTableRetainFile(t *testing.T) {
 	const old = `package probe
 enum Key { A
 B }
-table Leaf { x uint32 }
-table Many { items [..2]Leaf }
+fixed table Leaf { x uint32 }
+fixed table Many { items [..2]Leaf }
 union Choice { leaf Leaf
 many Many }
 table Node { leaf Leaf
@@ -168,7 +168,7 @@ func TestCTableRetainRefusedByName(t *testing.T) {
 	if err != nil {
 		t.Skip("requires C compiler")
 	}
-	u := unitFromSource(t, "package probe\ntable Fixed { x uint32 }\ntable Variable { next *Variable }\n")
+	u := unitFromSource(t, "package probe\nfixed table Fixed { x uint32 }\ntable Variable { next *Variable }\n")
 	files, err := New().Generate(u, "c", Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -197,7 +197,7 @@ func TestCTableRetainRefusedByName(t *testing.T) {
 // and a dropped entry contributes no decoded fields or retained records.
 func TestCTableRetainMessageDroppedMapKey(t *testing.T) {
 	const old = `package probe
- table Item { number int32 }
+ fixed table Item { number int32 }
  table Root { names map[string(2)]Item }
  `
 	newer := strings.Replace(strings.Replace(old, "string(2)", "string(8)", 1), "number int32", "number int32\nextra int32", 1)

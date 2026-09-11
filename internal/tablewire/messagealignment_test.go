@@ -14,8 +14,8 @@ import (
 func TestMessageNestedAlignment(t *testing.T) {
 	m := listModel(t, `package alignment
  enum Key { A, B }
- table Child { text string(16) }
- table Root { lead bool
+ fixed table Child { text string(16) }
+ fixed table Root { lead bool
  child Child
  keyed [Key]Child
  tail uint32 }
@@ -57,7 +57,7 @@ func TestMessageNestedAlignment(t *testing.T) {
 
 func TestRetainMessageNodeFields(t *testing.T) {
 	old := `package nodekeep
- table Child { number int32 }
+ fixed table Child { number int32 }
  table Root { head *Child
  alias *Child }
  `
@@ -90,13 +90,13 @@ func TestRetainMessageNodeFields(t *testing.T) {
 
 func TestRetainMessageUnplaceableNodes(t *testing.T) {
 	reader := listModel(t, `package nodekeep
- table Other { number int32 }
+ fixed table Other { number int32 }
  table Root { head *Other }
  `)
 	for _, tc := range []struct{ kind, text string }{{"Child", `{"head":{"number":7}}`}, {"bytes", `{"head":"YWJj"}`}, {"string", `{"head":"abc"}`}} {
 		t.Run(tc.kind, func(t *testing.T) {
 			sender := listModel(t, `package nodekeep
- table Child { number int32 }
+ fixed table Child { number int32 }
  table Root { head *`+tc.kind+` }
  `)
 			source := place(t, sender, "Root", tc.text)

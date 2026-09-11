@@ -81,7 +81,7 @@ enum Grade {
 type Badge {
  title string(8) = "fresh" | was = "label"
 }
-table Root {
+fixed table Root {
  title string(12) = "default"
  tag bytes(4) = "ab"
  caps Caps = { Jump, Fly }
@@ -112,7 +112,7 @@ func TestUnionArmPayloads(t *testing.T) {
 	runGenerated(t, `package probe
 enum Mode { Fast, Slow }
 type Point { x int32 }
-table Child { score int32 = 7 }
+fixed table Child { score int32 = 7 }
 union Inner {
  n int32
  text string(8)
@@ -131,7 +131,7 @@ union Value {
  nested [..2]Inner
  ping | was = "old_ping"
 }
-table Root {
+fixed table Root {
  value Value
  entries [..3]Value
  other Inner
@@ -180,7 +180,7 @@ func TestRepeatedUnionElement(t *testing.T) {
 
 func TestWideValues(t *testing.T) {
 	runGenerated(t, `package probe
- table Root {
+ fixed table Root {
   n int128 = -3 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
   u uint128
   q fixed(4,4) | min = -8, max = 7

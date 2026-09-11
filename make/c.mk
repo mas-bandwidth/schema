@@ -210,9 +210,16 @@ build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance
 # builder, no arena, no reference slot, no lifecycle surface, no extra
 # descriptor column. The pointer-free corpus's generated headers must not
 # contain one symbol of it.
+#
+# `examples` IS NOT ON THIS LIST ANY MORE, for the reason its C++ twin is not
+# (see TABLES_ZERO_COST_HEADERS in the root Makefile): under the KEYWORD (#823)
+# `Guarded.schema`'s `Patrol` is a plain `table` — a guarded branch is exactly
+# the construct that keeps it one — so `tables/examples` is a VARIABLE unit and
+# carries the machinery by right. The follow-on that brings it back is the same
+# one: move `Guarded.schema` into a unit of its own.
 .PHONY: tables-c-zero-cost
 tables-c-zero-cost: build/tables-generated-c/.stamp
-	@for f in build/tables-generated-c/examples/*Table.h build/tables-generated-c/v1/*Table.h \
+	@for f in build/tables-generated-c/v1/*Table.h \
 	          build/tables-generated-c/v2/*Table.h build/tables-generated-c/p1/*Table.h \
 	          build/tables-generated-c/p3/*Table.h; do \
 		if grep -nE "TableArena|TableWorker|TableRef([^u]|$$)|TableSink|TableCtx|TableRegionSink|kTableSegment|kTableSlab|kTableMaxDepth|is_pointer|Builder|PackMeasure|LoadMeasure|stdatomic" $$f; then \
