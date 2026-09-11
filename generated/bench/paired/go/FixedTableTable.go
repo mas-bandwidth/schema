@@ -1467,6 +1467,11 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 	if n > int64(len(values)) {
 		return tableFixedRefuse(report, "batch_too_large")
 	}
+	for scan := at; len(scan) > 0; scan = scan[recordBytes:] {
+		if tableFixedGet64(scan) != hash {
+			return tableFixedRefuse(report, "no_layout")
+		}
+	}
 	var def FixedTable
 	var defBytes []byte
 	var holes []tableFixedHole
@@ -1476,9 +1481,6 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		holes = tableFixedHoles(entries, entryCount, uint32(len(defBytes)))
 	}
 	for k := int64(0); k < n; k++ {
-		if tableFixedGet64(at) != hash {
-			return tableFixedRefuse(report, "no_layout")
-		}
 		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
 		for i := range holes {
 			h := holes[i]

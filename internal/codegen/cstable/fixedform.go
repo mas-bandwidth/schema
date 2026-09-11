@@ -1789,12 +1789,20 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    byte[] widenScratch = Array.Empty<byte>();\n")
 	g.pf("    // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the\n")
 	g.pf("    // skip: identity's fill is empty, so this read writes no slot twice.\n")
+	// STEP 10b: THE HASH PRE-PASS. Every record's leading hash is held against
+	// the file's BEFORE any prefill and before any landing, so a forged record
+	// in the middle of a batch leaves the caller's rows untouched and every
+	// counter at zero. In the landing loop the same check fired only after
+	// records 0..k-1 had landed, so "REFUSE is total" was false for any file of
+	// more than one record (§5.3 step 10b, §5.4).
+	g.pf("    ReadOnlySpan<byte> scan = at;\n")
 	g.pf("    for (int k = 0; k < n; ++k)\n    {\n")
-	// THE PER-RECORD HASH CHECK IS FIRST — before the prefill, so a refusal has
-	// written not one destination byte (§5.3, §5.8 row 9).
-	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
+	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(scan) != hash)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
+	g.pf("        scan = scan.Slice((int)record_bytes);\n    }\n")
+	g.pf("    for (int k = 0; k < n; ++k)\n    {\n")
+	g.pf("        // NO HASH CHECK HERE: the pre-pass above already held every record.\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
 	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
 	g.pf("        TableFixedWire.Run(entries, %sFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);\n", name)

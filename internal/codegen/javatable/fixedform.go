@@ -1595,10 +1595,17 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        final int[] hole = new int[Math.max(2, bodyBytes * 2)];\n")
 	g.pf("        final int holeN = TableFixed.holes(entries, made, cover, hole);\n")
 	g.pf("        int at = head.recordsAt;\n")
+	// STEP 10b: THE HASH PRE-PASS. A record whose hash names no layout this
+	// reader holds is a refusal BY NAME, and it is found BEFORE any prefill and
+	// before any landing, so a forged record in the middle of a batch leaves the
+	// caller's rows untouched and every counter at zero. In the landing loop the
+	// same check fired only after records 0..k-1 had landed, so "REFUSE is
+	// total" was false for any file of more than one record (§5.3 step 10b).
+	g.pf("        for (int k = 0, scan = at; k < n; k++, scan += 8 + bodySize) {\n")
+	g.pf("            if (TableFixed.get64(data, scan) != head.hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
+	g.pf("        }\n")
 	g.pf("        for (int k = 0; k < n; k++) {\n")
-	g.pf("            // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A\n")
-	g.pf("            // REFUSAL BY NAME, never a guess and never damage.\n")
-	g.pf("            if (TableFixed.get64(data, at) != head.hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }\n")
+	g.pf("            // NO HASH CHECK HERE: the pre-pass above already held every record.\n")
 	g.pf("            for (int h = 0; h < holeN; h++) {\n")
 	g.pf("                final int off = hole[h * 2];\n")
 	g.pf("                final int hn = hole[h * 2 + 1];\n")

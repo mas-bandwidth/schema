@@ -825,6 +825,8 @@ static void keyed_array_enum_append_case()
 // nested_append: Vec {x,y,z} -> {x,y,z,w}, inside Lineage
 // (old_nested_append.bin / new_nested_append.bin)
 
+static void refuse_writes_nothing_case();
+
 static void nested_append_case()
 {
     std::vector<uint8_t> oldf( (size_t) vold_nested_append::LineageFixedMeasure( 1 ) );
@@ -873,6 +875,102 @@ static void nested_append_case()
         check_red( back.v.x == 0 && back.v.y == 0 && back.v.z == 0 && back.seq == 0,
                    "nested_append/OLD-REFUSES-NEW",
                    "nested_append/OLD-REFUSES-NEW: nothing was decoded, inside the nesting or outside it" );
+    }
+
+    refuse_writes_nothing_case();
+}
+
+// ---------------------------------------------------------------------------
+// refuse_writes_nothing (§5.8 row 9, THE PRE-PASS ROW): a SIXTY-FOUR record
+// file written by the OLD build, with RECORD 7's own hash word inverted and the
+// header's hash left alone. The NEW build reads it, so the header selects the
+// OLD lineage entry and a COMPILED plan with a NONEMPTY fill list is in hand —
+// `Vec.w = 88` is a NONZERO prefill, which is the only thing that can tell a
+// prefill that ran from one that did not.
+//
+// RECORDS 0 THROUGH 6 ARE PERFECTLY GOOD, AND THAT IS THE WHOLE POINT. §5.3
+// STEP 10b's pre-pass walks all 64 hashes before step 11 lands the first
+// record, so the caller's storage — POISONED `0x5A` in every byte of every row
+// before the load — is `0x5A` in every byte after it. The per-record check
+// INSIDE the landing loop, which is what the reference shipped until this row,
+// would have prefilled, run and bounded seven rows before it refused: `n == -1`
+// and a refusal by name, with seven rows written. REFUSE IS TOTAL or it is not.
+
+static void refuse_writes_nothing_case()
+{
+    namespace vo = vold_nested_append;
+    namespace vn = vnew_nested_append;
+
+    const int64_t records = 64;
+    const int64_t forged = 7;
+
+    std::vector<uint8_t> file( (size_t) vo::LineageFixedMeasure( records ) );
+    {
+        std::vector<vo::Lineage> v( (size_t) records );
+        for ( int64_t k = 0; k < records; ++k )
+        {
+            vo::LineageReset( v[(size_t) k] );
+            v[(size_t) k].v.x = (int32_t) ( 1 + k );
+            v[(size_t) k].v.y = (int32_t) ( 2 + k );
+            v[(size_t) k].v.z = (int32_t) ( 3 + k );
+            v[(size_t) k].seq = (int32_t) ( 100 + k );
+        }
+        check( vo::LineageFixedSave( v.data(), records, file.data(), (int64_t) file.size() ) ==
+               (int64_t) file.size(), "refuse_writes_nothing: the OLD build saves a 64-record file" );
+    }
+
+    // THE FORGERY IS ONE RECORD'S OWN HASH WORD, and the header's hash is not
+    // touched: that is what keeps the refusal `no_layout` and not `layout_*`.
+    const int64_t records_at = 16 + 4 + vo::LineageFixedLayoutBytes;
+    uint8_t * const rec7 = file.data() + records_at + forged * vo::LineageFixedRecordBytes;
+    {
+        const uint64_t was = vo::TableFixedGet64( rec7 );
+        vo::TableFixedPut64( rec7, ~was );
+        check( vo::TableFixedGet64( file.data() + records_at ) == was,
+               "refuse_writes_nothing: CONTROL — record 0's hash is still the file's, so records 0..6 are good" );
+        check( vo::TableFixedGet64( rec7 ) != was,
+               "refuse_writes_nothing: CONTROL — record 7's hash really is forged" );
+        check( vo::TableFixedGet64( file.data() + 8 ) == was,
+               "refuse_writes_nothing: CONTROL — the HEADER's hash is untouched, so the read selects a layout" );
+    }
+
+    std::vector<vn::Lineage> back( (size_t) records );
+    std::memset( (void *) back.data(), 0x5A, back.size() * sizeof( vn::Lineage ) );
+    vn::TableReport r;
+    std::vector<vn::TableFixedEntry> plan( 1024 );
+    const int64_t n = vn::LineageFixedLoad( back.data(), records, file.data(), (int64_t) file.size(),
+                                            plan.data(), 1024, NULL, &r );
+
+    check( n == -1, "refuse_writes_nothing: the read refuses and returns -1" );
+    check( r.refused && r.reason == vn::no_layout,
+           "refuse_writes_nothing: the reason is `no_layout` — a record whose hash is not the file's" );
+    check( !r.malformed,
+           "refuse_writes_nothing: `malformed` is FALSE beside a refusal by name (§5.3's joint answer)" );
+    check( r.layout_hash == 0,
+           "refuse_writes_nothing: `layout_hash` is untouched — it belongs to the two layout refusals" );
+    check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0,
+           "refuse_writes_nothing: every counter is 0 — REFUSE IS TOTAL" );
+
+    // AND THE BYTES. Not the prefill's 88 in row 0's `v.w`, not a zero
+    // anywhere, nothing — in row 0 and row 6 as much as in row 63.
+    {
+        const uint8_t * const bytes = (const uint8_t *) back.data();
+        const size_t span = back.size() * sizeof( vn::Lineage );
+        size_t moved = span;
+        for ( size_t i = 0; i < span; ++i )
+        {
+            if ( bytes[i] != 0x5A ) { moved = i; break; }
+        }
+        char what[256];
+        std::snprintf( what, sizeof( what ),
+                       "refuse_writes_nothing: all %d rows of POISONED storage are 0x5A byte for byte "
+                       "(first byte moved: %s)",
+                       (int) records, moved == span ? "none" : "one was" );
+        check( moved == span, what );
+        check( back[0].v.w != 88,
+               "refuse_writes_nothing: row 0's prefill never ran — the nonzero default 88 is nowhere" );
+        check( back[(size_t) forged - 1].seq != 106,
+               "refuse_writes_nothing: row 6, the LAST good record before the forgery, did not land either" );
     }
 }
 

@@ -1013,6 +1013,55 @@ static bool vlists_files( const char * dir )
         MS( n[0].v.x, 4 ); MS( n[0].v.y, 5 ); MS( n[0].v.z, 6 ); MS( n[0].v.w, 7 ); MS( n[0].seq, 25 );
         if ( !emit( dir, "new_nested_append.bin", n, vnew_nested_append::LineageFixedMeasure,
                     vnew_nested_append::LineageFixedSave ) ) { return false; }
+
+        // ---- nolayout_nested_append.bin: THE PRE-PASS ROW's file ----------
+        //
+        // SIXTY-FOUR records written by the OLD build, with RECORD 7's own hash
+        // word inverted and the header's hash left alone. Every other record is
+        // GOOD, which is the whole point: §5.3 STEP 10b's pre-pass walks all 64
+        // hashes before step 11 lands the first record, so the refusal is
+        // `no_layout` with NOT ONE destination byte written. The same check
+        // inside the landing loop — what every leg shipped before this row —
+        // would have landed records 0 through 6 first, and "REFUSE is total"
+        // would be a false sentence about this very file (§5.8 row 9).
+        //
+        // A MULTI-RECORD ROW IS WRITTEN BY HAND because `emit` takes a whole
+        // vector and the forgery is a byte AFTER the save: the save is the
+        // reference's, and only the one word is touched.
+        {
+            const int64_t kRecords = 64;
+            const int64_t kForged = 7;
+            std::vector<vold_nested_append::Lineage> many( (size_t) kRecords );
+            for ( int64_t k = 0; k < kRecords; ++k )
+            {
+                vold_nested_append::LineageReset( many[(size_t) k] );
+                // THE VALUES ARE A RULE AND NOT 64 MANIFEST LINES: the manifest
+                // names the rule once below, because a row whose point is that
+                // NOTHING lands has no per-record value a leg needs.
+                many[(size_t) k].v.x = (int32_t) ( 1 + k );
+                many[(size_t) k].v.y = (int32_t) ( 2 + k );
+                many[(size_t) k].v.z = (int32_t) ( 3 + k );
+                many[(size_t) k].seq = (int32_t) ( 100 + k );
+            }
+            std::vector<uint8_t> out( (size_t) vold_nested_append::LineageFixedMeasure( kRecords ) );
+            if ( vold_nested_append::LineageFixedSave( many.data(), kRecords, out.data(),
+                                                      (int64_t) out.size() ) != (int64_t) out.size() )
+            {
+                std::fprintf( stderr, "nolayout_nested_append.bin: save refused\n" );
+                return false;
+            }
+            const int64_t records_at = 16 + 4 + vold_nested_append::LineageFixedLayoutBytes;
+            uint8_t * const rec = out.data() + records_at +
+                                  kForged * vold_nested_append::LineageFixedRecordBytes;
+            vold_nested_append::TableFixedPut64( rec, ~vold_nested_append::TableFixedGet64( rec ) );
+            man_add( "v.x", "1+k" );
+            man_add( "v.y", "2+k" );
+            man_add( "v.z", "3+k" );
+            man_add( "seq", "100+k" );
+            man_add( "record[7].hash", "INVERTED; header hash untouched; records 0..6 and 8..63 are good" );
+            man_finish( "nolayout_nested_append.bin", "Lineage", (long long) kRecords );
+            if ( !spill( dir, "nolayout_nested_append.bin", out ) ) { return false; }
+        }
     }
 
     // ---- rename_without_was: `a` -> `b was = "a"` -------------------------
