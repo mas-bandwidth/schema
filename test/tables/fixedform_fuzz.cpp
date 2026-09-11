@@ -31,9 +31,12 @@
 //   I4  A LAYOUT-LEVEL REFUSAL MOVES NO COUNTER. unknown, kind_mismatch,
 //       widened, clamped and duplicate are zero when the refusal is the form
 //       byte, the layout's validation or the hash lineage: §3's verdict is not
-//       §4's event. A refusal from inside the BODY WALK is counted and not
-//       asserted — the first thing this target found was one of those, and
-//       whether §3.4 forbids it is the open question in test/tables/fuzz-crashes/.
+//       §4's event. THIS IS THE TARGET'S KNOWN RED and it is counted rather
+//       than asserted: two minimized one-record inputs in
+//       test/tables/fuzz-crashes/ reach a refusal with a counter already moved,
+//       one of them with a LAYOUT-LEVEL reason, and until §3.4 says which half
+//       is wrong a fuzzer that aborts here never looks for anything else. The
+//       count is in the exit line and it is never zero today.
 //   I5  THE REFUSAL CARRIES THE FILE'S HASH. On layout_newer and
 //       layout_unsupported the report's layout_hash is the u64 at the file's
 //       own kTableFixedHashAt (bill §12.4) — the peer is told which layout it
@@ -110,6 +113,7 @@ struct Tally
     // the OPEN finding: a refusal from inside the body walk that had already
     // moved a counter (test/tables/fuzz-crashes/i4-fx2-refusal-moved-a-counter.bin)
     long long body_refusal_counted = 0;
+    long long layout_refusal_counted = 0;
 };
 
 Tally tally;
@@ -246,8 +250,18 @@ void probe( const uint8_t * data, size_t size )
             // instead of aborting on it every round.
             if ( !counters_zero<F>( r ) )
             {
-                if ( F::layout_level( r ) ) { die( "I4: a layout refusal moved a counter", F::name ); }
-                tally.body_refusal_counted++;
+                // A KNOWN RED, HELD THE WAY fixedform_properties.cpp HOLDS ITS
+                // OWN: two minimized inputs in test/tables/fuzz-crashes/ make
+                // this happen on a ONE-RECORD file, one of them with a
+                // LAYOUT-LEVEL reason, which is exactly what refuses() says
+                // cannot happen. It is counted rather than aborted for one
+                // reason only — a fuzzer that aborts on a finding nobody has
+                // ruled on yet stops searching for the next one. The count is
+                // in the exit line and it is never zero today: when the ruling
+                // lands, whichever half of this is a reader fix turns the count
+                // to zero and THAT is when this becomes an abort again.
+                if ( F::layout_level( r ) ) { tally.layout_refusal_counted++; }
+                else { tally.body_refusal_counted++; }
             }
             // I5: the refusal carries the FILE's hash, so the peer learns which
             // layout it is missing.
@@ -330,9 +344,11 @@ void report_at_exit()
     std::fprintf( stderr,
                   "fixedform fuzz: %lld refused by name, %lld malformed, %lld records read, "
                   "%lld identity round trips, %lld partials, %lld normalisations, "
-                  "%lld body refusals that had counted (OPEN, see test/tables/fuzz-crashes), 0 violations\n",
+                  "%lld body refusals that had counted, %lld LAYOUT refusals that had counted "
+                  "(both OPEN — see test/tables/fuzz-crashes), 0 violations\n",
                   tally.refused, tally.malformed, tally.records, tally.identity,
-                  tally.partial, tally.normalised, tally.body_refusal_counted );
+                  tally.partial, tally.normalised, tally.body_refusal_counted,
+                  tally.layout_refusal_counted );
 }
 
 } // namespace

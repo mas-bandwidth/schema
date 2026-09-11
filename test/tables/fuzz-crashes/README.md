@@ -28,3 +28,25 @@ body promise zero counters too, or does the refusal verdict ride on top of the
 counters the walk had already moved?** One of the two is a reader fix and the
 other is a sentence in §3.4 and a narrower assertion in `refuses()`. Nothing in
 the spec answers it today, which is why this is a finding and not a patch.
+
+## `i4-fx2-layout-refusal-moved-a-counter.bin` — OPEN, and the stronger half
+
+317 bytes, again one record and again FX2's reader, and this time the refusal
+carries a **layout-level** reason — the form byte, the layout's own validation or
+the hash lineage. Those refusals are decided before any body byte is read, which
+is precisely the case `refuses()` asserts `unknown == 0 && kind_mismatch == 0 &&
+widened == 0 && clamped == 0` over. A counter is set anyway.
+
+The two files are probably one cause: a counter moved somewhere the refusal path
+does not clear, or a report handed to a second decision without being reset. The
+reader's own gate cannot see it because every file that gate hands to `refuses()`
+is broken in its layout and read by a reader whose walk never starts.
+
+### Why the fuzzer counts these instead of aborting
+
+`test/tables/fixedform_fuzz.cpp` tallies I4 and names it in the exit line. A
+fuzz target that aborts on a finding nobody has ruled on yet stops searching for
+the next one, and the count being non-zero is what keeps the finding visible.
+When the ruling lands and a reader fix takes the count to zero, I4 goes back to
+being an abort — the same way `fixedform_properties.cpp` deletes a `known_red[]`
+entry as part of landing a fix.
