@@ -443,30 +443,183 @@ fixed table Root { n int32 }
 	}
 }
 
-func javaTools(t *testing.T) (javac, java string) {
+// TestFixedFormFU1FU2 is the TEXT-UNDER-AN-ARM pin (docs/SPEC-TABLES.md §3.4,
+// §15; docs/FIXED-FORM-ALGORITHM.md §4.1 fix 12). FU1 writes a string(8) in
+// the union's SECOND arm; FU2 appends `extra` so a read of those bytes is a
+// COMPILED plan. Both reads go through FuRootFixed.load — the same one-path
+// load the rest of this form uses. The compiled read has to see "hello".
+func TestFixedFormFU1FU2(t *testing.T) {
+	fu1Files, err := Generate(schemaUnit(t, "FU1.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fu2Files, err := Generate(schemaUnit(t, "FU2.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fu1Load := string(fu1Files["FuRootFixed.java"])
+	fu2Load := string(fu2Files["FuRootFixed.java"])
+	if fu1Load == "" || fu2Load == "" {
+		t.Fatal("FU1/FU2 did not emit FuRootFixed.java")
+	}
+	assertOnePathLoad(t, fu1Load, "FU1")
+	assertOnePathLoad(t, fu2Load, "FU2")
+	h1 := fixedHashLine(fu1Load)
+	h2 := fixedHashLine(fu2Load)
+	if h1 == "" || h2 == "" {
+		t.Fatal("FU1/FU2 did not emit a layout hash")
+	}
+	if h1 == h2 {
+		t.Fatal("FU2 extra did not change the layout hash; compiled path is not a compile trigger")
+	}
+
+	javac, javaBin := javaTools(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	classes := filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixedJava(t, src, "tblfu1", fu1Files)
+	writeFixedJava(t, src, "tblfu2", fu2Files)
+	if err := os.WriteFile(filepath.Join(src, "Driver.java"), []byte(fu1fu2Driver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fu1src, err := filepath.Glob(filepath.Join(src, "tblfu1", "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fu2src, err := filepath.Glob(filepath.Join(src, "tblfu2", "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"--release", "17", "-d", classes}, fu1src...)
+	args = append(args, fu2src...)
+	args = append(args, filepath.Join(src, "Driver.java"))
+	cmd := exec.Command(javac, args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	run := exec.Command(javaBin, "-ea", "-cp", classes, "Driver")
+	out, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("java: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("driver: %s", out)
+	}
+}
+
+func schemaUnit(t *testing.T, name string) *ir.Unit {
 	t.Helper()
+	path := filepath.Join("..", "..", "..", "test", "tables", name)
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, perrs := parser.Parse(name, src)
+	if len(perrs) > 0 {
+		t.Fatalf("parse %s: %v", name, perrs[0])
+	}
+	base := strings.TrimSuffix(name, ".schema")
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path: name, Name: name, Base: base, Bytes: src, AST: f,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check %s: %v", name, cerrs[0])
+	}
+	return u
+}
+
+func assertOnePathLoad(t *testing.T, src, who string) {
+	t.Helper()
+	if !strings.Contains(src, "public static int load(") {
+		t.Fatalf("%s did not emit load", who)
+	}
+	if strings.Contains(src, "if (identity)") {
+		t.Errorf("%s: identity flag still forks the record loop", who)
+	}
+	if !strings.Contains(src, "TableFixed.holes(") || !strings.Contains(src, "TableFixed.run(") {
+		t.Errorf("%s load is not the one-path load", who)
+	}
+	if !strings.Contains(src, "for (int h = 0; h < holeN; h++)") {
+		t.Errorf("%s skips the hole loop; identity empty is the list, not a skip", who)
+	}
+	if strings.Contains(src, "System.arraycopy(defaults, 0, image, 0, bodyBytes)") {
+		t.Errorf("%s still prefills the whole image", who)
+	}
+}
+
+func fixedHashLine(src string) string {
+	for _, line := range strings.Split(src, "\n") {
+		if strings.Contains(line, "public static final long hash =") {
+			return strings.TrimSpace(line)
+		}
+	}
+	return ""
+}
+
+func writeFixedJava(t *testing.T, dir, pkg string, files map[string][]byte) {
+	t.Helper()
+	out := filepath.Join(dir, pkg)
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for name, data := range files {
+		if name != "TableFixed.java" && !strings.HasSuffix(name, "Fixed.java") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(out, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		n++
+	}
+	if n == 0 {
+		t.Fatalf("%s: no fixed-form files", pkg)
+	}
+}
+
+func javaTools(t *testing.T) (javac, javaBin string) {
+	t.Helper()
+	try := func(jc, j string) bool {
+		if jc == "" || j == "" {
+			return false
+		}
+		if st, err := os.Stat(jc); err != nil || st.IsDir() {
+			return false
+		}
+		if st, err := os.Stat(j); err != nil || st.IsDir() {
+			return false
+		}
+		if err := exec.Command(jc, "-version").Run(); err != nil {
+			return false
+		}
+		return true
+	}
+	if try(os.Getenv("JAVAC"), os.Getenv("JAVA")) {
+		return os.Getenv("JAVAC"), os.Getenv("JAVA")
+	}
 	if p, err := exec.LookPath("javac"); err == nil {
-		if j, err := exec.LookPath("java"); err == nil {
-			if out, err := exec.Command(p, "-version").CombinedOutput(); err == nil && len(out) > 0 {
-				return p, j
-			}
+		j, jerr := exec.LookPath("java")
+		if jerr == nil && try(p, j) {
+			return p, j
 		}
 	}
-	for _, bin := range []string{
-		filepath.Join("..", "..", "..", "dist", "jdk-21.0.12.1", "Contents", "Home", "bin"),
-		"/Users/glenn/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home/bin",
-	} {
-		jc := filepath.Join(bin, "javac")
-		jv := filepath.Join(bin, "java")
-		if _, err := os.Stat(jc); err != nil {
-			continue
-		}
-		if _, err := os.Stat(jv); err != nil {
-			continue
-		}
-		return jc, jv
+	homes := []string{
+		"/Users/glenn/toolchains/schema-dist/jdk-21.0.12.1/Contents/Home",
 	}
-	t.Skip("javac not on PATH")
+	if wd, err := os.Getwd(); err == nil {
+		homes = append(homes, filepath.Join(wd, "..", "..", "..", "dist", "jdk-21.0.12.1", "Contents", "Home"))
+	}
+	for _, home := range homes {
+		jc := filepath.Join(home, "bin", "javac")
+		j := filepath.Join(home, "bin", "java")
+		if try(jc, j) {
+			return jc, j
+		}
+	}
+	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
 	return "", ""
 }
 
@@ -530,6 +683,106 @@ public final class Driver {
         if (TableFixed.tagAt(new byte[] { 1, 0, 0, 0, 0, 0, 0, 2 }, 0, 9) != 0x0200000000000001L) {
             fail("ArgW >8 clamps to 8");
         }
+        System.out.println("ok");
+    }
+}
+`
+
+const fu1fu2Driver = `public final class Driver {
+    private Driver() {}
+
+    static void fail(String what) {
+        System.out.println("FAILED: " + what);
+        System.exit(1);
+    }
+
+    static void setText(byte[] buf, String s) {
+        final byte[] raw = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        System.arraycopy(raw, 0, buf, 0, raw.length);
+    }
+
+    static String textOf(byte[] buf, int length) {
+        return new String(buf, 0, length, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    public static void main(String[] args) {
+        if (tblfu1.FuRootFixed.hash == tblfu2.FuRootFixed.hash) {
+            fail("FU2 extra did not change the layout hash");
+        }
+
+        final byte[] cover = new byte[tblfu1.FuRootFixed.bodyBytes];
+        final int[] hole = new int[Math.max(2, tblfu1.FuRootFixed.bodyBytes * 2)];
+        if (tblfu1.TableFixed.holes(tblfu1.FuRootFixed.identityPlan(), 1, cover, hole) != 0) {
+            fail("identity holes must be empty; empty is the skip, not a second path");
+        }
+
+        final tblfu1.FuRootFixed.Value labelled = new tblfu1.FuRootFixed.Value();
+        labelled.flag = true;
+        labelled.notePresent = true;
+        labelled.note = 44;
+        labelled.pick.type = tblfu1.PickFixed.labelled;
+        labelled.pick.labelled.lead = 101;
+        setText(labelled.pick.labelled.label, "hello");
+        labelled.pick.labelled.labelLength = 5;
+        labelled.pick.labelled.trail = 202;
+        labelled.tail = 11;
+
+        final tblfu1.FuRootFixed.Value plain = new tblfu1.FuRootFixed.Value();
+        plain.pick.type = tblfu1.PickFixed.plain;
+        plain.pick.plain.n = 303;
+        plain.tail = 12;
+
+        final byte[] file = new byte[tblfu1.FuRootFixed.measure(2)];
+        if (tblfu1.FuRootFixed.save(new tblfu1.FuRootFixed.Value[] { labelled, plain }, 2, file) != file.length) {
+            fail("FU1 save");
+        }
+
+        final tblfu1.FuRootFixed.Value[] mine = {
+            new tblfu1.FuRootFixed.Value(), new tblfu1.FuRootFixed.Value()
+        };
+        final tblfu1.TableFixed.Report r = new tblfu1.TableFixed.Report();
+        final int n = tblfu1.FuRootFixed.load(mine, 2, file, tblfu1.TableFixed.plan(1024),
+                new short[1024], tblfu1.FuRootFixed.image(), r);
+        if (n != 2) { fail("identity n=" + n + " refused=" + r.refused + " malformed=" + r.malformed); }
+        if (mine[0].pick.type != tblfu1.PickFixed.labelled) { fail("identity arm"); }
+        if (mine[0].pick.labelled.lead != 101) { fail("identity lead"); }
+        if (mine[0].pick.labelled.labelLength != 5
+                || !textOf(mine[0].pick.labelled.label, mine[0].pick.labelled.labelLength).equals("hello")) {
+            fail("identity text");
+        }
+        if (mine[0].pick.labelled.trail != 202) { fail("identity trail"); }
+        if (!mine[0].flag || !mine[0].notePresent || mine[0].note != 44 || mine[0].tail != 11) {
+            fail("identity labelled rest");
+        }
+        if (mine[1].pick.type != tblfu1.PickFixed.plain || mine[1].pick.plain.n != 303 || mine[1].tail != 12) {
+            fail("identity plain");
+        }
+        if (r.refused || r.malformed || r.clamped != 0) { fail("identity report"); }
+
+        final tblfu2.FuRootFixed.Value[] theirs = {
+            new tblfu2.FuRootFixed.Value(), new tblfu2.FuRootFixed.Value()
+        };
+        final tblfu2.TableFixed.Report r2 = new tblfu2.TableFixed.Report();
+        final int n2 = tblfu2.FuRootFixed.load(theirs, 2, file, tblfu2.TableFixed.plan(1024),
+                new short[1024], tblfu2.FuRootFixed.image(), r2);
+        if (n2 != 2) { fail("compiled n=" + n2 + " refused=" + r2.refused + " malformed=" + r2.malformed + " reason=" + r2.reason); }
+        if (theirs[0].pick.type != tblfu2.PickFixed.labelled) { fail("compiled arm"); }
+        if (theirs[0].pick.labelled.lead != 101) { fail("compiled lead"); }
+        final String got = textOf(theirs[0].pick.labelled.label, theirs[0].pick.labelled.labelLength);
+        if (theirs[0].pick.labelled.labelLength != 5 || !got.equals("hello")) {
+            fail("ARG LANE BITES: compiled read of string under union arm 2 landed '" + got
+                    + "' (len " + theirs[0].pick.labelled.labelLength + ")");
+        }
+        if (theirs[0].pick.labelled.trail != 202) { fail("compiled trail"); }
+        if (!theirs[0].flag || !theirs[0].notePresent || theirs[0].note != 44 || theirs[0].tail != 11) {
+            fail("compiled labelled rest");
+        }
+        if (theirs[0].extra != 11) { fail("compiled extra default"); }
+        if (theirs[1].pick.type != tblfu2.PickFixed.plain || theirs[1].pick.plain.n != 303 || theirs[1].tail != 12) {
+            fail("compiled plain");
+        }
+        if (theirs[1].extra != 11) { fail("compiled extra default on plain"); }
+        if (r2.refused || r2.malformed || r2.clamped != 0) { fail("compiled report"); }
         System.out.println("ok");
     }
 }
