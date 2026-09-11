@@ -377,13 +377,15 @@ BASELINE(old, new):                      -- at a merge commit, run once per pare
   for T in old.fixed_tables:
     if T not in new or new[T] is not fixed:
       if not retired(old[T]):           REFUSE "T: fixed removed"  -- retire first (bill §11.5); the lineage stays
-   -- and the ENTRY verb (bill §11.4) is held to the index cut the floor is:
-   RETIRE ENTRY T@h:
-      at := index of h in lineage(T)
-      if at = last:                        REFUSE "T: 0x.. is the CURRENT layout"     -- retire the table instead
-      stranded := { i < at : not retired(lineage(T)[i]) }
-      if stranded /= {} and not all_below:  REFUSE naming every i in stranded BY INDEX AND HASH
-      mark at, and every i in stranded when all_below, RETIRED with the same reason
+
+RETIRE_ENTRY(T, h, all_below):           -- the ENTRY verb, held to the INDEX CUT the floor is (bill §11.4)
+  at := index of h in lineage(T)
+  if at not found:                       REFUSE "T has no layout h" -- a hash nothing locked is layout_newer already
+  if at = last:                          REFUSE "h is T's CURRENT layout" -- retire the TABLE instead (§11.5)
+  stranded := { i < at : not retired(lineage(T)[i]) }
+  if stranded non-empty and not all_below:
+                                         REFUSE naming every i in stranded BY INDEX AND HASH
+  mark at RETIRED with the reason, and every i in stranded too when all_below
 
 WIDENS(a, b):                            -- b may replace a
   LADDER(a, b) or kind(a) == kind(b)     or FAIL "kind changed"       -- LADDER: int into wider int same signedness, f32 into f64,
