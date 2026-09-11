@@ -374,7 +374,20 @@ fixed table LiveRoot
 // the union's SECOND arm; FU2 appends `extra` so a read of those bytes is a
 // COMPILED plan. Both reads go through FuRootFixed.load — the same one-path
 // load the rest of this form uses. The compiled read has to see "hello".
+// RETIRED BY §5.6, AND SKIPPED BY NAME RATHER THAN DELETED (§5.7 step 5): this
+// is the Java leg's twin of the pilot's TestFixedFormArgLaneTextUnderSecondArm —
+// it asserts that a DIFFERENT hash compiles a plan from the stranger's layout
+// and reads it, which is the forward read "the fixed table reads backward, never
+// forward" removed. Under §5.3 the FU1 file comes back `layout_newer` on an FU2
+// build that never locked it. THE COVERAGE IS OWED as a LINEAGE PAIR (FU1/FU2,
+// one of §5.7's seven pairs) in internal/codegen/javatable/fixedversioning_test.go,
+// where the newer build is given the older layout in its lineage; the arm's
+// guard and flavour lanes are watched meanwhile by
+// `make tables-java-fixedform-arm-negative-control`, whose case reads a record
+// through parse/compile/run directly and not through the load path.
 func TestFixedFormFU1FU2(t *testing.T) {
+	t.Skip("retired by §5.6: a compiled read of a stranger's layout; owed as the FU1/FU2 lineage pair in fixedversioning_test.go")
+
 	fu1Files, err := Generate(schemaUnit(t, "FU1.schema"))
 	if err != nil {
 		t.Fatal(err)
@@ -644,6 +657,224 @@ const fu1fu2Driver = `public final class Driver {
         }
         if (theirs[1].extra != 11) { fail("compiled extra default on plain"); }
         if (r2.refused || r2.malformed || r2.clamped != 0) { fail("compiled report"); }
+        System.out.println("ok");
+    }
+}
+`
+
+// TestFixedHostileGuardAndOrdinal is THE HOSTILE HALF OF §5.2, read through
+// parse/compile/run directly and not through a load: every case here needs a
+// shape no schema of this tree declares — a union whose tag is TWO bytes, an
+// enum whose ordinal is EIGHT, an enum of THREE HUNDRED variants — so the
+// layouts are built by hand, which is what `tables-java-fixedform-arm-negative-control`
+// already does for the arm lanes.
+//
+// THREE WRONG-BYTES ANSWERS, each red before the fix it watches:
+//
+//  1. THE GUARD'S WIDTH (§5.2, §7 fix 12). Compared at one byte, a foreign tag
+//     of 0x0101 fires arm 1 and runs that arm's entries over a stranger's
+//     record. Compared at its own two bytes, 257 is an ordinal no arm names:
+//     nothing lands and the tag stays the prefill's None.
+//  2. AN ORDINAL IS UNSIGNED (§5.2). Read as a SIGNED long, 0x8000000000000000
+//     passes `raw <= n`, truncates to 0 and returns the remap table's LENGTH
+//     WORD as a variant; 0xFFFFFFFFFFFFFFFF truncates to -1 and indexes BEFORE
+//     the table — an ArrayIndexOutOfBoundsException out of a load that was
+//     asked a question. Compared unsigned, both are past the writer's count
+//     and the op lands them raw for the bounds pass to clamp (§5.9 #27).
+//  3. THE REMAP TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2, §5.8 row
+//     14). Capped at 255 it lost the 256th variant on, each landing None as
+//     though this reader did not name it.
+func TestFixedHostileGuardAndOrdinal(t *testing.T) {
+	javac, javaBin := javaTools(t)
+	u := schemaUnit(t, "FU1.schema")
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	classes := filepath.Join(dir, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pkg := u.Package
+	writeFixedJava(t, src, pkg, files)
+	driver := strings.ReplaceAll(hostileDriver, "@PKG@", pkg)
+	if err := os.WriteFile(filepath.Join(src, "Hostile.java"), []byte(driver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pkgSrc, err := filepath.Glob(filepath.Join(src, pkg, "*.java"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := append([]string{"--release", "17", "-Xlint:all", "-Werror", "-d", classes}, pkgSrc...)
+	args = append(args, filepath.Join(src, "Hostile.java"))
+	if out, err := exec.Command(javac, args...).CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "Hostile").CombinedOutput()
+	if err != nil {
+		t.Fatalf("java: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "ok") {
+		t.Fatalf("hostile driver: %s", out)
+	}
+}
+
+const hostileDriver = `import @PKG@.TableFixed;
+
+public final class Hostile {
+    private Hostile() {}
+
+    static void fail(String what) {
+        System.out.println("FAILED: " + what);
+        System.exit(1);
+    }
+
+    /** a layout from its entries: {id, kind, size, children}, pre-order. */
+    static byte[] layout(long[][] rows) {
+        final byte[] b = new byte[TableFixed.layoutHeaderBytes + TableFixed.entryBytes * rows.length];
+        TableFixed.put32(b, 0, rows.length);
+        for (int i = 0; i < rows.length; i++) {
+            final int at = TableFixed.layoutHeaderBytes + TableFixed.entryBytes * i;
+            TableFixed.put64(b, at, rows[i][0]);
+            b[at + 8] = (byte) rows[i][1];
+            TableFixed.put32(b, at + 9, (int) rows[i][2]);
+            TableFixed.put32(b, at + 13, (int) rows[i][3]);
+        }
+        return b;
+    }
+
+    static TableFixed.Layout parse(byte[] bytes, String who) {
+        final TableFixed.Report r = new TableFixed.Report();
+        final TableFixed.Layout l = TableFixed.parse(bytes, 0, bytes.length, r);
+        if (l == null) { fail(who + ": the hand-built layout did not parse: " + r.reason); }
+        return l;
+    }
+
+    // A TWO-BYTE TAG, AND A FORGED 0x0101. A union of a u64 arm and a
+    // payload-free one: size 10, widest arm 8, so the tag is two bytes.
+    static void guardWidth() {
+        final long[][] rows = {
+            { 1, 13, 10, 1 },   // the root table
+            { 2, 15, 10, 2 },   // the union: two tag bytes, then the widest arm
+            { 3,  9,  8, 0 },   // arm 1: u64
+            { 4, 32,  0, 0 },   // arm 2: no payload
+        };
+        final byte[] bytes = layout(rows);
+        final TableFixed.Layout l = parse(bytes, "guardWidth");
+        final int[] dest = new int[l.count * TableFixed.dstLanes];
+        dest[1 * TableFixed.dstLanes + TableFixed.dstOffset] = 2;  // the arm lands behind the tag
+        dest[1 * TableFixed.dstLanes + TableFixed.dstAux] = 0;     // the tag at the image's front
+        final TableFixed.Entry[] plan = TableFixed.plan(64);
+        final short[] remap = new short[64];
+        final TableFixed.Report census = new TableFixed.Report();
+        final int made = TableFixed.compile(l, l, dest, plan, remap, census);
+        if (made <= 0) { fail("guardWidth: the plan did not compile: " + census.reason); }
+        boolean guarded = false;
+        for (int i = 0; i < made; i++) {
+            if (plan[i].guard == TableFixed.noGuard) { continue; }
+            guarded = true;
+            if (plan[i].argw != 2) {
+                fail("guardWidth: a guarded entry carries argw=" + plan[i].argw + ", want the union's own two bytes");
+            }
+        }
+        if (!guarded) { fail("guardWidth: the union compiled no guarded entry"); }
+
+        // THE FORGED TAG: 0x0101, whose low byte is arm 1's ordinal.
+        final byte[] body = new byte[10];
+        body[0] = 1;
+        body[1] = 1;
+        for (int i = 2; i < 10; i++) { body[i] = (byte) 0xFF; }
+        final byte[] image = new byte[10];
+        final TableFixed.Report r = new TableFixed.Report();
+        TableFixed.run(plan, made, remap, body, 0, body.length, image, r);
+        if (r.malformed) { fail("guardWidth: a record inside the writer's own bounds came back malformed"); }
+        for (int i = 0; i < image.length; i++) {
+            if (image[i] != 0) {
+                fail("guardWidth: 0x0101 landed arm bytes at " + i + " = " + (image[i] & 0xFF)
+                     + "; an ordinal no arm names must land NOTHING and leave the prefill's None");
+            }
+        }
+    }
+
+    // AN EIGHT-BYTE ORDINAL, FORGED. Unsigned at every width: a value past the
+    // WRITER's own variant count never indexes the remap table and throws
+    // nothing. THE OP ALONE runs here, the bounds pass not yet (§5.9 #27):
+    // the forged raw lands UNREMAPPED, as itself, and the op counts NOTHING —
+    // the generated bounds pass over storage is what clamps it to None and
+    // counts it, so a count here would count twice.
+    static void unsignedOrdinal() {
+        final long[][] rows = {
+            { 1, 13, 8, 1 },
+            { 2, 30, 8, 2 },
+            { 3, 32, 0, 0 },
+            { 4, 32, 0, 0 },
+        };
+        final byte[] bytes = layout(rows);
+        final TableFixed.Layout l = parse(bytes, "unsignedOrdinal");
+        final int[] dest = new int[l.count * TableFixed.dstLanes];
+        final TableFixed.Entry[] plan = TableFixed.plan(64);
+        final short[] remap = new short[64];
+        final TableFixed.Report census = new TableFixed.Report();
+        final int made = TableFixed.compile(l, l, dest, plan, remap, census);
+        if (made <= 0) { fail("unsignedOrdinal: the plan did not compile: " + census.reason); }
+        final long[] forged = { 0x8000000000000000L, 0xFFFFFFFFFFFFFFFFL };
+        for (int k = 0; k < forged.length; k++) {
+            final byte[] body = new byte[8];
+            TableFixed.put64(body, 0, forged[k]);
+            final byte[] image = new byte[8];
+            final TableFixed.Report r = new TableFixed.Report();
+            TableFixed.run(plan, made, remap, body, 0, body.length, image, r);
+            final long got = TableFixed.get64(image, 0);
+            if (got != forged[k]) {
+                fail("unsignedOrdinal: the op owes the RAW ordinal " + Long.toUnsignedString(forged[k])
+                     + ", landed " + Long.toUnsignedString(got));
+            }
+            if (r.clamped != 0) {
+                fail("unsignedOrdinal: clamped=" + r.clamped + ", want 0: the bounds pass counts,"
+                     + " the op does not");
+            }
+            if (r.malformed) { fail("unsignedOrdinal: a record inside the writer's bounds came back malformed"); }
+        }
+    }
+
+    // THREE HUNDRED VARIANTS, and the two hundred and ninety-ninth lands.
+    static void remapPastTwoFiftyFive() {
+        final int variants = 300;
+        final long[][] rows = new long[2 + variants][];
+        rows[0] = new long[] { 1, 13, 4, 1 };
+        rows[1] = new long[] { 2, 30, 4, variants };
+        for (int i = 0; i < variants; i++) {
+            rows[2 + i] = new long[] { 100 + i, 32, 0, 0 };
+        }
+        final byte[] bytes = layout(rows);
+        final TableFixed.Layout l = parse(bytes, "remapPastTwoFiftyFive");
+        final int[] dest = new int[l.count * TableFixed.dstLanes];
+        final TableFixed.Entry[] plan = TableFixed.plan(64);
+        final short[] remap = new short[variants + 8];
+        final TableFixed.Report census = new TableFixed.Report();
+        final int made = TableFixed.compile(l, l, dest, plan, remap, census);
+        if (made <= 0) { fail("remapPastTwoFiftyFive: the plan did not compile: " + census.reason); }
+        final byte[] body = new byte[4];
+        TableFixed.put32(body, 0, 299);
+        final byte[] image = new byte[4];
+        final TableFixed.Report r = new TableFixed.Report();
+        TableFixed.run(plan, made, remap, body, 0, body.length, image, r);
+        final int got = TableFixed.get32(image, 0);
+        if (got != 299) {
+            fail("remapPastTwoFiftyFive: variant 299 landed " + got
+                 + "; the remap table is as long as the WRITER's variant count and never 255");
+        }
+        if (r.clamped != 0) {
+            fail("remapPastTwoFiftyFive: clamped=" + r.clamped + ", want 0: a variant this reader NAMES is not a clamp");
+        }
+    }
+
+    public static void main(String[] args) {
+        guardWidth();
+        unsignedOrdinal();
+        remapPastTwoFiftyFive();
         System.out.println("ok");
     }
 }
