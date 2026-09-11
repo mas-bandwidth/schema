@@ -951,7 +951,7 @@ unopened) ran it this way and nothing in it is optional.
 
 | # | the step |
 |---|---|
-| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing |
+| 1 | **The fixtures FIRST, and RED.** `make tables-fixedform-corpus` writes the rows; the versioning corpus is `old_<row>.bin` / `new_<row>.bin`, one pair per row of §5.7, the SAME bytes the reference wrote. **The rows that are not a pair have their own names and only the dump states them** (§5.9 #28): the floor is `old_floor.bin` / `mid_floor.bin` / `new_floor.bin` — below it, AT it, the reader's own — and the branch case is `old_`, `a_`, `b_` and `new_lineage_merge.bin`, the two pre-merge writers beside the oldest and the merged build's. Bring every row over with BOTH columns and watch them fail before a line of the reader exists. A row that was green before the reader was written is a row asserting nothing. **WHAT EACH FILE HOLDS IS IN `build/fixedform-corpus/manifest.txt`**, written by the dump from the same values it writes into the bytes, one line per file: `file=<name> row=<row> side=old|new|mid|a|b|none root=<Table> records=<n> values=<field>=<value>[,...]` — the root when a schema declares two tables, the record count, and every value the dump set, records as `r<i>.`, nested fields dotted, arrays indexed, text quoted, a float by its digits AND its bits. `values=` is the last field and **runs to the end of the line**, and a quoted value may carry spaces, so split the head on spaces and take the rest whole; `row=` is the per-file name while `root=` is shared by a lineage pair. **ASSERT THE MANIFEST, NEVER READ THE DUMP** (§5.9 #32): the declared default is not the value on the wire — `int_widen`'s `lead` and `trail` are `2863311530` and `3149642683` there while the schema says 1 and 2 — and a field absent from a line carries its schema default |
 | 2 | **LOAD, §5.3's eleven steps IN ORDER.** The framing checks, the header's hash TAKEN AS GIVEN, the lineage select, the floor, the byte comparison, the per-record hash BEFORE the prefill. Every refusal by its own name, nothing decoded, no counter moved. This is the half the negative controls watch |
 | 3 | **The static data**: the lineage from the lock, oldest first, the current layout last (§5.9 #1, #2); the floor as one number; every plan laid down OFF THE LOAD PATH (§5.9 #3, #4). Nothing here reads a file at run time |
 | 4 | **PLAN / MATCH / EMIT**, §5.2, against §1's kind-code table — the ladder rungs `20..24` and `25..29` included, the aux lane's seven rows, the text op's three facts, the widen's two signs, the guard's width, the remap table's length word, the two-pass split before the pool spends |
@@ -1262,6 +1262,34 @@ byte gate is itself the kind of edit that wants a reader, so it is called out in
 a green. **A red nobody wrote down is a red nobody owes**, and a red written down as somebody else's is still
 written down.
 
+**32. A PORT ASSERTS THE MANIFEST'S VALUES, NEVER READS THE DUMP.** Every leg ported from this section — Go
+(#914), C (#917), Rust (#918) and Dart — opened `test/tables/fixedform_dump.cpp`, the one file §5.7 forbids, for
+the same four facts: what values a row's records actually carry, which table is the ROOT where a schema declares
+two, how many RECORDS a file has, and the names of the rows that are not a pair. A rule four legs in a row had
+to break is not the legs' bug. So the emitter SAYS what it wrote: `make tables-fixedform-corpus` writes
+`build/fixedform-corpus/manifest.txt` beside the bytes, one plain-text line per file, no dependency to parse it
+—
+
+```
+file=<name> row=<row> side=old|new|mid|a|b|none root=<Table> records=<n> values=<field>=<value>[,<field>=<value>...]
+```
+
+— where `row` and `side` come from the FILE NAME, `root` from the record's own TYPE and `records` from the
+vector the dump saved, and every value is stored through one helper that performs the assignment AND records the
+line from the same expression (`MS` / `MSI` / `MSE` / `MSEI` / `MSTR` / `MSTRI` / `MWCPY` — the `I` pair take the
+SUBSCRIPT the call site is looping over, so the path holds the index the bytes hold and never the variable's
+name), so the manifest cannot drift from the corpus: a changed value changes both or neither. `values=` is the
+LAST field and runs to the end of the line: split the head on spaces, then take everything after `values=` whole
+— a quoted value may carry spaces, and the commas inside one are escaped (`\,`). `root=` is NOT unique across
+rows (FU1's and FU2's is `FuRoot`, a lineage pair's two sides share one name by construction); `row=` is the
+per-file name. A record's values are prefixed `r<i>.`, nested fields are
+dotted, array and keyed slots carry the index the bytes carry, text is quoted (`u"…"` for wide, `\uXXXX` for
+anything not printable ASCII), a float is given as digits AND bits (`nan|0x7F8ABCDE` — a signalling NaN's
+payload is the value), and a field the dump did not set carries its schema default. **The manifest is the
+card's source and the dump is off limits**; `manifest_case` in `test/tables/fixedform_main.cpp` is what keeps it
+honest — every `.bin` in the corpus has a line, and every `root=` names a table the generator emitted — and
+nothing under `build/` is committed.
+
 ## 6. The bounds
 
 | bound | verdict |
@@ -1303,7 +1331,7 @@ not transliterate.** Then **prove against the oracle, in this order**:
 
 | # | the proof |
 |---|---|
-| 1 | **`make tables-fixedform-corpus`** writes six form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements). **Read a file and save it back; the bytes must be identical** — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
+| 1 | **`make tables-fixedform-corpus`** writes nine form-`3` files into `build/fixedform-corpus` from the reference, values set by hand: `fx1`/`fx2` (the versioning pair, carrying a short string, a wholly unused string, a partly-used `[..4]int32` and a partly-used `bytes(6)`), `p1`/`p3` (a value against a `?T`, present and absent), `keyed` (keyed arrays nesting keyed arrays), `pack` (counted arrays, an enum off its declared default, optionals inside elements), `fxw` (the wide-text unit), `fu1`/`fu2` (text under a union arm, and §4's TWO WIDENING RUNGS — `mark int16` at `-1`, `INT16_MIN` and `INT16_MAX` into FU2's `int32`, and `heat float32` as two signalling NaNs and an ordinary `1.5` into FU2's `float64`; schema#876 cards 15 and 16). **Read a file and save it back; the bytes must be identical** — a byte a port encodes differently is a byte that does not come back. `p3` sets an absent link's payload in STORAGE on purpose and the file's bytes for it are the template's zeros, which is exactly the check |
 | 2 | **read a file written under ANOTHER schema's layout** — `fx1`/`fx2` both directions, `p1` into `p3`. That is the plan path, and the whole of what the versioning invariant is worth |
 | 3 | **the negative controls, one per named rule and one per named refusal**: each of §1.1's seven, over a file that reads clean and is broken in exactly one place; `layout_malformed` for a header shorter than a layout and for a header hash that is not the hash of the layout behind it; `plan_too_large` for a one-entry plan slice; `batch_too_large` for a batch past the caller's room; `previous_form`, `message_form_as_file` and `newer_form` for form bytes `1`, `2` and `6`; `no_layout` for a record hash naming nothing; `malformed` for a ragged tail. **Each comes back under ITS OWN NAME, nothing decoded, no counter moved.** A validation nobody watched fail is a validation nobody has |
 | 4 | **the wrong plan must go red**, and so must each fix's own bug: this build's identity plan over another schema's record, the swapped `bytes(N)` row, the shared `arg`/`meta` lane, a whole-span copy over stained slack |
@@ -1320,8 +1348,10 @@ already names.
 
 | construct | fixture | cpp | c | go | cs | rust | java | js | dart | elixir |
 |---|---|---|---|---|---|---|---|---|---|---|
-| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack` | golden | | | | | | | | |
-| dump plan path, both directions | `fx1`↔`fx2`, `p1` into `p3` | golden | | | | | | | | |
+| dump identity of bytes | `build/fixedform-corpus` `fx1`/`fx2`/`p1`/`p3`/`keyed`/`pack`/`fxw`/`fu1`/`fu2` | golden | | | | | | | | |
+| dump plan path, both directions | `fx1`↔`fx2`, `p1` into `p3`, `fu1` into FU2 (NEW-READS-OLD) | golden | | | | | | | | |
+| the two widening rungs asserted after the compiled read | `fu1` into FU2: `mark int16`→`int32` SIGN-EXTENDED, `heat float32`→`float64` on the payload bits | golden | | | | | | | | |
+| OLD-REFUSES-NEW | `fu2` under FU1: `layout_newer`, the file's hash, nothing decoded (COMPILE from the lock) | golden | | | | | | | | |
 | widen, `was =`, unknown field, unknown nested type, slack, `bytes(6)` | `test/tables/FX1`/`FX2` | golden | | | | | | | | |
 | variant/arm inserted mid-list, keyed slots sliding, optional, moved kind | `V1`/`V2` | golden | | | | | | | | |
 | `?T` against a plain nesting | `P1`/`P3` | golden | | | | | | | | |

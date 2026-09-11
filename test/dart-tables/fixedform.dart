@@ -76,6 +76,19 @@ import '../../build/dart-fixed/v2/V2Fixed.dart' as v2;
 
 var failed = false;
 
+// THE TESTS SECTION 5.6 RETIRES, SKIPPED BY NAME AND NEVER DELETED
+// (docs/FIXED-FORM-ALGORITHM.md §5.7 step 5). A deleted test is a coverage
+// claim nobody can audit — and this suite is a `main` that counts failures and
+// has no skip verb, so the skip is A PRINTED LINE AT THE CALL SITE naming the
+// function, §5.6 and where the coverage is owed, plus a COUNT at the end
+// (§5.9 #23). Every retired function stays in this file and stays compiling.
+int retired = 0;
+
+void retire(String fn, String where) {
+  retired++;
+  print('RETIRED by §5.6: $fn — $where');
+}
+
 void check(bool ok, String what) {
   if (!ok) {
     print('FAILED: $what');
@@ -1352,23 +1365,17 @@ void negativeControl() {
     );
   }
 
-  // and the loader never takes that path: the hash is what selects the plan
-  {
-    final right = <fx1home.FxRoot>[fx1home.FxRoot()];
-    final r = fx1home.TableFixedReport();
-    final n = fx1.fxRootFixedLoad(
-      right,
-      1,
-      w2,
-      w2.length,
-      fx1.fxRootFixedNewPlan(),
-      r,
-    );
-    check(
-      n == 1 && right[0].nested.a == 33 && right[0].nested.b == 44,
-      'NEGATIVE CONTROL: the loader compiles a plan from the layout and gets it right',
-    );
-  }
+  // AND THE OTHER HALF OF THAT CONTROL IS RETIRED (§5.6): it asserted that the
+  // loader COMPILES a plan from the layout a file carried and gets it right,
+  // which is the mechanism this section replaced — the load selects by hash
+  // against the lineage and compiles nothing. The coverage is owed by the
+  // lineage harness's NEW-READS-OLD column.
+  retire(
+    'negativeControl: the loader compiles a plan from the layout',
+    'the load path compiles nothing now: internal/codegen/darttable/'
+        'fixedversioning_test.go reads every row through a plan the BUILD laid '
+        'down from the lock',
+  );
 
   // A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER DAMAGE, AND
   // THE REFUSAL SAYS WHICH DIRECTION (§3): the registry is ORDERED, so form 1
@@ -1402,32 +1409,28 @@ void negativeControl() {
     );
   });
 
-  // THE HEADER NAMES THE LAYOUT ONCE, and a header whose hash is not the hash
-  // of the layout behind it is refused. It is checked LAST of the three, so a
-  // broken layout is never reported as a lying header.
-  {
-    final bad = Uint8List.fromList(w2);
-    bad[8] ^= 0xff;
-    final v = <fx1home.FxRoot>[fx1home.FxRoot()];
-    final r = fx1home.TableFixedReport();
-    final n = fx1.fxRootFixedLoad(
-      v,
-      1,
-      bad,
-      bad.length,
-      fx1.fxRootFixedNewPlan(),
-      r,
-    );
-    check(
-      n < 0 && r.refused == fx1home.TableFixedRefusal.layoutMalformed,
-      'REFUSED BY NAME: a header whose hash is not the layout\'s is layout_malformed',
-    );
-  }
+  // THE RECOMPUTE OF THE HEADER'S HASH FROM THE LAYOUT BEHIND IT IS RETIRED
+  // (§5.6): the digest is not on the wire, so the hash cannot be re-derived
+  // from a file at all — it is TAKEN AS GIVEN and the layout is held to a BYTE
+  // COMPARISON against the bytes the lock recorded. A hash nothing in the
+  // lineage holds is `layout_newer`; a KNOWN hash whose bytes differ is
+  // `layout_malformed`.
+  retire(
+    'negativeControl: a header whose hash is not the layout hash',
+    'there is no third thing to check: hash_known_bytes_differ in '
+        'internal/codegen/darttable/fixedversioning_test.go holds a known hash '
+        'with changed layout bytes to layout_malformed, and hash_unknown holds '
+        'an unknown hash to layout_newer',
+  );
 
-  // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS is a refusal by name
+  // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS is a refusal by name.
+  // IT IS REACHED THROUGH THIS READER'S OWN FILE now: under §5 the lineage
+  // select runs FIRST, so a stranger's file never reaches the record loop at
+  // all — the rule, the name and the assertion are unchanged, the file it is
+  // planted in is this build's own (§5.3 step 11).
   {
-    final bad = Uint8List.fromList(w2);
-    bad[fx2.fxRootFixedHeaderBytes] ^= 0xff; // the record's own hash
+    final bad = Uint8List.fromList(fx1Record());
+    bad[fx1.fxRootFixedHeaderBytes] ^= 0xff; // the record's own hash
     final v = <fx1home.FxRoot>[fx1home.FxRoot()];
     final r = fx1home.TableFixedReport();
     final n = fx1.fxRootFixedLoad(
@@ -1444,18 +1447,20 @@ void negativeControl() {
     );
   }
 
-  // A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS A REFUSAL BY NAME, and
-  // the codec allocates nothing to get around it.
-  {
-    final v = <fx1home.FxRoot>[fx1home.FxRoot()];
-    final r = fx1home.TableFixedReport();
-    final tiny = fx1.fxRootFixedNewPlan(entryCapacity: 1, remapCapacity: 4);
-    final n = fx1.fxRootFixedLoad(v, 1, w2, w2.length, tiny, r);
-    check(
-      n < 0 && r.refused == fx1home.TableFixedRefusal.planTooLarge,
-      'REFUSED BY NAME: plan_too_large',
-    );
-  }
+  // A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS STILL A REFUSAL BY NAME
+  // (§5.9 #5: the plan slice stays a CAPACITY DECLARATION, checked and never
+  // written through) — but this control planted it on a STRANGER's file, and a
+  // stranger is `layout_newer` before a plan is ever looked up. The name is
+  // live in the generated load; what has no fixture on this leg is a LINEAGE
+  // ENTRY big enough to overflow a one-entry plan, because these libraries are
+  // generated with no lock. NAMED AND OWED rather than quietly dropped
+  // (§5.9 #31).
+  retire(
+    'negativeControl: plan_too_large over a stranger file',
+    'the refusal is wired in the generated load against the selected lineage '
+        'entry\'s own entry count; a fixture wants a LOCKED lineage for '
+        'test/tables, which this leg does not have yet',
+  );
 
   // MORE RECORDS THAN THE CALLER'S CAPACITY is a refusal by name rather than a
   // write past the end
@@ -1797,13 +1802,34 @@ void main(List<String> args) {
   );
   corpusFiles(corpus);
   pairedCorpus(benchCorpus);
-  fxCase();
-  fuCase();
-  vCase();
-  pCase();
+  // THE FOUR CROSS-SCHEMA CASES ARE RETIRED (§5.6): each compiled a plan from
+  // a layout THE FILE carried and read FORWARD, and under §5 a fixed table
+  // reads BACKWARD only — a peer the lineage does not hold is `layout_newer`
+  // before a plan exists. The coverage moved to the lineage harness, where the
+  // older generation is a LOCKED ENTRY of the newer build rather than a
+  // stranger on the wire.
+  const harness =
+      'the coverage is owed by internal/codegen/darttable/'
+      'fixedversioning_test.go, both columns of every row of '
+      'docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`';
+  retire('fxCase', 'the plan path, FX1 <-> FX2 both ways: $harness');
+  retire('fuCase', 'text under an arm on a compiled plan: $harness');
+  retire('vCase', 'a variant, an arm and a keyed slot mid-list: $harness');
+  retire('pCase', 'a value against ?T across two schemas: $harness');
   absentOptionalCase();
   negativeControl();
-  layoutValidation();
+  // AND §1.1'S SEVEN RULES NO LONGER RUN AT READ TIME (§5.6): a layout arriving
+  // on the wire is never walked, so a malformation under a KNOWN hash is ONE
+  // name, `layout_malformed`. The coverage is owed by the LOCK's validation of
+  // what it records — and `hash_known_bytes_differ` in the lineage harness
+  // holds the read side to that single name.
+  retire(
+    'layoutValidation',
+    'the run-time walk of a stranger layout: the seven rules move to the LOCK '
+        'validation of what it records, and the read side is one name, '
+        'layout_malformed, asserted by hash_known_bytes_differ in '
+        'internal/codegen/darttable/fixedversioning_test.go',
+  );
 
   if (failed) {
     print('FAILED');
@@ -1813,8 +1839,11 @@ void main(List<String> args) {
   print(
     'tables Dart fixed form: the LAYOUT and its hash are the C++ reference\'s byte for '
     'byte, all eight of its files read to the values it states and write back IDENTICAL, '
-    'the versioning conformance lands through a plan compiled from the other side\'s '
-    'layout, and every refusal is by name',
+    'a fixed table reads BACKWARD through the lineage the build laid down, and every '
+    'refusal is by name',
+  );
+  print(
+    '$retired retired by §5.6, each named at its call site and still in the tree',
   );
   print('OK');
 }

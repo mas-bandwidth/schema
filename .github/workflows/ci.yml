@@ -273,6 +273,18 @@ jobs:
           fi
           make tables-rust-versioning
 
+      # THE SAME SUITE ON THE DART LEG (§5.7 step 6: every leg owes BOTH gates,
+      # the bytes and the versioning rows). Its probes are generated Dart, one
+      # per row per column, so the job needs the SDK and nothing else — the
+      # corpus it reads is the one the step above already built, and
+      # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
+      # failure rather than a silent skip.
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: 3.13.2
+      - name: the Dart leg reads backward over every versioning row
+        run: make tables-dart-versioning DART=dart
+
       # The projection's three controls (SPEC §3.1): a projection that stopped
       # carrying enum and flags variant names, or a union's arm names, would
       # let a reorder ship as a false match, and one without the codec law line
