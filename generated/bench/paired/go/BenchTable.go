@@ -1596,9 +1596,14 @@ const tableFixedMaxDepth int32 = 64
 // arm overwrote the guard with the flavour and the read skipped the string.
 // tableFixedEntryBytes is the FILE layout entry (id+kind+size+children),
 // not this in-memory plan row — Meta does not ride the wire.
+// ArgW IS THE GUARD'S WIDTH IN BYTES (§5.2 THE GUARD'S WIDTH): a union tag is
+// one, two, four or eight bytes, clamped 1..8, and 0 reads as 1. The guard is
+// tested at that FULL width and never at its first byte — a foreign two-byte
+// tag 0x0101 is not arm 1. Arg is the arm ordinal and carries NO BYTE LANE
+// (§5.8 row 5): a 256-arm union's ordinal does not fit a byte.
 type TableFixedEntry struct {
-	Src, Dst, Size, Aux, Guard   uint32
-	Op, Arg, DstSize, Sign, Meta uint8
+	Src, Dst, Size, Aux, Guard, Arg uint32
+	Op, ArgW, DstSize, Sign, Meta   uint8
 }
 
 type TableFixedDst struct {
@@ -1708,6 +1713,29 @@ func tableFixedLeafSize(kind uint8, size uint32) (admitted, leaf bool) {
 // time, which is the whole of what lets two adjacent entries become one.
 func tableFixedRuns(op uint8) bool { return op == tableFixedCopy || op == tableFixedBool }
 
+// THE GUARD'S WIDTH, clamped (§5.2): 0 reads as 1, and nothing above 8 is a
+// width an ordinal is stored at.
+func tableFixedArgWidth(w uint8) uint32 {
+	if w == 0 {
+		return 1
+	}
+	if w > 8 {
+		return 8
+	}
+	return uint32(w)
+}
+
+// tableFixedTagAt loads the guard WHOLE, little-endian, at its own width. A
+// one-byte compare fires arm 1 on a foreign 0x0101; this is the compare.
+func tableFixedTagAt(src []byte, at uint32, w uint8) uint64 {
+	n := tableFixedArgWidth(w)
+	var v uint64
+	for k := uint32(0); k < n; k++ {
+		v |= uint64(src[at+k]) << (8 * k)
+	}
+	return v
+}
+
 func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int) tableFixedPlan {
 	raw := make([]TableFixedEntry, n)
 	written := emit(raw, 0, 0)
@@ -1715,7 +1743,7 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, uint32, uint32) int, n int
 	for i := 0; i < written; i++ {
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
-			raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
 			raw[out-1].Src+raw[out-1].Size == raw[i].Src &&
 			raw[out-1].Dst+raw[out-1].Size == raw[i].Dst {
 			raw[out-1].Size += raw[i].Size
@@ -1736,15 +1764,6 @@ func tableFixedPutF64(b []byte, v float64)     { tableFixedPut64(b, math.Float64
 func tableFixedPut128(b []byte, lo, hi uint64) { tableFixedPut64(b, lo); tableFixedPut64(b[8:], hi) }
 func tableFixedGet32(b []byte) uint32          { return binary.LittleEndian.Uint32(b) }
 func tableFixedGet64(b []byte) uint64          { return binary.LittleEndian.Uint64(b) }
-
-func tableFixedHashOf(layout []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, c := range layout {
-		h ^= uint64(c)
-		h *= 0x100000001b3
-	}
-	return h
-}
 
 func tableFixedCopyRun(d, s []byte, n uint32) {
 	if n == 0 {
@@ -1774,7 +1793,8 @@ func tableFixedCopyRun(d, s []byte, n uint32) {
 func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report *TableReport) {
 	for i := int32(0); i < count; i++ {
 		p := plan[i]
-		if p.Guard != tableFixedNoGuard && src[p.Guard] != p.Arg {
+		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2).
+		if p.Guard != tableFixedNoGuard && tableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
 			continue
 		}
 		switch p.Op {
@@ -1845,26 +1865,29 @@ func tableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 				}
 			}
 		case tableFixedOrdinal:
-			var raw uint32
-			switch p.Size {
-			case 1:
-				raw = uint32(src[p.Src])
-			case 2:
-				raw = uint32(binary.LittleEndian.Uint16(src[p.Src:]))
-			default:
-				raw = binary.LittleEndian.Uint32(src[p.Src:])
-			}
+			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
+			// read through a 32-bit temporary an eight-byte ordinal loses its
+			// top four bytes, so a forged 0x1_0000_0001 would land as 1.
+			raw := tableFixedTagAt(src, p.Src, uint8(p.Size))
 			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
 			table := unsafe.Slice(p16, int(*p16)+1)
 			var v uint32
-			if raw != 0 && raw <= uint32(table[0]) {
+			if raw != 0 && raw <= uint64(table[0]) {
 				v = uint32(table[raw])
+			} else if raw != 0 {
+				// AN ORDINAL PAST THE WRITER'S SET LANDS None AND COUNTS
+				// CLAMPED (§5.4): the compiled plan counts it exactly as the
+				// identity plan's bounds pass does, which tests the READER's
+				// top value and so a remapped 0 never trips it.
+				report.Clamped++
 			}
 			switch p.DstSize {
 			case 1:
 				dst[p.Dst] = uint8(v)
 			case 2:
 				binary.LittleEndian.PutUint16(dst[p.Dst:], uint16(v))
+			case 8:
+				binary.LittleEndian.PutUint64(dst[p.Dst:], uint64(v))
 			default:
 				binary.LittleEndian.PutUint32(dst[p.Dst:], v)
 			}
@@ -2218,10 +2241,50 @@ type tableFixedCompiler struct {
 	plan                  []TableFixedEntry
 	capacity, count, pool int32
 	overflow              bool
-	report                *TableReport
+	// tooLarge is ONE ENTRY PAST THE WRITER'S RECORD, which refuses the plan
+	// WHOLE under layout_record_too_large (§5.2) and never lands a short read.
+	tooLarge bool
+	// record is the WRITER's declared root size, the bound every entry's
+	// source extent is held to.
+	record uint32
+	// argW is the CURRENT union's tag width, stamped onto every guarded push.
+	argW   uint8
+	report *TableReport
+}
+
+// tableFixedSrcEnd is the last source byte, exclusive, an entry reads — the
+// guard included, because a guarded entry loads the tag before anything else.
+func tableFixedSrcEnd(e TableFixedEntry) uint64 {
+	var end uint64
+	switch e.Op {
+	case tableFixedConst:
+		end = 0 // a constant reads no source at all
+	case tableFixedCount:
+		end = uint64(e.Src) + 4 // Size is the BOUND, not a byte count
+	case tableFixedText:
+		end = uint64(e.Src) + 4 + uint64(e.Size)
+	default:
+		end = uint64(e.Src) + uint64(e.Size)
+	}
+	if e.Guard != tableFixedNoGuard {
+		if g := uint64(e.Guard) + uint64(tableFixedArgWidth(e.ArgW)); g > end {
+			end = g
+		}
+	}
+	return end
 }
 
 func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
+	if e.Guard != tableFixedNoGuard {
+		e.ArgW = uint8(tableFixedArgWidth(c.argW))
+	}
+	// ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE (§5.2). The
+	// bound is the writer's declared root size and not this reader's: an entry
+	// that reached past it would read the NEXT record's bytes.
+	if c.record != 0 && tableFixedSrcEnd(e) > uint64(c.record) {
+		c.tooLarge = true
+		return
+	}
 	room := c.capacity - (c.pool+int32(unsafe.Sizeof(TableFixedEntry{}))-1)/int32(unsafe.Sizeof(TableFixedEntry{}))
 	if c.count >= room {
 		c.overflow = true
@@ -2230,6 +2293,10 @@ func tableFixedPush(c *tableFixedCompiler, e TableFixedEntry) {
 	c.plan[c.count] = e
 	c.count++
 }
+
+// tableFixedRemapMax is the longest remap table the pool's u16 length word can
+// name. A writer's variant count above it is a layout this reader cannot plan.
+const tableFixedRemapMax uint32 = 0xFFFF
 
 func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 {
 	bytes := (n + 1) * 2
@@ -2246,7 +2313,10 @@ func tableFixedLayTable(c *tableFixedCompiler, values []uint16, n int32) uint32 
 	return at
 }
 
-func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint8) {
+// census is whether THIS entry is the first time the peer's field is seen:
+// an array's element subtree is compiled once per element and the unknown
+// count is ONCE PER FIELD PER PEER (§5.4), so only element 0 censuses.
+func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint32, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	myChild := mi + 1
@@ -2257,7 +2327,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 		for j := uint32(0); j < te.Children; j++ {
 			tc := tableFixedEntryAt(theirs, theirChild)
 			if tc.Id == mc.Id {
-				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg)
+				tableFixedCompileEntry(c, theirs, theirChild, theirOff, mine, myChild, dst, myAt, guard, arg, census)
 				break
 			}
 			theirOff += tc.Size
@@ -2277,14 +2347,14 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 			}
 			mcAt += tableFixedSubtree(mine, mcAt)
 		}
-		if !named && c.report != nil {
+		if !named && census && c.report != nil {
 			c.report.Unknown++
 		}
 		tcAt += tableFixedSubtree(theirs, tcAt)
 	}
 }
 
-func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint8) {
+func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, ti int32, theirAt uint32, mine tableFixedLayoutView, mi int32, dst []TableFixedDst, myAt, guard uint32, arg uint32, census bool) {
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	d := dst[mi]
@@ -2315,15 +2385,15 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	// entry under the same guard and ordinal. It is not a kind that moved.
 	if me.Kind == 35 && te.Kind != 35 {
 		tableFixedPush(c, TableFixedEntry{Dst: auxAt, Size: 1, Aux: 1, Guard: guard, Op: tableFixedConst, Arg: arg})
-		tableFixedCompileEntry(c, theirs, ti, theirAt, mine, mi+1, dst, myAt, guard, arg)
+		tableFixedCompileEntry(c, theirs, ti, theirAt, mine, mi+1, dst, myAt, guard, arg, census)
 		return
 	}
 	switch me.Kind {
 	case 35:
 		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedBool, Arg: arg})
-		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg)
+		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg, census)
 	case 13:
-		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg)
+		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, census)
 	case 14:
 		tel := tableFixedEntryAt(theirs, ti+1)
 		mel := tableFixedEntryAt(mine, mi+1)
@@ -2339,15 +2409,21 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			myN = (me.Size - head) / mel.Size
 		}
 		theirBase := theirAt + head
-		if d.Counted != 0 {
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myN, Guard: guard, Op: tableFixedCount, Arg: arg})
-		}
 		n := theirN
 		if myN < n {
 			n = myN
 		}
+		if d.Counted != 0 {
+			// THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind 14,
+			// §5.3 step 11: BOUNDS runs against the PLAN's bounds). The
+			// reader's own bound is the wrong number: a forged 7 from a writer
+			// bounded at 4 must land 4 and COUNT, not be admitted because this
+			// reader grew to 8. n is their_n held to this reader's storage,
+			// which is their_n itself on every legal widening.
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
+		}
 		for i := uint32(0); i < n; i++ {
-			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg)
+			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
 		}
 	case 16:
 		tkey := tableFixedEntryAt(theirs, ti+1)
@@ -2361,13 +2437,20 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 				if tableFixedEntryAt(theirs, ti+2+int32(j)).Id != keyId {
 					continue
 				}
-				tableFixedCompileEntry(c, theirs, tel, theirAt+j*tee.Size, mine, mel, dst, at+k*d.Stride, guard, arg)
+				tableFixedCompileEntry(c, theirs, tel, theirAt+j*tee.Size, mine, mel, dst, at+k*d.Stride, guard, arg, census && k == 0)
 				break
 			}
 		}
 	case 15:
 		theirTag := tableFixedTagBytes(theirs, ti)
 		myTag := tableFixedTagBytes(mine, mi)
+		// THE WRITER'S TAG WIDTH IS THE GUARD'S (§5.2 THE GUARD'S WIDTH): every
+		// entry pushed beneath this union is compared at it, whole.
+		savedW := c.argW
+		c.argW = 1
+		if theirTag >= 1 && theirTag <= 8 {
+			c.argW = uint8(theirTag)
+		}
 		myArm := mi + 1
 		for k := uint32(0); k < me.Children; k++ {
 			ma := tableFixedEntryAt(mine, myArm)
@@ -2375,14 +2458,15 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			for j := uint32(0); j < te.Children; j++ {
 				ta := tableFixedEntryAt(theirs, theirArm)
 				if ta.Id == ma.Id {
-					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: uint8(j + 1)})
-					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, uint8(j+1))
+					tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: myTag, Aux: k + 1, Guard: theirAt, Op: tableFixedConst, Arg: j + 1})
+					tableFixedCompileEntry(c, theirs, theirArm, theirAt+theirTag, mine, myArm, dst, at, theirAt, j+1, census)
 					break
 				}
 				theirArm += tableFixedSubtree(theirs, theirArm)
 			}
 			myArm += tableFixedSubtree(mine, myArm)
 		}
+		c.argW = savedW
 	case 30:
 		// A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts widened
 		// (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH ordinal takes the remap
@@ -2392,11 +2476,15 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 				Op: tableFixedWiden, Arg: arg, DstSize: uint8(me.Size)})
 			return
 		}
-		var m [256]uint16
+		// THE TABLE IS AS LONG AS THE WRITER'S VARIANT COUNT (§5.2), not 255:
+		// capped at 255 a 300-variant writer's variant 299 read as out of the
+		// set and landed None.
 		n := te.Children
-		if n > 255 {
-			n = 255
+		if n > tableFixedRemapMax {
+			c.tooLarge = true
+			return
 		}
+		m := make([]uint16, n)
 		for j := uint32(0); j < n; j++ {
 			vid := tableFixedEntryAt(theirs, ti+1+int32(j)).Id
 			var landed uint16
@@ -2409,7 +2497,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			m[j] = landed
 		}
 		e := TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard, Op: tableFixedOrdinal, Arg: arg, DstSize: uint8(me.Size)}
-		e.Aux = tableFixedLayTable(c, m[:], int32(n))
+		e.Aux = tableFixedLayTable(c, m, int32(n))
 		tableFixedPush(c, e)
 	case 12, 33:
 		units := me.Size - 4
@@ -2447,8 +2535,17 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if why != "" {
 		return -2
 	}
-	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report}
-	tableFixedMatchChildren(&c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0)
+	// THE WRITER'S RECORD IS THE BOUND ON EVERY ENTRY (§5.2): the root's
+	// declared size, taken from the layout this plan is compiled against.
+	c := tableFixedCompiler{plan: plan, capacity: int32(len(plan)), report: report,
+		record: tableFixedEntryAt(theirs, 0).Size}
+	tableFixedMatchChildren(&c, theirs, 0, 0, mine, 0, dst, 0, tableFixedNoGuard, 0, true)
+	// ONE ENTRY PAST THE WRITER'S RECORD REFUSES THE PLAN WHOLE, by its own
+	// name: -3 is layout_record_too_large, -2 the reader's own layout, -1 the
+	// plan storage.
+	if c.tooLarge {
+		return -3
+	}
 	if c.overflow {
 		return -1
 	}
@@ -2456,7 +2553,7 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	for i := int32(0); i < c.count; i++ {
 		if out > 0 && plan[out-1].Op == plan[i].Op && tableFixedRuns(plan[i].Op) &&
 			plan[out-1].Guard == plan[i].Guard && plan[out-1].Arg == plan[i].Arg &&
-			plan[out-1].Meta == plan[i].Meta &&
+			plan[out-1].ArgW == plan[i].ArgW && plan[out-1].Meta == plan[i].Meta &&
 			plan[out-1].Src+plan[out-1].Size == plan[i].Src &&
 			plan[out-1].Dst+plan[out-1].Size == plan[i].Dst {
 			plan[out-1].Size += plan[i].Size
@@ -2519,7 +2616,7 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 			tableFixedLand(cover, p.Dst, 8)
 		case tableFixedOrdinal:
 			n := uint32(4)
-			if p.DstSize == 1 || p.DstSize == 2 {
+			if p.DstSize == 1 || p.DstSize == 2 || p.DstSize == 8 {
 				n = uint32(p.DstSize)
 			}
 			tableFixedLand(cover, p.Dst, n)
@@ -2612,6 +2709,10 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 				out[i].Why = "layout_malformed"
 				break
 			}
+			if made == -3 {
+				out[i].Why = "layout_record_too_large"
+				break
+			}
 			if made < 0 {
 				if room >= 1<<18 {
 					out[i].Why = "plan_too_large"
@@ -2631,7 +2732,14 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 	return out
 }
 
+// A REFUSAL BY NAME HAS COUNTERS ALL ZERO (§5.3's joint table). A no_layout
+// found mid-batch must not carry record 0's counters out with it, and a report
+// a caller reuses must not keep a refusal that is no longer true. The FILE'S
+// hash survives, because the two refusals that report it set it first.
 func tableFixedRefuse(report *TableReport, reason string) int64 {
+	hash := report.LayoutHash
+	*report = TableReport{}
+	report.LayoutHash = hash
 	report.Verdict = TableOpenRefused
 	report.Reason = reason
 	return -1

@@ -669,6 +669,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 			for q := guardAt; q < n; q++ {
 				out[q].Guard = es
 				out[q].Arg = 1
+				out[q].ArgW = 1
 			}
 		}
 		{ // arm chat, ordinal 2
@@ -677,6 +678,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 			for q := guardAt; q < n; q++ {
 				out[q].Guard = es
 				out[q].Arg = 2
+				out[q].ArgW = 1
 			}
 		}
 		{ // arm pickup, ordinal 3
@@ -685,6 +687,7 @@ func BenchMixedFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 			for q := guardAt; q < n; q++ {
 				out[q].Guard = es
 				out[q].Arg = 3
+				out[q].ArgW = 1
 			}
 		}
 	}
@@ -1401,6 +1404,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		var local TableReport
 		report = &local
 	}
+	*report = TableReport{}
 	if len(data) < TableFixedHeaderBytes+4 {
 		report.Malformed = true
 		return -1
@@ -1445,13 +1449,13 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 		if lane.Why != "" {
 			return tableFixedRefuse(report, lane.Why)
 		}
-		if int(lane.Count) > len(plan) {
-			return tableFixedRefuse(report, "plan_too_large")
-		}
 		entries, entryCount = lane.Entries, lane.Count
 		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
 		// lands only on a read that returns: REFUSE moves no counter.
 		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
+	}
+	if int64(entryCount) > int64(len(plan)) {
+		return tableFixedRefuse(report, "plan_too_large")
 	}
 	at := data[TableFixedHeaderBytes+4+layoutBytes:]
 	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
@@ -1480,7 +1484,7 @@ func FixedTableFixedLoad(values []FixedTable, data []byte, plan []TableFixedEntr
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
 		}
-		tableFixedRun(entries, entryCount, at[8:], dst, report)
+		tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report)
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4).
 		FixedTableFixedClamp(&values[k], report)
