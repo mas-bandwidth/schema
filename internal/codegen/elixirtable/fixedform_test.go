@@ -456,6 +456,60 @@ table Root
 	}
 }
 
+// THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX. A one-cell binary
+// match fires arm 1 on a foreign 0x0101. tag_bytes/2 sizes the const that
+// writes THIS reader's ordinal, not the guard compare. C++ TableFixedTagAt
+// is the twin: little-endian, width 1/2/4/8, ArgW 0 means 1, >8 clamps to 8.
+// Flavour stays on the text op. Identity is still one COPY of the body —
+// that entry carries no guard, so it carries no ArgW either. Hash chooses
+// the plan and nothing else; assemble/2's single-run clause is the skip
+// when the one write covers the image, not a second reader.
+func TestFixedGuardComparedAtArgW(t *testing.T) {
+	out, err := Generate(unitFrom(t, `package probe
+table Root { n int32 }
+`))
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	runtime := string(out[FixedRuntimeModule+".ex"])
+	if !strings.Contains(runtime, "defp tag_at(") {
+		t.Error("the runtime never names tag_at")
+	}
+	if !strings.Contains(runtime, "defp tag_width(w) when w <= 0, do: 1") {
+		t.Error("ArgW 0 is not read as one")
+	}
+	if !strings.Contains(runtime, "defp tag_width(w) when w > 8, do: 8") {
+		t.Error("ArgW past 8 is not clamped to 8")
+	}
+	if strings.Contains(runtime, "<<_::binary-size(^gsrc), ^tag, _::binary>>") {
+		t.Error("the run loop still compares the union guard as one cell")
+	}
+	if !strings.Contains(runtime, "defp step([{:guard, gsrc, tag, argw, inner} | rest], body, writes, report) do") {
+		t.Error("the guard tuple omits ArgW")
+	}
+	if !strings.Contains(runtime, "case tag_at(body, gsrc, argw) do") {
+		t.Error("the run loop does not compare the guard at ArgW")
+	}
+	if !strings.Contains(runtime, "their_argw = if their_tag >= 1 and their_tag <= 8, do: their_tag, else: 1") {
+		t.Error("the compiler does not stamp ArgW from the writer's tag width")
+	}
+	if strings.Contains(runtime, "if identity") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+	if !strings.Contains(runtime, "defp assemble([{0, image}], prefill) when byte_size(image) == byte_size(prefill) do") {
+		t.Error("assemble/2 lost the single-run skip")
+	}
+	if !strings.Contains(runtime, "defp step([{:text, src, dst, aux, size, flavour} | rest], body, writes, report) do") {
+		t.Error("flavour left the text op")
+	}
+	plan := fixedIdentityPlan(findTable(t, unitFrom(t, `package probe
+table Root { n int32 }
+`), "Root"))
+	if len(plan) != 1 || plan[0].String() != "{:copy, 0, 0, 4}" {
+		t.Errorf("identity is not one COPY of the body: %v", plan)
+	}
+}
+
 // THE UTF-8 CONTENT RULE IS ONE WALK: eight ASCII bytes per clause, a zero is
 // not a character, hostile falls through. String.valid?/1 plus a NUL BIF is
 // the check this replaced.

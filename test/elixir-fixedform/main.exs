@@ -80,6 +80,58 @@ read = fn name -> File.read!(Path.join(corpus, name)) end
 Leg.start()
 
 # ---------------------------------------------------------------------------
+# THE GUARD IS COMPARED AT ArgW BYTES, NEVER AS A PREFIX.
+# compiler/fixedguardwidth_test.go holds the IR stamp; this is the run loop.
+# A two-byte tag 0x0101 whose low byte is 1 is not arm 1. ONE PATH: this is
+# FixedRuntime.run, the same loop identity and compiled both take. Flavour
+# stays on the text op.
+# ---------------------------------------------------------------------------
+Leg.section("the guard is compared at ArgW bytes, never as a prefix")
+
+run_guard = fn plan, body ->
+  {image, _} = Tblfx1.FixedRuntime.run(plan, body, <<0>>, Tblfx1.FixedRuntime.report())
+  image
+end
+
+# COPY of the payload at byte 2, guarded at 0, answering to arm 1, width 2
+two = [{:guard, 0, 1, 2, {:copy, 2, 0, 1}}]
+
+Leg.eq(
+  "ArgW: a two-byte tag 0x0101 whose low byte is 1 does NOT run arm 1",
+  run_guard.(two, <<0x01, 0x01, 0xAA>>),
+  <<0>>
+)
+
+Leg.eq(
+  "ArgW: a two-byte tag 0x0001 DOES run arm 1",
+  run_guard.(two, <<0x01, 0x00, 0xAA>>),
+  <<0xAA>>
+)
+
+# ArgW 0 means 1, as C++: only the first byte is the tag
+zero = [{:guard, 0, 1, 0, {:copy, 2, 0, 1}}]
+
+Leg.eq(
+  "ArgW: zero is read as one, so a 0x0101 prefix matches arm 1 at width 0",
+  run_guard.(zero, <<0x01, 0x01, 0xAA>>),
+  <<0xAA>>
+)
+
+four = [{:guard, 0, 1, 4, {:copy, 4, 0, 1}}]
+
+Leg.eq(
+  "ArgW: a four-byte tag 0x00000101 whose low byte is 1 does NOT run arm 1",
+  run_guard.(four, <<0x01, 0x01, 0x00, 0x00, 0xBB>>),
+  <<0>>
+)
+
+Leg.eq(
+  "ArgW: a four-byte tag 0x00000001 DOES run arm 1",
+  run_guard.(four, <<0x01, 0x00, 0x00, 0x00, 0xBB>>),
+  <<0xBB>>
+)
+
+# ---------------------------------------------------------------------------
 # THE WRITE: every file read and saved back has to come out BYTE FOR BYTE
 # ---------------------------------------------------------------------------
 
@@ -615,8 +667,9 @@ Leg.eq("nothing was damaged coming back", back_report.malformed, false)
 # landed the text.
 #
 # THIS PORT KEEPS THEM APART BY SHAPE and not by convention: the arm's tag
-# rides in the `{:guard, src, tag, inner}` wrapper the entry is nested in, and
-# the flavour is the entry's own last element. FU1/FU2 is the pin that says so
+# rides in the `{:guard, src, tag, argw, inner}` wrapper the entry is nested
+# in, ArgW is the tag's WIDTH, and the flavour is the text entry's own last
+# element. FU1/FU2 is the pin that says so
 # — the same two records read once through the IDENTITY plan and once through a
 # plan COMPILED from FU1's layout, and they have to agree field for field.
 Leg.section("text under a union arm: the identity read and the compiled read agree")
@@ -1216,13 +1269,13 @@ Leg.eq("NEGATIVE CONTROL: and says nothing about it", loose_report.malformed, fa
 
 Leg.check(
   "the compiled plan carries the text entry under the arm's guard",
-  Enum.any?(fu_compiled, &match?({:guard, _, _, {:text, _, _, _, _, _}}, &1))
+  Enum.any?(fu_compiled, &match?({:guard, _, _, _, {:text, _, _, _, _, _}}, &1))
 )
 
 overloaded =
   Enum.map(fu_compiled, fn
-    {:guard, g, tag, {:text, src, dst, aux, size, _flavour}} ->
-      {:guard, g, tag, {:text, src, dst, aux, size, tag}}
+    {:guard, g, tag, argw, {:text, src, dst, aux, size, _flavour}} ->
+      {:guard, g, tag, argw, {:text, src, dst, aux, size, tag}}
 
     entry ->
       entry
