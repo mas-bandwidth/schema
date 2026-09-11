@@ -300,14 +300,24 @@ jobs:
 
       # THE EMITTERS' OWN TESTS, which are the slow half of `go test ./...`:
       # every codegen package generates and compiles something.
+      # SCHEMA_SLOW=1 IS THE WHOLE OF THE SPLIT ON THIS LANE. internal/slowtest
+      # gates the tests that shell out to cc, c++, dotnet, javac, cargo, dart,
+      # node, elixir or the Go toolchain, so a child's default `go test` is
+      # seconds instead of minutes (the owner's rule, twice today: "Remember the
+      # 1-2 minute iteration rule on unit tests."). THIS LANE SETS IT, so the
+      # merge and nightly runs check exactly what they checked before.
       - name: go test the emitter packages
         if: matrix.group == 'unit-codegen'
+        env:
+          SCHEMA_SLOW: '1'
         run: go test ./internal/codegen/...
 
       # AND THE COMPLEMENT, derived from `go list` rather than listed here, so a
       # new package lands in one group or the other with no edit to this file.
       - name: go test everything that is not an emitter package
         if: matrix.group == 'unit-rest'
+        env:
+          SCHEMA_SLOW: '1'
         run: go test $(go list ./... | grep -v '/internal/codegen/')
 
       # THE FIXED FORM'S VERSIONING SUITE (§5 of docs/FIXED-FORM-ALGORITHM.md),

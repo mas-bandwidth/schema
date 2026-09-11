@@ -388,7 +388,7 @@ update-goldens-cs: build/tables-generated-cs/.stamp
 # from its wire golden, re-saved and byte-compared, and every §16 text read and
 # written beside it. It is the C# twin of tables-js-leg.
 #
-.PHONY: tables-cs-view tables-cs-leg tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
+.PHONY: tables-cs-view tables-cs-leg tables-cs-leg-debug tables-cs-leg-release tables-cs-wire-fuzz tables-cs-region-fuzz tables-cs-builder-fuzz tables-cs-retain-fuzz
 tables-cs-view: build/tables-generated-cs/.stamp
 	@mkdir -p build/view-cs
 	@set -e; for entry in $(VIEW_CORPUS); do \
@@ -409,8 +409,16 @@ tables-cs-view: build/tables-generated-cs/.stamp
 	@grep -q "listing is not the compiler's" build/view-cs/negative.log
 	@echo "C# UnitView: $(words $(VIEW_CORPUS)) generated registries match the IR; damaged documentation is detected"
 
-tables-cs-leg: build/tables-generated-cs/.stamp
+# TWO CONFIGURATIONS, TWO NAMES, AND A COMBINED ONE — because the pair was 74 s
+# and the owner's rule is one to two minutes for anything a child iterates on.
+# Debug alone is about half that, so `make tables-cs-leg-debug` is the loop and
+# `make tables-cs-leg` is still the gate: CI and the release path run both.
+tables-cs-leg: tables-cs-leg-debug tables-cs-leg-release
+
+tables-cs-leg-debug: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run
+
+tables-cs-leg-release: build/tables-generated-cs/.stamp
 	cd test/cs-tables && $(DOTNET) run -c Release
 
 # THE FIXED FORM'S VERSIONING SUITE ON THIS LEG (docs/FIXED-FORM-ALGORITHM.md §5,
