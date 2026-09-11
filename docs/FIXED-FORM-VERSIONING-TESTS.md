@@ -71,7 +71,41 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `hash_unknown` | a hash in no lineage refuses `layout_newer` |
 | `hash_known_bytes_differ` | a known hash whose layout bytes differ from the lock's refuses `layout_malformed`; the seven §1.1 cases each written against a KNOWN hash land here, not in a runtime walk |
 | `hash_identity` | the reader's own hash selects the identity plan; no plan compiler runs (asserted by shape: no compile symbol reachable from load) |
-| `lineage_merge` | two branches append different fields; after the merge both pre-merge files read on the merged build (the name-subset rule, bill §8a.1) |
+| `lineage_merge` | two branches append different fields; the merge is judged by the TWO-PARENT LOCK RUN and both pre-merge files read on the merged build — the row is five halves, written out below |
+
+## `lineage_merge`: the merge commit, five halves
+
+The row §8a.1 names, and the one row whose LOCK half is not a comparison against ONE `old`. Two branches
+append different fields; the merge takes both; neither parent's field order is a prefix of the merged one,
+because a merge that took both branches' appends cannot be a prefix of either side. **The clause is
+implemented as a two-parent LOCK RUN and never as a run-time rule** (Rowan, final, 2026-09-11): the read
+already pairs fields BY WIRE ID (algorithm §5.9 #41), so the merged reader reads both parents' files through
+the plans COMPILE lays down, and what a merge needs is the lock run with two `old`s —
+`schema lock --parent <A.lock> --parent <B.lock>`, the flag given once per parent.
+
+The schemas: a base `Lineage { a, b }`; branch **A** appends `x int32 = 7`; branch **B** appends
+`y int32 = 9`; the merge **M** carries all four, and **the interleaving is deliberately not either parent's**
+(`a, b, y, x`), so A's own last field is not in A's position and anything pairing by position lands a
+default where a value was written.
+
+| half | the case | what it proves | where it lives |
+|---|---|---|---|
+| **(a) LOCK-ALLOWS** | A appends x, B appends y, M has both — in either interleaving | the two-parent run takes it against BOTH parents, the merged lock holds all four fields and is current afterwards; and, red, the ORDINARY single-parent rule refuses that same merge against exactly ONE side, naming the order | `TestLockLineageMergeAllowsBothAppends`, `internal/lockfile/lockrows_test.go` |
+| **(b) LOCK-REFUSES** | the same merge DROPS y | one refusal naming **y** and **the parent B** — a merge has two `old`s, so the refusal names which side was dropped — with "field removed" and the remedy (restore it anywhere in the order, `\| deprecated` if it is finished) | `TestLockLineageMergeRefusesADroppedField` |
+| **(c) LOCK-REFUSES** | M keeps both fields and changes **x**'s kind (`int32` → `float32`) | every ordinary monotone rule still runs at a merge: only the ORDER is position-free. The refusal names the field, the kind and the parent **A** | `TestLockLineageMergeRefusesAChangedKind` |
+| **(d) THE RECORD** | A's history is base + A, with the base RETIRED on A alone; B's is base + B | the merged lineage is A's entries, then B's new one, then the merged layout's own — the shared base deduped by wire hash and keeping its place; the `lineage=` roll-up recomputed over the set (the merged lock passes the check); the floor the MAX of the two parents'; the retirement and its reason standing | `TestLockLineageMergeComposesTheLineage` |
+| **(e) NEW-READS-OLD** | build A, B and M; write a record under A and under B; read both files under M | both files read: `n == 1`, no reason, not malformed; the shared fields exact; **each branch's own field exact and the other branch's its declared default** (A's file lands x=101, y=9; B's lands x=7, y=202); all counters zero, because an append on either branch is not an event | `TestFixedRedTeamMergeReadsBothParents`, `internal/codegen/gotable/fixedredteam_test.go` — self-contained, no C++ corpus |
+
+One more half stays where it is: **WITHIN ONE BRANCH the strict prefix rule is untouched**, and a
+single-branch insertion with no `--parent` is the refusal it has always been
+(`TestLockSingleBranchInsertionStillRefused`). The two-parent run is the merge's law, not a loophole in the
+ordinary one.
+
+A VALUE LIST IS NOT LOOSENED AT A MERGE. A field's identity is its wire id; an enum variant, a flags bit and
+a union arm have none — the stored number IS the position — so two branches that both append to one enum have
+written two meanings for one ordinal and no merged order reads both sides' files. §5.1's prefix sentence
+stands for those, the two-parent run keeps refusing them, and the remedy is a rebase of one branch's
+variants onto the other's.
 
 ## The old contract's tests, retired by name
 

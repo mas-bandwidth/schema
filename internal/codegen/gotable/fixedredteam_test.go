@@ -945,3 +945,115 @@ func TestFixedRedTeamOnlyFieldWidens(t *testing.T) {
 		t.Fatalf("one widen per record: %%+v", r)
 	}`, file))
 }
+
+// ---- case 7: THE MERGE COMMIT — both parents' files on the merged build ------
+//
+// docs/FIXED-FORM-VERSIONING-TESTS.md's `lineage_merge`, on the Go leg and with
+// no C++ corpus: two branches append DIFFERENT fields, the merge takes both, and
+// BOTH pre-merge writers' files read exactly on the merged reader.
+//
+// It is the read half of the two-parent lock run (internal/lockfile/merge.go,
+// bill §8a.1 and §11.3). The lock run is where the merge is JUDGED; this is why
+// the judgement is safe to make: the merged reader pairs a parent's layout to its
+// own BY WIRE ID (algorithm §5.9 #41), so neither branch's field order has to be
+// a prefix of the merged one and the merged record's new fields may sit anywhere.
+// Nothing on the read path knows a merge happened — which is the ruling: the
+// name-subset clause is a lock run, never a run-time rule.
+//
+// The interleaving is DELIBERATELY NOT either parent's: the merge puts B's `y`
+// BEFORE A's `x`, so A's own last field is not in A's position in the merged
+// record. If anything in the read paired by position, A's file would land `y`'s
+// default in `x`.
+
+const redMergeBase = `package redmergebase
+
+fixed table Lineage
+{
+    a int32 = 0
+    b int32 = 0
+}
+`
+
+const redMergeA = `package redmergea
+
+fixed table Lineage
+{
+    a int32 = 0
+    b int32 = 0
+    x int32 = 7
+}
+`
+
+const redMergeB = `package redmergeb
+
+fixed table Lineage
+{
+    a int32 = 0
+    b int32 = 0
+    y int32 = 9
+}
+`
+
+const redMergeBoth = `package redmergeboth
+
+fixed table Lineage
+{
+    a int32 = 0
+    b int32 = 0
+    y int32 = 9
+    x int32 = 7
+}
+`
+
+func TestFixedRedTeamMergeReadsBothParents(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, schema string, field string, value int) string {
+		return redWrite(t, dir, name, schema, fmt.Sprintf(`
+	var v Lineage
+	LineageReset(&v)
+	v.A, v.B = 11, 22
+	v.%s = %d
+	buf := make([]byte, LineageFixedMeasure(1))
+	if LineageFixedSave([]Lineage{v}, buf) < 0 {
+		t.Fatal("save")
+	}
+	if err := os.WriteFile(out, buf, 0o600); err != nil {
+		t.Fatal(err)
+	}`, field, value))
+	}
+	fromA := write("mergeA", redMergeA, "X", 101)
+	fromB := write("mergeB", redMergeB, "Y", 202)
+
+	// THE LINEAGE THE MERGED LOCK WROTE, in the order merge.go composes it: the
+	// shared base, then A's layout, then B's, then the merge's own.
+	redRead(t, redMergeBoth, []string{redMergeBase, redMergeA, redMergeB}, fmt.Sprintf(`
+	for _, c := range []struct{ path string; x, y int32 }{
+		{%q, 101, 9},
+		{%q, 7, 202},
+	} {
+		data, err := os.ReadFile(c.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		back := make([]Lineage, 4)
+		plan := make([]TableFixedEntry, 4096)
+		var r TableReport
+		n := LineageFixedLoad(back, data, plan, &r)
+		if n != 1 || r.Reason != "" || r.Malformed {
+			t.Fatalf("%%s: a parent of the merge wrote it and the merged build refused: n=%%d %%+v", c.path, n, r)
+		}
+		g := back[0]
+		if g.A != 11 || g.B != 22 {
+			t.Fatalf("%%s: the shared fields did not land: %%+v", c.path, g)
+		}
+		if g.X != c.x {
+			t.Fatalf("%%s: x is %%d, want %%d — the other branch's field is its DECLARED DEFAULT and a branch's own field is EXACT: %%+v", c.path, g.X, c.x, g)
+		}
+		if g.Y != c.y {
+			t.Fatalf("%%s: y is %%d, want %%d: %%+v", c.path, g.Y, c.y, g)
+		}
+		if r.Widened != 0 || r.Unknown != 0 || r.KindMismatch != 0 || r.Clamped != 0 {
+			t.Fatalf("%%s: an append on either branch is not an event: %%+v", c.path, r)
+		}
+	}`, fromA, fromB))
+}

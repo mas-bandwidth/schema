@@ -222,6 +222,19 @@ Adding but never removing?" Three.
    any order (the tolerance). Fields, variants and arms keep the remap by name that exists today, with the
    forward-reading half removed; when the writer is a true prefix the remap is the identity and costs
    nothing. §6's "what appending buys" is therefore the common case, not the rule.
+   **The name-subset clause is AT A MERGE, THROUGH THE TWO-PARENT LOCK RUN, and never as a run-time rule**
+   (Rowan, final, 2026-09-11): the read already pairs a writer's fields to the reader's BY WIRE ID
+   (algorithm §5.9 #41), so a merged layout reads both parents' files through the plans COMPILE lays down
+   from the lineage and no read path learns that a merge happened. What a merge needs is a LOCK RUN with two
+   `old`s — `schema lock --parent <A.lock> --parent <B.lock>` at the merge commit — which holds the merged
+   declaration to EACH parent's last lineage entry by wire id: every parent field present (deprecated in
+   place allowed), kind unchanged, widen only per §2, and the merged record's NEW fields ANYWHERE in the
+   order, because a merge that took both branches' appends cannot be a prefix of either side. WITHIN ONE
+   BRANCH the strict prefix rule of §6 stays exactly as it is. The merged lock's lineage is both parents'
+   entries concatenated in commit order, deduped by wire hash, then the merged layout's own entry;
+   retirements from both parents stand, so the merged floor is the max of the two.
+   `internal/lockfile/merge.go` is the run, and `lineage_merge` in
+   `FIXED-FORM-VERSIONING-TESTS.md` is its four lock rows and its read half.
 2. **Readers cannot roll back.** Once a newer writer has produced files, the previous reader build refuses
    them by name. That is the contract working, and it makes a reader rollback a data event. Rule: writers
    ship after readers by a margin you can roll back across; a build that must go down migrates its files
@@ -277,6 +290,15 @@ ruling below is a default, recorded on #898, and his to reverse.
    must widen EACH parent under §2 by NAME (§8a.1), and each parent's list must be a subsequence of the
    merged list (append-only per branch, any interleaving). §5.1's "prefix by (name, position)" is
    corrected to that. `schema lock` at a merge commit takes both parents' locks as `old`.
+   **IMPLEMENTED (Rowan, final, 2026-09-11): at a merge, through the two-parent lock run.** The spelling is
+   `schema lock --parent <A.lock> --parent <B.lock>`, given once per parent — a FLAG and not a detection,
+   because the lock a parent committed lives in that parent's tree and reading it would mean a `git show`
+   per parent on every `schema lock`, and a merge nobody declared is better held to the ordinary prefix
+   rule. Pairing is BY WIRE ID, so a parent's fields may sit anywhere in the merged order while every
+   ordinary monotone rule still runs on each of them; the merged lineage is both parents' entries
+   concatenated in the order the parents were given, deduped by wire hash, then the merged layout's own
+   entry; a retirement on either side stands, which makes the merged floor the max of the two parents'.
+   The UNION is therefore ordered rather than a bare set, and the order is the record. `internal/lockfile/merge.go`.
 4. **The floor is the set of retired entries, not an index.** `schema lock --retire Table@<hash>` marks a
    lineage entry retired (a permitted non-append edit, recorded with a reason); COMPILE emits the retired
    hashes beside the supported ones (8 bytes each) so LOAD can say `layout_unsupported` rather than
