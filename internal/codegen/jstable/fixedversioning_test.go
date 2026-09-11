@@ -568,7 +568,7 @@ func jsManifestRow(t *testing.T, corpus, file string) (int, []jsManifestKV) {
 		}
 		head, rest, _ := strings.Cut(line, " values=")
 		records := 0
-		for _, f := range strings.Fields(head) {
+		for f := range strings.FieldsSeq(head) {
 			if k, v, ok := strings.Cut(f, "="); ok && k == "records" {
 				n, err := strconv.Atoi(v)
 				if err != nil {
@@ -581,7 +581,7 @@ func jsManifestRow(t *testing.T, corpus, file string) (int, []jsManifestKV) {
 			t.Fatalf("the manifest gives %s no record count", file)
 		}
 		var out []jsManifestKV
-		for _, pair := range strings.Split(rest, ",") {
+		for pair := range strings.SplitSeq(rest, ",") {
 			if k, v, ok := strings.Cut(pair, "="); ok {
 				out = append(out, jsManifestKV{key: k, value: v})
 			}
@@ -645,7 +645,7 @@ func jsManifestPath(key string, keyed map[string]bool, renamed map[string]string
 		return "", false
 	}
 	path := fmt.Sprintf("back[%d]", k)
-	for _, seg := range strings.Split(rest, ".") {
+	for seg := range strings.SplitSeq(rest, ".") {
 		name, idx, hasIdx := strings.Cut(seg, "[")
 		surface := name
 		if to, ok := renamed[name]; ok {
