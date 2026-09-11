@@ -67,15 +67,16 @@ func (javaTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 // javaTableLineage is the lock's lineage in the Java backend's own spelling. Nil
 // in, nil out: a unit with no lock hands nothing.
 //
-// THE ONE CONVERSION IS THE RECORD SIZE. The lock records a BODY size
-// (`ir.TableFixedTypeBytes`, internal/lockfile/lineage.go) and §5.2's
-// `R.known[i].record_bytes` is the WHOLE record — `8 + C(root)`, the hash and
-// the body (docs/FIXED-FORM-ALGORITHM.md line "record_bytes is 8 + C(root)"),
-// which is what javatable's own entry carries and what its reader divides the
-// tail by. So the eight bytes are added here, exactly as the C++ reference adds
-// them reading the same lock (internal/codegen/cpptable/lineage.go: `8+e.Record`).
-// Hand the lock's number through unchanged and every record of a LOCKED unit is
-// read eight bytes short.
+// THERE IS NO CONVERSION. §5.2's `R.known[i].record_bytes` is the WHOLE record —
+// `8 + C(root)`, the hash and then the body — which is what javatable's own
+// entry carries and what its reader divides the tail by. The LOCK records a BODY
+// size (`ir.TableFixedTypeBytes`, internal/lockfile/lineage.go), and #929 moved
+// the one addition of the eight hash bytes into [openFixedLineage] so that it is
+// made ONCE, for every backend the driver hands entries to
+// (compiler/lineage.go, TestFixedLineageRecordSizeIsTheWholeRecord). So
+// `e.Record` here is ALREADY the whole record; adding eight again would ship
+// every older entry of a LOCKED unit sixteen bytes long, and step 9 divides the
+// tail behind the layout by that number.
 func javaTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]javatable.FixedLineageEntry {
 	if lineage == nil {
 		return nil
@@ -90,7 +91,7 @@ func javaTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]javatable.
 			out[st.Name] = append(out[st.Name], javatable.FixedLineageEntry{
 				Wire:    e.Wire,
 				Layout:  e.Layout,
-				Record:  8 + e.Record,
+				Record:  e.Record,
 				Retired: e.Retired,
 				Reason:  e.Reason,
 			})
