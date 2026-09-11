@@ -166,11 +166,15 @@ func TestRoundTrip(t *testing.T) {
 			t.Fatalf("FixedLoad form %d: want %s, got %d %+v", form, want, n, r)
 		}
 	}
+	// THE LAYOUT'S OWN RULES REFUSE UNDER THEIR OWN NAMES and before the header
+	// is doubted (docs/FIXED-FORM-ALGORITHM.md §1.1, §2.1 step 5): breaking the
+	// entry count is rule 1, so this is layout_count_mismatch and not the one
+	// word the residue keeps.
 	broken := append([]byte(nil), buf...)
 	broken[TableFixedHeaderBytes+4] ^= 0xFF
 	r = TableReport{}
-	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
-		t.Fatalf("layout_malformed: %d %+v", n, r)
+	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_count_mismatch" {
+		t.Fatalf("layout_count_mismatch: %d %+v", n, r)
 	}
 	lying := append([]byte(nil), buf...)
 	lying[TableFixedHeaderBytes+4+len(PointFixedLayout)] ^= 0xFF
@@ -355,8 +359,11 @@ func TestPlanPath(t *testing.T) {
 		plan := make([]tblfx1.TableFixedEntry, 1024)
 		v := make([]tblfx1.FxRoot, 1)
 		n := tblfx1.FxRootFixedLoad(v, broken, plan, &r)
-		if n >= 0 || r.Reason != "layout_malformed" || r.Unknown != 0 || r.KindMismatch != 0 || r.Malformed {
-			t.Fatalf("layout_malformed: n=%d %+v", n, r)
+		// RULE 1 BY ITS OWN NAME: 4 + 17*count is not the length given. The
+		// seven rules run before the header's hash is checked, so a broken
+		// layout is never reported as a lying header (§1.1, §2.1 step 5).
+		if n >= 0 || r.Reason != "layout_count_mismatch" || r.Unknown != 0 || r.KindMismatch != 0 || r.Malformed {
+			t.Fatalf("layout_count_mismatch: n=%d %+v", n, r)
 		}
 	}
 	{
