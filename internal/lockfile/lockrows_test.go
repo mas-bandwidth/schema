@@ -586,11 +586,39 @@ func TestLockFixedIGrowRefuses(t *testing.T) {
 		rowRefuses(t, before, rowTable("    pos fixed(4, 4) | min = -8, max = 7"),
 			"fixed table Row", "field pos", "I narrowed (12 -> 4)")
 	})
+	// I AND F INSIDE ONE STORAGE WIDTH, which is the half the row's line did
+	// not spell: SPEC §4.6 makes I + F EQUAL a storage width, so with F held a
+	// narrowed I IS a narrowed kind (the subtest above), and the only
+	// same-storage move left is I against F — a moved SCALE, which takes the F
+	// sentence. The two subtests together are the whole of `I(a) <= I(b) and
+	// F(a) == F(b)` (docs/FIXED-FORM-ALGORITHM.md §5.1) at the lock.
+	t.Run("I narrowed against F, same storage", func(t *testing.T) {
+		rowRefuses(t, rowTable("    pos fixed(28, 4) | min = -8, max = 7"),
+			rowTable("    pos fixed(24, 8) | min = -8, max = 7"),
+			"fixed table Row", "field pos", "F changed (4 -> 8)")
+	})
+	// AN ARRAY'S ELEMENT, one level in, and the one place the refusal did not
+	// hold this file's own law ("BOTH VALUES in the sentence"): it named the
+	// element's kind twice, "element I narrowed (fixed -> fixed)", where the
+	// lock has the element's I recorded all along.
+	t.Run("element I narrowed", func(t *testing.T) {
+		rowRefuses(t, rowTable("    pos [4]fixed(28, 4) | min = -8, max = 7"),
+			rowTable("    pos [4]fixed(12, 4) | min = -8, max = 7"),
+			"fixed table Row", "field pos", "element I narrowed (28 -> 12)")
+	})
 }
 
 func TestLockFixedIGrowAllows(t *testing.T) {
 	rowAllows(t, rowTable("    pos fixed(12, 4) | min = -8, max = 7"),
 		rowTable("    pos fixed(28, 4) | min = -8, max = 7"), "Row")
+}
+
+// THE POSITIVE HALF OF THE ELEMENT ROW: an element's I widens with F held, so
+// the raw scaled value every older writer packed is the same number in a wider
+// slot, and `schema lock` takes it.
+func TestLockFixedIGrowElementAllows(t *testing.T) {
+	rowAllows(t, rowTable("    pos [4]fixed(12, 4) | min = -8, max = 7"),
+		rowTable("    pos [4]fixed(28, 4) | min = -8, max = 7"), "Row")
 }
 
 // ---- optional_add ----

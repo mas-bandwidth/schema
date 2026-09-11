@@ -105,6 +105,17 @@ func Diff(locked, live *Unit, policy Policy) []error {
 			}
 			continue
 		}
+		// THE FORM'S CEILING, BEFORE THE LAW AND UNDER BOTH READINGS
+		// (lineage.go). It goes first because a record past the ceiling is a
+		// table whose WIRE has changed, which no refusal below it would name:
+		// every monotone fact widened legally, so [Current] would report the
+		// widening as an ordinary stale lock and `schema lock` would write it.
+		if lk.Decl == DeclFixedTable {
+			if err := diffCeiling(lk, lv); err != nil {
+				errs = append(errs, err)
+				continue
+			}
+		}
 		if err := diffTable(lk, lv, policy); err != nil {
 			errs = append(errs, err)
 			continue

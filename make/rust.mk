@@ -328,6 +328,13 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 # change when the emitter adds or drops a module. The driver regenerates the
 # same .rs files itself, so the two agree byte for byte or `generated-current`
 # says so.
+#
+# IT IS THE ONE RUST UNIT WHOSE MANIFEST IS NOT WRITTEN WITH $(SERIALIZE_RS)
+# SUBSTITUTED IN, so it names build/paired/serialize.rs — a symlink — instead,
+# and the two places that build the crate point that link first
+# (`tables-rust-fixed-matched` below, and bench/paired's own build step). That
+# is what keeps a tracked file from moving on a checkout that is not beside
+# serialize.rs: the paired driver refuses a dirty checkpoint.
 generated/bench/paired/rust/.stamp: bin/schema $(RUST_TABLE_BENCH_SCHEMAS)
 	@mkdir -p generated/bench/paired/rust
 	./bin/schema generate --lang rust --out generated/bench/paired/rust $(RUST_TABLE_BENCH_SCHEMAS)
@@ -343,6 +350,8 @@ generated/bench/paired/rust/.stamp: bin/schema $(RUST_TABLE_BENCH_SCHEMAS)
 # both modes over these same bytes.
 .PHONY: tables-rust-fixed-matched
 tables-rust-fixed-matched: generated/bench/paired/rust/.stamp
+	@mkdir -p build/paired
+	@ln -sfn "$(abspath $(SERIALIZE_RS))" build/paired/serialize.rs
 	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release \
 		--manifest-path bench/tables/rust/Cargo.toml --target-dir build/paired/rust
 	./build/paired/rust/release/table-rust --gate --indexed \
