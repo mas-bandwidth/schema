@@ -33,15 +33,16 @@ void fixed_ut2_read_ut1( const uint8_t * data, int64_t bytes )
     UtRoot back;
     TableReport r;
 
-    /* POISON THE CALLER'S RECORD FIRST, and the reason is this read (§5.7). The
-       load decides which arm it writes from the WRITER's layout, so a reader
+    /* GIVE THE READER A DEFINED RECORD FIRST, and the reason is this read
+       (§5.7). The load writes the arm the WRITER's layout named, so a fixture
        that handed it whatever was on the stack would be asserting about an
        indeterminate byte whenever the record did not carry the arm this lane
-       expects — which is what gcc says out loud here, by name, about
-       `back.pick.type` and `back.pick.as.b.label_length`. A poisoned record
-       makes every assertion below a statement about what the LOAD wrote, and
-       0xA5 is a value no case below expects to see. */
-    memset( &back, 0xA5, sizeof( back ) );
+       expects — which is what gcc 13 said out loud here, by name, about
+       `back.pick.type` and `back.pick.as.b.label_length`, and clang did not.
+       The type's own reset is what defines it, which is the form
+       fixedform_fx2.c already uses; the assertions below still prove the LOAD
+       wrote them, because none of the values they name is a default. */
+    ut_root_reset( &back );
     memset( &r, 0, sizeof( r ) );
     fixed_check( ut_root_fixed_load( &back, 1, data, bytes, g_plan, PlanCapacity, NULL, &r ) == 1,
                  "C two lanes, compiled: the record reads" );
