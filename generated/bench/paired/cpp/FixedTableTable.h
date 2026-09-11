@@ -4663,8 +4663,8 @@ inline int64_t FixedTableFixedLoad( FixedTable * values, int64_t capacity, const
     }
     for ( int64_t k = 0; k < n; ++k )
     {
-        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
+        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
         FixedTableFixedClamp( values[k], report );
         at += record_bytes;

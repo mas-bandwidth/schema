@@ -568,8 +568,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
 	g.pf("        %sReset( defaults );\n    }\n", st.Name)
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
-	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }\n")
+	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        %sFixedClamp( values[k], report );\n", st.Name)
