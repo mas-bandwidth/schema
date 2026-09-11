@@ -1463,13 +1463,13 @@ Leg.eq("NEGATIVE CONTROL: and says nothing about it", loose_report.malformed, fa
 
 Leg.check(
   "the compiled plan carries the text entry under the arm's guard",
-  Enum.any?(fu_compiled, &match?({:guard, _, _, {:text, _, _, _, _, _}}, &1))
+  Enum.any?(fu_compiled, &match?({:guard, _, _, _, {:text, _, _, _, _, _}}, &1))
 )
 
 overloaded =
   Enum.map(fu_compiled, fn
-    {:guard, g, tag, {:text, src, dst, aux, size, _flavour}} ->
-      {:guard, g, tag, {:text, src, dst, aux, size, tag}}
+    {:guard, g, tag, argw, {:text, src, dst, aux, size, _flavour}} ->
+      {:guard, g, tag, argw, {:text, src, dst, aux, size, tag}}
 
     entry ->
       entry

@@ -35,6 +35,7 @@ static partial class Program
         Console.WriteLine("SKIPPED: TestFixedPCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness");
         skipped += 2;
         TestFixedWide128Case();
+        TestFixedSignedLowEndCase();
         TestFixedFoldedArraysCase();
         TestFixedArmTextCase();
         TestFixedSlackCase();
@@ -427,7 +428,13 @@ static partial class Program
     {
         S2.SimState s = new S2.SimState();
         S2.Schema.TableReset(s);
-        s.Energy = -1234567890123456789L;
+        // IN RANGE, BECAUSE THE BOUNDS PASS IS REAL NOW (§4.6). `energy` is
+        // declared | min = -5000000000, max = 5000000000, and this case read
+        // -1234567890123456789 back exactly only because there was no bounds pass
+        // to hold it: the clean-read assertion below was pinning the MISSING
+        // pass. The 128-bit path is what the case is about, and a value inside
+        // the declaration exercises it just as well.
+        s.Energy = -1234567890L;
         s.Reach = -42;
         s.Mass = 100;
         s.SeedsCount = 1;
@@ -443,10 +450,88 @@ static partial class Program
         long loaded = S2.Schema.SimStateFixedLoad(back, buf, plan, r);
         Check(loaded == 1, "SimState load one record");
         Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "SimState clean read");
-        Check(back.Energy == -1234567890123456789L, "SimState energy int128 matches");
+        Check(back.Energy == -1234567890L, "SimState energy int128 matches");
         Check(back.Reach == -42, "SimState reach fixed128 matches");
         Check(back.Mass == 100, "SimState mass ufixed128 matches");
         Check(back.SeedsCount == 1 && back.Seeds[0] == 9999999999999999999UL, "SimState seeds uint128 matches");
+    }
+
+    // A SIGNED fixed(I,F) FIELD'S LOW END, FORGED BELOW ITS DECLARED MINIMUM
+    // (§4.6, docs/SPEC-TABLES.md §4). `position` is fixed(48, 16) | min = -1000,
+    // max = 1000, so the RAW ends the reader clamps at are -1000 << 16 and
+    // 1000 << 16, and neither sits on 64-bit storage's own limit: both are
+    // comparisons a stored value can lose. The emitter decided WHETHER to write
+    // an end by testing the UNSHIFTED bound against an UNSIGNED storage range,
+    // which answered "-1000 cannot beat 0" — so every signed fixed field with a
+    // declared minimum at or below zero lost its low clamp, and a raw under the
+    // minimum rode through unclamped and uncounted. ON BOTH PLANS, because the
+    // bounds pass runs over STORAGE and one pass serves both.
+    static void TestFixedSignedLowEndCase()
+    {
+        const long MinRaw = -65536000L;  // -1000 << 16
+        const long Forged = -65536001L;  // one raw step below the declaration
+
+        S2.SimState s = new S2.SimState();
+        S2.Schema.TableReset(s);
+        s.Position = MinRaw;
+
+        byte[] buf = new byte[S2.Schema.SimStateFixedMeasure(1)];
+        long saved = S2.Schema.SimStateFixedSave(s, buf);
+        Check(saved == buf.Length, "signed fixed low end: save");
+
+        // THE FIELD IS FOUND BY ITS OWN BYTES, not by an offset spelled twice:
+        // the minimum's raw appears exactly once in the record, so writing one
+        // step below it forges that field and nothing else.
+        byte[] needle = new byte[8];
+        BinaryPrimitives.WriteInt64LittleEndian(needle, MinRaw);
+        int at = -1, hits = 0;
+        for (int i = 0; i + 8 <= buf.Length; ++i)
+        {
+            if (buf.AsSpan(i, 8).SequenceEqual(needle)) { hits++; at = i; }
+        }
+        Check(hits == 1, "signed fixed low end: the declared minimum's raw sits in the record exactly once");
+        BinaryPrimitives.WriteInt64LittleEndian(buf.AsSpan(at), Forged);
+
+        // THE IDENTITY PATH
+        S2.SimState back = new S2.SimState();
+        S2.TableReport r = new S2.TableReport();
+        S2.TableFixedEntry[] plan = new S2.TableFixedEntry[128];
+        Check(S2.Schema.SimStateFixedLoad(back, buf, plan, r) == 1,
+              "signed fixed low end: the record still reads");
+        Check(back.Position == MinRaw,
+              "signed fixed low end: a raw below the declared minimum lands the minimum's raw");
+        Check(r.Clamped == 1, "signed fixed low end: and counts exactly ONE clamped");
+        Check(!r.Malformed && !r.Refused,
+              "signed fixed low end: damage in a VALUE is not framing damage");
+
+        // THE COMPILED PATH, with the bounds pass after the run — §5.3 step 11 is
+        // the same straight-line code on both plans.
+        {
+            S2.SimState viaPlan = new S2.SimState();
+            S2.Schema.TableReset(viaPlan);
+            uint layoutBytes = BinaryPrimitives.ReadUInt32LittleEndian(
+                buf.AsSpan(S2.Schema.TableFixedWire.HeaderBytes));
+            ReadOnlySpan<byte> layout = buf.AsSpan(S2.Schema.TableFixedWire.HeaderBytes + 4, (int)layoutBytes);
+            Check(S2.Schema.TableFixedWire.ParseLayout(layout, out S2.TableFixedLayoutView parsed),
+                  "signed fixed low end: the layout parses");
+
+            S2.TableReport r2 = new S2.TableReport();
+            Span<S2.TableFixedEntry> compiled = new S2.TableFixedEntry[512];
+            int made = S2.Schema.TableFixedWire.Compile(parsed, S2.Schema.SimStateFixedLayout,
+                                                       S2.Schema.SimStateFixedDst, compiled, r2);
+            Check(made > 0, "signed fixed low end: a plan compiles from my own layout");
+
+            ReadOnlySpan<byte> planBytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(compiled);
+            ReadOnlySpan<byte> body = buf.AsSpan(S2.Schema.TableFixedWire.HeaderBytes + 4 + (int)layoutBytes);
+            byte[] scratch = Array.Empty<byte>();
+            S2.Schema.TableFixedWire.Run(compiled.Slice(0, made), S2.Schema.SimStateFixedSlots,
+                                        body.Slice(8), viaPlan, r2, planBytes, ref scratch);
+            S2.Schema.SimStateFixedClamp(viaPlan, r2);
+            Check(viaPlan.Position == MinRaw,
+                  "signed fixed low end: the COMPILED plan lands the minimum's raw too");
+            Check(r2.Clamped == 1,
+                  "signed fixed low end: and the compiled read counts ONE clamped as well");
+        }
     }
 
     static void TestFixedFoldedArraysCase()
@@ -532,11 +617,15 @@ static partial class Program
         {
             TD.ShipEntry se = new TD.ShipEntry();
             TD.Schema.TableReset(se);
+            // IN RANGE (§4.6): `hardpoints` is declared | min = 0, max = 8, and
+            // 101/202/303/404 read back exactly only because there was no bounds
+            // pass. The case is about the 16-byte FOLDED element run, which four
+            // in-range values reproduce exactly as well.
             se.HardpointsCount = 4;
-            se.Hardpoints[0] = 101;
-            se.Hardpoints[1] = 202;
-            se.Hardpoints[2] = 303;
-            se.Hardpoints[3] = 404;
+            se.Hardpoints[0] = 1;
+            se.Hardpoints[1] = 2;
+            se.Hardpoints[2] = 3;
+            se.Hardpoints[3] = 4;
 
             byte[] buf = new byte[TD.Schema.ShipEntryFixedMeasure(1)];
             long saved = TD.Schema.ShipEntryFixedSave(se, buf);
@@ -549,7 +638,7 @@ static partial class Program
             Check(loaded == 1, "ShipEntry load one record");
             Check(r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && !r.Malformed && !r.Refused, "ShipEntry clean read");
             Check(back.HardpointsCount == 4, "ShipEntry hardpoints count");
-            Check(back.Hardpoints[0] == 101 && back.Hardpoints[1] == 202 && back.Hardpoints[2] == 303 && back.Hardpoints[3] == 404,
+            Check(back.Hardpoints[0] == 1 && back.Hardpoints[1] == 2 && back.Hardpoints[2] == 3 && back.Hardpoints[3] == 4,
                   "ShipEntry 16-byte folded int32 array reproduced");
         }
     }
