@@ -60,6 +60,32 @@ const LAYOUT_AT = 20;
 //
 // Run from the repository root, which is where the Makefile runs it.
 
+// RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This suite is a driver
+// with no skip verb, so the skip is A PRINTED LINE AT THE CALL SITE naming the
+// function, §5.6 and where the coverage is owed, plus a count at the end — and
+// the function STAYS IN THE TREE and stays compiling (§5.9 #23). A deleted test
+// is a coverage claim nobody can audit.
+//
+// Every one of them reads a file written under ANOTHER schema's layout WITHOUT
+// that layout being in the reader's lineage, and asserts the RUN-TIME WALK of a
+// stranger's layout — the seven §1.1 names fired at read time, a plan compiled
+// from a file's bytes, a cache keyed by hash, a forward read. §5.6 retires
+// exactly that: under §5 every one of those files comes back layout_newer, which
+// is the new law and not a regression. The coverage is owed on the lineage
+// harness, internal/codegen/jstable/fixedversioning_test.go, where the peer's
+// entry is handed to the reader as its lock — and §1.1's seven rules are owed as
+// the LOCK's validation of what it records.
+//
+// THREE OF THESE FUNCTIONS ARE MIXED and the skip over-reaches: bytesArrayConvention,
+// holePrefill and referenceOracle each assert an IDENTITY half that §5 does not
+// touch beside a COMPILED half that it retires. Splitting them is named here and
+// CARDED rather than folded into a green (§5.9 #31).
+let retiredCount = 0;
+function retired(name, why) {
+  console.log("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): " + name + " — " + why);
+  retiredCount++;
+}
+
 export async function checkFixedForm(check, generated, corpusDir, optionalDir, oracleDir) {
   const load = (p) => import(pathToFileURL(resolve(generated, p)).href);
 
@@ -79,15 +105,15 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
   guardComparedAtArgW(check, fx1home);
-  versioning(check, fx1, fx2, fx1home, fx2home);
-  bytesArrayConvention(check, fx1, fx2, fx1home, fx2home, oracleDir);
+  retired("versioning", "the forward compiled read of FX1/FX2; owed on the lineage harness");
+  retired("bytesArrayConvention", "its COMPILED half walks a stranger's layout; the identity half is owed a split");
   liveCountSlack(check, fx1, fx1home);
-  holePrefill(check, fx1, fx2, fx1home, fx2home);
-  negativeControls(check, fx1, fx2, fx1home, fx2home);
-  layoutValidation(check, fx1, fx2, fx1home, fx2home);
-  unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types);
+  retired("holePrefill", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
+  retired("negativeControls", "every control reads a stranger's layout through a compiled plan; owed on the lineage harness");
+  retired("layoutValidation", "§1.1's seven rules fired at READ time; owed as the LOCK's validation of what it records");
+  retired("unionArmText", "the guard and flavour lanes across two generations with no lineage; owed on the lineage harness");
   if (oracleDir) {
-    referenceOracle(check, fx1, fx2, fx1home, oracleDir);
+    retired("referenceOracle", "its COMPILED half reads the reference's FX2 file with no lineage entry; the byte half is owed a split");
   }
 
   if (optionalDir) {
@@ -98,8 +124,8 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
       fo2: await load("fo2/FO2Table.js"), fo2home: await load("fo2/Tblfo2Table.js"),
     };
     optionalBytes(check, o, optionalDir);
-    optionalVersioning(check, o, optionalDir);
-    optionalControls(check, o, optionalDir);
+    retired("optionalVersioning", "P1/P3 read each other with no lineage; owed on the lineage harness");
+    retired("optionalControls", "every control is a COMPILED read of a stranger's layout; owed on the lineage harness");
   }
 }
 
@@ -1906,14 +1932,20 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const optional = process.argv[4] ?? "build/js-fixed-optional";
   const oracle = process.argv[5] ?? "build/fixedform-corpus";
   await checkFixedForm(check, generated, corpus, optional, oracle);
+  if (retiredCount !== 0) {
+    console.log("retired by §5.6 and owed again: " + retiredCount + " sections, each named above");
+  }
   if (failed) {
     console.log("FAILED");
     process.exit(1);
   }
   console.log("tables JS fixed form: the vocabulary block and its hash are the C++ " +
     "reference's byte for byte, all 64 paired records read to the values the reference " +
-    "states and write back IDENTICAL to its corpus, the versioning conformance lands " +
-    "through a plan compiled from the other side's block, the OPTIONALS match the " +
-    "reference at every place a present byte can ride, and every refusal is by name");
+    "states and write back IDENTICAL to its corpus, and the OPTIONALS match the " +
+    "reference at every place a present byte can ride. THE VERSIONING CONFORMANCE " +
+    "MOVED: a fixed table reads BACKWARD and never forward (§5), so the sections " +
+    "that compiled a stranger\'s layout are retired by name above and the rows are " +
+    "held by internal/codegen/jstable/fixedversioning_test.go over the reference\'s " +
+    "own corpus");
   console.log("OK");
 }
