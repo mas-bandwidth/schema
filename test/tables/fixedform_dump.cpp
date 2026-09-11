@@ -26,6 +26,8 @@
 #include "KeyedTable.h"
 #include "PackTable.h"
 #include "FXWTable.h"
+#include "FU1Table.h"
+#include "FU2Table.h"
 
 static bool spill( const char * dir, const char * name, const std::vector<uint8_t> & data )
 {
@@ -48,6 +50,13 @@ static bool emit( const char * dir, const char * name, const std::vector<T> & va
     }
     return spill( dir, name, out );
 }
+
+
+// A FLOAT RIDES AS ITS BIT PATTERN (docs/SPEC-TABLES.md §3, §4, schema#480), so
+// a SIGNALLING NaN has to be put in place through its bits: a literal would be
+// quieted by the compiler before the writer ever saw it.
+static float float_from_bits( uint32_t bits ) { float f; std::memcpy( &f, &bits, 4 ); return f; }
+static double double_from_bits( uint64_t bits ) { double d; std::memcpy( &d, &bits, 8 ); return d; }
 
 // ---- FX1 / FX2: the versioning pair ---------------------------------------
 //
@@ -267,11 +276,117 @@ static bool fxw_file( const char * dir )
     return emit( dir, "fxw.bin", v, tblfxw::FxWideFixedMeasure, tblfxw::FxWideFixedSave );
 }
 
+// ---- FU1 / FU2: TEXT UNDER A UNION ARM, AND THE TWO WIDENING RUNGS ---------
+//
+// The nested-union pair was the one fixture in this corpus with NO oracle bytes
+// (schema#876, card 15): every leg pinned FU1 by writing it itself and reading
+// it back, so a leg whose bytes differ from the reference's by one byte passed
+// in silence. These two files are those bytes.
+//
+// The record set is set by hand and reaches, in one file:
+//   BOTH ARMS            the second arm (a `string(8)` between two scalars) and
+//                        the first (a bare scalar), so the arms' differing
+//                        sizes make the second arm's offsets its own
+//   THE SIGNED RUNG      `mark int16` at -1, at INT16_MIN and at INT16_MAX, so
+//                        the SIGN-EXTENDED read into FU2's `int32` has a true
+//                        case at both ends and a false one: a leg that zero-
+//                        extends lands 65535 for -1 and cannot hide it
+//   THE FLOAT RUNG       `heat float32` as a SIGNALLING NaN with the smallest
+//                        payload, as a negative signalling NaN with a rich one,
+//                        and as an ordinary 1.5 beside them — the rung where a
+//                        leg that widens through a hardware conversion quiets
+//                        the NaN and loses the payload
+//   THE TWO FORGED BYTES `flag` and `note`'s presence, which §3.4 spells as one
+//                        byte that is true when it is NOT ZERO; the writer puts
+//                        1 here and the leg's own forging case does the rest
+
+static bool fu1_file( const char * dir )
+{
+    std::vector<tblfu1::FuRoot> v( 3 );
+
+    // the SECOND arm, with text between its two scalars
+    tblfu1::FuRootReset( v[0] );
+    v[0].flag = true;
+    v[0].note = 44;
+    v[0].note_present = true;
+    v[0].pick.type = tblfu1::PickType::Labelled;
+    v[0].pick.labelled.lead = 101;
+    std::strcpy( v[0].pick.labelled.label, "hello" );
+    v[0].pick.labelled.label_length = 5;
+    v[0].pick.labelled.trail = 202;
+    v[0].tail = 11;
+    v[0].mark = -1;                                   // the rung's headline case
+    v[0].heat = float_from_bits( 0x7F800001u );       // signalling, smallest payload
+
+    // the FIRST arm, a bare scalar, and the optional ABSENT
+    tblfu1::FuRootReset( v[1] );
+    v[1].flag = false;
+    v[1].note_present = false;
+    v[1].note = 0;
+    v[1].pick.type = tblfu1::PickType::Plain;
+    v[1].pick.plain.n = 303;
+    v[1].tail = 12;
+    v[1].mark = -32768;                               // INT16_MIN: every sign bit set
+    v[1].heat = float_from_bits( 0xFFA5A5A5u );       // negative, signalling, rich payload
+
+    // the SECOND arm again with its text WHOLLY UNUSED, so the eight bytes of
+    // the span are slack and a positive `mark` gives the sign rung a false case
+    tblfu1::FuRootReset( v[2] );
+    v[2].flag = true;
+    v[2].note = -7;
+    v[2].note_present = true;
+    v[2].pick.type = tblfu1::PickType::Labelled;
+    v[2].pick.labelled.lead = -5;
+    v[2].pick.labelled.label_length = 0;
+    v[2].pick.labelled.trail = 606;
+    v[2].tail = 13;
+    v[2].mark = 32767;                                // INT16_MAX: positive, nothing to extend
+    v[2].heat = 1.5f;                                 // an ordinary float beside the NaNs
+
+    return emit( dir, "fu1.bin", v, tblfu1::FuRootFixedMeasure, tblfu1::FuRootFixedSave );
+}
+
+// FU2's own bytes, for the OTHER direction: read under FU1's declaration
+// `extra` is a field that reader cannot name and the two rungs run BACKWARDS,
+// which is a KIND THAT MOVED and not a rung at all (§4: not decoded, the
+// declared default stands, `kind_mismatch`).
+static bool fu2_file( const char * dir )
+{
+    std::vector<tblfu2::FuRoot> v( 2 );
+
+    tblfu2::FuRootReset( v[0] );
+    v[0].flag = true;
+    v[0].note = 55;
+    v[0].note_present = true;
+    v[0].pick.type = tblfu2::PickType::Labelled;
+    v[0].pick.labelled.lead = 111;
+    std::strcpy( v[0].pick.labelled.label, "wide" );
+    v[0].pick.labelled.label_length = 4;
+    v[0].pick.labelled.trail = 222;
+    v[0].tail = 21;
+    v[0].mark = -70000;                               // past everything an int16 holds
+    v[0].heat = double_from_bits( 0x7FF00DEFACED0001ull ); // signalling at sixty-four bits
+    v[0].extra = 909;
+
+    tblfu2::FuRootReset( v[1] );
+    v[1].flag = false;
+    v[1].note_present = false;
+    v[1].pick.type = tblfu2::PickType::Plain;
+    v[1].pick.plain.n = 404;
+    v[1].tail = 22;
+    v[1].mark = 70000;
+    v[1].heat = -2.25;
+    v[1].extra = -11;
+
+    return emit( dir, "fu2.bin", v, tblfu2::FuRootFixedMeasure, tblfu2::FuRootFixedSave );
+}
+
 int main( int argc, char ** argv )
 {
     if ( argc != 2 ) { std::fprintf( stderr, "usage: %s <outdir>\n", argv[0] ); return 1; }
     const char * dir = argv[1];
     if ( !fx1_file( dir ) || !fx2_file( dir ) || !p1_file( dir ) || !p3_file( dir ) ||
-         !keyed_file( dir ) || !pack_file( dir ) || !fxw_file( dir ) ) { return 1; }
+         !keyed_file( dir ) || !pack_file( dir ) || !fxw_file( dir ) ||
+         !fu1_file( dir ) || !fu2_file( dir ) ) { return 1; }
     return 0;
 }

@@ -1368,8 +1368,229 @@ static void cache_case()
     check( cache.compiles == 2, "cache: identity never increments the compile counter" );
 }
 
-int main()
+// ---------------------------------------------------------------------------
+
+// THE REFERENCE READS ITS OWN ORACLE BYTES (schema#876, cards 15 and 16).
+//
+// The case above writes FU1 in this very process and reads it back, which is
+// what every port's FU pin did too — and it is the one thing a self-write pin
+// cannot see: whether THE FILE every leg diffs against says what this test
+// claims. `make tables-fixedform-corpus` writes build/fixedform-corpus/fu1.bin
+// and fu2.bin from the reference's writer; this case reads those files, on the
+// IDENTITY path and through FU2's COMPILED plan, and states the values beside
+// the bytes. A leg now has bytes to match AND a list of values to match them
+// against; before this, a leg-vs-reference divergence on the nested-union shape
+// was invisible on every leg at once.
+//
+// AND IT IS WHERE THE TWO WIDENING RUNGS ARE ASSERTED AFTER THE COMPILED READ:
+//
+//   THE SIGNED RUNG  `mark int16` read into FU2's `int32`. The source is read
+//                    SIGN-EXTENDED at the writer's width, so -1 lands -1 and
+//                    not 65535, and INT16_MIN lands -32768 and not 32768. A
+//                    zero-extending port is a port that passes every self-write
+//                    pin in the tree and fails here.
+//   THE FLOAT RUNG   `heat float32` read into FU2's `float64`, ON THE BITS: the
+//                    23 payload bits ride in the top of the double's 52, sign
+//                    and all, and a SIGNALLING NaN stays signalling. Every
+//                    hardware `(double) f` quiets it, which is the defect.
+//
+// Both rungs are counted: two widened per record and no other counter moved.
+
+static std::vector<uint8_t> slurp( const char * dir, const char * name, bool & ok )
 {
+    char path[1024];
+    std::snprintf( path, sizeof( path ), "%s/%s", dir, name );
+    std::vector<uint8_t> out;
+    FILE * f = std::fopen( path, "rb" );
+    if ( f == NULL )
+    {
+        std::printf( "FAIL: %s is not there (run: make tables-fixedform-corpus)\n", path );
+        failures++;
+        ok = false;
+        return out;
+    }
+    uint8_t chunk[4096];
+    size_t n;
+    while ( ( n = std::fread( chunk, 1, sizeof( chunk ), f ) ) > 0 ) { out.insert( out.end(), chunk, chunk + n ); }
+    std::fclose( f );
+    ok = true;
+    return out;
+}
+
+static uint32_t bits32( float f ) { uint32_t b; std::memcpy( &b, &f, 4 ); return b; }
+static uint64_t bits64( double d ) { uint64_t b; std::memcpy( &b, &d, 8 ); return b; }
+
+// WHAT THIS FORM'S FLOAT RUNG ACTUALLY DOES TO A NaN, stated as arithmetic so
+// the claim is readable rather than inherited from the machine: the sign rides,
+// the 23 payload bits ride at the top of the double's 52 — AND THE QUIET BIT
+// COMES BACK SET, because `kTableFixedWidenF` is a plain `(double) f`
+// (internal/codegen/cpptable/fixedruntime.go:323) and every hardware convert
+// quiets.
+//
+// THAT IS NOT WHAT §4's OWN HELPER DOES. `TableWidenF32`, the rung on every
+// other projection, carries the comment "since the hardware conversion would
+// set the quiet bit" and does the bit surgery to keep a signalling NaN
+// signalling; test/tables/floatnan_main.cpp pins THAT answer over F1/F2. So the
+// same rung has two answers depending on the form, and FU1.schema's own note
+// ("which the reference's `(double) f` QUIETS") predicted this one. The oracle
+// pins what the reference does TODAY and names the divergence; which of the two
+// is the ruling is schema#876's to settle, and the day it settles this constant
+// is the one line that moves.
+static uint64_t widened_f32_nan( uint32_t narrow )
+{
+    return ( (uint64_t) ( narrow >> 31 ) << 63 ) | 0x7FF8000000000000ull
+         | ( (uint64_t) ( narrow & 0x007FFFFFu ) << 29 );
+}
+
+static void fu_oracle_case( const char * dir )
+{
+    // the three records fu1_file() in test/tables/fixedform_dump.cpp writes, as
+    // values: a leg that reads the file gets this same table
+    const uint32_t heat_bits[3] = { 0x7F800001u, 0xFFA5A5A5u, 0x3FC00000u /* 1.5f */ };
+    const int32_t mark_wide[3] = { -1, -32768, 32767 };
+
+    bool have = false;
+    const std::vector<uint8_t> fu1 = slurp( dir, "fu1.bin", have );
+    if ( have )
+    {
+        // 1. THE IDENTITY PATH over the reference's own file
+        tblfu1::FuRoot back[3];
+        tblfu1::TableReport r;
+        std::vector<tblfu1::TableFixedEntry> plan( 1024 );
+        check( tblfu1::FuRootFixedLoad( back, 3, fu1.data(), (int64_t) fu1.size(), plan.data(), 1024, NULL, &r ) == 3,
+               "oracle fu1: the identity read takes all three records" );
+        check( back[0].flag && back[0].note_present && back[0].note == 44 && back[0].tail == 11,
+               "oracle fu1: identity, record 0's head" );
+        check( back[0].pick.type == tblfu1::PickType::Labelled && back[0].pick.labelled.lead == 101 &&
+               back[0].pick.labelled.label_length == 5 && std::strcmp( back[0].pick.labelled.label, "hello" ) == 0 &&
+               back[0].pick.labelled.trail == 202,
+               "oracle fu1: identity, the SECOND arm's text between its two scalars" );
+        check( !back[1].flag && !back[1].note_present && back[1].tail == 12 &&
+               back[1].pick.type == tblfu1::PickType::Plain && back[1].pick.plain.n == 303,
+               "oracle fu1: identity, the FIRST arm and the ABSENT optional" );
+        check( back[2].pick.type == tblfu1::PickType::Labelled && back[2].pick.labelled.lead == -5 &&
+               back[2].pick.labelled.label_length == 0 && back[2].pick.labelled.trail == 606 &&
+               back[2].note == -7 && back[2].tail == 13,
+               "oracle fu1: identity, the second arm with its text WHOLLY UNUSED" );
+        for ( int i = 0; i < 3; ++i )
+        {
+            check( back[i].mark == (int16_t) mark_wide[i], "oracle fu1: identity, `mark` at its own width" );
+            check( bits32( back[i].heat ) == heat_bits[i], "oracle fu1: identity, `heat`'s BITS, NaN payload and all" );
+        }
+        check( ( bits32( back[0].heat ) & 0x00400000u ) == 0,
+               "oracle fu1: identity, the signalling NaN is STILL SIGNALLING" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+               "oracle fu1: identity, a clean read moves no counter" );
+
+        // 2. THE COMPILED PATH — FU2 reads FU1's file, and BOTH RUNGS WIDEN
+        tblfu2::FuRoot wide[3];
+        tblfu2::TableReport r2;
+        std::vector<tblfu2::TableFixedEntry> plan2( 1024 );
+        check( tblfu2::FuRootFixedLoad( wide, 3, fu1.data(), (int64_t) fu1.size(), plan2.data(), 1024, NULL, &r2 ) == 3,
+               "oracle fu1: the compiled read takes all three records" );
+        check( wide[0].pick.type == tblfu2::PickType::Labelled &&
+               wide[0].pick.labelled.label_length == 5 && std::strcmp( wide[0].pick.labelled.label, "hello" ) == 0,
+               "oracle fu1: the COMPILED read still lands the arm's text" );
+        check( wide[1].pick.type == tblfu2::PickType::Plain && wide[1].pick.plain.n == 303,
+               "oracle fu1: compiled, the FIRST arm as well" );
+        for ( int i = 0; i < 3; ++i )
+        {
+            check( wide[i].mark == mark_wide[i],
+                   "SIGNED RUNG: int16 into int32, SIGN-EXTENDED — -1 is -1 and never 65535" );
+            check( wide[i].extra == 11, "oracle fu1: compiled, `extra` takes its declared default" );
+        }
+        // THE FLOAT RUNG on the two NaNs: the payload and the sign ride, the
+        // quiet bit comes back set (see widened_f32_nan above)
+        check( bits64( wide[0].heat ) == widened_f32_nan( heat_bits[0] ),
+               "FLOAT RUNG: f32 into f64, the smallest NaN payload rides in the top of the 52" );
+        check( bits64( wide[1].heat ) == widened_f32_nan( heat_bits[1] ),
+               "FLOAT RUNG: f32 into f64, a NEGATIVE NaN's sign and rich payload ride" );
+        // THE 22 PAYLOAD BITS BELOW THE QUIET BIT SURVIVE EXACTLY, at the top of
+        // the double's 52 — that much both answers agree on. The 23rd, the f32
+        // QUIET BIT, lands on the double's quiet bit and comes back SET, so it
+        // is the ONE bit of the payload this form does not carry across: a
+        // signalling NaN arrives quiet and nothing in the report says so.
+        check( ( ( bits64( wide[0].heat ) >> 29 ) & 0x003FFFFFull ) == ( heat_bits[0] & 0x003FFFFFu ) &&
+               ( ( bits64( wide[1].heat ) >> 29 ) & 0x003FFFFFull ) == ( heat_bits[1] & 0x003FFFFFu ),
+               "FLOAT RUNG: the 22 payload bits below the quiet bit are where the narrow width had them" );
+        check( ( heat_bits[0] & 0x00400000u ) == 0 && ( heat_bits[1] & 0x00400000u ) == 0,
+               "FLOAT RUNG: both written NaNs are SIGNALLING at the narrow width" );
+        check( ( bits64( wide[1].heat ) >> 63 ) == 1, "FLOAT RUNG: a negative NaN keeps its sign" );
+        // THE DIVERGENCE, PINNED BY NAME: this form quiets and §4's own
+        // TableWidenF32 does not (test/tables/floatnan_main.cpp). Pinned so the
+        // day it is ruled on, a test says so rather than a port discovering it.
+        check( ( bits64( wide[0].heat ) & 0x0008000000000000ull ) != 0,
+               "FLOAT RUNG, THE FIXED FORM'S ANSWER: `(double) f` QUIETS the signalling NaN — "
+               "§4's TableWidenF32 keeps it signalling, so the rung has two answers (schema#876)" );
+        // AND AN ORDINARY FLOAT, where the conversion is the whole of the rung
+        check( wide[2].heat == 1.5, "FLOAT RUNG: an ordinary float widens to the same number" );
+        check( bits64( wide[2].heat ) == 0x3FF8000000000000ull, "FLOAT RUNG: 1.5 widens to 1.5's bits" );
+        // TWO WIDENED PER RECORD AND NOTHING ELSE: `extra` is a field the writer
+        // does not carry, which is the prefill's business and no counter's, and
+        // FU1 carries no field FU2 cannot name
+        check( r2.widened == 6, "BOTH RUNGS COUNTED: two widened fields times three records — `widened` is the RECORD's counter" );
+        check( r2.unknown == 0 && r2.kind_mismatch == 0 && r2.clamped == 0 && !r2.malformed && !r2.refused,
+               "BOTH RUNGS COUNTED: and no other counter moved" );
+    }
+
+    bool have2 = false;
+    const std::vector<uint8_t> fu2 = slurp( dir, "fu2.bin", have2 );
+    if ( have2 )
+    {
+        // 3. FU2's OWN BYTES on the identity path
+        tblfu2::FuRoot back[2];
+        tblfu2::TableReport r;
+        std::vector<tblfu2::TableFixedEntry> plan( 1024 );
+        check( tblfu2::FuRootFixedLoad( back, 2, fu2.data(), (int64_t) fu2.size(), plan.data(), 1024, NULL, &r ) == 2,
+               "oracle fu2: the identity read takes both records" );
+        check( back[0].flag && back[0].note == 55 && back[0].note_present && back[0].tail == 21 &&
+               back[0].extra == 909 && back[0].mark == -70000,
+               "oracle fu2: identity, the head, the wide `mark` and `extra`" );
+        check( back[0].pick.type == tblfu2::PickType::Labelled && back[0].pick.labelled.lead == 111 &&
+               back[0].pick.labelled.label_length == 4 && std::strcmp( back[0].pick.labelled.label, "wide" ) == 0 &&
+               back[0].pick.labelled.trail == 222,
+               "oracle fu2: identity, the SECOND arm's text" );
+        check( bits64( back[0].heat ) == 0x7FF00DEFACED0001ull,
+               "oracle fu2: identity, a signalling NaN at sixty-four bits rides as its bits" );
+        check( back[1].pick.type == tblfu2::PickType::Plain && back[1].pick.plain.n == 404 &&
+               back[1].mark == 70000 && back[1].heat == -2.25 && back[1].extra == -11 && back[1].tail == 22,
+               "oracle fu2: identity, the FIRST arm" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed && !r.refused,
+               "oracle fu2: identity, a clean read moves no counter" );
+
+        // 4. THE OTHER DIRECTION — FU1 reads FU2's file. `extra` is a field this
+        // reader cannot name, and the two rungs run BACKWARDS, which §4 does not
+        // call a rung at all: a KIND THAT MOVED is not decoded, the declared
+        // default stands, and `kind_mismatch` says so.
+        tblfu1::FuRoot narrow[2];
+        tblfu1::TableReport r1;
+        std::vector<tblfu1::TableFixedEntry> plan1( 1024 );
+        check( tblfu1::FuRootFixedLoad( narrow, 2, fu2.data(), (int64_t) fu2.size(), plan1.data(), 1024, NULL, &r1 ) == 2,
+               "oracle fu2: the NEWER writer's file reads under FU1" );
+        check( narrow[0].pick.type == tblfu1::PickType::Labelled &&
+               narrow[0].pick.labelled.label_length == 4 && std::strcmp( narrow[0].pick.labelled.label, "wide" ) == 0 &&
+               narrow[0].pick.labelled.lead == 111 && narrow[0].pick.labelled.trail == 222 && narrow[0].tail == 21,
+               "oracle fu2: the older reader still lands the arm's text" );
+        check( narrow[0].mark == -1 && narrow[1].mark == -1,
+               "BACKWARDS IS NOT A RUNG: int32 into int16 is not decoded and `mark` holds its declared -1" );
+        check( narrow[0].heat == 0.0f && narrow[1].heat == 0.0f,
+               "BACKWARDS IS NOT A RUNG: f64 into f32 is not decoded and `heat` holds its declared 0" );
+        // THE COUNTERS ARE NOT ALL ON THE SAME FOOTING, and the oracle is where
+        // that is written down: `unknown` and `kind_mismatch` are the PLAN's —
+        // counted once when the writer's layout is compiled against this
+        // reader's, whatever the record count — while `widened` above is the
+        // RECORD's, two fields times three records, counted six. A port that
+        // counts either one the other way reads this file and says so.
+        check( r1.unknown == 1, "oracle fu2: `extra` is the one field FU1 cannot name, counted once for the PLAN" );
+        check( r1.kind_mismatch == 2, "oracle fu2: two moved kinds, counted once each for the PLAN" );
+        check( r1.widened == 0 && !r1.malformed && !r1.refused, "oracle fu2: nothing widened going backwards" );
+    }
+}
+
+int main( int argc, char ** argv )
+{
+    // the reference's own oracle bytes, written by `make tables-fixedform-corpus`
+    const char * corpus = argc > 1 ? argv[1] : "build/fixedform-corpus";
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
                  (long long) tblfx1::FxRootFixedBodyBytes, (long long) tblfx1::FxRootFixedLayoutBytes,
                  (int) tblfx1::FxRootFixedPlanCount );
@@ -1380,6 +1601,7 @@ int main()
     slack_case();
     union_text_case();
     text_under_arm_case();
+    fu_oracle_case( corpus );
     bytes_row_case();
     bounds_case();
     absent_optional_case();
