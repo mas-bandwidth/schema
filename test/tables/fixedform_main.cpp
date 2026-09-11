@@ -48,6 +48,7 @@
 #include "FU2Table.h"
 #include "FH1Table.h"
 #include "FH2Table.h"
+#include "FG1Table.h"
 #include "FE1Table.h"
 #include "FE2Table.h"
 
@@ -1541,6 +1542,485 @@ static void cache_case()
     check( cache.compiles == 1, "cache: identity never increments the compile counter" );
 }
 
+// ---------------------------------------------------------------------------
+
+// W10: EVERY COMPILED ENTRY IS BOUNDED BY THE WRITER'S OWN DECLARED RECORD SIZE
+// (docs/FIXED-FORM-ALGORITHM.md §4.2, fix 3). The plan's source offsets are
+// arithmetic over sizes a WRITER wrote down, so a layout that passes every
+// rule of §1.1 and still names a byte past `root.size` is refused WHOLE and
+// never partly compiled, under `layout_record_too_large`.
+//
+// THE LAYOUT HERE IS INTERNALLY VALID: hand-built out of this build's own
+// field ids, passing all seven rules. After COMPILE-from-lock (#916), LOAD
+// never parses a stranger — unknown hash is `layout_newer` — so the bound
+// is asserted on `TableFixedCompile` directly, which is the path a known
+// older writer still takes. A Load of the same bytes still refuses, and
+// sets nothing.
+//
+// WHERE THE OVERRUN COMES FROM, precisely: an ARRAY entry's admitted size is
+// `size % elem == 0` OR `4 + n*elem`, so a size of ZERO is a valid bare array
+// of no elements — and the compiler takes the head from the READER's own row
+// (`d.counted`, internal/codegen/cpptable/fixedruntime.go:995), so a reader
+// whose field carries a live count subtracts four from zero. The elements then
+// land at `their_at + 4`, past a record that ends at four.
+static void record_bound_case()
+{
+    // the ids are READ OUT of this build's own layout rather than spelled as
+    // hashes, so the case does not quietly stop naming the fields it means
+    const tblfx1::TableFixedLayoutView mine = { tblfx1::FxRootFixedLayout, (int32_t) ( ( tblfx1::FxRootFixedLayoutBytes - 4 ) / 17 ) };
+    const uint64_t root_id = tblfx1::TableFixedEntryAt( mine, 0 ).id;
+    uint64_t keep_id = 0, blob_id = 0, blob_elem_id = 0, label_id = 0;
+    for ( int32_t i = 1; i < mine.count; ++i )
+    {
+        const tblfx1::TableFixedLayoutEntry e = tblfx1::TableFixedEntryAt( mine, i );
+        if ( e.kind == 8 && e.size == 4 && keep_id == 0 ) { keep_id = e.id; }          // `keep`, a uint32
+        if ( e.kind == 12 && label_id == 0 ) { label_id = e.id; }                      // `label`, a string(8)
+        if ( e.kind == 14 && i + 1 < mine.count )                                      // `blob`, bytes(6): an array of u8
+        {
+            const tblfx1::TableFixedLayoutEntry el = tblfx1::TableFixedEntryAt( mine, i + 1 );
+            if ( el.kind == 6 && el.size == 1 ) { blob_id = e.id; blob_elem_id = el.id; }
+        }
+    }
+    check( root_id != 0 && keep_id != 0 && blob_id != 0 && label_id != 0,
+           "W10: the ids this case names are the ids this build's own layout carries" );
+
+    // 1. AN ENTRY WHOSE `src + size` REACHES PAST `root.size`
+    {
+        std::vector<uint8_t> layout;
+        layout.resize( 4 );
+        tblfx1::TableFixedPut32( layout.data(), 4u );
+        put_entry( layout, root_id, 13u, 4u, 2u );      // a record body of FOUR bytes
+        put_entry( layout, keep_id, 8u, 4u, 0u );       // the four bytes, at 0
+        put_entry( layout, blob_id, 14u, 0u, 1u );      // an array of NO bytes, at 4
+        put_entry( layout, blob_elem_id, 6u, 1u, 0u );
+        tblfx1::TableFixedLayoutView parsed;
+        tblfx1::TableMessageReason why = tblfx1::layout_malformed;
+        check( tblfx1::TableFixedParseLayout( layout.data(), (int64_t) layout.size(), parsed, why ),
+               "W10: the layout passes all seven rules of §1.1, so the refusal below is the BOUND" );
+        tblfx1::TableReport cr;
+        std::vector<tblfx1::TableFixedEntry> cplan( 1024 );
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        const int32_t made = tblfx1::TableFixedCompile( parsed, tblfx1::FxRootFixedLayout, (int32_t) tblfx1::FxRootFixedLayoutBytes,
+                                                       tblfx1::FxRootFixedDst, tblfx1::FxRootFixedCover, tblfx1::FxRootFixedCoverCount,
+                                                       cplan.data(), 1024, &guarded, &fill_at, &fill_count, &cr );
+        check( made == -2, "W10: COMPILE answers -2 (hostile) for an entry past the writer's record size" );
+        check( cr.reason == tblfx1::layout_record_too_large,
+               "W10: COMPILE names layout_record_too_large for an entry past the writer's record size" );
+        std::vector<uint8_t> f = file_of( layout );
+        tblfx1::FxRoot v;
+        tblfx1::FxRootReset( v );
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, f.data(), (int64_t) f.size(), plan.data(), 1024, NULL, &r );
+        check( n < 0 && r.refused, "W10: LOAD of the same bytes is REFUSED (hash selects; a stranger is layout_newer)" );
+        check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed,
+               "W10: the refusal sets nothing and counts nothing" );
+        check( v.keep == 7u && v.blob_length == 0, "W10: NOT PARTLY COMPILED — no entry of the plan ran" );
+    }
+
+    // 2. THE BOUNDARY ITSELF STANDS. The same shape one byte short of the
+    //    overrun — a text entry whose length word and payload END EXACTLY at
+    //    `root.size` — is a layout with nothing wrong with it, and a bound that
+    //    refused it would be a bound that refuses the wire.
+    //
+    //    AND WHAT A PORTER MUST KNOW: on this reference the OTHER TWO halves of
+    //    the bound — a text entry's `+4` and a `guard` offset — are UNREACHABLE
+    //    from a valid layout, because §1.1 rule 3 makes a table's size the sum
+    //    of its children's and every per-kind rule bounds a child's span inside
+    //    its parent's. A text entry's whole span IS its entry size (`>= 4`), and
+    //    a union's guard is its own offset with a tag width of `size - widest`.
+    //    So they are a defence against a HOLE IN RULE 3, and a port whose
+    //    validation is weaker than this one's needs all three.
+    {
+        std::vector<uint8_t> layout;
+        layout.resize( 4 );
+        tblfx1::TableFixedPut32( layout.data(), 3u );
+        put_entry( layout, root_id, 13u, 16u, 2u );     // four bytes, then a string(8)'s twelve
+        put_entry( layout, keep_id, 8u, 4u, 0u );
+        put_entry( layout, label_id, 12u, 12u, 0u );    // src 4, +4 the length word, 12 bytes to 16
+        tblfx1::TableFixedLayoutView parsed;
+        tblfx1::TableMessageReason why = tblfx1::layout_malformed;
+        check( tblfx1::TableFixedParseLayout( layout.data(), (int64_t) layout.size(), parsed, why ),
+               "W10: the boundary layout passes all seven rules of §1.1" );
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        int32_t guarded = 0;
+        uint32_t fill_at = 0;
+        int32_t fill_count = 0;
+        const int32_t made = tblfx1::TableFixedCompile( parsed, tblfx1::FxRootFixedLayout, (int32_t) tblfx1::FxRootFixedLayoutBytes,
+                                                       tblfx1::FxRootFixedDst, tblfx1::FxRootFixedCover, tblfx1::FxRootFixedCoverCount,
+                                                       plan.data(), 1024, &guarded, &fill_at, &fill_count, &r );
+        check( made >= 0 && !r.refused && !r.malformed, "W10: a text entry ending EXACTLY at root.size is not a refusal" );
+        uint8_t body[16];
+        std::memset( body, 0, sizeof( body ) );
+        tblfx1::TableFixedPut32( body, 4242u );          // keep
+        tblfx1::TableFixedPut32( body + 4, 2u );          // the label's length
+        body[8] = 'h'; body[9] = 'i';
+        tblfx1::FxRoot v;
+        tblfx1::FxRootReset( v );
+        tblfx1::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) (void *) &v, &r );
+        check( v.keep == 4242u && v.label_length == 2 && v.label[0] == 'h' && v.label[1] == 'i',
+               "W10: and it reads — the bound admits the last byte of the record" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// C1/C2: THE COUNT CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5). A counted array's
+// count is four bytes a STRANGER wrote: `v := SLE(4, record+src)`; below zero it
+// is zero and past the READER's own bound, IN ELEMENTS, it is the bound, and
+// either way `COUNT clamped` once for the field.
+//
+// THE FORGERY IS IN THE BYTES and not through the writer: §3.1's write-side
+// bound checks are DEBUG ONLY by rule and clamp nothing, so a count of -1 is a
+// thing only the wire can say. `-1` is spelled as the wire spells it, four
+// 0xFF bytes, which is also the number a length field holds when a peer wrote a
+// signed -1 and a u32 reader read it as four billion.
+//
+// THIS CASE LIVES HERE AND NOT IN THE PROPERTIES GATE because it cannot be
+// reached from there: `decode_identity` (fixedform_properties.cpp:347) returns
+// before the clamp pass when `inspect` sets `unsafe`, and a forged count is
+// exactly what `inspect` calls unsafe — so P1 and P3 can never reach the clamp
+// the defence is. The identity plan is what carries `count` (§4.1), so this
+// reads its own file.
+static void count_clamp_case()
+{
+    tblfx1::FxRoot one;
+    tblfx1::FxRootReset( one );
+    one.marks[0] = 7; one.marks[1] = 8;
+    one.marks_count = 2;
+    std::vector<uint8_t> file( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &one, 1, file.data(), (int64_t) file.size() ) == (int64_t) file.size(),
+           "count clamp: the record saves" );
+    uint8_t * body = file.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+
+    // THE COUNT'S OFFSET IS FOUND BY THE PLAN'S OWN ROW, by shape and not by a
+    // number in this file: the identity plan carries exactly ONE `count` op and
+    // it is `marks`', because `blob`'s count rides in its own `text` row's `aux`
+    // and never as a `count` entry (§4.1, fix 10). So the row is found by its OP
+    // ALONE, and the bound it carries is then a REAL assertion: a `count` op's
+    // `size` IS the reader's own bound IN ELEMENTS (§4.1), which for
+    // `marks [..4]int32` is four — not four BYTES, which is what the same number
+    // would mean in a `copy` row.
+    uint32_t count_at = 0xFFFFFFFFu;
+    int32_t bound = -1;
+    int32_t count_rows = 0;
+    for ( int32_t i = 0; i < tblfx1::FxRootFixedPlanCount; ++i )
+    {
+        const tblfx1::TableFixedEntry e = tblfx1::FxRootFixedPlan[i];
+        if ( e.op != tblfx1::kTableFixedCount ) { continue; }
+        ++count_rows;
+        count_at = e.src;
+        bound = (int32_t) e.size;
+    }
+    check( count_rows == 1, "count clamp: the identity plan carries exactly ONE count op, so the row below is `marks`'" );
+    check( count_at != 0xFFFFFFFFu && bound == 4, "count clamp: and its bound is FOUR ELEMENTS — `marks [..4]int32`'s own Max" );
+    check( (int32_t) tblfx1::TableFixedGet32( body + count_at ) == 2,
+           "count clamp: and the offset it names is where the live count really is" );
+
+    // C1: A COUNT BELOW ZERO. Not a large number — zero, and one clamp.
+    {
+        tblfx1::TableFixedPut32( body + count_at, 0xFFFFFFFFu ); // -1, as the wire spells it
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "C1: a forged count of -1 still READS — a clamp is not a refusal" );
+        check( back.marks_count == 0, "C1: a count below zero clamps to ZERO" );
+        check( r.clamped == 1, "C1: and counts exactly one clamp" );
+        check( !r.malformed && !r.refused, "C1: a clamp is neither malformed nor a refusal" );
+    }
+
+    // C2: A COUNT PAST THE READER'S OWN BOUND, IN ELEMENTS.
+    {
+        tblfx1::TableFixedPut32( body + count_at, (uint32_t) ( bound + 1 ) );
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "C2: a forged count of Max+1 still READS" );
+        check( back.marks_count == bound, "C2: a count past Max clamps to MAX, in elements" );
+        check( r.clamped == 1, "C2: and counts exactly one clamp" );
+        check( back.marks[0] == 7 && back.marks[1] == 8, "C2: the live elements are still the record's" );
+    }
+
+    // AND THE CONTROL: the bound itself is not a clamp. A count EQUAL to Max is
+    // in range, and a clamp counted there would be a clamp on a clean read.
+    {
+        tblfx1::TableFixedPut32( body + count_at, (uint32_t) bound );
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "count clamp: a count of exactly Max reads" );
+        check( back.marks_count == bound && r.clamped == 0, "CONTROL: a count of exactly Max is in range and counts NOTHING" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// W6: THE PLAN IS PARTITIONED (docs/FIXED-FORM-ALGORITHM.md §4.1, §4.4, fix 6).
+// Every UNGUARDED entry first, then every guarded one, and the plan states
+// where the second half starts — `split` is the NUMBER OF UNGUARDED ENTRIES and
+// not a count of guarded ones. The entries that are nearly all of a plan then
+// never test a guard, which is the measurement the requirement was bought with
+// (63.5 ns against 55).
+//
+// AND NO COALESCED RUN CROSSES THE SPLIT: merging is inside each half only, or
+// an entry that must run under a tag would ride inside one that always runs.
+// The pair at the boundary is the whole of what that forbids, so it is the pair
+// this case tests.
+static void partition_is_held( const tblfx1::TableFixedEntry * plan, int32_t count, int32_t split, const char * who )
+{
+    char what[256];
+    std::snprintf( what, sizeof( what ), "W6: %s — split is in range", who );
+    check( split >= 0 && split <= count, what );
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        const bool guarded = plan[i].guard != tblfx1::kTableFixedNoGuard;
+        if ( i < split && guarded )
+        {
+            std::snprintf( what, sizeof( what ), "W6: %s — entry %d is below the split and carries a GUARD", who, (int) i );
+            check( false, what );
+        }
+        if ( i >= split && !guarded )
+        {
+            std::snprintf( what, sizeof( what ), "W6: %s — entry %d is above the split and carries NO guard", who, (int) i );
+            check( false, what );
+        }
+    }
+    // THE BOUNDARY PAIR: had the coalescer merged across the split, the entry
+    // below it and the entry at it would be one entry. They are two, and this
+    // says why they have to be.
+    if ( split > 0 && split < count )
+    {
+        const tblfx1::TableFixedEntry & a = plan[split - 1];
+        const tblfx1::TableFixedEntry & b = plan[split];
+        const bool mergeable = a.op == tblfx1::kTableFixedCopy && b.op == tblfx1::kTableFixedCopy &&
+                               a.guard == b.guard && a.arg == b.arg &&
+                               a.src + a.size == b.src && a.dst + a.size == b.dst;
+        std::snprintf( what, sizeof( what ), "W6: %s — the pair at the split was not coalesced across it", who );
+        check( !mergeable, what );
+    }
+}
+
+static void plan_partition_case()
+{
+    // A PLAN WITH BOTH HALVES: UT1 carries a union, so its arms' entries are
+    // guarded and the scalars around them are not.
+    partition_is_held( (const tblfx1::TableFixedEntry *) (const void *) tblut1::UtRootFixedPlan,
+                       tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded, "UT1 identity plan" );
+    check( tblut1::UtRootFixedPlanGuarded < tblut1::UtRootFixedPlanCount,
+           "W6: UT1's identity plan really has a guarded half, so the case is not vacuous" );
+    check( tblut1::UtRootFixedPlanGuarded > 0, "W6: and an unguarded one" );
+    partition_is_held( (const tblfx1::TableFixedEntry *) (const void *) tblut2::UtRootFixedPlan,
+                       tblut2::UtRootFixedPlanCount, tblut2::UtRootFixedPlanGuarded, "UT2 identity plan" );
+    partition_is_held( (const tblfx1::TableFixedEntry *) (const void *) tblv1::CfgFixedPlan,
+                       tblv1::CfgFixedPlanCount, tblv1::CfgFixedPlanGuarded, "V1 identity plan" );
+
+    // A PLAN WITH NO GUARDED HALF AT ALL: the split is then the whole plan, and
+    // `split` being a count of UNGUARDED entries rather than of guarded ones is
+    // what makes that come out right.
+    partition_is_held( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
+                       "FX1 identity plan" );
+    check( tblfx1::FxRootFixedPlanGuarded == tblfx1::FxRootFixedPlanCount,
+           "W6: a plan with no guarded entry has its split at the END, not at zero" );
+
+    // AND A COMPILED PLAN, which is the half an identity plan cannot speak for:
+    // the walk runs TWICE, unguarded first, and each pass keeps its own half.
+    // The caller never sees the split, so the property is read off the plan
+    // itself — once a guarded entry has been seen, no unguarded entry follows.
+    {
+        tblut1::UtRoot one;
+        tblut1::UtRootReset( one );
+        one.head = 42; one.tail = 99;
+        one.pick.type = tblut1::PickType::B;
+        std::strcpy( one.pick.b.label, "seven77" );
+        one.pick.b.label_length = 7;
+        one.pick.b.m = 1234;
+        std::vector<uint8_t> w( (size_t) tblut1::UtRootFixedMeasure( 1 ) );
+        check( tblut1::UtRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W6: UT1 saves" );
+
+        tblut2::UtRoot back;
+        tblut2::TableReport r;
+        std::vector<tblut2::TableFixedEntry> plan( 1024 );
+        check( tblut2::UtRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "W6: UT2 reads a UT1 record through a COMPILED plan" );
+        int32_t seen_guarded = -1;
+        int32_t guarded_count = 0;
+        for ( int32_t i = 0; i < (int32_t) plan.size(); ++i )
+        {
+            if ( plan[i].op == 0 && plan[i].size == 0 && plan[i].src == 0 && plan[i].dst == 0 ) { break; }
+            if ( plan[i].guard != tblut2::kTableFixedNoGuard )
+            {
+                if ( seen_guarded < 0 ) { seen_guarded = i; }
+                guarded_count++;
+            }
+            else
+            {
+                check( seen_guarded < 0, "W6: a COMPILED plan puts every unguarded entry in front of every guarded one" );
+            }
+        }
+        check( guarded_count > 0, "W6: the compiled plan really has guarded entries, so the case is not vacuous" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
+// W16: AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG
+// (docs/FIXED-FORM-ALGORITHM.md §4.1). A union's guard is stamped over
+// EVERYTHING its arm produced, and a nested union's own arm selection must
+// survive that stamp. So every entry an INNER union contributes — its own tag
+// byte included — is guarded by the OUTER tag's byte and never by the inner
+// one, or a record whose outer tag selects the other arm would run the inner
+// arm's entries over storage that arm does not own. The #864 read found JS's
+// inner union overwriting the outer guard; FU1/FU2 are the C leg's pair and are
+// not this shape. FH1/FH2 on the tip are the compiled pair (owed 7); FG1 is the
+// identity-plan fixture this PR carries.
+//
+// FG1's body: `tier` at 0, `head` at 1, and the outer union at 5 — so 5 is the
+// OUTER tag's byte and 6 is the INNER's, and the two numbers being one apart is
+// what makes the assertion sharp.
+static void nested_union_case()
+{
+    // 1. THE PLAN SAYS IT. Every guarded entry answers to the OUTER tag, and
+    //    not one to the inner tag's own byte.
+    uint32_t outer_tag_at = 0xFFFFFFFFu;
+    for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
+    {
+        const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
+        if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
+        if ( outer_tag_at == 0xFFFFFFFFu ) { outer_tag_at = e.guard; }
+        check( e.guard == outer_tag_at, "W16: every guarded entry of a nested union answers to ONE tag" );
+    }
+    check( outer_tag_at != 0xFFFFFFFFu, "W16: the plan really has guarded entries" );
+    // the inner union's OWN tag rides as a guarded entry, whose SOURCE is the
+    // inner tag's byte and whose GUARD is the outer's: the two lanes of the same
+    // nesting, and the assertion is that they are different numbers.
+    bool saw_inner_tag = false;
+    uint32_t inner_tag_dst = 0xFFFFFFFFu;
+    uint8_t inner_arm_arg = 0;
+    for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
+    {
+        const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
+        if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
+        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = e.arg; }
+        check( e.guard != e.src || e.src == outer_tag_at,
+               "W16: an inner entry is never guarded by the INNER tag's own byte" );
+    }
+    check( saw_inner_tag, "W16: the inner union's own tag byte is one of the entries the OUTER tag guards" );
+
+    // AND THE TWO ARMS SHARE STORAGE, which is what makes the record half below
+    // an assertion and not a hope: `Outer` is a real C++ union, so the OTHER
+    // arm's entry lands at the same destination the inner tag does. An inner
+    // entry that ran under the wrong tag would be READABLE IN THE OTHER ARM'S
+    // OWN FIELD, and that field reading back whole is the measurement.
+    uint32_t other_arm_dst = 0xFFFFFFFFu;
+    for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
+    {
+        const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
+        if ( e.guard == tblfg1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
+        other_arm_dst = e.dst;
+    }
+    check( other_arm_dst != 0xFFFFFFFFu && other_arm_dst == inner_tag_dst,
+           "W16: the OTHER arm's field and the inner tag land at ONE destination — so that field is where a stray inner entry would show" );
+
+    // 2. AND THE RECORD SAYS IT. The outer tag selects B, so not one inner entry
+    //    may run — and the measurement of that is THE B ARM'S OWN FIELD, which
+    //    shares its destination with the inner tag (part 1): `m` reading back as
+    //    555 is the statement that no inner entry's byte landed in it.
+    //
+    //    WHAT THIS DOES NOT SAY, and why. A destination stained where the A arm
+    //    would keep the inner union's payload comes back STILL STAINED, not at
+    //    the default: for the identity plan the unwritten-range list is EMPTY
+    //    (§4.3), so an identity read prefills nothing and every storage byte no
+    //    entry lands keeps what the CALLER put there. "The inner arm returns to
+    //    its default" would be a claim about a prefill this form deliberately
+    //    does not pay; the reference's real guarantee is narrower and stronger —
+    //    the read writes the selected arm and NOTHING ELSE. So the stain is
+    //    asserted to SURVIVE, which is the same fact from the other side: a byte
+    //    the plan does not own is a byte the read does not touch.
+    {
+        tblfg1::FhRoot one;
+        tblfg1::FhRootReset( one );
+        one.tier = tblfg1::Tier::Silver;
+        one.head = 77;
+        one.pick.type = tblfg1::OuterType::B;
+        one.pick.b.m = 555;
+        std::vector<uint8_t> w( (size_t) tblfg1::FhRootFixedMeasure( 1 ) );
+        check( tblfg1::FhRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W16: the B record saves" );
+
+        tblfg1::FhRoot back;
+        tblfg1::FhRootReset( back );
+        back.pick.type = tblfg1::OuterType::A;
+        back.pick.a.inner.type = tblfg1::InnerType::Other;
+        back.pick.a.inner.other.k = 0x5A5A5A5A; // the stain, so nothing below is vacuous
+        check( back.pick.a.inner.other.k == 0x5A5A5A5A, "CONTROL: the inner arm's storage really is stained" );
+        // the stain is read back AS BYTES, through the address taken while that
+        // arm was the live one: after the load the live arm is B, and the
+        // question here is about the BYTES at that address and not about a
+        // member of a union that is no longer selected.
+        const uint8_t * const stain_at = (const uint8_t *) (const void *) &back.pick.a.inner.other.k;
+        tblfg1::TableReport r;
+        std::vector<tblfg1::TableFixedEntry> plan( 1024 );
+        check( tblfg1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "W16: the B record reads" );
+        check( back.pick.type == tblfg1::OuterType::B, "W16: the outer tag" );
+        check( back.pick.b.m == 555,
+               "W16: THE B ARM'S OWN FIELD IS WHOLE — no inner entry's bytes landed in the storage it shares with the inner tag" );
+        check( back.tier == tblfg1::Tier::Silver && back.head == 77, "W16: the rest of the record" );
+        uint32_t stain_after = 0;
+        std::memcpy( &stain_after, stain_at, sizeof( stain_after ) );
+        check( stain_after == 0x5A5A5A5Au,
+               "W16: and the storage no entry of this read owns is UNTOUCHED — the identity plan prefills nothing (§4.3)" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "W16: a clean read moves no counter" );
+    }
+
+    // 3. THE OTHER WAY: the outer tag selects A, and the inner union's arm lands
+    //    whole — the stamp does not cost the inner selection.
+    //
+    //    AND THIS HALF IS BLUNT, and a different schema does not sharpen it. The
+    //    inner union's two arms are each a single int32, so the plan's two inner
+    //    arm entries are the same copy of the same source bytes to the same
+    //    destination: a read that ran BOTH is indistinguishable from one that
+    //    ran only the selected arm. Giving the arms different SHAPES was tried
+    //    (int16 + int8 against int32) and changes nothing — the stamp leaves both
+    //    inner arms guarded by the OUTER tag alone, so both entries still run,
+    //    and because each copies the same record offsets to the same storage
+    //    offsets the overlapping bytes are IDENTICAL and the selected arm still
+    //    reads back whole. Only an arm whose storage image maps the wire to
+    //    DIFFERENT offsets could separate the two, and that is a finding for the
+    //    card (an inner arm selection that is not guarded by the inner tag) and
+    //    not something this fixture can assert. What the case below holds is
+    //    that the inner selection ARRIVES.
+    {
+        tblfg1::FhRoot one;
+        tblfg1::FhRootReset( one );
+        one.tier = tblfg1::Tier::Bronze;
+        one.head = 11;
+        one.pick.type = tblfg1::OuterType::A;
+        one.pick.a.edge = 22;
+        one.pick.a.inner.type = tblfg1::InnerType::Other;
+        one.pick.a.inner.other.k = 33;
+        std::vector<uint8_t> w( (size_t) tblfg1::FhRootFixedMeasure( 1 ) );
+        check( tblfg1::FhRootFixedSave( &one, 1, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "W16: the A record saves" );
+
+        tblfg1::FhRoot back;
+        tblfg1::FhRootReset( back );
+        tblfg1::TableReport r;
+        std::vector<tblfg1::TableFixedEntry> plan( 1024 );
+        check( tblfg1::FhRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "W16: the A record reads" );
+        check( back.pick.type == tblfg1::OuterType::A, "W16: the outer arm" );
+        check( back.pick.a.inner.type == tblfg1::InnerType::Other && back.pick.a.inner.other.k == 33,
+               "W16: THE INNER UNION'S OWN ARM SELECTION SURVIVES THE OUTER STAMP" );
+        check( back.pick.a.edge == 22, "W16: and the outer arm's other field" );
+        check( r.clamped == 0 && !r.malformed && !r.refused, "W16: a clean read moves no counter" );
+    }
+}
+
 
 // ---- rowan/corpus-manifest: BEGIN -----------------------------------------
 // THE MANIFEST'S OWN CHECK (docs/FIXED-FORM-ALGORITHM.md §5.7 step 1, ruling
@@ -1930,6 +2410,10 @@ int main( int argc, char ** argv )
     guard_width_case();
     cache_case();
     layout_validation();
+    record_bound_case();
+    count_clamp_case();
+    plan_partition_case();
+    nested_union_case();
     fuzz_case();
     // ---- rowan/corpus-manifest ----
     manifest_case( corpus );
