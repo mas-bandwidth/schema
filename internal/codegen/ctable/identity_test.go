@@ -103,7 +103,7 @@ func identityLoad(t *testing.T, h, name string) string {
 func TestIdentityPlanKeepsCountAndText(t *testing.T) {
 	u := unitFrom(t, identityHeldSchema)
 	st := u.Tables["Held"]
-	plan, _ := ir.TableFixedBuildPlan(u, st)
+	plan, _, _ := ir.TableFixedBuildPlan(u, st)
 	var sawCount, sawText bool
 	for _, e := range plan {
 		if e.Op == ir.TableFixedOpCount {
@@ -128,7 +128,7 @@ func TestIdentityCoverageIsThePlanAndHolesAreEmpty(t *testing.T) {
 	if len(cover) == 0 {
 		t.Fatal("identity coverage of Held is empty")
 	}
-	plan, _ := ir.TableFixedBuildPlan(u, st)
+	plan, _, _ := ir.TableFixedBuildPlan(u, st)
 	covered := make([]bool, len(cover))
 	for _, e := range plan {
 		var ranges []ir.TableFixedRange
@@ -241,7 +241,7 @@ table Root
 `
 	u := unitFrom(t, src)
 	st := u.Tables["Root"]
-	plan, _ := ir.TableFixedBuildPlan(u, st)
+	plan, _, pool := ir.TableFixedBuildPlan(u, st)
 	var text ir.TableFixedLeaf
 	found := false
 	for _, e := range plan {
@@ -254,8 +254,8 @@ table Root
 	if !found {
 		t.Fatal("compiler plan lost the arm's text")
 	}
-	if text.Arg != 2 {
-		t.Fatalf("compiler text arg want 2 (second arm), got %d", text.Arg)
+	if len(text.Guards) != 1 || pool[text.GuardsAt/ir.TableFixedGuardBytes].Arg != 2 {
+		t.Fatalf("compiler text chain want one link on the second arm, got %v", text.Guards)
 	}
 	if text.Meta != 1 {
 		t.Fatalf("compiler text meta want 1 (utf8), got %d", text.Meta)

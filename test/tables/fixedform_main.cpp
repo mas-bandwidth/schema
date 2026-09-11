@@ -254,7 +254,7 @@ static void negative_control()
     tblfx1::FxRoot wrong;
     tblfx1::FxRootReset( wrong );
     tblfx1::TableReport r;
-    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, body, (uint8_t *) &wrong, &r );
+    tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded, (const uint8_t *) tblfx1::FxRootFixedGuards, body, (uint8_t *) &wrong, &r );
     const bool intact = wrong.nested.a == 33 && wrong.nested.b == 44 && wrong.renamed == 808;
     check( !intact, "NEGATIVE CONTROL: the wrong plan must NOT reproduce the record" );
 
@@ -729,7 +729,7 @@ static void bytes_row_case()
         tblfx2::FxRoot * back = (tblfx2::FxRoot *) (void *) storage.data();
         tblfx2::FxRootReset( *back );
         tblfx2::TableReport r;
-        tblfx2::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) back, &r );
+        tblfx2::TableFixedRun( plan.data(), made, guarded, (const uint8_t *) plan.data(), body, (uint8_t *) back, &r );
         const bool right = back->blob_length == 4 && back->blob[0] == 0xDE && back->blob[1] == 0xAD &&
                            back->blob[2] == 0xBE && back->blob[3] == 0xEF;
         if ( pass == 0 )
@@ -773,7 +773,9 @@ static void union_text_case()
     // text op's own, and the two are read out of different lanes.
     {
         check( tblut1::UtRootFixedPlan[3].op == tblut1::kTableFixedText, "two lanes: the plan's fourth entry is the text" );
-        check( tblut1::UtRootFixedPlan[3].arg == 2, "two lanes: arg is the SECOND arm's ordinal" );
+        check( tblut1::UtRootFixedPlan[3].gcount == 1, "a chain: the text entry is under exactly one union" );
+        check( tblut1::TableFixedGuardArg( tblut1::UtRootFixedGuards[tblut1::UtRootFixedPlan[3].guards / sizeof( tblut1::TableFixedGuard )] ) == 2,
+               "a chain: the link holds the SECOND arm's ordinal" );
         check( tblut1::UtRootFixedPlan[3].meta == tblut1::kTableFixedTextUtf8, "two lanes: meta is the utf8 flavour" );
 
         tblut1::UtRoot back;
@@ -796,13 +798,13 @@ static void union_text_case()
     {
         std::vector<tblut1::TableFixedEntry> shared( tblut1::UtRootFixedPlan,
                                                      tblut1::UtRootFixedPlan + tblut1::UtRootFixedPlanCount );
-        shared[3].meta = shared[3].arg; // ONE LANE, as it was
+        shared[3].meta = (uint8_t) tblut1::TableFixedGuardArg( tblut1::UtRootFixedGuards[shared[3].guards / sizeof( tblut1::TableFixedGuard )] ); // ONE LANE, as it was
         tblut1::UtRoot wrong;
         tblut1::UtRootReset( wrong );
         tblut1::TableReport r;
         const uint8_t * body = w.data() + tblut1::kTableFixedHeaderBytes + 4 + tblut1::UtRootFixedLayoutBytes + 8;
         tblut1::TableFixedRun( shared.data(), tblut1::UtRootFixedPlanCount, tblut1::UtRootFixedPlanGuarded,
-                               body, (uint8_t *) &wrong, &r );
+                               (const uint8_t *) tblut1::UtRootFixedGuards, body, (uint8_t *) &wrong, &r );
         check( wrong.pick.b.label_length != 7 || std::strcmp( wrong.pick.b.label, "seven77" ) != 0,
                "NEGATIVE CONTROL: one shared lane really does read the arm's string wrong" );
     }
@@ -993,14 +995,13 @@ static void owed8_width8_ordinal_read_whole_case()
     plan[0].size = 8;
     plan[0].dstsize = 8;
     plan[0].aux = map_at;
-    plan[0].guard = tblfu1::kTableFixedNoGuard;
-    plan[0].argw = 1;
+    plan[0].gcount = 0; // no chain: this entry belongs to no arm
 
     uint8_t src[8] = { 0, 0, 0, 0, 1, 0, 0, 0 }; // 2^32, needs all eight bytes
     uint8_t dst[8];
     std::memset( dst, 0xAB, sizeof( dst ) );
     tblfu1::TableReport r;
-    tblfu1::TableFixedRun( plan, 1, 1, src, dst, &r );
+    tblfu1::TableFixedRun( plan, 1, 1, blob, src, dst, &r );
     uint64_t landed = 0;
     std::memcpy( &landed, dst, 8 );
     check( landed == 0, "owed 8: a width-8 ordinal of 2^32 is past the writer's one variant" );
@@ -1118,6 +1119,7 @@ static void bounds_case()
         tblfx1::TableReport r;
         const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
         tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
+                               (const uint8_t *) tblfx1::FxRootFixedGuards,
                                body, (uint8_t *) &loose, &r );
         check( loose.renamed == 5000 && loose.gone == -7,
                "NEGATIVE CONTROL: the loop alone really does leave an out-of-range value standing" );
@@ -1154,7 +1156,7 @@ static void bounds_case()
         tblfx1::FxRootReset( held );
         tblfx1::TableReport r;
         const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
-        tblfx1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        tblfx1::TableFixedRun( compiled.data(), made, guarded, (const uint8_t *) compiled.data(), body, (uint8_t *) &held, &r );
         check( held.renamed == 5000 && held.gone == -7,
                "COMPILED, NEGATIVE CONTROL: the loop alone leaves an out-of-range value standing here too" );
         check( r.clamped == 0, "COMPILED, NEGATIVE CONTROL: and counts nothing" );
@@ -1262,7 +1264,7 @@ static void bounds_case()
         tblv1::CfgReset( held );
         tblv1::TableReport r;
         const uint8_t * body = vw.data() + tblv1::kTableFixedHeaderBytes + 4 + tblv1::CfgFixedLayoutBytes + 8;
-        tblv1::TableFixedRun( compiled.data(), made, guarded, body, (uint8_t *) &held, &r );
+        tblv1::TableFixedRun( compiled.data(), made, guarded, (const uint8_t *) compiled.data(), body, (uint8_t *) &held, &r );
         check( held.a == 5000 && held.items[0] == 300,
                "live-count, compiled loop: nothing in the plan held either value" );
         check( r.clamped == 0, "live-count, compiled loop: and it counted nothing" );
@@ -1397,6 +1399,7 @@ static void text_content_case()
             tblfx1::TableReport r2;
             const uint8_t * body = w.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
             tblfx1::TableFixedRun( tblfx1::FxRootFixedPlan, tblfx1::FxRootFixedPlanCount, tblfx1::FxRootFixedPlanGuarded,
+                                   (const uint8_t *) tblfx1::FxRootFixedGuards,
                                    body, (uint8_t *) &loose, &r2 );
             check( loose.label_length == 1 && (uint8_t) loose.label[0] == 0xFFu,
                    "NEGATIVE CONTROL: the loop alone really does leave a byte that is not text standing" );
@@ -1436,53 +1439,119 @@ static void guard_width_case()
     uint8_t src[4] = { 0x01, 0x01, 0xAA, 0x00 };
     uint8_t dst[4];
     tblfx1::TableFixedEntry plan[2] = {};
+    tblfx1::TableFixedGuard pool[4] = {};
     tblfx1::TableReport r = {};
 
+    // ONE LINK, the tag at offset 0, arm 1, compared at TWO bytes.
+    pool[0].guard = 0; pool[0].arg_lo = 1; pool[0].arg_hi = 0; pool[0].argw = 2;
+
     plan[0].src = 0; plan[0].dst = 0; plan[0].size = 2; plan[0].aux = 0;
-    plan[0].guard = tblfx1::kTableFixedNoGuard;
     plan[0].op = tblfx1::kTableFixedCopy;
-    plan[0].arg = 0; plan[0].meta = 0; plan[0].dstsize = 0; plan[0].sign = 0;
-    plan[0].argw = 1;
+    plan[0].meta = 0; plan[0].dstsize = 0; plan[0].sign = 0;
+    plan[0].gcount = 0;
 
     plan[1].src = 2; plan[1].dst = 2; plan[1].size = 1; plan[1].aux = 0;
-    plan[1].guard = 0;
     plan[1].op = tblfx1::kTableFixedCopy;
-    plan[1].arg = 1; plan[1].meta = 0; plan[1].dstsize = 0; plan[1].sign = 0;
-    plan[1].argw = 2;
+    plan[1].meta = 0; plan[1].dstsize = 0; plan[1].sign = 0;
+    plan[1].guards = 0; plan[1].gcount = 1;
 
     std::memset( dst, 0, sizeof( dst ) );
     std::memset( &r, 0, sizeof( r ) );
-    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    tblfx1::TableFixedRun( plan, 2, 1, (const uint8_t *) pool, src, dst, &r );
     check( dst[2] == 0, "GUARD WIDTH: tag 0x0101 at width 2 does not take arm 1" );
 
     src[1] = 0x00;
     std::memset( dst, 0, sizeof( dst ) );
     std::memset( &r, 0, sizeof( r ) );
-    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    tblfx1::TableFixedRun( plan, 2, 1, (const uint8_t *) pool, src, dst, &r );
     check( dst[2] == 0xAA, "GUARD WIDTH: tag 0x0001 at width 2 takes arm 1" );
 
     // NEGATIVE CONTROL — the bug itself, watched failing. argw planted at 1
     // is the old one-byte compare, and the SAME 0x0101 record then fires arm 1.
     src[1] = 0x01;
-    plan[1].argw = 1;
+    pool[0].argw = 1;
     std::memset( dst, 0, sizeof( dst ) );
     std::memset( &r, 0, sizeof( r ) );
-    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    tblfx1::TableFixedRun( plan, 2, 1, (const uint8_t *) pool, src, dst, &r );
     check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
 
-    // 6: arg IS FULL WIDTH (bill §12.7). A two-byte tag of 256 is arm 256,
-    // and a byte lane would wrap it to 0, so the entry would never run.
+    // 6: the ordinal IS FULL WIDTH (bill §12.7). A two-byte tag of 256 is arm
+    // 256, and a byte lane would wrap it to 0, so the entry would never run.
     src[0] = 0x00; src[1] = 0x01; src[2] = 0xAA; src[3] = 0x00;
-    plan[1].arg = 256; plan[1].argw = 2;
+    pool[0].arg_lo = 256; pool[0].argw = 2;
     std::memset( dst, 0, sizeof( dst ) );
     r = {};
-    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    tblfx1::TableFixedRun( plan, 2, 1, (const uint8_t *) pool, src, dst, &r );
     check( dst[2] == 0xAA, "ARG LANE: tag 256 at width 2 takes arm 256" );
     src[1] = 0x00;
     std::memset( dst, 0, sizeof( dst ) );
     r = {};
-    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    tblfx1::TableFixedRun( plan, 2, 1, (const uint8_t *) pool, src, dst, &r );
     check( dst[2] == 0, "ARG LANE: tag 0 does not take arm 256" );
+}
+
+// THE CHAIN HAS NO LENGTH BOUND, AND A FORGED INNER TAG UNDER AN UNSELECTED
+// OUTER ARM LANDS NOTHING AT EVERY DEPTH (§5.9). Hand-built so the depth is the
+// variable and nothing else is: three tags, three links, and the entry rides
+// only when all three hold. Two lanes could hold two of these conditions and
+// had to refuse the third by name; a chain holds ten as readily as three.
+static void guard_chain_depth_case()
+{
+    uint8_t src[8] = {};
+    uint8_t dst[4];
+    tblfx1::TableFixedEntry plan[1] = {};
+    tblfx1::TableFixedGuard pool[3] = {};
+    tblfx1::TableReport r = {};
+
+    // OUTERMOST FIRST: the tag at 0 must be 1, the tag at 1 must be 2, the tag
+    // at 2 must be 3 — three nested unions, each one byte wide.
+    pool[0].guard = 0; pool[0].arg_lo = 1; pool[0].argw = 1;
+    pool[1].guard = 1; pool[1].arg_lo = 2; pool[1].argw = 1;
+    pool[2].guard = 2; pool[2].arg_lo = 3; pool[2].argw = 1;
+
+    plan[0].src = 3; plan[0].dst = 0; plan[0].size = 1; plan[0].op = tblfx1::kTableFixedCopy;
+    plan[0].guards = 0; plan[0].gcount = 3;
+
+    src[0] = 1; src[1] = 2; src[2] = 3; src[3] = 0xAA;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 1, 0, (const uint8_t *) pool, src, dst, &r );
+    check( dst[0] == 0xAA, "A CHAIN OF THREE: every link holds, so the entry rides" );
+
+    // THE FORGED INNER TAG: the two inner tags still name this arm, and the
+    // OUTER one does not. Nothing lands — the chain is tested in order and the
+    // first mismatch is the end of it.
+    src[0] = 2;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 1, 0, (const uint8_t *) pool, src, dst, &r );
+    check( dst[0] == 0, "A CHAIN OF THREE: a forged inner tag under an unselected outer arm lands nothing" );
+
+    // AND THE MIDDLE ONE, which is the condition a two-lane shape dropped: the
+    // outermost and the innermost hold, the one between them does not.
+    src[0] = 1; src[1] = 9;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 1, 0, (const uint8_t *) pool, src, dst, &r );
+    check( dst[0] == 0, "A CHAIN OF THREE: the middle tag is a condition too" );
+
+    // A FOURTH LINK COSTS ONE MORE POOL LINK AND NOTHING ELSE.
+    tblfx1::TableFixedGuard four[4] = {};
+    four[0].guard = 0; four[0].arg_lo = 1; four[0].argw = 1;
+    four[1].guard = 1; four[1].arg_lo = 2; four[1].argw = 1;
+    four[2].guard = 2; four[2].arg_lo = 3; four[2].argw = 1;
+    four[3].guard = 3; four[3].arg_lo = 4; four[3].argw = 1;
+    plan[0].src = 4; plan[0].gcount = 4;
+    src[0] = 1; src[1] = 2; src[2] = 3; src[3] = 4; src[4] = 0xBB;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 1, 0, (const uint8_t *) four, src, dst, &r );
+    check( dst[0] == 0xBB, "A CHAIN OF FOUR: four nested unions, four links, no bound" );
+    src[3] = 9;
+    std::memset( dst, 0, sizeof( dst ) );
+    r = {};
+    tblfx1::TableFixedRun( plan, 1, 0, (const uint8_t *) four, src, dst, &r );
+    check( dst[0] == 0, "A CHAIN OF FOUR: the fourth tag is a condition too" );
 }
 
 // THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
@@ -1660,7 +1729,7 @@ static void record_bound_case()
         body[8] = 'h'; body[9] = 'i';
         tblfx1::FxRoot v;
         tblfx1::FxRootReset( v );
-        tblfx1::TableFixedRun( plan.data(), made, guarded, body, (uint8_t *) (void *) &v, &r );
+        tblfx1::TableFixedRun( plan.data(), made, guarded, (const uint8_t *) plan.data(), body, (uint8_t *) (void *) &v, &r );
         check( v.keep == 4242u && v.label_length == 2 && v.label[0] == 'h' && v.label[1] == 'i',
                "W10: and it reads — the bound admits the last byte of the record" );
     }
@@ -1779,7 +1848,7 @@ static void partition_is_held( const tblfx1::TableFixedEntry * plan, int32_t cou
     check( split >= 0 && split <= count, what );
     for ( int32_t i = 0; i < count; ++i )
     {
-        const bool guarded = plan[i].guard != tblfx1::kTableFixedNoGuard;
+        const bool guarded = plan[i].gcount != 0;
         if ( i < split && guarded )
         {
             std::snprintf( what, sizeof( what ), "W6: %s — entry %d is below the split and carries a GUARD", who, (int) i );
@@ -1799,7 +1868,7 @@ static void partition_is_held( const tblfx1::TableFixedEntry * plan, int32_t cou
         const tblfx1::TableFixedEntry & a = plan[split - 1];
         const tblfx1::TableFixedEntry & b = plan[split];
         const bool mergeable = a.op == tblfx1::kTableFixedCopy && b.op == tblfx1::kTableFixedCopy &&
-                               a.guard == b.guard && a.arg == b.arg &&
+                               a.guards == b.guards && a.gcount == b.gcount &&
                                a.src + a.size == b.src && a.dst + a.size == b.dst;
         std::snprintf( what, sizeof( what ), "W6: %s — the pair at the split was not coalesced across it", who );
         check( !mergeable, what );
@@ -1853,7 +1922,7 @@ static void plan_partition_case()
         for ( int32_t i = 0; i < (int32_t) plan.size(); ++i )
         {
             if ( plan[i].op == 0 && plan[i].size == 0 && plan[i].src == 0 && plan[i].dst == 0 ) { break; }
-            if ( plan[i].guard != tblut2::kTableFixedNoGuard )
+            if ( plan[i].gcount != 0 )
             {
                 if ( seen_guarded < 0 ) { seen_guarded = i; }
                 guarded_count++;
@@ -1888,32 +1957,33 @@ static void plan_partition_case()
 // what makes the assertion sharp.
 static void nested_union_case()
 {
-    // 1. THE PLAN SAYS IT. Every guarded entry answers to the OUTER tag — on
-    //    the first lane when it is the outer union's own, on the SECOND when it
-    //    belongs to an arm inside an arm — and not one answers to the inner tag
-    //    alone.
+    // 1. THE PLAN SAYS IT. Every guarded entry's chain BEGINS at the OUTER tag
+    //    — outermost link first — and not one answers to the inner tag alone.
+    //    An entry inside the inner union carries TWO links, and one inside a
+    //    third union would carry three: the chain is as long as the nesting.
     uint32_t outer_tag_at = 0xFFFFFFFFu;
     for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
-        if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
-        const uint32_t outer = e.guard2 == tblfg1::kTableFixedNoGuard ? e.guard : e.guard2;
+        if ( e.gcount == 0 ) { continue; }
+        const uint32_t outer = tblfg1::FhRootFixedGuards[e.guards / sizeof( tblfg1::TableFixedGuard )].guard;
         if ( outer_tag_at == 0xFFFFFFFFu ) { outer_tag_at = outer; }
         check( outer == outer_tag_at, "W16: every guarded entry of a nested union answers to ONE OUTER tag" );
     }
     check( outer_tag_at != 0xFFFFFFFFu, "W16: the plan really has guarded entries" );
     // the inner union's OWN tag rides as a guarded entry, whose SOURCE is the
-    // inner tag's byte and whose GUARD is the outer's: the two lanes of the same
-    // nesting, and the assertion is that they are different numbers.
+    // inner tag's byte and whose ONE LINK is the outer's: the tag a union writes
+    // answers to the unions OUTSIDE it and never to itself.
     bool saw_inner_tag = false;
     uint32_t inner_tag_dst = 0xFFFFFFFFu;
     uint8_t inner_arm_arg = 0;
     for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
-        if ( e.guard == tblfg1::kTableFixedNoGuard ) { continue; }
-        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = (uint8_t) e.arg; }
-        check( e.guard == outer_tag_at || e.guard2 == outer_tag_at,
+        if ( e.gcount == 0 ) { continue; }
+        const tblfg1::TableFixedGuard & first = tblfg1::FhRootFixedGuards[e.guards / sizeof( tblfg1::TableFixedGuard )];
+        if ( e.src == outer_tag_at + 1u && e.size == 1u ) { saw_inner_tag = true; inner_tag_dst = e.dst; inner_arm_arg = (uint8_t) tblfg1::TableFixedGuardArg( first ); }
+        check( first.guard == outer_tag_at,
                "W16: an inner entry answers to the inner tag AND the outer one, never the inner alone" );
     }
     check( saw_inner_tag, "W16: the inner union's own tag byte is one of the entries the OUTER tag guards" );
@@ -1927,7 +1997,9 @@ static void nested_union_case()
     for ( int32_t i = 0; i < tblfg1::FhRootFixedPlanCount; ++i )
     {
         const tblfg1::TableFixedEntry e = tblfg1::FhRootFixedPlan[i];
-        if ( e.guard != outer_tag_at || e.guard2 != tblfg1::kTableFixedNoGuard || e.arg == inner_arm_arg ) { continue; }
+        if ( e.gcount != 1 ) { continue; }
+        const tblfg1::TableFixedGuard & only = tblfg1::FhRootFixedGuards[e.guards / sizeof( tblfg1::TableFixedGuard )];
+        if ( only.guard != outer_tag_at || tblfg1::TableFixedGuardArg( only ) == inner_arm_arg ) { continue; }
         other_arm_dst = e.dst;
     }
     check( other_arm_dst != 0xFFFFFFFFu && other_arm_dst == inner_tag_dst,
@@ -2407,6 +2479,7 @@ int main( int argc, char ** argv )
     absent_optional_case();
     text_content_case();
     guard_width_case();
+    guard_chain_depth_case();
     cache_case();
     layout_validation();
     record_bound_case();

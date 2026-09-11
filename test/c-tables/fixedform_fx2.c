@@ -116,7 +116,7 @@ void fixed_fx2_bytes_row_control( const uint8_t * data, int64_t bytes )
         back = (FxRoot *) (void *) storage;
         fx_root_reset( back );
         memset( &r, 0, sizeof( r ) );
-        table_fixed_run( g_plan, made, guarded, body, (uint8_t *) back, &r );
+        table_fixed_run( g_plan, made, guarded, (const uint8_t *) g_plan, body, (uint8_t *) back, &r );
         right = back->blob_length == 4 && back->blob[0] == 0xDE && back->blob[1] == 0xAD &&
                 back->blob[2] == 0xBE && back->blob[3] == 0xEF;
         if ( pass == 0 )

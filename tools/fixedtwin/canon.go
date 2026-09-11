@@ -13,6 +13,10 @@ type token struct{ from, to string }
 
 var identMap = []token{
 	{"SCHEMA_TABLE_FIXED_NO_GUARD", "kTableFixedNoGuard"},
+	{"TableFixedGuardArg( &chain[g] )", "TableFixedGuardArg( chain[g] )"},
+	{"const TableFixedGuard * g )", "const TableFixedGuard & g )"},
+	{"g->arg_hi", "g.arg_hi"},
+	{"g->arg_lo", "g.arg_lo"},
 	{"SCHEMA_TABLE_RESTRICT", "TABLE_RESTRICT"},
 	{"SCHEMA_BENCH_TABLE_INLINE", "TABLE_FIXED_INLINE"},
 	{"SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE", "layout_record_too_large"},
@@ -52,7 +56,8 @@ var tableFixedSpecial = map[string]string{
 	"ordinal_width": "OrdinalWidth", "known_kind": "KnownKind",
 	"check_entry": "CheckEntry", "parse_layout": "ParseLayout",
 	"match_children": "MatchChildren", "compile_entry": "CompileEntry",
-	"lay_table": "LayTable",
+	"lay_table": "LayTable", "lay_guards": "LayGuards",
+	"guard_arg": "GuardArg",
 	"put128_u":  "Put128U", "put128_i": "Put128I",
 	"cmp128_u": "Cmp128U", "cmp128_i": "Cmp128I",
 }
@@ -123,7 +128,7 @@ var (
 	// strips nothing.
 	reOwedOrdinalCount   = regexp.MustCompile(`(?s)if \( raw != 0 \)\s*\{\s*if \( raw <= \(uint64_t\) table\[0\] \) \{ v = table\[raw\]; \}\s*if \( v == 0 \) \{ clamped\+\+; \}\s*\}`)
 	reOwedWriterArmCount = regexp.MustCompile(`if \( te\.children > 0 && te\.children <= 255u \) \{ none\.dstsize = \(uint8_t\) te\.children; \}\s*`)
-	reOwedConstClamp     = regexp.MustCompile(`(?s)if \( p\.aux == 0 && p\.dstsize != 0 && p\.guard == kTableFixedNoGuard \)\s*\{\s*uint64_t raw = 0;\s*memcpy\( &raw, src \+ p\.src, p\.size \);\s*if \( raw > \(uint64_t\) p\.dstsize \) \{ clamped\+\+; \}\s*\}\s*`)
+	reOwedConstClamp     = regexp.MustCompile(`(?s)if \( p\.aux == 0 && p\.dstsize != 0 && p\.gcount == 0 \)\s*\{\s*uint64_t raw = 0;\s*memcpy\( &raw, src \+ p\.src, p\.size \);\s*if \( raw > \(uint64_t\) p\.dstsize \) \{ clamped\+\+; \}\s*\}\s*`)
 	reOwedKnownRange     = regexp.MustCompile(`(?s)struct TableFixedKnownRange\s*\{.*?\};`)
 )
 
@@ -397,6 +402,16 @@ func normalizeSyntax(s string) string {
 		{"int want_guarded;", "bool want_guarded;"},
 		{"int overflow;", "bool overflow;"},
 		{"int hostile;", "bool hostile;"},
+		{"int chain_dirty;", "bool chain_dirty;"},
+		{"int rides;", "bool rides;"},
+		{"rides = 1", "rides = true"},
+		{"rides = 0", "rides = false"},
+		{"int guard_out;", "bool guard_out;"},
+		{"guard_out = 1", "guard_out = true"},
+		{"guard_out = 0", "guard_out = false"},
+		{"chain_dirty = 1", "chain_dirty = true"},
+		{"chain_dirty = 0", "chain_dirty = false"},
+		{"const int saved_dirty", "const bool saved_dirty"},
 		{"int skip_clamp;", "bool skip_clamp;"},
 		{"int named;", "bool named;"},
 		{"int kids_are_variants;", "bool kids_are_variants;"},
