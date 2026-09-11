@@ -47,6 +47,8 @@ defmodule Bench.FixedRuntime do
     * `:plan` — a plan this caller owns, used instead of the cache.
     * `:plan_capacity` — this caller's entry bound; past it,
       `:plan_too_large`.
+    * `:batch_capacity` — this caller's RECORD bound; past it,
+      `:batch_too_large` (§5.3 step 10).
     * `:copy` — detach each record body from the file (above). Default false.
   """
 
@@ -89,10 +91,35 @@ defmodule Bench.FixedRuntime do
   # holding here unchanged).
   @plan_capacity 4096
 
+  # THE BATCH'S DEFAULT CAPACITY, §5.3 step 10's one number: a file carrying
+  # more records than the caller has room for is a refusal BY NAME,
+  # `batch_too_large`, and never a partial read. It is a CAPACITY DECLARATION
+  # in §5.9 #5's sense — the leg states its own, a caller may state a smaller
+  # one with `:batch_capacity`, and nothing is written through it.
+  @batch_capacity 1_000_000
+
   def form, do: @form
   def entry_bytes, do: @entry_bytes
   def record_max, do: @record_max
   def plan_capacity, do: @plan_capacity
+  def batch_capacity, do: @batch_capacity
+
+  @doc """
+  §5.3 STEP 10: `n := rest / record_bytes`, and `n > capacity` is
+  `:batch_too_large`.
+
+  A RAGGED TAIL IS NOT THIS STEP'S TO NAME: step 9 runs first and answers
+  `malformed`, so a `rest` that is not a whole number of records passes
+  through here untouched and the split reports it.
+  """
+  def batch_within(rest, record_bytes, capacity) do
+    cond do
+      record_bytes <= 0 -> :ok
+      rem(rest, record_bytes) != 0 -> :ok
+      div(rest, record_bytes) > capacity -> {:error, :batch_too_large}
+      true -> :ok
+    end
+  end
 
   # ---------------------------------------------------------------------------
   # THE FILE HEADER, WRITTEN AND READ IN ONE PLACE
@@ -819,8 +846,20 @@ defmodule Bench.FixedRuntime do
 
   defp push({entries, n}, entry), do: {[entry | entries], n + 1}
 
+  # A GUARD IS AN OFFSET AND A WIDTH, never an offset alone: `argw` is the
+  # WRITER'S tag width in bytes, clamped to 1..8, and a zero reads as one
+  # (docs/FIXED-FORM-ALGORITHM.md §5.2). The pair rides together so every push
+  # beneath a union carries the width the tag is COMPARED at.
   defp guarded(acc, nil, _tag, entry), do: push(acc, entry)
-  defp guarded(acc, guard, tag, entry), do: push(acc, {:guard, guard, tag, entry})
+
+  defp guarded(acc, {guard, argw}, tag, entry),
+    do: push(acc, {:guard, guard, tag, argw, entry})
+
+  # ZERO MEANS ONE, because one is the width a tag had when this lane did not
+  # exist, and anything past eight clamps to eight (§5.2).
+  defp clamp_argw(w) when w < 1, do: 1
+  defp clamp_argw(w) when w > 8, do: 8
+  defp clamp_argw(w), do: w
 
   # COUNTER-MOVING OPS ADDED FOR ONE SLOT wrap so slack and an absent
   # optional's payload never count. A copy is unspecified on read and stays.
@@ -1187,6 +1226,7 @@ defmodule Bench.FixedRuntime do
     my_tag = tag_bytes(mine, mi)
     their_arms = children_at(theirs, ti)
     my_arms = children_at(mine, mi)
+    argw = clamp_argw(their_tag)
 
     Enum.reduce(
       Enum.with_index(offsets(mine, mi, my_arms)),
@@ -1197,8 +1237,11 @@ defmodule Bench.FixedRuntime do
             {acc, report}
 
           {their_arm, j} ->
-            # MY tag value, written under THEIR tag's guard
-            acc = push(acc, {:guard, their_at, j + 1, {:const, aux_at, my_tag, k + 1}})
+            # MY tag value, written under THEIR tag's guard AT THEIR TAG'S
+            # WIDTH: a one-byte compare fires arm 1 on a foreign tag of 0x0101,
+            # and an ordinal past 255 under a wider tag could never match at
+            # all (§5.2, §7 fix 12).
+            acc = push(acc, {:guard, their_at, j + 1, argw, {:const, aux_at, my_tag, k + 1}})
 
             compile_entry(
               theirs,
@@ -1208,7 +1251,7 @@ defmodule Bench.FixedRuntime do
               my_arm,
               dst,
               at,
-              their_at,
+              {their_at, argw},
               j + 1,
               acc,
               report
@@ -1339,11 +1382,20 @@ defmodule Bench.FixedRuntime do
     end
   end
 
-  defp step([{:guard, gsrc, tag, inner} | rest], body, writes, report) do
-    # AN ENTRY BELONGING TO AN ARM RUNS ONLY UNDER ITS OWN TAG.
+  defp step([{:guard, gsrc, tag, argw, inner} | rest], body, writes, report) do
+    # AN ENTRY BELONGING TO AN ARM RUNS ONLY UNDER ITS OWN TAG, AND THE TAG IS
+    # COMPARED AT ITS FULL WIDTH (§5.2). A one-byte compare under a two-byte tag
+    # fires arm 1 on a forged 0x0101 — an ordinal no arm of this build names —
+    # and an arm whose ordinal passes 255 could never fire at all.
+    w = clamp_argw(argw)
+
     case body do
-      <<_::binary-size(^gsrc), ^tag, _::binary>> -> step([inner | rest], body, writes, report)
-      _ -> step(rest, body, writes, report)
+      <<_::binary-size(^gsrc), raw::little-unsigned-size(^w)-unit(8), _::binary>>
+      when raw == tag ->
+        step([inner | rest], body, writes, report)
+
+      _ ->
+        step(rest, body, writes, report)
     end
   end
 

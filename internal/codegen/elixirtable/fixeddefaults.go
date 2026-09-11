@@ -89,8 +89,26 @@ func fixedElementDefault(f *ir.Field) []byte {
 		case *ir.Struct:
 			return fixedDefaultsImage(r)
 		case *ir.Union:
-			// TAG 0 IS None, and the widest arm's slack behind it is zero.
-			return make([]byte, fixedElementBytes(f))
+			// THE ARMS OVERWRITE EACH OTHER, IN DECLARED ORDER, AT THEIR ONE
+			// OVERLAY STORAGE, AND THE TAG LANDS None LAST
+			// (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.9 #38). Zeroing the union
+			// whole is a DIFFERENT ANSWER: it makes every arm's declared
+			// default zero for every field the plan leaves alone, silently —
+			// which is exactly what an appended field inside an arm is.
+			out := make([]byte, fixedElementBytes(f))
+			tagBytes := ir.TableFixedUnionTagBytes(r)
+			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm has no storage to land
+				}
+				copy(out[tagBytes:], fixedFieldDefault(v.F))
+			}
+			// THE TAG IS None AND IT IS WRITTEN LAST, over whatever an arm's
+			// overlay would have reached into it.
+			for i := int64(0); i < tagBytes; i++ {
+				out[i] = 0
+			}
+			return out
 		case *ir.Enum:
 			return fixedLeafBytes(fixedEnumDefault(f, r), int64(r.StorageBits/8))
 		case *ir.Flags:
