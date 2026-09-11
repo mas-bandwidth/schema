@@ -967,7 +967,7 @@ union Pick
     a ArmA
     b ArmB
 }
-table Root {
+fixed table Root {
     pick Pick
 }
 `)
@@ -1005,7 +1005,7 @@ table Root {
 // take. A two-byte tag 0x0101 whose low byte is 1 is not arm 1.
 func TestFixedFormGuardWidthRun(t *testing.T) {
 	runGenerated(t, `package probe
-table Point {
+fixed table Point {
     x int32
 }
 `, `package probe
