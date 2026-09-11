@@ -114,7 +114,7 @@ var (
 	reOwedOrdinalCount   = regexp.MustCompile(`(?s)if \( raw != 0 \)\s*\{\s*if \( raw <= \(uint64_t\) table\[0\] \) \{ v = table\[raw\]; \}\s*if \( v == 0 \) \{ clamped\+\+; \}\s*\}`)
 	reOwedWriterArmCount = regexp.MustCompile(`if \( te\.children > 0 && te\.children <= 255u \) \{ none\.dstsize = \(uint8_t\) te\.children; \}\s*`)
 	reOwedConstClamp     = regexp.MustCompile(`(?s)if \( p\.aux == 0 && p\.dstsize != 0 && p\.guard == kTableFixedNoGuard \)\s*\{\s*uint64_t raw = 0;\s*memcpy\( &raw, src \+ p\.src, p\.size \);\s*if \( raw > \(uint64_t\) p\.dstsize \) \{ clamped\+\+; \}\s*\}\s*`)
-	reOwedKnownRange = regexp.MustCompile(`(?s)struct TableFixedKnownRange\s*\{.*?\};`)
+	reOwedKnownRange     = regexp.MustCompile(`(?s)struct TableFixedKnownRange\s*\{.*?\};`)
 )
 
 func tableFixedIdent(name string) string {
