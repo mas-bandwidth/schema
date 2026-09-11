@@ -147,6 +147,30 @@ says the versions only ever grew. A human-readable number beside it for release 
 on the wire reads it. (Glenn: "So you DEPLOY the backend with the new schema, and it reads old and new. But
 nobody guarantees old ever reads new.")
 
+## 6b. The floor, and what it buys: no plan compiler at run time
+
+Glenn: "i would consider, only versions in the past to x would be supported, where current version might be
+y." The lock keeps the LINEAGE per fixed table: every layout the table has had, in order, each with its
+hash and its layout bytes. A floor is one number per table: the reader accepts lineage entries from x to y
+(its own) and refuses older ones by name, `layout_unsupported`.
+
+What that buys: the set of layouts a reader accepts is FINITE AND KNOWN AT BUILD TIME. So:
+
+- the plan for reading each supported version is compiled AT BUILD TIME by the compiler, from the lock,
+  and shipped as static data, one plan per version, the identity plan for y;
+- the RUNTIME PLAN COMPILER GOES. A file arrives; its hash is looked up in the table's supported set; the
+  file's layout bytes are compared to the known layout bytes for that hash; the precompiled plan runs;
+- hash not in the set: refuse (`layout_unsupported` if it is in the lineage below the floor, `layout_newer`
+  if the reader has never seen it); layout bytes differ from the known ones under that hash: refuse
+  (`layout_malformed`, a lie about a known version);
+- the seven layout refusals of §1.1 collapse to one byte comparison, because the reader NEVER PARSES A
+  STRANGER'S LAYOUT to decide whether it is well formed. No validation walk, no depth bound, no size
+  arithmetic on untrusted input. Faster, and much safer, than what exists;
+- the branch case (§8a.1) is settled by the lineage: a merge appends both sides' layouts, and both are
+  supported.
+
+The floor's syntax is Glenn's to name (§9). Without a floor, x is the table's first layout.
+
 ## 7. The deployment rule
 
 Readers first, always. A writer ships only after every reader that will meet its files has, by a margin you
@@ -192,6 +216,10 @@ Adding but never removing?" Three.
    do this with per-table versions").
 
 ## 9. Open, for the cold read
+
+- The floor's syntax: on the table (`fixed table Foo | floor = 3`?), in the lock, or a compiler flag per project.
+- Whether §6b (build-time plans from the lineage, no runtime plan compiler) is the shape, which retires §1.1's
+  seven refusals as runtime code (they stay as the lock's own validation of what it records).
 
 - Whether a deprecated field on the reader should count under `unknown` at all, or be silent.
 - Whether `layout_newer` should carry the offending entry as an index into the writer's layout (portable,
