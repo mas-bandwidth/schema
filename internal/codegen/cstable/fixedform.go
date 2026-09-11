@@ -1334,12 +1334,27 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 
 func (g *tableGen) emitFixedWriteField(owner *ir.Struct, f *ir.Field, off int64, buf, val string, indent int) {
 	ind := strings.Repeat(" ", indent)
-	base := off
 	prop := member(f)
 	if f.Type.Optional {
-		g.pf("%s%s[%d] = (byte)(%s.%sPresent ? 1 : 0);\n", ind, buf, base, val, prop)
-		base += fixedPresentBytes
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
+		// is present, and when the flag is 0 what rides is zero. It is ONE `if`
+		// here rather than a rule anywhere else, because the template already
+		// put the zeros there — so an absent optional costs the writer the
+		// branch and not one store, and a caller's untouched payload storage
+		// never reaches the wire.
+		g.pf("%s%s[%d] = (byte)(%s.%sPresent ? 1 : 0);\n", ind, buf, off, val, prop)
+		g.pf("%sif (%s.%sPresent)\n%s{\n", ind, val, prop, ind)
+		g.emitFixedWritePayload(owner, f, off+fixedPresentBytes, buf, val, indent+4)
+		g.pf("%s}\n", ind)
+		return
 	}
+	g.emitFixedWritePayload(owner, f, off, buf, val, indent)
+}
+
+func (g *tableGen) emitFixedWritePayload(owner *ir.Struct, f *ir.Field, base int64, buf, val string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	prop := member(f)
 	switch {
 	case f.KeyEnum != "":
 		g.emitFixedWriteKeyedLoop(owner, f, base, f.KeyEnumRef.Max, buf, val+"."+prop, indent)
