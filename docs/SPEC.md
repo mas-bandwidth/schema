@@ -1247,7 +1247,7 @@ classic twin, which is the wire oracle for the stated model.
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits — the pattern, with no canonicalisation: a signalling NaN and a NaN payload ride through unchanged, and a backend holding the field in a wider cell moves the pattern by bit surgery | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) — the pattern, with no canonicalisation, exactly as `float32`'s row | `serialize_double` |
-| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
+| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; **after the +0.5f rounding and the floor the index is clamped to the step count — `index = min(index, steps)` — and that integer clamp is NORMATIVE, not a backstop**; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max]; read rejects above max | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
@@ -1430,6 +1430,22 @@ All compile errors with positions:
   `ir.CompressedFloatParams`' float32 arithmetic. The projection's `steps`
   token retains its historical float64 formula, alongside all three original
   parameters, to preserve existing protocol IDs; it is not the codec width.
+- **The compressed float's integer clamp is normative, and the boundary case
+  is stated.** After the float32 `+ 0.5f` rounding and the floor, the writer
+  sets `index = min(index, steps)`. The clamp is not defensive: once `steps`
+  reaches 2^23 the float32 ulp at the top of the range is 1, so the rounded
+  sum is a tie that rounds half-to-even AWAY from the step count. The stated
+  case: `min = 0, max = 8388609, resolution = 1` derives `steps = 8388609`
+  and a 24-bit wire; writing exactly `max` normalizes to `1.0f`, scales to
+  `8388609.0f`, and `fround(8388609.0f + 0.5f)` is `8388610.0f` — one above
+  the step count. Without the clamp the writer emits an index its own reader
+  refuses (`v > steps`); with it the index is `8388609` and the read returns
+  exactly `max`. The same tie occurs at 8388611 → 8388612, 12582913 →
+  12582914 and 16777215 → 16777216. **No declaration outside `[2^23, 2^24)`
+  changes a byte**, so the clamp is free everywhere else. Every one of the
+  nine targets emits it — a target that omits it writes different bytes from
+  the rest of the family for such a declaration, which the compressed-float
+  golden pins.
 - **Degenerate ranges: min == max is legal and costs zero bits.** A ranged
   integer, `int128`, `fixed` or `ufixed` field with equal bounds carries
   nothing on the wire; the reader recovers the value from the range alone

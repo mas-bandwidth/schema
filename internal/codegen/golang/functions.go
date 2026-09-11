@@ -540,6 +540,8 @@ func (g *gen) emitWriteCompressedFold(f *ir.Field, name, ind string) {
 	g.pf("%s\tif !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too\n", ind)
 	g.pf("%s\t\tnormalizedValue = 0\n%s\t} else if !(normalizedValue <= 1) {\n%s\t\tnormalizedValue = 1\n%s\t}\n", ind, ind, ind, ind)
 	g.pf("%s\tintegerValue := uint32(float32(normalizedValue*%s) + 0.5)\n", ind, f32lit(float32(steps)))
+	g.pf("%s\tif integerValue > %d { // the normative integer clamp (SPEC \u00a74.3)\n", ind, steps)
+	g.pf("%s\t\tintegerValue = %d\n%s\t}\n", ind, steps, ind)
 	g.pf("%s\tstream.SerializeBits(&integerValue, %d)\n%s}\n", ind, bits, ind)
 }
 

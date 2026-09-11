@@ -211,7 +211,10 @@ func TestExportedSurfaceMovesNeitherWire(t *testing.T) {
 		protocolId   uint64
 		buildVersion uint64
 	}{
-		{"examples", corpusDir, 0x8656ae68c06b97a7, 0x3084078b2f7d571e},
+		// moved with the CompressedCeiling declaration the SPEC §4.3 integer-clamp
+		// boundary needs: a new type in the corpus moves both wires by design, and
+		// these literals move in that same commit, never alone.
+		{"examples", corpusDir, 0x2ad00ce4e6bbdc26, 0x60bf001c89eadd81},
 		{"examples128", corpus128Dir, 0xf4a226f4166d919b, 0x0d3e83382e3a72ee},
 	} {
 		t.Run(unit.name, func(t *testing.T) {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 import 'dart:typed_data';
 
@@ -619,6 +619,11 @@ int writeProbeSample(ProbeSample value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 36000.0) + 0.5).floor();
+    // the normative integer clamp (SPEC §4.3): at a step count in
+    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+    if (v > 36000) {
+      v = 36000;
+    }
   }
   scratch |= v << scratchBits;
   scratchBits += 16;
@@ -1838,6 +1843,11 @@ int writeProbeArray(ProbeArray value, ByteData view) {
         n = 1.0;
       }
       v = _fround(_fround(n * 36000.0) + 0.5).floor();
+      // the normative integer clamp (SPEC §4.3): at a step count in
+      // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+      if (v > 36000) {
+        v = 36000;
+      }
     }
     scratch |= v << scratchBits;
     scratchBits += 16;
@@ -3083,6 +3093,11 @@ int writeTestData(TestData value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 1000.0) + 0.5).floor();
+    // the normative integer clamp (SPEC §4.3): at a step count in
+    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+    if (v > 1000) {
+      v = 1000;
+    }
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
@@ -3586,6 +3601,11 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 1000.0) + 0.5).floor();
+    // the normative integer clamp (SPEC §4.3): at a step count in
+    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+    if (v > 1000) {
+      v = 1000;
+    }
   }
   scratch |= v << scratchBits;
   scratchBits += 10;
@@ -3605,6 +3625,11 @@ int writeCompressedProbe(CompressedProbe value, ByteData view) {
       n = 1.0;
     }
     v = _fround(_fround(n * 10000.0) + 0.5).floor();
+    // the normative integer clamp (SPEC §4.3): at a step count in
+    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+    if (v > 10000) {
+      v = 10000;
+    }
   }
   scratch |= v << scratchBits;
   scratchBits += 14;
@@ -3672,3 +3697,114 @@ bool readCompressedProbe(CompressedProbe value, ByteData view, int numBits) {
 // measureCompressedProbe is the exact wire bits writeCompressedProbe would produce for value —
 // trusted like the writer; static runs fold to literals at generation time.
 int measureCompressedProbe(CompressedProbe value) => 24;
+
+// type CompressedCeiling
+final class CompressedCeiling {
+  // compressed float [0.0, 8.388609e+06] @ 1.0
+  double ceiling = 0.0;
+}
+
+// compressedCeilingMaxBits is the longest wire path; align pads at worst case (SPEC §6.1).
+// compressedCeilingMaxBytes is rounded up to the 8-byte write-buffer granularity.
+const int compressedCeilingMaxBits = 24;
+const int compressedCeilingMaxBytes = 8;
+
+// The §5 zero form: all-zero storage; specified defaults live only in
+// construction.
+void zeroCompressedCeiling(CompressedCeiling value) {
+  value.ceiling = 0.0;
+}
+
+// Restore construction defaults in place; buffers and objects are retained.
+void initCompressedCeiling(CompressedCeiling value) {
+  value.ceiling = 0.0;
+}
+
+// writeCompressedCeiling packs value into view — the trusted writer (contracts asserted,
+// compiled out without --enable-asserts). The buffer behind view must hold
+// compressedCeilingMaxBytes. Returns the bytes written.
+int writeCompressedCeiling(CompressedCeiling value, ByteData view) {
+  assert(view.lengthInBytes % 8 == 0);
+  assert(view.lengthInBytes >= compressedCeilingMaxBytes);
+  var scratch = 0;
+  var scratchBits = 0;
+  var wordIndex = 0;
+  var v = 0;
+  {
+    final x = _fround(value.ceiling);
+    assert(x.isFinite);
+    var n = _fround(_fround(x - 0.0) / 8.388609e+06);
+    if (!(n >= 0.0)) {
+      n = 0.0;
+    } else if (!(n <= 1.0)) {
+      n = 1.0;
+    }
+    v = _fround(_fround(n * 8.388609e+06) + 0.5).floor();
+    // the normative integer clamp (SPEC §4.3): at a step count in
+    // [2^23, 2^24) the float32 ulp is 1 and the rounded sum ties UP
+    if (v > 8388609) {
+      v = 8388609;
+    }
+  }
+  scratch |= v << scratchBits;
+  scratchBits += 24;
+  if (scratchBits >= 64) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+    wordIndex++;
+    scratchBits -= 64;
+    scratch = v >>> (24 - scratchBits);
+  }
+  if (scratchBits != 0) {
+    view.setUint64(wordIndex * 8, scratch, Endian.little);
+  }
+  return wordIndex * 8 + ((scratchBits + 7) >>> 3);
+}
+
+// readCompressedCeiling decodes value from the first numBits of view — the family read
+// verdict: false rejects the wire (bounds, ranges, wire constants, padding);
+// hostile bytes never throw. No slack past the payload is required.
+bool readCompressedCeiling(
+  CompressedCeiling value,
+  ByteData view,
+  int numBits,
+) {
+  if (numBits > view.lengthInBytes * 8) {
+    return false; // the payload cannot exceed the buffer behind view
+  }
+  // the final 64-bit window, assembled once so every load stays inside
+  // the buffer (serialize.dart's own no-slack reader stance)
+  var tailBase = view.lengthInBytes - 8;
+  var tailWord = 0;
+  if (tailBase >= 0) {
+    tailWord = view.getUint64(tailBase, Endian.little);
+  } else {
+    tailBase = 0;
+    for (var i = view.lengthInBytes - 1; i >= 0; i--) {
+      tailWord = (tailWord << 8) | view.getUint8(i);
+    }
+  }
+  var bitsRead = 0;
+  var window = 0;
+  var v = 0;
+  if (bitsRead + 24 > numBits) {
+    return false;
+  }
+  if (bitsRead >>> 3 < tailBase) {
+    window = view.getUint64(bitsRead >>> 3, Endian.little) >>> (bitsRead & 7);
+  } else {
+    window = tailWord >>> (bitsRead - tailBase * 8);
+  }
+  v = window & 0xffffff;
+  bitsRead += 24;
+  if (v > 8388609) {
+    return false; // headroom above the quantum count is refused
+  }
+  value.ceiling = _fround(
+    _fround(_fround(_fround(v.toDouble()) / 8.388609e+06) * 8.388609e+06) + 0.0,
+  );
+  return true;
+}
+
+// measureCompressedCeiling is the exact wire bits writeCompressedCeiling would produce for value —
+// trusted like the writer; static runs fold to literals at generation time.
+int measureCompressedCeiling(CompressedCeiling value) => 24;

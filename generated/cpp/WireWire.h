@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package example — protocol id 0x8656ae68c06b97a7
+// package example — protocol id 0x2ad00ce4e6bbdc26
 
 #pragma once
 
@@ -740,6 +740,21 @@ SCHEMA_READ_INLINE bool ReadCompressedProbe( serialize::ReadStream & stream, Com
 {
     serialize_compressed_float_precomputed( stream, value.boundary, 1000u, 10, 10.0f, 0.0f );
     serialize_compressed_float_precomputed( stream, value.offset, 10000u, 14, 10.0f, -5.0f );
+    return true;
+}
+
+SCHEMA_WRITE_INLINE bool WriteCompressedCeiling( serialize::WriteStream & stream, const CompressedCeiling & value )
+{
+    {
+        float compressed_value = value.ceiling;
+        serialize_compressed_float_precomputed( stream, compressed_value, 8388609u, 24, 8.388609e+06f, 0.0f );
+    }
+    return true;
+}
+
+SCHEMA_READ_INLINE bool ReadCompressedCeiling( serialize::ReadStream & stream, CompressedCeiling & value )
+{
+    serialize_compressed_float_precomputed( stream, value.ceiling, 8388609u, 24, 8.388609e+06f, 0.0f );
     return true;
 }
 
