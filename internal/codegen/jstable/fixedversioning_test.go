@@ -43,6 +43,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -65,6 +66,11 @@ type jsVersionRow struct {
 	// widens is a row that grows a WIDTH, so `widened` moves at least once;
 	// every other row is an APPEND and owes every counter at zero (§5.9 #10).
 	widens bool
+	// widenedExact is the EXACT number of widen entries the row owes per record
+	// where the page gives one: `array_elem_widen` is four elements sent into a
+	// grown element width, which §5.9 #33 says is FOUR widen entries and never a
+	// folded run — and `widened > 0` cannot tell the two apart.
+	widenedExact int
 	// unported is a row whose schema this backend refuses to generate at all —
 	// kind 33, `wstring(N)`, is still refused in a JavaScript table
 	// (compiler/target_javascript.go, refuseWideText). It is NOT a §5 red: the
@@ -76,8 +82,15 @@ type jsVersionRow struct {
 
 var jsVersionRows = []jsVersionRow{
 	{row: "array_bounded_grow"},
-	{row: "array_elem_widen", widens: true},
-	{row: "array_fixed_grow"},
+	{row: "array_elem_widen", widens: true, widenedExact: 4},
+	{row: "array_fixed_grow", check: `
+  // THE ELEMENT DEFAULT, past the old writer's four (§5.7's poison is what makes
+  // this readable: a prefill that never ran reads 0x5A5A5A5A, not 7).
+  for (let i = 4; i < 8; i++) {
+    if (back[0].Vals[i].X !== 7 || back[0].Vals[i].Y !== 9) {
+      fail("the grown slot " + i + " is not its element's declared default: " + show(back[0].Vals[i]));
+    }
+  }`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
 	{row: "constant_grow"},
@@ -104,15 +117,40 @@ var jsVersionRows = []jsVersionRow{
       fail("record " + k + " moved a neighbour: " + show(back[k]));
     }
   }`},
-	{row: "keyed_array_enum_append"},
+	{row: "keyed_array_enum_append", check: `
+  // THE APPENDED KEYED SLOT IS ITS ELEMENT'S DECLARED DEFAULT (n = 7), exactly
+  // as an appended field is, and the poison is what says the prefill ran.
+  if (back[0].Slots[3].N !== 7) {
+    fail("the appended keyed slot is not its declared default: " + show(back[0].Slots[3]));
+  }`},
 	{row: "nested_append"},
-	{row: "optional_add"},
+	{row: "optional_add", check: `
+  // THE PRESENT COMPANION IS THE ONE NEWER-ONLY FIELD THAT IS NOT A DEFAULT
+  // (§5.9 #40, bill §12.8): the writer sent a T, so the ?T this reader declares
+  // IS present and the constant is the plan's. A leg that prefills the companion
+  // and emits no present entry reads a value the writer sent as ABSENT — and
+  // every value check still passes, which is why this one is its own line.
+  if (back[0].LinkPresent !== true) {
+    fail("T into ?T owes present = 1, not the fresh value's false: " + show(back[0]));
+  }
+  if (back[0].Link.Value !== 777) {
+    fail("the payload beside the present companion is the writer's value: " + show(back[0]));
+  }`},
 	{row: "range_widen"},
 	{row: "rename_without_was", sameHash: true},
 	{row: "string_grow"},
 	{row: "uint_widen", widens: true},
 	{row: "union_append"},
-	{row: "union_arm_payload_widen"},
+	{row: "union_arm_payload_widen", check: `
+  // THE ARM'S OWN DECLARED DEFAULT, laid arm by arm at its overlay storage
+  // (§5.2's prefill sentence, §5.9 #38): Alpha.y is declared 55 and the old
+  // writer never sent it. A prefill that returns at the union leaves 0 here and
+  // every other assertion of this row still passes.
+  if (back[0].Pick.Type !== 1) { fail("the old writer's arm did not land: " + show(back[0])); }
+  if (back[0].Pick.Alpha.X !== 21) { fail("the arm's sent value did not land: " + show(back[0])); }
+  if (back[0].Pick.Alpha.Y !== 55) {
+    fail("the arm's reader-appended field is not its declared default: " + show(back[0]));
+  }`},
 	{row: "wstring_grow", unported: "kind 33, wstring(N), is refused in a JavaScript table (schema#366 / refuseWideText)"},
 }
 
@@ -134,6 +172,14 @@ func TestJSFixedVersioningNewReadsOld(t *testing.T) {
 			if r.widens {
 				counters = `if (r.widened === 0) { fail("a widening row moved no widened counter"); }`
 			}
+			if r.widenedExact > 0 {
+				counters = fmt.Sprintf(`if (r.widened !== %d) {
+  fail("this row owes EXACTLY %d widen entries per record (§5.9 #33: no fold across a widen), not " + r.widened);
+}`, r.widenedExact, r.widenedExact)
+			}
+			// THE VALUE ORACLE IS THE CORPUS MANIFEST (§5.9 #37), for EVERY row
+			// and not the two a hand-written check covered.
+			oracle := jsManifestChecks(t, corpus, "old_"+r.row+".bin", newer)
 			src := fmt.Sprintf(`
 const data = readFileSync(%q);
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
@@ -150,7 +196,8 @@ if (r.unknown !== 0 || r.kindMismatch !== 0 || r.clamped !== 0 || r.duplicate !=
 }
 %s
 %s
-`, filepath.Join(corpus, "old_"+r.row+".bin"), counters, r.check)
+%s
+`, filepath.Join(corpus, "old_"+r.row+".bin"), counters, oracle, r.check)
 			// The newer unit is handed the OLDER unit's locked lineage entry.
 			out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, table, src)
 			if err != nil {
@@ -459,6 +506,204 @@ if (!(got.Head === 81 && got.Tail === 88)) {
 }
 
 // ---- the harness ------------------------------------------------------------
+
+// ---- THE MANIFEST AS THE VALUE ORACLE (§5.9 #32, #37) -----------------------
+//
+// Every `.bin` in the corpus has ONE LINE in `build/fixedform-corpus/manifest.txt`
+// naming its row, its side, the ROOT table it was written from, its RECORD COUNT
+// and every value it holds:
+//
+//	file=old_array_fixed_grow.bin row=array_fixed_grow side=old root=ArrayFixedGrow
+//	  records=1 values=r0.lead=2863311530,r0.vals[0].x=-500,…,r0.trail=3149642683
+//
+// THE VALUES ARE NOT DERIVABLE FROM THE SCHEMA — this row's `lead` is 0xAAAAAAAA
+// on the wire while the declaration says 1 — so a leg that invents them either
+// opens `fixedform_dump.cpp`, which §5.7 forbids, or asserts nothing. The
+// manifest is the oracle and nothing else is: not this leg's own older build,
+// which is the leg agreeing with itself (§5.9 #37).
+//
+// The path is the manifest's own spelling translated into THIS leg's value
+// surface, which is mechanical: `r0.vals[0].x` is `back[0].Vals[0].X`, a counted
+// array's `vals_count` is `.ValsCount`, a text field's `text_length` is
+// `.TextLength`, an optional's `link_present` is `.LinkPresent`, and a KEYED
+// array's slots are named by their ENUM ORDINAL (`slots[1]` is the first slot),
+// so that one index comes back by one. The manifest names a field AS THE WIRE
+// NAMES IT, so a `was =` rename pairs by wire id for free (§5.9 #41).
+//
+// A value form this leg cannot express as one comparison — a wstring literal —
+// is LEFT OUT BY NAME rather than weakened into a pass; every row carrying one
+// is already unported (§5.9 #44).
+func jsManifestChecks(t *testing.T, corpus, file string, readerSchema string) string {
+	t.Helper()
+	records, values := jsManifestRow(t, corpus, file)
+	keyed, renamed := jsReaderFieldFacts(t, readerSchema)
+	var b strings.Builder
+	fmt.Fprintf(&b, "if (n !== %d) { fail(\"the manifest says this file carries %d record(s), not \" + n); }\n", records, records)
+	for _, kv := range values {
+		path, ok := jsManifestPath(kv.key, keyed, renamed)
+		if !ok {
+			continue
+		}
+		if line, ok := jsManifestCompare(path, kv.value); ok {
+			b.WriteString(line)
+		}
+	}
+	return b.String()
+}
+
+type jsManifestKV struct{ key, value string }
+
+// jsManifestRow is the one line for one corpus file: its record count and its
+// values, IN THE ORDER THE MANIFEST WROTE THEM.
+func jsManifestRow(t *testing.T, corpus, file string) (int, []jsManifestKV) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(corpus, "manifest.txt"))
+	if err != nil {
+		t.Fatalf("the corpus manifest is the value oracle (§5.9 #37) and it is not readable: %v", err)
+	}
+	for line := range strings.Lines(string(data)) {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "file="+file+" ") {
+			continue
+		}
+		head, rest, _ := strings.Cut(line, " values=")
+		records := 0
+		for _, f := range strings.Fields(head) {
+			if k, v, ok := strings.Cut(f, "="); ok && k == "records" {
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					t.Fatalf("the manifest's record count for %s is not a number: %q", file, v)
+				}
+				records = n
+			}
+		}
+		if records < 1 {
+			t.Fatalf("the manifest gives %s no record count", file)
+		}
+		var out []jsManifestKV
+		for _, pair := range strings.Split(rest, ",") {
+			if k, v, ok := strings.Cut(pair, "="); ok {
+				out = append(out, jsManifestKV{key: k, value: v})
+			}
+		}
+		if len(out) == 0 {
+			t.Fatalf("the manifest gives %s no values", file)
+		}
+		return records, out
+	}
+	t.Fatalf("the manifest has no line for %s: the corpus and the oracle disagree (§5.9 #32)", file)
+	return 0, nil
+}
+
+// jsReaderFieldFacts is the two things the reader's own declarations say about
+// the manifest's spelling:
+//
+//   - KEYED is every field that is an ENUM-KEYED array. The manifest indexes
+//     those slots by the enum's ORDINAL, from 1; this leg's surface indexes its
+//     storage from 0.
+//   - RENAMED is `was = "a"` read from the test's side (§5.9 #41): the manifest
+//     names a field AS THE WIRE NAMES IT, which after a rename is the OLD name,
+//     while the value surface is spelled with the NEW one. A name-keyed
+//     comparison reds a correct read on every renamed field, so the harness
+//     pairs by the WIRE NAME and translates.
+func jsReaderFieldFacts(t *testing.T, schema string) (map[string]bool, map[string]string) {
+	t.Helper()
+	out := map[string]bool{}
+	renamed := map[string]string{}
+	u := jsUnitOf(t, schema)
+	note := func(st *ir.Struct) {
+		for _, fl := range st.Fields {
+			if fl.KeyEnum != "" {
+				out[fl.Name] = true
+			}
+			if wire := ir.TableFieldWireName(fl); wire != fl.Name {
+				renamed[wire] = fl.Name
+			}
+		}
+	}
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			note(st)
+		}
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok {
+				note(st)
+			}
+		}
+	}
+	return out, renamed
+}
+
+// jsManifestPath turns `r0.vals[0].x` into `back[0].Vals[0].X`.
+func jsManifestPath(key string, keyed map[string]bool, renamed map[string]string) (string, bool) {
+	rec, rest, ok := strings.Cut(key, ".")
+	if !ok || !strings.HasPrefix(rec, "r") {
+		return "", false
+	}
+	k, err := strconv.Atoi(strings.TrimPrefix(rec, "r"))
+	if err != nil {
+		return "", false
+	}
+	path := fmt.Sprintf("back[%d]", k)
+	for _, seg := range strings.Split(rest, ".") {
+		name, idx, hasIdx := strings.Cut(seg, "[")
+		surface := name
+		if to, ok := renamed[name]; ok {
+			surface = to // the wire name translated into this build's spelling
+		}
+		path += "." + ir.GoExportName(surface)
+		if !hasIdx {
+			continue
+		}
+		i, err := strconv.Atoi(strings.TrimSuffix(idx, "]"))
+		if err != nil {
+			return "", false
+		}
+		if keyed[name] {
+			i-- // the manifest names a keyed slot by its enum ORDINAL, from 1
+		}
+		path += fmt.Sprintf("[%d]", i)
+	}
+	return path, true
+}
+
+// jsManifestCompare is ONE assertion for one manifest value, or nothing where
+// the form is one this leg cannot express (a wstring literal — and every row
+// carrying one is unported, §5.9 #44).
+func jsManifestCompare(path, want string) (string, bool) {
+	fail := func(cond string) (string, bool) {
+		return fmt.Sprintf("if (%s) { fail(%q + \" is \" + %s + \", and the manifest says %s\"); }\n",
+			cond, path, path, strings.ReplaceAll(want, `"`, `'`)), true
+	}
+	switch {
+	case want == "true" || want == "false":
+		return fail(fmt.Sprintf("%s !== %s", path, want))
+	case strings.HasPrefix(want, `u"`):
+		return "", false // a wstring literal: named, never weakened into a pass
+	case strings.HasPrefix(want, `"`):
+		lit, err := strconv.Unquote(want)
+		if err != nil {
+			return "", false
+		}
+		var codes []string
+		for i := 0; i < len(lit); i++ {
+			codes = append(codes, strconv.Itoa(int(lit[i])))
+		}
+		cond := fmt.Sprintf("[%s].some((c, i) => %s[i] !== c)", strings.Join(codes, ","), path)
+		return fmt.Sprintf("if (%s) { fail(%q + \" is not the manifest's %s\"); }\n", cond, path, strings.ReplaceAll(want, `"`, `'`)), true
+	case strings.Contains(want, "|0x"):
+		dec, _, _ := strings.Cut(want, "|")
+		if dec == "nan" || dec == "-nan" {
+			return fmt.Sprintf("if (!Number.isNaN(%s)) { fail(%q + \" is not the manifest's NaN: \" + %s); }\n", path, path, path), true
+		}
+		return fail(fmt.Sprintf("Number(%s) !== %s && Math.fround(%s) !== Math.fround(Number(%s))", path, dec, dec, path))
+	default:
+		if _, err := strconv.ParseFloat(want, 64); err != nil {
+			return "", false
+		}
+		return fail(fmt.Sprintf("Number(%s) !== %s", path, want))
+	}
+}
 
 func jsFixedCorpus(t *testing.T) string {
 	t.Helper()
