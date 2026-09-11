@@ -278,6 +278,38 @@ tables-rust-fixedform: build/tables-generated-rust/.stamp build/fixedform-corpus
 	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet -- ../../build/fixedform-corpus ../../bench/paired/corpus
 	cd test/rust-fixedform && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release -- ../../build/fixedform-corpus ../../bench/paired/corpus
 
+# THE VERSIONING HALF OF THE FIXED FORM ON THE RUST LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/rusttable/fixedversioning_test.go reads the C++ reference's
+# byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
+# and the floor, hash and lineage-merge files — generates ONE CARGO WORKSPACE of
+# probe crates under build/rust-versioning-probes, and holds each row's two read
+# columns: NEW-READS-OLD lands every old value with §5.4's counters, and
+# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# alone (§5.3). The Go leg's `tables-go-versioning` is the same target on the
+# same rows; this is its twin.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
+# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
+# a bare `go test ./...` on a tree that never built the oracle — and is exactly
+# how a §5 regression would have ridden into CI green, since the go-test job
+# runs nothing but `go test ./...`. So the target BUILDS THE ORACLE FIRST
+# (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s) and then
+# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
+# name a missing corpus can never pass silently.
+#
+# AND IT IS A GO TEST THAT SHELLS OUT TO CARGO, so the PATH carries $(RUSTUP_BIN)
+# the way every other Rust row in this file does: the suite's one `cargo test
+# --workspace` resolves cargo out of the environment it is handed and nothing
+# else. One workspace and ONE cargo invocation is the two-minute rule — fifty
+# separate `cargo run`s would serialize on the target directory's build lock and
+# compile `serialize-official` behind each of them.
+.PHONY: tables-rust-versioning
+tables-rust-versioning: tables-fixedform-corpus
+	PATH="$(RUSTUP_BIN):$$PATH" SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	@echo 'tables Rust versioning: §5 read both columns of every row against the C++ reference bytes'
+
 build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust/src/main.rs test/conformance/rust/Cargo.toml
 	@mkdir -p build
 	cd test/conformance/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
@@ -326,6 +358,11 @@ test-rust: generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench
 	$(MAKE) tables-rust-names-negative-control
 	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
 	$(MAKE) tables-rust-fixedform
+	# AND ITS VERSIONING HALF (§5): every row of
+	# docs/FIXED-FORM-VERSIONING-TESTS.md, both read columns, over the same
+	# reference bytes. `tables-rust-fixedform` above proves this leg reads the
+	# corpus; this proves it reads BACKWARD and refuses FORWARD.
+	$(MAKE) tables-rust-versioning
 	# THE PAIRED LEG's own no-clock gate (bench/tables/rust): the block is the
 	# corpus's, the file loads, it saves back identical, reused storage
 	# round-trips twice.

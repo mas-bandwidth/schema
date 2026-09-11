@@ -477,6 +477,70 @@ func TestLineageAccessorIsWhatCompileReads(t *testing.T) {
 	}
 }
 
+// TestLockLineageRecordsTheDefinitionsDigest is bill §13: a range is not
+// layout bytes, so the lineage entry stores the digest beside them and the
+// wire hash folds both.
+func TestLockLineageRecordsTheDefinitionsDigest(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    n int32 | min = 0, max = 100"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	want, _, _ := wireHashOf(t, paths, "Row")
+	got := lineageOf(t, filepath.Join(dir, lockfile.FileName), "Row")
+	if len(got) != 1 {
+		t.Fatalf("one layout: %d", len(got))
+	}
+	if len(got[0].Digest) == 0 || got[0].Digest[0] != 'R' {
+		t.Fatalf("a range produces a nonempty digest starting with 'R', got %q", got[0].Digest)
+	}
+	if got[0].Wire != want {
+		t.Errorf("the wire hash folds the digest: lock 0x%016x, ir 0x%016x", got[0].Wire, want)
+	}
+	if ir.TableFixedLayoutHash(got[0].Layout, nil) == got[0].Wire {
+		t.Error("a nonempty digest must move the hash off the layout bytes alone")
+	}
+}
+
+// TestLockDigestLandingRewritesInPlace: a lock written with an empty digest
+// recorded the layout-bytes-only hash. Filling the digest moves the wire hash
+// without moving a layout byte — not a new version — so `schema lock` rewrites
+// the last entry in place rather than appending.
+func TestLockDigestLandingRewritesInPlace(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    n int32 | min = 0, max = 100"))
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, lockfile.FileName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked, err := lockfile.Parse(path, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t0 := locked.Table("Row")
+	if t0 == nil || len(t0.Lineage) != 1 {
+		t.Fatal("the first lock holds one lineage entry")
+	}
+	t0.Lineage[0].Digest = nil
+	t0.Lineage[0].Wire = ir.TableFixedLayoutHash(t0.Lineage[0].Layout, nil)
+	if err := os.WriteFile(path, []byte(locked.Text()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, rewrote, err := lockfile.Update(load(t, paths), paths); err != nil || !rewrote {
+		t.Fatalf("filling the digest rewrites the lock: rewrote=%v err=%v", rewrote, err)
+	}
+	got := lineageOf(t, path, "Row")
+	if len(got) != 1 {
+		t.Fatalf("digest landing is not a new version: want 1 entry, got %d", len(got))
+	}
+	want, _, _ := wireHashOf(t, paths, "Row")
+	if got[0].Wire != want || len(got[0].Digest) == 0 {
+		t.Errorf("the rewritten entry carries the digest hash 0x%016x, got 0x%016x digest %q", want, got[0].Wire, got[0].Digest)
+	}
+}
+
 // TestLineageSetIsBoundByTheRollup is the hole the roll-up closes, stated as
 // the hand that opens it: a lock with two layouts in its lineage, and one
 // HAND that deletes the OLDER line.

@@ -131,7 +131,6 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
 	for _, r := range versionRows {
-		r := r
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
 			counters := `check(report.widened == 0, 'widened ${report.widened}, and an append is not an event');`
@@ -169,7 +168,6 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
 	for _, r := range versionRows {
-		r := r
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
 			var body string
