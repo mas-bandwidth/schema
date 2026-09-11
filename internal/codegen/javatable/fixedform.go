@@ -368,7 +368,33 @@ func fixedDefaultElement(out []byte, f *ir.Field) {
 			}
 			return
 		case *ir.Union:
-			return // a fresh union is None, tag 0, which is the zero image
+			// A UNION INSIDE THE PREFILL IMAGE IS RESET ARM BY ARM, at each
+			// arm's own overlay storage, and only THEN the tag to None
+			// (docs/FIXED-FORM-ALGORITHM.md §5.2). The tag is a fresh union's
+			// None already — the zero image — and what the old "return" lost is
+			// every ARM's own defaults: an arm is not the member it looks like,
+			// and an arm whose defaults the image does not carry is a default
+			// that silently becomes zero for every field the plan leaves alone,
+			// which is exactly what a reader-appended field inside an arm is.
+			//
+			// THE ARMS OVERLAY, so declared order decides and a later arm
+			// overwrites an earlier one's bytes where the two meet. That is the
+			// consequence §5.2 accepts by saying "arm by arm": an arm's default
+			// survives in the image wherever no later arm covers it, and a
+			// default under a byte two arms both claim is a hazard the page
+			// names and a flat image cannot avoid.
+			tag := int64(ir.StorageBitsFor(r.Max) / 8)
+			for _, v := range r.Variants {
+				if v.F == nil {
+					continue // a payload-free arm has a tag and no bytes
+				}
+				n := fixedFieldBytes(v.F)
+				if tag+n > int64(len(out)) {
+					continue
+				}
+				fixedDefaultField(out[tag:tag+n], v.F)
+			}
+			return
 		}
 	}
 	if !f.HasDefault {
