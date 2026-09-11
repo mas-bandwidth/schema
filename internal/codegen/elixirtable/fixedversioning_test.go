@@ -594,7 +594,7 @@ func manifestBrackets(t *testing.T, corpus, file string) (uint32, uint32, bool) 
 func manifestRow(line, file string) (map[string]uint64, bool) {
 	var values string
 	named := false
-	for _, field := range strings.Fields(line) {
+	for field := range strings.FieldsSeq(line) {
 		k, v, ok := strings.Cut(field, "=")
 		if !ok {
 			continue
@@ -610,7 +610,7 @@ func manifestRow(line, file string) (map[string]uint64, bool) {
 		return nil, false
 	}
 	out := map[string]uint64{}
-	for _, pair := range strings.Split(values, ",") {
+	for pair := range strings.SplitSeq(values, ",") {
 		k, v, ok := strings.Cut(pair, "=")
 		if !ok {
 			continue

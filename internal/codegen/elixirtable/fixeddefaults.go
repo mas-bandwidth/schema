@@ -105,7 +105,7 @@ func fixedElementDefault(f *ir.Field) []byte {
 			}
 			// THE TAG IS None AND IT IS WRITTEN LAST, over whatever an arm's
 			// overlay would have reached into it.
-			for i := int64(0); i < tagBytes; i++ {
+			for i := range tagBytes {
 				out[i] = 0
 			}
 			return out
