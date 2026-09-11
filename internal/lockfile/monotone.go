@@ -162,6 +162,13 @@ func elemRule(want, got Entry) (rule string, widened bool) {
 	}
 }
 
+// namedElement reports whether an entry's ELEMENT is a named type whose own
+// block in the lock is where its changes are reported — the element's side of
+// the `HeldName` rule the field's own Width already follows.
+func namedElement(want, got Entry) bool {
+	return want.ElemKind == got.ElemKind && want.HeldName != "" && want.ElemWidth != got.ElemWidth
+}
+
 // rangeRule classifies a move of a field's declared bounds or its scale. A
 // range OUTWARD is a widening: every value an older writer could hold is still
 // inside. A range INWARD, a range added where none was, and a moved scale are
@@ -321,7 +328,27 @@ func monotone(where string, want, got Entry) (widened bool, what string, err err
 		return false, "", fmt.Errorf("%s, held %s in the lock and %s in the declaration: held type changed (%s -> %s) — a field already in the lock keeps the type it holds: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
 			where, heldName(want.HeldName), heldName(got.HeldName), heldName(want.HeldName), heldName(got.HeldName))
 	}
-	if want.ElemKind != got.ElemKind || want.ElemWidth != got.ElemWidth {
+	if namedElement(want, got) {
+		// THE ELEMENT IS A NAMED TYPE — a nested record, an enum, a flags mask,
+		// a union — and then its WIDTH IS NOT THIS ENTRY'S FACT. It is the width
+		// of that type's OWN locked block, and the bill's law for it is that
+		// block's law, recursively: "a nested table or type by value | the
+		// table's own law, recursively: fields added at the end" (§2). An
+		// appended field in `Vec` widens every `[4]Vec` in the unit, and the
+		// removal that would shrink one is refused in Vec's block, by the type
+		// and the field, exactly as `nested_append` already proves for a field
+		// that holds ONE Vec. Both directions are therefore silent HERE, and the
+		// grown one is this entry widened — the same sentence the field's own
+		// Width already takes from `HeldName`, one level in.
+		//
+		// Without this the append read as "element kind changed (table ->
+		// table)": a refusal of a widening the bill allows, naming no change at
+		// all, and a widening the lock refuses is a table that cannot be
+		// versioned.
+		if got.ElemWidth > want.ElemWidth {
+			widened = true
+		}
+	} else if want.ElemKind != got.ElemKind || want.ElemWidth != got.ElemWidth {
 		rule, ok := elemRule(want, got)
 		if !ok {
 			return false, "", fmt.Errorf("%s, holds %s elements in the lock and %s elements in the declaration: %s — a field already in the lock keeps its element type: every record already written holds the old one, and nothing on the wire says which (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new one",
