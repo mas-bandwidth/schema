@@ -1262,6 +1262,15 @@ func WriteBenchMixed(stream *serialize.WriteStream, value *BenchMixed) error {
 	}
 	stream.SerializeBytes(value.Payload[:value.PayloadLength])
 	{
+		if value.AimX-value.AimX != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		if value.AimY-value.AimY != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		if value.AimZ-value.AimZ != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		f0 := uint64(0)
 		{
 			normalizedValue := (value.AimX - (-1.0)) / 2.0

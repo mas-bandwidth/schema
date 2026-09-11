@@ -259,6 +259,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		if value.F003Int < -835897 || value.F003Int > 835897 {
 			return serialize.ErrValueOutOfRange
 		}
+		if value.F004Cf32-value.F004Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		rangeValue4 := int32(value.F005Uint)
 		if rangeValue4 < 0 || rangeValue4 > 7316 {
 			return serialize.ErrValueOutOfRange
@@ -368,6 +371,9 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeFixed64(&fixedValue, 8, 8, -119, 119)
 	}
 	{
+		if value.F027Cf32-value.F027Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		rangeValue6 := int32(value.F032Int)
 		if rangeValue6 < -3 || rangeValue6 > 3 {
 			return serialize.ErrValueOutOfRange
@@ -493,12 +499,18 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		if rangeValue2 < -15 || rangeValue2 > 15 {
 			return serialize.ErrValueOutOfRange
 		}
+		if value.F061Cf32-value.F061Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		rangeValue7 := int32(value.F062Uint)
 		if rangeValue7 < 0 || rangeValue7 > 503 {
 			return serialize.ErrValueOutOfRange
 		}
 		rangeValue9 := int32(value.F064Uint)
 		if rangeValue9 < 0 || rangeValue9 > 299 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.F065Cf32-value.F065Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
 		f0 := uint64(0)
@@ -547,8 +559,20 @@ func WriteRealPacket(stream *serialize.WriteStream, value *RealPacket) error {
 		stream.SerializeFixed64(&fixedValue, 2, 14, 0, 2)
 	}
 	{
+		if value.F067Cf32-value.F067Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		if value.F068Cf32-value.F068Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		rangeValue3 := int32(value.F070Uint)
 		if rangeValue3 < 0 || rangeValue3 > 2 {
+			return serialize.ErrValueOutOfRange
+		}
+		if value.F071Cf32-value.F071Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		if value.F072Cf32-value.F072Cf32 != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
 			return serialize.ErrValueOutOfRange
 		}
 		rangeValue6 := int32(value.F073Int)

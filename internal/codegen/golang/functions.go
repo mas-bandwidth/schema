@@ -522,6 +522,15 @@ func (g *gen) emitWriteCompressedFold(f *ir.Field, name, ind string) {
 	steps, bits := ir.CompressedFloatParams(f.FMin, f.FMax, f.Resolution)
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
+	// A non-finite value at a compressed float is a write contract like every
+	// range (SPEC §4.3, §5), and Go has no debug-only idiom to hold it in: the
+	// refusal is every-build, exactly as ErrValueOutOfRange is for an int out
+	// of its range. `x-x != 0` is the family's finiteness spelling — NaN and
+	// both infinities fail it (Inf - Inf is NaN) — and Go never contracts it
+	// away. The clamp below stays: it is what the other eight targets leave
+	// standing in release, and the bytes must not depend on the tier.
+	g.pf("%sif %s-%s != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)\n", ind, name, name)
+	g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 	g.pf("%s{\n", ind)
 	if min32 == 0 {
 		g.pf("%s\tnormalizedValue := %s / %s\n", ind, name, f32lit(delta))

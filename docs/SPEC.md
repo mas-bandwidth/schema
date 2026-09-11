@@ -1204,6 +1204,33 @@ tables, and it carries the same members (docs/SPEC-TABLES.md §2.6).
   technique is a row in docs/PORTING.md, and the corpus pins the patterns a
   conversion would move. A *quantized* `float32` is a different field: its
   wire is the step index and not the pattern, per its row below.
+- **A NON-FINITE VALUE AT A COMPRESSED FLOAT IS A WRITE-CONTRACT VIOLATION.**
+  A `float32` carrying `min`/`max`/`resolution` has no bit pattern on the
+  wire — it has a step index — and NaN and ±Inf name no step. Writing one is
+  caller error exactly like an int outside its range or a count outside
+  `[A, B]` (§4.6), so it takes §5's tiers with no exception: the seven
+  debug-only targets ASSERT it (C++ and C through `serialize_assert`, Rust
+  through `debug_assert!`, C# through `Debug.Assert`, Java and Dart through
+  the language's own `assert`, and JavaScript's checked flat writer through
+  its `-1` refusal), and the two every-build targets REFUSE it in every
+  build — Go returns `serialize.ErrValueOutOfRange` and Elixir raises
+  `ArgumentError`. The finiteness test is spelled `x - x == 0` wherever the
+  language lacks a cheap predicate: NaN and both infinities fail it, since
+  `Inf - Inf` is NaN.
+  **In a RELEASE build of the seven, the write PROCEEDS, and what it writes
+  is defined, not unspecified**: the value goes through the quantizer's own
+  saturating clamp, whose form is normative for exactly this reason — the
+  clamp is written `if !(n >= 0) n = 0; else if !(n <= 1) n = 1;`, whose
+  first arm is the `!>=` form so that **NaN lands on step 0, `min`'s index**,
+  never on the undefined float-to-unsigned cast a plain `n < 0` test would
+  let it reach. `-Inf` lands on step 0 too, and `+Inf` on the top step,
+  `max`'s index, by the ordering the second arm already applies to any value
+  above the range. So a release write of a non-finite value costs the field's
+  declared bits, the bytes are deterministic and identical in all seven, the
+  index is always a legal one, and the read returns `min` (or, for `+Inf`,
+  `max`) rather than failing — the READ is untouched by this rule, as ever.
+  Go and Elixir never reach that clamp: they refuse first, in every build.
+  The cross-language byte-identity gate pins the release outcome.
 
 The wire encodings are exactly classic serialize's — each row names its
 classic twin, which is the wire oracle for the stated model.

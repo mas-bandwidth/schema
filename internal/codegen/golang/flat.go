@@ -740,7 +740,17 @@ func (g *gen) flatCompressedPiece(f *ir.Field, name string) (flatPiece, bool) {
 	min32 := float32(f.FMin)
 	delta := float32(f.FMax) - min32
 	return flatPiece{
-		bits: bits, guard: noGuard,
+		bits: bits,
+		// A non-finite value at a compressed float is a write contract like
+		// every range (SPEC §4.3, §5), and Go has no debug-only idiom to hold
+		// it in: the refusal is every-build, exactly as ErrValueOutOfRange is
+		// for an int out of its range. `x-x != 0` is the family's finiteness
+		// spelling — NaN and both infinities fail it (Inf - Inf is NaN) — and
+		// Go never contracts it away.
+		guard: func(ind string, idx int) {
+			g.pf("%sif %s-%s != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)\n", ind, name, name)
+			g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
+		},
 		emit: func(ind string, idx int) {
 			g.pf("%sf%d := uint64(0)\n", ind, idx)
 			g.pf("%s{\n", ind)

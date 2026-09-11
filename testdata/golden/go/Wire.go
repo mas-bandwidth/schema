@@ -253,6 +253,9 @@ const ProbeSampleMaxBytes = 40
 
 func WriteProbeSample(stream *serialize.WriteStream, value *ProbeSample) error {
 	{
+		if value.Orientation-value.Orientation != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		f0 := uint64(0)
 		if value.Active {
 			f0 = 1
@@ -1057,6 +1060,9 @@ func WriteTestData(stream *serialize.WriteStream, value *TestData) error {
 		}
 	}
 	{
+		if value.CompressedFloatValue-value.CompressedFloatValue != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		if value.Int64Range < -1000000000000 || value.Int64Range > 1000000000000 {
 			return serialize.ErrValueOutOfRange
 		}
@@ -1259,6 +1265,12 @@ const CompressedProbeMaxBytes = 8
 
 func WriteCompressedProbe(stream *serialize.WriteStream, value *CompressedProbe) error {
 	{
+		if value.Boundary-value.Boundary != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
+		if value.Offset-value.Offset != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+			return serialize.ErrValueOutOfRange
+		}
 		f0 := uint64(0)
 		{
 			normalizedValue := value.Boundary / 10.0
