@@ -685,10 +685,17 @@ final class TableFixedPlan {
   final Int32List remapScratch = Int32List(256);
 
   /// the two layout views a compile needs, held here so a compile allocates
-  /// nothing either
+  /// nothing either. THE LOAD PATH USES NEITHER ANY MORE (§5): the plans are
+  /// the BUILD's, and these are what a BUILD-time compile parses the LOCK'S
+  /// bytes into.
   final TableFixedLayout theirs = TableFixedLayout();
   final TableFixedLayout mine = TableFixedLayout();
 
+  /// THESE FOUR ARE THE PLAN-CACHE LANES, and §5.6 retires the MECHANISM and
+  /// not the API (§5.9 #16, #24): a load no longer writes one of them — it
+  /// selects by hash against the lineage and never compiles — and they stay
+  /// here so every caller that holds a plan still compiles. A leg that started
+  /// reading them again would have un-retired the run-time compile.
   int recordBytes = 0;
   int hash = 0;
   bool ready = false;
@@ -699,7 +706,11 @@ final class TableFixedPlan {
 }
 
 /// A CACHE BY HASH: "the cost of the compile is paid once per peer rather than
-/// once per record". The caller owns this too.
+/// once per record". The caller owns this too — and under §5 THERE IS NOTHING
+/// LEFT TO CACHE: every plan is laid down by the build from the lock's bytes,
+/// so no load compiles and no load can miss. The type stays because §5.6
+/// retires MECHANISMS and not API (§5.9 #16): a caller holding one still
+/// compiles, and the codec never reads it.
 final class TableFixedPlanCache {
   final Map<int, TableFixedPlan> plans = <int, TableFixedPlan>{};
 

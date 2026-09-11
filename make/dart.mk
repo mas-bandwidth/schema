@@ -365,6 +365,32 @@ tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stam
 	@grep -m1 "first byte differing from the C++ reference" build/dart-fixed-nc/log
 	@echo "negative control: one byte off the Dart write template reds the reference byte match"
 
+# ITS NEGATIVE CONTROL (§5.9 #11: a gate nobody has watched fail may be
+# comparing a file with itself). The sabotage replaces the ONE name that carries
+# §5's whole direction — a hash no lineage entry holds is `layout_newer`, ship
+# the reader — with `layout_malformed`, and the OLD-REFUSES-NEW column must go
+# red naming it. `go test -overlay` is the same trick the other controls use on
+# `go build`: the emitter is replaced for one run and the tree is never touched.
+.PHONY: tables-dart-versioning-negative-control
+tables-dart-versioning-negative-control: tables-fixedform-corpus
+	@rm -rf build/dart-versioning-nc && mkdir -p build/dart-versioning-nc
+	@sed 's|report.refused = TableFixedRefusal.layoutNewer;|report.refused = TableFixedRefusal.layoutMalformed; // SABOTAGED|' \
+		internal/codegen/darttable/fixedmodule.go > build/dart-versioning-nc/fixedmodule.go.txt
+	@grep -q SABOTAGED build/dart-versioning-nc/fixedmodule.go.txt || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; }
+	@printf '{"Replace":{"%s/internal/codegen/darttable/fixedmodule.go":"%s/build/dart-versioning-nc/fixedmodule.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/dart-versioning-nc/overlay.json
+	@if SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test -overlay build/dart-versioning-nc/overlay.json \
+			./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioningOldRefusesNew' \
+			> build/dart-versioning-nc/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the wrong refusal name left the versioning gate green"; \
+		cat build/dart-versioning-nc/log; exit 1; \
+	fi
+	@grep -q 'owes layout_newer' build/dart-versioning-nc/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; \
+		  cat build/dart-versioning-nc/log; exit 1; }
+	@echo 'negative control: the wrong name for a hash outside the lineage reds the Dart versioning gate'
+
 # THE DART LEG of `make test`. THE DART PORT's own instruments
 # (docs/SPEC-TABLES.md): the emitted block and cook sources held to what `dart
 # format` writes and what the analyzer accepts, the name-claim control, the
@@ -384,6 +410,7 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	$(MAKE) tables-dart-fixed-form-negative-control
 	# AND IT READS BACKWARD (§5): every versioning row, both columns
 	$(MAKE) tables-dart-versioning
+	$(MAKE) tables-dart-versioning-negative-control
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart
