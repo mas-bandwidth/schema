@@ -13,12 +13,22 @@
 // the only durable gate is that no build grants it and no emitter asks for it.
 // These tests are that gate. They read source, so they cost nothing and hold
 // on every platform, including the ones whose toolchain is not installed here.
+//
+// Every assertion here is SITE-ANCHORED on purpose. A file-wide token grep
+// ("does golang/functions.go contain `float32(`?") is vacuous in this tree:
+// these emitters are full of unrelated float32 conversions, so the grep stays
+// green after the wrap is deleted from the quantize product — the one place
+// that matters. So each case first LOCATES its leg's fold (the statement that
+// multiplies the normalized value by the step count and adds 0.5) inside a
+// NAMED function, fails loudly if it cannot find it, and only then asserts the
+// wrap on that expression.
 package fpcontract_test
 
 import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -50,58 +60,287 @@ func read(t *testing.T, path string) string {
 	return string(b)
 }
 
-// stdFlag finds a compiler invocation by its -std= token. A line carrying one
-// is compiling C or C++; every such line in this tree compiles generated or
-// conformance sources, so every one of them must carry -ffp-contract=off.
-var stdFlag = regexp.MustCompile(`-std=c(\+\+)?[0-9x]+`)
+// funcBody returns the lines of the named top-level Go function, from its
+// `func` line up to the next one. A nil return means the function is gone:
+// callers report that as a LOST SITE rather than a pass, because a gate that
+// cannot find the code it guards proves nothing.
+func funcBody(src, name string) []string {
+	lines := strings.Split(src, "\n")
+	start := -1
+	for i, l := range lines {
+		if strings.HasPrefix(l, "func ") && strings.Contains(l, name+"(") {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	end := len(lines)
+	for i := start + 1; i < len(lines); i++ {
+		if strings.HasPrefix(lines[i], "func ") {
+			end = i
+			break
+		}
+	}
+	return lines[start:end]
+}
 
-// csharpLocal is the C# message codec's narrowing local, whitespace-tolerant
-// because some of the five copies are emitted minified.
-var csharpLocal = regexp.MustCompile(`float\s+scaled\s*=\s*normalized\s*\*`)
+// ---------------------------------------------------------------------------
+// The build-system half: every compile of C or C++ in this tree carries the flag
+// ---------------------------------------------------------------------------
 
-// TestNoContractionFlagOnEveryCompile is the build-system half of §7.2. It
-// reads the LOGICAL line (backslash continuations joined), because the flag
-// legitimately sits on a continuation in the multi-line recipes.
+// compilerTok matches a command's FIRST token when that token is a C or C++
+// compiler: the make variables this tree uses ($(CC), $(BE_CC), $(CXX)), the
+// shell spellings the bench legs use ($CXX, ${CC:-cc}) and the bare driver
+// names. Matching at the command position, rather than anywhere on the line,
+// is what keeps `echo "cc failed"`, `command -v cc` and a sed script that
+// happens to contain the letters out of the hit set.
+const compilerVar = `(?:[A-Z0-9]+_)*C(?:C|XX)(?:_[A-Z0-9]+)*` // CC, CXX, BE_CC, CXX_BIN
+
+var compilerTok = regexp.MustCompile(`^(?:` +
+	`\$\(` + compilerVar + `\)` + // $(CC), $(BE_CC)
+	`|\$\{` + compilerVar + `(?::-[^}]*)?\}` + // ${CC:-cc}
+	`|\$` + compilerVar + // $CXX_BIN
+	`|cc|c\+\+|clang|clang\+\+|gcc|g\+\+` + // bare drivers
+	`)$`)
+
+// cmdPrefix are tokens that may sit in front of a command without being one:
+// shell keywords, make's recipe prefixes, and the leading brace of a group.
+var cmdPrefix = map[string]bool{
+	"if": true, "then": true, "else": true, "elif": true, "do": true,
+	"while": true, "until": true, "!": true, "time": true, "exec": true,
+	"{": true, "(": true, "&&": true, "||": true, "|": true,
+}
+
+// envAssign is a `VAR=value` prefix, which shell allows in front of a command.
+var envAssign = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
+
+// compileEvidence is what separates a compile from a mention of a compiler: an
+// output file, a -c, or a translation unit on the command line. Without it the
+// sweep picks up `clang` inside a quoted progress string and inside an awk
+// process-name alternation.
+var compileEvidence = regexp.MustCompile(`(?:^| )-[oc](?: |$)|\.(?:c|cc|cpp|cxx|m|mm)(?:$|[ "'"'"'])`)
+
+// cmdSep splits a logical line into command segments.
+var cmdSep = regexp.MustCompile(`;|&&|\|\||\|`)
+
+// assign matches a make or shell variable definition.
+var assign = regexp.MustCompile(`(?s)^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?::|\+|\?)?=(.*)$`)
+
+// varRef finds every variable this text reads, in either make or shell spelling.
+var varRef = regexp.MustCompile(`\$[({]?([A-Za-z_][A-Za-z0-9_]*)`)
+
+const noContract = "-ffp-contract=off"
+
+// logical is one build COMMAND: its continuations joined into a single line,
+// the line number of its first physical line so a failure points at something
+// editable, and that first line for the message.
+type logical struct {
+	num   int
+	text  string
+	first string
+}
+
+// logicalLines joins backslash continuations into one line, because the flag
+// legitimately sits on a continuation in the multi-line recipes — and because a
+// command split at its own continuations loses the `-o` that marks it a compile.
+func logicalLines(src string) []logical {
+	lines := strings.Split(src, "\n")
+	var out []logical
+	for i := 0; i < len(lines); i++ {
+		j := i
+		var parts []string
+		for {
+			parts = append(parts, strings.TrimSuffix(strings.TrimRight(lines[j], " \t"), `\`))
+			if j+1 >= len(lines) || !strings.HasSuffix(strings.TrimRight(lines[j], " \t"), `\`) {
+				break
+			}
+			j++
+		}
+		out = append(out, logical{num: i + 1, text: strings.Join(parts, " "), first: strings.TrimSpace(lines[i])})
+		i = j
+	}
+	return out
+}
+
+// buildFiles is every file in this tree that can compile something: the root
+// Makefile plus every makefile, shell script and bench leg under make/ and
+// bench/, found RECURSIVELY. A non-recursive glob is how bench/tools/*.sh came
+// to hold real compiles of generated C that no gate had ever read.
+func buildFiles(t *testing.T, root string) []string {
+	t.Helper()
+	files := []string{filepath.Join(root, "Makefile")}
+	for _, dir := range []string{"make", "bench"} {
+		err := filepath.Walk(filepath.Join(root, dir), func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				// results/ holds write-ups that quote flags; not builds
+				if info.Name() == "results" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			base := info.Name()
+			if base == "Makefile" || base == "leg" ||
+				strings.HasSuffix(base, ".mk") || strings.HasSuffix(base, ".sh") {
+				files = append(files, path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("%s: %v", dir, err)
+		}
+	}
+	sort.Strings(files)
+	return files
+}
+
+// flagCarryingVars is the set of variables whose value holds the flag, closed
+// under reference: TABLES_CXXFLAGS spells it out, so a line that says
+// `$(CXX) $(TABLES_CXXFLAGS)` is flagged even though the line itself does not
+// contain the token.
+func flagCarryingVars(all map[string][]string) map[string]bool {
+	marked := map[string]bool{}
+	for name, vals := range all {
+		for _, v := range vals {
+			if strings.Contains(v, noContract) {
+				marked[name] = true
+			}
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for name, vals := range all {
+			if marked[name] {
+				continue
+			}
+			for _, v := range vals {
+				for _, m := range varRef.FindAllStringSubmatch(v, -1) {
+					if marked[m[1]] {
+						marked[name] = true
+						changed = true
+					}
+				}
+			}
+		}
+	}
+	return marked
+}
+
+// compilesHere reports whether this logical line runs a compiler. Version and
+// capability probes are not compiles: they emit no code, so contraction cannot
+// reach them.
+func compilesHere(text string) bool {
+	for _, seg := range cmdSep.Split(text, -1) {
+		fields := strings.Fields(seg)
+		// drop make's recipe prefixes from the front of the segment
+		if len(fields) > 0 {
+			fields[0] = strings.TrimLeft(fields[0], "@-+\t ")
+			if fields[0] == "" {
+				fields = fields[1:]
+			}
+		}
+		for len(fields) > 0 && (cmdPrefix[fields[0]] || envAssign.MatchString(fields[0])) {
+			fields = fields[1:]
+		}
+		if len(fields) == 0 || !compilerTok.MatchString(fields[0]) {
+			continue
+		}
+		rest := " " + strings.Join(fields[1:], " ") + " "
+		if strings.Contains(rest, " --version ") || strings.Contains(rest, " -E ") ||
+			strings.Contains(rest, " -dumpversion ") {
+			continue
+		}
+		// a compiler NAME inside a quoted string or an awk alternation is not a
+		// compile; a compile names an output or a translation unit
+		if !compileEvidence.MatchString(rest) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// TestNoContractionFlagOnEveryCompile is the build-system half of §7.2: every
+// compiler invocation in this tree must be flagged, whether or not it spells a
+// -std= out, and wherever in make/ or bench/ it happens to live.
 func TestNoContractionFlagOnEveryCompile(t *testing.T) {
 	root := repoRoot(t)
-	var files []string
-	files = append(files, filepath.Join(root, "Makefile"))
-	for _, pat := range []string{"make/*.mk", "make/checks/*.mk", "bench/*.sh", "bench/tables/*.sh", "bench/tables/*/leg"} {
-		m, err := filepath.Glob(filepath.Join(root, pat))
-		if err != nil {
-			t.Fatal(err)
+	files := buildFiles(t, root)
+
+	// pass 1: what every variable holds
+	defs := map[string][]string{}
+	srcs := map[string][]logical{}
+	for _, f := range files {
+		ls := logicalLines(read(t, f))
+		srcs[f] = ls
+		for _, l := range ls {
+			if m := assign.FindStringSubmatch(l.text); m != nil {
+				defs[m[1]] = append(defs[m[1]], m[2])
+			}
 		}
-		files = append(files, m...)
 	}
+	marked := flagCarryingVars(defs)
+
+	// pass 2: every compile must reach the flag, literally or through one of them
 	checked := 0
 	for _, f := range files {
-		lines := strings.Split(read(t, f), "\n")
-		for i := 0; i < len(lines); i++ {
+		rel, _ := filepath.Rel(root, f)
+		for _, l := range srcs[f] {
+			trimmed := strings.TrimLeft(l.text, " \t")
 			// a comment quoting the flags is documentation, not a build
-			trimmed := strings.TrimLeft(lines[i], " \t")
 			if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
 				continue
 			}
-			if !stdFlag.MatchString(lines[i]) {
+			if !compilesHere(l.text) {
 				continue
 			}
-			j := i
-			for j < len(lines) && strings.HasSuffix(strings.TrimRight(lines[j], " \t"), `\`) {
-				j++
-			}
-			logical := strings.Join(lines[i:min(j+1, len(lines))], "\n")
 			checked++
-			if !strings.Contains(logical, "-ffp-contract=off") {
-				rel, _ := filepath.Rel(root, f)
-				t.Errorf("%s:%d compiles C/C++ without -ffp-contract=off — clang's default CONTRACTS and writes a different quantize index (SPEC §7.2):\n\t%s",
-					rel, i+1, strings.TrimSpace(lines[i]))
+			if strings.Contains(l.text, "-ffp-contract=fast") || strings.Contains(l.text, "-ffp-contract=on") {
+				t.Errorf("%s:%d GRANTS contraction explicitly — the fused product writes a different quantize index (SPEC §7.2):\n\t%s", rel, l.num, l.first)
+				continue
 			}
-			i = j
+			if strings.Contains(l.text, noContract) {
+				continue
+			}
+			via := ""
+			for _, m := range varRef.FindAllStringSubmatch(l.text, -1) {
+				if marked[m[1]] {
+					via = m[1]
+					break
+				}
+			}
+			if via != "" {
+				continue
+			}
+			t.Errorf("%s:%d compiles C/C++ without %s and reads no variable that carries it — clang's default CONTRACTS and writes a different quantize index (SPEC §7.2):\n\t%s",
+				rel, l.num, noContract, l.first)
 		}
 	}
-	if checked < 20 {
-		t.Fatalf("only %d compile lines found — the glob has drifted and this gate is vacuous", checked)
+	if checked < 150 {
+		t.Fatalf("only %d compile lines found — the sweep has drifted and this gate is vacuous", checked)
 	}
+}
+
+// ---------------------------------------------------------------------------
+// The intrinsic half: no emitter reaches for a fused multiply-add
+// ---------------------------------------------------------------------------
+
+// emitterLang names the language each emitter directory writes. The FMA gate
+// labels a hit by this, not by the language that happens to be attached to the
+// needle: `Math.fma` is a legal spelling in both Java and JavaScript, so a hit
+// in internal/codegen/js used to be reported as a Java bug.
+var emitterLang = map[string]string{
+	"rust": "Rust", "rusttable": "Rust",
+	"java": "Java", "javatable": "Java",
+	"csharp": "C#", "cstable": "C#",
+	"js": "JavaScript", "jstable": "JavaScript",
+	"dart": "Dart", "darttable": "Dart",
+	"elixir": "Elixir", "elixirtable": "Elixir",
+	"golang": "Go", "gotable": "Go",
 }
 
 // TestNoFusedMultiplyAddIntrinsics is the Rust, Java and C# half. Those three
@@ -110,14 +349,13 @@ func TestNoContractionFlagOnEveryCompile(t *testing.T) {
 // one into generated code.
 func TestNoFusedMultiplyAddIntrinsics(t *testing.T) {
 	root := repoRoot(t)
-	// table-driven so a new forbidden spelling is one line
-	forbidden := []struct{ lang, needle string }{
-		{"Rust", "mul_add"},
-		{"Java", "Math.fma"},
-		{"C#", "FusedMultiplyAdd"},
-		{"JavaScript", "Math.fma"},
+	// the forbidden spellings, across every language that has one
+	forbidden := []string{"mul_add", "Math.fma", "FusedMultiplyAdd"}
+	dirs := make([]string, 0, len(emitterLang))
+	for d := range emitterLang {
+		dirs = append(dirs, d)
 	}
-	dirs := []string{"rust", "rusttable", "java", "javatable", "csharp", "cstable", "js", "jstable", "dart", "darttable", "elixir", "elixirtable", "golang", "gotable"}
+	sort.Strings(dirs)
 	for _, d := range dirs {
 		base := filepath.Join(root, "internal", "codegen", d)
 		err := filepath.Walk(base, func(path string, info os.FileInfo, err error) error {
@@ -125,10 +363,10 @@ func TestNoFusedMultiplyAddIntrinsics(t *testing.T) {
 				return nil
 			}
 			src := read(t, path)
-			for _, f := range forbidden {
-				if strings.Contains(src, f.needle) {
+			for _, needle := range forbidden {
+				if strings.Contains(src, needle) {
 					rel, _ := filepath.Rel(root, path)
-					t.Errorf("%s: emits %q (%s fused multiply-add) — a fused product writes a different quantize index (SPEC §7.2)", rel, f.needle, f.lang)
+					t.Errorf("%s: the %s emitter writes %q (a fused multiply-add) — a fused product writes a different quantize index (SPEC §7.2)", rel, emitterLang[d], needle)
 				}
 			}
 			return nil
@@ -139,29 +377,118 @@ func TestNoFusedMultiplyAddIntrinsics(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// The source-level half, per leg, anchored on the quantize fold itself
+// ---------------------------------------------------------------------------
+
+// csharpLocal is the C# message codec's narrowing local, whitespace-tolerant
+// because some of the five copies are emitted minified.
+var csharpLocal = regexp.MustCompile(`float\s+scaled\s*=\s*normalized\s*\*`)
+
+// foldSite is one leg's quantize fold: where it lives (file and the NAMED
+// function that emits it), how to find the fold's anchor line inside that
+// function, how many preceding lines belong to the same fold, and the wraps
+// that must appear on it.
+type foldSite struct {
+	lang, file, fn string
+	// anchor finds the fold's last statement inside fn's body
+	anchor *regexp.Regexp
+	// span is how many lines ABOVE the anchor still belong to the fold
+	span int
+	// wraps must all match within the anchor's span
+	wraps []*regexp.Regexp
+	// why names what is lost when a wrap goes
+	why string
+}
+
 // TestNoContractionInEmittedCode is the source-level half, per leg. Each
 // language forbids fusion by forcing an intermediate rounding, and the
-// spelling differs per language; this asserts the spelling is still there.
-// The emitters are read as text rather than exercised, because the failure
-// being guarded against is an editor "simplifying" the wrap away — which no
-// runtime test on a non-fusing host would ever catch.
+// spelling differs per language; this asserts the spelling is still there ON
+// THE QUANTIZE PRODUCT. The emitters are read as text rather than exercised,
+// because the failure being guarded against is an editor "simplifying" the
+// wrap away — which no runtime test on a non-fusing host would ever catch.
 func TestNoContractionInEmittedCode(t *testing.T) {
 	root := repoRoot(t)
-	cases := []struct {
-		lang, file string
-		// wrap is the conversion that forces the intermediate rounding
-		wrap string
-	}{
-		{"Go (packet form)", "internal/codegen/golang/functions.go", "float32("},
-		{"Go (flat form)", "internal/codegen/golang/flat.go", "float32("},
-		{"JavaScript (flat form)", "internal/codegen/js/flat.go", "Math.fround("},
-		{"Dart", "internal/codegen/dart/functions.go", "_fround("},
-		{"Elixir", "internal/codegen/elixir/functions.go", "fr("},
+	sites := []foldSite{
+		{
+			lang: "Go (packet form)", file: "internal/codegen/golang/functions.go", fn: "emitWriteCompressedFold",
+			anchor: regexp.MustCompile(`\+ 0\.5`),
+			wraps:  []*regexp.Regexp{regexp.MustCompile(`float32\(normalizedValue\s*\*\s*[^)]*\)\s*\+\s*0\.5`)},
+			why:    "the float32() around the product is what stops Go fusing `x*y+z` on arm64",
+		},
+		{
+			lang: "Go (flat form)", file: "internal/codegen/golang/flat.go", fn: "flatCompressedPiece",
+			anchor: regexp.MustCompile(`\+ 0\.5`),
+			wraps:  []*regexp.Regexp{regexp.MustCompile(`float32\(normalizedValue\s*\*\s*[^)]*\)\s*\+\s*0\.5`)},
+			why:    "the float32() around the product is what stops Go fusing `x*y+z` on arm64",
+		},
+		{
+			lang: "Go (table message form)", file: "internal/codegen/gotable/message.go", fn: "tableMessageWriteScalar",
+			anchor: regexp.MustCompile(`scaled\s*\+\s*0\.5`),
+			wraps: []*regexp.Regexp{
+				regexp.MustCompile(`scaled\s*:?=\s*float32\(ratio\s*\*\s*float32\(s\.QCount\)\)`),
+				regexp.MustCompile(`float32\(scaled\s*\+\s*0\.5\)`),
+			},
+			why: "this codec quantizes at RUNTIME in Go, so the two float32() conversions are the whole no-contraction guarantee for the message wire",
+		},
+		{
+			lang: "Go (table message form, dequantize)", file: "internal/codegen/gotable/message.go", fn: "tableMessageReadScalar",
+			anchor: regexp.MustCompile(`scaled\s*\+\s*s\.QMin`),
+			wraps: []*regexp.Regexp{
+				regexp.MustCompile(`scaled\s*:?=\s*float32\(ratio\s*\*\s*s\.QDelta\)`),
+				regexp.MustCompile(`float32\(scaled\s*\+\s*s\.QMin\)`),
+			},
+			why: "the read side reconstructs with the same two roundings; fusing it returns a value the writer never wrote",
+		},
+		{
+			lang: "JavaScript (flat form)", file: "internal/codegen/js/flat.go", fn: "emitWriteCompressedFloat",
+			anchor: regexp.MustCompile(`\+ 0\.5`),
+			wraps:  []*regexp.Regexp{regexp.MustCompile(`Math\.fround\(Math\.fround\(n\s*\*\s*[^)]*\)\s*\+\s*0\.5\)`)},
+			why:    "JS has no float type: both frounds are the float32 rounding the wire is defined in",
+		},
+		{
+			lang: "Dart", file: "internal/codegen/dart/functions.go", fn: "emitWriteCompressedFloat",
+			anchor: regexp.MustCompile(`\+ 0\.5`),
+			wraps:  []*regexp.Regexp{regexp.MustCompile(`_fround\(_fround\(n\s*\*\s*[^)]*\)\s*\+\s*0\.5\)`)},
+			why:    "Dart doubles need the explicit _fround on BOTH the product and the sum",
+		},
+		{
+			lang: "Elixir", file: "internal/codegen/elixir/functions.go", fn: "emitSupportHelpers",
+			anchor: regexp.MustCompile(`floor\(fr\(scaled \+ 0\.5\)\)`),
+			span:   2,
+			wraps: []*regexp.Regexp{
+				regexp.MustCompile(`scaled = fr\(normalized \* miv32\)`),
+				regexp.MustCompile(`floor\(fr\(scaled \+ 0\.5\)\)`),
+			},
+			why: "BEAM floats are doubles; fr/1 on the product and on the sum is the float32 emulation",
+		},
 	}
-	for _, c := range cases {
-		src := read(t, filepath.Join(root, c.file))
-		if !strings.Contains(src, c.wrap) {
-			t.Errorf("%s (%s): the %q wrap that forces the intermediate rounding is gone — fusion is permitted again (SPEC §7.2)", c.lang, c.file, c.wrap)
+	for _, s := range sites {
+		body := funcBody(read(t, filepath.Join(root, s.file)), s.fn)
+		if body == nil {
+			t.Errorf("%s: %s no longer holds a function %s() — the quantize fold has moved and this gate has lost its site; point it at the new one rather than deleting it (SPEC §7.2)", s.lang, s.file, s.fn)
+			continue
+		}
+		hits := 0
+		for i, line := range body {
+			if !s.anchor.MatchString(line) {
+				continue
+			}
+			hits++
+			lo := i - s.span
+			if lo < 0 {
+				lo = 0
+			}
+			fold := strings.Join(body[lo:i+1], "\n")
+			for _, w := range s.wraps {
+				if !w.MatchString(fold) {
+					t.Errorf("%s: %s:%s() emits the quantize fold without %s — fusion is permitted again; %s (SPEC §7.2)\n\t%s",
+						s.lang, s.file, s.fn, w, s.why, strings.TrimSpace(line))
+				}
+			}
+		}
+		if hits == 0 {
+			t.Errorf("%s: %s:%s() no longer emits a quantize fold matching %s — the gate cannot find the expression it guards, so it is proving nothing (SPEC §7.2)", s.lang, s.file, s.fn, s.anchor)
 		}
 	}
 
@@ -260,11 +587,4 @@ func TestTheDeterminismCaseStillDiscriminates(t *testing.T) {
 // hardware FMA does.
 func fma32(x, y, z float32) float32 {
 	return float32(float64(x)*float64(y) + float64(z))
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

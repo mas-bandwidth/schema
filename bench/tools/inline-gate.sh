@@ -687,7 +687,7 @@ __attribute__((noinline)) uint64_t rt_fix_write_loop(uint64_t v) {
 }
 int main(void) { return (int)(rt_fix_write_loop(41) & 1); }
 EOF
-        if cc -O2 -o "$ST/e2e" "$ST/e2e.c" 2> /dev/null; then
+        if cc -O2 -ffp-contract=off -o "$ST/e2e" "$ST/e2e.c" 2> /dev/null; then
             otool -tv "$ST/e2e" > "$ST/e2e.disasm"
             count_calls '^_serialize_fix' '^_rt_fix' "$COLD_SPLIT" < "$ST/e2e.disasm" > "$VD/counts.txt"
             n="$(perop_for '^_rt_fix_write_loop$')"
