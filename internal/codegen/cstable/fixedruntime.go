@@ -2,7 +2,8 @@ package cstable
 
 // tableFixedRuntimeTypes defines the namespace-level types for the fixed-table
 // wire form (docs/SPEC-TABLES.md §3.4): TableFixedEntry, TableFixedDst,
-// TableFixedLayoutEntry, TableFixedLayoutView, TableFixedPlan, and TableFixedSlot.
+// TableFixedLayoutEntry, TableFixedLayoutView, TableFixedPlan, TableFixedFill,
+// and TableFixedSlot.
 const tableFixedRuntimeTypes = `
 // ---------------------------------------------------------------------------
 // THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4)
@@ -102,6 +103,22 @@ public readonly struct TableFixedPlan
 
 public delegate void TableFixedSetBytes<T>(T target, ReadOnlySpan<byte> span, int len);
 
+// ONE SLOT RANGE THE PLAN DOES NOT LAND. Dst is a slot index, Size is how
+// many consecutive slots. The identity plan's list is empty: its destinations
+// ARE the value slots, so there is nothing left to subtract.
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+public struct TableFixedFill
+{
+    public uint Dst;
+    public uint Size;
+
+    public TableFixedFill(uint dst, uint size)
+    {
+        Dst = dst;
+        Size = size;
+    }
+}
+
 public readonly struct TableFixedSlot<T>
 {
     public readonly Action<T, ulong> SetRaw;
@@ -110,6 +127,7 @@ public readonly struct TableFixedSlot<T>
     public readonly TableFixedSetBytes<T> SetBytes;
     public readonly TableFixedSetBytes<T> SetChars;
     public readonly Action<T, ulong, TableReport> SetRawReport;
+    public readonly Action<T> Reset; // declared default into this slot, and nowhere else
 
     public TableFixedSlot(
         Action<T, ulong> setRaw = null,
@@ -117,7 +135,8 @@ public readonly struct TableFixedSlot<T>
         Action<T, UInt128> setWide = null,
         TableFixedSetBytes<T> setBytes = null,
         TableFixedSetBytes<T> setChars = null,
-        Action<T, ulong, TableReport> setRawReport = null)
+        Action<T, ulong, TableReport> setRawReport = null,
+        Action<T> reset = null)
     {
         SetRaw = setRaw;
         SetDouble = setDouble;
@@ -125,6 +144,7 @@ public readonly struct TableFixedSlot<T>
         SetBytes = setBytes;
         SetChars = setChars;
         SetRawReport = setRawReport;
+        Reset = reset;
     }
 }
 `
@@ -687,6 +707,66 @@ const tableFixedWireSource = `
             MatchChildren(ref c, theirs, 0, 0, mine, 0, dst, 0, NoGuard, 0);
             if (c.Overflow) { return -1; }
             return c.Count;
+        }
+
+        // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND. Cover is the
+        // identity plan's destinations; Fills is that set minus everything
+        // this plan writes. A GUARDED ENTRY COUNTS AS LANDING: it is a union
+        // arm, and an arm's storage is the arm's. Identity's list is empty —
+        // its destinations ARE the cover — and that is the rule's limit case,
+        // not an exception: the record loop runs the list it was handed.
+        public static int Fills(
+            ReadOnlySpan<TableFixedEntry> plan,
+            ReadOnlySpan<TableFixedFill> cover,
+            Span<byte> landed,
+            Span<TableFixedFill> dest)
+        {
+            landed.Clear();
+            for (int i = 0; i < plan.Length; ++i)
+            {
+                ref readonly TableFixedEntry p = ref plan[i];
+                if ((uint)p.Dst < (uint)landed.Length) { landed[(int)p.Dst] = 1; }
+                if (p.Op == Text && (uint)p.Aux < (uint)landed.Length) { landed[(int)p.Aux] = 1; }
+            }
+            int n = 0;
+            for (int r = 0; r < cover.Length; ++r)
+            {
+                uint pos = cover[r].Dst;
+                uint hi = pos + cover[r].Size;
+                while (pos < hi)
+                {
+                    while (pos < hi && (uint)pos < (uint)landed.Length && landed[(int)pos] != 0) { pos++; }
+                    if (pos >= hi) { break; }
+                    uint start = pos;
+                    while (pos < hi && ((uint)pos >= (uint)landed.Length || landed[(int)pos] == 0)) { pos++; }
+                    if (n < dest.Length)
+                    {
+                        dest[n] = new TableFixedFill(start, pos - start);
+                    }
+                    n++;
+                }
+            }
+            return n;
+        }
+
+        public static void FillRun<T>(
+            ReadOnlySpan<TableFixedFill> fill,
+            ReadOnlySpan<TableFixedSlot<T>> slots,
+            T dst)
+        {
+            for (int i = 0; i < fill.Length; ++i)
+            {
+                uint off = fill[i].Dst;
+                uint n = fill[i].Size;
+                for (uint s = 0; s < n; ++s)
+                {
+                    uint idx = off + s;
+                    if (idx < (uint)slots.Length)
+                    {
+                        slots[(int)idx].Reset?.Invoke(dst);
+                    }
+                }
+            }
         }
 
         // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose

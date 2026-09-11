@@ -257,6 +257,46 @@ type fixedSlot struct {
 	setBytes     string
 	setChars     string
 	setRawReport string
+	reset        string
+}
+
+type fixedFillRange struct {
+	off, size uint32
+}
+
+func landSlot(cover []byte, slot int) {
+	if slot >= 0 && slot < len(cover) {
+		cover[slot] = 1
+	}
+}
+
+// identitySlotCover is every slot the identity plan lands, merged. THE PREFILL
+// IS THIS SET MINUS WHAT A PLAN LANDS, so against the identity plan it is empty.
+func identitySlotCover(plan []fixedPlanEntry, slotN int) []fixedFillRange {
+	if slotN <= 0 {
+		return nil
+	}
+	landed := make([]byte, slotN)
+	for _, p := range plan {
+		landSlot(landed, p.dst)
+		if p.op == 2 {
+			landSlot(landed, p.aux)
+		}
+	}
+	var out []fixedFillRange
+	i := 0
+	for i < slotN {
+		if landed[i] == 0 {
+			i++
+			continue
+		}
+		start := i
+		for i < slotN && landed[i] != 0 {
+			i++
+		}
+		out = append(out, fixedFillRange{uint32(start), uint32(i - start)})
+	}
+	return out
 }
 
 type fixedPlanEntry struct {
@@ -361,21 +401,69 @@ func (b *fixedRootBuild) addPlan(e fixedPlanEntry) {
 	b.plan = append(b.plan, e)
 }
 
+func (b *fixedRootBuild) scalarReset(f *ir.Field, expr string) string {
+	def := fieldDefaultExpr(f)
+	if enumRef(f) != nil && b.g != nil {
+		def = "global::" + capitalize(b.g.unit.Package) + "." + def
+	}
+	return fmt.Sprintf("(t) => { %s = %s; }", expr, def)
+}
+
+func presentReset(fieldExpr string) string {
+	return fmt.Sprintf("(t) => { %sPresent = false; }", fieldExpr)
+}
+
+func countReset(fieldExpr string) string {
+	return fmt.Sprintf("(t) => { %sCount = 0; }", fieldExpr)
+}
+
+func flatReset(fieldExpr string) string {
+	return fmt.Sprintf("(t) => { if (%s != null) Array.Clear(%s, 0, %s.Length); }", fieldExpr, fieldExpr, fieldExpr)
+}
+
+func textLenReset(f *ir.Field, fieldExpr string) string {
+	return fmt.Sprintf("(t) => { %sLength = %d; }", fieldExpr, len(f.DefBytes))
+}
+
+func bufferReset(f *ir.Field, fieldExpr string) string {
+	var sb strings.Builder
+	sb.WriteString("(t) => { if (")
+	sb.WriteString(fieldExpr)
+	sb.WriteString(" != null) { Array.Clear(")
+	sb.WriteString(fieldExpr)
+	sb.WriteString(", 0, ")
+	sb.WriteString(fieldExpr)
+	sb.WriteString(".Length);")
+	for i, by := range f.DefBytes {
+		fmt.Fprintf(&sb, " %s[%d] = 0x%02x;", fieldExpr, i, by)
+	}
+	sb.WriteString(" } }")
+	return sb.String()
+}
+
+func unionTagReset(expr, tagType string) string {
+	return fmt.Sprintf("(t) => { %s.Type = %s.None; }", expr, tagType)
+}
+
 func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
+	reset := b.scalarReset(f, expr)
 	switch f.Type.Kind {
 	case ir.TBool:
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %s = v != 0", expr),
+			reset:  reset,
 		})
 	case ir.TFloat32:
 		b.slots = append(b.slots, fixedSlot{
 			setRaw:    fmt.Sprintf("(t, v) => %s = BitConverter.UInt32BitsToSingle((uint)v)", expr),
 			setDouble: fmt.Sprintf("(t, d) => %s = (float)d", expr),
+			reset:     reset,
 		})
 	case ir.TFloat64:
 		b.slots = append(b.slots, fixedSlot{
 			setRaw:    fmt.Sprintf("(t, v) => %s = BitConverter.UInt64BitsToDouble(v)", expr),
 			setDouble: fmt.Sprintf("(t, d) => %s = d", expr),
+			reset:     reset,
 		})
 	case ir.TInt:
 		typ := csFieldType(f.Type)
@@ -383,10 +471,12 @@ func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
 			b.slots = append(b.slots, fixedSlot{
 				setWide: fmt.Sprintf("(t, w) => %s = unchecked((%s)w)", expr, typ),
 				setRaw:  fmt.Sprintf("(t, v) => %s = unchecked((%s)v)", expr, typ),
+				reset:   reset,
 			})
 		} else {
 			b.slots = append(b.slots, fixedSlot{
 				setRaw: fmt.Sprintf("(t, v) => %s = unchecked((%s)v)", expr, typ),
+				reset:  reset,
 			})
 		}
 	default:
@@ -395,10 +485,12 @@ func (b *fixedRootBuild) addScalarSlot(f *ir.Field, expr string) {
 			b.slots = append(b.slots, fixedSlot{
 				setWide: fmt.Sprintf("(t, w) => %s = unchecked((%s)w)", expr, typ),
 				setRaw:  fmt.Sprintf("(t, v) => %s = unchecked((%s)v)", expr, typ),
+				reset:   reset,
 			})
 		} else {
 			b.slots = append(b.slots, fixedSlot{
 				setRaw: fmt.Sprintf("(t, v) => %s = (%s)v", expr, typ),
+				reset:  reset,
 			})
 		}
 	}
@@ -526,6 +618,7 @@ func (b *fixedRootBuild) buildField(owner *ir.Struct, f *ir.Field, expr string, 
 		presentSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sPresent = v != 0", fieldExpr),
+			reset:  presentReset(fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
 			id:       id,
@@ -586,6 +679,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		countSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sCount = (int)v", fieldExpr),
+			reset:  countReset(fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
 			src:   fieldWireBase,
@@ -611,6 +705,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			elemType := csFieldType(f.Type)
 			b.slots = append(b.slots, fixedSlot{
 				setBytes: b.flatSpanSetter(fieldExpr, elemType, elemWireSize),
+				reset:    flatReset(fieldExpr),
 			})
 			b.addPlan(fixedPlanEntry{
 				src:   fieldWireBase + fixedCountBytes,
@@ -650,6 +745,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 			elemType := csFieldType(f.Type)
 			b.slots = append(b.slots, fixedSlot{
 				setBytes: b.flatSpanSetter(fieldExpr, elemType, elemWireSize),
+				reset:    flatReset(fieldExpr),
 			})
 			b.addPlan(fixedPlanEntry{
 				src:   fieldWireBase,
@@ -676,10 +772,12 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		lenSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
+			reset:  textLenReset(f, fieldExpr),
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
 			id:       id,
@@ -707,10 +805,12 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		lenSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
+			reset:  textLenReset(f, fieldExpr),
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
 			id:       id,
@@ -736,10 +836,12 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		lenSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
+			reset:  textLenReset(f, fieldExpr),
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setChars: fmt.Sprintf("(t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (%s != null) c.Slice(0, Math.Min(c.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
 			id:       id,
@@ -793,6 +895,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			tagType := f.Type.Name + "Type"
 			b.slots = append(b.slots, fixedSlot{
 				setRawReport: fmt.Sprintf("(t, v, rep) => { if (v > %d) { %s.Type = (%s)0; if (rep != null) rep.Clamped++; } else { %s.Type = (%s)v; } }", len(r.Variants), expr, tagType, expr, tagType),
+				reset:        unionTagReset(expr, tagType),
 			})
 			armBase := len(b.slots)
 			b.entries = append(b.entries, fixedBlockEntry{
@@ -830,6 +933,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			w := int64(r.StorageBits / 8)
 			b.slots = append(b.slots, fixedSlot{
 				setRawReport: fmt.Sprintf("(t, v, rep) => { if (v > %d) { %s = 0; if (rep != null) rep.Clamped++; } else { %s = (%s)v; } }", len(r.Variants), expr, expr, f.Type.Name),
+				reset:        b.scalarReset(f, expr),
 			})
 			b.entries = append(b.entries, fixedBlockEntry{
 				id:       id,
@@ -864,6 +968,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 			slot := len(b.slots)
 			b.slots = append(b.slots, fixedSlot{
 				setRaw: fmt.Sprintf("(t, v) => %s = v", expr),
+				reset:  b.scalarReset(f, expr),
 			})
 			b.entries = append(b.entries, fixedBlockEntry{
 				id:       id,
@@ -925,6 +1030,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 			tagType := f.Type.Name + "Type"
 			b.slots = append(b.slots, fixedSlot{
 				setRawReport: fmt.Sprintf("(t, v, rep) => { if (v > %d) { %s.Type = (%s)0; if (rep != null) rep.Clamped++; } else { %s.Type = (%s)v; } }", len(r.Variants), expr, tagType, expr, tagType),
+				reset:        unionTagReset(expr, tagType),
 			})
 			b.addPlan(fixedPlanEntry{
 				src:   wireBase,
@@ -951,6 +1057,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 			w := int64(r.StorageBits / 8)
 			b.slots = append(b.slots, fixedSlot{
 				setRawReport: fmt.Sprintf("(t, v, rep) => { if (v > %d) { %s = 0; if (rep != null) rep.Clamped++; } else { %s = (%s)v; } }", len(r.Variants), expr, expr, f.Type.Name),
+				reset:        b.scalarReset(f, expr),
 			})
 			b.addPlan(fixedPlanEntry{
 				src:   wireBase,
@@ -966,6 +1073,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 			slot := len(b.slots)
 			b.slots = append(b.slots, fixedSlot{
 				setRaw: fmt.Sprintf("(t, v) => %s = v", expr),
+				reset:  b.scalarReset(f, expr),
 			})
 			b.addPlan(fixedPlanEntry{
 				src:   wireBase,
@@ -1004,6 +1112,7 @@ func (b *fixedRootBuild) buildFieldSlotsAndPlan(owner *ir.Struct, f *ir.Field, e
 		presentSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sPresent = v != 0", fieldExpr),
+			reset:  presentReset(fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
 			src:   fieldWireBase,
@@ -1046,6 +1155,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		countSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sCount = (int)v", fieldExpr),
+			reset:  countReset(fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
 			src:   fieldWireBase,
@@ -1062,6 +1172,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			elemType := csFieldType(f.Type)
 			b.slots = append(b.slots, fixedSlot{
 				setBytes: b.flatSpanSetter(fieldExpr, elemType, elemWireSize),
+				reset:    flatReset(fieldExpr),
 			})
 			b.addPlan(fixedPlanEntry{
 				src:   fieldWireBase + fixedCountBytes,
@@ -1090,6 +1201,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 			elemType := csFieldType(f.Type)
 			b.slots = append(b.slots, fixedSlot{
 				setBytes: b.flatSpanSetter(fieldExpr, elemType, elemWireSize),
+				reset:    flatReset(fieldExpr),
 			})
 			b.addPlan(fixedPlanEntry{
 				src:   fieldWireBase,
@@ -1114,10 +1226,12 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		lenSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
+			reset:  textLenReset(f, fieldExpr),
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
 			src:   fieldWireBase,
@@ -1135,10 +1249,12 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		lenSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
+			reset:  textLenReset(f, fieldExpr),
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
 			src:   fieldWireBase,
@@ -1156,10 +1272,12 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		lenSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setRaw: fmt.Sprintf("(t, v) => %sLength = (int)v", fieldExpr),
+			reset:  textLenReset(f, fieldExpr),
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
 			setChars: fmt.Sprintf("(t, b, l) => { ReadOnlySpan<char> c = MemoryMarshal.Cast<byte, char>(b); if (%s != null) c.Slice(0, Math.Min(c.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
 			src:   fieldWireBase,
@@ -1478,7 +1596,20 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		if s.setRawReport != "" {
 			parts = append(parts, "setRawReport: "+s.setRawReport)
 		}
+		if s.reset != "" {
+			parts = append(parts, "reset: "+s.reset)
+		}
 		g.pf("    new TableFixedSlot<%s>(%s),\n", name, strings.Join(parts, ", "))
+	}
+	g.pf("};\n\n")
+
+	cover := identitySlotCover(b.plan, len(b.slots))
+	g.pf("// THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and\n")
+	g.pf("// merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the\n")
+	g.pf("// identity plan it is empty and the identity read writes no slot twice.\n")
+	g.pf("public static readonly TableFixedFill[] %sFixedCover = new TableFixedFill[] {\n", name)
+	for _, r := range cover {
+		g.pf("    new TableFixedFill(%du, %du),\n", r.off, r.size)
 	}
 	g.pf("};\n\n")
 
@@ -1558,13 +1689,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<TableFixedEntry> entries = %sFixedPlan;\n", name)
 	g.pf("    long record_bytes = %sFixedRecordBytes;\n", name)
 	g.pf("    ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;\n")
+	g.pf("    TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();\n")
+	g.pf("    int fillCount = 0;\n")
 	g.pf("    if (hash != %sFixedHash)\n    {\n", name)
 	g.pf("        if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))\n        {\n            if (report != null) { report.Refused = true; report.Reason = why; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
 	g.pf("        int made = TableFixedWire.Compile(parsed, %sFixedLayout, %sFixedDst, plan, report);\n", name, name)
 	g.pf("        if (made < 0)\n        {\n            if (report != null) { report.Refused = true; report.Reason = \"plan_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n            return -1;\n        }\n")
 	g.pf("        entries = plan.Slice(0, made);\n")
 	g.pf("        record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;\n")
-	g.pf("        planBytes = MemoryMarshal.AsBytes(plan);\n    }\n")
+	g.pf("        planBytes = MemoryMarshal.AsBytes(plan);\n")
+	g.pf("        int slotN = %sFixedSlots.Length;\n", name)
+	g.pf("        if (slotN > 0)\n        {\n")
+	g.pf("            byte[] landed = new byte[slotN];\n")
+	g.pf("            fillBuf = new TableFixedFill[slotN];\n")
+	g.pf("            fillCount = TableFixedWire.Fills(entries, %sFixedCover, landed, fillBuf);\n", name)
+	g.pf("        }\n    }\n")
 	g.pf("    if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"layout_malformed\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
@@ -1575,9 +1714,11 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if (n > values.Length)\n    {\n")
 	g.pf("        if (report != null) { report.Refused = true; report.Reason = \"batch_too_large\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("        return -1;\n    }\n")
+	g.pf("    // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the\n")
+	g.pf("    // skip: identity's fill is empty, so this read writes no slot twice.\n")
 	g.pf("    for (int k = 0; k < n; ++k)\n    {\n")
 	g.pf("        if (values[k] == null) { values[k] = new %s(); }\n", name)
-	g.pf("        TableReset(values[k]);\n")
+	g.pf("        TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), %sFixedSlots, values[k]);\n", name)
 	g.pf("        if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)\n        {\n")
 	g.pf("            if (report != null) { report.Refused = true; report.Reason = \"no_layout\"; report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")

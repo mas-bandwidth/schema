@@ -74,6 +74,89 @@ fixed table Root { pick Pick }
 	}
 }
 
+// TestFixedFormLoadPrefillsThePlanHoles holds Glenn's ruling: identity prefills
+// nothing; the plan compiler prefills exactly the ranges the plan does not land.
+// Empty fill is the skip. There is no identity flag in the record loop.
+func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
+	if !strings.Contains(tableFixedRuntimeTypes, "public struct TableFixedFill") {
+		t.Error("TableFixedFill is missing")
+	}
+	if !strings.Contains(tableFixedRuntimeTypes, "public readonly Action<T> Reset;") {
+		t.Error("TableFixedSlot has no Reset")
+	}
+	if !strings.Contains(tableFixedWireSource, "public static int Fills(") {
+		t.Error("the runtime never names Fills")
+	}
+	if !strings.Contains(tableFixedWireSource, "public static void FillRun<T>(") {
+		t.Error("the runtime never names FillRun")
+	}
+	if strings.Contains(tableFixedWireSource, "if (identity)") || strings.Contains(tableFixedWireSource, "if(identity)") {
+		t.Error("the load grew a second reader; hash chooses the plan and nothing else")
+	}
+
+	src := generateCS(t, `package probe
+fixed table Config {
+    scale float32 = 1.0
+    extra int32 = 9
+}
+`)
+	load := csFn(src, "public static long ConfigFixedLoad(")
+	if load == "" {
+		t.Fatal("ConfigFixedLoad was not emitted")
+	}
+	if !strings.Contains(src, "ConfigFixedCover") {
+		t.Error("the type has no identity cover")
+	}
+	if !strings.Contains(load, "TableFixedWire.Fills(") {
+		t.Error("compiled FixedLoad does not prefill the plan's holes")
+	}
+	if !strings.Contains(load, "TableFixedWire.FillRun(") {
+		t.Error("the record loop does not run the hole list")
+	}
+	if strings.Contains(load, "TableReset(values[k])") {
+		t.Error("identity still TableReset's each record; prefill is the hole list")
+	}
+	if strings.Contains(load, "if (identity)") {
+		t.Error("identity flag still forks the record loop")
+	}
+	if !strings.Contains(src, "reset: (t) => { t.Extra = 9; }") && !strings.Contains(src, "reset: (t) => { t.Extra = 9 }") {
+		t.Error("the extra slot has no declared-default Reset")
+	}
+}
+
+func csFn(src, sig string) string {
+	i := strings.Index(src, sig)
+	if i < 0 {
+		return ""
+	}
+	src = src[i:]
+	depth := 0
+	for j := 0; j < len(src); j++ {
+		switch src[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[:j+1]
+			}
+		}
+	}
+	return src
+}
+
+func TestIdentitySlotCoverIsWhatThePlanLands(t *testing.T) {
+	plan := []fixedPlanEntry{
+		{dst: 0, op: 0},
+		{dst: 1, op: 0},
+		{dst: 3, op: 2, aux: 4},
+	}
+	got := identitySlotCover(plan, 5)
+	if len(got) != 2 || got[0] != (fixedFillRange{0, 2}) || got[1] != (fixedFillRange{3, 2}) {
+		t.Fatalf("cover = %+v", got)
+	}
+}
+
 func guardedPlanHasArgW(src string, want int) bool {
 	start := strings.Index(src, "RootFixedPlan = new TableFixedPlan")
 	if start < 0 {
