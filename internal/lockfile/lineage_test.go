@@ -409,3 +409,70 @@ func TestLockRetireTableThenRemoveTheDeclaration(t *testing.T) {
 		t.Error("a table the lock does not carry is refused")
 	}
 }
+
+// TestLineageAccessorIsWhatCompileReads is step 4 of #898: the accessor a
+// BACKEND calls, holding exactly what algorithm §5.2's table of lock facts asks
+// for — a lineage OLDEST FIRST, per entry the wire hash, the layout bytes, the
+// definitions digest and the record size, plus the floor as one number. It
+// replaces the filename convention the C++ backend reads its lineage from today
+// (internal/codegen/cpptable/lineage.go, an interim named as an interim): this
+// test is the contract that interim is swapped for.
+func TestLineageAccessorIsWhatCompileReads(t *testing.T) {
+	dir, paths := fixture(t, rowTable("    a int32"))
+	var hashes []uint64
+	fields := "    a int32"
+	for i := 0; i < 3; i++ {
+		if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+			t.Fatal(err)
+		}
+		h, _, _ := wireHashOf(t, paths, "Row")
+		hashes = append(hashes, h)
+		fields += fmt.Sprintf("\n    f%d int32", i)
+		if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(rowTable(fields)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Lock.schema"), []byte(rowTable("    a int32\n    f0 int32\n    f1 int32")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Update(load(t, paths), paths); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lockfile.Retire(load(t, paths), paths, fmt.Sprintf("Row@0x%016x", hashes[0]), "the first client is gone"); err != nil {
+		t.Fatal(err)
+	}
+
+	// ONE CALL from a backend that holds the unit's paths
+	lock, ok, err := lockfile.Open(paths)
+	if err != nil || !ok {
+		t.Fatalf("Open reads the unit's lock: ok=%v err=%v", ok, err)
+	}
+	got := lockfile.Lineage(lock, "Row")
+	if len(got) != 3 {
+		t.Fatalf("three layouts, oldest first: %d", len(got))
+	}
+	for i, e := range got {
+		if e.Wire != hashes[i] {
+			t.Errorf("entry %d is 0x%016x, want 0x%016x (OLDEST FIRST)", i, e.Wire, hashes[i])
+		}
+		// the bytes are what LOAD compares a file against, and the hash binds
+		// them together with the digest
+		if len(e.Layout) == 0 || ir.TableFixedLayoutHash(e.Layout) != e.Wire || len(e.Digest) != 0 {
+			t.Errorf("entry %d: bytes=%x digest=%x do not hash to 0x%016x", i, e.Layout, e.Digest, e.Wire)
+		}
+		if e.Record <= 0 {
+			t.Errorf("entry %d carries the record body size, got %d", i, e.Record)
+		}
+	}
+	if !got[0].Retired || got[1].Retired || got[2].Retired {
+		t.Errorf("the retired mark is per entry: %v %v %v", got[0].Retired, got[1].Retired, got[2].Retired)
+	}
+	if f := lockfile.Floor(lock, "Row"); f != 1 {
+		t.Errorf("the floor is one number, one past the highest retired index: %d", f)
+	}
+	// a nested `type` has no lineage: it has no file of its own and no hash a
+	// file carries
+	if lockfile.Lineage(lock, "Nope") != nil {
+		t.Error("a table nothing locked has no lineage")
+	}
+}

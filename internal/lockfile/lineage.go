@@ -203,6 +203,33 @@ func parseLineage(line string) (LineageEntry, error) {
 	return e, nil
 }
 
+// Open is how a BACKEND reads this file: it locates the unit's lock from the
+// unit's source paths and parses it. ok is false when the unit has no lock —
+// which is not an error, because a unit that has never been locked promises
+// nothing — and the error is a lock that cannot be read.
+//
+// A backend wants exactly two things from what comes back, per fixed table:
+// [Lineage] and [Floor]. It is the pair algorithm §5.2's COMPILE is written
+// against.
+func Open(paths []string) (*Unit, bool, error) {
+	path, ok, err := Locate(paths)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	lock, err := Parse(path, data)
+	if err != nil {
+		return nil, false, fmt.Errorf("%w — the compiler owns this file; write it with: schema lock (docs/SPEC-TABLES.md §2.10)", err)
+	}
+	return lock, true, nil
+}
+
 // Lineage is THE ACCESSOR COMPILE READS (algorithm §5.2): one fixed table's
 // locked layouts, OLDEST FIRST, the current one last. Nil when the lock does
 // not carry the table, or carries it as a nested `type` rather than a fixed
