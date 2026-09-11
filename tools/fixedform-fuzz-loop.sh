@@ -22,6 +22,12 @@ ROOT="${FUZZ_ROOT:-$HOME/fuzz}"
 REPO="${FUZZ_REPO:-$ROOT/schema}"
 BIN="$REPO/build/schema_test_fixedform_fuzz"
 CORPUS="$REPO/build/fixedform-fuzz-corpus"
+# THE GROWING CORPUS IS NOT THE SEED CORPUS, and the first round taught us why:
+# libFuzzer writes every interesting unit into the FIRST corpus directory it is
+# given, so pointing it at the seeds makes the gate's replay set grow mutants
+# overnight and go red on inputs nobody chose. The seeds are handed over second
+# and stay exactly what the reference wrote.
+FOUND="${FUZZ_FOUND:-$ROOT/corpus}"
 CRASHES="${FUZZ_CRASHES:-$ROOT/crashes}"
 ROUND="${FUZZ_ROUND_SECONDS:-3600}"
 
@@ -30,14 +36,15 @@ if [ ! -x "$BIN" ]; then
     exit 1
 fi
 
-mkdir -p "$CRASHES" "$CORPUS"
+mkdir -p "$CRASHES" "$CORPUS" "$FOUND"
 : > "$ROOT/RUN"
 
 # ONE WORKER PER CORE, and on a one-core box that is one worker: -jobs past
 # nproc only makes the rounds fight over the same core and the same corpus.
 JOBS="${FUZZ_JOBS:-$(nproc 2>/dev/null || echo 1)}"
 
-echo "fixedform fuzz loop: starting, jobs=$JOBS round=${ROUND}s corpus=$CORPUS crashes=$CRASHES"
+echo "fixedform fuzz loop: starting, jobs=$JOBS round=${ROUND}s"
+echo "fixedform fuzz loop: seeds=$CORPUS (never written) growing=$FOUND crashes=$CRASHES"
 echo "fixedform fuzz loop: stop with  rm -f $ROOT/RUN"
 
 round=0
@@ -50,7 +57,7 @@ while [ -e "$ROOT/RUN" ]; do
         -artifact_prefix="$CRASHES/" \
         -print_final_stats=1 \
         -rss_limit_mb=4096 \
-        "$CORPUS" 2>&1
+        "$FOUND" "$CORPUS" 2>&1
     status=$?
     echo "=== round $round ended, status $status, $(ls -1 "$CRASHES" 2>/dev/null | wc -l) artifacts in $CRASHES ==="
     # A FINDING IS NOT A REASON TO STOP but it is a reason to say so loudly: the

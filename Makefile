@@ -6127,13 +6127,16 @@ tables-fixedform-fuzz: build/schema_test_fixedform_fuzz build/fixedform-fuzz-cor
 
 # THE SEARCH. MINUTES is the wall clock; the default is one minute so a typo
 # does not take the machine. On Space this runs under nohup with -jobs/-workers
-# at nproc and restarts itself after every hour.
+# at nproc and restarts itself after every hour. The GROWING corpus is its own
+# directory: libFuzzer writes interesting units into the FIRST corpus directory
+# it is given, and the seed corpus is a gate's replay set, not a scratch pad.
 MINUTES ?= 1
 tables-fixedform-fuzz-run: build/schema_test_fixedform_fuzz build/fixedform-fuzz-corpus/.stamp
 	@mkdir -p build/fixedform-fuzz-finds
+	@mkdir -p build/fixedform-fuzz-growing
 	./build/schema_test_fixedform_fuzz -max_total_time=$$(( $(MINUTES) * 60 )) \
 	    -artifact_prefix=build/fixedform-fuzz-finds/ -print_final_stats=1 \
-	    build/fixedform-fuzz-corpus
+	    build/fixedform-fuzz-growing build/fixedform-fuzz-corpus
 
 .PHONY: tables-fixedform-fuzz-run
 
