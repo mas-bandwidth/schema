@@ -810,8 +810,13 @@ func versionSection(out, test string) string {
 		return versionTail(out)
 	}
 	rest := out[at:]
-	if end := strings.Index(rest, "\n\n"); end > 0 {
-		rest = rest[:end]
+	// THE PANIC IS BEHIND A BLANK LINE, so the cut is at the NEXT section's own
+	// marker and never at the first empty line: cutting there printed the
+	// header and threw the message away, and a row whose crate failed to
+	// COMPILE printed nothing at all — the one case where the text is the only
+	// thing that says what happened.
+	if end := strings.Index(rest[len(test):], "\n---- "); end > 0 {
+		rest = rest[:len(test)+end]
 	}
 	return versionClip(rest, 2000)
 }
