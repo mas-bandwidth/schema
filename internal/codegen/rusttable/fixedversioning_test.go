@@ -91,7 +91,17 @@ type versionRow struct {
 
 var versionRows = []versionRow{
 	{row: "array_bounded_grow"},
-	{row: "array_elem_widen", widens: true},
+	{row: "array_elem_widen", widens: true, check: `
+    // EXACTLY FOUR, PER RECORD (§5.9 #33). widened moves once per ENTRY, a fold
+    // across a widen is forbidden, and the number is min(their_n, my_n) — which
+    // on this row is the bound, 4. A leg that FOLDED the run and widened after
+    // lands the reader's defaults over the writer's values, silently, and leaves
+    // widened at ZERO; a leg that folds and still widens counts ONE. Neither
+    // reads as four, which is why the assertion is exact and not "> 0".
+    assert_eq!(
+        report.widened, 4 * n as u32,
+        "a widened [..4] run owes EXACTLY 4 widen entries per record, not {}", report.widened
+    );`},
 	{row: "array_fixed_grow", poison: true, check: `
     // 4 exact, 4 at the ELEMENT DEFAULT — a nested Vec's OWN defaults, x = 7
     // and y = 9, which a zero fill cannot fake (bill §12.6).
@@ -159,7 +169,21 @@ var versionRows = []versionRow{
         "the slot the appended key opened is not its declared default: n={}", values[0].slots[3].n
     );`},
 	{row: "nested_append"},
-	{row: "optional_add"},
+	{row: "optional_add", poison: true, check: `
+    // THE PRESENT COMPANION IS THE ONE NEWER-ONLY FIELD THAT IS NOT A DEFAULT
+    // (§5.9 #40, bill §12.8): the writer sent a T, so the ?T this reader
+    // declares IS present and owes 1 — not the fresh value's false. A leg that
+    // prefills the companion and emits no present entry reads a value the
+    // writer sent as ABSENT: values intact, presence lost, and every value check
+    // still passing.
+    assert!(
+        values[0].link_present,
+        "T into ?T owes present = 1, and the prefill's false is not it (§5.9 #40)"
+    );
+    assert!(
+        values[0].lead == 1 || values[0].lead != 0x5A5A_5A5A,
+        "the poison survived in a neighbour: lead={:#x}", values[0].lead
+    );`},
 	{row: "range_widen"},
 	{row: "rename_without_was", sameHash: true},
 	{row: "string_grow"},
