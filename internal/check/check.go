@@ -3940,7 +3940,7 @@ var tableGeneratedVerbs = []string{
 	// set in snake_case (<name>_fixed_save) and the two are one claim.
 	"FixedMeasure", "FixedSave", "FixedLoad", "FixedWriteBody", "FixedLeaves",
 	"FixedBodyBytes", "FixedRecordBytes", "FixedHash", "FixedLayout", "FixedLayoutBytes",
-	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded",
+	"FixedDst", "FixedPlan", "FixedPlanCount", "FixedPlanGuarded", "FixedCover",
 	// and §3.4's READ-SIDE BOUNDS: the straight-line pass a read makes after
 	// the copy, and the per-type body it calls. Claimed for EVERY closure
 	// member and not only the ones that declare a bound today — a field gains

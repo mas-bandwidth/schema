@@ -378,6 +378,22 @@ namespace Benchtable
 
     public delegate void TableFixedSetBytes<T>(T target, ReadOnlySpan<byte> span, int len);
 
+    // ONE SLOT RANGE THE PLAN DOES NOT LAND. Dst is a slot index, Size is how
+    // many consecutive slots. The identity plan's list is empty: its destinations
+    // ARE the value slots, so there is nothing left to subtract.
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct TableFixedFill
+    {
+        public uint Dst;
+        public uint Size;
+
+        public TableFixedFill(uint dst, uint size)
+        {
+            Dst = dst;
+            Size = size;
+        }
+    }
+
     public readonly struct TableFixedSlot<T>
     {
         public readonly Action<T, ulong> SetRaw;
@@ -386,6 +402,7 @@ namespace Benchtable
         public readonly TableFixedSetBytes<T> SetBytes;
         public readonly TableFixedSetBytes<T> SetChars;
         public readonly Action<T, ulong, TableReport> SetRawReport;
+        public readonly Action<T> Reset; // declared default into this slot, and nowhere else
 
         public TableFixedSlot(
             Action<T, ulong> setRaw = null,
@@ -393,7 +410,8 @@ namespace Benchtable
             Action<T, UInt128> setWide = null,
             TableFixedSetBytes<T> setBytes = null,
             TableFixedSetBytes<T> setChars = null,
-            Action<T, ulong, TableReport> setRawReport = null)
+            Action<T, ulong, TableReport> setRawReport = null,
+            Action<T> reset = null)
         {
             SetRaw = setRaw;
             SetDouble = setDouble;
@@ -401,6 +419,7 @@ namespace Benchtable
             SetBytes = setBytes;
             SetChars = setChars;
             SetRawReport = setRawReport;
+            Reset = reset;
         }
     }
     // table TableEntity — TABLE-wire storage: public fields, every buffer allocated at
@@ -5707,6 +5726,66 @@ namespace Benchtable
                     return c.Count;
                 }
 
+                // THE PREFILL IS THE SLOTS THE PLAN DOES NOT LAND. Cover is the
+                // identity plan's destinations; Fills is that set minus everything
+                // this plan writes. A GUARDED ENTRY COUNTS AS LANDING: it is a union
+                // arm, and an arm's storage is the arm's. Identity's list is empty —
+                // its destinations ARE the cover — and that is the rule's limit case,
+                // not an exception: the record loop runs the list it was handed.
+                public static int Fills(
+                    ReadOnlySpan<TableFixedEntry> plan,
+                    ReadOnlySpan<TableFixedFill> cover,
+                    Span<byte> landed,
+                    Span<TableFixedFill> dest)
+                {
+                    landed.Clear();
+                    for (int i = 0; i < plan.Length; ++i)
+                    {
+                        ref readonly TableFixedEntry p = ref plan[i];
+                        if ((uint)p.Dst < (uint)landed.Length) { landed[(int)p.Dst] = 1; }
+                        if (p.Op == Text && (uint)p.Aux < (uint)landed.Length) { landed[(int)p.Aux] = 1; }
+                    }
+                    int n = 0;
+                    for (int r = 0; r < cover.Length; ++r)
+                    {
+                        uint pos = cover[r].Dst;
+                        uint hi = pos + cover[r].Size;
+                        while (pos < hi)
+                        {
+                            while (pos < hi && (uint)pos < (uint)landed.Length && landed[(int)pos] != 0) { pos++; }
+                            if (pos >= hi) { break; }
+                            uint start = pos;
+                            while (pos < hi && ((uint)pos >= (uint)landed.Length || landed[(int)pos] == 0)) { pos++; }
+                            if (n < dest.Length)
+                            {
+                                dest[n] = new TableFixedFill(start, pos - start);
+                            }
+                            n++;
+                        }
+                    }
+                    return n;
+                }
+
+                public static void FillRun<T>(
+                    ReadOnlySpan<TableFixedFill> fill,
+                    ReadOnlySpan<TableFixedSlot<T>> slots,
+                    T dst)
+                {
+                    for (int i = 0; i < fill.Length; ++i)
+                    {
+                        uint off = fill[i].Dst;
+                        uint n = fill[i].Size;
+                        for (uint s = 0; s < n; ++s)
+                        {
+                            uint idx = off + s;
+                            if (idx < (uint)slots.Length)
+                            {
+                                slots[(int)idx].Reset?.Invoke(dst);
+                            }
+                        }
+                    }
+                }
+
                 // THE TAG IS COMPARED AT ITS OWN WIDTH. A two- or four-byte tag whose
                 // low byte happens to be 1 is not arm 1: it is an ordinal this build
                 // has no arm for, and reading only the first byte let 0x0101 run arm
@@ -7512,20 +7591,27 @@ namespace Benchtable
         };
 
         public static readonly TableFixedSlot<TableEntity>[] TableEntityFixedSlots = new TableFixedSlot<TableEntity>[] {
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.EntityId = (uint)v),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosX = unchecked((int)v)),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosY = unchecked((int)v)),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Yaw = (uint)v),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Pitch = (uint)v),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelX = unchecked((int)v)),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelY = unchecked((int)v)),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Health = unchecked((int)v)),
-            new TableFixedSlot<TableEntity>(setRawReport: (t, v, rep) => { if (v > 15) { t.Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Damage = v),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Moving = v != 0),
-            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Firing = v != 0),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.EntityId = (uint)v, reset: (t) => { t.EntityId = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosX = unchecked((int)v), reset: (t) => { t.PosX = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosY = unchecked((int)v), reset: (t) => { t.PosY = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.PosZ = unchecked((int)v), reset: (t) => { t.PosZ = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Yaw = (uint)v, reset: (t) => { t.Yaw = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Pitch = (uint)v, reset: (t) => { t.Pitch = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelX = unchecked((int)v), reset: (t) => { t.VelX = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelY = unchecked((int)v), reset: (t) => { t.VelY = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.VelZ = unchecked((int)v), reset: (t) => { t.VelZ = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Health = unchecked((int)v), reset: (t) => { t.Health = 0; }),
+            new TableFixedSlot<TableEntity>(setRawReport: (t, v, rep) => { if (v > 15) { t.Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Weapon = (TableWeapon)v; } }, reset: (t) => { t.Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Damage = v, reset: (t) => { t.Damage = 0; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Moving = v != 0, reset: (t) => { t.Moving = false; }),
+            new TableFixedSlot<TableEntity>(setRaw: (t, v) => t.Firing = v != 0, reset: (t) => { t.Firing = false; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] TableEntityFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 14u),
         };
 
         public static readonly TableFixedPlan TableEntityFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -7617,6 +7703,8 @@ namespace Benchtable
             ReadOnlySpan<TableFixedEntry> entries = TableEntityFixedPlan;
             long record_bytes = TableEntityFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
             if (hash != TableEntityFixedHash)
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
@@ -7633,6 +7721,13 @@ namespace Benchtable
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
+                int slotN = TableEntityFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, TableEntityFixedCover, landed, fillBuf);
+                }
             }
             if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
             {
@@ -7650,10 +7745,12 @@ namespace Benchtable
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new TableEntity(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableEntityFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -7708,8 +7805,15 @@ namespace Benchtable
         };
 
         public static readonly TableFixedSlot<TableStat>[] TableStatFixedSlots = new TableFixedSlot<TableStat>[] {
-            new TableFixedSlot<TableStat>(setRaw: (t, v) => t.StatId = (uint)v),
-            new TableFixedSlot<TableStat>(setRaw: (t, v) => t.Delta = unchecked((int)v)),
+            new TableFixedSlot<TableStat>(setRaw: (t, v) => t.StatId = (uint)v, reset: (t) => { t.StatId = 0; }),
+            new TableFixedSlot<TableStat>(setRaw: (t, v) => t.Delta = unchecked((int)v), reset: (t) => { t.Delta = 0; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] TableStatFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 2u),
         };
 
         public static readonly TableFixedPlan TableStatFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -7789,6 +7893,8 @@ namespace Benchtable
             ReadOnlySpan<TableFixedEntry> entries = TableStatFixedPlan;
             long record_bytes = TableStatFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
             if (hash != TableStatFixedHash)
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
@@ -7805,6 +7911,13 @@ namespace Benchtable
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
+                int slotN = TableStatFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, TableStatFixedCover, landed, fillBuf);
+                }
             }
             if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
             {
@@ -7822,10 +7935,12 @@ namespace Benchtable
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new TableStat(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableStatFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
@@ -8028,316 +8143,323 @@ namespace Benchtable
         };
 
         public static readonly TableFixedSlot<TableMixed>[] TableMixedFixedSlots = new TableFixedSlot<TableMixed>[] {
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.ProtocolMagic = unchecked((ushort)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Sequence = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AckSequence = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AckBits = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.SessionId = unchecked((ulong)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.ClientId = unchecked((uint)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Nonce = unchecked((ulong)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.WorldTime = unchecked((long)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.FrameTick = (ulong)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.ServerTime = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.ServerTime = (float)d),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.EntitiesCount = (int)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].EntityId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].PosX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].PosY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Yaw = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Pitch = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].VelX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].VelY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Health = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[0].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[0].Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Damage = v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Moving = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Firing = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].EntityId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].PosX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].PosY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Yaw = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Pitch = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].VelX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].VelY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Health = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[1].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[1].Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Damage = v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Moving = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Firing = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].EntityId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].PosX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].PosY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Yaw = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Pitch = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].VelX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].VelY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Health = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[2].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[2].Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Damage = v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Moving = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Firing = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].EntityId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].PosX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].PosY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Yaw = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Pitch = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].VelX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].VelY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Health = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[3].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[3].Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Damage = v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Moving = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Firing = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].EntityId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].PosX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].PosY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Yaw = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Pitch = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].VelX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].VelY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Health = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[4].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[4].Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Damage = v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Moving = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Firing = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].EntityId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].PosX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].PosY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Yaw = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Pitch = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].VelX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].VelY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Health = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[5].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[5].Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Damage = v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Moving = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Firing = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].EntityId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].PosX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].PosY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Yaw = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Pitch = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].VelX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].VelY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Health = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[6].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[6].Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Damage = v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Moving = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Firing = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].EntityId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].PosX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].PosY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].PosZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Yaw = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Pitch = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].VelX = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].VelY = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].VelZ = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Health = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[7].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[7].Weapon = (TableWeapon)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Damage = v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Moving = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Firing = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.StatsCount = (int)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[0].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[0].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[1].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[1].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[2].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[2].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[3].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[3].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[4].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[4].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[5].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[5].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[6].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[6].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[7].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[7].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[8].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[8].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[9].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[9].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[10].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[10].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[11].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[11].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[12].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[12].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[13].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[13].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[14].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[14].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[15].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[15].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[16].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[16].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[17].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[17].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[18].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[18].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[19].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[19].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[20].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[20].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[21].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[21].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[22].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[22].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[23].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[23].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[24].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[24].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[25].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[25].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[26].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[26].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[27].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[27].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[28].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[28].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[29].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[29].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[30].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[30].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[31].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[31].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[32].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[32].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[33].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[33].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[34].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[34].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[35].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[35].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[36].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[36].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[37].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[37].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[38].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[38].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[39].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[39].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[40].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[40].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[41].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[41].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[42].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[42].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[43].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[43].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[44].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[44].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[45].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[45].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[46].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[46].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[47].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[47].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[48].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[48].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[49].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[49].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[50].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[50].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[51].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[51].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[52].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[52].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[53].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[53].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[54].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[54].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[55].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[55].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[56].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[56].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[57].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[57].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[58].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[58].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[59].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[59].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[60].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[60].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[61].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[61].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[62].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[62].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[63].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[63].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[64].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[64].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[65].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[65].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[66].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[66].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[67].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[67].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[68].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[68].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[69].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[69].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[70].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[70].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[71].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[71].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[72].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[72].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[73].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[73].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[74].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[74].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[75].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[75].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[76].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[76].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[77].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[77].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[78].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[78].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[79].StatId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[79].Delta = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 3) { t.GameEvent.Type = (TableEventType)0; if (rep != null) rep.Clamped++; } else { t.GameEvent.Type = (TableEventType)v; } }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Hit.TargetId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Hit.Damage = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Hit.HitKind = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Hit.Crit = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Chat.Channel = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Chat.Speaker = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Pickup.ItemId = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Pickup.Amount = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Loadout.Length)).CopyTo(t.Loadout); }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.PlayerNameLength = (int)v),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.PlayerName != null) b.Slice(0, Math.Min(b.Length, t.PlayerName.Length)).CopyTo(t.PlayerName); }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.PayloadLength = (int)v),
-            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Payload != null) b.Slice(0, Math.Min(b.Length, t.Payload.Length)).CopyTo(t.Payload); }),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimX = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimX = (float)d),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimY = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimY = (float)d),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimZ = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimZ = (float)d),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Recoil = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Recoil = (float)d),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Drift = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Drift = d),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.WideKey = unchecked((ulong)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Flux = unchecked((long)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Ping = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ping = (float)d),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.CrcHint = (uint)v),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.HasExtra = v != 0),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Extra = unchecked((int)v)),
-            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.IdleTicks = unchecked((int)v)),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.ProtocolMagic = unchecked((ushort)v), reset: (t) => { t.ProtocolMagic = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Sequence = (uint)v, reset: (t) => { t.Sequence = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AckSequence = unchecked((int)v), reset: (t) => { t.AckSequence = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AckBits = (uint)v, reset: (t) => { t.AckBits = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.SessionId = unchecked((ulong)v), reset: (t) => { t.SessionId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.ClientId = unchecked((uint)v), reset: (t) => { t.ClientId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Nonce = unchecked((ulong)v), reset: (t) => { t.Nonce = 1ul; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.WorldTime = unchecked((long)v), reset: (t) => { t.WorldTime = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.FrameTick = (ulong)v, reset: (t) => { t.FrameTick = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.ServerTime = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.ServerTime = (float)d, reset: (t) => { t.ServerTime = 0.0f; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.EntitiesCount = (int)v, reset: (t) => { t.EntitiesCount = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].EntityId = (uint)v, reset: (t) => { t.Entities[0].EntityId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].PosX = unchecked((int)v), reset: (t) => { t.Entities[0].PosX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].PosY = unchecked((int)v), reset: (t) => { t.Entities[0].PosY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].PosZ = unchecked((int)v), reset: (t) => { t.Entities[0].PosZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Yaw = (uint)v, reset: (t) => { t.Entities[0].Yaw = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Pitch = (uint)v, reset: (t) => { t.Entities[0].Pitch = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].VelX = unchecked((int)v), reset: (t) => { t.Entities[0].VelX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].VelY = unchecked((int)v), reset: (t) => { t.Entities[0].VelY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].VelZ = unchecked((int)v), reset: (t) => { t.Entities[0].VelZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Health = unchecked((int)v), reset: (t) => { t.Entities[0].Health = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[0].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[0].Weapon = (TableWeapon)v; } }, reset: (t) => { t.Entities[0].Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Damage = v, reset: (t) => { t.Entities[0].Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Moving = v != 0, reset: (t) => { t.Entities[0].Moving = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[0].Firing = v != 0, reset: (t) => { t.Entities[0].Firing = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].EntityId = (uint)v, reset: (t) => { t.Entities[1].EntityId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].PosX = unchecked((int)v), reset: (t) => { t.Entities[1].PosX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].PosY = unchecked((int)v), reset: (t) => { t.Entities[1].PosY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].PosZ = unchecked((int)v), reset: (t) => { t.Entities[1].PosZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Yaw = (uint)v, reset: (t) => { t.Entities[1].Yaw = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Pitch = (uint)v, reset: (t) => { t.Entities[1].Pitch = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].VelX = unchecked((int)v), reset: (t) => { t.Entities[1].VelX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].VelY = unchecked((int)v), reset: (t) => { t.Entities[1].VelY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].VelZ = unchecked((int)v), reset: (t) => { t.Entities[1].VelZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Health = unchecked((int)v), reset: (t) => { t.Entities[1].Health = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[1].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[1].Weapon = (TableWeapon)v; } }, reset: (t) => { t.Entities[1].Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Damage = v, reset: (t) => { t.Entities[1].Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Moving = v != 0, reset: (t) => { t.Entities[1].Moving = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[1].Firing = v != 0, reset: (t) => { t.Entities[1].Firing = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].EntityId = (uint)v, reset: (t) => { t.Entities[2].EntityId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].PosX = unchecked((int)v), reset: (t) => { t.Entities[2].PosX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].PosY = unchecked((int)v), reset: (t) => { t.Entities[2].PosY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].PosZ = unchecked((int)v), reset: (t) => { t.Entities[2].PosZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Yaw = (uint)v, reset: (t) => { t.Entities[2].Yaw = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Pitch = (uint)v, reset: (t) => { t.Entities[2].Pitch = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].VelX = unchecked((int)v), reset: (t) => { t.Entities[2].VelX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].VelY = unchecked((int)v), reset: (t) => { t.Entities[2].VelY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].VelZ = unchecked((int)v), reset: (t) => { t.Entities[2].VelZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Health = unchecked((int)v), reset: (t) => { t.Entities[2].Health = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[2].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[2].Weapon = (TableWeapon)v; } }, reset: (t) => { t.Entities[2].Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Damage = v, reset: (t) => { t.Entities[2].Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Moving = v != 0, reset: (t) => { t.Entities[2].Moving = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[2].Firing = v != 0, reset: (t) => { t.Entities[2].Firing = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].EntityId = (uint)v, reset: (t) => { t.Entities[3].EntityId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].PosX = unchecked((int)v), reset: (t) => { t.Entities[3].PosX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].PosY = unchecked((int)v), reset: (t) => { t.Entities[3].PosY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].PosZ = unchecked((int)v), reset: (t) => { t.Entities[3].PosZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Yaw = (uint)v, reset: (t) => { t.Entities[3].Yaw = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Pitch = (uint)v, reset: (t) => { t.Entities[3].Pitch = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].VelX = unchecked((int)v), reset: (t) => { t.Entities[3].VelX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].VelY = unchecked((int)v), reset: (t) => { t.Entities[3].VelY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].VelZ = unchecked((int)v), reset: (t) => { t.Entities[3].VelZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Health = unchecked((int)v), reset: (t) => { t.Entities[3].Health = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[3].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[3].Weapon = (TableWeapon)v; } }, reset: (t) => { t.Entities[3].Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Damage = v, reset: (t) => { t.Entities[3].Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Moving = v != 0, reset: (t) => { t.Entities[3].Moving = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[3].Firing = v != 0, reset: (t) => { t.Entities[3].Firing = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].EntityId = (uint)v, reset: (t) => { t.Entities[4].EntityId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].PosX = unchecked((int)v), reset: (t) => { t.Entities[4].PosX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].PosY = unchecked((int)v), reset: (t) => { t.Entities[4].PosY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].PosZ = unchecked((int)v), reset: (t) => { t.Entities[4].PosZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Yaw = (uint)v, reset: (t) => { t.Entities[4].Yaw = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Pitch = (uint)v, reset: (t) => { t.Entities[4].Pitch = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].VelX = unchecked((int)v), reset: (t) => { t.Entities[4].VelX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].VelY = unchecked((int)v), reset: (t) => { t.Entities[4].VelY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].VelZ = unchecked((int)v), reset: (t) => { t.Entities[4].VelZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Health = unchecked((int)v), reset: (t) => { t.Entities[4].Health = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[4].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[4].Weapon = (TableWeapon)v; } }, reset: (t) => { t.Entities[4].Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Damage = v, reset: (t) => { t.Entities[4].Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Moving = v != 0, reset: (t) => { t.Entities[4].Moving = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[4].Firing = v != 0, reset: (t) => { t.Entities[4].Firing = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].EntityId = (uint)v, reset: (t) => { t.Entities[5].EntityId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].PosX = unchecked((int)v), reset: (t) => { t.Entities[5].PosX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].PosY = unchecked((int)v), reset: (t) => { t.Entities[5].PosY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].PosZ = unchecked((int)v), reset: (t) => { t.Entities[5].PosZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Yaw = (uint)v, reset: (t) => { t.Entities[5].Yaw = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Pitch = (uint)v, reset: (t) => { t.Entities[5].Pitch = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].VelX = unchecked((int)v), reset: (t) => { t.Entities[5].VelX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].VelY = unchecked((int)v), reset: (t) => { t.Entities[5].VelY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].VelZ = unchecked((int)v), reset: (t) => { t.Entities[5].VelZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Health = unchecked((int)v), reset: (t) => { t.Entities[5].Health = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[5].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[5].Weapon = (TableWeapon)v; } }, reset: (t) => { t.Entities[5].Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Damage = v, reset: (t) => { t.Entities[5].Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Moving = v != 0, reset: (t) => { t.Entities[5].Moving = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[5].Firing = v != 0, reset: (t) => { t.Entities[5].Firing = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].EntityId = (uint)v, reset: (t) => { t.Entities[6].EntityId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].PosX = unchecked((int)v), reset: (t) => { t.Entities[6].PosX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].PosY = unchecked((int)v), reset: (t) => { t.Entities[6].PosY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].PosZ = unchecked((int)v), reset: (t) => { t.Entities[6].PosZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Yaw = (uint)v, reset: (t) => { t.Entities[6].Yaw = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Pitch = (uint)v, reset: (t) => { t.Entities[6].Pitch = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].VelX = unchecked((int)v), reset: (t) => { t.Entities[6].VelX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].VelY = unchecked((int)v), reset: (t) => { t.Entities[6].VelY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].VelZ = unchecked((int)v), reset: (t) => { t.Entities[6].VelZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Health = unchecked((int)v), reset: (t) => { t.Entities[6].Health = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[6].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[6].Weapon = (TableWeapon)v; } }, reset: (t) => { t.Entities[6].Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Damage = v, reset: (t) => { t.Entities[6].Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Moving = v != 0, reset: (t) => { t.Entities[6].Moving = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[6].Firing = v != 0, reset: (t) => { t.Entities[6].Firing = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].EntityId = (uint)v, reset: (t) => { t.Entities[7].EntityId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].PosX = unchecked((int)v), reset: (t) => { t.Entities[7].PosX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].PosY = unchecked((int)v), reset: (t) => { t.Entities[7].PosY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].PosZ = unchecked((int)v), reset: (t) => { t.Entities[7].PosZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Yaw = (uint)v, reset: (t) => { t.Entities[7].Yaw = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Pitch = (uint)v, reset: (t) => { t.Entities[7].Pitch = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].VelX = unchecked((int)v), reset: (t) => { t.Entities[7].VelX = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].VelY = unchecked((int)v), reset: (t) => { t.Entities[7].VelY = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].VelZ = unchecked((int)v), reset: (t) => { t.Entities[7].VelZ = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Health = unchecked((int)v), reset: (t) => { t.Entities[7].Health = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 15) { t.Entities[7].Weapon = 0; if (rep != null) rep.Clamped++; } else { t.Entities[7].Weapon = (TableWeapon)v; } }, reset: (t) => { t.Entities[7].Weapon = global::Benchtable.TableWeapon.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Damage = v, reset: (t) => { t.Entities[7].Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Moving = v != 0, reset: (t) => { t.Entities[7].Moving = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Entities[7].Firing = v != 0, reset: (t) => { t.Entities[7].Firing = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.StatsCount = (int)v, reset: (t) => { t.StatsCount = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[0].StatId = (uint)v, reset: (t) => { t.Stats[0].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[0].Delta = unchecked((int)v), reset: (t) => { t.Stats[0].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[1].StatId = (uint)v, reset: (t) => { t.Stats[1].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[1].Delta = unchecked((int)v), reset: (t) => { t.Stats[1].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[2].StatId = (uint)v, reset: (t) => { t.Stats[2].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[2].Delta = unchecked((int)v), reset: (t) => { t.Stats[2].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[3].StatId = (uint)v, reset: (t) => { t.Stats[3].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[3].Delta = unchecked((int)v), reset: (t) => { t.Stats[3].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[4].StatId = (uint)v, reset: (t) => { t.Stats[4].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[4].Delta = unchecked((int)v), reset: (t) => { t.Stats[4].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[5].StatId = (uint)v, reset: (t) => { t.Stats[5].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[5].Delta = unchecked((int)v), reset: (t) => { t.Stats[5].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[6].StatId = (uint)v, reset: (t) => { t.Stats[6].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[6].Delta = unchecked((int)v), reset: (t) => { t.Stats[6].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[7].StatId = (uint)v, reset: (t) => { t.Stats[7].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[7].Delta = unchecked((int)v), reset: (t) => { t.Stats[7].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[8].StatId = (uint)v, reset: (t) => { t.Stats[8].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[8].Delta = unchecked((int)v), reset: (t) => { t.Stats[8].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[9].StatId = (uint)v, reset: (t) => { t.Stats[9].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[9].Delta = unchecked((int)v), reset: (t) => { t.Stats[9].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[10].StatId = (uint)v, reset: (t) => { t.Stats[10].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[10].Delta = unchecked((int)v), reset: (t) => { t.Stats[10].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[11].StatId = (uint)v, reset: (t) => { t.Stats[11].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[11].Delta = unchecked((int)v), reset: (t) => { t.Stats[11].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[12].StatId = (uint)v, reset: (t) => { t.Stats[12].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[12].Delta = unchecked((int)v), reset: (t) => { t.Stats[12].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[13].StatId = (uint)v, reset: (t) => { t.Stats[13].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[13].Delta = unchecked((int)v), reset: (t) => { t.Stats[13].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[14].StatId = (uint)v, reset: (t) => { t.Stats[14].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[14].Delta = unchecked((int)v), reset: (t) => { t.Stats[14].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[15].StatId = (uint)v, reset: (t) => { t.Stats[15].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[15].Delta = unchecked((int)v), reset: (t) => { t.Stats[15].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[16].StatId = (uint)v, reset: (t) => { t.Stats[16].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[16].Delta = unchecked((int)v), reset: (t) => { t.Stats[16].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[17].StatId = (uint)v, reset: (t) => { t.Stats[17].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[17].Delta = unchecked((int)v), reset: (t) => { t.Stats[17].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[18].StatId = (uint)v, reset: (t) => { t.Stats[18].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[18].Delta = unchecked((int)v), reset: (t) => { t.Stats[18].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[19].StatId = (uint)v, reset: (t) => { t.Stats[19].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[19].Delta = unchecked((int)v), reset: (t) => { t.Stats[19].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[20].StatId = (uint)v, reset: (t) => { t.Stats[20].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[20].Delta = unchecked((int)v), reset: (t) => { t.Stats[20].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[21].StatId = (uint)v, reset: (t) => { t.Stats[21].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[21].Delta = unchecked((int)v), reset: (t) => { t.Stats[21].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[22].StatId = (uint)v, reset: (t) => { t.Stats[22].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[22].Delta = unchecked((int)v), reset: (t) => { t.Stats[22].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[23].StatId = (uint)v, reset: (t) => { t.Stats[23].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[23].Delta = unchecked((int)v), reset: (t) => { t.Stats[23].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[24].StatId = (uint)v, reset: (t) => { t.Stats[24].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[24].Delta = unchecked((int)v), reset: (t) => { t.Stats[24].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[25].StatId = (uint)v, reset: (t) => { t.Stats[25].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[25].Delta = unchecked((int)v), reset: (t) => { t.Stats[25].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[26].StatId = (uint)v, reset: (t) => { t.Stats[26].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[26].Delta = unchecked((int)v), reset: (t) => { t.Stats[26].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[27].StatId = (uint)v, reset: (t) => { t.Stats[27].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[27].Delta = unchecked((int)v), reset: (t) => { t.Stats[27].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[28].StatId = (uint)v, reset: (t) => { t.Stats[28].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[28].Delta = unchecked((int)v), reset: (t) => { t.Stats[28].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[29].StatId = (uint)v, reset: (t) => { t.Stats[29].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[29].Delta = unchecked((int)v), reset: (t) => { t.Stats[29].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[30].StatId = (uint)v, reset: (t) => { t.Stats[30].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[30].Delta = unchecked((int)v), reset: (t) => { t.Stats[30].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[31].StatId = (uint)v, reset: (t) => { t.Stats[31].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[31].Delta = unchecked((int)v), reset: (t) => { t.Stats[31].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[32].StatId = (uint)v, reset: (t) => { t.Stats[32].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[32].Delta = unchecked((int)v), reset: (t) => { t.Stats[32].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[33].StatId = (uint)v, reset: (t) => { t.Stats[33].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[33].Delta = unchecked((int)v), reset: (t) => { t.Stats[33].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[34].StatId = (uint)v, reset: (t) => { t.Stats[34].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[34].Delta = unchecked((int)v), reset: (t) => { t.Stats[34].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[35].StatId = (uint)v, reset: (t) => { t.Stats[35].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[35].Delta = unchecked((int)v), reset: (t) => { t.Stats[35].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[36].StatId = (uint)v, reset: (t) => { t.Stats[36].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[36].Delta = unchecked((int)v), reset: (t) => { t.Stats[36].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[37].StatId = (uint)v, reset: (t) => { t.Stats[37].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[37].Delta = unchecked((int)v), reset: (t) => { t.Stats[37].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[38].StatId = (uint)v, reset: (t) => { t.Stats[38].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[38].Delta = unchecked((int)v), reset: (t) => { t.Stats[38].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[39].StatId = (uint)v, reset: (t) => { t.Stats[39].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[39].Delta = unchecked((int)v), reset: (t) => { t.Stats[39].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[40].StatId = (uint)v, reset: (t) => { t.Stats[40].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[40].Delta = unchecked((int)v), reset: (t) => { t.Stats[40].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[41].StatId = (uint)v, reset: (t) => { t.Stats[41].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[41].Delta = unchecked((int)v), reset: (t) => { t.Stats[41].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[42].StatId = (uint)v, reset: (t) => { t.Stats[42].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[42].Delta = unchecked((int)v), reset: (t) => { t.Stats[42].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[43].StatId = (uint)v, reset: (t) => { t.Stats[43].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[43].Delta = unchecked((int)v), reset: (t) => { t.Stats[43].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[44].StatId = (uint)v, reset: (t) => { t.Stats[44].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[44].Delta = unchecked((int)v), reset: (t) => { t.Stats[44].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[45].StatId = (uint)v, reset: (t) => { t.Stats[45].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[45].Delta = unchecked((int)v), reset: (t) => { t.Stats[45].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[46].StatId = (uint)v, reset: (t) => { t.Stats[46].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[46].Delta = unchecked((int)v), reset: (t) => { t.Stats[46].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[47].StatId = (uint)v, reset: (t) => { t.Stats[47].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[47].Delta = unchecked((int)v), reset: (t) => { t.Stats[47].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[48].StatId = (uint)v, reset: (t) => { t.Stats[48].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[48].Delta = unchecked((int)v), reset: (t) => { t.Stats[48].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[49].StatId = (uint)v, reset: (t) => { t.Stats[49].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[49].Delta = unchecked((int)v), reset: (t) => { t.Stats[49].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[50].StatId = (uint)v, reset: (t) => { t.Stats[50].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[50].Delta = unchecked((int)v), reset: (t) => { t.Stats[50].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[51].StatId = (uint)v, reset: (t) => { t.Stats[51].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[51].Delta = unchecked((int)v), reset: (t) => { t.Stats[51].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[52].StatId = (uint)v, reset: (t) => { t.Stats[52].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[52].Delta = unchecked((int)v), reset: (t) => { t.Stats[52].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[53].StatId = (uint)v, reset: (t) => { t.Stats[53].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[53].Delta = unchecked((int)v), reset: (t) => { t.Stats[53].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[54].StatId = (uint)v, reset: (t) => { t.Stats[54].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[54].Delta = unchecked((int)v), reset: (t) => { t.Stats[54].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[55].StatId = (uint)v, reset: (t) => { t.Stats[55].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[55].Delta = unchecked((int)v), reset: (t) => { t.Stats[55].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[56].StatId = (uint)v, reset: (t) => { t.Stats[56].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[56].Delta = unchecked((int)v), reset: (t) => { t.Stats[56].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[57].StatId = (uint)v, reset: (t) => { t.Stats[57].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[57].Delta = unchecked((int)v), reset: (t) => { t.Stats[57].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[58].StatId = (uint)v, reset: (t) => { t.Stats[58].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[58].Delta = unchecked((int)v), reset: (t) => { t.Stats[58].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[59].StatId = (uint)v, reset: (t) => { t.Stats[59].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[59].Delta = unchecked((int)v), reset: (t) => { t.Stats[59].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[60].StatId = (uint)v, reset: (t) => { t.Stats[60].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[60].Delta = unchecked((int)v), reset: (t) => { t.Stats[60].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[61].StatId = (uint)v, reset: (t) => { t.Stats[61].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[61].Delta = unchecked((int)v), reset: (t) => { t.Stats[61].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[62].StatId = (uint)v, reset: (t) => { t.Stats[62].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[62].Delta = unchecked((int)v), reset: (t) => { t.Stats[62].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[63].StatId = (uint)v, reset: (t) => { t.Stats[63].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[63].Delta = unchecked((int)v), reset: (t) => { t.Stats[63].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[64].StatId = (uint)v, reset: (t) => { t.Stats[64].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[64].Delta = unchecked((int)v), reset: (t) => { t.Stats[64].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[65].StatId = (uint)v, reset: (t) => { t.Stats[65].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[65].Delta = unchecked((int)v), reset: (t) => { t.Stats[65].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[66].StatId = (uint)v, reset: (t) => { t.Stats[66].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[66].Delta = unchecked((int)v), reset: (t) => { t.Stats[66].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[67].StatId = (uint)v, reset: (t) => { t.Stats[67].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[67].Delta = unchecked((int)v), reset: (t) => { t.Stats[67].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[68].StatId = (uint)v, reset: (t) => { t.Stats[68].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[68].Delta = unchecked((int)v), reset: (t) => { t.Stats[68].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[69].StatId = (uint)v, reset: (t) => { t.Stats[69].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[69].Delta = unchecked((int)v), reset: (t) => { t.Stats[69].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[70].StatId = (uint)v, reset: (t) => { t.Stats[70].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[70].Delta = unchecked((int)v), reset: (t) => { t.Stats[70].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[71].StatId = (uint)v, reset: (t) => { t.Stats[71].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[71].Delta = unchecked((int)v), reset: (t) => { t.Stats[71].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[72].StatId = (uint)v, reset: (t) => { t.Stats[72].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[72].Delta = unchecked((int)v), reset: (t) => { t.Stats[72].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[73].StatId = (uint)v, reset: (t) => { t.Stats[73].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[73].Delta = unchecked((int)v), reset: (t) => { t.Stats[73].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[74].StatId = (uint)v, reset: (t) => { t.Stats[74].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[74].Delta = unchecked((int)v), reset: (t) => { t.Stats[74].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[75].StatId = (uint)v, reset: (t) => { t.Stats[75].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[75].Delta = unchecked((int)v), reset: (t) => { t.Stats[75].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[76].StatId = (uint)v, reset: (t) => { t.Stats[76].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[76].Delta = unchecked((int)v), reset: (t) => { t.Stats[76].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[77].StatId = (uint)v, reset: (t) => { t.Stats[77].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[77].Delta = unchecked((int)v), reset: (t) => { t.Stats[77].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[78].StatId = (uint)v, reset: (t) => { t.Stats[78].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[78].Delta = unchecked((int)v), reset: (t) => { t.Stats[78].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[79].StatId = (uint)v, reset: (t) => { t.Stats[79].StatId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Stats[79].Delta = unchecked((int)v), reset: (t) => { t.Stats[79].Delta = 0; }),
+            new TableFixedSlot<TableMixed>(setRawReport: (t, v, rep) => { if (v > 3) { t.GameEvent.Type = (TableEventType)0; if (rep != null) rep.Clamped++; } else { t.GameEvent.Type = (TableEventType)v; } }, reset: (t) => { t.GameEvent.Type = TableEventType.None; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Hit.TargetId = (uint)v, reset: (t) => { t.GameEvent.Hit.TargetId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Hit.Damage = unchecked((int)v), reset: (t) => { t.GameEvent.Hit.Damage = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Hit.HitKind = unchecked((int)v), reset: (t) => { t.GameEvent.Hit.HitKind = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Hit.Crit = v != 0, reset: (t) => { t.GameEvent.Hit.Crit = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Chat.Channel = unchecked((int)v), reset: (t) => { t.GameEvent.Chat.Channel = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Chat.Speaker = (uint)v, reset: (t) => { t.GameEvent.Chat.Speaker = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Pickup.ItemId = (uint)v, reset: (t) => { t.GameEvent.Pickup.ItemId = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.GameEvent.Pickup.Amount = unchecked((int)v), reset: (t) => { t.GameEvent.Pickup.Amount = 0; }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Loadout != null) b.Slice(0, Math.Min(b.Length, t.Loadout.Length)).CopyTo(t.Loadout); }, reset: (t) => { if (t.Loadout != null) Array.Clear(t.Loadout, 0, t.Loadout.Length); }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.PlayerNameLength = (int)v, reset: (t) => { t.PlayerNameLength = 0; }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.PlayerName != null) b.Slice(0, Math.Min(b.Length, t.PlayerName.Length)).CopyTo(t.PlayerName); }, reset: (t) => { if (t.PlayerName != null) { Array.Clear(t.PlayerName, 0, t.PlayerName.Length); } }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.PayloadLength = (int)v, reset: (t) => { t.PayloadLength = 0; }),
+            new TableFixedSlot<TableMixed>(setBytes: (t, b, l) => { if (t.Payload != null) b.Slice(0, Math.Min(b.Length, t.Payload.Length)).CopyTo(t.Payload); }, reset: (t) => { if (t.Payload != null) { Array.Clear(t.Payload, 0, t.Payload.Length); } }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimX = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimX = (float)d, reset: (t) => { t.AimX = 0.0f; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimY = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimY = (float)d, reset: (t) => { t.AimY = 0.0f; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.AimZ = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.AimZ = (float)d, reset: (t) => { t.AimZ = 0.0f; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Recoil = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Recoil = (float)d, reset: (t) => { t.Recoil = 0.0f; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Drift = BitConverter.UInt64BitsToDouble(v), setDouble: (t, d) => t.Drift = d, reset: (t) => { t.Drift = 0.0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.WideKey = unchecked((ulong)v), reset: (t) => { t.WideKey = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Flux = unchecked((long)v), reset: (t) => { t.Flux = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Ping = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ping = (float)d, reset: (t) => { t.Ping = 0.0f; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.CrcHint = (uint)v, reset: (t) => { t.CrcHint = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.HasExtra = v != 0, reset: (t) => { t.HasExtra = false; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.Extra = unchecked((int)v), reset: (t) => { t.Extra = 0; }),
+            new TableFixedSlot<TableMixed>(setRaw: (t, v) => t.IdleTicks = unchecked((int)v), reset: (t) => { t.IdleTicks = 0; }),
+        };
+
+        // THE TYPE'S VALUE SLOTS: every slot the identity plan lands, sorted and
+        // merged. THE PREFILL IS THIS SET MINUS WHAT A PLAN LANDS, so against the
+        // identity plan it is empty and the identity read writes no slot twice.
+        public static readonly TableFixedFill[] TableMixedFixedCover = new TableFixedFill[] {
+            new TableFixedFill(0u, 310u),
         };
 
         public static readonly TableFixedPlan TableMixedFixedPlan = new TableFixedPlan(new TableFixedEntry[] {
@@ -8723,6 +8845,8 @@ namespace Benchtable
             ReadOnlySpan<TableFixedEntry> entries = TableMixedFixedPlan;
             long record_bytes = TableMixedFixedRecordBytes;
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
+            TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
+            int fillCount = 0;
             if (hash != TableMixedFixedHash)
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
@@ -8739,6 +8863,13 @@ namespace Benchtable
                 entries = plan.Slice(0, made);
                 record_bytes = 8 + (long)TableFixedWire.EntryAt(parsed, 0).Size;
                 planBytes = MemoryMarshal.AsBytes(plan);
+                int slotN = TableMixedFixedSlots.Length;
+                if (slotN > 0)
+                {
+                    byte[] landed = new byte[slotN];
+                    fillBuf = new TableFixedFill[slotN];
+                    fillCount = TableFixedWire.Fills(entries, TableMixedFixedCover, landed, fillBuf);
+                }
             }
             if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
             {
@@ -8756,10 +8887,12 @@ namespace Benchtable
                 if (report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; }
                 return -1;
             }
+            // ONE RECORD LOOP. Prefill the holes, walk the plan. Empty list is the
+            // skip: identity's fill is empty, so this read writes no slot twice.
             for (int k = 0; k < n; ++k)
             {
                 if (values[k] == null) { values[k] = new TableMixed(); }
-                TableReset(values[k]);
+                TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TableMixedFixedSlots, values[k]);
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
                     if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
