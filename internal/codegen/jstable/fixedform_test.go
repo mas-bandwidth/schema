@@ -519,3 +519,82 @@ func TestFixedRootsAndRefusalAgree(t *testing.T) {
 		}
 	}
 }
+
+// TestFixedFu1Fu2GenerateOnePath is the generator half of the TEXT-UNDER-AN-ARM
+// pin (test/tables/FU1.schema, FU2.schema). The runtime pin lives in
+// test/js-tables/fixedform.mjs: FU1 writes "hello" under the union's second
+// arm, FU2 reads those bytes through a COMPILED plan because it appends
+// `extra`, and both reads go through TableFixedRun. This test holds the
+// emitted load to ONE PATH — hash chooses the plan, empty holes skip, no
+// identity memcpy, no `if (identity)` door — and that FU2's extra is in the
+// image the prefill will land when the writer does not carry it.
+func TestFixedFu1Fu2GenerateOnePath(t *testing.T) {
+	fu1 := loadUnit(t, "../../../test/tables/FU1.schema")
+	fu2 := loadUnit(t, "../../../test/tables/FU2.schema")
+
+	files1, err := Generate(fu1)
+	if err != nil {
+		t.Fatalf("generate FU1: %v", err)
+	}
+	files2, err := Generate(fu2)
+	if err != nil {
+		t.Fatalf("generate FU2: %v", err)
+	}
+
+	src1 := string(files1["FU1Table.js"])
+	if src1 == "" {
+		t.Fatal("FU1 generated no FU1Table.js")
+	}
+	load1 := jsFn(src1, "FuRootFixedLoad")
+	if load1 == "" {
+		t.Fatal("FuRootFixedLoad was not a closed function in FU1")
+	}
+	if !strings.Contains(load1, "TableFixedRun(") {
+		t.Error("FU1 load does not pin through TableFixedRun")
+	}
+	i := strings.Index(load1, "for (let k = 0; k < n; k++)")
+	if i < 0 {
+		t.Fatal("FU1 load has no record loop")
+	}
+	loop := load1[i:]
+	if strings.Contains(loop, "identity") {
+		t.Error("FU1 load loop still branches on identity; hash chooses the plan and an empty hole list is the skip")
+	}
+	if strings.Contains(load1, "if (identity)") {
+		t.Error("FU1 load has an if (identity) door")
+	}
+	if !strings.Contains(src1, "const FuRootFixedIdentity = new Int32Array([0, 0, 0,") {
+		t.Error("FU1 identity plan is not one COPY of the body")
+	}
+	if !strings.Contains(src1, "TableFixedHoles") {
+		t.Error("FU1 load does not compute the plan's unwritten ranges")
+	}
+
+	src2 := string(files2["FU2Table.js"])
+	if src2 == "" {
+		t.Fatal("FU2 generated no FU2Table.js")
+	}
+	if !strings.Contains(src2, "function FuRootFixedLoad(") {
+		t.Fatal("FU2 generated no FuRootFixedLoad")
+	}
+	home2 := string(files2["Tblfu2Table.js"])
+	if home2 == "" {
+		t.Fatal("FU2 generated no Tblfu2Table.js")
+	}
+	if !strings.Contains(home2, "this.Extra") {
+		t.Error("FU2's table class does not carry Extra — the field the compiled read must take from the prefill")
+	}
+	st2 := findTable(t, fu2, "FuRoot")
+	prefill := fixedPrefillBytes(st2)
+	// extra is the last int32 of FU2's body, declared default 11
+	if len(prefill) < 4 {
+		t.Fatalf("FU2 prefill is %d bytes", len(prefill))
+	}
+	got := int32(prefill[len(prefill)-4]) |
+		int32(prefill[len(prefill)-3])<<8 |
+		int32(prefill[len(prefill)-2])<<16 |
+		int32(prefill[len(prefill)-1])<<24
+	if got != 11 {
+		t.Errorf("FU2 prefill extra = %d, declared default is 11", got)
+	}
+}

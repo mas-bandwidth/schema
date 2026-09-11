@@ -75,6 +75,12 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   const ut2home = await load("ut2/Tblut2Table.js");
   const ut1types = await load("ut1/UT1.js");
   const ut2types = await load("ut2/UT2.js");
+  const fu1 = await load("fu1/FU1Table.js");
+  const fu2 = await load("fu2/FU2Table.js");
+  const fu1home = await load("fu1/Tblfu1Table.js");
+  const fu2home = await load("fu2/Tblfu2Table.js");
+  const fu1types = await load("fu1/FU1.js");
+  const fu2types = await load("fu2/FU2.js");
 
   await pairedCorpus(check, bench, fixed, corpusDir);
   forgedCounts(check, bench, fixed, corpusDir);
@@ -85,6 +91,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   holePrefill(check, fx1, fx2, fx1home, fx2home);
   negativeControls(check, fx1, fx2, fx1home, fx2home);
   unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types);
+  fu1fu2(check, fu1, fu2, fu1home, fu2home, fu1types, fu2types);
   if (oracleDir) {
     referenceOracle(check, fx1, fx2, fx1home, oracleDir);
   }
@@ -781,6 +788,102 @@ function unionArmText(check, ut1, ut2, ut1home, ut2home, ut1types, ut2types) {
     check(got.Head === 81 && got.Tail === 88,
       `union-arm text: the fields either side of the union are 81/88, got ${got.Head}/${got.Tail}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// TEXT UNDER A UNION ARM, COMPILED BECAUSE A FIELD WAS APPENDED
+// ---------------------------------------------------------------------------
+//
+// UT1/UT2 above is the two-lane / slid-arm half: the arm carrying the string
+// moves ordinals, so the read is a compiled plan. FU1/FU2 is the other half of
+// the same hole (reference-fix 12): a `string(8)` sits in the union's SECOND
+// arm with a scalar either side, and FU2 appends `extra` so a read of FU1's
+// bytes is a COMPILED plan rather than the identity one. The identity read
+// always landed the text — it is one COPY of the whole body. The compiled
+// read is the path where an overloaded plan lane dropped the text as "" with
+// no counter and no refusal.
+//
+// ONE PATH: both reads go through FuRootFixedLoad → TableFixedRun. Hash
+// chooses the plan and nothing else. Empty fill/holes is the skip. FU2's
+// `extra` takes its declared default because a field the writer does not
+// carry has no plan entry and the prefill is what lands there.
+function fu1fu2(check, fu1, fu2, fu1home, fu2home, fu1types, fu2types) {
+  const HELLO = "hello";
+  const textOf = (buf, n) => {
+    let out = "";
+    for (let i = 0; i < n; i++) { out += String.fromCharCode(buf[i]); }
+    return out;
+  };
+
+  const labelled = new fu1home.FuRoot();
+  labelled.Flag = true;
+  labelled.NotePresent = true;
+  labelled.Note = 44;
+  labelled.Pick.Type = fu1types.PickType.Labelled;
+  labelled.Pick.Labelled.Lead = 101;
+  labelled.Pick.Labelled.LabelLength = setText(labelled.Pick.Labelled.Label, HELLO);
+  labelled.Pick.Labelled.Trail = 202;
+  labelled.Tail = 11;
+  labelled.Mark = -12345;
+  labelled.Heat = 1.5;
+
+  const plain = new fu1home.FuRoot();
+  plain.Pick.Type = fu1types.PickType.Plain;
+  plain.Pick.Plain.N = 303;
+  plain.Tail = 12;
+  plain.Mark = 12345;
+  plain.Heat = 1.5;
+
+  const buf = new Uint8Array(fu1.FuRootFixedMeasure(2));
+  check(fu1.FuRootFixedSave([labelled, plain], 2, buf) === buf.length,
+    "text under an arm: FU1 writes its two records");
+
+  const mine = [new fu1home.FuRoot(), new fu1home.FuRoot()];
+  const r1 = new fu1home.TableFixedReport();
+  const n1 = fu1.FuRootFixedLoad(mine, 2, buf, buf.length, fu1.FuRootFixedNewPlan(), r1);
+  check(n1 === 2 && !r1.malformed && r1.refused === 0 && r1.clamped === 0,
+    "text under an arm: the identity read takes both records and moves no counter");
+  const idArm = mine[0];
+  check(idArm.Pick.Type === fu1types.PickType.Labelled,
+    "text under an arm: identity, the SECOND arm");
+  const idLabel = textOf(idArm.Pick.Labelled.Label, idArm.Pick.Labelled.LabelLength);
+  check(idArm.Pick.Labelled.LabelLength === HELLO.length && idLabel === HELLO,
+    `text under an arm: the IDENTITY read lands the text — got ${idArm.Pick.Labelled.LabelLength} ${JSON.stringify(idLabel)}`);
+  check(idArm.Pick.Labelled.Lead === 101 && idArm.Pick.Labelled.Trail === 202,
+    `text under an arm: identity, the scalars either side of the text are 101/202, got ${idArm.Pick.Labelled.Lead}/${idArm.Pick.Labelled.Trail}`);
+  check(idArm.Flag === true && idArm.NotePresent === true && idArm.Note === 44 && idArm.Tail === 11,
+    "text under an arm: identity, the rest of the labelled record");
+  check(mine[1].Pick.Type === fu1types.PickType.Plain && mine[1].Pick.Plain.N === 303 && mine[1].Tail === 12,
+    "text under an arm: identity, the FIRST arm as well");
+  check(r1.widened === 0, "text under an arm: the identity read widens nothing");
+
+  const theirs = [new fu2home.FuRoot(), new fu2home.FuRoot()];
+  const r2 = new fu2home.TableFixedReport();
+  const n2 = fu2.FuRootFixedLoad(theirs, 2, buf, buf.length, fu2.FuRootFixedNewPlan(), r2);
+  check(n2 === 2 && !r2.malformed && r2.refused === 0 && r2.clamped === 0 && r2.kindMismatch === 0,
+    "text under an arm: the compiled read takes both records and nothing was damaged, clamped or refused");
+  const arm = theirs[0];
+  check(arm.Pick.Type === fu2types.PickType.Labelled,
+    "text under an arm: compiled, the SECOND arm");
+  const label = textOf(arm.Pick.Labelled.Label, arm.Pick.Labelled.LabelLength);
+  check(arm.Pick.Labelled.LabelLength === HELLO.length && label === HELLO,
+    `text under an arm: the COMPILED read still sees the text — got ${arm.Pick.Labelled.LabelLength} ${JSON.stringify(label)}`);
+  check(arm.Pick.Labelled.Lead === 101 && arm.Pick.Labelled.Trail === 202,
+    `text under an arm: compiled, the scalars either side of the text are 101/202, got ${arm.Pick.Labelled.Lead}/${arm.Pick.Labelled.Trail}`);
+  check(arm.Flag === true && arm.NotePresent === true && arm.Note === 44 && arm.Tail === 11,
+    "text under an arm: compiled, the rest of the labelled record");
+  check(arm.Extra === 11,
+    `text under an arm: the field FU1 does not carry took its declared default — got ${arm.Extra}`);
+  check(theirs[1].Pick.Type === fu2types.PickType.Plain && theirs[1].Pick.Plain.N === 303 && theirs[1].Tail === 12,
+    "text under an arm: compiled, the FIRST arm as well");
+  check(theirs[1].Extra === 11,
+    "text under an arm: compiled, `extra` defaults on the FIRST arm too");
+  check(arm.Mark === -12345 && theirs[1].Mark === 12345,
+    `text under an arm: the signed rung keeps the SIGN through the compiled plan — got ${arm.Mark}/${theirs[1].Mark}`);
+  check(arm.Heat === 1.5 && theirs[1].Heat === 1.5,
+    "text under an arm: a finite float widens exactly");
+  check(r2.widened === 4,
+    `text under an arm: a rung is COUNTED, once per rung per record — got ${r2.widened}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1526,6 +1629,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     "reference's byte for byte, all 64 paired records read to the values the reference " +
     "states and write back IDENTICAL to its corpus, the versioning conformance lands " +
     "through a plan compiled from the other side's block, the OPTIONALS match the " +
-    "reference at every place a present byte can ride, and every refusal is by name");
+    "reference at every place a present byte can ride, FU1/FU2's compiled read still " +
+    "sees the text and `extra` takes its declared default, and every refusal is by name");
   console.log("OK");
 }

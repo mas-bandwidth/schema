@@ -401,6 +401,13 @@ test-js: generated/bench/paired/js/.stamp tables-js-fixed-matched
 # uses (test/tables/fixedform_main.cpp), read the same way here — and the
 # negative controls, of which the one §3.4 names is a reader given the WRONG
 # PLAN for a record, which must come out wrong.
+#
+# FU1/FU2 is the TEXT-UNDER-AN-ARM pin: a `string(N)` inside a union's SECOND
+# arm, read once through the identity plan and once through a COMPILED one.
+# FU2 appends `extra` so a read of FU1's bytes is a compiled plan, and the two
+# reads have to agree on the text (reference-fix 12). UT1/UT2 is the two-lane /
+# slid-arm half of the same hole. C++ already generates the pair; this stamp
+# did not.
 build/js-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixedform_corpus.cpp bench/corpus/variants/bench_mixed.variants.bin
 	@mkdir -p build/js-fixed-corpus
 	$(CXX) $(CXXFLAGS) -Igenerated/bench/paired/cpp test/bench/fixedform_corpus.cpp -o build/js-fixed-corpus/corpus
@@ -408,7 +415,7 @@ build/js-fixed-corpus/.stamp: generated/bench/paired/cpp/.stamp test/bench/fixed
 		build/js-fixed-corpus/bench_fixed.bin build/js-fixed-corpus/bench_fixed.oracle.json
 	@touch $@
 
-build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FO1.schema test/tables/FO2.schema test/tables/UT1.schema test/tables/UT2.schema make/js.mk
+build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTable.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FO1.schema test/tables/FO2.schema test/tables/UT1.schema test/tables/UT2.schema test/tables/FU1.schema test/tables/FU2.schema make/js.mk
 	@mkdir -p build/js-fixed
 	./bin/schema generate --lang js --out build/js-fixed/bench bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 	./bin/schema generate --lang js --out build/js-fixed/fx1 test/tables/FX1.schema
@@ -419,6 +426,8 @@ build/js-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/FixedTa
 	./bin/schema generate --lang js --out build/js-fixed/fo2 test/tables/FO2.schema
 	./bin/schema generate --lang js --out build/js-fixed/ut1 test/tables/UT1.schema
 	./bin/schema generate --lang js --out build/js-fixed/ut2 test/tables/UT2.schema
+	./bin/schema generate --lang js --out build/js-fixed/fu1 test/tables/FU1.schema
+	./bin/schema generate --lang js --out build/js-fixed/fu2 test/tables/FU2.schema
 	@touch $@
 
 # THE OPTIONAL CORPUS, and its bytes are the C++ REFERENCE'S TOO. `?T` is the
@@ -471,6 +480,8 @@ tables-js-fixed-form-negative-control: bin/schema build/js-fixed-corpus/.stamp b
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fo2 test/tables/FO2.schema
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/ut1 test/tables/UT1.schema
 	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/ut2 test/tables/UT2.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fu1 test/tables/FU1.schema
+	@./build/js-fixed-sabotage/schema generate --lang js --out build/js-fixed-sabotage/fu2 test/tables/FU2.schema
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-sabotage build/js-fixed-corpus \
 			build/js-fixed-optional build/fixedform-corpus > build/js-fixed-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a string length one byte off left the fixed form green"; \
@@ -506,6 +517,8 @@ tables-js-fixed-slack-negative-control: bin/schema build/js-fixed-corpus/.stamp 
 	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/fo2 test/tables/FO2.schema
 	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/ut1 test/tables/UT1.schema
 	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/ut2 test/tables/UT2.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/fu1 test/tables/FU1.schema
+	@./build/js-slack-sabotage/schema generate --lang js --out build/js-slack-sabotage/fu2 test/tables/FU2.schema
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-slack-sabotage build/js-fixed-corpus \
 			build/js-fixed-optional build/fixedform-corpus > build/js-slack-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: writing the whole declared span left the slack rule green"; \
@@ -537,7 +550,8 @@ tables-js-union-arm-text-negative-control: bin/schema build/js-fixed-corpus/.sta
 	@go build -overlay=build/js-armtext-sabotage/overlay.json -o build/js-armtext-sabotage/schema ./cmd/schema
 	@for u in bench:bench/corpus/Bench.schema fx1:test/tables/FX1.schema fx2:test/tables/FX2.schema \
 			p1:test/tables/P1.schema p3:test/tables/P3.schema fo1:test/tables/FO1.schema \
-			fo2:test/tables/FO2.schema ut1:test/tables/UT1.schema ut2:test/tables/UT2.schema; do \
+			fo2:test/tables/FO2.schema ut1:test/tables/UT1.schema ut2:test/tables/UT2.schema \
+			fu1:test/tables/FU1.schema fu2:test/tables/FU2.schema; do \
 		d=$${u%%:*}; f=$${u#*:}; \
 		if [ "$$d" = bench ]; then \
 			./build/js-armtext-sabotage/schema generate --lang js --out build/js-armtext-sabotage/bench \
@@ -580,6 +594,8 @@ tables-js-fixed-optional-negative-control: bin/schema build/js-fixed-corpus/.sta
 	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fo2 test/tables/FO2.schema
 	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/ut1 test/tables/UT1.schema
 	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/ut2 test/tables/UT2.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fu1 test/tables/FU1.schema
+	@./build/js-fixed-opt-sabotage/schema generate --lang js --out build/js-fixed-opt-sabotage/fu2 test/tables/FU2.schema
 	@if $(NODE) test/js-tables/fixedform.mjs build/js-fixed-opt-sabotage build/js-fixed-corpus \
 			build/js-fixed-optional build/fixedform-corpus > build/js-fixed-opt-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: an inverted present byte left the optionals green"; \
