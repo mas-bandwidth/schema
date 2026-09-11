@@ -55,20 +55,23 @@ type fixedPlanBuild struct {
 	argw    int // the CURRENT union's tag width, stamped onto every guarded push
 }
 
-func (p *fixedPlanBuild) push(e fixedPlanEntry) {
-	w := p.argw
+// clampArgW is ArgW as C++: 0 means 1, >8 is 8.
+func clampArgW(w int) int {
 	if w <= 0 {
-		w = 1
-	} else if w > 8 {
-		w = 8
+		return 1
 	}
+	if w > 8 {
+		return 8
+	}
+	return w
+}
+
+func (p *fixedPlanBuild) push(e fixedPlanEntry) {
+	w := e.argw
 	if e.guard != fixedNoGuard {
-		e.argw = w
-	} else if e.argw <= 0 {
-		e.argw = 1
-	} else if e.argw > 8 {
-		e.argw = 8
+		w = p.argw
 	}
+	e.argw = clampArgW(w)
 	p.entries = append(p.entries, e)
 }
 
