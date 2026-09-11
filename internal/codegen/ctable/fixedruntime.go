@@ -234,38 +234,6 @@ static SCHEMA_UNUSED TableFixedEntry table_fixed_entry_zero( void )
  * hash it holds below the floor is layout_unsupported. NOTHING PARSES A
  * STRANGER'S LAYOUT, ON ANY PATH (§5.6). */
 
-/* ONE LOCKED LAYOUT: the wire hash a file is matched on, the layout bytes
-   verbatim, and the RECORD SIZE taken from THE LOCK and never from the file. */
-typedef struct TableFixedKnownLayout
-{
-    uint64_t hash;
-    const uint8_t * layout;
-    int64_t layout_bytes;
-    int64_t record_bytes;
-} TableFixedKnownLayout;
-
-/* THE HEADER'S HASH SELECTS, and it is the FIRST index that holds it. A hash no
-   entry holds is -1, which LOAD names layout_newer (§5.3 step 5). */
-static SCHEMA_UNUSED int32_t table_fixed_select( const TableFixedKnownLayout * known, int32_t count, uint64_t hash )
-{
-    int32_t i;
-    for ( i = 0; i < count; ++i )
-    {
-        if ( known[i].hash == hash ) { return i; }
-    }
-    return -1;
-}
-
-/* THE TWO REFUSALS THAT REPORT THE FILE'S HASH (§5.3, §5.9 #7). REFUSE IS
-   TOTAL: no counter moves and not one destination byte is written. */
-static SCHEMA_UNUSED int64_t table_fixed_refuse_hash( TableReport * report, int reason, uint64_t hash )
-{
-    report->refused = 1;
-    report->reason = reason;
-    report->layout_hash = hash;
-    return -1;
-}
-
 /* A PLAN IS PARTITIONED: every UNGUARDED entry first, then every guarded one,
    and guarded is where the second half starts. Entries are independent —
    each writes its own bytes and a union's arms are mutually exclusive — so the
@@ -1526,6 +1494,38 @@ static SCHEMA_UNUSED int32_t table_fixed_compile( const TableFixedLayoutView * t
    hash never consults it. compiles counts successful compiles through this
    cache, which is the pin; made is 1 on a slot after the compile that
    filled it. */
+
+/* ONE LOCKED LAYOUT: the wire hash a file is matched on, the layout bytes
+   verbatim, and the RECORD SIZE taken from THE LOCK and never from the file. */
+typedef struct TableFixedKnownLayout
+{
+    uint64_t hash;
+    const uint8_t * layout;
+    int64_t layout_bytes;
+    int64_t record_bytes;
+} TableFixedKnownLayout;
+
+/* THE HEADER'S HASH SELECTS, and it is the FIRST index that holds it. A hash no
+   entry holds is -1, which LOAD names layout_newer (§5.3 step 5). */
+static SCHEMA_UNUSED int32_t table_fixed_select( const TableFixedKnownLayout * known, int32_t count, uint64_t hash )
+{
+    int32_t i;
+    for ( i = 0; i < count; ++i )
+    {
+        if ( known[i].hash == hash ) { return i; }
+    }
+    return -1;
+}
+
+/* THE TWO REFUSALS THAT REPORT THE FILE'S HASH (§5.3, §5.9 #7). REFUSE IS
+   TOTAL: no counter moves and not one destination byte is written. */
+static SCHEMA_UNUSED int64_t table_fixed_refuse_hash( TableReport * report, int reason, uint64_t hash )
+{
+    report->refused = 1;
+    report->reason = reason;
+    report->layout_hash = hash;
+    return -1;
+}
 
 enum { kTableFixedPlanCacheCapacity = 64 };
 

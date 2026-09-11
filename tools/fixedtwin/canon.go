@@ -23,6 +23,8 @@ var identMap = []token{
 	{"SCHEMA_TABLE_LAYOUT_TREE_UNCLOSED", "layout_tree_unclosed"},
 	{"SCHEMA_TABLE_LAYOUT_TOO_DEEP", "layout_too_deep"},
 	{"SCHEMA_TABLE_LAYOUT_MALFORMED", "layout_malformed"},
+	{"SCHEMA_TABLE_LAYOUT_UNSUPPORTED", "layout_unsupported"},
+	{"SCHEMA_TABLE_LAYOUT_NEWER", "layout_newer"},
 	{"SCHEMA_TABLE_VOCABULARY_TOO_LARGE", "vocabulary_too_large"},
 	{"SCHEMA_TABLE_SECOND_ANNOUNCEMENT", "second_announcement"},
 	{"SCHEMA_TABLE_MESSAGE_FORM_AS_FILE", "message_form_as_file"},
@@ -95,12 +97,20 @@ var (
 	reZeroCallLayout  = regexp.MustCompile(`TableFixedLayoutEntry\s+\w+\s*=\s*TableFixedLayoutEntryZero\s*\(\s*\)\s*;`)
 	reZeroCallView    = regexp.MustCompile(`TableFixedLayoutView\s+\w+\s*=\s*TableFixedLayoutViewZero\s*\(\s*\)\s*;`)
 	reInitCall        = regexp.MustCompile(`TableFixedCompilerInit\s*\(\s*&c\s*\)\s*;`)
-	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?previous_form\s*=\s*17\s*\}\s*;`)
+	reCReasons        = regexp.MustCompile(`(?s)enum\s*\{\s*no_layout\s*=\s*7,.*?layout_unsupported\s*=\s*19\s*\}\s*;`)
 	reCMessageGuard   = regexp.MustCompile(`(?s)#ifndef MESSAGE_REASONS.*?\#endif`)
-	// OWED by the C leg (docs/FIXED-FORM-ALGORITHM.md §5). C++ first; these
-	// blocks have no C twin yet. Strip them so the gate stays green; TWIN.md
-	// names each row with the §5 section the C card implements from.
-	reOwedKnownLayout = regexp.MustCompile(`(?s)struct TableFixedKnownLayout\s*\{.*?\};`)
+	// AHEAD OF THE REFERENCE, and the mirror of the owed list: §5.2 lays every
+	// older plan down off the load path, and the reference still compiles one at
+	// first load into a caller-supplied cache (§5.8 row 3). So the C runtime
+	// spells three things the C++ has no twin for yet — the hash select, the
+	// refusal that carries the file's hash, and one lineage entry's plan. They
+	// are stripped the way the owed rows were, from the other side.
+	reAheadSelect     = regexp.MustCompile(`(?s)inline int32_t TableFixedSelect\(.*?\n\}`)
+	reAheadRefuseHash = regexp.MustCompile(`(?s)inline int64_t TableFixedRefuseHash\(.*?\n\}`)
+	reAheadLineage    = regexp.MustCompile(`(?s)(?:typedef )?struct TableFixedLineagePlan\s*\{.*?\}\s*(?:TableFixedLineagePlan\s*)?;`)
+	// NOTHING IS OWED BY THE C LEG ANY MORE. Every row the map once stripped is
+	// in the C runtime, spelled the same, so the gate holds the two legs to all
+	// five (bench/paired/TWIN.md).
 )
 
 func tableFixedIdent(name string) string {
@@ -207,17 +217,21 @@ func stripNamed(s string) string {
 }
 
 func stripOwedC(s string) string {
-	// OWED by the C leg. Not a named remaining: C has no spelling of these
-	// yet. C++ first; legs from algorithm §5 after. Do not port C here.
-	// CLOSED on rowan/c-reads-backward: the present op ENUMERATOR, the
-	// fixed(I,F) and ufixed(I,F) ladder rungs and the signed fixed-point's sign
-	// are in the C runtime now (§5.1, §5.2), spelled the same, so their strips
-	// are gone and the gate holds the two legs to them.
-	// CLOSED too: the present op's Apply case and its compile of `T` into `?T`,
-	// and the grown ordinal width emitted as an unsigned widen — the C leg
-	// spells all three now, so the gate holds the two legs to them.
-	// §5.3 known-layout table LOAD selects by hash
-	s = reOwedKnownLayout.ReplaceAllString(s, "")
+	// THE OWED LIST IS CLOSED on rowan/c-reads-backward. The present op
+	// ENUMERATOR, its Apply case and its compile of `T` into `?T`; the fixed(I,F)
+	// and ufixed(I,F) ladder rungs and the signed fixed-point's sign; the grown
+	// ordinal width emitted as an unsigned widen; and now `struct
+	// TableFixedKnownLayout` — the known-layout table §5.2 lays down and §5.3
+	// selects on — are all in the C runtime, spelled the same, so the gate holds
+	// the two legs to every one of them and strips nothing.
+	//
+	// WHAT IS STRIPPED NOW IS THE OTHER DIRECTION: the three runtime rows where
+	// this leg is AHEAD of the reference, because §5.2's plans are static here
+	// and compiled at first load there (§5.8 row 3). They go when the reference
+	// lands that row.
+	s = reAheadSelect.ReplaceAllString(s, "")
+	s = reAheadRefuseHash.ReplaceAllString(s, "")
+	s = reAheadLineage.ReplaceAllString(s, "")
 	return s
 }
 

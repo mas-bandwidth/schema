@@ -97,13 +97,21 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c )
 	}
 }
 
-func TestOwedCLegStripped(t *testing.T) {
-	// The ONE C++-only algorithm §5 row left, against empty C. After the map it
-	// is gone; a leftover would mean the OWED stripper missed a row. The other
-	// four rows of §5.7's C-owed table are CLOSED (rowan/c-reads-backward) and
-	// the gate now holds the two legs to them: a C leg that lost the present op,
-	// the fixed(I,F) ladders or the grown ordinal's widen goes red here.
+func TestOwedCLegClosed(t *testing.T) {
+	// THE OWED LIST IS CLOSED (docs/FIXED-FORM-ALGORITHM.md §5.7's C-owed table,
+	// rowan/c-reads-backward). The fifth and last row — `struct
+	// TableFixedKnownLayout`, the known-layout table §5.2 lays down and §5.3
+	// selects on — is in the C runtime now, spelled member for member, so the map
+	// strips NOTHING and the gate holds the two legs to it: a C leg that loses
+	// the table, renames a member or reorders them goes red here.
 	c := `
+typedef struct TableFixedKnownLayout
+{
+    uint64_t hash;
+    const uint8_t * layout;
+    int64_t layout_bytes;
+    int64_t record_bytes;
+} TableFixedKnownLayout;
 `
 	cpp := `
     struct TableFixedKnownLayout
@@ -116,7 +124,34 @@ func TestOwedCLegStripped(t *testing.T) {
 `
 	left := diffLines("fixture", canonicalize(c), canonicalize(cpp))
 	if len(left) != 0 {
-		t.Fatalf("OWED C-leg rows should be empty after the map:\n%s", strings.Join(left, "\n"))
+		t.Fatalf("the known-layout table is the same table on both legs:\n%s", strings.Join(left, "\n"))
+	}
+}
+
+// TestOwedCLegRenamedMemberReds is that row's NEGATIVE CONTROL: a gate nobody
+// has seen go red may be comparing a file with itself. One member renamed and
+// the twin must say so.
+func TestOwedCLegRenamedMemberReds(t *testing.T) {
+	c := `
+typedef struct TableFixedKnownLayout
+{
+    uint64_t hash;
+    const uint8_t * layout;
+    int64_t layout_length;
+    int64_t record_bytes;
+} TableFixedKnownLayout;
+`
+	cpp := `
+    struct TableFixedKnownLayout
+    {
+        uint64_t hash = 0;
+        const uint8_t * layout = NULL;
+        int64_t layout_bytes = 0;
+        int64_t record_bytes = 0;
+    };
+`
+	if left := diffLines("fixture", canonicalize(c), canonicalize(cpp)); len(left) == 0 {
+		t.Fatal("a renamed member of the known-layout table passed the twin gate")
 	}
 }
 
