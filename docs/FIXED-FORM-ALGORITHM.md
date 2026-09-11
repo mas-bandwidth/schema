@@ -508,35 +508,24 @@ once — and append, per field:
 | `bits(N)` | `'B'`, then `N` as u32 LE |
 | `fixed(I,F)` / `ufixed(I,F)` | `'X'`, then `I` u32 LE, `F` u32 LE, then `1` signed or `0` unsigned |
 | a `flags` type | `'F'`, its WIRE BIT COUNT as u32 LE, then per flag `'f'` and `fnv1a64(name)` as u64 LE |
-| a reader-side limit | `'L'`, then the limit as u64 LE |
+| a reader-side limit | `'L'`, then the limit as u64 LE. **RESERVED:** no table spelling of a reader-side limit exists; `--fixed-record-limit` is outside the law (§6) and does not emit this row. The row stays empty until a table-declared limit exists. The pin is `TestTableFixedDefinitionsDigestLReservedUntilALimitExists`. |
 | a nested `table` / `type` | recurse, once per type name |
 | a union | recurse into each arm's payload, in declared order |
 
 Nothing else. **An empty digest leaves the hash equal to a hash of the layout bytes alone**, so a table
 carrying none of these facts does not move the day the digest lands.
 
-**THAT TABLE IS THE CONTRACT, and the reference does not implement it yet.** Bill §13 says EVERY range —
-a float range and a fixed-point one included — and every reader-side limit, tag `'L'`. The reference at this
-head emits `'R'` for `HasIntRange` ALONE and emits no `'L'` anywhere (`ir/fixedform.go:610-652`), which is
-§5.8 row 10. **That row is an INTEROP BREAK and not a missed refusal.** Every other row of §5.8 is a reader
-being too kind; this one moves THE NUMBER — a leg that implements this table computes a different digest, so
-a different hash, for any table carrying a float range or a limit, and its files and the reference's do not
-match each other at all. **So the reference owes it BEFORE ANY LEG PORTS**: landing it moves every such hash
-once more and re-pins the corpus, and a lineage entry pinned under the old digest is a hash no later build
-can produce.
+**THAT TABLE IS THE CONTRACT.** The reference emits `'R'` for every range (integer, float, fixed-point) and
+`'F'` once by name. `'L'` is reserved: no table spelling exists, so that row is empty. **Structs, flags and
+unions share one `seen` map keyed by bare name.**
 
 **The ORDER inside one field is fixed**: `'R'` FIRST when the field has a range, then the KIND TAG — `'B'`
 for `bits(N)`, `'X'` for `fixed(I,F)`/`ufixed(I,F)` — then the REFERENCE: `'F'` for a flags type, a RECURSE
 for a nested `table`/`type`, a recurse into each arm's payload in declared order for a union. A field spends
 none, one, two or three of those, in that order and never another.
 
-**Flags are NOT deduped by name in the reference, and the contract says they must be.** The `seen` set guards
-STRUCTS only (`ir/fixedform.go:600-604`), so one flags type named by three fields writes its `'F'`, its bit
-count and its whole `'f'`/`fnv1a64(name)` run THREE times, where a struct named by three fields writes once.
-**The ruling is the contract's own words — each NAMED type emitted ONCE** — so a flags type is emitted once
-too, and §5.8 row 10 carries that fix beside the missing tags. **And a flags type's WIRE BIT COUNT falls back
-to `len(Variants)` when it is `0`** (636-640): a `flags` declared with no explicit width spends one bit per
-flag, and the digest records the count either way.
+**A flags type's WIRE BIT COUNT falls back to `len(Variants)` when it is `0`**: a `flags` declared with no
+explicit width spends one bit per flag, and the digest records the count either way.
 
 **`EMIT` switches on a KIND CODE**, and §1's kind-code table is the whole numbering — the fixed-point rungs
 `20..24` and `25..29` included. A port that invents its own numbering for the same set emits different layout

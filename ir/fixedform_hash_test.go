@@ -3,8 +3,15 @@ package ir
 import (
 	"bytes"
 	"encoding/binary"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"math"
 	"math/big"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -120,6 +127,103 @@ func TestTableFixedDefinitionsDigestUnionOnceByName(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("a union is a named type and its payload range emits once, got %d 'R' in %q", n, d)
 	}
+}
+
+func TestTableFixedDefinitionsDigestSeenIsOneMapByBareName(t *testing.T) {
+	fl := &Flags{Name: "Same", Variants: []string{"Shielded"}, WireBits: 1}
+	inner := &Struct{Name: "Same", Fields: []*Field{
+		{Name: "n", Type: FieldType{Kind: TInt, Width: 32}, HasIntRange: true, IntMin: big.NewInt(0), IntMax: big.NewInt(4)},
+	}}
+	un := &Union{Name: "Same", Variants: []UnionVariant{
+		{Name: "a", F: &Field{Name: "a", Type: FieldType{Kind: TInt, Width: 32}, HasIntRange: true, IntMin: big.NewInt(0), IntMax: big.NewInt(8)}},
+	}}
+	st := &Struct{Name: "Root", Fields: []*Field{
+		{Name: "f", Type: FieldType{Kind: TNamed, Name: "Same", Ref: fl}},
+		{Name: "s", Type: FieldType{Kind: TNamed, Name: "Same", Ref: inner}},
+		{Name: "u", Type: FieldType{Kind: TNamed, Name: "Same", Ref: un}},
+	}}
+	d := TableFixedDefinitionsDigest(st)
+	nF, nR := 0, 0
+	for _, c := range d {
+		if c == 'F' {
+			nF++
+		}
+		if c == 'R' {
+			nR++
+		}
+	}
+	if nF != 1 {
+		t.Fatalf("flags emit once by bare name, got %d 'F' in %q", nF, d)
+	}
+	if nR != 0 {
+		t.Fatalf("structs, flags and unions share one seen map keyed by bare name; after flags Same, the struct and union of that name must not emit, got %d 'R' in %q", nR, d)
+	}
+}
+
+func TestTableFixedDefinitionsDigestLReservedUntilALimitExists(t *testing.T) {
+	hasLimit := irTypeHasLimitField(reflect.TypeOf(Field{})) ||
+		irTypeHasLimitField(reflect.TypeOf(Struct{})) ||
+		irTypeHasLimitField(reflect.TypeOf(Unit{}))
+	emitsL := digestSourceEmitsL(t)
+	switch {
+	case hasLimit && !emitsL:
+		t.Fatal("a table-level reader-side limit exists; TableFixedDefinitionsDigest must emit 'L' + u64 LE")
+	case !hasLimit && emitsL:
+		t.Fatal("'L' is reserved until a table-level limit exists; the row stays empty")
+	}
+	if hasLimit {
+		return
+	}
+	st := &Struct{Name: "Plain", Fields: []*Field{
+		{Name: "x", Type: FieldType{Kind: TInt, Width: 32}},
+	}}
+	if bytes.IndexByte(TableFixedDefinitionsDigest(st), 'L') >= 0 {
+		t.Fatal("'L' is reserved; a table with no reader-side limit must not emit it")
+	}
+}
+
+func irTypeHasLimitField(rt reflect.Type) bool {
+	for i := 0; i < rt.NumField(); i++ {
+		if strings.Contains(strings.ToLower(rt.Field(i).Name), "limit") {
+			return true
+		}
+	}
+	return false
+}
+
+func digestSourceEmitsL(t *testing.T) bool {
+	t.Helper()
+	src, err := os.ReadFile(filepath.Join("fixedform.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "fixedform.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var emits bool
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		id, ok := call.Fun.(*ast.Ident)
+		if !ok || id.Name != "append" {
+			return true
+		}
+		for _, a := range call.Args {
+			bl, ok := a.(*ast.BasicLit)
+			if !ok || bl.Kind != token.CHAR {
+				continue
+			}
+			if bl.Value == "'L'" {
+				emits = true
+			}
+		}
+		return true
+	})
+	return emits
 }
 
 func float64LE(v float64) []byte {

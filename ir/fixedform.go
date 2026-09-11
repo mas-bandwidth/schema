@@ -599,9 +599,13 @@ func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 //	'B'  bits(N): N as u32 LE
 //	'X'  fixed(I,F) / ufixed(I,F): I u32 LE, F u32 LE, then 1 signed or 0 unsigned
 //	'F'  a flags type: wire bit count as u32 LE, then per flag 'f' and fnv1a64(name) as u64 LE
-//	'L'  a reader-side limit: the limit as u64 LE
+//	'L'  a reader-side limit: the limit as u64 LE. RESERVED: no table spelling
+//	     of a reader-side limit exists (the compiler flag --fixed-record-limit
+//	     is outside the law, algorithm §6). The row is empty until one does.
 //	     nested table/type: recurse, once per type name
 //	     union: recurse into each arm's payload, in declared order, once per union name
+//
+// Structs, flags and unions share one seen map keyed by bare name.
 func TableFixedDefinitionsDigest(st *Struct) []byte {
 	var b []byte
 	seen := map[string]bool{}
