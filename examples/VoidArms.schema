@@ -26,8 +26,8 @@ type VoidLevel
 union VoidSignal
 {
     ping
-    pulse  VoidPulse
-    level  VoidLevel
+    pulse VoidPulse
+    level VoidLevel
     ack
 }
 
