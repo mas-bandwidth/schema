@@ -160,9 +160,9 @@ func TestTableFixedDefinitionsDigestSeenIsOneMapByBareName(t *testing.T) {
 }
 
 func TestTableFixedDefinitionsDigestLReservedUntilALimitExists(t *testing.T) {
-	hasLimit := irTypeHasLimitField(reflect.TypeOf(Field{})) ||
-		irTypeHasLimitField(reflect.TypeOf(Struct{})) ||
-		irTypeHasLimitField(reflect.TypeOf(Unit{}))
+	hasLimit := irTypeHasLimitField(reflect.TypeFor[Field]()) ||
+		irTypeHasLimitField(reflect.TypeFor[Struct]()) ||
+		irTypeHasLimitField(reflect.TypeFor[Unit]())
 	emitsL := digestSourceEmitsL(t)
 	switch {
 	case hasLimit && !emitsL:
@@ -182,8 +182,8 @@ func TestTableFixedDefinitionsDigestLReservedUntilALimitExists(t *testing.T) {
 }
 
 func irTypeHasLimitField(rt reflect.Type) bool {
-	for i := 0; i < rt.NumField(); i++ {
-		if strings.Contains(strings.ToLower(rt.Field(i).Name), "limit") {
+	for sf := range rt.Fields() {
+		if strings.Contains(strings.ToLower(sf.Name), "limit") {
 			return true
 		}
 	}
