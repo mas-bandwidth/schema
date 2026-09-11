@@ -1500,7 +1500,15 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 		}
 		g.pf("    %%{\n")
 		g.pf("      hash: 0x%016X,\n", e.Wire)
-		g.pf("      layout: %s,\n", fixedBinaryLiteral(e.Layout, len("      layout: ")))
+		// `mix format` WRAPS A LONG VALUE ONTO THE NEXT LINE, two columns in, and
+		// the leg's gate compares against what it writes: the flat form while the
+		// pair fits the width, the wrapped one once it does not.
+		lit := fixedBinaryLiteral(e.Layout, len("      layout: "))
+		if len("      layout: ")+len(lit)+1 <= formatWidth {
+			g.pf("      layout: %s,\n", lit)
+		} else {
+			g.pf("      layout:\n        %s,\n", fixedBinaryLiteral(e.Layout, len("        ")))
+		}
 		g.pf("      layout_bytes: %d,\n", len(e.Layout))
 		g.pf("      record_bytes: %d\n", e.Record)
 		g.pf("    }%s\n", sep)
@@ -1629,7 +1637,9 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  defp %s_fixed_lane(i, records, hash, report, cap, copy) do\n", snake)
 	g.pf("    case R.lineage_lane(__MODULE__, :%s, i) do\n", snake)
 	g.pf("      :identity ->\n")
-	g.pf("        %s_fixed_run(@%s_plan, @%s_body_bytes, records, hash, report, copy, 0, 0)\n", snake, snake, snake)
+	g.pf("        %s\n", call(snake+"_fixed_run",
+		rawf("@%s_plan", snake), rawf("@%s_body_bytes", snake), raw("records"), raw("hash"),
+		raw("report"), raw("copy"), raw("0"), raw("0")).render(8, 8, 0))
 	g.pf("\n")
 	g.pf("      {:ok, _plan, _size, made, _u, _k} when made > cap ->\n")
 	g.pf("        # THE DECLARED CAPACITY A BUILD HOLDS AN ENTRY TO IS REAL (§5.9 #4) and\n")

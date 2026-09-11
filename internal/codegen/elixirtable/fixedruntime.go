@@ -244,7 +244,11 @@ const fixedRuntimeBody = `  @moduledoc """
   def census(report, 0, 0), do: report
 
   def census(report, unknown, kind_mismatch) do
-    %{report | unknown: report.unknown + unknown, kind_mismatch: report.kind_mismatch + kind_mismatch}
+    %{
+      report
+      | unknown: report.unknown + unknown,
+        kind_mismatch: report.kind_mismatch + kind_mismatch
+    }
   end
 
   def damaged(report, false), do: report
@@ -977,36 +981,25 @@ const fixedRuntimeBody = `  @moduledoc """
         )
 
       their_kind != my_kind ->
-        widen_entry(
-        theirs,
-        ti,
-        their_at,
-        mine,
-        mi,
-        at,
-        guard,
-        tag,
-        acc,
-        report
-      )
+        widen_entry(theirs, ti, their_at, mine, mi, at, guard, tag, acc, report)
 
       true ->
         same_kind(
-        theirs,
-        ti,
-        their_at,
-        mine,
-        mi,
-        dst,
-        my_at,
-        at,
-        aux_at,
-        row,
-        guard,
-        tag,
-        acc,
-        report
-      )
+          theirs,
+          ti,
+          their_at,
+          mine,
+          mi,
+          dst,
+          my_at,
+          at,
+          aux_at,
+          row,
+          guard,
+          tag,
+          acc,
+          report
+        )
     end
   end
 

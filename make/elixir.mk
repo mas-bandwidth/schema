@@ -482,11 +482,11 @@ tables-elixir-versioning: tables-fixedform-corpus
 .PHONY: tables-elixir-versioning-negative-control
 tables-elixir-versioning-negative-control: tables-fixedform-corpus
 	@rm -rf build/elixir-versioning-nc && mkdir -p build/elixir-versioning-nc
-	@sed 's|{:error, :layout_newer, %{report | {:error, :layout_malformed, %{report |' \
-		internal/codegen/elixirtable/fixedelixir.go > build/elixir-versioning-nc/fixedelixir.go.txt
-	@cmp -s internal/codegen/elixirtable/fixedelixir.go build/elixir-versioning-nc/fixedelixir.go.txt && \
+	@sed 's|{:error, :layout_newer, hash}|{:error, :layout_malformed, hash}|' \
+		internal/codegen/elixirtable/fixedruntime.go > build/elixir-versioning-nc/fixedruntime.go.txt
+	@cmp -s internal/codegen/elixirtable/fixedruntime.go build/elixir-versioning-nc/fixedruntime.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true
-	@printf '{"Replace":{"%s/internal/codegen/elixirtable/fixedelixir.go":"%s/build/elixir-versioning-nc/fixedelixir.go.txt"}}\n' \
+	@printf '{"Replace":{"%s/internal/codegen/elixirtable/fixedruntime.go":"%s/build/elixir-versioning-nc/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/elixir-versioning-nc/overlay.json
 	@if SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
 			go test -overlay build/elixir-versioning-nc/overlay.json \
