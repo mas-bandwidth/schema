@@ -2813,13 +2813,36 @@ requires the selected-payload default assertion to fail; a compile failure
 does not satisfy that control. These controls also run through `make test`.
 
 **Floating-point discipline.** Strict IEEE-754 arithmetic is the normative
-wire for compressed floats: a fused multiply-add diverges by one quantization
-step at boundary values, so all C and C++ conformance builds compile with
-`-ffp-contract=off`, and the golden-wire corpus pins compressed-float values
-chosen to DISCRIMINATE — values where a fused or double-precision build
-produces a different step index — with the discrimination property itself
-asserted in the C and C++ legs, so a vector cannot quietly stop
-discriminating.
+wire for compressed floats. The quantize fold is `normalized * steps + 0.5`
+with TWO roundings, and a compiler that contracts the multiply and the add
+into one fused multiply-add keeps the extra precision and writes a DIFFERENT
+step index. The golden-wire corpus pins compressed-float values chosen to
+DISCRIMINATE — values where a fused or double-precision build produces a
+different index — with the discrimination property itself asserted in the C
+and C++ legs, so a vector cannot quietly stop discriminating.
+
+Contraction is not a C and C++ problem with a C and C++ remedy; it is a
+permission each language either grants or withholds, and every leg states
+which. **No leg may emit a contracted product.** The equivalent of
+`-ffp-contract=off` per language:
+
+| Language | Mechanism | Where enforced | How tested |
+| --- | --- | --- | --- |
+| C | `-ffp-contract=off` on every compile of generated or conformance sources. clang's DEFAULT for C contracts, so an unflagged build is a WRONG-BYTES build, not a slow one. | `make/c.mk`, `make/checks/*.mk`, `bench/run.sh`, `bench/tables/*/leg` — every `$(CC)` line | `TestNoContractionFlagOnEveryCompile` greps every compile line in `Makefile`, `make/` and `bench/` for the flag; the C leg asserts the discrimination property directly |
+| C++ | `-ffp-contract=off` in `CXXFLAGS` and on every literal `$(CXX)` line | `Makefile:33`, `make/*.mk`, `make/checks/*.mk`, `bench/run.sh` | same grep test; the C++ oracle asserts `plain != fma` on the pinned probe |
+| C, C++ (the message codec, where the arithmetic IS emitted) | Two barriers, because the consumer's flags are not ours. (1) The fold goes through a NAMED `float` object — `float scaled = normalized * count;` then `scaled + 0.5f` — and assignment to a `float` lvalue forces the intermediate rounding. (2) An empty-`__asm__` `FORCE_ROUND` on `scaled` pins the value into a float register, with a `volatile float` fallback off gcc/clang. | `internal/codegen/ctable/message.go`, `internal/codegen/cpptable/message.go` | `TestNoContractionInEmittedCode` requires BOTH the two-statement form and the barrier macro; the form was checked on arm64 clang under `-ffp-contract=fast` (index 1, correct; one expression gives 0) |
+| Go | The Go spec permits fusing `x*y+z` unless an explicit conversion intervenes, and arm64 takes the permission. Every emitted product is wrapped: `float32(normalizedValue*steps) + 0.5`. | `internal/codegen/golang/functions.go`, `internal/codegen/golang/flat.go` | `TestNoContractionInEmittedCode` requires the `float32(` wrap on every emitted quantize product |
+| Rust | rustc NEVER contracts; a fused product requires an explicit `f32::mul_add`. Nothing to turn off; the rule is that no emitter may reach for it. | `internal/codegen/rust`, `internal/codegen/rusttable` | `TestNoFusedMultiplyAddIntrinsics` greps the emitters for `mul_add` |
+| Java | JLS 15.18.2 FORBIDS contraction, and since JDK 17 (JEP 306) strict semantics are the only semantics. Java is the one inlining leg that therefore needs NO wrap: it emits the bare `n * 200.0f + 0.5f` on purpose. A fused product would require `Math.fma`. | `--release 17` on the Java leg; `internal/codegen/java/functions.go` | `TestNoFusedMultiplyAddIntrinsics` greps for `Math.fma` — the absence IS the enforcement, so the grep is the whole gate |
+| C# | RyuJIT does not contract; a fused product requires `Math.FusedMultiplyAdd`. The message codec additionally narrows through a `float`-typed local, the C and C++ twins' shape, in FIVE near-duplicate copies. | `internal/codegen/csharp`, `internal/codegen/cstable/{message,regionmessagewrite,messageread,regionmessage,retainmessage}.go` | `TestNoFusedMultiplyAddIntrinsics` greps for `FusedMultiplyAdd`; `TestNoContractionInEmittedCode` requires the `float`-typed local in all five copies |
+| JavaScript | The language has no FMA and no `float` type. The discipline is the opposite problem — doubles must be narrowed — so EVERY intermediate is wrapped in `Math.fround`. | `internal/codegen/js/flat.go` | `TestNoContractionInEmittedCode` requires every emitted float32 intermediate inside `Math.fround(` |
+| Dart | The VM and AOT compilers do not fuse; `double` is the only float type, so the float32 discipline is an explicit `_fround` helper on every intermediate. | `internal/codegen/dart/functions.go` | `TestNoContractionInEmittedCode` requires the `_fround` wrap; the Dart leg runs the pinned probe compiled AOT on arm64 |
+| Elixir | BEAM floats are doubles and the VM does not fuse. float32 rounding is emulated by the Veltkamp/Dekker `fr/1` helper, applied to every intermediate. | `internal/codegen/elixir/functions.go` | `TestNoContractionInEmittedCode` requires the `fr(` wrap |
+
+The flag and the source-level form are belt and braces on purpose: the flag
+governs THIS tree's builds, and the named-`float`-object form governs the
+CONSUMER's, whose flags are theirs. A generated header cannot reach into a
+consumer's build; it can only be written so that no build can contract it.
 
 CI needs every target toolchain for gates 3–5 and 7; that cost is accepted —
 it is the product's central claim.
