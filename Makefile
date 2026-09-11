@@ -6066,6 +6066,76 @@ test: tables-fixed-properties
 
 .PHONY: tables-fixed-properties
 
+# THE FIXED FORM'S CONTINUOUS FUZZER (test/tables/fixedform_fuzz.cpp). The
+# conformance gate's byte-flip sweep is finite and only ever sees files one bit
+# from correct; this target is the same invariants under a COVERAGE-GUIDED
+# mutator, for as long as a machine will run it. It is NOT in `test`: a gate
+# runs in a second and a fuzzer does not. `tables-fixedform-fuzz` is the gate —
+# it builds the target and REPLAYS the seed corpus and every committed crash
+# regression, which is finite. `tables-fixedform-fuzz-run MINUTES=n` is the
+# search.
+#
+#   I1 never a crash (ASan/UBSan's finding)   I4 a refusal moves no counter
+#   I2 three answers and never a fourth       I5 a layout refusal carries the
+#   I3 a refusal lands no byte (poison)          FILE's hash
+#   I6 P2 byte-identity on the identity lane
+#
+# libFuzzer IS A CLANG FEATURE AND APPLE CLANG DOES NOT SHIP IT, so FUZZ_CXX is
+# its own variable: on the Studio point it at a real clang++ or run this on
+# Space. The recipe says so rather than failing in the linker.
+FUZZ_CXX ?= clang++
+
+FIXEDFORM_FUZZ_INCLUDES := \
+	-Ibuild/tables-generated/examples \
+	-Ibuild/tables-generated/fx1 -Ibuild/tables-generated/fx2 \
+	-Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
+	-Ibuild/tables-generated/ut1 -Ibuild/tables-generated/ut2 \
+	-Ibuild/tables-generated/v1 -Ibuild/tables-generated/v2 \
+	-I$(SERIALIZE)
+
+build/schema_test_fixedform_fuzz: build/tables-generated/.stamp test/tables/fixedform_fuzz.cpp
+	@mkdir -p build
+	@$(FUZZ_CXX) -fsanitize=fuzzer -x c++ /dev/null -o build/.fuzzprobe 2>/dev/null || { \
+		echo "fixedform fuzz: $(FUZZ_CXX) has no libFuzzer (-fsanitize=fuzzer does not link)."; \
+		echo "fixedform fuzz: Apple clang never ships it — set FUZZ_CXX to an LLVM clang++, or build on Space."; \
+		exit 1; }
+	@rm -f build/.fuzzprobe
+	$(FUZZ_CXX) $(TABLES_CXXFLAGS) -O1 -g -fno-omit-frame-pointer \
+	    -fsanitize=fuzzer,address,undefined -fno-sanitize-recover=all \
+	    $(FIXEDFORM_FUZZ_INCLUDES) test/tables/fixedform_fuzz.cpp -o $@
+
+# THE SEED CORPUS IS THE REFERENCE'S OWN ORACLE plus the committed wire
+# fixtures: the first is every fixed root's clean bytes, the second is 223 files
+# a port already disagreed about once. The crash regressions go in LAST so a
+# replay names them even when the corpus directory is otherwise cold.
+build/fixedform-fuzz-corpus/.stamp: build/fixedform-corpus/.stamp
+	@rm -rf build/fixedform-fuzz-corpus
+	@mkdir -p build/fixedform-fuzz-corpus
+	@for f in build/fixedform-corpus/*.bin; do cp "$$f" build/fixedform-fuzz-corpus/corpus-$$(basename $$f); done
+	@if [ -d testdata/wire/tables ]; then \
+		for f in testdata/wire/tables/*.bin; do cp "$$f" build/fixedform-fuzz-corpus/wire-$$(basename $$f); done; fi
+	@if [ -d test/tables/fuzz-crashes ]; then \
+		for f in test/tables/fuzz-crashes/*; do [ -f "$$f" ] && cp "$$f" build/fixedform-fuzz-corpus/regress-$$(basename $$f); done; true; fi
+	@touch $@
+
+tables-fixedform-fuzz: build/schema_test_fixedform_fuzz build/fixedform-fuzz-corpus/.stamp
+	./build/schema_test_fixedform_fuzz -runs=0 build/fixedform-fuzz-corpus
+	@echo "fixed form fuzz: the seed corpus and every committed regression replay with no finding"
+
+.PHONY: tables-fixedform-fuzz
+
+# THE SEARCH. MINUTES is the wall clock; the default is one minute so a typo
+# does not take the machine. On Space this runs under nohup with -jobs/-workers
+# at nproc and restarts itself after every hour.
+MINUTES ?= 1
+tables-fixedform-fuzz-run: build/schema_test_fixedform_fuzz build/fixedform-fuzz-corpus/.stamp
+	@mkdir -p build/fixedform-fuzz-finds
+	./build/schema_test_fixedform_fuzz -max_total_time=$$(( $(MINUTES) * 60 )) \
+	    -artifact_prefix=build/fixedform-fuzz-finds/ -print_final_stats=1 \
+	    build/fixedform-fuzz-corpus
+
+.PHONY: tables-fixedform-fuzz-run
+
 tables-was-negative-control: build/tables-generated/.stamp test/tables/was_control_main.cpp
 	@mkdir -p build/tables-was-nc
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/tables-generated/w2 -I$(SERIALIZE) test/tables/was_control_main.cpp \
