@@ -104,6 +104,9 @@ var (
 	reOwedPresentCompile = regexp.MustCompile(`(?s)if \( me\.kind == 35 && te\.kind != 35 \)\s*\{.*?return;\s*\}`)
 	reOwedEnumWiden      = regexp.MustCompile(`(?s)if \( te\.size < me\.size \)\s*\{\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.dstsize = \(uint8_t\) me\.size;\s*e\.guard = guard; e\.arg = arg; e\.op = kTableFixedWiden; e\.sign = 0;\s*TableFixedPush\( c, e \);\s*break;\s*\}`)
 	reOwedKnownLayout    = regexp.MustCompile(`(?s)struct TableFixedKnownLayout\s*\{.*?\};`)
+	reOwedArgLaneRemap   = regexp.MustCompile(`(?s)const uint32_t n = te\.children;\s+const uint32_t at_map = TableFixedLayTable\( c, NULL, \(int32_t\) n \);\s+if \( c\.overflow \) \{ break; \}\s+uint16_t \* map = \(uint16_t \*\) \(void \*\) \( \(uint8_t \*\) c\.plan \+ at_map \);\s+for \( uint32_t j = 0; j < n; \+\+j \)\s*\{.*?map\[1 \+ j\] = landed;\s*\}\s*TableFixedEntry e;\s*e\.src = their_at; e\.dst = at; e\.size = te\.size; e\.guard = guard; e\.op = kTableFixedOrdinal;\s*e\.arg = arg; e\.dstsize = \(uint8_t\) me\.size;\s*e\.aux = at_map;\s*TableFixedPush\( c, e \);`)
+	reOwedByteLaneRemap  = regexp.MustCompile(`(?s)uint16_t remap\[256\];.*?TableFixedLayTable\( c, remap, \(int32_t\) n \);\s*TableFixedPush\( c, e \);`)
+	reOwedLayTableNull   = regexp.MustCompile(`if \( values != NULL \)\s*\{\s*for \( int32_t i = 0; i < n; \+\+i \) \{ dst\[1 \+ i\] = values\[i\]; \}\s*\}`)
 )
 
 func tableFixedIdent(name string) string {
@@ -227,6 +230,15 @@ func stripOwedC(s string) string {
 	s = reOwedEnumWiden.ReplaceAllString(s, "")
 	// §5.3 known-layout table LOAD selects by hash
 	s = reOwedKnownLayout.ReplaceAllString(s, "")
+	// owed 6: arg is full width (bill §12.7). C still has a byte lane.
+	s = strings.ReplaceAll(s, "uint64_t arg", "uint8_t arg")
+	s = strings.ReplaceAll(s, "TableFixedTagAt( src, p.guard, p.argw ) != p.arg", "TableFixedTagAt( src, p.guard, p.argw ) != (uint64_t) p.arg")
+	s = strings.ReplaceAll(s, "tag.arg = (uint64_t) j + 1u;", "tag.arg = (uint8_t) ( j + 1 );")
+	s = strings.ReplaceAll(s, "mine, my_arm, dst, at, their_at, (uint64_t) j + 1u", "mine, my_arm, dst, at, their_at, (uint8_t) ( j + 1 )")
+	s = strings.ReplaceAll(s, "if ( n < 0 || n > 65535 ) { c.overflow = true; return 0; }", "")
+	s = reOwedLayTableNull.ReplaceAllString(s, "for ( int32_t i = 0; i < n; ++i ) { dst[1 + i] = values[i]; }")
+	s = reOwedArgLaneRemap.ReplaceAllString(s, "OWED_REMAP;")
+	s = reOwedByteLaneRemap.ReplaceAllString(s, "OWED_REMAP;")
 	return s
 }
 

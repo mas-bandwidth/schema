@@ -1323,6 +1323,20 @@ static void guard_width_case()
     std::memset( &r, 0, sizeof( r ) );
     tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
     check( dst[2] == 0xAA, "NEGATIVE CONTROL: a one-byte compare really does fire arm 1 on 0x0101" );
+
+    // 6: arg IS FULL WIDTH (bill §12.7). A two-byte tag of 256 is arm 256,
+    // and a byte lane would wrap it to 0, so the entry would never run.
+    src[0] = 0x00; src[1] = 0x01; src[2] = 0xAA; src[3] = 0x00;
+    plan[1].arg = 256; plan[1].argw = 2;
+    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( &r, 0, sizeof( r ) );
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0xAA, "ARG LANE: tag 256 at width 2 takes arm 256" );
+    src[1] = 0x00;
+    std::memset( dst, 0, sizeof( dst ) );
+    std::memset( &r, 0, sizeof( r ) );
+    tblfx1::TableFixedRun( plan, 2, 1, src, dst, &r );
+    check( dst[2] == 0, "ARG LANE: tag 0 does not take arm 256" );
 }
 
 // THE COMPILE IS PAID ONCE PER PEER, NOT ONCE PER RECORD (§3.4). Two loads of
