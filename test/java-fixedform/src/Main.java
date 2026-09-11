@@ -26,6 +26,19 @@ public final class Main {
 
     private static int failures = 0;
 
+    private static int retirements = 0;
+
+    // A RETIRED CASE IS SKIPPED BY NAME AND NEVER DELETED (docs/FIXED-FORM-ALGORITHM.md
+    // §5.6, §5.7 step 5, and §5.9 #23 for a suite that is a main with no skip
+    // verb): the line below names the function, the section that retired it and
+    // WHERE THE COVERAGE IS OWED, the count is printed at the end, and the
+    // function stays in the tree and stays compiling. A deleted test is a
+    // coverage claim nobody can audit.
+    static void retired(String fn, String owed) {
+        System.out.println("RETIRED by §5.6: " + fn + " — " + owed);
+        retirements++;
+    }
+
     static void check(boolean ok, String what) {
         if (!ok) {
             System.out.println("FAILED: " + what);
@@ -655,13 +668,19 @@ public final class Main {
         }
 
         // and the loader never takes that path: the HASH is what selects the plan
+        // — which under §5.3 it does by SELECTING OUT OF THE LINEAGE, so a
+        // stranger's file is not compiled at all. An FX1 build that never locked
+        // FX2's layout answers layout_newer, and it carries the FILE's hash.
         {
             final tblfx1.FxRootFixed.Value[] right = { new tblfx1.FxRootFixed.Value() };
             final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
             final int n = tblfx1.FxRootFixed.load(right, 1, fx2,
                     tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
-            check(n == 1 && right[0].nested.a == 33 && right[0].nested.b == 44,
-                    "NEGATIVE CONTROL: the loader compiles a plan from the layout and gets it right");
+            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutNewer,
+                    "REFUSED BY NAME: a layout this build never locked is layout_newer");
+            check(r.layoutHash == tblfx1.TableFixed.get64(fx2, tblfx1.TableFixed.hashAt),
+                    "layout_newer reports THE FILE'S hash, and nothing else");
+            check(!r.malformed, "a refusal by name never sets malformed too");
         }
 
         // 2. A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL AND NEVER
@@ -689,20 +708,29 @@ public final class Main {
             final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
             final int n = tblfx1.FxRootFixed.load(v, 1, lying,
                     tblfx1.TableFixed.plan(1024), new short[1024], tblfx1.FxRootFixed.image(), r);
-            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutMalformed,
-                    "REFUSED BY NAME: a header that names a layout it does not carry");
+            // UNDER §5.3 THIS IS A HASH IN NO LINEAGE ENTRY, not a lie about a
+            // known version: the header's hash is TAKEN AS GIVEN and never
+            // recomputed from the layout behind it, so a flipped hash names a
+            // layout this reader has never locked. The lie about a KNOWN version
+            // — a hash the lineage holds whose layout bytes differ — is
+            // layout_malformed, and the versioning harness's
+            // hash_known_bytes_differ row is where it is asserted.
+            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.layoutNewer,
+                    "REFUSED BY NAME: a header hash no lineage entry holds");
             check(!r.malformed, "a lying header is a refusal and never damage");
         }
 
         // 3. A PLAN THAT DOES NOT FIT THE CALLER'S STORAGE IS A REFUSAL BY
-        //    NAME, and the codec allocates nothing to get around it.
+        //    NAME, and the codec allocates nothing to get around it. THE NAME
+        //    STAYS AND THE ARGUMENT IS NOW A CAPACITY DECLARATION (§5.9 #5): the
+        //    plan slice is checked against the selected LINEAGE plan's entry
+        //    count and never written through. A build with no lineage has only
+        //    its identity plan, so a one-entry slice can no longer reach the
+        //    check here — a stranger's file is layout_newer before any plan is
+        //    selected — and the control moves to the lineage harness with it.
         {
-            final tblfx1.FxRootFixed.Value[] v = { new tblfx1.FxRootFixed.Value() };
-            final tblfx1.TableFixed.Report r = new tblfx1.TableFixed.Report();
-            final int n = tblfx1.FxRootFixed.load(v, 1, fx2,
-                    tblfx1.TableFixed.plan(1), new short[4], tblfx1.FxRootFixed.image(), r);
-            check(n < 0 && r.refused && r.reason == tblfx1.TableFixed.Reason.planTooLarge,
-                    "REFUSED BY NAME: plan_too_large");
+            retired("negativeControls: the plan_too_large control",
+                    "a one-entry plan slice against a LINEAGE plan's entry count, owed in the versioning harness (§5.9 #5, §7's control)");
         }
 
         // 4. A RAGGED TAIL: the two ends of the file have met, which is framing
@@ -921,13 +949,29 @@ public final class Main {
         packWrite(dir);
         compiledSelfPlan(dir);
         armTextUnderASecondArm();
-        textUnderAnArm();
-        anOlderWriter(dir);
-        aNewerWriter(dir);
-        anOptional(dir);
-        theSlide();
+        // THE SIX FAMILIES §5.6 RETIRES, each a FORWARD read or a run-time walk
+        // of a stranger's layout — the two things "the fixed table reads
+        // backward, never forward" removed. Under §5.3 every one of these files
+        // now comes back `layout_newer`, which is the right answer and not a
+        // regression, and the coverage moves to the LINEAGE harness
+        // (internal/codegen/javatable/fixedversioning_test.go) where the reader
+        // is built with the writer's layout in its lineage.
+        retired("textUnderAnArm",
+                "the guard and flavour lanes under an arm: owed as a lineage pair (FU1/FU2) in the versioning harness, §5.7's seven pairs");
+        retired("anOlderWriter",
+                "NEW-READS-OLD on FX1/FX2: held by the versioning harness's field_append, nested_append and rename_without_was rows");
+        retired("aNewerWriter",
+                "a FORWARD read, which is now layout_newer by name: held by the harness's OLD-REFUSES-NEW column on every row");
+        retired("anOptional",
+                "T into ?T across a pair: held by the harness's optional_add row, both columns");
+        retired("theSlide",
+                "the keyed slide and the mid-list remaps: held by the harness's keyed_array_enum_append, enum_append and union_append rows");
+        retired("layoutValidation",
+                "§1.1's seven rules: they are the LOCK's validation of what it records and the oracle's of the corpus (§5.6); under a KNOWN hash a malformation is one name, layout_malformed, which the harness's hash_known_bytes_differ row asserts");
         negativeControls(dir);
-        layoutValidation(dir);
+        if (retirements != 0) {
+            System.out.println(retirements + " case(s) retired by §5.6, each named above");
+        }
         if (failures != 0) {
             System.out.println(failures + " failure(s)");
             System.exit(1);

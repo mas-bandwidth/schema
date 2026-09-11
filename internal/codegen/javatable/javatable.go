@@ -187,6 +187,19 @@ func javaFile(u *ir.Unit, summary, body string) []byte {
 // and nothing when the unit declares no table: a table-free unit's generated
 // Java is byte-identical with or without this package.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
+	return GenerateLineage(u, nil)
+}
+
+// GenerateLineage is [Generate] with the LINEAGE the build holds for each fixed
+// table: the locked layouts, OLDEST FIRST, the current one last
+// (docs/FIXED-FORM-ALGORITHM.md §5.2, and §5.9 #1 for why it is a second entry
+// point rather than a changed signature). A nil map is a build with NO LOCK, and
+// every table then carries the one entry it can always compute: its own.
+//
+// THE BACKEND OPENS NO FILE. `lockfile.Open`, `lockfile.Lineage` and
+// `lockfile.Floor` are the caller's three calls, so the disk is read in one place
+// and a test can play the lock in one line.
+func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
 		return map[string][]byte{}, nil
 	}
@@ -253,7 +266,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
 	// FIRST table wire. It rides unconditionally — a wire a consumer can be
 	// handed is not something they opt into — and nothing about form 1 moves.
-	fixed, err := generateFixedFiles(u)
+	fixed, err := generateFixedFiles(u, lineage)
 	if err != nil {
 		return nil, err
 	}
