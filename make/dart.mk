@@ -308,6 +308,29 @@ tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp bu
 # ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
 # comparing a file with itself and nobody would know.
+# THE VERSIONING GATE, THIS LEG'S SECOND HALF (docs/FIXED-FORM-ALGORITHM.md
+# §5.7 step 6, §5.9 #11): the BYTE gate above proves this leg writes the
+# reference's bytes; this one proves it READS BACKWARD — every row of
+# docs/FIXED-FORM-VERSIONING-TESTS.md in both columns, NEW-READS-OLD and
+# OLD-REFUSES-NEW, plus the three floor rows, the hash rows and the branch
+# merge.
+#
+# THE PROBES ARE GENERATED, one per row per COLUMN, and run with THIS leg's own
+# toolchain (§5.9 #18) — the harness is internal/codegen/darttable's
+# fixedversioning_test.go, which plays the lock, generates the reader's Dart
+# with the older generation's locked entry as its lineage, writes a probe beside
+# it and runs `$(DART)` over it.
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE: the harness
+# SKIPS itself when build/fixedform-corpus or the SDK is absent, which is right
+# for a bare `go test ./...` and is exactly how a §5 regression would ride into
+# a green. So the target builds the oracle first and sets
+# SCHEMA_REQUIRE_CORPUS=1, under which that skip is a FAILURE.
+.PHONY: tables-dart-versioning
+tables-dart-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) go test ./internal/codegen/darttable/ -count=1 -run 'TestFixedVersioning'
+	@echo 'tables Dart versioning: §5 read both columns of every row against the C++ reference bytes'
+
 .PHONY: tables-dart-fixed-form-negative-control
 tables-dart-fixed-form-negative-control: bin/schema build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp test/tables/FXW.schema
 	@rm -rf build/dart-fixed-nc && mkdir -p build/dart-fixed-nc
@@ -359,6 +382,8 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 	# THE FIXED FORM against the C++ reference's own bytes (§3.4)
 	$(MAKE) tables-dart-fixed-form
 	$(MAKE) tables-dart-fixed-form-negative-control
+	# AND IT READS BACKWARD (§5): every versioning row, both columns
+	$(MAKE) tables-dart-versioning
 	$(DART) analyze generated/dart generated/dart-ludicrous generated/bench/dart test/dart test/dart-ludicrous bench/dart
 	$(DART) format --set-exit-if-changed --output=none generated/dart generated/dart-ludicrous generated/bench/dart
 	cd test/dart && $(DART) --enable-asserts main.dart
