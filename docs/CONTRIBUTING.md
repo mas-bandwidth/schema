@@ -80,6 +80,32 @@ them elsewhere.
 
 ## The gates a change has to pass
 
+**The loop, in five lines** (the owner's ruling, 2026-09-11: *"Here is another
+option to speed up, check in to branches without PRs. Only run tests when
+merging into main, local runners elsewhere."*):
+
+1. Run the local gate on your own machine — `make test` and
+   `go test ./internal/fuzz/`, or `merge-lane.sh gate <pr> <head> green <summary>`
+   from a recorded local fast-lane run.
+2. Push the branch. A push to `rowan/**`, `johnny/**`, `emma/**`, `freddy/**` or
+   `stella/**` runs `ci-fast.yml` on our own self-hosted studio pool — a free
+   second opinion on our hardware, never on a hosted runner.
+3. Open the pull request as **the record**: the diff, the body and the owed lists
+   live there. **No hosted workflow runs on a pull-request event at all** (only
+   the Contributor Assignment Agreement check, which is not a test).
+4. Get a read from another line and record it (`merge-lane.sh read <pr> <who>
+   approve`).
+5. The lane merges on **local green plus that read** — and the full lane runs
+   **where the merge lands**: `ci-full.yml` on the studio pool for a merge into
+   `fixed-table-form`, and on hosted `ubuntu-latest` for a merge into `main`.
+
+**Hosted CI runs only on a merge into `main` and nightly** — plus the two
+explicit asks: `gh workflow run ci-full.yml --ref <branch>` (which lands on the
+studio pool) and adding the `full-ci` label to a pull request. Three rows the
+pool cannot take stay hosted on every event, because they need an OS it does not
+have: `big-endian` (s390x cross gcc and qemu-user on pinned Ubuntu), `windows`
+and `msvc`.
+
 CI runs on Linux and macOS, and both must be green:
 
 - `make test` — the cross-language corpus and the goldens.

@@ -29,15 +29,16 @@ name: CI fast
 # treats a queue as a budget.
 #
 # SO THE SPLIT IS BY WHEN, NOT BY WHETHER. Nothing is checked less than before.
-#   * THIS FILE runs on every pull-request push. Five jobs, selected BY PATH,
+#   * THIS FILE runs on every push to one of our branches (see `on:` below —
+#     it no longer runs on a pull request at all). Five jobs, selected BY PATH,
 #     targeting two minutes wall: the cheap lints, the block zero-cost gate,
 #     `go test` of the packages the diff touches, and the fixed-form and
 #     versioning gates of the LEGS the diff touches.
 #   * ci-full.yml runs everything — the whole go-test, pins, the nine
 #     conformance legs, the 47 negative controls, windows, msvc, big-endian,
 #     vuln — on merge to main or fixed-table-form, nightly, on
-#     `gh workflow run ci-full.yml --ref <branch>`, and on any pull request
-#     carrying the `full-ci` label.
+#     `gh workflow run ci-full.yml --ref <branch>`, and on a pull request only
+#     when somebody adds the `full-ci` label to ask for it.
 #
 # THE SELECTION IS BY PATH AND NEVER BY DROPPING A GATE. A diff that touches
 # ir/, compiler/, docs/FIXED-FORM-*, the C++ reference's emitters, tables/, the
@@ -74,15 +75,16 @@ name: CI fast
 # dist toolchains. The `actions/cache` restores are skipped on self-hosted for
 # the same reason: what they were restoring is already there.
 #
-# ci-full.yml IS UNCHANGED and still runs on GitHub's hosted Linux runners. The
-# full lane is the one that proves the bytes on an x86-64 box we do not own, and
-# the merge gate is not where we trade breadth for speed.
+# ci-full.yml RUNS WHERE A MERGE LANDS: on the studio pool for a merge into
+# fixed-table-form, and on GitHub's hosted Linux runners for the one run per
+# merge into main — the x86-64 box we do not own is what proves the bytes, and
+# the merge into main is not where we trade breadth for speed.
 #
-# ONLY THE TABLE PUSHES TO THIS REPOSITORY. A self-hosted runner executes a pull
-# request's own code on our hardware, so a pull request from a FORK MUST NEVER
-# reach these machines: every job below carries
-#   if: github.event.pull_request.head.repo.full_name == github.repository
-# and a fork's pull request is covered by ci-full.yml on hosted runners.
+# ONLY THE TABLE PUSHES TO THIS REPOSITORY. A self-hosted runner executes the
+# pushed code on our hardware, so code from a FORK MUST NEVER reach these
+# machines. That is now structural rather than a job-level `if:`: the only
+# trigger is a push to a branch of this repository, and a fork's pull request
+# is covered by ci-full.yml on hosted runners when its merge lands.
 #
 # SPACE IS NOT IN THE POOL, and the reason is worth writing down: the x86-64
 # Linux box has ONE CORE. It is registered as `space-x64` for a future
@@ -93,9 +95,33 @@ name: CI fast
 #   for d in ~/actions-runner ~/actions-runner-[2-6]; do (cd "$d" && ./svc.sh stop); done
 # and `./svc.sh start` the same way to bring it back.
 
+# NOTHING HERE RUNS ON A PULL REQUEST, and the ruling that changed it is the
+# owner's, 2026-09-11, verbatim:
+#
+#   "Here is another option to speed up, check in to branches without PRs. Only
+#    run tests when merging into main, local runners elsewhere."
+#
+# So the trigger is THE PUSH TO OUR OWN BRANCH, not the pull request on it. A
+# pull request stays the READ SURFACE — the diff, the body, the owed lists, the
+# verdict another line records — and it costs no hosted minutes and starts no
+# run. The merge condition is the LOCAL GATE (`merge-lane.sh --local-gates`,
+# which runs this file's own steps on the Studio) plus that read, and the full
+# lane runs WHERE A MERGE LANDS (ci-full.yml).
+#
+# THE BRANCH PREFIXES ARE THE FAMILY'S. One line per line of work, so a push to
+# a branch of ours gets a second-opinion fast run on our own hardware for free,
+# and a push to a fork or to a branch nobody here owns starts nothing. Every job
+# below is `runs-on: [self-hosted, studio]` and NEVER a hosted runner: this
+# trigger fires only for a branch inside this repository, so no fork's code can
+# reach the pool through it.
 on:
-  pull_request:
-    branches: [ main, fixed-table-form ]
+  push:
+    branches:
+      - 'rowan/**'
+      - 'johnny/**'
+      - 'emma/**'
+      - 'freddy/**'
+      - 'stella/**'
   workflow_dispatch:
 
 # A superseded push cancels its predecessor: this lane is for the tip of a
@@ -122,7 +148,6 @@ jobs:
   # It is deliberately the only `needs:` in this file — every gate that can
   # start immediately does.
   plan:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     outputs:
@@ -248,7 +273,6 @@ jobs:
   # compiles a tool of its own, which is a minute this lane does not have, and
   # they run in ci-full.yml.
   lint-fast:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     steps:
@@ -308,7 +332,6 @@ jobs:
   # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 5
     steps:
@@ -330,7 +353,7 @@ jobs:
   # below are where they are made to run.
   go-test-touched:
     needs: plan
-    if: needs.plan.outputs.packages != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: needs.plan.outputs.packages != ''
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 10
     steps:
@@ -391,7 +414,7 @@ jobs:
   # that failed to build is a failure here, never a quiet skip.
   leg-gate:
     needs: plan
-    if: needs.plan.outputs.legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: needs.plan.outputs.legs != '[]'
     name: fixed form + versioning (${{ matrix.leg }})
     runs-on: [ self-hosted, studio ]
     timeout-minutes: 10

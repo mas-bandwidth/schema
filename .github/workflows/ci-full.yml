@@ -88,6 +88,20 @@ name: CI full
 # The fix is to rebase the branch; the mitigation is below on `cpp-lock`, which
 # no longer skips itself on the workflow_dispatch runs a worker falls back to.
 
+# THE FULL LANE RUNS WHERE A MERGE LANDS, and the ruling that decided it is the
+# owner's, 2026-09-11, verbatim:
+#
+#   "Here is another option to speed up, check in to branches without PRs. Only
+#    run tests when merging into main, local runners elsewhere."
+#
+# So: nothing in this file runs because a pull request exists or because somebody
+# pushed to it. A merge into fixed-table-form runs the whole of it ON OUR OWN
+# HARDWARE (the studio pool), a merge into main runs it on GitHub's hosted Linux
+# — the one hosted run per main merge, on the x86-64 box we do not own, which is
+# what proves the bytes — and the nightly stays hosted for the same reason. The
+# `full-ci` LABEL path remains for an explicit ask and for nothing else: it fires
+# on `labeled` only, so adding the label asks for one run and a later push to
+# that branch does not silently ask again.
 on:
   push:
     # THE MERGE GATE. main, and the fixed-form integration branch while the
@@ -96,13 +110,12 @@ on:
     # every merge into that branch.
     branches: [ main, fixed-table-form ]
   pull_request:
-    # A pull request runs this file only when it carries the `full-ci` label —
-    # every job below is gated on that. The label is how a branch near the hot
-    # paths, or anything that moves the C++ emitters, asks for the whole suite
-    # before merging; `gh workflow run ci-full.yml --ref <branch>` is the other
-    # way, and needs no label.
+    # NOT A PLAIN PULL-REQUEST TRIGGER: `labeled` only. Adding `full-ci` is how a
+    # branch near the hot paths, or anything that moves the C++ emitters, asks
+    # for the whole suite before merging. `gh workflow run ci-full.yml --ref
+    # <branch>` is the other way, needs no label, and lands on the studio pool.
     branches: [ main, fixed-table-form ]
-    types: [ opened, synchronize, reopened, labeled ]
+    types: [ labeled ]
   schedule:
     # nightly, so a tree nobody pushed to is still checked against the
     # toolchains and the vulnerability database, which move on their own
@@ -166,7 +179,7 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: go-test (${{ matrix.group }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     # THREE PACKAGE GROUPS, ONE PER ROW, because this job was 650 s median
     # (2026-09-11) and a matrix row is a job: the emitter packages, everything
@@ -401,8 +414,11 @@ jobs:
       # launcher. The corpus it reads is the one the Rust step above already
       # built, and SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing
       # Elixir a failure rather than a silent skip.
+      # `runner.environment == 'github-hosted'` because erlef/setup-beam does not
+      # support macOS and the studio pool is macOS: there the BEAM comes from
+      # /Users/Shared/schema-dist, already on the runner's PATH.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.group == 'versioning'
+        if: matrix.group == 'versioning' && runner.environment == 'github-hosted'
         with:
           otp-version: '27'
           elixir-version: '1.18'
@@ -469,7 +485,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -550,7 +566,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -582,7 +598,7 @@ jobs:
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
       - name: rewrite every pin under testdata/ from the reference
-        run: make -j"$(nproc)" conformance-pin update-goldens
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" conformance-pin update-goldens
 
       - name: the pins are current
         run: |
@@ -624,7 +640,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
@@ -663,7 +679,7 @@ jobs:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: conformance (${{ matrix.lang }})
     needs: conformance-matrix
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -745,8 +761,10 @@ jobs:
       # The BEAM is two versions and one step. No ELIXIRC override is needed:
       # make/elixir.mk's default prefixes the repo-local dist/ onto PATH and
       # falls through to the toolchain this step installed.
+      # hosted only: erlef/setup-beam does not support macOS (the studio pool),
+      # where dist/ already carries the BEAM on PATH.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
@@ -777,7 +795,7 @@ jobs:
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: C# fuzz (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -859,6 +877,11 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    # STAYS HOSTED ON EVERY EVENT: this row apt-installs the s390x cross gcc and
+    # qemu-user at pinned Ubuntu versions. The studio pool is macOS and has
+    # neither, so big-endian, `windows` and `msvc` are the three rows the pool
+    # cannot take — a merge into fixed-table-form runs those three hosted and
+    # everything else on our own hardware.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -915,7 +938,7 @@ jobs:
       # bin/schema and the generated tree, which make builds once. The runner
       # has four cores and the leg was spending them one at a time.
       - name: the big-endian leg, and its negative control
-        run: make -j"$(nproc)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-big-endian-negative-control BE_CXX=s390x-linux-gnu-g++-13 BE_CC=s390x-linux-gnu-gcc-13
 
       # The C twin of that control: put16 never reaches table_writer_finish's
       # #else arm, so a C-side byte-order defect there would leave the job green.
@@ -950,7 +973,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1038,7 +1061,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1311,7 +1334,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1354,7 +1377,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1457,7 +1480,7 @@ jobs:
     # merge, the nightly and a dispatch it always runs. The expression is
     # repeated per job because a job-level `if:` cannot read `env`.
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -1501,7 +1524,7 @@ jobs:
     if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
     name: negative controls (${{ matrix.name }})
     needs: negative-controls-matrix
-    runs-on: ubuntu-latest
+    runs-on: ${{ ((github.event_name == 'push' && github.ref_name == 'fixed-table-form') || github.event_name == 'workflow_dispatch') && fromJSON('["self-hosted","studio"]') || 'ubuntu-latest' }}
     # THE RULE, ENFORCING ITSELF. Every row here is cut to 120 s of control
     # time and pays about 25 s of checkout, sibling clones and first build on
     # top, so five minutes is generous and a row that reaches it is a row that
@@ -1578,8 +1601,10 @@ jobs:
           distribution: 'temurin'
           java-version: ${{ matrix.java }}
 
+      # hosted only: erlef/setup-beam does not support macOS (the studio pool),
+      # where dist/ already carries the BEAM on PATH.
       - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
-        if: matrix.otp != ''
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
         with:
           otp-version: ${{ matrix.otp }}
           elixir-version: ${{ matrix.elixir }}
@@ -1589,7 +1614,7 @@ jobs:
       # building them here keeps the build cost out of the first control's
       # timing and out of its log.
       - name: build bin/schema and the generated tree once
-        run: make -j"$(nproc)" bin/schema build/tables-generated/.stamp
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" bin/schema build/tables-generated/.stamp
 
       # ONE make invocation for the whole group, with -k so a control that
       # refuses does not hide the ones behind it: every control in the group
