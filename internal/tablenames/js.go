@@ -92,7 +92,6 @@ func init() {
 		Name{Name: "TableFixedOpWidenF", What: "the plan op that widens an f32 into an f64, §4's float rung"},
 		Name{Name: "TableFixedTextUtf8", What: "a text entry's utf-8 flavour"},
 		Name{Name: "TableFixedTextWide", What: "a text entry's wide flavour, whose units are two bytes"},
-		Name{Name: "TableFixedTextBytes", What: "a text entry's raw-bytes flavour, which terminates nothing"},
 
 		// the plan's storage, the cache that pays a compile once per peer, and
 		// §4's ledger with this form's refusals beside it

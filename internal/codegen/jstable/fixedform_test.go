@@ -696,3 +696,39 @@ fixed table Huge
 		t.Error("NAMED, NEVER SILENT: a generated module says which table has no fixed form and why")
 	}
 }
+
+// THE SCOPE ANSWER IS THIS LEG'S OWN ROOTS (jstable.go's §15 note). The answer
+// was a hard-coded `true` while ir carried a helper that answered it for a port
+// whose coverage was the reference's; this leg's coverage is its own, so a unit
+// it lays NO fixed table out for must answer false — otherwise §15's whole-unit
+// refusal is withheld from a unit that has nothing left to emit.
+func TestFixedUnitRootsFalseWithoutAFixedTable(t *testing.T) {
+	refused := unitFrom(t, `package probe
+
+type Item
+{
+    n int32
+}
+
+table Bag
+{
+    entries map[uint32]Item
+    after   int32
+}
+`)
+	if roots := jsFixedUnitRoots(refused); len(roots) != 0 {
+		t.Fatalf("a unit whose only table the form refuses has %d fixed roots, want 0", len(roots))
+	}
+
+	// The positive control, so the test cannot pass by answering false always.
+	plain := unitFrom(t, `package probe
+
+table Bag
+{
+    n int32
+}
+`)
+	if roots := jsFixedUnitRoots(plain); len(roots) == 0 {
+		t.Fatal("a unit of one plain scalar table has no fixed roots, want one")
+	}
+}
