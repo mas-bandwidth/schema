@@ -713,6 +713,17 @@ const tableFixedWireSource = `
                     uint my_tag = TagBytes(mine, mi);
                     byte saved_argw = c.ArgW;
                     c.ArgW = (their_tag >= 1u && their_tag <= 8u) ? (byte)their_tag : (byte)1;
+                    // FIRST, UNGUARDED: a const 0 of my_tag bytes into the
+                    // reader's tag (§5.2 EMIT kind 15). It is None, and it
+                    // STANDS WHEN NO ARM MATCHES: without it a tag naming no arm
+                    // this reader holds leaves the PREVIOUS record's arm in the
+                    // slot, because the arms' consts are guarded and every
+                    // guarded entry's destination counts as landed, so the
+                    // prefill does not cover the tag either. The row carries its
+                    // OWN guard and ordinal â unguarded at top level, guarded
+                    // under an outer arm â which is one rule and not two
+                    // (§5.9 #13).
+                    c.Push(new TableFixedEntry(their_at, aux_at, my_tag, 0, guard, Const, arg, 0));
                     int my_arm = mi + 1;
                     for (uint k = 0; k < me.Children; ++k)
                     {
@@ -1145,10 +1156,16 @@ const tableFixedWireSource = `
                     }
                     case Ordinal:
                     {
-                        uint raw = 0;
+                        // A 64-BIT TEMPORARY AND AN EIGHT-BYTE CASE (§5.8 row 7,
+                        // §4.5): an ordinal width of 8 is admissible, and read
+                        // through a 32-bit temporary with no case for it the raw
+                        // value stayed 0 â a silent None where the writer named a
+                        // variant.
+                        ulong raw = 0;
                         if (p.Size == 1) raw = src[(int)p.Src];
                         else if (p.Size == 2) raw = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice((int)p.Src));
                         else if (p.Size == 4) raw = BinaryPrimitives.ReadUInt32LittleEndian(src.Slice((int)p.Src));
+                        else if (p.Size == 8) raw = BinaryPrimitives.ReadUInt64LittleEndian(src.Slice((int)p.Src));
                         uint v = 0;
                         if (!planBytes.IsEmpty && p.Aux < (uint)planBytes.Length)
                         {
@@ -1158,7 +1175,11 @@ const tableFixedWireSource = `
                             {
                                 v = BinaryPrimitives.ReadUInt16LittleEndian(tableBytes.Slice(2 * (int)raw));
                             }
-                            if (raw > count && report != null) { report.Clamped++; }
+                            // A FORGED ORDINAL â one past the WRITER's own variant
+                            // count â lands 0 here and THE BOUNDS PASS COUNTS IT
+                            // (§5.4, §5.9 #27). The counter's PLACE is the contract:
+                            // it is what makes the compiled and the identity plan
+                            // agree, and an op that counted as well counted twice.
                         }
                         if (slots[(int)p.Dst].SetRaw != null)
                         {
