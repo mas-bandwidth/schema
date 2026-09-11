@@ -11,7 +11,7 @@ package tblk1
 
 enum Grade { Bronze, Silver, Gold }
 
-table Root
+fixed table Root
 {
     grade Grade
     raw   uint16

@@ -48,7 +48,7 @@ union Effect | gameplay
 
 // declared FIRST, references tables declared below: schema references are
 // order-free, and the emitter orders the generated structs
-table RootConfig
+fixed table RootConfig
 {
     version_note string(16)
     weapons      [..8]WeaponConfig
@@ -56,7 +56,7 @@ table RootConfig
 }
 
 /// One weapon's tuning. A designer edits this table and nothing else.
-table WeaponConfig | designer_facing
+fixed table WeaponConfig | designer_facing
 {
     ///  Damage per hit, before armor.
     ///
@@ -70,7 +70,7 @@ table WeaponConfig | designer_facing
     effect      Effect
 }
 
-table LoadoutConfig
+fixed table LoadoutConfig
 {
     grade       Grade = Silver
     grades      [..4]Grade
@@ -81,7 +81,14 @@ table LoadoutConfig
     attachments [..MaxLoadoutSlots]Attachment
 }
 
-table ProfileConfig
+// A FIXED TABLE, and `loadout` rides unconditionally. The `if has_loadout`
+// this body used to carry is gone: a guarded branch exists to make a body vary
+// in size, which is *"a disqualifying thing for a fixed table. not supported.
+// only variable."* — the project owner. `has_loadout` stays as a plain field
+// carrying the same logical fact, and the guarded-branch coverage this corpus
+// owes the emitters lives on Guarded.schema's `Patrol`, a plain `table` whose
+// driver already reads it as the variable wire.
+fixed table ProfileConfig
 {
     name        string(MaxProfileName)
     icon        bytes(16)
@@ -95,8 +102,5 @@ table ProfileConfig
     precision   float64
     ratings     [4]float32
     has_loadout bool
-    if has_loadout
-    {
-        loadout LoadoutConfig
-    }
+    loadout     LoadoutConfig
 }

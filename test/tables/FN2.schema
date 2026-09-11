@@ -57,7 +57,7 @@ union Pick
     b CellB
 }
 
-table FnRoot
+fixed table FnRoot
 {
     flag    bool
     tier    Tier

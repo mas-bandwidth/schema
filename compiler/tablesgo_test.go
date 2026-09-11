@@ -110,7 +110,7 @@ union Effect
     boost Boost
 }
 
-table Effected
+fixed table Effected
 {
     effect Effect
 }
@@ -230,7 +230,7 @@ func TestTableRuntimeNamesAreClaimedGo(t *testing.T) {
 // unit's.
 const goWidenF64Src = `package probe
 
-table Note
+fixed table Note
 {
     ratio float64
 }
@@ -238,7 +238,7 @@ table Note
 
 const goWidenF32Src = `package probe
 
-table Note
+fixed table Note
 {
     ratio float32
 }

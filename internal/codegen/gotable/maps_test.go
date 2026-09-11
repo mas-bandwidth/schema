@@ -4,7 +4,7 @@ import "testing"
 
 func TestRegionMaps(t *testing.T) {
 	runGenerated(t, `package probe
-table Child { n int32 = 7 }
+fixed table Child { n int32 = 7 }
 table Root {
  names map[string(16)]Child
  numbers map[int64]uint64

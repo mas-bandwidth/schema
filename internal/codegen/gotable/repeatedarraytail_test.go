@@ -27,8 +27,8 @@ func TestRepeatedArrayTailDefaults(t *testing.T) {
 // once; repeated one-element fields may only visit their live prefixes.
 func TestCountedTailResetWork(t *testing.T) {
 	out, err := runGeneratedEdited(t, `package probe
- table Child { n int32 = 7 }
- table Root { values [..32000]Child }
+ fixed table Child { n int32 = 7 }
+ fixed table Root { values [..32000]Child }
  `, `package probe
  import("testing";"encoding/binary";"bytes")
  func TestResetWork(t *testing.T){

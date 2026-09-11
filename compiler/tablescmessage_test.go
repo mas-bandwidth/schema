@@ -20,7 +20,7 @@ union Body { text string(16)
 numbers [..3]int16
 leaf Leaf
 empty }
-table Root {
+fixed table Root {
  enabled bool
  amount int16 = -3 | min = -8, max = 47
  ratio float32 | min = -1, max = 1, resolution = 0.01
@@ -92,8 +92,8 @@ int main(void) {
 
 func TestCTableAnnouncementDistinctQuantizedShapes(t *testing.T) {
 	u := unitFromSource(t, `package probe
-table First { rate float32 | min = 0, max = 1, resolution = 0.1 }
-table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
+fixed table First { rate float32 | min = 0, max = 1, resolution = 0.1 }
+fixed table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
 `)
 	var vocabulary tablewire.Vocabulary
 	var report tabletext.Report
@@ -172,7 +172,7 @@ func TestCTableMessageEvolution(t *testing.T) {
 	sender := unitFromSource(t, `package probe
 type Item { value int8 }
 union Payload { number uint8 }
-table Root { x int8
+fixed table Root { x int8
 y uint8
 actual float32
 name string(16)
@@ -185,7 +185,7 @@ changed bool }
 	receiver := unitFromSource(t, `package probe
 type Item { value int32 }
 union Payload { number uint32 }
-table Root { x int32 = 1000 | min=1000,max=2000
+fixed table Root { x int32 = 1000 | min=1000,max=2000
 y uint64 | min=0,max=100
 actual float64
 name string(4)
@@ -257,7 +257,7 @@ func TestCTableMessageZeroWidthListCapacity(t *testing.T) {
 
 func TestCTableMessagePartialRoot(t *testing.T) {
 	u := unitFromSource(t, `package probe
-table Node { x uint32 }
+fixed table Node { x uint32 }
 table Root { node *Node
 value uint64 }
 `)

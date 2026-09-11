@@ -27,7 +27,7 @@ union Pick
     labelled Labelled
 }
 
-table FuRoot
+fixed table FuRoot
 {
     flag  bool = false
     note  ?int32

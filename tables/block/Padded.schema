@@ -19,7 +19,7 @@ package blockdemo
 const MaxPaddedRows = 64
 
 // A row with holes in it. tag/value leaves seven bytes; flag/id leaves three.
-table PaddedRow
+fixed table PaddedRow
 {
     tag     uint8
     value   float64
@@ -34,7 +34,7 @@ table PaddedRow
 // The frame: a scalar that leaves a hole before the triple, so the PROJECTION
 // itself carries generated padding too — the table at the front of a block is
 // a record like any other (§19.3).
-table PaddedFrame
+fixed table PaddedFrame
 {
     marker uint8
     stamp  uint64

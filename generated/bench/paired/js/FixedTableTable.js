@@ -299,7 +299,7 @@ const FixedTableFixedDst = new Int32Array([
 // source and destination advance together over the whole body and the walk
 // coalesces to exactly ONE run. That is the same coalescer the plan compiler
 // runs, reaching its best case rather than skipping a step.
-const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0]);
+const FixedTableFixedIdentity = new Int32Array([0, 0, 0, 1236, 0, -1, 0, 0, 1]);
 
 // THE PLAN'S STORAGE IS THE CALLER'S, DECLARED BY CAPACITY, AND THE CODEC
 // NEVER ALLOCATES. One of these per peer; a layout whose plan does not fit is

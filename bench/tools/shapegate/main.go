@@ -182,8 +182,12 @@ var (
 	// `table` rides here beside `type`: bench/corpus/BenchTable.schema
 	// declares the tables leg's shape and its nested records as tables, and a
 	// declaration keyword missing from this list is a shape name the gate
-	// does not guard at all.
-	declRe  = regexp.MustCompile(`^\s*(?:type|table|enum|union|flags)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	// does not guard at all. **`fixed` IS A QUALIFIER, NOT A KEYWORD OF ITS
+	// OWN** (docs/SPEC-TABLES.md §2.2, #823): `fixed table T` declares T
+	// exactly as `table T` does, and a gate that did not step over the
+	// qualifier would silently stop guarding every fixed table in the corpus —
+	// which is most of it, and is how this line was found.
+	declRe  = regexp.MustCompile(`^\s*(?:fixed\s+)?(?:type|table|enum|union|flags)\s+([A-Za-z_][A-Za-z0-9_]*)`)
 	fieldRe = regexp.MustCompile(`^\s+([a-z_][a-z0-9_]*)\s`)
 	bitsRe  = regexp.MustCompile(`=\s*(\d+)\s*bits`)
 )

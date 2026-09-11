@@ -409,14 +409,18 @@ func (g *tableGen) emitRootNodeMessageDispatch(st *ir.Struct) {
 	if len(reachable) == 0 {
 		g.pf("    (void) extent;\n")
 	}
-	g.pf("    switch ( type_id )\n    {\n")
-	for _, t := range reachable {
-		g.pf("        case 0x%016xull: return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent ); // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
+	if nodeDispatchEmpty(reachable, blobs) {
+		g.pf("    (void) type_id;\n")
+	} else {
+		g.pf("    switch ( type_id )\n    {\n")
+		for _, t := range reachable {
+			g.pf("        case 0x%016xull: return TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + extent ); // %s\n", ir.TableWireId(t.Name), t.Name, t.Name)
+		}
+		for _, b := range blobs {
+			g.pf("        case %s: return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
+		}
+		g.pf("        default: break;\n    }\n")
 	}
-	for _, b := range blobs {
-		g.pf("        case %s: return TableBlobStorage( length, %v ); // *%s\n", b.constant, b.terminated, b.word)
-	}
-	g.pf("        default: break;\n    }\n")
 	g.pf("    return -1;\n}\n\n")
 
 	g.pf("// %sNodeMessageExtent: step over one TABLE record's body, tallying the extent\n", n)
@@ -489,27 +493,47 @@ func (g *tableGen) emitRootNodeMessageBodyDispatch(st *ir.Struct, reachable []*i
 	if !anyVar {
 		g.pf("    (void) nodes; (void) index_bits; // every node this root can name is a FIXED table\n")
 	}
+	// A VARIABLE ROOT WHOSE NUMBERING CAN NAME NOTHING (docs/SPEC-TABLES.md
+	// §2.2): the class is DECLARED, so a plain `table` is the variable wire
+	// with no pointer, no map and no unbounded array under it at all. The
+	// reader, the vocabulary and the storage are then read by nothing, exactly
+	// as `NodeMessageStorage` and `NodeMessageExtent` above already say of
+	// their own parameters under the same emptiness. The switch is not
+	// emitted: an empty `default` is C4065 under MSVC /W4 /WX.
+	if !g.anyExtent && len(reachable) == 0 {
+		g.pf("    (void) r; (void) vocabulary; (void) at; // this root's numbering is always empty: nothing is ever decoded\n")
+		g.pf("    (void) type_id;\n")
+	}
 	if g.retain && len(reachable) == 0 {
 		// a root whose numbering can name no TABLE record: a blob's bytes carry
 		// no body, so there is nothing under this node for a path to reach
 		g.pf("    (void) retain; (void) node;\n")
 	}
-	g.pf("    bool ok = false;\n")
-	g.pf("    switch ( type_id )\n    {\n")
-	for _, t := range reachable {
-		call := g.msgLoadCall(nil, t.Name, "r", fmt.Sprintf("*(%s *) at", t.Name))
-		if g.retain {
-			call = fmt.Sprintf("%sLoadMessageBodyRetain( r, vocabulary, report, nodes, index_bits, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
-			if !g.isVar(t.Name) {
-				call = fmt.Sprintf("%sLoadMessageBodyRetain( r, vocabulary, report, index_bits, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+	if len(reachable) == 0 {
+		// a record this dispatch cannot name never reaches here: pass one left it absent
+		g.pf("    report->malformed = true;\n")
+	} else {
+		g.pf("    bool ok = false;\n")
+		g.pf("    switch ( type_id )\n    {\n")
+		for _, t := range reachable {
+			call := g.msgLoadCall(nil, t.Name, "r", fmt.Sprintf("*(%s *) at", t.Name))
+			if g.retain {
+				call = fmt.Sprintf("%sLoadMessageBodyRetain( r, vocabulary, report, nodes, index_bits, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+				if !g.isVar(t.Name) {
+					call = fmt.Sprintf("%sLoadMessageBodyRetain( r, vocabulary, report, index_bits, *(%s *) at, retain, TableRetainPathRoot( (const void *) at, node ) )", t.Name, t.Name)
+				}
 			}
+			g.pf("        case 0x%016xull: ok = %s; break; // %s\n", ir.TableWireId(t.Name), call, t.Name)
 		}
-		g.pf("        case 0x%016xull: ok = %s; break; // %s\n", ir.TableWireId(t.Name), call, t.Name)
+		g.pf("        // a record this dispatch cannot name never reaches here: pass one left it absent\n")
+		g.pf("        default: report->malformed = true; break;\n    }\n")
 	}
-	g.pf("        // a record this dispatch cannot name never reaches here: pass one left it absent\n")
-	g.pf("        default: report->malformed = true; break;\n    }\n")
 	if g.anyExtent {
 		g.pf("    nodes.carve = outer;\n")
 	}
-	g.pf("    return ok;\n}\n\n")
+	if len(reachable) == 0 {
+		g.pf("    return false;\n}\n\n")
+	} else {
+		g.pf("    return ok;\n}\n\n")
+	}
 }

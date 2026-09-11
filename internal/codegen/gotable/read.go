@@ -42,7 +42,21 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.pf("\t\t\tvalue.%sPresent = true\n", member(f))
 		}
 	}
-	if g.regional {
+	// THE NODE TABLE'S RESERVED ID, AND ONLY WHERE IT IS THIS BODY'S OWN
+	// TRANSPORT (docs/SPEC-TABLES.md §3.1). A VARIABLE root's body carries the
+	// numbering under `0xFFFFFFFFFFFFFFFF`, and this loop runs over that body
+	// after the graph path has already read it, so the field is stepped over in
+	// silence — it is not an unknown FIELD, it is this reader's own transport.
+	//
+	// A FIXED-CLASS table gets NO such arm even in a regional unit, because it
+	// has no numbering: for it the reserved id is an id it cannot name, and §3.1
+	// says exactly what that costs — "a reader that cannot name the id skips the
+	// field by its `L` and counts it unknown, once (§4). No new skip rule." The
+	// arm used to ride on every table of a regional unit, which made this leg
+	// answer `unknown=0` where the C++ reference and the compiler's own reader
+	// both answer `unknown=1`; the wire fuzzer found it the day a fixed root
+	// landed in a regional unit (#823).
+	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		g.pf("case 0xffffffffffffffff: if !r.Skip(kind) { r.Report.Malformed=true;return false }\n")
 	}
 	if g.retain {
