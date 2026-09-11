@@ -70,7 +70,18 @@ type versionRow struct {
 var versionRows = []versionRow{
 	{row: "array_bounded_grow"},
 	{row: "array_elem_widen", widens: true},
-	{row: "array_fixed_grow", poison: true},
+	// THE POISON ROWS (§5.7): the image the prefill lands in is filled with
+	// 0x5A first, because with a zero default over a zeroed image the row passes
+	// whether the prefill ran or not — and these two are the rows whose whole
+	// subject is that it ran. The appended slots owe THE ELEMENT'S OWN DEFAULTS.
+	{row: "array_fixed_grow", poison: true, check: `
+  check(values[0].lead == 0xAAAAAAAA && values[0].trail == 0xBBBBBBBB,
+      'array_fixed_grow moved a neighbour: ${values[0].lead} ${values[0].trail}');
+  for (var i = 4; i < 8; i++) {
+    check(values[0].vals[i].x == 7 && values[0].vals[i].y == 9,
+        'slot $i past the old bound is not the ELEMENT default: '
+        '${values[0].vals[i].x} ${values[0].vals[i].y}');
+  }`},
 	{row: "bits_grow", widens: true},
 	{row: "bytes_grow"},
 	{row: "constant_grow"},
@@ -97,7 +108,10 @@ var versionRows = []versionRow{
       'record $k moved a neighbour: ${values[k].lead} ${values[k].trail}',
     );
   }`},
-	{row: "keyed_array_enum_append", poison: true},
+	{row: "keyed_array_enum_append", poison: true, check: `
+  check(values[0].slots[3].n == 7,
+      'the slot the appended key opened is not the element default: '
+      '${values[0].slots[3].n}');`},
 	{row: "nested_append"},
 	{row: "optional_add"},
 	{row: "range_widen"},
