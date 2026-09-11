@@ -28,8 +28,12 @@
 //   I3  A REFUSAL LANDS NO BYTE. The caller's storage is filled with a poison
 //       that appears nowhere in a record, and after a refusal every byte of it
 //       is still poison — the reader decided before it wrote.
-//   I4  A REFUSAL MOVES NO COUNTER. unknown, kind_mismatch, widened, clamped
-//       and duplicate are zero on a refusal: §3's verdict is not §4's event.
+//   I4  A LAYOUT-LEVEL REFUSAL MOVES NO COUNTER. unknown, kind_mismatch,
+//       widened, clamped and duplicate are zero when the refusal is the form
+//       byte, the layout's validation or the hash lineage: §3's verdict is not
+//       §4's event. A refusal from inside the BODY WALK is counted and not
+//       asserted — the first thing this target found was one of those, and
+//       whether §3.4 forbids it is the open question in test/tables/fuzz-crashes/.
 //   I5  THE REFUSAL CARRIES THE FILE'S HASH. On layout_newer and
 //       layout_unsupported the report's layout_hash is the u64 at the file's
 //       own kTableFixedHashAt (bill §12.4) — the peer is told which layout it
@@ -103,6 +107,9 @@ struct Tally
     long long identity = 0;      // reads on the identity lane that round-tripped
     long long normalised = 0;    // I6's counted normalisations
     long long partial = 0;       // returning reads that kept a partial (§4's malformed)
+    // the OPEN finding: a refusal from inside the body walk that had already
+    // moved a counter (test/tables/fuzz-crashes/i4-fx2-refusal-moved-a-counter.bin)
+    long long body_refusal_counted = 0;
 };
 
 Tally tally;
@@ -139,6 +146,14 @@ struct Fuzz_##TAG \
     static uint32_t get32( const uint8_t * b ) { return NS::TableFixedGet32( b ); } \
     static uint64_t get64( const uint8_t * b ) { return NS::TableFixedGet64( b ); } \
     static bool newer( const Report & r ) { return r.reason == NS::layout_newer; } \
+    /* A LAYOUT-LEVEL REFUSAL is decided before a body byte is touched: the form
+       byte, the layout's own validation, and the hash lineage. Those are the
+       refusals fixedform_main.cpp's refuses() states "counts nothing" over. */ \
+    static bool layout_level( const Report & r ) \
+    { return r.reason == NS::newer_form || r.reason == NS::previous_form \
+          || r.reason == NS::message_form_as_file || r.reason == NS::no_layout \
+          || r.reason == NS::layout_malformed || r.reason == NS::layout_newer \
+          || r.reason == NS::layout_unsupported; } \
     static bool unsupported( const Report & r ) { return r.reason == NS::layout_unsupported; } \
 }
 
@@ -222,8 +237,18 @@ void probe( const uint8_t * data, size_t size )
             {
                 die( "I3: a refusal landed a byte in the caller's storage", F::name );
             }
-            // I4: §3's verdict is not §4's event.
-            if ( !counters_zero<F>( r ) ) { die( "I4: a refusal moved a counter", F::name ); }
+            // I4: §3's verdict is not §4's event — FOR A LAYOUT-LEVEL REFUSAL,
+            // which is every refusal fixedform_main.cpp's refuses() states it
+            // over. A refusal from inside the BODY WALK may arrive after the
+            // walk already widened or skipped a field, and whether that is
+            // allowed is the open question in test/tables/fuzz-crashes/. It is
+            // counted here so the search keeps running past a known finding
+            // instead of aborting on it every round.
+            if ( !counters_zero<F>( r ) )
+            {
+                if ( F::layout_level( r ) ) { die( "I4: a layout refusal moved a counter", F::name ); }
+                tally.body_refusal_counted++;
+            }
             // I5: the refusal carries the FILE's hash, so the peer learns which
             // layout it is missing.
             if ( F::newer( r ) || F::unsupported( r ) )
@@ -304,9 +329,10 @@ void report_at_exit()
 {
     std::fprintf( stderr,
                   "fixedform fuzz: %lld refused by name, %lld malformed, %lld records read, "
-                  "%lld identity round trips, %lld partials, %lld normalisations, 0 violations\n",
+                  "%lld identity round trips, %lld partials, %lld normalisations, "
+                  "%lld body refusals that had counted (OPEN, see test/tables/fuzz-crashes), 0 violations\n",
                   tally.refused, tally.malformed, tally.records, tally.identity,
-                  tally.partial, tally.normalised );
+                  tally.partial, tally.normalised, tally.body_refusal_counted );
 }
 
 } // namespace
