@@ -14,17 +14,19 @@
 // RECORD and not in the header — a record is its hash and then its values.
 // This is the reference's header (cpptable) and the committed corpus's.
 //
-// Form-1 Load of a DECLARED fixed table is a named refusal (Glenn
-// 2026-09-09), never a slow read — and the word that matters is DECLARED.
-// The refusal is keyed on the `fixed table` KEYWORD ([ir.Struct.FixedDeclared],
-// #823), not on the shape, and since #823 landed so is the FORM: a bounded body
-// a plain `table` declares is the variable wire, emits no form-3 surface at all
-// and keeps the form-1 Load it never lost — nothing is derived in either
-// direction (§2.2, [ir.TableFixedRoots]). FixedLoad is the form-3 reader, and
-// it answers by the form REGISTRY (§3): previous_form for 1,
+// TWO ENTRY POINTS, ONE FORM EACH, AND EACH REFUSES THE OTHER'S BYTE (§15):
+// <T>Load is the VARIABLE form's entry point and READS form 1; <T>FixedLoad is
+// the form-3 reader and names a form-1 file `previous_form`. The `fixed table`
+// KEYWORD ([ir.Struct.FixedDeclared], #823) is the SELECTION POINT for what a
+// WRITER emits — a bounded body a plain `table` declares is the variable wire
+// and gets no form-3 surface at all, nothing is derived in either direction
+// (§2.2, [ir.TableFixedRoots]) — and it does NOT move the refusal into <T>Load.
+// The shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a
+// DECLARED fixed root and the C++ reference reads it there through <T>Load, so
+// a Go <T>Load that refused would be the one leg disagreeing with the byte
+// authority. FixedLoad answers by the form REGISTRY (§3): previous_form for 1,
 // message_form_as_file for 2, newer_form for every byte §3 has not assigned.
-// The C++ reference still accepts form 1 by the form byte; this port does not
-// copy that for a declared fixed table.
+// The single entry point that would answer both by DISPATCH is §15's follow-on.
 package gotable
 
 import (
@@ -320,19 +322,6 @@ func (g *tableGen) hasFixedForm(st *ir.Struct) bool {
 		return false
 	}
 	return g.fixedLeafCount(st) <= fixedLeafCap
-}
-
-// refusesForm1 is the OTHER question, and Glenn 2026-09-09 is that they are
-// two: a form-1 file handed to <T>Load is a named refusal when the AUTHOR
-// DECLARED the table fixed, never merely because the compiler could lay it
-// out fixed. hasFixedForm above is shape; this is the keyword. Since #823
-// landed, hasFixedForm asks the declaration too — [ir.VariableTables] is
-// [ir.Struct.FixedDeclared]'s complement — so the two answer together on this
-// leg; the conjunction stays because the refusal is owed to the KEYWORD, and a
-// backend may carry the form for FEWER types than the declaration (the leaf
-// cap above is one such narrowing) but never for more.
-func (g *tableGen) refusesForm1(st *ir.Struct) bool {
-	return g.hasFixedForm(st) && st.FixedDeclared
 }
 
 func (g *tableGen) fixedRoots(members []*ir.Struct) []*ir.Struct {
@@ -945,26 +934,6 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, tabs int) {
 			g.pf("%sif %s > %d { %s = %d; (*clamped)++ }\n", ind, expr, maxv, expr, maxv)
 		}
 	}
-}
-
-// emitFixedForm1Load is the form-1 file reader for a DECLARED fixed table
-// (#823's keyword, [ir.Struct.FixedDeclared]) — see [tableGen.refusesForm1].
-// Form 1 is previous_form; the slow tableOpen walk never runs. Other bytes
-// keep the form-1 Load's existing refusal names. The C++ reference still
-// accepts form 1 on this type (cpptable/fixedform.go:19); Glenn says refuse.
-func (g *tableGen) emitFixedForm1Load(st *ir.Struct) {
-	n := st.Name
-	g.pf("func %sLoad(value *%s, data []byte, report *TableReport) bool {\n", n, g.storageName(n))
-	g.pf("\tif report == nil { var ignored TableReport; report = &ignored }\n")
-	g.pf("\t%sReset(value)\n", n)
-	g.pf("\tif len(data) > 0 && data[0] == 1 {\n")
-	g.pf("\t\ttableFixedRefuse(report, \"previous_form\")\n")
-	g.pf("\t\treturn false\n")
-	g.pf("\t}\n")
-	g.pf("\t_, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
-	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"unsupported wire form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message form requires an announced vocabulary and a message reader\" } }\n")
-	g.pf("\tif verdict == TableOpenDamaged { report.Malformed = true }\n")
-	g.pf("\treturn false\n}\n\n")
 }
 
 func (g *tableGen) emitByteArray(b []byte) {
