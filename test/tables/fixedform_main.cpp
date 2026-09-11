@@ -1429,6 +1429,89 @@ static void record_bound_case()
 
 // ---------------------------------------------------------------------------
 
+// C1/C2: THE COUNT CLAMP (docs/FIXED-FORM-ALGORITHM.md §4.5). A counted array's
+// count is four bytes a STRANGER wrote: `v := SLE(4, record+src)`; below zero it
+// is zero and past the READER's own bound, IN ELEMENTS, it is the bound, and
+// either way `COUNT clamped` once for the field.
+//
+// THE FORGERY IS IN THE BYTES and not through the writer: §3.1's write-side
+// bound checks are DEBUG ONLY by rule and clamp nothing, so a count of -1 is a
+// thing only the wire can say. `-1` is spelled as the wire spells it, four
+// 0xFF bytes, which is also the number a length field holds when a peer wrote a
+// signed -1 and a u32 reader read it as four billion.
+//
+// THIS CASE LIVES HERE AND NOT IN THE PROPERTIES GATE because it cannot be
+// reached from there: `decode_identity` (fixedform_properties.cpp:347) returns
+// before the clamp pass when `inspect` sets `unsafe`, and a forged count is
+// exactly what `inspect` calls unsafe — so P1 and P3 can never reach the clamp
+// the defence is. The identity plan is what carries `count` (§4.1), so this
+// reads its own file.
+static void count_clamp_case()
+{
+    tblfx1::FxRoot one;
+    tblfx1::FxRootReset( one );
+    one.marks[0] = 7; one.marks[1] = 8;
+    one.marks_count = 2;
+    std::vector<uint8_t> file( (size_t) tblfx1::FxRootFixedMeasure( 1 ) );
+    check( tblfx1::FxRootFixedSave( &one, 1, file.data(), (int64_t) file.size() ) == (int64_t) file.size(),
+           "count clamp: the record saves" );
+    uint8_t * body = file.data() + tblfx1::kTableFixedHeaderBytes + 4 + tblfx1::FxRootFixedLayoutBytes + 8;
+
+    // THE COUNT'S OFFSET IS FOUND BY THE PLAN'S OWN ROW, by shape and not by a
+    // number in this file: a `count` op whose bound is FOUR elements is `marks`
+    // and nothing else, where `blob`'s is six.
+    uint32_t count_at = 0xFFFFFFFFu;
+    int32_t bound = 0;
+    for ( int32_t i = 0; i < tblfx1::FxRootFixedPlanCount; ++i )
+    {
+        const tblfx1::TableFixedEntry e = tblfx1::FxRootFixedPlan[i];
+        if ( e.op == tblfx1::kTableFixedCount && e.size == 4u ) { count_at = e.src; bound = (int32_t) e.size; }
+    }
+    check( count_at != 0xFFFFFFFFu && bound == 4, "count clamp: the identity plan carries `marks`' count op, bound FOUR elements" );
+    check( (int32_t) tblfx1::TableFixedGet32( body + count_at ) == 2,
+           "count clamp: and the offset it names is where the live count really is" );
+
+    // C1: A COUNT BELOW ZERO. Not a large number — zero, and one clamp.
+    {
+        tblfx1::TableFixedPut32( body + count_at, 0xFFFFFFFFu ); // -1, as the wire spells it
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "C1: a forged count of -1 still READS — a clamp is not a refusal" );
+        check( back.marks_count == 0, "C1: a count below zero clamps to ZERO" );
+        check( r.clamped == 1, "C1: and counts exactly one clamp" );
+        check( !r.malformed && !r.refused, "C1: a clamp is neither malformed nor a refusal" );
+    }
+
+    // C2: A COUNT PAST THE READER'S OWN BOUND, IN ELEMENTS.
+    {
+        tblfx1::TableFixedPut32( body + count_at, (uint32_t) ( bound + 1 ) );
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "C2: a forged count of Max+1 still READS" );
+        check( back.marks_count == bound, "C2: a count past Max clamps to MAX, in elements" );
+        check( r.clamped == 1, "C2: and counts exactly one clamp" );
+        check( back.marks[0] == 7 && back.marks[1] == 8, "C2: the live elements are still the record's" );
+    }
+
+    // AND THE CONTROL: the bound itself is not a clamp. A count EQUAL to Max is
+    // in range, and a clamp counted there would be a clamp on a clean read.
+    {
+        tblfx1::TableFixedPut32( body + count_at, (uint32_t) bound );
+        tblfx1::FxRoot back;
+        tblfx1::TableReport r;
+        std::vector<tblfx1::TableFixedEntry> plan( 1024 );
+        check( tblfx1::FxRootFixedLoad( &back, 1, file.data(), (int64_t) file.size(), plan.data(), 1024, NULL, &r ) == 1,
+               "count clamp: a count of exactly Max reads" );
+        check( back.marks_count == bound && r.clamped == 0, "CONTROL: a count of exactly Max is in range and counts NOTHING" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 int main()
 {
     std::printf( "FX1 FxRoot: body %lld, layout %lld, identity plan %d entries\n",
@@ -1448,6 +1531,7 @@ int main()
     cache_case();
     layout_validation();
     record_bound_case();
+    count_clamp_case();
     fuzz_case();
     if ( failures != 0 ) { std::printf( "%d failure(s)\n", failures ); return 1; }
     if ( known_red_hits != 0 )
