@@ -527,8 +527,11 @@ func (g *gen) emitWriteCompressedFold(f *ir.Field, name, ind string) {
 	// refusal is every-build, exactly as ErrValueOutOfRange is for an int out
 	// of its range. `x-x != 0` is the family's finiteness spelling — NaN and
 	// both infinities fail it (Inf - Inf is NaN) — and Go never contracts it
-	// away. The clamp below stays: it is what the other eight targets leave
-	// standing in release, and the bytes must not depend on the tier.
+	// away. The clamp below stays: it is what the other SEVEN targets — the
+	// debug-only ones, whose assert is gone in release — leave standing, and
+	// the bytes must not depend on the tier. Elixir is not among them: like Go
+	// it refuses every-build, so a non-finite value never reaches its clamp
+	// either (compiler/nonfinitecompressed_test.go, claim 2).
 	g.pf("%sif %s-%s != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)\n", ind, name, name)
 	g.pf("%s\treturn serialize.ErrValueOutOfRange\n%s}\n", ind, ind)
 	g.pf("%s{\n", ind)

@@ -1352,6 +1352,9 @@ const CompressedCeilingMaxBits = 24
 const CompressedCeilingMaxBytes = 8
 
 func WriteCompressedCeiling(stream *serialize.WriteStream, value *CompressedCeiling) error {
+	if value.Ceiling-value.Ceiling != 0 { // non-finite (NaN, ±Inf) at a compressed float (SPEC §4.3)
+		return serialize.ErrValueOutOfRange
+	}
 	{
 		normalizedValue := value.Ceiling / 8.388609e+06
 		if !(normalizedValue >= 0) { // the runtime's clamp form — it forces NaN into range too
