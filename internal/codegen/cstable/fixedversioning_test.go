@@ -157,7 +157,7 @@ func csVersionAssert(t *testing.T, out []byte, runErr error, probe string) {
 		return
 	}
 	var lines []string
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if strings.Contains(line, probe) {
 			lines = append(lines, line)
 		}
