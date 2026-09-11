@@ -50,7 +50,8 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, `clamped` == 0 | the hash |
 | `range_added` | `int32` | — | `int32 \| 0..100`: "range added where none was" | — | — |
 | `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the hash |
-| `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed" | the raw scaled value exact | the hash |
+| `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed (8 -> 4)"; `fixed(12,4)` from `fixed(8,8)`: "F changed" (I + F EQUALS a storage width per SPEC §4.6, so with F held a narrowed I IS a narrowed kind, and the only same-storage move is I against F) | the raw scaled value exact | the hash |
+| `fixed_I_grow_element` | `[4]fixed(12,4)` | `[4]fixed(28,4)` | `[4]fixed(12,4)` from `[4]fixed(28,4)`: "element I narrowed (28 -> 12)" | as the scalar row, per slot | the hash |
 | `optional_add` | `T` | `?T` | `T` from `?T`: "optional removed" | present == 1, value exact | the hash |
 | `nested_append` | `Root { v Vec }`, `Vec {x,y,z}` | `Vec {x,y,z,w}` | `Vec {x,y}`: "field removed" (in the nested type, named as `Root: Vec.z`) | as `field_append`, inside Root | the hash |
 | `default_change` | `a int32 = 1` | — | `a int32 = 2`: "default changed" | — | — |
@@ -84,7 +85,7 @@ only, and OLD-REFUSES-NEW for the other direction).
 
 ## Counting
 
-36 rows × up to 4 columns — the rows whose read columns are `—` are LOCK-only, `held_type_change` and
+37 rows × up to 4 columns — the rows whose read columns are `—` are LOCK-only, `held_type_change` and
 `plan_cap` among them — the four DIVERGENCE rows below (§5.8's 4, 9, 11, 12), the floor and hash
 tests, on the reference and nine legs. The reference first,
 red first; then the legs from the corpus, algorithm not reference; the swarm takes the mechanical rows with
