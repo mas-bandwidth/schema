@@ -1178,6 +1178,54 @@ namespace Tabledemo
             ScoreBoardFixedWriteBody(b.Slice(222), value.Scores);
         }
 
+        // TeamConfig's read-side bounds (§4.6).
+        public static void TeamConfigFixedClampBody(TeamConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.SpawnCount < 0) { value.SpawnCount = 0; clamped++; }
+            else if (value.SpawnCount > 64) { value.SpawnCount = 64; clamped++; }
+        }
+
+        // ScoreBoard's read-side bounds (§4.6).
+        public static void ScoreBoardFixedClampBody(ScoreBoard value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.PerTeam != null)
+            {
+                for (int i = 0; i < 3 && i < value.PerTeam.Length; ++i)
+                {
+                    if (value.PerTeam[i] < 0) { value.PerTeam[i] = 0; clamped++; }
+                    else if (value.PerTeam[i] > 100000) { value.PerTeam[i] = 100000; clamped++; }
+                }
+            }
+        }
+
+        // KeyedConfig's read-side bounds (§4.6).
+        public static void KeyedConfigFixedClampBody(KeyedConfig value, ref int clamped)
+        {
+            if (value == null) return;
+            if (value.Teams.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Teams.Slots.Length; ++i)
+                {
+                    TeamConfigFixedClampBody(value.Teams.Slots[i], ref clamped);
+                }
+            }
+            ScoreBoardFixedClampBody(value.Scores, ref clamped);
+        }
+
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void TeamConfigFixedClamp(TeamConfig value, TableReport report)
+        {
+            int clamped = 0;
+            TeamConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- TeamConfig, the fixed form ----
 
         public const long TeamConfigFixedBodyBytes = 24;
@@ -1394,6 +1442,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new TeamConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), TeamConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, TeamConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                TeamConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)
@@ -2257,6 +2306,18 @@ namespace Tabledemo
             TableFixedWire.Run(plan, HullConfigFixedSlots, src, dst, report, planBytes, ref widenScratch);
         }
 
+        // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
+        // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
+        // past the enum's top value. Straight-line, after the run, over STORAGE,
+        // so the identity plan and a plan compiled from a stranger's layout are
+        // held to the same numbers by the same pass. Every clamp COUNTS.
+        public static void KeyedConfigFixedClamp(KeyedConfig value, TableReport report)
+        {
+            int clamped = 0;
+            KeyedConfigFixedClampBody(value, ref clamped);
+            if (report != null) { report.Clamped += clamped; }
+        }
+
         // ---- KeyedConfig, the fixed form ----
 
         public const long KeyedConfigFixedBodyBytes = 234;
@@ -2694,6 +2755,7 @@ namespace Tabledemo
                 if (values[k] == null) { values[k] = new KeyedConfig(); }
                 TableFixedWire.FillRun(fillBuf.AsSpan(0, fillCount), KeyedConfigFixedSlots, values[k]);
                 TableFixedWire.Run(entries, KeyedConfigFixedSlots, at.Slice(8), values[k], report, planBytes, ref widenScratch);
+                KeyedConfigFixedClamp(values[k], report);
                 at = at.Slice((int)record_bytes);
             }
             if (report != null)

@@ -504,7 +504,7 @@
     {
       "name": "java",
       "when": "pull-request",
-      "why": "the Java port's controls and its four packet families: eight controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost.",
+      "why": "the Java port's controls and its four packet families: nine controls, the eighth being the FIXED FORM's (docs/SPEC-TABLES.md §3.4), which writes one text length a byte too high and must red the C++ reference's byte match, and the ninth the VERSIONING gate's (§5.3 of docs/FIXED-FORM-ALGORITHM.md), which answers `noLayout` for a file outside the lineage where `layoutNewer` is the whole answer, so only a suite that checks the NAME can red it. Measured 6 s over 10 controls before the previous-form table legs were removed, on a host carrying no such SDK, so that is a floor and not the job's cost; the versioning control adds the reference's own dump (~7 s) and one submake over both columns of every row of §5.7 beside it, about twenty seconds on the author's machine.",
       "targets": [
         "conformance-negative-control-java-block",
         "packet-arm-defaults-java-negative-control",
@@ -514,7 +514,8 @@
         "tables-java-cook-extent-negative-control",
         "tables-java-fixedform-arm-negative-control",
         "tables-java-fixedform-negative-control",
-        "tables-java-fuzz-negative-control"
+        "tables-java-fuzz-negative-control",
+        "tables-java-versioning-negative-control"
       ],
       "java": "21"
     },
