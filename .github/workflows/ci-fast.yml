@@ -21,7 +21,7 @@ name: CI fast
 #   conformance (9)           45        47 s         403 s
 #
 # END TO END those runs took 10:53, 15:08, 16:08, 15:45 and 24:42 — and THE
-# CRITICAL PATH IS NOT RUN TIME, IT IS QUEUE WAIT. ci.yml (now ci-full.yml)
+# CRITICAL PATH IS NOT RUN TIME, IT IS QUEUE WAIT. ci-full.yml dispatches SEVENTY
 # JOBS per pull request; with a dozen branches in flight the 47 negative-control
 # rows alone sat a median of 11m38s waiting for a runner, and the last job of a
 # run started up to 23 minutes after the push. No single job needed fixing: the
