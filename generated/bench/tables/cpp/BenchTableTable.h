@@ -94,8 +94,24 @@ enum TableMessageReason
     layout_size_mismatch,   // an entry's stated constant size is not the one its kind's definition fixes, or not the one its children account for
     layout_tree_unclosed,   // the pre-order child walk does not consume exactly the entries: the tree runs out of layout, or the layout outlasts the tree
     layout_too_deep,        // a nesting depth past what this reader walks: a bound on the WALK, so a hostile layout cannot spend a reader's stack
-    layout_record_too_large // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    layout_record_too_large, // a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode
+    // THE BACKWARD-READ REFUSALS (bill §4, §6b, algorithm §5.3). A hash this
+    // reader has never locked is layout_newer; a hash in the lineage below the
+    // floor is layout_unsupported. Both carry the file's hash and nothing else
+    // (bill §12.4).
+    layout_newer,
+    layout_unsupported
 };
+
+#ifndef SCHEMA_HAS_LAYOUT_NEWER
+#define SCHEMA_HAS_LAYOUT_NEWER 1
+#endif
+#ifndef SCHEMA_HAS_LAYOUT_UNSUPPORTED
+#define SCHEMA_HAS_LAYOUT_UNSUPPORTED 1
+#endif
+#ifndef SCHEMA_HAS_FLOOR
+#define SCHEMA_HAS_FLOOR 1
+#endif
 
 // The table-wire read report — the permissive contract's ledger. Silence
 // (all zero) means the data matched this reader's schema exactly.
@@ -131,6 +147,9 @@ struct TableReport
     // says what a READER could not name and that stays true.
     int32_t retained = 0;    // unknown fields whose bytes were kept
     int32_t retain_lost = 0; // every unknown this load or save could not keep
+    // THE FILE'S LAYOUT HASH, on layout_newer (bill §12.4): the refusal carries
+    // the hash and nothing else. Zero on every other path.
+    uint64_t layout_hash = 0;
 };
 
 
@@ -2174,6 +2193,7 @@ enum : uint8_t
     kTableFixedWiden   = 4, // a narrower source into a wider destination
     kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
     kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
 };
 
 // meta on a kTableFixedText entry
@@ -2215,9 +2235,14 @@ inline bool TableFixedWidens( uint8_t from, uint8_t to )
 {
     if ( from >= 6 && from <= 9 && to >= 6 && to <= 9 ) { return to > from; }  // u8 .. u64
     if ( from >= 2 && from <= 5 && to >= 2 && to <= 5 ) { return to > from; }  // i8 .. i64
+    if ( from >= 20 && from <= 24 && to >= 20 && to <= 24 ) { return to > from; } // signed fixed(I,F): I grows, F stays
+    if ( from >= 25 && from <= 29 && to >= 25 && to <= 29 ) { return to > from; } // unsigned ufixed(I,F)
     return from == 10 && to == 11;                                            // f32 -> f64
 }
-inline bool TableFixedSignedKind( uint8_t kind ) { return kind >= 2 && kind <= 5; }
+inline bool TableFixedSignedKind( uint8_t kind )
+{
+    return ( kind >= 2 && kind <= 5 ) || ( kind >= 20 && kind <= 24 ); // i8..i64, or signed fixed(I,F)
+}
 
 // A PLAN ENTRY. src and dst are byte offsets — into the record's body and into
 // the reader's own storage. guard is the byte offset of a union tag when the
@@ -2462,6 +2487,11 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedConst:
         {
             memcpy( dst + p.dst, &p.aux, p.size );
+            break;
+        }
+        case kTableFixedPresent:
+        {
+            dst[p.dst] = 1; // T into ?T: every old value lands present (bill §12.8)
             break;
         }
         default: break;
@@ -3090,6 +3120,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     } depth_guard( c );
     (void) depth_guard;
     const uint32_t aux_at = my_at + d.aux;
+    // T into ?T: an unguarded present op, then the payload under the wrapper
+    // (bill §12.8, algorithm §5.2). The writer's kind is the payload's; the
+    // reader's is the optional wrapper.
+    if ( me.kind == 35 && te.kind != 35 )
+    {
+        TableFixedEntry e;
+        e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg; e.op = kTableFixedPresent;
+        TableFixedPush( c, e );
+        TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
+        return;
+    }
     if ( te.kind != me.kind )
     {
         if ( TableFixedWidens( te.kind, me.kind ) )
@@ -3213,6 +3254,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         case 30: // an enum: the ordinal is the layout's position, so it remaps
         {
             if ( ( guard != kTableFixedNoGuard ) != c.want_guarded ) { break; }
+            // A GROWN ORDINAL WIDTH IS A WIDEN (bill §12.7, algorithm §5.2):
+            // append-only means the writer's ordinal IS the reader's, and the
+            // counter owes one. Remap is only for a merge that reordered names.
+            if ( te.size < me.size )
+            {
+                TableFixedEntry e;
+                e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
+                e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+                TableFixedPush( c, e );
+                break;
+            }
             uint16_t map[256];
             const uint32_t n = te.children < 255u ? te.children : 255u;
             for ( uint32_t j = 0; j < n; ++j )
@@ -3334,6 +3386,17 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
 // hash never consults it. compiles counts successful compiles through this
 // cache, which is the pin; made is 1 on a slot after the compile that
 // filled it.
+
+// One COMPILE'd lineage entry: the hash LOAD looks up, the layout bytes it
+// memcmps, the writer's record size. Plans for older hashes are compiled from
+// these trusted bytes, never from the file (algorithm §5.3).
+struct TableFixedKnownLayout
+{
+    uint64_t hash = 0;
+    const uint8_t * layout = NULL;
+    int64_t layout_bytes = 0;
+    int64_t record_bytes = 0;
+};
 
 constexpr int32_t kTableFixedPlanCacheCapacity = 64;
 
@@ -3891,7 +3954,10 @@ inline void TableMixedReset( TableMixed & value )
     TableStatReset( value.stats[0] );
     for ( int32_t i = 1; i < 80; i++ ) { value.stats[i] = value.stats[0]; }
     value.stats_count = 0;
-    value.game_event = TableEvent();
+    TableHitEventReset( value.game_event.hit );
+    TableChatEventReset( value.game_event.chat );
+    TablePickupEventReset( value.game_event.pickup );
+    value.game_event.type = TableEventType::None;
     memset( value.loadout, 0, sizeof( value.loadout ) );
     memset( value.player_name, 0, sizeof( value.player_name ) );
     value.player_name_length = 0;
@@ -10439,7 +10505,7 @@ inline void TableEntityFixedClamp( TableEntity & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TableEntityFixedBodyBytes = 51;
 constexpr int64_t TableEntityFixedRecordBytes = 8 + TableEntityFixedBodyBytes; // the hash and the body
-constexpr uint64_t TableEntityFixedHash = 0x46b300904afc1aa9ull; // fnv1a64 over the layout's bytes
+constexpr uint64_t TableEntityFixedHash = 0x45d64db53ce7ac1full; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 30 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -10544,6 +10610,57 @@ constexpr TableFixedFill TableEntityFixedCover[] = {
 };
 constexpr int32_t TableEntityFixedCoverCount = 2;
 
+// THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
+// the file's header hash up here and never parses a stranger's layout.
+constexpr uint64_t TableEntityFixedLineage[] = {
+    0x45d64db53ce7ac1full, // identity
+};
+constexpr int32_t TableEntityFixedLineageCount = 1;
+constexpr int32_t TableEntityFixedFloor = 0;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+inline int32_t TableEntityFixedFloorLive = TableEntityFixedFloor;
+inline void TableEntityFixedSetFloorForTest( int32_t index ) { TableEntityFixedFloorLive = index; }
+#endif
+
+constexpr uint8_t TableEntityFixedKnown0Layout[] = {
+    0x1e, 0x00, 0x00, 0x00, 0xa8, 0xcb, 0xc6, 0x96, 0x35, 0x72, 0x61, 0x31, 0x0d, 0x33, 0x00, 0x00,
+    0x00, 0x0e, 0x00, 0x00, 0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb,
+    0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d,
+    0xb5, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6,
+    0xa9, 0x53, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6,
+    0xe6, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb,
+    0xb6, 0xe5, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60,
+    0xeb, 0xb6, 0xe8, 0xed, 0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9,
+    0x8b, 0x28, 0xb5, 0xd4, 0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+    0x6e, 0x2c, 0x5f, 0x20, 0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00,
+    0x0c, 0xcf, 0x66, 0x27, 0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x76, 0x84, 0xda, 0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x95, 0x8a, 0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xf1, 0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f,
+    0x8d, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d,
+    0xcd, 0xd9, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae,
+    0x16, 0xdc, 0x04, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41,
+    0xc3, 0x3b, 0xe5, 0x35, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde,
+    0xb0, 0x2f, 0x28, 0xc8, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3,
+    0x8c, 0xbc, 0x21, 0xda, 0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0,
+    0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xa7, 0x3d, 0x24, 0xd1, 0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xca, 0x31, 0x90, 0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00,
+};
+constexpr TableFixedKnownLayout TableEntityFixedKnown[] = {
+    { 0x45d64db53ce7ac1full, TableEntityFixedKnown0Layout, 514, 59 }, // identity
+};
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -10572,24 +10689,17 @@ inline int64_t TableEntityFixedSave( const TableEntity * values, int64_t count, 
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
-// There is no second reader: the identity plan is data the one loop walks.
-//
-// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
-// ranges the plan compiler works out once, and on the identity plan that list
-// is EMPTY — so this read writes no byte twice, and it is one rule for both
-// plans rather than a flag that asks which one this is.
+// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// from the known set COMPILE laid down (algorithm §5.3). A stranger's
+// layout is never parsed: unknown hash is layout_newer, known hash with
+// different bytes is layout_malformed, a hash below the floor is
+// layout_unsupported. Identity is a PLAN walked by the same loop.
 inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
-    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
-    // the registry is ordered, so a byte this reader does not carry is named
-    // by where it sits relative to this form and never by one word for both.
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -10601,9 +10711,31 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
-    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
     const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
+    int32_t lineage_at = -1;
+    for ( int32_t i = 0; i < TableEntityFixedLineageCount; ++i )
+    {
+        if ( TableEntityFixedLineage[i] == hash ) { lineage_at = i; break; }
+    }
+    if ( lineage_at < 0 )
+    {
+        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+    }
+    int32_t floor_at = TableEntityFixedFloor;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+    floor_at = TableEntityFixedFloorLive;
+#endif
+    if ( lineage_at < floor_at )
+    {
+        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+    }
+    const TableFixedKnownLayout & known = TableEntityFixedKnown[lineage_at];
+    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
+    {
+        report->refused = true; report->reason = layout_malformed; return -1;
+    }
     const TableFixedEntry * entries = TableEntityFixedPlan;
     int32_t entry_count = TableEntityFixedPlanCount;
     int32_t entry_guarded = TableEntityFixedPlanGuarded;
@@ -10612,10 +10744,8 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
     int32_t fill_count = 0;
     if ( hash != TableEntityFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
-        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
-        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        // AN OLDER WRITER: compile the plan from the TRUSTED known layout,
+        // never from the file's bytes (those were only compared). Cached by hash.
         const TableFixedPlanCacheSlot * hit = NULL;
         if ( cache != NULL )
         {
@@ -10637,7 +10767,7 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -10653,7 +10783,7 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
                                                    TableEntityFixedCover, TableEntityFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
@@ -10673,22 +10803,13 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
             entry_guarded = compiled_guarded;
         }
     }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header. A header whose hash
-    // is not the hash of the layout behind it is refused (§3).
-    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
-    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. Empty list is the skip.
-    // It is the caller's own stack and this codec allocates nothing.
     TableEntity defaults;
     if ( fill_count > 0 )
     {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        memset( (void *) &defaults, 0, sizeof( defaults ) );
         TableEntityReset( defaults );
     }
     for ( int64_t k = 0; k < n; ++k )
@@ -10696,8 +10817,6 @@ inline int64_t TableEntityFixedLoad( TableEntity * values, int64_t capacity, con
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
-        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-        // storage it just wrote: the same pass for either plan (§3.4).
         TableEntityFixedClamp( values[k], report );
         at += record_bytes;
     }
@@ -10728,7 +10847,7 @@ inline void TableStatFixedClamp( TableStat & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TableStatFixedBodyBytes = 8;
 constexpr int64_t TableStatFixedRecordBytes = 8 + TableStatFixedBodyBytes; // the hash and the body
-constexpr uint64_t TableStatFixedHash = 0x7a16907ec6b21eceull; // fnv1a64 over the layout's bytes
+constexpr uint64_t TableStatFixedHash = 0x1cdc2a66a7601422ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 3 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -10775,6 +10894,28 @@ constexpr TableFixedFill TableStatFixedCover[] = {
 };
 constexpr int32_t TableStatFixedCoverCount = 1;
 
+// THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
+// the file's header hash up here and never parses a stranger's layout.
+constexpr uint64_t TableStatFixedLineage[] = {
+    0x1cdc2a66a7601422ull, // identity
+};
+constexpr int32_t TableStatFixedLineageCount = 1;
+constexpr int32_t TableStatFixedFloor = 0;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+inline int32_t TableStatFixedFloorLive = TableStatFixedFloor;
+inline void TableStatFixedSetFloorForTest( int32_t index ) { TableStatFixedFloorLive = index; }
+#endif
+
+constexpr uint8_t TableStatFixedKnown0Layout[] = {
+    0x03, 0x00, 0x00, 0x00, 0x95, 0x9c, 0xb9, 0x69, 0xe6, 0xa8, 0x6a, 0x29, 0x0d, 0x08, 0x00, 0x00,
+    0x00, 0x02, 0x00, 0x00, 0x00, 0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+constexpr TableFixedKnownLayout TableStatFixedKnown[] = {
+    { 0x1cdc2a66a7601422ull, TableStatFixedKnown0Layout, 55, 16 }, // identity
+};
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -10803,24 +10944,17 @@ inline int64_t TableStatFixedSave( const TableStat * values, int64_t count, uint
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
-// There is no second reader: the identity plan is data the one loop walks.
-//
-// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
-// ranges the plan compiler works out once, and on the identity plan that list
-// is EMPTY — so this read writes no byte twice, and it is one rule for both
-// plans rather than a flag that asks which one this is.
+// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// from the known set COMPILE laid down (algorithm §5.3). A stranger's
+// layout is never parsed: unknown hash is layout_newer, known hash with
+// different bytes is layout_malformed, a hash below the floor is
+// layout_unsupported. Identity is a PLAN walked by the same loop.
 inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
-    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
-    // the registry is ordered, so a byte this reader does not carry is named
-    // by where it sits relative to this form and never by one word for both.
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -10832,9 +10966,31 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
-    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
     const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
+    int32_t lineage_at = -1;
+    for ( int32_t i = 0; i < TableStatFixedLineageCount; ++i )
+    {
+        if ( TableStatFixedLineage[i] == hash ) { lineage_at = i; break; }
+    }
+    if ( lineage_at < 0 )
+    {
+        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+    }
+    int32_t floor_at = TableStatFixedFloor;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+    floor_at = TableStatFixedFloorLive;
+#endif
+    if ( lineage_at < floor_at )
+    {
+        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+    }
+    const TableFixedKnownLayout & known = TableStatFixedKnown[lineage_at];
+    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
+    {
+        report->refused = true; report->reason = layout_malformed; return -1;
+    }
     const TableFixedEntry * entries = TableStatFixedPlan;
     int32_t entry_count = TableStatFixedPlanCount;
     int32_t entry_guarded = TableStatFixedPlanGuarded;
@@ -10843,10 +10999,8 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
     int32_t fill_count = 0;
     if ( hash != TableStatFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
-        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
-        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        // AN OLDER WRITER: compile the plan from the TRUSTED known layout,
+        // never from the file's bytes (those were only compared). Cached by hash.
         const TableFixedPlanCacheSlot * hit = NULL;
         if ( cache != NULL )
         {
@@ -10868,7 +11022,7 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -10884,7 +11038,7 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
                                                    TableStatFixedCover, TableStatFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
@@ -10904,22 +11058,13 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
             entry_guarded = compiled_guarded;
         }
     }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header. A header whose hash
-    // is not the hash of the layout behind it is refused (§3).
-    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
-    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. Empty list is the skip.
-    // It is the caller's own stack and this codec allocates nothing.
     TableStat defaults;
     if ( fill_count > 0 )
     {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        memset( (void *) &defaults, 0, sizeof( defaults ) );
         TableStatReset( defaults );
     }
     for ( int64_t k = 0; k < n; ++k )
@@ -10927,8 +11072,6 @@ inline int64_t TableStatFixedLoad( TableStat * values, int64_t capacity, const u
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
-        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-        // storage it just wrote: the same pass for either plan (§3.4).
         TableStatFixedClamp( values[k], report );
         at += record_bytes;
     }
@@ -10959,7 +11102,7 @@ inline void TableMixedFixedClamp( TableMixed & value, TableReport * report )
 // every value the type can hold (docs/SPEC-TABLES.md §3.4).
 constexpr int64_t TableMixedFixedBodyBytes = 1224;
 constexpr int64_t TableMixedFixedRecordBytes = 8 + TableMixedFixedBodyBytes; // the hash and the body
-constexpr uint64_t TableMixedFixedHash = 0x9d8e221733c1f4edull; // fnv1a64 over the layout's bytes
+constexpr uint64_t TableMixedFixedHash = 0xf973c48271efa906ull; // fnv1a64 over the layout and the definitions digest (bill §13)
 
 // THE LAYOUT (form 1 calls this the vocabulary block): 75 entries, a
 // PRE-ORDER walk of the closure in the writer's declared order.
@@ -11206,6 +11349,104 @@ constexpr TableFixedFill TableMixedFixedCover[] = {
 };
 constexpr int32_t TableMixedFixedCoverCount = 23;
 
+// THE LINEAGE, oldest first, the reader's own last (bill §6b). LOAD looks
+// the file's header hash up here and never parses a stranger's layout.
+constexpr uint64_t TableMixedFixedLineage[] = {
+    0xf973c48271efa906ull, // identity
+};
+constexpr int32_t TableMixedFixedLineageCount = 1;
+constexpr int32_t TableMixedFixedFloor = 0;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+inline int32_t TableMixedFixedFloorLive = TableMixedFixedFloor;
+inline void TableMixedFixedSetFloorForTest( int32_t index ) { TableMixedFixedFloorLive = index; }
+#endif
+
+constexpr uint8_t TableMixedFixedKnown0Layout[] = {
+    0x4b, 0x00, 0x00, 0x00, 0x8e, 0x8a, 0xf8, 0xd6, 0x59, 0xe4, 0x9a, 0x43, 0x0d, 0xc8, 0x04, 0x00,
+    0x00, 0x1c, 0x00, 0x00, 0x00, 0xfd, 0x15, 0xa1, 0x1a, 0xd9, 0x70, 0x5a, 0x6a, 0x07, 0x02, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa8, 0x28, 0xf5, 0x81, 0xa4, 0xac, 0x38, 0xaa, 0x07, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x7c, 0x69, 0x56, 0x5c, 0x00, 0xbe, 0x0d, 0x04,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0xee, 0x29, 0xb8, 0xa8, 0x0d, 0xae, 0x9b,
+    0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x0b, 0x59, 0x0a, 0x65, 0xb5, 0xd7,
+    0xb7, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7e, 0x96, 0x95, 0xd0, 0xe2, 0x98,
+    0x7b, 0x6d, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd8, 0xc0, 0x0d, 0xd6, 0x71,
+    0x4c, 0xa9, 0x73, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x85, 0xfc, 0x54, 0xbe,
+    0x51, 0x6b, 0xee, 0x3e, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x12, 0x01, 0x6d,
+    0x7b, 0x5f, 0x03, 0xbc, 0x7b, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc6, 0x69,
+    0xbe, 0xf9, 0x75, 0x04, 0x46, 0x3c, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2a,
+    0x82, 0xb3, 0x7b, 0xb0, 0x0f, 0x5d, 0x93, 0x0e, 0x9c, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x33, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00,
+    0x00, 0x12, 0x67, 0xe3, 0x78, 0x66, 0xfd, 0xfc, 0x23, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x0e, 0x31, 0x67, 0x76, 0x35, 0x37, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xc1, 0x32, 0x67, 0x76, 0x35, 0x38, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0xa8, 0x2d, 0x67, 0x76, 0x35, 0x35, 0x4b, 0xcb, 0x04, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xe8, 0x16, 0x8e, 0x79, 0x19, 0x8e, 0x4d, 0xb5, 0x07, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb1, 0xc1, 0x0c, 0xa9, 0x65, 0xf6, 0xa9, 0x53, 0x07, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x67, 0xee, 0x60, 0xeb, 0xb6, 0xe6, 0xed, 0x6c, 0x04,
+    0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb4, 0xec, 0x60, 0xeb, 0xb6, 0xe5, 0xed, 0x6c,
+    0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcd, 0xf1, 0x60, 0xeb, 0xb6, 0xe8, 0xed,
+    0x6c, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xcf, 0xa9, 0x8b, 0x28, 0xb5, 0xd4,
+    0x69, 0x7f, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x6e, 0x2c, 0x5f, 0x20,
+    0x10, 0xb6, 0xa0, 0x1e, 0x01, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00, 0x0c, 0xcf, 0x66, 0x27,
+    0xe1, 0xee, 0x90, 0xa7, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x84, 0xda,
+    0x35, 0xa8, 0xef, 0xbf, 0x9f, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x95, 0x8a,
+    0x92, 0x83, 0x17, 0xbb, 0x8b, 0x18, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf1,
+    0x72, 0xf2, 0xc2, 0xb9, 0x67, 0x36, 0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0xf6, 0x55, 0xd7, 0x00, 0x1b, 0xb4, 0xa8, 0x0c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x4e, 0x1a, 0xb2, 0xfa, 0x19, 0xc8, 0x5f, 0x98, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x55, 0x6a, 0x08, 0xc3, 0x47, 0x04, 0x9d, 0x22, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x9d, 0x8f, 0x22, 0xa7, 0x49, 0x7b, 0x1c, 0x01, 0x20, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x5f, 0xe1, 0x23, 0x11, 0x6e, 0x56, 0xf7, 0x89, 0x20, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x44, 0x3b, 0x8b, 0x31, 0x25, 0x7f, 0x8d, 0x20, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x78, 0x5b, 0x28, 0xcc, 0x0d, 0xcd, 0xd9, 0x20, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x76, 0x52, 0xff, 0xa8, 0xae, 0x16, 0xdc, 0x04, 0x20,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x92, 0x12, 0x41, 0xc3, 0x3b, 0xe5, 0x35,
+    0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x31, 0x88, 0xde, 0xb0, 0x2f, 0x28, 0xc8,
+    0x2c, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x34, 0xb3, 0x8c, 0xbc, 0x21, 0xda,
+    0xba, 0x20, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe,
+    0x08, 0x63, 0x7f, 0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa7, 0x3d, 0x24, 0xd1,
+    0xc1, 0x4f, 0xa4, 0x11, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xca, 0x31, 0x90,
+    0x9b, 0xd1, 0xcf, 0x74, 0x76, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x99,
+    0xb1, 0x45, 0xad, 0x9c, 0x63, 0xee, 0x0e, 0x84, 0x02, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
+    0x65, 0xbf, 0x6d, 0x86, 0xf0, 0x75, 0xab, 0x80, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xc1, 0xa0, 0x13, 0xec, 0x75, 0x66, 0x07, 0x52, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x90, 0x57, 0xaa, 0x21, 0x53, 0xdc, 0x35, 0x2e, 0x0f, 0x0e, 0x00, 0x00, 0x00, 0x03,
+    0x00, 0x00, 0x00, 0xaa, 0x80, 0x06, 0x30, 0x19, 0x28, 0x73, 0x33, 0x0d, 0x0d, 0x00, 0x00, 0x00,
+    0x04, 0x00, 0x00, 0x00, 0x50, 0x50, 0xa2, 0x15, 0xc0, 0x9a, 0xbc, 0xb7, 0x07, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x7f, 0xb3, 0x8a, 0xbe, 0x08, 0x63, 0x7f, 0x04, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x25, 0xb9, 0x59, 0xb0, 0x65, 0xc3, 0xfb, 0x01, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x2d, 0xa5, 0x9a, 0x8c, 0x90, 0x67, 0x61, 0x12, 0x01,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x8b, 0x34, 0x5b, 0x0b, 0x91, 0x8d, 0xa3, 0xf2,
+    0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xa4, 0xed, 0xca, 0xd5, 0x9a, 0x3e, 0x01,
+    0xa5, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0xd0, 0xeb, 0x96, 0x4d, 0xac,
+    0xf1, 0xfb, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x65, 0xb7, 0xec, 0x86, 0x1c,
+    0xa4, 0xa3, 0x9f, 0x0d, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x56, 0xbd, 0x4f, 0x86,
+    0x6d, 0xd0, 0x7f, 0x9e, 0x07, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0x69, 0xb1,
+    0xa2, 0x7e, 0xfe, 0x13, 0x81, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa3, 0xb5,
+    0xbb, 0x86, 0x75, 0xce, 0x59, 0x57, 0x0e, 0x04, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x6e, 0xe8, 0xf8, 0x2c, 0x54, 0x2f, 0xa6, 0x13, 0x0c, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xe5, 0xe9, 0xb5, 0x63, 0xd0, 0xa9, 0xb8, 0xcf, 0x0e, 0x14, 0x00, 0x00, 0x00, 0x01, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x01, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0xc9, 0x96, 0x42, 0xe2, 0xe5, 0x7b, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x16, 0x95, 0x42, 0xe2, 0xe5, 0x7a, 0xaf, 0xdb, 0x0a, 0x04, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x63, 0x93, 0x42, 0xe2, 0xe5, 0x79, 0xaf, 0xdb, 0x0a, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x57, 0xe4, 0xe2, 0xf7, 0xff, 0x31, 0xef, 0x9c, 0x0a, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x6c, 0x1f, 0x34, 0xc9, 0xf9, 0xb3, 0x5a, 0x0b,
+    0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0xaf, 0x1f, 0x46, 0x80, 0x85, 0x34, 0xa3,
+    0x09, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x42, 0x26, 0xaf, 0x08, 0x79, 0xdd, 0x1b,
+    0xd6, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xa9, 0x07, 0x33, 0xc5, 0x0d, 0xe0,
+    0x30, 0xbf, 0x0a, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x5f, 0x51, 0xd8, 0xcc, 0x27,
+    0x65, 0x0d, 0x56, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x72, 0x86, 0xfd, 0x6c,
+    0x17, 0x92, 0x82, 0xc0, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x69, 0xcb, 0x79,
+    0xa9, 0x12, 0xee, 0x29, 0xfd, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xfe, 0xbc,
+    0x8c, 0xaa, 0xc0, 0x1a, 0x10, 0x78, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+constexpr TableFixedKnownLayout TableMixedFixedKnown[] = {
+    { 0xf973c48271efa906ull, TableMixedFixedKnown0Layout, 1279, 1232 }, // identity
+};
+
 // A FILE: THE HEADER (docs/SPEC-TABLES.md §3, one rule for all five forms)
 // — form byte, seven reserved zero bytes, the LAYOUT HASH at 8, body at 16 —
 // then the layout behind its u32 length, then the records to the end of it.
@@ -11234,24 +11475,17 @@ inline int64_t TableMixedFixedSave( const TableMixed * values, int64_t count, ui
     return need;
 }
 
-// THE READ: a prefill and ONE loop over ONE plan — the identity plan when
-// the layout's hash is this build's own, and a plan compiled once from the
-// writer's layout, CACHED BY HASH, otherwise. Same loop either way (§3.4).
-// There is no second reader: the identity plan is data the one loop walks.
-//
-// THE PREFILL IS EXACTLY THE BYTES THE PLAN DOES NOT LAND. It is a list of
-// ranges the plan compiler works out once, and on the identity plan that list
-// is EMPTY — so this read writes no byte twice, and it is one rule for both
-// plans rather than a flag that asks which one this is.
+// THE READ: a prefill and ONE loop over ONE plan. Hash chooses the plan
+// from the known set COMPILE laid down (algorithm §5.3). A stranger's
+// layout is never parsed: unknown hash is layout_newer, known hash with
+// different bytes is layout_malformed, a hash below the floor is
+// layout_unsupported. Identity is a PLAN walked by the same loop.
 inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
     if ( data == NULL || bytes < kTableFixedHeaderBytes + 4 ) { report->malformed = true; return -1; }
-    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
-    // the registry is ordered, so a byte this reader does not carry is named
-    // by where it sits relative to this form and never by one word for both.
     if ( data[0] != kTableFixedForm )
     {
         report->refused = true;
@@ -11263,9 +11497,31 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
     const uint32_t layout_bytes = TableFixedGet32( data + kTableFixedHeaderBytes );
     if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = true; report->reason = layout_malformed; return -1; }
     const uint8_t * layout = data + kTableFixedHeaderBytes + 4;
-    const uint64_t hash = TableFixedHashOf( layout, layout_bytes );
+    const uint64_t hash = TableFixedGet64( data + kTableFixedHashAt ); // the header's hash; digest is not on the wire
     const uint8_t * at = layout + layout_bytes;
     const int64_t rest = bytes - kTableFixedHeaderBytes - 4 - (int64_t) layout_bytes;
+    int32_t lineage_at = -1;
+    for ( int32_t i = 0; i < TableMixedFixedLineageCount; ++i )
+    {
+        if ( TableMixedFixedLineage[i] == hash ) { lineage_at = i; break; }
+    }
+    if ( lineage_at < 0 )
+    {
+        report->refused = true; report->reason = layout_newer; report->layout_hash = hash; return -1;
+    }
+    int32_t floor_at = TableMixedFixedFloor;
+#ifdef SCHEMA_FIXED_FLOOR_TEST_HOOKS
+    floor_at = TableMixedFixedFloorLive;
+#endif
+    if ( lineage_at < floor_at )
+    {
+        report->refused = true; report->reason = layout_unsupported; report->layout_hash = hash; return -1;
+    }
+    const TableFixedKnownLayout & known = TableMixedFixedKnown[lineage_at];
+    if ( (int64_t) layout_bytes != known.layout_bytes || memcmp( layout, known.layout, (size_t) layout_bytes ) != 0 )
+    {
+        report->refused = true; report->reason = layout_malformed; return -1;
+    }
     const TableFixedEntry * entries = TableMixedFixedPlan;
     int32_t entry_count = TableMixedFixedPlanCount;
     int32_t entry_guarded = TableMixedFixedPlanGuarded;
@@ -11274,10 +11530,8 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
     int32_t fill_count = 0;
     if ( hash != TableMixedFixedHash )
     {
-        // ANOTHER WRITER: the same loop, over a plan compiled from its layout
-        // and CACHED BY HASH, so the compile is paid once per peer, not per record.
-        // THE LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-        // every rule it fails refuses under ITS OWN NAME (docs/SPEC-TABLES.md §3.4).
+        // AN OLDER WRITER: compile the plan from the TRUSTED known layout,
+        // never from the file's bytes (those were only compared). Cached by hash.
         const TableFixedPlanCacheSlot * hit = NULL;
         if ( cache != NULL )
         {
@@ -11299,7 +11553,7 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
         {
             TableFixedLayoutView parsed;
             TableMessageReason why = layout_malformed;
-            if ( !TableFixedParseLayout( layout, layout_bytes, parsed, why ) ) { report->refused = true; report->reason = why; return -1; }
+            if ( !TableFixedParseLayout( known.layout, known.layout_bytes, parsed, why ) ) { report->refused = true; report->reason = layout_malformed; return -1; }
             TableFixedEntry * dest = plan;
             int32_t dest_capacity = plan_capacity;
             int storing = 0;
@@ -11315,7 +11569,7 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
                                                    TableMixedFixedCover, TableMixedFixedCoverCount,
                                                    dest, dest_capacity, &compiled_guarded, &fill_at, &fill_count, report );
             if ( made < 0 ) { report->refused = true; report->reason = ( made == -2 ) ? layout_malformed : plan_too_large; return -1; }
-            record_bytes = 8 + (int64_t) TableFixedEntryAt( parsed, 0 ).size;
+            record_bytes = known.record_bytes;
             fill = ( fill_count > 0 ) ? (const TableFixedFill *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
             if ( cache != NULL ) { cache->compiles++; }
             if ( storing )
@@ -11335,22 +11589,13 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
             entry_guarded = compiled_guarded;
         }
     }
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three:
-    // the layout's own rules each refuse under their own name first, so a
-    // broken layout is never reported as a lying header. A header whose hash
-    // is not the hash of the layout behind it is refused (§3).
-    if ( TableFixedGet64( data + kTableFixedHashAt ) != hash ) { report->refused = true; report->reason = layout_malformed; return -1; }
     if ( record_bytes <= 8 || rest % record_bytes != 0 ) { report->malformed = true; return -1; }
     const int64_t n = rest / record_bytes;
     if ( n > capacity ) { report->refused = true; report->reason = batch_too_large; return -1; }
-    // ONE RECORD LOOP. Prefill the holes, walk the plan, then the bounds pass.
-    // THE DEFAULT IMAGE IS RESET ONCE PER READ, not once per record, and only
-    // where there is a range to prefill at all. Empty list is the skip.
-    // It is the caller's own stack and this codec allocates nothing.
     TableMixed defaults;
     if ( fill_count > 0 )
     {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); // padding included, so the prefill is deterministic
+        memset( (void *) &defaults, 0, sizeof( defaults ) );
         TableMixedReset( defaults );
     }
     for ( int64_t k = 0; k < n; ++k )
@@ -11358,8 +11603,6 @@ inline int64_t TableMixedFixedLoad( TableMixed * values, int64_t capacity, const
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = no_layout; return -1; }
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report );
-        // AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
-        // storage it just wrote: the same pass for either plan (§3.4).
         TableMixedFixedClamp( values[k], report );
         at += record_bytes;
     }

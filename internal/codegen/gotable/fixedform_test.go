@@ -185,8 +185,11 @@ func TestRoundTrip(t *testing.T) {
 	broken := append([]byte(nil), buf...)
 	broken[TableFixedHeaderBytes+4] ^= 0xFF
 	r = TableReport{}
-	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_count_mismatch" {
-		t.Fatalf("layout_count_mismatch: %d %+v", n, r)
+	// Hash chooses first (bill §12.4): a known hash whose layout bytes differ
+	// is layout_malformed. The seven §1.1 names are for a layout that is not
+	// a layout; they do not fire against a header this build has locked.
+	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
+		t.Fatalf("known hash, different layout bytes: %d %+v", n, r)
 	}
 	lying := append([]byte(nil), buf...)
 	lying[TableFixedHeaderBytes+4+len(PointFixedLayout)] ^= 0xFF

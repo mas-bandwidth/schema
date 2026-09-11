@@ -201,7 +201,7 @@ namespace Tabledemo
 
         public const long ArchiveConfigFixedBodyBytes = 1252;
         public const long ArchiveConfigFixedRecordBytes = 8 + ArchiveConfigFixedBodyBytes;
-        public const ulong ArchiveConfigFixedHash = 0x0914256792928e9ful;
+        public const ulong ArchiveConfigFixedHash = 0x98b16f3242e9406bul;
 
         public static readonly byte[] ArchiveConfigFixedLayout = new byte[] {
             0x4b, 0x00, 0x00, 0x00, 0xc7, 0xc3, 0x1b, 0x26, 0xcf, 0x7b, 0x3e, 0x41, 0x0d, 0xe4, 0x04, 0x00,
@@ -1053,7 +1053,7 @@ namespace Tabledemo
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = ArchiveConfigFixedPlan;
@@ -1061,7 +1061,15 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash != ArchiveConfigFixedHash)
+            if (hash == ArchiveConfigFixedHash)
+            {
+                if (layout_bytes != (uint)ArchiveConfigFixedLayout.Length || !layout.SequenceEqual(ArchiveConfigFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -1084,11 +1092,6 @@ namespace Tabledemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, ArchiveConfigFixedCover, landed, fillBuf);
                 }
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {

@@ -104,7 +104,7 @@ void check( bool ok, const char * what )
 // A case that waits on a named fix. RED is the expected answer and costs the
 // target nothing; GREEN is a FAILURE, because the fix has landed and the case
 // must be promoted to check().
-void red( bool ok, const char * what, const char * waits_on )
+[[maybe_unused]] void red( bool ok, const char * what, const char * waits_on )
 {
     if ( !ok ) { std::printf( "RED [%s]: %s\n", waits_on, what ); reds++; return; }
     std::printf( "FAIL: RED case PASSES now, promote it to check(): %s (was waiting on %s)\n", what, waits_on );
@@ -153,11 +153,12 @@ std::vector<uint8_t> one( const T & v, Measure measure, Save save, const char * 
         std::vector<OLDNS::TableFixedEntry> plan( 4096 );                                                 \
         const int64_t n = OLDNS::TBL##FixedLoad( &back, 1, (newbytes).data(), (int64_t) (newbytes).size(),\
                                                  plan.data(), 4096, NULL, &r );                          \
-        red( n < 0 && r.refused && IS_LAYOUT_NEWER( OLDNS, r.reason ) &&                                 \
+        const uint64_t file_hash = OLDNS::TableFixedGet64( (newbytes).data() + OLDNS::kTableFixedHashAt ); \
+        check( n < 0 && r.refused && IS_LAYOUT_NEWER( OLDNS, r.reason ) &&                               \
+             r.layout_hash == file_hash &&                                                               \
              r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed &&\
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,                                          \
-             ROW "/OLD-REFUSES-NEW: layout_newer before any record, no counter, nothing decoded",        \
-             "layout_newer (#895, bill §4)" );                                                            \
+             ROW "/OLD-REFUSES-NEW: layout_newer before any record, no counter, nothing decoded" );      \
     } while ( 0 )
 
 // The row must CHANGE THE LAYOUT HASH, or "older or equal" has nothing to
@@ -238,7 +239,11 @@ void array_fixed_grow_case()
                                    vold_array_fixed_grow::ArrayFixedGrowFixedSave, "array_fixed_grow: OLD save" );
     {
         vnew_array_fixed_grow::ArrayFixedGrow back;
-        vnew_array_fixed_grow::ArrayFixedGrowReset( back );
+        // Reset before the load only proves the load did not CLOBBER the
+        // slack; a zero-fill of the reader's struct would still look like
+        // the element's defaults. Poison, then load, then the slack must be
+        // 7 and 9 from the plan's prefill (bill §12.6).
+        std::memset( &back, 0x5A, sizeof( back ) );
         vnew_array_fixed_grow::TableReport r;
         std::vector<vnew_array_fixed_grow::TableFixedEntry> plan( 4096 );
         check( vnew_array_fixed_grow::ArrayFixedGrowFixedLoad( &back, 1, ob.data(), (int64_t) ob.size(),
@@ -662,9 +667,8 @@ void range_widen_case()
     // byte layout, so a widened range IS an input to it and the hash WILL move.
     // The red is the emitter's today, not the law's: promote this to check() the
     // day the digest lands.
-    red( vold_range_widen::RangeWidenFixedHash != vnew_range_widen::RangeWidenFixedHash,
-         "range_widen: the row changes the layout hash (§13: the hash covers a definitions digest) — it does NOT today: the emitter hashes the byte layout only",
-         "§13's DEFINITIONS DIGEST in the hash, at which point this is promoted to check() (bill §6a)" );
+    check( vold_range_widen::RangeWidenFixedHash != vnew_range_widen::RangeWidenFixedHash,
+           "range_widen: the row changes the layout hash (§13: the hash covers a definitions digest)" );
 
     vold_range_widen::RangeWiden old;
     vold_range_widen::RangeWidenReset( old );
@@ -767,9 +771,8 @@ void fixed_I_grow_case()
         // read comes back kind_mismatch == 1 and the raw scaled value is LOST to
         // the declared default, which is the one outcome bill §2 forbids for a
         // widening. The rung is int8 -> int16 on the raw value and nothing else.
-        red( back.v == -1 && r.kind_mismatch == 0,
-             "fixed_I_grow/NEW-READS-OLD: the RAW SCALED VALUE lands exactly (F equal) — it does NOT: kind_mismatch, default",
-             "the fixed(I,F) widening rung on the raw value (bill §2, algorithm §5.2)" );
+        check( back.v == -1 && r.kind_mismatch == 0,
+               "fixed_I_grow/NEW-READS-OLD: the RAW SCALED VALUE lands exactly (F equal)" );
         check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "fixed_I_grow/NEW-READS-OLD: nothing else fired" );
     }
@@ -810,9 +813,8 @@ void optional_add_case()
         // with the payload at its default. Bill §2 says "an optional: `T` where
         // the reader has `?T` (landed present)"; §5.2's plan row says
         // "?T where x has T: present := 1, then the value". Neither happens.
-        red( back.link_present && back.link.value == 777 && r.kind_mismatch == 0,
-             "optional_add/NEW-READS-OLD: `present` == 1 and the payload exact — it does NOT: kind_mismatch, ABSENT, default",
-             "§12.8 the `present` op (bill §2, algorithm §5.2's T -> ?T plan row)" );
+        check( back.link_present && back.link.value == 777 && r.kind_mismatch == 0,
+               "optional_add/NEW-READS-OLD: `present` == 1 and the payload exact (§12.8)" );
         check( r.unknown == 0 && r.clamped == 0 && !r.malformed && !r.refused,
                "optional_add/NEW-READS-OLD: nothing else fired" );
     }
@@ -892,11 +894,9 @@ void floor_cases()
         check( n == 1 && back.a == 11 && back.b == 22 && back.c == 3,
                "floor_at: a file AT the floor reads, and the reader's tail is the default" );
 #ifdef SCHEMA_HAS_FLOOR
-        red( vnew_floor::FlooredFixedFloor == 1, "floor_at: the floor sits at lineage index 1",
-             "the floor declared at LINEAGE INDEX 1 on the *_floor chain (bill §6b, §9: the syntax is Glenn's to name)" );
+        check( vnew_floor::FlooredFixedFloor == 1, "floor_at: the floor sits at lineage index 1" );
 #else
-        red( false, "floor_at: the floor sits at lineage index 1 — there is no floor to sit at",
-             "the floor declared at LINEAGE INDEX 1 on the *_floor chain (bill §6b, §9: the syntax is Glenn's to name)" );
+        check( false, "floor_at: the floor sits at lineage index 1 — there is no floor to sit at" );
 #endif
     }
 
@@ -909,11 +909,10 @@ void floor_cases()
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
         const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, b0.data(), (int64_t) b0.size(),
                                                         plan.data(), 4096, NULL, &r );
-        red( n < 0 && r.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, r.reason ) &&
+        check( n < 0 && r.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, r.reason ) &&
              r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && !r.malformed &&
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
-             "floor_below: a file ONE BELOW the floor refuses layout_unsupported, no counter, nothing decoded",
-             "layout_unsupported + the floor declared at LINEAGE INDEX 1 on the *_floor chain (bill §6b)" );
+             "floor_below: a file ONE BELOW the floor refuses layout_unsupported, no counter, nothing decoded" );
     }
 
     // floor_raise_live — THE FLOOR RAISED BY ONE: the file that read yesterday
@@ -932,12 +931,10 @@ void floor_cases()
         vnew_floor::TableReport after;
         const int64_t today = vnew_floor::FlooredFixedLoad( &back, 1, b1.data(), (int64_t) b1.size(),
                                                             plan.data(), 4096, NULL, &after );
-        red( today < 0 && after.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, after.reason ),
-             "floor_raise_live: the same file refuses after the floor is raised by one",
-             "the floor + the SCHEMA_FIXED_FLOOR_TEST_HOOKS setter (bill §6b, §9)" );
+        check( today < 0 && after.refused && IS_LAYOUT_UNSUPPORTED( vnew_floor, after.reason ),
+               "floor_raise_live: the same file refuses after the floor is raised by one" );
 #else
-        red( false, "floor_raise_live: the same file refuses after the floor is raised by one",
-             "the floor + the SCHEMA_FIXED_FLOOR_TEST_HOOKS setter (bill §6b, §9)" );
+        check( false, "floor_raise_live: the same file refuses after the floor is raised by one" );
 #endif
     }
 }
@@ -987,10 +984,9 @@ void hash_cases()
         std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
         const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, sb.data(), (int64_t) sb.size(),
                                                         plan.data(), 4096, NULL, &r );
-        red( n < 0 && r.refused && IS_LAYOUT_NEWER( vnew_floor, r.reason ) &&
+        check( n < 0 && r.refused && IS_LAYOUT_NEWER( vnew_floor, r.reason ) &&
              std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
-             "hash_unknown: a hash in NO lineage refuses layout_newer, nothing decoded",
-             "the lineage as static data + layout_newer (bill §6b)" );
+             "hash_unknown: a hash in NO lineage refuses layout_newer, nothing decoded" );
     }
 
     // hash_known_bytes_differ — A KNOWN HASH WHOSE LAYOUT BYTES DIFFER FROM THE
@@ -1048,8 +1044,7 @@ void hash_cases()
             std::snprintf( what, sizeof( what ),
                            "hash_known_bytes_differ: §1.1 case %s, under a KNOWN hash, is layout_malformed",
                            breaks[k].what );
-            red( n < 0 && r.refused && r.reason == vnew_floor::layout_malformed, what,
-                 "§6b: one byte comparison against the lock's layout, no validation walk" );
+            check( n < 0 && r.refused && r.reason == vnew_floor::layout_malformed, what );
             check( n < 0 && r.refused, "hash_known_bytes_differ: broken layout bytes are refused, whatever the name" );
             check( std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
                    "hash_known_bytes_differ: nothing decoded" );

@@ -291,17 +291,6 @@ func appendFixedU64(b []byte, v uint64) []byte {
 	return b
 }
 
-// fixedLayoutHash is fnv1a64 over the layout's bytes exactly as written, and
-// it is the eight bytes every record carries (§3.4).
-func fixedLayoutHash(layout []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, b := range layout {
-		h ^= uint64(b)
-		h *= 0x100000001b3
-	}
-	return h
-}
-
 // ---------------------------------------------------------------------------
 // THE PREFILL: the declared defaults, as a record image
 // ---------------------------------------------------------------------------
@@ -1445,7 +1434,7 @@ func (g *fixedGen) emitUnion(un *ir.Union) {
 func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	w := fixedWalkRoot(st)
 	layout := fixedLayoutBytes(w.entries)
-	hash := fixedLayoutHash(layout)
+	hash := ir.TableFixedLayoutHash(layout, st)
 	defaults := fixedDefaultImage(st)
 
 	g.pf("    /** the hash and the body: what one record occupies. */\n")
@@ -1580,7 +1569,12 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        TableFixed.Entry[] entries = Identity.plan;\n")
 	g.pf("        int made = Identity.plan.length;\n")
 	g.pf("        long recordSize = recordBytes;\n")
-	g.pf("        if (head.hash != hash) {\n")
+	g.pf("        if (head.hash == hash) {\n")
+	g.pf("            if (head.layoutLength != layout.length) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
+	g.pf("            for (int i = 0; i < layout.length; i++) {\n")
+	g.pf("                if (data[head.layoutAt + i] != layout[i]) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }\n")
+	g.pf("            }\n")
+	g.pf("        } else {\n")
 	g.pf("            final TableFixed.Layout theirs = TableFixed.parse(data, head.layoutAt, head.layoutLength, report);\n")
 	g.pf("            if (theirs == null) { return -1; }\n")
 	g.pf("            final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);\n")

@@ -12,8 +12,13 @@ package vnew_keyed_array_enum_append
 
 enum Tier { Bronze, Silver, Gold, Platinum }
 
+fixed table Qty
+{
+    n int32 = 7
+}
+
 fixed table Lineage
 {
-    slots [Tier]int32
+    slots [Tier]Qty
     seq   int32 = 0
 }

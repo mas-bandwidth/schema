@@ -93,57 +93,15 @@ struct KnownRed
     int failed;
 };
 
-static KnownRed known_red[] = {
-    // The eight rows whose widening the reader must refuse. Every one of them
-    // is refused by the LAW and read by the CODE, which is the gap this list
-    // measures.
-    { "field_append/OLD-REFUSES-NEW", "layout_newer (bill §4, algorithm §5.3)", 0, 0 },
-    { "enum_append/OLD-REFUSES-NEW", "layout_newer (bill §4, algorithm §5.3)", 0, 0 },
-    { "enum_width/OLD-REFUSES-NEW", "layout_newer (bill §4, algorithm §5.3)", 0, 0 },
-    { "union_append/OLD-REFUSES-NEW", "layout_newer (bill §4, algorithm §5.3)", 0, 0 },
-    { "union_arm_payload_widen/OLD-REFUSES-NEW", "layout_newer (bill §4, algorithm §5.3)", 0, 0 },
-    { "keyed_array_enum_append/OLD-REFUSES-NEW", "layout_newer (bill §4, algorithm §5.3)", 0, 0 },
-    { "nested_append/OLD-REFUSES-NEW", "layout_newer (bill §4, algorithm §5.3)", 0, 0 },
-    // AND THE ROW WHOSE REFUSAL IS NOT EVEN REACHABLE YET. A flags append
-    // moves NO LAYOUT BYTE (ir/fixedform.go pushes a flags field as a plain
-    // 8-byte scalar, children = 0), so the two layouts hash the same, the
-    // reader takes the IDENTITY plan, and there is nothing for a version check
-    // to look at. The bill's "flags: bits a prefix of the reader's" row cannot
-    // be held on this wire until the layout entry carries the flag count the
-    // way an enum's carries its variant count.
-    { "flags_append/OLD-REFUSES-NEW",
-      "the layout recording a flags' bit count, THEN layout_newer", 0, 0 },
-    // The same shape of hole on the read side: `| deprecated` is a lock and
-    // reflection marker only (nothing in ir/ reads Field.Deprecated), so the
-    // deprecation moves no layout byte either, the pair hashes the same, and
-    // the reader cannot drop-and-count a field it was told to stop needing.
-    { "field_deprecate/NEW-READS-OLD",
-      "the layout recording `| deprecated`, so the plan can skip-and-count", 0, 0 },
-    // MEASURED, NOT PREDICTED. Two of the NEW-READS-OLD columns are red on
-    // this build as well, and neither is about `layout_newer`:
-    //
-    //   an enum ordinal that GREW is landed exactly and counted NOWHERE. §5.2
-    //   says "wider in y: widen (COUNT widened)" and names the ordinal as one
-    //   of the rows it is written for, so the value is right and the counter
-    //   owes one. Compare FU1/FU2's int16 -> int32, which does count.
-    { "enum_width/NEW-READS-OLD",
-      "COUNT widened on an enum ordinal that grew (algorithm §5.2)", 0, 0 },
-    //   a field appended UNDER A UNION ARM does not take its declared default
-    //   through a compiled plan: the prefill reaches a table's own appended
-    //   field (FX2's `added` lands 11) and does not reach one inside an arm's
-    //   payload. And it does not land ZERO either — it lands 1 on this build,
-    //   which is a byte from somewhere else in the record and not a default at
-    //   all, so this red is the sharper of the two. The landed value is printed
-    //   beside the assertion so it cannot drift silently.
-    { "union_arm_payload_widen/NEW-READS-OLD",
-      "the prefill reaching a field appended inside a union arm's payload", 0, 0 },
-};
+// emptied as each named red lands. a listed case that PASSES fails the target.
+static KnownRed known_red_store[1];
+static const int known_red_n = 0;
 
 static KnownRed * find_red( const char * key )
 {
-    for ( KnownRed & r : known_red )
+    for ( int i = 0; i < known_red_n; ++i )
     {
-        if ( std::strcmp( r.key, key ) == 0 ) { return &r; }
+        if ( std::strcmp( known_red_store[i].key, key ) == 0 ) { return &known_red_store[i]; }
     }
     return NULL;
 }
@@ -163,10 +121,12 @@ static void check_red( bool ok, const char * key, const char * what )
 static int known_red_report()
 {
     int bad = 0;
-    const int n = (int) ( sizeof( known_red ) / sizeof( known_red[0] ) );
+    const int n = known_red_n;
+    (void) known_red_store;
     std::printf( "versioning lists: KNOWN-RED, %d case(s), each waiting on a named fix:\n", n );
-    for ( const KnownRed & r : known_red )
+    for ( int i = 0; i < n; ++i )
     {
+        const KnownRed & r = known_red_store[i];
         std::printf( "  %-44s  %s  <- %s\n", r.key,
                      r.failed > 0 ? "RED  " : ( r.reached > 0 ? "GREEN" : "UNRUN" ), r.waits_on );
         if ( r.reached == 0 )
@@ -203,22 +163,13 @@ static int known_red_report()
 // has nowhere to land on this leg yet; the per-row definition is named in the
 // case's own message instead, which is what a leg with text will assert.
 
-#define VL_OWN_REASON( NS, r )                                                                 \
-    ( ( r ).reason != NS::newer_form && ( r ).reason != NS::previous_form &&                    \
-      ( r ).reason != NS::no_vocabulary && ( r ).reason != NS::second_announcement &&           \
-      ( r ).reason != NS::vocabulary_too_large && ( r ).reason != NS::message_form_as_file &&   \
-      ( r ).reason != NS::batch_too_large && ( r ).reason != NS::no_layout &&                   \
-      ( r ).reason != NS::layout_malformed && ( r ).reason != NS::plan_too_large &&             \
-      ( r ).reason != NS::layout_count_mismatch && ( r ).reason != NS::layout_kind_unknown &&   \
-      ( r ).reason != NS::layout_kind_invalid && ( r ).reason != NS::layout_size_mismatch &&    \
-      ( r ).reason != NS::layout_tree_unclosed && ( r ).reason != NS::layout_too_deep &&        \
-      ( r ).reason != NS::layout_record_too_large )
+#define VL_OWN_REASON( NS, r ) ( ( r ).reason == NS::layout_newer )
 
 // the three assertions every OLD-REFUSES-NEW column shares. `definition` is the
 // row's own definition, named so the line says what the refusal owes.
 template <typename Report>
 static void refuses_newer( const char * key, const char * definition, int64_t n, const Report & r,
-                           bool own_reason )
+                           bool own_reason, uint64_t want_hash )
 {
     char what[320];
     std::snprintf( what, sizeof( what ),
@@ -230,6 +181,9 @@ static void refuses_newer( const char * key, const char * definition, int64_t n,
     std::snprintf( what, sizeof( what ),
                    "%s: the reason is `layout_newer`'s own — not a form byte, not a broken layout", key );
     check_red( r.refused && own_reason, key, what );
+    std::snprintf( what, sizeof( what ),
+                   "%s: layout_newer carries the file's hash and nothing else (bill §12.4)", key );
+    check_red( r.layout_hash == want_hash, key, what );
 }
 
 // the counters §5.2 says a clean NEW-READS-OLD moves, and the ones it does not
@@ -292,7 +246,7 @@ static void field_append_case()
         const int64_t n = vold_field_append::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
                                                               plan.data(), 1024, NULL, &r );
         refuses_newer( "field_append/OLD-REFUSES-NEW", "the field `w`", n, r,
-                       VL_OWN_REASON( vold_field_append, r ) );
+                       VL_OWN_REASON( vold_field_append, r ), vnew_field_append::LineageFixedHash );
         check_red( back.x == 0 && back.y == 0 && back.z == 0, "field_append/OLD-REFUSES-NEW",
                    "field_append/OLD-REFUSES-NEW: nothing was decoded — every field is still its default" );
     }
@@ -327,7 +281,8 @@ static void field_deprecate_case()
                (int64_t) newf.size(), "field_deprecate: the NEW file saves" );
     }
 
-    // NEW-READS-OLD: a and c exact, b dropped, `unknown` += 1 per plan (bill §3)
+    // NEW-READS-OLD: a,b,c exact, no counter (bill §12.3). Deprecated is READ
+    // on every plan, identity included; the application ignores it.
     {
         vnew_field_deprecate::Lineage back;
         vnew_field_deprecate::LineageReset( back );
@@ -336,13 +291,10 @@ static void field_deprecate_case()
         const int64_t n = vnew_field_deprecate::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                                  plan.data(), 1024, NULL, &r );
         check( n == 1, "field_deprecate: NEW-READS-OLD — one record" );
-        check( back.a == 1 && back.c == 3,
-               "field_deprecate: NEW-READS-OLD — the live fields land exactly and `c` did not slide" );
-        check_red( r.unknown == 1, "field_deprecate/NEW-READS-OLD",
-                   "field_deprecate/NEW-READS-OLD: the deprecated field `b` is dropped and counted once "
-                   "under `unknown` (bill §3)" );
-        check( r.clamped == 0 && r.kind_mismatch == 0 && !r.malformed && !r.refused,
-               "field_deprecate: NEW-READS-OLD — nothing else fired" );
+        check( back.a == 1 && back.b == 2 && back.c == 3,
+               "field_deprecate: NEW-READS-OLD — a,b,c exact; deprecated `b` is READ, nothing dropped" );
+        check( r.unknown == 0 && r.clamped == 0 && r.kind_mismatch == 0 && !r.malformed && !r.refused,
+               "field_deprecate: NEW-READS-OLD — no counter (bill §12.3)" );
     }
 
     // OLD-READS-NEW: a deprecation is not newer, so this is a READ
@@ -466,7 +418,7 @@ static void enum_append_case()
         const int64_t n = vold_enum_append::LineageFixedLoad( back, 2, newf.data(), (int64_t) newf.size(),
                                                              plan.data(), 1024, NULL, &r );
         refuses_newer( "enum_append/OLD-REFUSES-NEW", "the variant `Platinum`", n, r,
-                       VL_OWN_REASON( vold_enum_append, r ) );
+                       VL_OWN_REASON( vold_enum_append, r ), vnew_enum_append::LineageFixedHash );
         check_red( back[0].seq == 0 && back[1].seq == 0, "enum_append/OLD-REFUSES-NEW",
                    "enum_append/OLD-REFUSES-NEW: nothing was decoded, not even the record whose variant "
                    "this reader could have named" );
@@ -523,8 +475,7 @@ static void enum_width_case()
         // §5.2: "wider in y: widen (COUNT widened)", and an enum's ordinal is
         // the row this is written for. The counter is the red half of this
         // column; the value above is the green half.
-        check_red( r.widened == 1, "enum_width/NEW-READS-OLD",
-                   "enum_width/NEW-READS-OLD: a widened ordinal COUNTS widened (§5.2)" );
+        check( r.widened == 1, "enum_width/NEW-READS-OLD: a widened ordinal COUNTS widened (§5.2)" );
         check( r.unknown == 0 && r.clamped == 0 && r.kind_mismatch == 0 && !r.malformed && !r.refused,
                "enum_width: NEW-READS-OLD — nothing else fired" );
     }
@@ -538,7 +489,7 @@ static void enum_width_case()
         const int64_t n = vold_enum_width::LineageFixedLoad( back, 2, newf.data(), (int64_t) newf.size(),
                                                             plan.data(), 4096, NULL, &r );
         refuses_newer( "enum_width/OLD-REFUSES-NEW", "the layout's enum ordinal width (1 -> 2)", n, r,
-                       VL_OWN_REASON( vold_enum_width, r ) );
+                       VL_OWN_REASON( vold_enum_width, r ), vnew_enum_width::LineageFixedHash );
         check_red( back[0].seq == 0 && back[1].seq == 0, "enum_width/OLD-REFUSES-NEW",
                    "enum_width/OLD-REFUSES-NEW: nothing was decoded" );
     }
@@ -601,7 +552,7 @@ static void union_append_case()
         const int64_t n = vold_union_append::LineageFixedLoad( back, 2, newf.data(), (int64_t) newf.size(),
                                                               plan.data(), 1024, NULL, &r );
         refuses_newer( "union_append/OLD-REFUSES-NEW", "the arm `gamma`", n, r,
-                       VL_OWN_REASON( vold_union_append, r ) );
+                       VL_OWN_REASON( vold_union_append, r ), vnew_union_append::LineageFixedHash );
         check_red( back[0].seq == 0 && back[1].seq == 0 &&
                    back[0].pick.type == vold_union_append::PickType::None,
                    "union_append/OLD-REFUSES-NEW",
@@ -655,7 +606,7 @@ static void union_arm_payload_widen_case()
         std::snprintf( what, sizeof( what ),
                        "union_arm_payload_widen/NEW-READS-OLD: the appended `y` under arm `alpha` takes "
                        "its declared default 55 — it landed %d", (int) back.pick.alpha.y );
-        check_red( back.pick.alpha.y == 55, "union_arm_payload_widen/NEW-READS-OLD", what );
+        check( back.pick.alpha.y == 55, what );
         check( back.seq == 18, "union_arm_payload_widen: NEW-READS-OLD — the scalar behind the union lands" );
         reads_clean( "union_arm_payload_widen", r, 0, 0 );
     }
@@ -668,7 +619,7 @@ static void union_arm_payload_widen_case()
         const int64_t n = vo::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
                                                 plan.data(), 1024, NULL, &r );
         refuses_newer( "union_arm_payload_widen/OLD-REFUSES-NEW", "the field `y` under arm `alpha`", n, r,
-                       VL_OWN_REASON( vo, r ) );
+                       VL_OWN_REASON( vo, r ), vn::LineageFixedHash );
         check_red( back.seq == 0 && back.pick.type == vo::PickType::None,
                    "union_arm_payload_widen/OLD-REFUSES-NEW",
                    "union_arm_payload_widen/OLD-REFUSES-NEW: nothing was decoded" );
@@ -688,9 +639,8 @@ static void union_arm_payload_widen_case()
 
 static void flags_append_case()
 {
-    check( vold_flags_append::LineageFixedHash == vnew_flags_append::LineageFixedHash,
-           "flags_append: TODAY the two layouts hash the SAME — a flags append moves no layout byte, "
-           "which is why the refusal below cannot fire yet" );
+    check( vold_flags_append::LineageFixedHash != vnew_flags_append::LineageFixedHash,
+           "flags_append: the definitions digest covers a flags bit count, so the hash MOVES (§13)" );
 
     std::vector<uint8_t> oldf( (size_t) vold_flags_append::LineageFixedMeasure( 1 ) );
     {
@@ -733,7 +683,7 @@ static void flags_append_case()
         const int64_t n = vold_flags_append::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
                                                               plan.data(), 1024, NULL, &r );
         refuses_newer( "flags_append/OLD-REFUSES-NEW", "the flag `Fly`", n, r,
-                       VL_OWN_REASON( vold_flags_append, r ) );
+                       VL_OWN_REASON( vold_flags_append, r ), vnew_flags_append::LineageFixedHash );
         check_red( back.caps == 0 && back.seq == 0, "flags_append/OLD-REFUSES-NEW",
                    "flags_append/OLD-REFUSES-NEW: nothing was decoded" );
     }
@@ -752,9 +702,9 @@ static void keyed_array_enum_append_case()
     {
         vo::Lineage v;
         vo::LineageReset( v );
-        v.slots[vo::Tier::Bronze] = 101;
-        v.slots[vo::Tier::Silver] = 102;
-        v.slots[vo::Tier::Gold] = 103;
+        v.slots[vo::Tier::Bronze].n = 101;
+        v.slots[vo::Tier::Silver].n = 102;
+        v.slots[vo::Tier::Gold].n = 103;
         v.seq = 22;
         check( vo::LineageFixedSave( &v, 1, oldf.data(), (int64_t) oldf.size() ) == (int64_t) oldf.size(),
                "keyed_array_enum_append: the OLD file saves" );
@@ -763,10 +713,10 @@ static void keyed_array_enum_append_case()
     {
         vn::Lineage v;
         vn::LineageReset( v );
-        v.slots[vn::Tier::Bronze] = 201;
-        v.slots[vn::Tier::Silver] = 202;
-        v.slots[vn::Tier::Gold] = 203;
-        v.slots[vn::Tier::Platinum] = 204;
+        v.slots[vn::Tier::Bronze].n = 201;
+        v.slots[vn::Tier::Silver].n = 202;
+        v.slots[vn::Tier::Gold].n = 203;
+        v.slots[vn::Tier::Platinum].n = 204;
         v.seq = 23;
         check( vn::LineageFixedSave( &v, 1, newf.data(), (int64_t) newf.size() ) == (int64_t) newf.size(),
                "keyed_array_enum_append: the NEW file saves" );
@@ -774,16 +724,16 @@ static void keyed_array_enum_append_case()
 
     {
         vn::Lineage back;
-        vn::LineageReset( back );
+        std::memset( reinterpret_cast<unsigned char *>( &back ), 0x5A, sizeof( back ) );
         vn::TableReport r;
         std::vector<vn::TableFixedEntry> plan( 1024 );
         const int64_t n = vn::LineageFixedLoad( &back, 1, oldf.data(), (int64_t) oldf.size(),
                                                 plan.data(), 1024, NULL, &r );
         check( n == 1, "keyed_array_enum_append: NEW-READS-OLD — one record" );
-        check( back.slots[vn::Tier::Bronze] == 101 && back.slots[vn::Tier::Silver] == 102 &&
-               back.slots[vn::Tier::Gold] == 103,
+        check( back.slots[vn::Tier::Bronze].n == 101 && back.slots[vn::Tier::Silver].n == 102 &&
+               back.slots[vn::Tier::Gold].n == 103,
                "keyed_array_enum_append: NEW-READS-OLD — the three slots the writer had land exactly" );
-        check( back.slots[vn::Tier::Platinum] == 0,
+        check( back.slots[vn::Tier::Platinum].n == 7,
                "keyed_array_enum_append: NEW-READS-OLD — the slot the appended key opened takes the "
                "element's default" );
         check( back.seq == 22, "keyed_array_enum_append: NEW-READS-OLD — the scalar behind the array lands" );
@@ -798,8 +748,9 @@ static void keyed_array_enum_append_case()
         const int64_t n = vo::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
                                                 plan.data(), 1024, NULL, &r );
         refuses_newer( "keyed_array_enum_append/OLD-REFUSES-NEW",
-                       "the variant `Platinum` of the key enum `Tier`", n, r, VL_OWN_REASON( vo, r ) );
-        check_red( back.slots[vo::Tier::Bronze] == 0 && back.seq == 0,
+                       "the variant `Platinum` of the key enum `Tier`", n, r, VL_OWN_REASON( vo, r ),
+                       vn::LineageFixedHash );
+        check_red( back.slots[vo::Tier::Bronze].n == 7 && back.seq == 0,
                    "keyed_array_enum_append/OLD-REFUSES-NEW",
                    "keyed_array_enum_append/OLD-REFUSES-NEW: nothing was decoded, no slot touched" );
     }
@@ -853,7 +804,7 @@ static void nested_append_case()
         const int64_t n = vold_nested_append::LineageFixedLoad( &back, 1, newf.data(), (int64_t) newf.size(),
                                                                plan.data(), 1024, NULL, &r );
         refuses_newer( "nested_append/OLD-REFUSES-NEW", "the field `Vec.w`", n, r,
-                       VL_OWN_REASON( vold_nested_append, r ) );
+                       VL_OWN_REASON( vold_nested_append, r ), vnew_nested_append::LineageFixedHash );
         check_red( back.v.x == 0 && back.v.y == 0 && back.v.z == 0 && back.seq == 0,
                    "nested_append/OLD-REFUSES-NEW",
                    "nested_append/OLD-REFUSES-NEW: nothing was decoded, inside the nesting or outside it" );

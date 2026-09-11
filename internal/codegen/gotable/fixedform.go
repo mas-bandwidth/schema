@@ -300,15 +300,6 @@ func appendFixedU64(b []byte, v uint64) []byte {
 	return b
 }
 
-func fixedLayoutHash(layout []byte) uint64 {
-	h := uint64(0xcbf29ce484222325)
-	for _, b := range layout {
-		h ^= uint64(b)
-		h *= 0x100000001b3
-	}
-	return h
-}
-
 func (g *tableGen) isVarTable(name string) bool {
 	return ir.VariableTables(g.unit)[name]
 }
@@ -669,7 +660,7 @@ func (g *tableGen) emitFixedPutInt(ind, dest string, width int64, expr string) {
 func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	w := g.fixedWalkRoot(st)
 	layout := fixedLayoutBytes(w.entries)
-	hash := fixedLayoutHash(layout)
+	hash := ir.TableFixedLayoutHash(layout, st)
 	body := fixedTypeBytes(st)
 	leaves := g.fixedLeafCount(st)
 
@@ -731,7 +722,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\tlayoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])\n")
 	g.pf("\tif int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
 	g.pf("\tlayout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]\n")
-	g.pf("\thash := tableFixedHashOf(layout)\n")
+	g.pf("\thash := tableFixedGet64(data[TableFixedHashAt:]) // the header's hash; digest is not on the wire\n")
 	g.pf("\tat := data[TableFixedHeaderBytes+4+layoutBytes:]\n")
 	g.pf("\trest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)\n")
 	g.pf("\tentries := %sFixedPlan.Entries\n", st.Name)
@@ -749,13 +740,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\tif made < 0 {\n\t\t\treturn tableFixedRefuse(report, \"plan_too_large\")\n\t\t}\n")
 	g.pf("\t\tentries = plan\n\t\tentryCount = made\n")
 	g.pf("\t\trecordBytes = 8 + int64(tableFixedEntryAt(parsed, 0).Size)\n")
+	g.pf("\t} else if int(layoutBytes) != len(%sFixedLayout) {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n", st.Name)
+	g.pf("\t} else {\n")
+	g.pf("\t\tfor i := range layout {\n\t\t\tif layout[i] != %sFixedLayout[i] {\n\t\t\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t\t\t}\n\t\t}\n", st.Name)
 	g.pf("\t}\n")
-	// THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the three
-	// (docs/FIXED-FORM-ALGORITHM.md §2.1 step 5): the layout's own rules each
-	// refuse under their own name first, so a broken layout is never reported as
-	// a lying header. A header whose hash is not the hash of the layout behind it
-	// is refused.
-	g.pf("\tif tableFixedGet64(data[TableFixedHashAt:]) != hash {\n\t\treturn tableFixedRefuse(report, \"layout_malformed\")\n\t}\n")
 	g.pf("\tif recordBytes <= 8 || rest%%recordBytes != 0 {\n\t\treport.Malformed = true\n\t\treturn -1\n\t}\n")
 	g.pf("\tn := rest / recordBytes\n")
 	g.pf("\tif n > int64(len(values)) {\n\t\treturn tableFixedRefuse(report, \"batch_too_large\")\n\t}\n")

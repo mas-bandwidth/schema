@@ -740,7 +740,7 @@ namespace Blockhome
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = PartRowFixedPlan;
@@ -748,7 +748,15 @@ namespace Blockhome
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash != PartRowFixedHash)
+            if (hash == PartRowFixedHash)
+            {
+                if (layout_bytes != (uint)PartRowFixedLayout.Length || !layout.SequenceEqual(PartRowFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -771,11 +779,6 @@ namespace Blockhome
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, PartRowFixedCover, landed, fillBuf);
                 }
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {
@@ -6485,7 +6488,7 @@ namespace Blockhome
                 return -1;
             }
             ReadOnlySpan<byte> layout = data.Slice(TableFixedWire.HeaderBytes + 4, (int)layout_bytes);
-            ulong hash = TableFixedWire.HashOf(layout);
+            ulong hash = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)); // the header's hash; digest is not on the wire
             ReadOnlySpan<byte> at = data.Slice(TableFixedWire.HeaderBytes + 4 + (int)layout_bytes);
             int rest = data.Length - TableFixedWire.HeaderBytes - 4 - (int)layout_bytes;
             ReadOnlySpan<TableFixedEntry> entries = PartFrameFixedPlan;
@@ -6493,7 +6496,15 @@ namespace Blockhome
             ReadOnlySpan<byte> planBytes = ReadOnlySpan<byte>.Empty;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            if (hash != PartFrameFixedHash)
+            if (hash == PartFrameFixedHash)
+            {
+                if (layout_bytes != (uint)PartFrameFixedLayout.Length || !layout.SequenceEqual(PartFrameFixedLayout))
+                {
+                    if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
+                    return -1;
+                }
+            }
+            else
             {
                 if (!TableFixedWire.ParseLayout(layout, out TableFixedLayoutView parsed, out string why))
                 {
@@ -6516,11 +6527,6 @@ namespace Blockhome
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, PartFrameFixedCover, landed, fillBuf);
                 }
-            }
-            if (BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(TableFixedWire.HashAt)) != hash)
-            {
-                if (report != null) { report.Refused = true; report.Reason = "layout_malformed"; report.Verdict = TableWire.Verdict.Refused; }
-                return -1;
             }
             if (record_bytes <= 8 || rest % record_bytes != 0)
             {

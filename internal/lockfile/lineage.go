@@ -86,19 +86,18 @@ type LineageEntry struct {
 // lineageWireHash is algorithm §5.2's HASH: fnv1a64 over the layout bytes and
 // then the definitions digest.
 //
-// It is ir's own function over the two runs concatenated, which is exactly what
-// ir.TableFixedLayoutHash will compute once #910's fix gives it the digest as a
-// second input — and while the digest is empty it is byte for byte the number
-// every backend already emits for the header (§13: "an empty digest leaves the
-// hash equal to a hash of the layout bytes alone").
+// ir.TableFixedLayoutHash takes the schema and COMPUTES the digest; a lineage
+// entry stores the two runs because a historical layout has no live *Struct.
+// Hashing the concatenation with a nil schema is the same walk: FNV is
+// sequential, and a nil schema is an empty extra digest.
 func lineageWireHash(layout, digest []byte) uint64 {
 	if len(digest) == 0 {
-		return ir.TableFixedLayoutHash(layout)
+		return ir.TableFixedLayoutHash(layout, nil)
 	}
 	both := make([]byte, 0, len(layout)+len(digest))
 	both = append(both, layout...)
 	both = append(both, digest...)
-	return ir.TableFixedLayoutHash(both)
+	return ir.TableFixedLayoutHash(both, nil)
 }
 
 // LineageHash is THE ROLL-UP: one number over the SET of lineage lines, in
@@ -169,12 +168,12 @@ func plural(n int, one, many string) string {
 // the history forward onto it.
 func renderLineage(u *ir.Unit, st *ir.Struct) []LineageEntry {
 	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
-	// THE DIGEST IS EMPTY UNTIL ir COMPUTES IT (#910, bill §13). The entry
-	// records it as a fact of its own so the lock's shape is final now and the
-	// day ir grows `DIGEST(T)` only this line moves — and on that day every
-	// table carrying a range, a flags mask, a `bits(N)`, a `fixed(I,F)` or a
-	// reader-side limit earns one lineage entry, which is the correct record
-	// of what happened: its files' hashes moved.
+	// THE DIGEST IS EMPTY IN THE LOCK until a follow-up writes
+	// ir.TableFixedDefinitionsDigest(st) here (bill §13). Backends already
+	// hash layout-then-digest via ir.TableFixedLayoutHash(layout, st); the
+	// lock still records the layout-bytes-only number so a first-lock corpus
+	// does not grow a second lineage entry the day the digest lands. Empty
+	// digest leaves the hash equal to the layout bytes alone.
 	var digest []byte
 	return []LineageEntry{{
 		Wire:   lineageWireHash(layout, digest),

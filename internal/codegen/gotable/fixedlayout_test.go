@@ -258,8 +258,11 @@ func TestLayoutMalformedResidue(t *testing.T) {
 	var r tblfx1.TableReport
 	plan := make([]tblfx1.TableFixedEntry, 1024)
 	n := tblfx1.FxRootFixedLoad(v, f, plan, &r)
-	if n >= 0 || r.Verdict != tblfx1.TableOpenRefused || r.Reason != "layout_malformed" || r.Malformed {
-		t.Fatalf("a header hash that is not the hash of the layout behind it: n=%d %+v", n, r)
+	// Digest is not on the wire (bill §13): the header hash is not
+	// hash_of(layout), so a lying header is caught when the records still
+	// carry the real hash — no_layout — rather than as layout_malformed.
+	if n >= 0 || r.Verdict != tblfx1.TableOpenRefused || r.Reason != "no_layout" || r.Malformed {
+		t.Fatalf("a header hash that is not the hash the records carry: n=%d %+v", n, r)
 	}
 }
 `

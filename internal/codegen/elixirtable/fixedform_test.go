@@ -33,7 +33,7 @@ func TestFixedLayoutMatchesTheCppReference(t *testing.T) {
 	const (
 		refEntries    = 75
 		refLayoutLen  = fixedHeaderBytes + refEntries*fixedEntryBytes
-		refHash       = uint64(0x32f1c4a302a224eb)
+		refHash       = uint64(0x98d3af4e8ceacd29)
 		refBodyBytes  = int64(1236)
 		refRecordSize = fixedHashBytes + refBodyBytes
 	)
@@ -43,7 +43,7 @@ func TestFixedLayoutMatchesTheCppReference(t *testing.T) {
 	if len(layout) != refLayoutLen {
 		t.Fatalf("layout bytes = %d, the C++ reference emits %d", len(layout), refLayoutLen)
 	}
-	if got := ir.TableFixedLayoutHash(layout); got != refHash {
+	if got := ir.TableFixedLayoutHash(layout, st); got != refHash {
 		t.Fatalf("layout hash = 0x%016x, the C++ reference emits 0x%016x — the two walks disagree somewhere in the closure", got, refHash)
 	}
 	if got := fixedTypeBytes(st); got != refBodyBytes {

@@ -27,6 +27,7 @@ package ir
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strconv"
 )
@@ -565,15 +566,130 @@ func appendTableFixedU64(b []byte, v uint64) []byte {
 }
 
 // TableFixedLayoutHash is fnv1a64 over the layout's bytes exactly as written,
-// and it is the eight bytes every record carries and the eight the file header
-// carries once (§3, §3.4).
-func TableFixedLayoutHash(layout []byte) uint64 {
+// then over a DEFINITIONS DIGEST computed from st (bill §13). The digest is
+// every fact of the versioning law that is not wire shape — each range, each
+// flags bit count, each bits(N), each fixed I and F, each reader-side limit,
+// in closure order. It is computed HERE from the schema: there is no digest
+// argument for a leg to omit. It is recorded in the lock's lineage and NEVER
+// rides the wire: the hash binds it. An empty digest (a table that carries
+// none of those facts) leaves the hash equal to the layout bytes alone.
+func TableFixedLayoutHash(layout []byte, st *Struct) uint64 {
 	h := uint64(0xcbf29ce484222325)
 	for _, b := range layout {
 		h ^= uint64(b)
 		h *= 0x100000001b3
 	}
+	for _, b := range TableFixedDefinitionsDigest(st) {
+		h ^= uint64(b)
+		h *= 0x100000001b3
+	}
 	return h
+}
+
+// TableFixedDefinitionsDigest is the digest [TableFixedLayoutHash] folds in
+// (bill §13): the facts of §2 that are not layout bytes, in closure order.
+// Layout format is unchanged; the hash moves when a range, a flags bit count,
+// a bits(N), a fixed I/F split, or a reader-side limit does.
+func TableFixedDefinitionsDigest(st *Struct) []byte {
+	var b []byte
+	seen := map[string]bool{}
+	tableFixedDigestStruct(st, &b, seen)
+	return b
+}
+
+func tableFixedDigestStruct(st *Struct, b *[]byte, seen map[string]bool) {
+	if st == nil || seen[st.Name] {
+		return
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		tableFixedDigestField(f, b, seen)
+	}
+}
+
+func tableFixedDigestField(f *Field, b *[]byte, seen map[string]bool) {
+	if f == nil {
+		return
+	}
+	if f.HasIntRange {
+		*b = append(*b, 'R')
+		*b = tableFixedDigestI64(*b, bigInt64(f.IntMin))
+		*b = tableFixedDigestI64(*b, bigInt64(f.IntMax))
+	}
+	switch f.Type.Kind {
+	case TBits:
+		*b = append(*b, 'B')
+		*b = tableFixedDigestU32(*b, uint32(f.Type.Width))
+	case TFixed:
+		*b = append(*b, 'X')
+		*b = tableFixedDigestU32(*b, uint32(f.Type.IntBits))
+		*b = tableFixedDigestU32(*b, uint32(f.Type.FracBits))
+		if f.Type.Signed {
+			*b = append(*b, 1)
+		} else {
+			*b = append(*b, 0)
+		}
+	}
+	switch r := f.Type.Ref.(type) {
+	case *Flags:
+		*b = append(*b, 'F')
+		n := r.WireBits
+		if n == 0 {
+			n = len(r.Variants)
+		}
+		*b = tableFixedDigestU32(*b, uint32(n))
+		for _, name := range r.Variants {
+			*b = append(*b, 'f')
+			*b = tableFixedDigestU64(*b, TableWireId(name))
+		}
+	case *Struct:
+		tableFixedDigestStruct(r, b, seen)
+	case *Union:
+		for i := range r.Variants {
+			tableFixedDigestField(r.Variants[i].F, b, seen)
+		}
+	}
+}
+
+func tableFixedDigestU32(b []byte, v uint32) []byte {
+	return append(b, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+}
+
+func tableFixedDigestU64(b []byte, v uint64) []byte {
+	for i := range 8 {
+		b = append(b, byte(v>>(8*i)))
+	}
+	return b
+}
+
+func tableFixedDigestI64(b []byte, v int64) []byte {
+	return tableFixedDigestU64(b, uint64(v))
+}
+
+func bigInt64(n *big.Int) int64 {
+	if n == nil {
+		return 0
+	}
+	if n.IsInt64() {
+		return n.Int64()
+	}
+	return 0
+}
+
+// TableFixedFixtureLineage names the older schema files of each properties
+// pair, keyed by the newer file's basename. The VOLD_/numbered filename
+// convention covers most of them; Scalars2 lives in a different directory
+// from Scalars, so it cannot. LOAD looks these up so the newer reader
+// compiles the older file and the older reader given the newer file refuses
+// layout_newer — the reverse of the old contract's both-ways compiled path.
+var TableFixedFixtureLineage = map[string][]string{
+	"FX2.schema":      {"test/tables/FX1.schema"},
+	"P3.schema":       {"test/tables/P1.schema"},
+	"FN2.schema":      {"test/tables/FN1.schema"},
+	"FM2.schema":      {"test/tables/FM1.schema"},
+	"V2.schema":       {"test/tables/V1.schema"},
+	"UT2.schema":      {"test/tables/UT1.schema"},
+	"Scalars2.schema": {"tables/scalars/Scalars.schema"},
 }
 
 // ---------------------------------------------------------------------------
