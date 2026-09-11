@@ -27,6 +27,7 @@ static partial class Program
         TestFixedSlackCase();
         TestFixedNegativeControl();
         TestFixedLayoutValidation();
+        TestFixedPartitionCase();
         TestFixedHostileBoolCase();
     }
 
@@ -755,6 +756,94 @@ static partial class Program
         {
             byte[] f = LayoutFileOf(new byte[2]);
             LayoutRefuses(f, "layout_malformed", "RULE: fewer bytes than a header is layout_malformed");
+        }
+    }
+
+    static void TestFixedPartitionCase()
+    {
+        // Helper to check plan partition: unguarded entries first, then guarded
+        static void CheckPartition<T>(T[] plan, int split, int count, string name)
+        {
+            Check(split >= 0 && split <= count, $"W6: {name} — split is in range");
+            for (int i = 0; i < count; i++)
+            {
+                var entry = plan[i];
+                bool guarded = entry.Guard != UT.Schema.TableFixedWire.NoGuard;
+                if (i < split && guarded)
+                {
+                    Check(false, $"W6: {name} — entry {i} is below the split and carries a GUARD");
+                }
+                if (i >= split && !guarded)
+                {
+                    Check(false, $"W6: {name} — entry {i} is above the split and carries NO guard");
+                }
+            }
+            // The boundary pair must not be coalesced across the split
+            if (split > 0 && split < count)
+            {
+                var a = plan[split - 1];
+                var b = plan[split];
+                bool mergeable = a.Op == UT.Schema.TableFixedWire.Copy &&
+                                 b.Op == UT.Schema.TableFixedWire.Copy &&
+                                 a.Guard == b.Guard && a.Arg == b.Arg &&
+                                 a.Src + a.Size == b.Src && a.Dst + a.Size == b.Dst;
+                Check(!mergeable, $"W6: {name} — the pair at the split was not coalesced across it");
+            }
+        }
+
+        // UT1 identity plan: has both guarded and unguarded halves
+        CheckPartition(UT.Schema.UtRootFixedPlan.Entries, UT.Schema.UtRootFixedPlanGuarded, UT.Schema.UtRootFixedPlanCount, "UT1 identity plan");
+        Check(UT.Schema.UtRootFixedPlanGuarded < UT.Schema.UtRootFixedPlanCount,
+              "W6: UT1's identity plan really has a guarded half, so the case is not vacuous");
+        Check(UT.Schema.UtRootFixedPlanGuarded > 0, "W6: and an unguarded one");
+
+        // UT2 identity plan
+        CheckPartition(UT.Schema.UtRootFixedPlan.Entries, UT.Schema.UtRootFixedPlanGuarded, UT.Schema.UtRootFixedPlanCount, "UT2 identity plan");
+
+        // V1 identity plan
+        CheckPartition(V1.Schema.CfgFixedPlan.Entries, V1.Schema.CfgFixedPlanGuarded, V1.Schema.CfgFixedPlanCount, "V1 identity plan");
+
+        // FX1 identity plan: no guarded half, split equals count
+        CheckPartition(FX1.Schema.FxRootFixedPlan.Entries, FX1.Schema.FxRootFixedPlanGuarded, FX1.Schema.FxRootFixedPlanCount, "FX1 identity plan");
+        Check(FX1.Schema.FxRootFixedPlanGuarded == FX1.Schema.FxRootFixedPlanCount,
+              "W6: a plan with no guarded entry has its split at the END, not at zero");
+
+        // A compiled plan: save UT1, load with UT2 (compiled plan path)
+        {
+            UT.UtRoot one = new UT.UtRoot();
+            UT.Schema.TableReset(one);
+            one.Head = 42; one.Tail = 99;
+            one.Pick.Type = UT.UtPickType.B;
+            byte[] labelBytes = System.Text.Encoding.UTF8.GetBytes("seven77");
+            labelBytes.CopyTo(one.Pick.B.Label.AsSpan());
+            one.Pick.B.LabelLength = labelBytes.Length;
+            one.Pick.B.M = 1234;
+
+            byte[] wire = new byte[UT.Schema.UtRootFixedMeasure(1)];
+            Check(UT.Schema.UtRootFixedSave(one, wire) == wire.Length, "W6: UT1 saves");
+
+            UT.UtRoot back = new UT.UtRoot();
+            UT.TableReport r = new UT.TableReport();
+            UT.TableFixedEntry[] plan = new UT.TableFixedEntry[1024];
+            Check(UT.Schema.UtRootFixedLoad(back, wire, plan, r) == 1,
+                  "W6: UT2 reads a UT1 record through a COMPILED plan");
+
+            int seenGuarded = -1;
+            int guardedCount = 0;
+            for (int i = 0; i < plan.Length; i++)
+            {
+                if (plan[i].Op == 0 && plan[i].Size == 0 && plan[i].Src == 0 && plan[i].Dst == 0) { break; }
+                if (plan[i].Guard != UT.Schema.TableFixedWire.NoGuard)
+                {
+                    if (seenGuarded < 0) { seenGuarded = i; }
+                    guardedCount++;
+                }
+                else
+                {
+                    Check(seenGuarded < 0, "W6: a COMPILED plan puts every unguarded entry in front of every guarded one");
+                }
+            }
+            Check(guardedCount > 0, "W6: the compiled plan really has guarded entries, so the case is not vacuous");
         }
     }
 
