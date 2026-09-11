@@ -153,6 +153,28 @@ public final class FixedTableFixed {
         1232, 0, 0, 0, 0, // 74 idle_ticks
     };
 
+    /** THE LINEAGE, OLDEST FIRST, THE CURRENT LAYOUT LAST (§5.2, §5.9 #2). It
+     *  is the BUILD's data and never the wire's: a file is matched on its hash
+     *  against these entries, and the layout it carries is COMPARED with the
+     *  bytes the lock recorded, never walked. */
+    public static final TableFixed.KnownLayout[] known = {
+        new TableFixed.KnownLayout(0x98d3af4e8ceacd29L, layout, layout.length, 1244),
+    };
+
+    /** THE FLOOR: 1 + the highest RETIRED index, or 0 when none is. Below it a
+     *  layout this build once served is retired, and the answer is
+     *  `layoutUnsupported` rather than `layoutNewer` (§5.2). A retired entry
+     *  stays in the lineage forever: the floor is an index cut. */
+    public static final int floor = 0;
+
+    // ONE PLAN PER LINEAGE ENTRY, BUILT AT CLASS INITIALIZATION from the
+    // lock's own bytes — build time for a language with no constexpr, and
+    // conforming (§5.9 #3). Nothing on the load path compiles, nothing on it
+    // parses a layout, and there is no cache a load can miss.
+    private static final class Lineage {
+        static final TableFixed.Plan[] plans = TableFixed.lineagePlans(known, layout, dest, hash);
+    }
+
     /** everything a FILE carries once, in front of the records: §3's own
      *  sixteen-byte header, then the u32 layout length, then the layout. */
     public static final int headerBytes = TableFixed.fileHeaderBytes + 4 + 1279;
@@ -224,95 +246,113 @@ public final class FixedTableFixed {
     /** a scratch image of one record body, allocated ONCE by the caller. */
     public static byte[] image() { return new byte[bodyBytes]; }
 
-    /** THE READ, AND IT IS ONE PATH (docs/SPEC-TABLES.md §3.4): the prefill of
-     *  the holes the chosen plan leaves, ONE loop over that plan, ONE scatter,
-     *  and the bounds the scatter holds. WHICH PLAN is the only thing the hash
-     *  decides — the identity plan when the file's layout is this build's own,
-     *  a plan compiled from the writer's layout when it is not. There is no
-     *  identity flag in the record loop and no second method behind the door,
-     *  because a plan is data: one path is exercised by every read, and there
-     *  is one shape to test rather than two.
+    /** THE READ, AND IT IS ONE PATH (docs/SPEC-TABLES.md §3.4, and §5.3 of
+     *  docs/FIXED-FORM-ALGORITHM.md): the prefill of the holes the chosen plan
+     *  leaves, ONE loop over that plan, ONE scatter, and the bounds the scatter
+     *  holds. WHICH PLAN is the only thing the hash decides, and the hash
+     *  SELECTS it out of the lineage the build laid down: the identity plan for
+     *  this build's own layout, and for every older one a plan already built
+     *  from THE LOCK'S OWN BYTES. NOTHING ON THIS PATH COMPILES, nothing on it
+     *  parses a layout, and it cannot fail for want of a plan (§5.9 #3).
      *
-     *  THE PREFILL IS PER-PLAN, computed once per load from whichever plan
-     *  won: identity's one move covers the body, so its hole list is empty; a
-     *  compiled plan that leaves a field out has that field in the list, and
-     *  the declared default is what that field keeps.
+     *  THE FIXED TABLE READS BACKWARD AND NEVER FORWARD. A hash in no lineage
+     *  entry is `layoutNewer` — ship the reader — carrying THE FILE'S HASH and
+     *  nothing else; a hash below the floor is `layoutUnsupported` — upgrade the
+     *  client — carrying it too. Neither decodes a byte and neither moves a
+     *  counter: REFUSE IS TOTAL, the prefill included.
      *
-     *  NOTHING PER RECORD ALLOCATES, which is the claim the batch loop rests
-     *  on: EVERY BUFFER IS THE CALLER'S — the plan, the ordinal remap scratch
-     *  and the record image — and the loop below only fills them. What this
-     *  DOES make is a fixed handful of cursors, once per call: the header, the
-     *  hole list (cover and the packed ranges), and on a stranger's layout the
-     *  two Layout views (a byte[] reference and two ints each, over the
-     *  caller's own bytes) that TableFixed.parse returns. None escapes this
-     *  method, and none is per record. Answers the records read, or -1. */
+     *  THE PLAN AND THE REMAP ARGUMENTS ARE CAPACITY DECLARATIONS NOW, checked
+     *  and never written through (§5.9 #5, #24): a static plan carries its own
+     *  ordinal table, because the table is part of the plan. They stay in the
+     *  signature because §5.6 retires MECHANISMS and not API (§5.9 #16).
+     *  Answers the records read, or -1. */
     public static int load(Value[] values, int count, byte[] data,
                            TableFixed.Entry[] plan, short[] remap, byte[] image,
                            TableFixed.Report report) {
+        // STEPS 1 TO 3: the bytes are there at all, the form byte is this form,
+        // and 20 + L is inside the file. The first is framing damage and has no
+        // name; the other two refuse by name.
         final TableFixed.Header head = new TableFixed.Header();
         if (!TableFixed.readHeader(data, head, report)) { return -1; }
 
-        // WHICH PLAN, and that is the only thing that differs between reading
-        // this build's own record and reading anybody else's. A STRANGER'S
-        // LAYOUT IS VALIDATED BEFORE A SINGLE RECORD BYTE IS TOUCHED, and
-        // every rule it fails refuses under ITS OWN NAME.
+        // STEP 4: THE HEADER'S HASH, TAKEN AS GIVEN. Nothing is recomputed from
+        // the wire — the definitions digest is not on the wire, so the hash
+        // cannot be re-derived from a file at all.
+        final long fileHash = head.hash;
+
+        // STEPS 5 AND 6: SELECT BY HASH, then the floor. Two answers that point
+        // an operator in opposite directions, and both report the file's hash.
+        final int pick = TableFixed.select(known, fileHash);
+        if (pick < 0) { report.refuseHash(TableFixed.Reason.layoutNewer, fileHash); return -1; }
+        if (pick < floor) { report.refuseHash(TableFixed.Reason.layoutUnsupported, fileHash); return -1; }
+
+        // STEP 7: a known hash is read under THE LOCK'S layout bytes, held to a
+        // BYTE COMPARISON and never to §1.1's seven rules. The seven
+        // malformations under a known hash all come back as ONE name — a lie
+        // about a known version.
+        final TableFixed.KnownLayout known_ = known[pick];
+        if (head.layoutLength != known_.layoutBytes) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }
+        for (int i = 0; i < known_.layoutBytes; i++) {
+            if (data[head.layoutAt + i] != known_.layout[i]) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }
+        }
+
+        // STEP 8: the plan this peer resolves to, and the record size FROM THE
+        // LOCK. The census is the plan's own numbers, carried to the bottom.
         TableFixed.Entry[] entries = Identity.plan;
         int made = Identity.plan.length;
-        long recordSize = recordBytes;
-        if (head.hash == hash) {
-            if (head.layoutLength != layout.length) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }
-            for (int i = 0; i < layout.length; i++) {
-                if (data[head.layoutAt + i] != layout[i]) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }
+        short[] table = remap;
+        int censusUnknown = 0;
+        int censusKind = 0;
+        if (fileHash != hash) {
+            final TableFixed.Plan lane = Lineage.plans[pick];
+            if (lane == null || lane.why != TableFixed.Reason.none) {
+                report.refuse(lane == null ? TableFixed.Reason.layoutMalformed : lane.why);
+                return -1;
             }
-        } else {
-            final TableFixed.Layout theirs = TableFixed.parse(data, head.layoutAt, head.layoutLength, report);
-            if (theirs == null) { return -1; }
-            final TableFixed.Layout mine = TableFixed.parse(layout, 0, layout.length, report);
-            if (mine == null) { return -1; }
-            made = TableFixed.compile(theirs, mine, dest, plan, remap, report);
-            if (made < 0) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }
-            entries = plan;
-            recordSize = 8 + theirs.size(0);
+            if (plan != null && lane.count > plan.length) { report.refuse(TableFixed.Reason.planTooLarge); return -1; }
+            entries = lane.entries;
+            made = lane.count;
+            table = lane.remap;
+            censusUnknown = lane.unknown;
+            censusKind = lane.kindMismatch;
         }
-        final int n = records(values, count, data, head, recordSize, report);
-        if (n < 0) { return -1; }
+        final long recordSize = known_.recordBytes;
+
+        // STEPS 9 AND 10: the file's own tail arithmetic — a record size of eight
+        // or less and a ragged tail are framing damage and have no name — and the
+        // caller's capacity, which does.
+        final long rest = data.length - head.recordsAt;
+        if (recordSize <= 8 || rest % recordSize != 0) { report.malformed = true; return -1; }
+        final long count64 = rest / recordSize;
+        if (count64 > count || count64 > values.length) { report.refuse(TableFixed.Reason.batchTooLarge); return -1; }
+        final int n = (int) count64;
         final int bodySize = (int) (recordSize - 8);
 
         // THE PREFILL IS THE BYTES THIS PLAN DOES NOT WRITE, and no more than
-        // those: packed once per call rather than a whole-image copy per
-        // record, and empty when the plan is the identity plan.
+        // those: packed once per call rather than a whole-image copy per record,
+        // and empty when the plan is the identity plan.
         final byte[] cover = new byte[bodyBytes];
         final int[] hole = new int[Math.max(2, bodyBytes * 2)];
         final int holeN = TableFixed.holes(entries, made, cover, hole);
         int at = head.recordsAt;
+        // STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a
+        // refusal has written not one destination byte.
         for (int k = 0; k < n; k++) {
-            // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A
-            // REFUSAL BY NAME, never a guess and never damage.
-            if (TableFixed.get64(data, at) != head.hash) { report.refuse(TableFixed.Reason.noLayout); return -1; }
+            if (TableFixed.get64(data, at) != fileHash) { report.refuse(TableFixed.Reason.noLayout); return -1; }
             for (int h = 0; h < holeN; h++) {
                 final int off = hole[h * 2];
                 final int hn = hole[h * 2 + 1];
                 System.arraycopy(defaults, off, image, off, hn);
             }
-            TableFixed.run(entries, made, remap, data, at + 8, bodySize, image, report);
+            TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
             scatter(image, 0, values[k], report);
-            at += 8 + bodySize;
+            at += (int) recordSize;
         }
+        // THE COMPILE CENSUS LANDS ONCE, after the loop and only on a read that
+        // RETURNS (§5.9 #6): once per peer and never per record, which is also how
+        // REFUSE stays total. On a lawful lineage it lands zero, always (§5.9 #30).
+        report.unknown += censusUnknown;
+        report.kindMismatch += censusKind;
         return n;
-    }
-
-    // THE HEADER NAMES THE LAYOUT ONCE, and it is checked LAST of the
-    // three: the layout's own rules each refuse under their own name
-    // first, so a broken layout is never reported as a lying header (§3).
-    // Then the records: a whole number of them at the writer's own size,
-    // and no more than the caller has room for. Answers how many, or -1.
-    private static int records(Value[] values, int count, byte[] data, TableFixed.Header head,
-                               long recordSize, TableFixed.Report report) {
-        if (head.declaredHash != head.hash) { report.refuse(TableFixed.Reason.layoutMalformed); return -1; }
-        final long rest = data.length - head.recordsAt;
-        if (recordSize <= 8 || rest % recordSize != 0) { report.malformed = true; return -1; }
-        final long n = rest / recordSize;
-        if (n > count || n > values.length) { report.refuse(TableFixed.Reason.batchTooLarge); return -1; }
-        return (int) n;
     }
 }
