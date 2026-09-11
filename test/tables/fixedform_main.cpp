@@ -44,6 +44,8 @@
 #include "P3Table.h"
 #include "UT1Table.h"
 #include "UT2Table.h"
+#include "FU1Table.h"
+#include "FU2Table.h"
 
 static int failures = 0;
 
@@ -829,6 +831,82 @@ static void union_text_case()
 
 // ---------------------------------------------------------------------------
 
+// TEXT UNDER AN ARM (docs/SPEC-TABLES.md §3.4, §15). UT1/UT2 is two-lanes /
+// a slid ordinal. FU1/FU2 is the same hole on a TRAILING FIELD: FU1's second
+// arm carries a string(8), FU2 appends `extra` so a read of FU1's bytes is a
+// COMPILED plan rather than the identity one. The compiled read has to see
+// "hello". Hash chooses the plan and nothing else; both reads go through
+// FuRootFixedLoad.
+static void text_under_arm_case()
+{
+    check( tblfu1::FuRootFixedHash != tblfu2::FuRootFixedHash,
+           "text under an arm: FU2 extra changed the layout hash" );
+
+    tblfu1::FuRoot v[2];
+    tblfu1::FuRootReset( v[0] );
+    v[0].flag = true;
+    v[0].note = 44;
+    v[0].note_present = true;
+    v[0].pick.type = tblfu1::PickType::Labelled; // the SECOND arm
+    v[0].pick.labelled.lead = 101;
+    std::strcpy( v[0].pick.labelled.label, "hello" );
+    v[0].pick.labelled.label_length = 5;
+    v[0].pick.labelled.trail = 202;
+    v[0].tail = 11;
+
+    tblfu1::FuRootReset( v[1] );
+    v[1].pick.type = tblfu1::PickType::Plain;
+    v[1].pick.plain.n = 303;
+    v[1].tail = 12;
+
+    std::vector<uint8_t> w( (size_t) tblfu1::FuRootFixedMeasure( 2 ) );
+    check( tblfu1::FuRootFixedSave( v, 2, w.data(), (int64_t) w.size() ) == (int64_t) w.size(), "FU1 save" );
+
+    {
+        tblfu1::FuRoot back[2];
+        tblfu1::TableReport r;
+        std::vector<tblfu1::TableFixedEntry> plan( 1024 );
+        check( tblfu1::FuRootFixedLoad( back, 2, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 2,
+               "text under an arm: the identity read takes both records" );
+        check( back[0].pick.type == tblfu1::PickType::Labelled, "text under an arm: identity, the SECOND arm" );
+        check( back[0].pick.labelled.lead == 101, "text under an arm: identity, the scalar BEFORE the text" );
+        check( back[0].pick.labelled.label_length == 5 && std::strcmp( back[0].pick.labelled.label, "hello" ) == 0,
+               "text under an arm: the IDENTITY read lands the text" );
+        check( back[0].pick.labelled.trail == 202, "text under an arm: identity, the scalar AFTER the text" );
+        check( back[0].flag && back[0].note_present && back[0].note == 44 && back[0].tail == 11,
+               "text under an arm: identity, the rest of the labelled record" );
+        check( back[1].pick.type == tblfu1::PickType::Plain && back[1].pick.plain.n == 303 && back[1].tail == 12,
+               "text under an arm: identity, the FIRST arm as well" );
+        check( r.clamped == 0 && !r.malformed && !r.refused,
+               "text under an arm: identity, a clean read moves no counter" );
+    }
+
+    {
+        tblfu2::FuRoot back[2];
+        tblfu2::TableReport r;
+        std::vector<tblfu2::TableFixedEntry> plan( 1024 );
+        check( tblfu2::FuRootFixedLoad( back, 2, w.data(), (int64_t) w.size(), plan.data(), 1024, NULL, &r ) == 2,
+               "text under an arm: the compiled read takes both records" );
+        check( back[0].pick.type == tblfu2::PickType::Labelled, "text under an arm: compiled, the SECOND arm" );
+        check( back[0].pick.labelled.lead == 101, "text under an arm: compiled, the scalar BEFORE the text" );
+        check( back[0].pick.labelled.label_length == 5 && std::strcmp( back[0].pick.labelled.label, "hello" ) == 0,
+               "text under an arm: the COMPILED read still sees the text" );
+        check( back[0].pick.labelled.trail == 202, "text under an arm: compiled, the scalar AFTER the text" );
+        check( back[0].flag && back[0].note_present && back[0].note == 44 && back[0].tail == 11,
+               "text under an arm: compiled, the rest of the labelled record" );
+        check( back[0].extra == 11,
+               "text under an arm: the field FU1 does not carry took its declared default" );
+        check( back[1].pick.type == tblfu2::PickType::Plain && back[1].pick.plain.n == 303 && back[1].tail == 12,
+               "text under an arm: compiled, the FIRST arm as well" );
+        check( back[1].extra == 11,
+               "text under an arm: compiled, `extra` defaults on the FIRST arm too" );
+        check( r.clamped == 0 && !r.malformed && !r.refused,
+               "text under an arm: compiled, a clean read moves no counter" );
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 // THE BOUNDS THE READ LOOP DOES NOT HOLD (docs/SPEC-TABLES.md §3.4). A fixed
 // record is a positional image and the one read loop moves bytes: it asks
 // nothing about what they mean. Two things a declaration bounds are therefore
@@ -1301,6 +1379,7 @@ int main()
     negative_control();
     slack_case();
     union_text_case();
+    text_under_arm_case();
     bytes_row_case();
     bounds_case();
     absent_optional_case();
