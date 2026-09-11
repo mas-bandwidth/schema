@@ -465,9 +465,12 @@ test-go: tables-go-clean tables-go-bench-gate
 #
 # It is the twin of `tables-fixed-matched` for the two legs that already carry
 # the form, and it is a correctness gate: it starts no clock, so it belongs in
-# `make test-go` where `go run ./bench/paired` does not. The VERSIONING half —
-# the FX1/FX2 pair the C++ leg reads in test/tables/fixedform_main.cpp — is
-# held on this leg by TestFixedFormPlanPath in tables-go-fixedform.
+# `make test-go` where `go run ./bench/paired` does not. The VERSIONING half is
+# NOT held here and no longer held by TestFixedFormPlanPath, which §5.6 of
+# docs/FIXED-FORM-ALGORITHM.md retired by name (it skips itself: under the new
+# law the FX1/FX2 files come back `layout_newer`). It is held by the LINEAGE
+# harness in internal/codegen/gotable/fixedversioning_test.go, and the target
+# that runs it is `tables-go-versioning`, immediately below.
 build/schema_tables_bench_go_matched: generated/bench/paired/go/.stamp bench/tables/go/table_main.go bench/tables/go/shape_matched.go bench/paired/go/go.mod
 	@mkdir -p build
 	cd bench/paired/go && go build -tags matched -o $(CURDIR)/$@ ../../tables/go/table_main.go ../../tables/go/shape_matched.go
@@ -479,6 +482,30 @@ tables-go-fixed-form: build/schema_tables_bench_go_matched build/schema_test_ben
 	@echo 'tables Go fixed form: the layout and the whole 80915-byte file match the C++ reference, byte for byte'
 
 test-go: tables-go-fixed-form
+
+test-go: tables-go-versioning
+
+# THE VERSIONING HALF OF THE FIXED FORM ON THE GO LEG (§5 of
+# docs/FIXED-FORM-ALGORITHM.md, the rows of docs/FIXED-FORM-VERSIONING-TESTS.md).
+# internal/codegen/gotable/fixedversioning_test.go reads the C++ reference's
+# byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
+# and the floor, hash and lineage-merge files — and holds each row's two read
+# columns: NEW-READS-OLD lands every old value with §5.4's counters, and
+# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# alone (§5.3).
+#
+# THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's
+# harness SKIPS itself when build/fixedform-corpus is absent, which is right for
+# a bare `go test ./...` on a tree that never built the oracle — and is exactly
+# how a §5 regression would have ridden into CI green, since the go-test job
+# runs nothing but `go test ./...`. So the target BUILDS THE ORACLE FIRST
+# (`tables-fixedform-corpus`, the C++ reference's own dump, about 7 s) and then
+# sets SCHEMA_REQUIRE_CORPUS=1, which turns that skip into a FAILURE: under this
+# name a missing corpus can never pass silently.
+.PHONY: tables-go-versioning
+tables-go-versioning: tables-fixedform-corpus
+	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/gotable/ -count=1 -run 'TestFixedVersioning|TestHash|TestFloor|TestLineageMerge'
+	@echo 'tables Go versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # ITS NEGATIVE CONTROL: move one byte of the WRITE TEMPLATE and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be

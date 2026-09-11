@@ -63,8 +63,16 @@ fixed table Point {
 	if fixedLoad == "" {
 		t.Fatal("PointFixedLoad was not emitted")
 	}
-	if !strings.Contains(fixedLoad, "identity") || !strings.Contains(fixedLoad, "tableFixedHoles") {
+	if !strings.Contains(fixedLoad, "tableFixedHoles") {
 		t.Error("compiled FixedLoad does not prefill the plan's holes")
+	}
+	// SELECT BY HASH, never parse a stranger (docs/FIXED-FORM-ALGORITHM.md §5.3):
+	// the lineage and the floor are static data, and the two answers an
+	// unmatched hash owes are distinct.
+	for _, want := range []string{"tableFixedSelect(PointFixedKnown", "layout_newer", "PointFixedFloor", "layout_unsupported"} {
+		if !strings.Contains(fixedLoad, want) {
+			t.Errorf("FixedLoad does not select by hash: missing %q", want)
+		}
 	}
 	if strings.Contains(fixedLoad, "if identity {") {
 		t.Error("identity flag still forks the record loop")
@@ -201,7 +209,20 @@ func TestRoundTrip(t *testing.T) {
 `)
 }
 
+// RETIRED BY §5.6, AND OWED AGAIN ON THE LINEAGE HARNESS. This test and the two
+// below read a file written under ANOTHER schema's layout WITHOUT that layout
+// being in the reader's lineage, and they assert the run-time walk of a
+// stranger's layout — the seven §1.1 names, and a forward read. §5.6 retires
+// exactly that: "Reading a layout the lock has never seen. The run-time walk of
+// a stranger's layout ... the recompute of the header's hash". Under §5 every
+// one of these files comes back layout_newer, which is the new law and not a
+// regression. What is OWED is the same coverage on the lineage harness
+// (fixedversioning_test.go's runVersionProbe): the plan path with the peer's
+// entry handed to the reader as its lock, and §1.1's seven rules moved to the
+// LOCK's validation of what it records.
 func TestFixedFormPlanPath(t *testing.T) {
+	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness")
+
 	fx1, err := os.ReadFile("../../../test/tables/FX1.schema")
 	if err != nil {
 		t.Fatal(err)
@@ -773,6 +794,7 @@ func TestUnknownTagIsNoneAndCounts(t *testing.T) {
 // is both the guard's arm ordinal and the text flavour, the compiled read
 // drops the string silently.
 func TestFixedFormArgLaneTextUnderSecondArm(t *testing.T) {
+	t.Skip("retired by docs/FIXED-FORM-ALGORITHM.md §5.6; owed again on the lineage harness")
 	dir := t.TempDir()
 	runtime, err := filepath.Abs("../../../../serialize.go")
 	if err != nil {
