@@ -84,11 +84,16 @@ table Point {
 	}
 }
 
-// TestFixedFormForm1RefusalIsByTheKeyword is the other half of the surface
-// above, and the difference is #823's `fixed table`: a DECLARED fixed table
-// encodes as form 3 always, so a form-1 file handed to its Load is a named
-// refusal and never a slower read of the same records (Glenn 2026-09-09).
-func TestFixedFormForm1RefusalIsByTheKeyword(t *testing.T) {
+// TestFixedFormForm1RefusalLivesInFixedLoad is the other half of the surface
+// above, and it is #823's `fixed table` keyword that makes it worth pinning:
+// the keyword decides what a WRITER emits (form 3, always) and which ENTRY
+// POINT names a form-1 file `previous_form` — <T>FixedLoad — and it does NOT
+// turn <T>Load, the variable form's own entry point, into a refusal. The
+// shared corpus pins `v1_cfg_as_v2` at `read` over a form-1 file of a DECLARED
+// fixed root and the C++ reference reads it there, so a Go <T>Load that
+// refused would be the one leg disagreeing with the reference
+// (docs/SPEC-TABLES.md §3.4, §15).
+func TestFixedFormForm1RefusalLivesInFixedLoad(t *testing.T) {
 	files := generateFixed(t, `package probe
 table Point {
     x int32
@@ -105,11 +110,15 @@ table Point {
 	if load == "" {
 		t.Fatal("PointLoad was not emitted")
 	}
-	if !strings.Contains(load, "previous_form") || !strings.Contains(load, "tableFixedRefuse") {
-		t.Error("PointLoad of a DECLARED fixed table is not a named form-1 refusal")
+	if !strings.Contains(load, "PointLoadBody") {
+		t.Error("PointLoad of a DECLARED fixed table must still walk form 1")
 	}
-	if strings.Contains(load, "PointLoadBody") {
-		t.Error("PointLoad still walks a form-1 file of a declared fixed table")
+	if strings.Contains(load, "previous_form") {
+		t.Error("PointLoad, the form-1 entry point, refuses form 1")
+	}
+	fixedLoad := funcSource(body, "func PointFixedLoad(")
+	if !strings.Contains(fixedLoad, "previous_form") || !strings.Contains(fixedLoad, "tableFixedRefuse") {
+		t.Error("PointFixedLoad does not name a form-1 file previous_form")
 	}
 }
 
@@ -424,7 +433,9 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 	}
 }
 
-func TestForm1OfFixedTableRefused(t *testing.T) {
+// TestForm1OfFixedTableReadsAndFixedLoadRefuses is the runtime half: the two
+// entry points of a DECLARED fixed table, each over the other's form byte.
+func TestForm1OfFixedTableReadsAndFixedLoadRefuses(t *testing.T) {
 	runGeneratedFixed(t, `package probe
 table Point {
     x int32 = 1
@@ -433,7 +444,7 @@ table Point {
 `, `package probe
 import ("testing")
 
-func TestForm1LoadIsNamedRefusal(t *testing.T) {
+func TestForm1LoadReadsAndFixedLoadRefuses(t *testing.T) {
 	one := Point{X: 4242, Y: -7}
 	need := PointMeasure(&one)
 	if need < 0 {
@@ -448,14 +459,14 @@ func TestForm1LoadIsNamedRefusal(t *testing.T) {
 	}
 	var got Point
 	var r TableReport
-	if PointLoad(&got, form1, &r) {
-		t.Fatalf("form-1 Load of a DECLARED fixed table succeeded: %+v seq=%+v", r, got)
+	if !PointLoad(&got, form1, &r) {
+		t.Fatalf("form-1 Load of a DECLARED fixed table refused: %+v", r)
 	}
-	if r.Reason != "previous_form" || r.Verdict != TableOpenRefused || r.Malformed {
-		t.Fatalf("want named previous_form, got %+v", r)
+	if r.Reason != "" || r.Verdict != TableOpenOk || r.Malformed {
+		t.Fatalf("form-1 Load of a DECLARED fixed table is not a clean read: %+v", r)
 	}
-	if got.X == 4242 || got.Y == -7 {
-		t.Fatalf("form-1 Load of a DECLARED fixed table was a slow read: %+v", got)
+	if got.X != 4242 || got.Y != -7 {
+		t.Fatalf("form-1 Load of a DECLARED fixed table lost the record: %+v", got)
 	}
 	batch := make([]Point, 1)
 	r = TableReport{}
