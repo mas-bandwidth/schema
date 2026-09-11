@@ -101,7 +101,6 @@ const TableFixedOpWidenF = 6;  // f32 into f64, SPEC-TABLES §4's float rung
 // the flavours an TableFixedOpText entry lands its units under
 const TableFixedTextUtf8 = 1;
 const TableFixedTextWide = 2;
-const TableFixedTextBytes = 3;
 
 const TableFixedNoGuard = -1;
 
@@ -236,6 +235,11 @@ export class TableFixedPlan {
 
 // A CACHE BY HASH: "the cost of the compile is paid once per peer rather than
 // once per record". The caller owns this too.
+//
+// THE CACHE IS RETAINED AND IGNORED (§5.9 #16): every older plan is static now
+// and built from the lock's bytes, so this has nothing left to hold — it stays
+// because §5.6 RETIRES MECHANISMS, NOT API, and every caller in test/js-tables
+// and the paired bench still names it.
 export class TableFixedPlanCache {
   constructor() {
     this.plans = new Map();
