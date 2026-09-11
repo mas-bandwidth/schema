@@ -84,7 +84,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema $(SCHEMAS_TABLES_SCALARS)
+build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS)
 	@mkdir -p build/tables-generated-java
 	./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit: its cook readers are the reason it is here — the two
@@ -105,6 +105,13 @@ build/tables-generated-java/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLE
 	# had no fixture for, and the one that catches an op borrowing the guard's
 	# own byte (test/tables/UT.schema).
 	./bin/schema generate --lang java --out build/tables-generated-java/ut test/tables/UT.schema
+	# FU1/FU2 is the TEXT-UNDER-AN-ARM pair whose compiled path is a TRAILING
+	# FIELD, not a slid ordinal: FU1's second arm carries a string(8), FU2 appends
+	# `extra` so a read of FU1's bytes is a compiled plan, and the two reads have
+	# to agree on the text (reference-fix 12). C++ already generates the pair;
+	# this stamp did not.
+	./bin/schema generate --lang java --out build/tables-generated-java/fu1 test/tables/FU1.schema
+	./bin/schema generate --lang java --out build/tables-generated-java/fu2 test/tables/FU2.schema
 	# THE WIDE-KIND UNIT (docs/SPEC-TABLES.md §15): its int128, uint128 and
 	# fixed-point fields cost it the two ACCELERATORS, so the FIXED FORM is the
 	# whole of its generated table surface — and that form spells a 128-bit
@@ -256,11 +263,12 @@ tables-java-fuzz-negative-control: build/cook-open/.stamp
 # differently is a byte that does not come back.
 #
 # Beside it rides the VERSIONING CONFORMANCE — the FX1/FX2 pair, the V1/V2
-# slide and P1 against P3, exactly the cases the C++ leg runs
-# (test/tables/fixedform_main.cpp) — and the negative controls, of which the
-# one §3.4 names is a reader given the WRONG PLAN for a record, which must come
-# out wrong, and one CORRUPTED-LAYOUT case per named rule a reader holds an
-# untrusted peer's layout to.
+# slide and P1 against P3, and FU1/FU2 (text under an arm: FU2 appends `extra`
+# so a read of FU1's bytes is a compiled plan) — the cases the C++ and C legs
+# run — and the negative controls, of which the one §3.4 names is a reader
+# given the WRONG PLAN for a record, which must come out wrong, and one
+# CORRUPTED-LAYOUT case per named rule a reader holds an untrusted peer's
+# layout to.
 build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedform/src/Main.java
 	@rm -rf build/java-fixedform && mkdir -p build/java-fixedform
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-fixedform \
@@ -268,6 +276,7 @@ build/java-fixedform/.stamp: build/tables-generated-java/.stamp test/java-fixedf
 		build/tables-generated-java/p1/*.java build/tables-generated-java/p3/*.java \
 		build/tables-generated-java/v1/*.java build/tables-generated-java/v2/*.java \
 		build/tables-generated-java/ut/*.java \
+		build/tables-generated-java/fu1/*.java build/tables-generated-java/fu2/*.java \
 		build/tables-generated-java/scalars/*.java \
 		build/tables-generated-java/examples/*.java test/java-fixedform/src/Main.java
 	@touch $@
@@ -359,6 +368,8 @@ tables-java-fixedform-arm-negative-control: bin/schema build/fixedform-corpus/.s
 	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/ut test/tables/UT.schema
 	@grep -q "SABOTAGED" $(JAVA_ARM_SABOTAGE)/src/ut/TableFixed.java || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged runtime"; exit 1; }
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fu1 test/tables/FU1.schema
+	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fu2 test/tables/FU2.schema
 	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fx1 test/tables/FX1.schema
 	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/fx2 test/tables/FX2.schema
 	$(JAVA_ARM_SABOTAGE)/schema generate --lang java --out $(JAVA_ARM_SABOTAGE)/src/p1 test/tables/P1.schema

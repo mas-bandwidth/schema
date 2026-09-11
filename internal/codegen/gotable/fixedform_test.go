@@ -48,15 +48,14 @@ fixed table Point {
 	if strings.Contains(body, "block_malformed") {
 		t.Error("the layout is still named a block")
 	}
-	load := funcSource(body, "func PointLoad(")
-	if load == "" {
+	// DECLARED fixed, because #823's keyword is the SELECTION POINT: the form
+	// follows the declaration and nothing is derived in either direction (§2.2,
+	// [ir.TableFixedRoots]), so the surface above exists for a `fixed table`
+	// and for nothing else. What <T>Load then is — a named form-1 refusal — is
+	// held next door by TestFixedFormForm1RefusalIsByTheKeyword, and the
+	// variable half by TestForm1OfVariableTableStillLoads.
+	if funcSource(body, "func PointLoad(") == "" {
 		t.Fatal("PointLoad was not emitted")
-	}
-	if !strings.Contains(load, "previous_form") || !strings.Contains(load, "tableFixedRefuse") {
-		t.Error("PointLoad of a DECLARED fixed table is not a named form-1 refusal")
-	}
-	if strings.Contains(load, "PointLoadBody") {
-		t.Error("PointLoad still walks a form-1 file of a declared fixed table")
 	}
 	fixedLoad := funcSource(body, "func PointFixedLoad(")
 	if fixedLoad == "" {
@@ -87,8 +86,8 @@ fixed table Point {
 // encodes as form 3 always, so a form-1 file handed to its Load is a named
 // refusal and never a slower read of the same records (Glenn 2026-09-09).
 func TestFixedFormForm1RefusalIsByTheKeyword(t *testing.T) {
-	files := generateFixed(t, `package probe
-table Point {
+	files := generate(t, `package probe
+fixed table Point {
     x int32
     y int32
 }
@@ -167,11 +166,15 @@ func TestRoundTrip(t *testing.T) {
 			t.Fatalf("FixedLoad form %d: want %s, got %d %+v", form, want, n, r)
 		}
 	}
+	// THE LAYOUT'S OWN RULES REFUSE UNDER THEIR OWN NAMES and before the header
+	// is doubted (docs/FIXED-FORM-ALGORITHM.md §1.1, §2.1 step 5): breaking the
+	// entry count is rule 1, so this is layout_count_mismatch and not the one
+	// word the residue keeps.
 	broken := append([]byte(nil), buf...)
 	broken[TableFixedHeaderBytes+4] ^= 0xFF
 	r = TableReport{}
-	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_malformed" {
-		t.Fatalf("layout_malformed: %d %+v", n, r)
+	if n := PointFixedLoad(got, broken, plan, &r); n >= 0 || r.Reason != "layout_count_mismatch" {
+		t.Fatalf("layout_count_mismatch: %d %+v", n, r)
 	}
 	lying := append([]byte(nil), buf...)
 	lying[TableFixedHeaderBytes+4+len(PointFixedLayout)] ^= 0xFF
@@ -356,8 +359,11 @@ func TestPlanPath(t *testing.T) {
 		plan := make([]tblfx1.TableFixedEntry, 1024)
 		v := make([]tblfx1.FxRoot, 1)
 		n := tblfx1.FxRootFixedLoad(v, broken, plan, &r)
-		if n >= 0 || r.Reason != "layout_malformed" || r.Unknown != 0 || r.KindMismatch != 0 || r.Malformed {
-			t.Fatalf("layout_malformed: n=%d %+v", n, r)
+		// RULE 1 BY ITS OWN NAME: 4 + 17*count is not the length given. The
+		// seven rules run before the header's hash is checked, so a broken
+		// layout is never reported as a lying header (§1.1, §2.1 step 5).
+		if n >= 0 || r.Reason != "layout_count_mismatch" || r.Unknown != 0 || r.KindMismatch != 0 || r.Malformed {
+			t.Fatalf("layout_count_mismatch: n=%d %+v", n, r)
 		}
 	}
 	{
@@ -588,8 +594,8 @@ func writeUnit(t *testing.T, out, pkg, schema, runtime string) {
 }
 
 func TestForm1OfFixedTableRefused(t *testing.T) {
-	runGeneratedFixed(t, `package probe
-table Point {
+	runGenerated(t, `package probe
+fixed table Point {
     x int32 = 1
     y int32 = 2
 }
