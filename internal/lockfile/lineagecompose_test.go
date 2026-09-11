@@ -29,7 +29,7 @@ func lineageLines(t *testing.T, path, table string) []string {
 	}
 	var out []string
 	in := false
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(trimmed, "fixed table "):
