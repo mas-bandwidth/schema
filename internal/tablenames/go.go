@@ -423,5 +423,10 @@ func init() {
 		Name{Name: "tableFixedLeafSize", What: "the fixed form: whether a kind is a leaf, and whether its stored width is admitted"},
 		Name{Name: "tableFixedCheck", What: "the fixed form: the read-side layout check's state and its refusal reason"},
 		Name{Name: "tableFixedCheckEntry", What: "the fixed form: the read-side layout check, one subtree per call"},
+		Name{Name: "TableFixedKnown", What: "the fixed form: one known layout of a lineage entry, its hash, its bytes and its record size (§5.2)"},
+		Name{Name: "tableFixedLineagePlan", What: "the fixed form: one precompiled plan per lineage entry (§5.2)"},
+		Name{Name: "tableFixedLineagePlans", What: "the fixed form: the plans for every supported lineage entry, built once from the lock's bytes (§5.2)"},
+		Name{Name: "tableFixedRefuseHash", What: "the fixed form: a refusal that carries the file's hash and nothing else (§5.3)"},
+		Name{Name: "tableFixedSelect", What: "the fixed form: the header's hash selects a known layout, or refuses (§5.3)"},
 	)
 }
