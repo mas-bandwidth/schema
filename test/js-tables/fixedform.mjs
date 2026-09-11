@@ -120,7 +120,7 @@ export async function checkFixedForm(check, generated, corpusDir, optionalDir, o
   retired("holePrefillCompiled", "the prefill through a plan compiled from a file; owed on the lineage harness, where the 0x5A poison now lies");
   retired("negativeControls", "every control reads a stranger's layout through a compiled plan; owed on the lineage harness");
   retired("layoutValidation", "§1.1's seven rules fired at READ time; owed as the LOCK's validation of what it records");
-  retired("unionArmText", "the guard and flavour lanes across two generations with no lineage; owed on the lineage harness");
+  retired("unionArmText", "the guard and flavour lanes across two generations with no lineage; HELD on the lineage harness, TestJSFixedVersioningUnionArmText");
   if (oracleDir) {
     referenceOracleIdentity(check, fx1, fx1home, oracleDir);
     retired("referenceOracleCompiled", "it reads the reference's FX2 file with no lineage entry; owed on the lineage harness");

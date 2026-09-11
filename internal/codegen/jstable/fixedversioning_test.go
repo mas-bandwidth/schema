@@ -378,6 +378,86 @@ for (const name of [%q, %q]) {
 	}
 }
 
+// ---- union_arm_text ---------------------------------------------------------
+//
+// A TEXT FIELD UNDER A UNION'S ARM, ACROSS TWO GENERATIONS (test/tables/UT1.schema,
+// UT2.schema; docs/SPEC-TABLES.md §3.4). A plan entry under a union arm carries
+// TWO facts that are not the same fact: THE VALUE THE GUARD BYTE MUST HOLD for
+// the entry to run — the WRITER's ordinal — and the argument the entry's own op
+// takes, which for a text entry is ITS FLAVOUR. They had one lane between them.
+//
+// The case belongs HERE and not on the byte driver (test/js-tables/fixedform.mjs,
+// where it was `unionArmText`) because BOTH of its directions are a stranger's
+// layout: UT2 inserts `mid` IN THE MIDDLE of the union, so the arm carrying the
+// `string(8)` moves from ordinal 2 to ordinal 3 and neither generation can read
+// the other's file without the other's locked entry. The driver has no lineage to
+// hand in; this harness is where the lock is played (§5.2, COMPILE(lock, T)).
+//
+// So it is two probes. UT1 writes its own arm-b record — an identity save, no
+// lineage — and UT2 reads that file with UT1's entry handed in: the guard must
+// hold THEIR ordinal (2) while the tag this reader stores is MINE (3), and the
+// text entry's flavour is neither number. Share the two lanes and the entry runs
+// under the wrong arm or with the wrong flavour, and a byte string becomes a WIDE
+// one — which is why `make tables-js-union-arm-text-negative-control` sabotages
+// exactly that pair and asserts this case reds.
+func TestJSFixedVersioningUnionArmText(t *testing.T) {
+	jsFixedCorpus(t) // the leg's gate promises the oracle; this case needs only node
+	node := jsNode(t)
+	ut1 := jsReadSchema(t, "UT1")
+	ut2 := jsReadSchema(t, "UT2")
+	table := jsFixedRootName(t, ut1)
+	file := filepath.Join(t.TempDir(), "ut1_arm_b.bin")
+
+	// UT1 WRITES ARM `b` AT ORDINAL 2 — its own layout, its own plan.
+	write := fmt.Sprintf(`
+const { writeFileSync } = await import("node:fs");
+const { PickType } = await import("./Probe.js");
+const v = new T(); InitT(v);
+v.Head = 81;
+v.Pick.Type = PickType.B;
+const LABEL = "back";
+for (let i = 0; i < LABEL.length; i++) { v.Pick.B.Label[i] = LABEL.charCodeAt(i); }
+v.Pick.B.LabelLength = LABEL.length;
+v.Pick.B.M = -12;
+v.Tail = 88;
+const buf = new Uint8Array(TMeasure(1));
+if (TSave([v], 1, buf) !== buf.length) { fail("union-arm text: UT1 wrote its arm-b record"); }
+writeFileSync(%q, buf);
+`, file)
+	if out, err := jsRunVersionProbe(t, node, ut1, nil, 0, table, write); err != nil {
+		t.Fatalf("union_arm_text, UT1's own save: %v\n%s", err, out)
+	}
+
+	// AND UT2 READS IT AT ORDINAL 3, through a plan compiled from UT1's entry.
+	read := fmt.Sprintf(`
+const { PickType } = await import("./Probe.js");
+const data = readFileSync(%q);
+const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
+const report = new TableFixedReport(); const r = report;
+const plan = TNewPlan(4096, 4096);
+// THE POISON (§5.7, §5.9 #17): a prefill that ran and one that never did look
+// alike over zeros, and this record has a string's slack behind a used length.
+plan.image.fill(0x5A);
+const n = TLoad(back, back.length, data, data.length, plan, report);
+if (!(n === 1 && !r.malformed)) {
+  fail("union-arm text: UT2 read UT1's record through a compiled plan: n=" + n + " " + reason(r));
+}
+const got = back[0];
+let label = "";
+for (let i = 0; i < got.Pick.B.LabelLength; i++) { label += String.fromCharCode(got.Pick.B.Label[i]); }
+if (!(got.Pick.Type === PickType.B && label === "back" && got.Pick.B.M === -12)) {
+  fail("union-arm text: the arm's string and scalar land the other way round too — tag " +
+    got.Pick.Type + " " + JSON.stringify(label) + " " + got.Pick.B.M);
+}
+if (!(got.Head === 81 && got.Tail === 88)) {
+  fail("union-arm text: the fields either side of the union are 81/88, got " + got.Head + "/" + got.Tail);
+}
+`, file)
+	if out, err := jsRunVersionProbe(t, node, ut2, []string{ut1}, 0, table, read); err != nil {
+		t.Fatalf("union_arm_text, UT2 over UT1's file: %v\n%s", err, out)
+	}
+}
+
 // ---- the harness ------------------------------------------------------------
 
 func jsFixedCorpus(t *testing.T) string {
@@ -524,12 +604,17 @@ func jsRunVersionProbe(t *testing.T, node, reader string, older []string, retire
 	body := strings.NewReplacer(
 		"TLoad", table+"FixedLoad",
 		"TNewPlan", table+"FixedNewPlan",
+		"TMeasure", table+"FixedMeasure",
+		"TSave", table+"FixedSave",
 		"InitT", "Init"+table,
 		"new T(", "new "+table+"(",
 	).Replace(probe)
 	src := fmt.Sprintf(`// one generated probe, one column (docs/FIXED-FORM-ALGORITHM.md §5.9 #18).
 import { readFileSync } from "node:fs";
-import { %[1]sFixedLoad, %[1]sFixedNewPlan } from "./ProbeTable.js";
+// The WRITE half is here for the one case that makes its own file: two
+// generations of one table have no spelling in one module, so a case whose file
+// is not the reference's writes it with ONE probe and reads it with another.
+import { %[1]sFixedLoad, %[1]sFixedNewPlan, %[1]sFixedSave, %[1]sFixedMeasure } from "./ProbeTable.js";
 // THE VALUE'S CLASS AND ITS RESET COME FROM THE UNIT'S RUNTIME HOME: a fixed
 // table's storage class is emitted there beside the shared runtime, because an
 // ES module is file-scoped (fixedmodule.go's home rule).

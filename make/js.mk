@@ -565,15 +565,22 @@ tables-js-fixed-slack-negative-control: bin/schema build/js-fixed-corpus/.stamp 
 	@echo 'tables JS fixed slack negative control: writing the whole declared span reds the reference byte oracle'
 
 # THE UNION-ARM TEXT LANE'S OWN CONTROL: put the text flavour back where the
-# guard's value lives — the one line this defect was — and the leg must go red.
+# guard's value lives — the one line this defect was — and the gate must go red.
 # A plan entry under a union arm carries the tag's OFFSET and the VALUE the tag
 # must hold; a text entry carries a flavour too, and the three are three facts.
 # Sharing a lane between the last two is invisible to every other gate in this
 # file, because the identity path reads a whole body as ONE copy and never
 # builds a text entry at all — so this control is what proves the pair is
 # watching.
+#
+# THE GATE IT RUNS IS `tables-js-versioning`, not the byte driver: a text under a
+# union arm can only be watched across TWO GENERATIONS, and both of that pair's
+# directions are a stranger's layout, which needs a lineage entry handed in. The
+# case is TestJSFixedVersioningUnionArmText (UT1 writes arm b at ordinal 2, UT2
+# reads it at ordinal 3 with UT1's entry as its lock); the sabotage must red it,
+# and the whole versioning gate runs here so the red lands where CI looks.
 .PHONY: tables-js-union-arm-text-negative-control
-tables-js-union-arm-text-negative-control: bin/schema build/js-fixed-corpus/.stamp build/js-fixed-optional/.stamp build/fixedform-corpus/.stamp
+tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 	@rm -rf build/js-armtext-sabotage && mkdir -p build/js-armtext-sabotage
 	@sed 's|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, arg, dst\[row + TableFixedDstArg\]);|TableFixedPush(plan, TableFixedOpText, theirAt, at, units, auxAt, guard, dst[row + TableFixedDstArg], 0); // SABOTAGED|' \
 		internal/codegen/jstable/fixedruntime.go > build/js-armtext-sabotage/fixedruntime.go.txt
@@ -583,25 +590,14 @@ tables-js-union-arm-text-negative-control: bin/schema build/js-fixed-corpus/.sta
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both halves of the lane"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
-	@go build -overlay=build/js-armtext-sabotage/overlay.json -o build/js-armtext-sabotage/schema ./cmd/schema
-	@for u in bench:bench/corpus/Bench.schema fx1:test/tables/FX1.schema fx2:test/tables/FX2.schema \
-			p1:test/tables/P1.schema p3:test/tables/P3.schema fo1:test/tables/FO1.schema \
-			fo2:test/tables/FO2.schema ut1:test/tables/UT1.schema ut2:test/tables/UT2.schema; do \
-		d=$${u%%:*}; f=$${u#*:}; \
-		if [ "$$d" = bench ]; then \
-			./build/js-armtext-sabotage/schema generate --lang js --out build/js-armtext-sabotage/bench \
-				bench/corpus/Bench.schema bench/corpus/FixedTable.schema; \
-		else \
-			./build/js-armtext-sabotage/schema generate --lang js --out build/js-armtext-sabotage/$$d $$f; \
-		fi; \
-	done
-	@if $(NODE) test/js-tables/fixedform.mjs build/js-armtext-sabotage build/js-fixed-corpus \
-			build/js-fixed-optional build/fixedform-corpus > build/js-armtext-sabotage/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the text flavour sharing the guard's lane left the leg green"; \
+	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
+			-count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning \
+			> build/js-armtext-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the text flavour sharing the guard's lane left the versioning gate green"; \
 		cat build/js-armtext-sabotage/log; exit 1; \
 	fi
 	@grep -q "union-arm text:" build/js-armtext-sabotage/log || \
-		{ echo "NEGATIVE CONTROL FAILED: the leg went red for another reason"; cat build/js-armtext-sabotage/log; exit 1; }
+		{ echo "NEGATIVE CONTROL FAILED: the versioning gate went red for another reason"; cat build/js-armtext-sabotage/log; exit 1; }
 	@echo 'tables JS union-arm text negative control: the text flavour back in the guard'"'"'s lane reds a text field under a union arm'
 
 # THE OPTIONAL HALF'S OWN CONTROL: invert one present byte and the leg must go
