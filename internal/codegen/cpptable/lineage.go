@@ -75,9 +75,11 @@ func loadUnitLock(u *ir.Unit) *lockfile.Unit {
 }
 
 // loadFixturePeers returns older schema units this generate may COMPILE plans
-// from when the unit has no lock. The VOLD_/VNEW_ pairs, the numbered
-// evolution set, and fixtureLineage sit beside each other, so a NEW generate
-// reads the OLD schema and bakes its hash and layout bytes.
+// from when the unit has no lock. Callers must pass lock == nil before
+// invoking this: a locked unit with a sibling the convention can name would
+// otherwise append a non-oldest-first entry past the identity. The VOLD_/VNEW_
+// pairs, the numbered evolution set, and fixtureLineage sit beside each other,
+// so a NEW generate reads the OLD schema and bakes its hash and layout bytes.
 func loadFixturePeers(u *ir.Unit) []*ir.Unit {
 	if u == nil || len(u.Files) == 0 || u.Files[0].Path == "" {
 		return nil

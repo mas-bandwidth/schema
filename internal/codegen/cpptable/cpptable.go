@@ -1509,7 +1509,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	// capacity counts.
 	idOrdinal := wireIdOrdinals(u)
 	lock := loadUnitLock(u)
-	peers := loadFixturePeers(u)
+	var peers []*ir.Unit
+	if lock == nil {
+		// Fixture siblings (VOLD_/numbered) are TEST-ONLY. A locked unit
+		// compiles from the lock; a sibling the convention can name must
+		// not append a non-oldest-first entry past the identity.
+		peers = loadFixturePeers(u)
+	}
 	for _, f := range u.Files {
 		g := &tableGen{unit: u, file: f, anyVariable: anyVariable, anyKeyed: anyKeyed, anyMap: anyMap, anyList: anyList, anyExtent: anyExtent, blocks: blocks, variable: variable, targets: targets,
 			includes: map[string]bool{}, nativeIncludes: map[string]bool{}, slots: slots, idOrdinal: idOrdinal, lock: lock, lineagePeers: peers}

@@ -54,6 +54,56 @@ func TestCompileLineageComesFromTheLock(t *testing.T) {
 	}
 }
 
+func TestCompileFromLockIgnoresFixturePeerConvention(t *testing.T) {
+	dir := t.TempDir()
+	oldSrc := "package vold_gate\n\nfixed table Row\n{\n    a int32\n}\n"
+	newSrc := "package vnew_gate\n\nfixed table Row\n{\n    a int32\n    b int32\n}\n"
+	oldPath := filepath.Join(dir, "VOLD_gate.schema")
+	newPath := filepath.Join(dir, "VNEW_gate.schema")
+	if err := os.WriteFile(oldPath, []byte(oldSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newPath, []byte(newSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnit(t, newPath)
+	if _, _, err := lockfile.Update(u, []string{newPath}); err != nil {
+		t.Fatal(err)
+	}
+	u = loadUnit(t, newPath)
+	if loadUnitLock(u) == nil {
+		t.Fatal("VNEW_gate has a lock")
+	}
+	if n := len(fixturePeerPaths(newPath)); n == 0 {
+		t.Fatal("the convention names VOLD_gate as a sibling; that is the trap")
+	}
+	out, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hdr, ok := out["VNEW_gateTable.h"]
+	if !ok {
+		for name := range out {
+			t.Log(name)
+		}
+		t.Fatal("Generate emits VNEW_gateTable.h")
+	}
+	text := string(hdr)
+	if strings.Contains(text, "vold_gate") {
+		t.Fatal("a locked unit must not append a fixture-peer entry past the identity")
+	}
+	if !strings.Contains(text, "RowFixedLineage[]") {
+		t.Fatal("COMPILE still emits the lineage from the lock")
+	}
+	n := strings.Count(text, "ull, //")
+	if n != 1 {
+		t.Fatalf("lock-only lineage is one identity entry, got %d notes in:\n%s", n, text)
+	}
+	if !strings.Contains(text, "// identity") {
+		t.Fatal("the one entry is the identity")
+	}
+}
+
 func loadUnit(t *testing.T, path string) *ir.Unit {
 	t.Helper()
 	data, err := os.ReadFile(path)
