@@ -31,14 +31,14 @@ The table's own law, additions and deprecation only, extends to every definition
 | a ranged scalar's bounds | inside the reader's | wider on either end |
 | an integer or float width | at most the reader's, same signedness ladder | wider, or a different kind |
 | a field's kind | the same | different |
-| field order | any | never (by name) |
+| field order | a prefix of the reader's: fields are ADDED AT THE END, deprecated in place, never modified or removed (Glenn) | a field out of order, changed, or missing where the reader has one |
 | a fixed-size array `[N]` | N at most the reader's (the reader defaults the rest) | larger |
 | an enum-keyed array `[Enum]T` | its enum a prefix of the reader's | the enum has a name the reader lacks |
 | `bits(N)` | N at most the reader's | larger |
 | `fixed(I,F)` / `ufixed(I,F)` | I at most the reader's, F equal | I larger, or F different (the scale moves, incompatible) |
 | an optional | `T` where the reader has `?T` (landed present) | `?T` where the reader has `T` |
-| a nested table or type by value | the table's own law, recursively | anything else |
-| `flags` | bits a prefix of the reader's | a moved or missing bit |
+| a nested table or type by value | the table's own law, recursively: fields added at the end, deprecated in place (Glenn) | a field modified, removed, or inserted elsewhere |
+| `flags` | bits a prefix of the reader's: new flags added, old flags never removed (Glenn) | a moved or missing bit |
 | a compressed float | any quantization (it rides as the float) | never |
 | the `fixed` keyword | the same | a variable table where the reader has a fixed one, or the reverse: a different form, not a version |
 
@@ -107,6 +107,12 @@ is neither older nor newer.
 reader's ordinal: no remap table, no lookup per record; an enum lands as a `copy`, or a `widen` when its
 width grew. The plan-time check for an enum is "the writer's list is a prefix of mine", one comparison per
 enum, and the same for a union's arms. Faster than the remap by name, and nothing to get wrong.
+
+**What append-only everywhere buys at plan time.** With every list a prefix of the reader's, the plan check
+is one shape at every level: walk the writer's layout and the reader's side by side; the writer's must be a
+prefix of the reader's entry by entry, widening where a width grew, defaulting the reader's tail. No matching
+by name at plan time, no remap tables, one comparison per entry. The compiler that reads old files gets
+smaller than the one that exists.
 
 ## 6a. Versions: the hash is the version, the lock holds the law
 
