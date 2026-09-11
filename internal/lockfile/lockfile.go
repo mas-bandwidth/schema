@@ -180,6 +180,22 @@ type Table struct {
 	// filled on a FIXED table and empty on a nested `type`: a type has no file
 	// of its own and no hash a file carries, and its changes are the holder's.
 	Lineage []LineageEntry
+
+	// lineageRollup is the `lineage=0x...` token this FILE carried on the
+	// `fixed table` line — [LineageHash] over the lineage lines under it, which
+	// binds the SET of them the way Layout binds the entry lines. It is read off
+	// the file and never used to write one: [Unit.Text] computes the token from
+	// the lineage it is writing, so a token can only ever be stale in a file a
+	// hand has touched, which is precisely what diffRollup catches.
+	lineageRollup uint64
+
+	// rollupWritten says the file CARRIED that token. A lock written before the
+	// token existed did not, and that one is salvage rather than a refusal
+	// (§11.8): [Parse] computes the roll-up from the lineage lines the file does
+	// hold, and the next `schema lock` writes it down. Nothing is deleted and
+	// the check stays silent, which is the bill's sentence for every older
+	// rendering of this file.
+	rollupWritten bool
 }
 
 // An Entry is one field of a locked record, and it is the unit the check
@@ -902,7 +918,17 @@ func (u *Unit) Text() string {
 	fmt.Fprintf(&b, "%s %d\n", magic, u.Version)
 	fmt.Fprintf(&b, "package %s\n", u.Package)
 	for _, t := range u.Tables {
-		fmt.Fprintf(&b, "\n%s %s layout=0x%016x%s\n", t.Decl, t.Name, t.Layout, retiredText(t.Retired, t.Reason))
+		// THE ROLL-UP BESIDE THE LAYOUT HASH, on a fixed table only: `layout=`
+		// binds the field lines below and `lineage=` binds the lineage lines
+		// below (lineage.go, [LineageHash]). It is computed from the lineage
+		// being written rather than read out of the table, so the file the
+		// compiler writes is always self-consistent; a nested `type` carries no
+		// lineage and so no token.
+		rollup := ""
+		if t.Decl == DeclFixedTable {
+			rollup = fmt.Sprintf(" lineage=0x%016x", LineageHash(t.Lineage))
+		}
+		fmt.Fprintf(&b, "\n%s %s layout=0x%016x%s%s\n", t.Decl, t.Name, t.Layout, rollup, retiredText(t.Retired, t.Reason))
 		for _, e := range t.Entries {
 			fmt.Fprintf(&b, "    %s\n", e.line())
 		}
@@ -991,14 +1017,26 @@ func Parse(path string, data []byte) (*Unit, error) {
 		case fields[0] == "fixed" && len(fields) > 1 && fields[1] == "table":
 			head, retired, reason := splitRetired(line)
 			fields = strings.Fields(head)
-			if len(fields) != 4 {
-				return nil, fmt.Errorf("%s: a table line is `fixed table <Name> layout=0x... [retired] [reason=<text>]`", where)
+			// THE ROLL-UP IS OPTIONAL ON THE WAY IN and written on the way out:
+			// a v7 lock from before the token SALVAGES (§11.8), because every
+			// layout it shipped is still written below and the token is a
+			// projection of them.
+			if len(fields) != 4 && len(fields) != 5 {
+				return nil, fmt.Errorf("%s: a table line is `fixed table <Name> layout=0x... [lineage=0x...] [retired] [reason=<text>]`", where)
 			}
 			h, err := parseHex(fields[3], "layout")
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", where, err)
 			}
-			u.Tables = append(u.Tables, Table{Decl: DeclFixedTable, Name: fields[2], Layout: h, Retired: retired, Reason: reason})
+			t := Table{Decl: DeclFixedTable, Name: fields[2], Layout: h, Retired: retired, Reason: reason}
+			if len(fields) == 5 {
+				r, rerr := parseHex(fields[4], "lineage")
+				if rerr != nil {
+					return nil, fmt.Errorf("%s: %w", where, rerr)
+				}
+				t.lineageRollup, t.rollupWritten = r, true
+			}
+			u.Tables = append(u.Tables, t)
 			cur, curList = &u.Tables[len(u.Tables)-1], nil
 		case fields[0] == DeclType:
 			if len(fields) != 3 {
@@ -1084,6 +1122,18 @@ func Parse(path string, data []byte) (*Unit, error) {
 			if t.Decl == DeclFixedTable && len(t.Lineage) == 0 {
 				return nil, fmt.Errorf("%s: fixed table %s carries no lineage line — every fixed table's layouts are the record a reader is compiled from (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.7)", path, t.Name)
 			}
+		}
+	}
+	// AND THE ROLL-UP IS SALVAGED, NEVER DEMANDED of a file that predates it: a
+	// lock written before the `lineage=` token holds every layout it shipped on
+	// the lines below, so the token is computed from them here and written down
+	// by the next `schema lock`. Demanding it instead would be the one thing
+	// §11.8 forbids — a file the fleet must delete and rewrite, and a rewrite of
+	// this file is a lineage wiped.
+	for i := range u.Tables {
+		t := &u.Tables[i]
+		if t.Decl == DeclFixedTable && !t.rollupWritten {
+			t.lineageRollup = LineageHash(t.Lineage)
 		}
 	}
 	return u, nil
