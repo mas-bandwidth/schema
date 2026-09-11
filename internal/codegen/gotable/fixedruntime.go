@@ -970,6 +970,95 @@ func tableFixedHoles(plan []TableFixedEntry, count int32, dstSize uint32) []tabl
 	return holes
 }
 
+// ---- THE LINEAGE, AS STATIC DATA (docs/FIXED-FORM-ALGORITHM.md §5) ----------
+//
+// A fixed table reads BACKWARD and never forward. A file is matched on the
+// eight bytes of its header's hash against the lineage the BUILD laid down, and
+// the layout it carries is held to a BYTE COMPARISON against the bytes the lock
+// recorded — never walked. A hash the lineage does not hold is layout_newer
+// (ship the reader); a hash it holds below the floor is layout_unsupported
+// (upgrade the client). Those are the operator's two distinct answers.
+
+// TableFixedKnown is one locked layout: the wire hash a file is matched on, the
+// layout bytes verbatim, and the RECORD SIZE taken from the lock and never from
+// the file.
+type TableFixedKnown struct {
+	Hash   uint64
+	Layout []byte
+	Record int64
+}
+
+// tableFixedLineagePlan is one older entry's plan, laid down once from the
+// LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
+// no reader field names is counted ONCE PER PEER and never per record (§5.4).
+type tableFixedLineagePlan struct {
+	Entries      []TableFixedEntry
+	Count        int32
+	Unknown      int32
+	KindMismatch int32
+	Why          string
+}
+
+func tableFixedSelect(known []TableFixedKnown, hash uint64) int32 {
+	for i := range known {
+		if known[i].Hash == hash {
+			return int32(i)
+		}
+	}
+	return -1
+}
+
+// tableFixedRefuseHash is the two refusals that report the FILE'S hash and
+// nothing else (§5.3).
+func tableFixedRefuseHash(report *TableReport, reason string, hash uint64) int64 {
+	report.LayoutHash = hash
+	return tableFixedRefuse(report, reason)
+}
+
+// tableFixedLineagePlans compiles one plan per lineage entry from THE LOCK'S
+// layout bytes, at package initialization — nothing compiles on the load path,
+// and there is no cache to miss (§5.2, §5.8 row 3). The identity entry keeps a
+// nil plan: the baked one answers it.
+func tableFixedLineagePlans(known []TableFixedKnown, myLayout []byte, dst []TableFixedDst, own uint64) []tableFixedLineagePlan {
+	out := make([]tableFixedLineagePlan, len(known))
+	for i := range known {
+		if known[i].Hash == own {
+			continue
+		}
+		parsed, why := tableFixedParseLayout(known[i].Layout)
+		if why != "" {
+			// A lineage entry that is not a layout is a bug in the LOCK, not a
+			// wire event; the reader still owes a name rather than a panic.
+			out[i].Why = "layout_malformed"
+			continue
+		}
+		for room := 256; ; room *= 4 {
+			plan := make([]TableFixedEntry, room)
+			var census TableReport
+			made := tableFixedCompile(parsed, myLayout, dst, plan, &census)
+			if made == -2 {
+				out[i].Why = "layout_malformed"
+				break
+			}
+			if made < 0 {
+				if room >= 1<<18 {
+					out[i].Why = "plan_too_large"
+					break
+				}
+				continue
+			}
+			out[i] = tableFixedLineagePlan{
+				Entries:      plan[:made],
+				Count:        made,
+				Unknown:      census.Unknown,
+				KindMismatch: census.KindMismatch,
+			}
+			break
+		}
+	}
+	return out
+}
+
 func tableFixedRefuse(report *TableReport, reason string) int64 {
 	report.Verdict = TableOpenRefused
 	report.Reason = reason
