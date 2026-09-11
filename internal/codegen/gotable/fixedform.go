@@ -565,6 +565,8 @@ func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs i
 }
 
 func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
+	g.pf("// %s's stores. The caller zeroed the body first, which is also what\n", st.Name)
+	g.pf("// fills every byte of declared slack without this function touching it.\n")
 	g.pf("func %sFixedWriteBody(b []byte, value *%s) {\n", st.Name, st.Name)
 	off := int64(0)
 	if len(st.Fields) == 0 {
@@ -578,43 +580,79 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 }
 
 func (g *tableGen) emitFixedWriteField(f *ir.Field, off int64, buf, val string, tabs int) {
-	ind := strings.Repeat("\t", tabs)
-	base := off
 	if f.Type.Optional {
+		// AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4): the payload rides WHOLE whether or not it
+		// is present, and when the flag is 0 what rides is zero. It is ONE `if`
+		// here rather than a rule anywhere else, because the template already
+		// put the zeros there — so an absent optional costs the writer the
+		// branch and not one store, and a caller's untouched payload storage
+		// never reaches the wire.
+		ind := strings.Repeat("\t", tabs)
 		g.pf("%s{\n%s\tp := uint8(0)\n%s\tif %s.%sPresent {\n%s\t\tp = 1\n%s\t}\n%s\ttableFixedPut8(%s[%d:], p)\n%s}\n",
-			ind, ind, ind, val, member(f), ind, ind, ind, buf, base, ind)
-		base += fixedPresentBytes
+			ind, ind, ind, val, member(f), ind, ind, ind, buf, off, ind)
+		g.pf("%sif %s.%sPresent {\n", ind, val, member(f))
+		g.emitFixedWritePayload(f, off+fixedPresentBytes, buf, val, tabs+1)
+		g.pf("%s}\n", ind)
+		return
 	}
-	dest := fmt.Sprintf("%s[%d:]", buf, base)
+	g.emitFixedWritePayload(f, off, buf, val, tabs)
+}
+
+func (g *tableGen) emitFixedWritePayload(f *ir.Field, off int64, buf, val string, tabs int) {
+	ind := strings.Repeat("\t", tabs)
+	dest := fmt.Sprintf("%s[%d:]", buf, off)
 	switch {
 	case f.KeyEnum != "":
-		g.emitFixedWriteLoop(f, dest, f.KeyEnumRef.Max, val+"."+member(f), tabs)
+		// EVERY SLOT OF A KEYED ARRAY IS LIVE (§2.4): there is no count and no
+		// slack, so the bound is the loop.
+		g.emitFixedWriteLoop(f, dest, fmt.Sprintf("%d", f.KeyEnumRef.Max), val+"."+member(f), tabs)
 	case f.Array == ir.ArrayFixed:
-		g.emitFixedWriteLoop(f, dest, f.ArrayBound, val+"."+member(f), tabs)
+		// AND EVERY ELEMENT OF `[N]T` IS LIVE: min equals max, so no count rides.
+		g.emitFixedWriteLoop(f, dest, fmt.Sprintf("%d", f.ArrayBound), val+"."+member(f), tabs)
 	case f.Array == ir.ArrayCounted:
+		// THE COUNT IS THE LOOP AND THE SLACK STAYS THE TEMPLATE'S ZEROS
+		// (docs/SPEC-TABLES.md §3.4). Writing all Max elements put the unused
+		// slots' STORAGE on the wire, which for an array of a type with
+		// declared defaults is the element's default image and not zero — a
+		// value nobody wrote, riding as if somebody had.
 		g.pf("%stableFixedPut32(%s, uint32(%s.%sCount))\n", ind, dest, val, member(f))
-		g.emitFixedWriteLoop(f, fmt.Sprintf("%s[%d:]", buf, base+fixedCountBytes), f.ArrayBound, val+"."+member(f), tabs)
+		g.emitFixedWriteLoop(f, fmt.Sprintf("%s[%d:]", buf, off+fixedCountBytes),
+			fmt.Sprintf("int64(%s.%sCount)", val, member(f)), val+"."+member(f), tabs)
 	case f.Type.Kind == ir.TString:
-		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%scopy(%s[4:], %s.%s[:])\n", ind, dest, val, member(f))
+		g.emitFixedWriteText(f, dest, val, ind, 1)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%sfor i := 0; i < %d; i++ {\n%s\ttableFixedPut16(%s[4+i*2:], %s.%s[i])\n%s}\n",
-			ind, f.Type.Size, ind, dest, val, member(f), ind)
+		g.emitFixedWriteText(f, dest, val, ind, 2)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, member(f))
-		g.pf("%scopy(%s[4:], %s.%s[:])\n", ind, dest, val, member(f))
+		g.emitFixedWriteText(f, dest, val, ind, 1)
 	default:
 		g.emitFixedWriteElement(f, dest, val+"."+member(f), tabs)
 	}
 }
 
-func (g *tableGen) emitFixedWriteLoop(f *ir.Field, dest string, count int64, expr string, tabs int) {
+func (g *tableGen) emitFixedWriteLoop(f *ir.Field, dest, count, expr string, tabs int) {
 	ind := strings.Repeat("\t", tabs)
 	elem := fixedElementBytes(f)
-	g.pf("%sfor i := int64(0); i < %d; i++ {\n", ind, count)
+	g.pf("%sfor i := int64(0); i < %s; i++ {\n", ind, count)
 	g.emitFixedWriteElement(f, fmt.Sprintf("%s[i*%d:]", dest, elem), expr+"[i]", tabs+1)
 	g.pf("%s}\n", ind)
+}
+
+// emitFixedWriteText is a text field's store: the used LENGTH, then that many
+// UNITS onto the template's zeros (docs/SPEC-TABLES.md §3.4, "the slack is
+// zero"). Copying the whole span instead put whatever the storage held past
+// the used length on the wire — stale bytes, and a `string(N)` written twice
+// with two different values would not compare equal on the second write.
+// Write-side bound checks are DEBUG ONLY: this store does not clamp.
+func (g *tableGen) emitFixedWriteText(f *ir.Field, dest, val, ind string, unit int64) {
+	name := member(f)
+	g.pf("%stableFixedPut32(%s, uint32(%s.%sLength))\n", ind, dest, val, name)
+	if unit == 1 {
+		g.pf("%scopy(%s[4:], %s.%s[:%s.%sLength])\n", ind, dest, val, name, val, name)
+		return
+	}
+	g.pf("%sfor i := int32(0); i < %s.%sLength; i++ {\n%s\ttableFixedPut16(%s[4+i*2:], %s.%s[i])\n%s}\n",
+		ind, val, name, ind, dest, val, name, ind)
 }
 
 func (g *tableGen) emitFixedWriteElement(f *ir.Field, dest, expr string, tabs int) {

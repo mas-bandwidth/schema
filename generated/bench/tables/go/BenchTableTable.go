@@ -9473,6 +9473,8 @@ func TableEntityFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// TableEntity's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func TableEntityFixedWriteBody(b []byte, value *TableEntity) {
 	tableFixedPut32(b[0:], uint32(value.EntityId))
 	tableFixedPut32(b[4:], uint32(value.PosX))
@@ -9519,6 +9521,8 @@ func TableStatFixedLeaves(out []TableFixedEntry, src, dst uint32) int {
 	return n
 }
 
+// TableStat's stores. The caller zeroed the body first, which is also what
+// fills every byte of declared slack without this function touching it.
 func TableStatFixedWriteBody(b []byte, value *TableStat) {
 	tableFixedPut32(b[0:], uint32(value.StatId))
 	tableFixedPut32(b[4:], uint32(value.Delta))

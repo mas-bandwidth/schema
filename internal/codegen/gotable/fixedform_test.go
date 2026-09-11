@@ -1114,3 +1114,96 @@ func TestLiveCount(t *testing.T) {
 }
 `)
 }
+
+const writeSlackSchema = `package probe
+table Root {
+    note  string(8)
+    blob  bytes(8)
+    wide  wstring(4)
+    marks [..4]int32
+    extra ?int32
+}
+`
+
+func TestFixedFormWriteSlackShape(t *testing.T) {
+	body := tableFile(generate(t, writeSlackSchema))
+	write := funcSource(body, "func RootFixedWriteBody(")
+	if write == "" {
+		t.Fatal("RootFixedWriteBody was not emitted")
+	}
+	if !strings.Contains(write, "copy(b[0:][4:], value.Note[:value.NoteLength])") {
+		t.Errorf("string(N) must copy length bytes, not the whole span:\n%s", write)
+	}
+	if strings.Contains(write, "value.Note[:]") {
+		t.Error("string(N) still copies the whole declared span")
+	}
+	if !strings.Contains(write, "copy(b[12:][4:], value.Blob[:value.BlobLength])") {
+		t.Error("bytes(N) must copy length bytes, not the whole span")
+	}
+	if strings.Contains(write, "value.Blob[:]") {
+		t.Error("bytes(N) still copies the whole declared span")
+	}
+	if !strings.Contains(write, "i < value.WideLength") {
+		t.Error("wstring(N) must store length code units, not N")
+	}
+	if !strings.Contains(write, "i < int64(value.MarksCount)") {
+		t.Error("a counted array must write live elements, not the declared bound")
+	}
+	if strings.Contains(write, "i < 4") {
+		t.Error("counted-array or wstring write still walks the declared bound")
+	}
+	if !strings.Contains(write, "if value.ExtraPresent {") {
+		t.Error("an absent optional must not store its payload")
+	}
+	payload := "if value.ExtraPresent {\n\t\ttableFixedPut32(b[57:], uint32(value.Extra))\n\t}"
+	if !strings.Contains(write, payload) {
+		t.Errorf("optional payload must stand under Present:\n%s", write)
+	}
+}
+
+func TestFixedFormWriteSlackOnWire(t *testing.T) {
+	runGenerated(t, writeSlackSchema, `package probe
+import ("bytes"; "testing")
+
+func TestSlackIsTemplateZeros(t *testing.T) {
+	one := Root{}
+	RootReset(&one)
+	copy(one.Note[:], "xxxxxxxx")
+	one.Note[0], one.Note[1] = 'a', 'b'
+	one.NoteLength = 2
+	copy(one.Blob[:], []byte{9, 9, 9, 9, 9, 9, 9, 9})
+	one.Blob[0], one.Blob[1] = 1, 2
+	one.BlobLength = 2
+	one.Wide[0], one.Wide[1], one.Wide[2], one.Wide[3] = 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF
+	one.Wide[0] = 0x61
+	one.WideLength = 1
+	one.Marks[0], one.Marks[1], one.Marks[2], one.Marks[3] = 0x11111111, 0x22222222, 0x33333333, 0x44444444
+	one.MarksCount = 1
+	one.ExtraPresent = false
+	one.Extra = 0x55555555
+
+	need := RootFixedMeasure(1)
+	buf := make([]byte, need)
+	if n := RootFixedSave([]Root{one}, buf); n != need {
+		t.Fatalf("save %d", n)
+	}
+	if RootFixedBodyBytes != 61 {
+		t.Fatalf("body %d", RootFixedBodyBytes)
+	}
+	at := TableFixedHeaderBytes + 4 + len(RootFixedLayout) + 8
+	body := buf[at : at+RootFixedBodyBytes]
+	want := make([]byte, RootFixedBodyBytes)
+	want[0], want[1] = 2, 0
+	want[4], want[5] = 'a', 'b'
+	want[12], want[13] = 2, 0
+	want[16], want[17] = 1, 2
+	want[24] = 1
+	want[28], want[29] = 0x61, 0
+	want[36] = 1
+	want[40], want[41], want[42], want[43] = 0x11, 0x11, 0x11, 0x11
+	if !bytes.Equal(body, want) {
+		t.Fatalf("slack rode:\n got %x\nwant %x", body, want)
+	}
+}
+`)
+}
