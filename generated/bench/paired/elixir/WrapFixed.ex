@@ -62,7 +62,7 @@ defmodule Bench.WrapFixed do
   # value the type can hold (docs/SPEC-TABLES.md §3.4).
   @fixed_table_body_bytes 1236
   @fixed_table_record_bytes 1244
-  @fixed_table_hash 0x98D3AF4E8CEACD29
+  @fixed_table_hash 0x6237C1DC195F9EC9
 
   # THE LAYOUT: 75 entries, a PRE-ORDER walk of the closure in the writer's
   # declared order — an id, a kind, a constant size and a child count each,
