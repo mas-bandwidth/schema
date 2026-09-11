@@ -2406,11 +2406,12 @@ The three agree: exact wire bits — not bytes — for that value, so the bytes
 (no validation, static runs folded to one constant at generation time).
 Portable code must not call one: a program that wants a size in all nine
 targets uses `MaxBytes`, or the write's own report where it has one. The
-checker claims `Measure*` and `measure_*` against schema names in all nine
-targets regardless, so a schema that compiles anywhere compiles everywhere
-(§4.11). A C++/C/Go/Rust/C#/JS caller who genuinely needs per-value sizing
-can hand-write stream code beside the generated code — the runtimes are
-unchanged and the two mix freely on the same wire.
+checker's collision registry claims `Measure<Name>`, `measure<Name>` and
+`measure_<name>` against schema names in all nine targets regardless — a name
+three targets take is refused for every target, so a schema that compiles
+anywhere compiles everywhere. A C++/C/Go/Rust/C#/JS caller who genuinely
+needs per-value sizing can hand-write stream code beside the generated
+code — the runtimes are unchanged and the two mix freely on the same wire.
 
 The generated API mirrors serialize.modern's `schema<...>` members — `Write`,
 `Read`, `MaxBits`, `MaxBytes` — so the two feel like one family.
